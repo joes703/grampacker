@@ -10,7 +10,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { ArrowLeft, BookOpen, PackageCheck, RotateCcw, Share2, Table2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, Download, PackageCheck, RotateCcw, Share2, Table2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import {
   queryKeys,
@@ -25,6 +25,7 @@ import {
   reorderListItems,
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear } from '../lib/types'
+import { listItemsToCsv, downloadCsv } from '../lib/csv'
 import ListItemRow from './ListItemRow'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
@@ -144,7 +145,7 @@ export default function ListDetailPage() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 border-b border-gray-200">
+      <div className="flex items-center gap-1 border-b border-gray-200">
         <TabBtn active={tab === 'items'} onClick={() => setTab('items')}>
           <BookOpen size={14} /> Items
         </TabBtn>
@@ -154,6 +155,19 @@ export default function ListDetailPage() {
         <TabBtn active={tab === 'pack'} onClick={() => setTab('pack')}>
           <PackageCheck size={14} /> Pack
         </TabBtn>
+        <div className="ml-auto pb-px">
+          <button
+            onClick={() => {
+              const csv = listItemsToCsv(listItems as ListItemWithGear[], categories)
+              downloadCsv(`${list.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.csv`, csv)
+            }}
+            disabled={listItems.length === 0}
+            title="Export list as CSV"
+            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+          >
+            <Download size={14} /> Export
+          </button>
+        </div>
       </div>
 
       {tab === 'items' && (

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -15,7 +15,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, X } from 'lucide-react'
+import { Download, Plus, Search, Upload, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import {
   queryKeys,
@@ -33,6 +33,8 @@ import {
 } from '../lib/queries'
 import type { Category, GearItem } from '../lib/types'
 import { getWeightUnit, setWeightUnit, type WeightUnit } from '../lib/weight'
+import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
+import { supabase } from '../lib/supabase'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
 import GearItemDialog from './GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -44,6 +46,8 @@ type DialogState =
   | { type: 'delete-category'; category: Category }
   | { type: 'add-category' }
   | { type: 'bulk-move' }
+  | { type: 'import-preview'; rows: GearCsvRow[] }
+  | { type: 'import-error'; message: string }
 
 type Group = { category: Category | null; items: GearItem[] }
 
@@ -108,6 +112,32 @@ export default function GearLibraryPage() {
     setSelectedIds(new Set())
   }
 
+  // ── CSV import/export ─────────────────────────────────────────────────────────
+  const importInputRef = useRef<HTMLInputElement>(null)
+
+  function handleExport() {
+    const csv = gearItemsToCsv(allItems, categories)
+    downloadCsv('gear-library.csv', csv)
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!importInputRef.current) return
+    importInputRef.current.value = ''
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string
+      const result = parseGearCsv(text)
+      if (typeof result === 'string') {
+        setDialog({ type: 'import-error', message: result })
+      } else {
+        setDialog({ type: 'import-preview', rows: result })
+      }
+    }
+    reader.readAsText(file)
+  }
+
   // ── Mutations ─────────────────────────────────────────────────────────────────
   const invalidateBoth = () => {
     qc.invalidateQueries({ queryKey: queryKeys.categories() })
@@ -163,6 +193,34 @@ export default function GearLibraryPage() {
     mutationFn: ({ ids, categoryId }: { ids: string[]; categoryId: string | null }) =>
       bulkMoveToCategoryGearItems(ids, categoryId),
     onSuccess: () => { invalidateItems(); exitSelectMode() },
+  })
+
+  const importItems = useMutation({
+    mutationFn: async (rows: GearCsvRow[]) => {
+      // Resolve category names → ids, creating missing categories
+      const uniqueNames = [...new Set(rows.map((r) => r.category.trim()).filter(Boolean))]
+      const catByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.id]))
+
+      for (const name of uniqueNames) {
+        if (!catByName.has(name.toLowerCase())) {
+          const created = await createCategory(userId, name, categories.length + catByName.size)
+          catByName.set(name.toLowerCase(), created.id)
+        }
+      }
+
+      const items = rows.map((row, i) => ({
+        user_id: userId,
+        name: row.name.trim().slice(0, 256),
+        description: row.description ? row.description.slice(0, 2000) : null,
+        weight_grams: row.weight_grams,
+        category_id: row.category.trim() ? (catByName.get(row.category.trim().toLowerCase()) ?? null) : null,
+        sort_order: allItems.length + i,
+      }))
+
+      const { error } = await supabase.from('gear_items').insert(items)
+      if (error) throw error
+    },
+    onSuccess: () => { invalidateBoth(); setDialog(null) },
   })
 
   // ── Drag and drop ─────────────────────────────────────────────────────────────
@@ -232,6 +290,28 @@ export default function GearLibraryPage() {
             Select
           </button>
         )}
+        <button
+          onClick={handleExport}
+          disabled={allItems.length === 0}
+          title="Export gear library as CSV"
+          className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+        >
+          <Download size={14} /> Export
+        </button>
+        <button
+          onClick={() => importInputRef.current?.click()}
+          title="Import gear items from CSV"
+          className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+        >
+          <Upload size={14} /> Import
+        </button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={handleImportFile}
+        />
         <button
           onClick={() => setDialog({ type: 'create-item' })}
           className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
@@ -440,6 +520,94 @@ export default function GearLibraryPage() {
           onClose={() => setDialog(null)}
         />
       )}
+
+      {dialog?.type === 'import-error' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg">
+            <h2 className="text-base font-semibold text-gray-900 mb-2">Import error</h2>
+            <p className="text-sm text-red-600 mb-4">{dialog.message}</p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setDialog(null)}
+                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dialog?.type === 'import-preview' && (
+        <ImportPreviewDialog
+          rows={dialog.rows}
+          saving={importItems.isPending}
+          onConfirm={(rows) => importItems.mutate(rows)}
+          onClose={() => setDialog(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ImportPreviewDialog({
+  rows,
+  saving,
+  onConfirm,
+  onClose,
+}: {
+  rows: GearCsvRow[]
+  saving: boolean
+  onConfirm: (rows: GearCsvRow[]) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-lg rounded-xl bg-white shadow-lg flex flex-col max-h-[80vh]">
+        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
+          <h2 className="text-base font-semibold text-gray-900">
+            Import {rows.length} item{rows.length !== 1 ? 's' : ''}
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-gray-50 text-xs font-medium text-gray-500">
+              <tr>
+                <th className="px-4 py-2 text-left">Name</th>
+                <th className="px-3 py-2 text-right">Weight</th>
+                <th className="px-3 py-2 text-left">Category</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {rows.map((row, i) => (
+                <tr key={i} className="hover:bg-gray-50">
+                  <td className="px-4 py-1.5 font-medium text-gray-800 max-w-[180px] truncate">{row.name}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{row.weight_grams}g</td>
+                  <td className="px-3 py-1.5 text-gray-500">{row.category || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100">
+          <button
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(rows)}
+            disabled={saving}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? 'Importing…' : `Import ${rows.length} item${rows.length !== 1 ? 's' : ''}`}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
