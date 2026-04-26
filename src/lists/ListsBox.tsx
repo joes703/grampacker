@@ -10,7 +10,7 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { CopyPlus, Download, GripVertical, MoreVertical, Plus, Trash2, Upload } from 'lucide-react'
+import { CopyPlus, Download, GripVertical, MoreVertical, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import type { List } from '../lib/types'
 
 type RowActions = {
@@ -275,6 +275,12 @@ function ListsBoxRow({
           className="fixed z-50 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
           style={{ top: menuPos.top, left: menuPos.left }}
         >
+          <MenuItem
+            icon={<Pencil size={13} />}
+            onClick={() => { setMenuPos(null); setDraft(list.name); setRenaming(true) }}
+          >
+            Rename
+          </MenuItem>
           <MenuItem icon={<Upload size={13} />} onClick={() => { setMenuPos(null); onImport() }}>
             Import CSV
           </MenuItem>
