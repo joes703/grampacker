@@ -683,7 +683,7 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
 
       {/* Items + footer (footer is the row's "total" line, lined up under Weight) */}
       {!collapsed && (
-        <div className="space-y-0.5 pl-2">
+        <div className="pl-2">
           <DndContext sensors={itemSensors} collisionDetection={closestCenter} onDragEnd={handleItemDragEnd}>
             <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
               {items.map((item) => (

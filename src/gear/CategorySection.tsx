@@ -173,7 +173,7 @@ function CategorySectionInner(
 
       {/* Items */}
       {!collapsed && (
-        <div className="mt-1 space-y-0.5 pl-6">
+        <div className="mt-1 pl-6">
           {items.length === 0 ? (
             <p className="py-2 px-3 text-xs text-gray-400 italic">No items</p>
           ) : (
