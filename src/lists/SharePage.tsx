@@ -166,10 +166,10 @@ function SharedItemRow({ item }: { item: ListItemWithGear }) {
 
   return (
     <div className="flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-0.5 text-sm">
-      {/* Name + description columns 1:2 */}
+      {/* Name + description columns 2:3 */}
       <div className="flex-1 min-w-0 flex items-center gap-3">
-        <span className="flex-1 min-w-0 truncate font-medium text-gray-900">{name}</span>
-        <span className="flex-[2] min-w-0 truncate text-xs text-gray-500">{description}</span>
+        <span className="flex-[2] min-w-0 truncate font-medium text-gray-900">{name}</span>
+        <span className="flex-[3] min-w-0 truncate text-xs text-gray-500">{description}</span>
       </div>
 
       {/* Worn status (display-only) */}

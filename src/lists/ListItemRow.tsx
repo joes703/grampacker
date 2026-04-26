@@ -122,10 +122,10 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         <GripVertical size={14} />
       </button>
 
-      {/* Name + description as proportional columns — name : description = 1 : 2 */}
+      {/* Name + description as proportional columns — name : description = 2 : 3 */}
       <div className="flex-1 min-w-0 flex items-center gap-3">
-        <span className="flex-1 min-w-0 truncate font-medium text-gray-900">{name}</span>
-        <span className="flex-[2] min-w-0 truncate text-xs text-gray-500">{description}</span>
+        <span className="flex-[2] min-w-0 truncate font-medium text-gray-900">{name}</span>
+        <span className="flex-[3] min-w-0 truncate text-xs text-gray-500">{description}</span>
       </div>
 
       {/* Worn (Shirt) */}
