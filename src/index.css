@@ -1,1 +1,7 @@
 @import "tailwindcss";
+
+/* Bump every Tailwind text-* size down one step by shrinking the rem unit.
+   16px → 14px ≈ one Tailwind size step (text-base behaves like text-sm, etc). */
+html {
+  font-size: 14px;
+}
