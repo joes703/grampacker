@@ -1,7 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router'
 import NavBar from './NavBar'
 import GearLibraryPage from '../gear/GearLibraryPage'
-import ListIndexPage from '../lists/ListIndexPage'
 import ListDetailPage from '../lists/ListDetailPage'
 
 function NotFound() {
@@ -20,7 +19,7 @@ export default function AppShell() {
         <Routes>
           <Route path="/" element={<Navigate to="/gear" replace />} />
           <Route path="/gear" element={<GearLibraryPage />} />
-          <Route path="/lists" element={<ListIndexPage />} />
+          <Route path="/lists" element={<ListDetailPage />} />
           <Route path="/lists/:id" element={<ListDetailPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
