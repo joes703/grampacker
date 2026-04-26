@@ -80,7 +80,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
 
   // Normal (edit) row: aligned columns matching the category header
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm">
+    <div className="group relative flex items-center gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm">
       {/* Name + description (flex-1) */}
       <div className="flex-1 min-w-0 flex items-baseline gap-2 truncate">
         <span className="font-medium text-gray-900">{name}</span>
@@ -124,6 +124,32 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         )}
       </div>
 
+      {/* Quantity (before weight) */}
+      {editingQty ? (
+        <input
+          ref={qtyInputRef}
+          type="number"
+          min={1}
+          max={99}
+          value={qtyDraft}
+          onChange={(e) => setQtyDraft(e.target.value)}
+          onBlur={commitQty}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitQty()
+            if (e.key === 'Escape') { setQtyDraft(String(item.quantity)); setEditingQty(false) }
+          }}
+          className="shrink-0 w-14 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
+        />
+      ) : (
+        <button
+          onClick={() => setEditingQty(true)}
+          title="Click to edit quantity"
+          className="shrink-0 w-14 text-right tabular-nums text-gray-600 hover:text-blue-600"
+        >
+          {item.quantity}
+        </button>
+      )}
+
       {/* Weight */}
       {editingWeight ? (
         <input
@@ -150,37 +176,11 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         </button>
       )}
 
-      {/* Quantity */}
-      {editingQty ? (
-        <input
-          ref={qtyInputRef}
-          type="number"
-          min={1}
-          max={99}
-          value={qtyDraft}
-          onChange={(e) => setQtyDraft(e.target.value)}
-          onBlur={commitQty}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitQty()
-            if (e.key === 'Escape') { setQtyDraft(String(item.quantity)); setEditingQty(false) }
-          }}
-          className="shrink-0 w-14 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
-        />
-      ) : (
-        <button
-          onClick={() => setEditingQty(true)}
-          title="Click to edit quantity"
-          className="shrink-0 w-14 text-right tabular-nums text-gray-600 hover:text-blue-600"
-        >
-          {item.quantity}
-        </button>
-      )}
-
-      {/* Delete */}
+      {/* Delete — only on row hover (absolute so it doesn't reserve a column) */}
       <button
         onClick={onDelete}
         title="Remove from list"
-        className="shrink-0 w-7 h-7 inline-flex items-center justify-center rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
+        className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 inline-flex items-center justify-center rounded bg-white shadow-sm text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
       >
         <Trash2 size={14} />
       </button>
