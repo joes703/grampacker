@@ -3,6 +3,7 @@ import { useAuth } from './auth/AuthProvider'
 import LoginPage from './auth/LoginPage'
 import SignupPage from './auth/SignupPage'
 import AppShell from './layout/AppShell'
+import SharePage from './lists/SharePage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
@@ -15,6 +16,7 @@ export default function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<SignupPage />} />
+      <Route path="/r/:token" element={<SharePage />} />
       <Route
         path="/*"
         element={
