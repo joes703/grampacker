@@ -1,9 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Trash2, AlertTriangle } from 'lucide-react'
+import { Trash2, AlertTriangle } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
-import { formatItemWeight } from '../lib/weight'
 
 type Props = {
   item: ListItemWithGear
@@ -15,16 +12,6 @@ export default function ListItemRow({ item, onUpdate, onDelete }: Props) {
   const [editingWeight, setEditingWeight] = useState(false)
   const [weightDraft, setWeightDraft] = useState(String(item.weight_grams))
   const weightInputRef = useRef<HTMLInputElement>(null)
-
-  const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id })
 
   useEffect(() => {
     setWeightDraft(String(item.weight_grams))
@@ -43,40 +30,12 @@ export default function ListItemRow({ item, onUpdate, onDelete }: Props) {
 
   const sourceWeight = item.gear_item?.weight_grams
   const outOfSync = sourceWeight !== undefined && sourceWeight !== item.weight_grams
-
   const name = item.gear_item?.name ?? '(deleted item)'
 
   return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
-      className="flex items-center gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm"
-    >
-      {/* Drag handle */}
-      <button
-        ref={setActivatorNodeRef as unknown as (node: HTMLButtonElement | null) => void}
-        {...listeners}
-        {...attributes}
-        className="cursor-grab touch-none text-gray-300 hover:text-gray-500 active:cursor-grabbing"
-        tabIndex={-1}
-        aria-label="Drag to reorder"
-      >
-        <GripVertical size={16} />
-      </button>
-
-      {/* Packed checkbox */}
-      <input
-        type="checkbox"
-        checked={item.is_packed}
-        onChange={(e) => onUpdate({ is_packed: e.target.checked })}
-        title="Packed"
-        className="h-4 w-4 rounded border-gray-300 text-blue-600"
-      />
-
+    <div className="flex items-center gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm">
       {/* Name */}
-      <span className={`flex-1 min-w-0 truncate font-medium ${item.is_packed ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
-        {name}
-      </span>
+      <span className="flex-1 min-w-0 truncate font-medium text-gray-900">{name}</span>
 
       {/* Out-of-sync indicator */}
       {outOfSync && (
@@ -111,7 +70,7 @@ export default function ListItemRow({ item, onUpdate, onDelete }: Props) {
           title="Click to edit weight"
           className="shrink-0 tabular-nums text-gray-600 hover:text-blue-600"
         >
-          {formatItemWeight(item.weight_grams, 'g')}
+          {item.weight_grams}g
         </button>
       )}
 
@@ -121,17 +80,13 @@ export default function ListItemRow({ item, onUpdate, onDelete }: Props) {
           onClick={() => item.quantity > 1 && onUpdate({ quantity: item.quantity - 1 })}
           disabled={item.quantity <= 1}
           className="w-5 h-5 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30 text-center leading-none"
-        >
-          −
-        </button>
+        >−</button>
         <span className="w-4 text-center text-xs tabular-nums text-gray-700">{item.quantity}</span>
         <button
           onClick={() => item.quantity < 99 && onUpdate({ quantity: item.quantity + 1 })}
           disabled={item.quantity >= 99}
           className="w-5 h-5 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30 text-center leading-none"
-        >
-          +
-        </button>
+        >+</button>
       </div>
 
       {/* Worn / Consumable toggles */}
@@ -140,21 +95,17 @@ export default function ListItemRow({ item, onUpdate, onDelete }: Props) {
           if (item.is_worn) onUpdate({ is_worn: false })
           else onUpdate({ is_worn: true, is_consumable: false })
         }}
-        title="Worn"
+        title="Worn (excluded from pack weight)"
         className={`rounded px-1.5 py-0.5 text-xs font-medium ${item.is_worn ? 'bg-purple-100 text-purple-700' : 'text-gray-400 hover:text-gray-600'}`}
-      >
-        W
-      </button>
+      >W</button>
       <button
         onClick={() => {
           if (item.is_consumable) onUpdate({ is_consumable: false })
           else onUpdate({ is_consumable: true, is_worn: false })
         }}
-        title="Consumable"
+        title="Consumable (added to pack weight separately)"
         className={`rounded px-1.5 py-0.5 text-xs font-medium ${item.is_consumable ? 'bg-orange-100 text-orange-700' : 'text-gray-400 hover:text-gray-600'}`}
-      >
-        C
-      </button>
+      >C</button>
 
       {/* Delete */}
       <button
