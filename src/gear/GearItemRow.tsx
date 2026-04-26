@@ -85,7 +85,7 @@ export default function GearItemRow({
 }: Props) {
   return (
     <div
-      className={`flex items-center gap-2 rounded-lg px-3 py-1 text-sm ${
+      className={`flex items-center gap-2 rounded-lg px-3 py-0.5 text-sm ${
         selected ? 'bg-blue-50' : 'hover:bg-gray-50'
       }`}
     >

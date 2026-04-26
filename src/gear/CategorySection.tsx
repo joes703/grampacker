@@ -74,7 +74,7 @@ function CategorySectionInner(
   return (
     <div className="mb-2">
       {/* Category header */}
-      <div className="flex items-center gap-1 rounded-lg px-2 py-1.5 bg-gray-100">
+      <div className="flex items-center gap-1 rounded-lg px-2 py-0.5 bg-gray-100">
         {/* Drag handle — only for real categories */}
         {!isUncategorised && dragHandleRef ? (
           <button

@@ -639,7 +639,7 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
   return (
     <div>
       {/* Header — also functions as the column header for Weight / Qty */}
-      <div className="flex items-center gap-1.5 rounded-lg px-3 py-1 bg-gray-100 mb-1">
+      <div className="flex items-center gap-1.5 rounded-lg px-3 py-0.5 bg-gray-100 mb-1">
         {dragHandle}
         <button
           onClick={() => setCollapsed((v) => !v)}
@@ -695,7 +695,7 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
             </SortableContext>
           </DndContext>
           {!packMode && items.length > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1 text-xs">
+            <div className="flex items-center gap-1.5 px-3 py-0.5 text-xs">
               <div className="flex-1 min-w-0" />
               <div className="shrink-0 w-7" />
               <div className="shrink-0 w-7" />

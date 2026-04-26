@@ -116,7 +116,7 @@ function CategoryGroup({
       {/* Category header */}
       <button
         onClick={onToggle}
-        className="flex w-full items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-left border-b border-gray-100"
+        className="flex w-full items-center gap-1.5 px-3 py-0.5 bg-gray-50 hover:bg-gray-100 text-left border-b border-gray-100"
       >
         {collapsed ? (
           <ChevronRight size={13} className="shrink-0 text-gray-400" />
@@ -135,7 +135,7 @@ function CategoryGroup({
           {items.map((item) => {
             const inList = listItemGearIds.has(item.id)
             return (
-              <div key={item.id} className="flex items-center gap-2 px-3 py-1 hover:bg-gray-50">
+              <div key={item.id} className="flex items-center gap-2 px-3 py-0.5 hover:bg-gray-50">
                 <p className="flex-1 min-w-0 truncate text-sm font-medium text-gray-800">{item.name}</p>
                 <span className="shrink-0 text-xs text-gray-500 tabular-nums">
                   {formatItemWeight(item.weight_grams, weightUnit)}
