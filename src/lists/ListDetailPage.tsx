@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -11,7 +11,19 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ArrowLeft, BookOpen, ChevronDown, ChevronRight, GripVertical, PackageCheck, RotateCcw, Share2, Upload, X } from 'lucide-react'
+import {
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  Download,
+  GripVertical,
+  PackageCheck,
+  RotateCcw,
+  Share2,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import {
   queryKeys,
@@ -23,39 +35,90 @@ import {
   updateListItem,
   deleteListItem,
   updateList,
+  deleteList,
+  createList,
   reorderCategories,
   importCsvRowsToList,
 } from '../lib/queries'
-import type { GearItem, ListItemWithGear, Category } from '../lib/types'
-import { parseListCsv, type ListImportRow } from '../lib/csv'
+import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
+import { parseListCsv, listItemsToCsv, downloadCsv, type ListImportRow } from '../lib/csv'
 import { formatGrams } from '../lib/weight'
 import ListItemRow from './ListItemRow'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
 import LibrarySheet from './LibrarySheet'
+import ListsBox from './ListsBox'
+import ListsEmptyState from './ListsEmptyState'
+import TypedConfirmDialog from '../components/TypedConfirmDialog'
 
 type Tab = 'items' | 'pack'
 
 export default function ListDetailPage() {
-  const { id } = useParams<{ id: string }>()
+  const { id: routeId } = useParams<{ id?: string }>()
   const navigate = useNavigate()
   const { session } = useAuth()
   const userId = session!.user.id
   const qc = useQueryClient()
 
+  const { data: lists = [], isLoading: listsLoading } = useQuery({
+    queryKey: queryKeys.lists(),
+    queryFn: fetchLists,
+  })
+
+  // Lists ordered by most recently updated (for redirect target + post-delete fallback)
+  const listsByRecent = [...lists].sort(
+    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+  )
+  const fallbackList = listsByRecent[0]
+
+  // Redirect /lists → /lists/<most recent> when no route id is present
+  useEffect(() => {
+    if (listsLoading) return
+    if (!routeId && fallbackList) navigate(`/lists/${fallbackList.id}`, { replace: true })
+  }, [routeId, fallbackList, listsLoading, navigate])
+
+  // No id and no lists → empty state
+  if (!routeId && !listsLoading && lists.length === 0) {
+    return <ListsEmptyState />
+  }
+
+  // No id and still resolving → render nothing while redirect runs
+  if (!routeId) return null
+
+  return <ListDetailInner listId={routeId} lists={lists} listsByRecent={listsByRecent} userId={userId} qc={qc} navigate={navigate} />
+}
+
+function ListDetailInner({
+  listId,
+  lists,
+  listsByRecent,
+  userId,
+  qc,
+  navigate,
+}: {
+  listId: string
+  lists: List[]
+  listsByRecent: List[]
+  userId: string
+  qc: ReturnType<typeof useQueryClient>
+  navigate: ReturnType<typeof useNavigate>
+}) {
   const [tab, setTab] = useState<Tab>('items')
   const [sheetOpen, setSheetOpen] = useState(false)
   const [importPreview, setImportPreview] = useState<ListImportRow[] | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [creatingList, setCreatingList] = useState(false)
+  const [newListDraft, setNewListDraft] = useState('')
+  const [libraryCollapsed, setLibraryCollapsed] = useState(false)
+  const [weightCollapsed, setWeightCollapsed] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
 
-  const { data: lists = [] } = useQuery({ queryKey: queryKeys.lists(), queryFn: fetchLists })
-  const list = lists.find((l) => l.id === id)
+  const list = lists.find((l) => l.id === listId)
 
   const { data: listItems = [] } = useQuery({
-    queryKey: queryKeys.listItems(id!),
-    queryFn: () => fetchListItems(id!),
-    enabled: Boolean(id),
+    queryKey: queryKeys.listItems(listId),
+    queryFn: () => fetchListItems(listId),
   })
 
   const { data: gearItems = [] } = useQuery({
@@ -72,29 +135,66 @@ export default function ListDetailPage() {
 
   const addMut = useMutation({
     mutationFn: (item: GearItem) =>
-      addGearItemToList(id!, { id: item.id, weight_grams: item.weight_grams }, listItems.length),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(id!) }),
+      addGearItemToList(listId, { id: item.id, weight_grams: item.weight_grams }, listItems.length),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) }),
   })
 
   const updateMut = useMutation({
     mutationFn: ({ itemId, patch }: { itemId: string; patch: Parameters<typeof updateListItem>[1] }) =>
       updateListItem(itemId, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(id!) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) }),
   })
 
   const deleteMut = useMutation({
     mutationFn: (itemId: string) => deleteListItem(itemId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(id!) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) }),
   })
 
   const shareToggleMut = useMutation({
-    mutationFn: (shared: boolean) => updateList(id!, { is_shared: shared }),
+    mutationFn: (shared: boolean) => updateList(listId, { is_shared: shared }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
   })
 
   const reorderCatsMut = useMutation({
     mutationFn: reorderCategories,
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.categories() }),
+  })
+
+  const importMut = useMutation({
+    mutationFn: (rows: ListImportRow[]) =>
+      importCsvRowsToList(listId, userId, rows, gearItems, categories, listItems.length),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
+      qc.invalidateQueries({ queryKey: queryKeys.categories() })
+      setImportPreview(null)
+    },
+  })
+
+  const renameMut = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => updateList(id, { name }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
+  })
+
+  const deleteListMut = useMutation({
+    mutationFn: (id: string) => deleteList(id),
+    onSuccess: async (_data, deletedId) => {
+      await qc.invalidateQueries({ queryKey: queryKeys.lists() })
+      // Switch to the next list (most recent remaining), or empty state
+      const remaining = listsByRecent.filter((l) => l.id !== deletedId)
+      if (remaining.length > 0) navigate(`/lists/${remaining[0].id}`, { replace: true })
+      else navigate('/lists', { replace: true })
+    },
+  })
+
+  const createListMut = useMutation({
+    mutationFn: (name: string) => createList(userId, name, lists.length),
+    onSuccess: (created) => {
+      qc.invalidateQueries({ queryKey: queryKeys.lists() })
+      setCreatingList(false)
+      setNewListDraft('')
+      navigate(`/lists/${created.id}`)
+    },
   })
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
@@ -111,25 +211,12 @@ export default function ListDetailPage() {
     reorderCatsMut.mutate(reordered.map((c, i) => ({ id: c.id, sort_order: i })))
   }
 
-  const importMut = useMutation({
-    mutationFn: (rows: ListImportRow[]) =>
-      importCsvRowsToList(id!, userId, rows, gearItems, categories, listItems.length),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.listItems(id!) })
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      qc.invalidateQueries({ queryKey: queryKeys.categories() })
-      setImportPreview(null)
-    },
-  })
-
   async function resetPacked() {
     await Promise.all(
       listItems.filter((i) => i.is_packed).map((i) => updateListItem(i.id, { is_packed: false })),
     )
-    qc.invalidateQueries({ queryKey: queryKeys.listItems(id!) })
+    qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
   }
-
-  // ── CSV import ─────────────────────────────────────────────────────────────
 
   function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -145,13 +232,18 @@ export default function ListDetailPage() {
     reader.readAsText(file)
   }
 
+  function handleExport() {
+    if (!list) return
+    const csv = listItemsToCsv(listItems as ListItemWithGear[], categories)
+    downloadCsv(`${list.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`, csv)
+  }
+
   // ── Derived data ───────────────────────────────────────────────────────────
 
   const listItemGearIds = new Set(
     listItems.filter((i) => i.gear_item_id !== null).map((i) => i.gear_item_id as string),
   )
 
-  // Group list items by category (ordered by category sort_order)
   const catMap = new Map(categories.map((c) => [c.id, c]))
   const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
 
@@ -168,7 +260,7 @@ export default function ListDetailPage() {
   )
   if (uncategorisedItems.length > 0) grouped.push({ category: null, items: uncategorisedItems })
 
-  // ── Loading / not found ────────────────────────────────────────────────────
+  // ── Not found ──────────────────────────────────────────────────────────────
 
   if (!list) {
     return (
@@ -184,16 +276,8 @@ export default function ListDetailPage() {
     <div className="flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
-        <button
-          onClick={() => navigate('/lists')}
-          className="rounded p-1 text-gray-400 hover:text-gray-700"
-          aria-label="Back to lists"
-        >
-          <ArrowLeft size={18} />
-        </button>
         <h1 className="flex-1 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
 
-        {/* Import CSV */}
         <button
           onClick={() => importInputRef.current?.click()}
           title="Import list from CSV"
@@ -209,7 +293,15 @@ export default function ListDetailPage() {
           onChange={handleImportFile}
         />
 
-        {/* Share toggle */}
+        <button
+          onClick={handleExport}
+          disabled={listItems.length === 0}
+          title="Export list as CSV"
+          className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+        >
+          <Download size={14} /> Export
+        </button>
+
         <button
           onClick={() => shareToggleMut.mutate(!list.is_shared)}
           title={list.is_shared ? `Sharing on — token: ${list.share_token}` : 'Enable sharing'}
@@ -221,6 +313,14 @@ export default function ListDetailPage() {
         >
           <Share2 size={14} />
           {list.is_shared ? list.share_token : 'Share'}
+        </button>
+
+        <button
+          onClick={() => setConfirmDelete(true)}
+          title="Delete list"
+          className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-300"
+        >
+          <Trash2 size={14} /> Delete
         </button>
       </div>
 
@@ -234,29 +334,61 @@ export default function ListDetailPage() {
         </TabBtn>
       </div>
 
-      {/* ── Items tab ── */}
+      {/* ── Items tab — two-column grid ── */}
       {tab === 'items' && (
-        <div className="flex gap-4">
-          {/* Desktop library sidebar — LEFT */}
-          <div
-            className="hidden lg:flex w-72 shrink-0 flex-col rounded-xl border border-gray-200 bg-white overflow-hidden"
-            style={{ maxHeight: '75vh' }}
+        <div className="flex gap-4 items-start">
+          {/* LEFT column — Lists box (always visible) + Library panel (collapsible) */}
+          <aside
+            className="hidden lg:flex w-72 shrink-0 flex-col gap-4 sticky"
+            style={{ top: '1rem', maxHeight: 'calc(100vh - 2rem)' }}
           >
-            <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Gear library</p>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <LibraryPanel
-                gearItems={gearItems}
-                categories={categories}
-                listItemGearIds={listItemGearIds}
-                onAdd={(item) => addMut.mutate(item)}
-              />
-            </div>
-          </div>
+            <ListsBox
+              lists={lists}
+              activeId={list.id}
+              creating={creatingList}
+              newDraft={newListDraft}
+              onNewDraftChange={setNewListDraft}
+              onStartNew={() => setCreatingList(true)}
+              onSubmitNew={() => {
+                const trimmed = newListDraft.trim()
+                if (trimmed) createListMut.mutate(trimmed)
+                else { setCreatingList(false); setNewListDraft('') }
+              }}
+              onCancelNew={() => { setCreatingList(false); setNewListDraft('') }}
+              onSelect={(l) => navigate(`/lists/${l.id}`)}
+              onRename={(l, name) => renameMut.mutate({ id: l.id, name })}
+            />
 
-          {/* Right column: weight table + items */}
-          <div className="flex-1 min-w-0 space-y-6">
+            {/* Library panel — collapsible */}
+            <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
+              <button
+                onClick={() => setLibraryCollapsed((v) => !v)}
+                className="flex items-center gap-1.5 px-3 py-2 border-b border-gray-200 bg-gray-50 hover:bg-gray-100"
+              >
+                {libraryCollapsed ? (
+                  <ChevronRight size={13} className="text-gray-400 shrink-0" />
+                ) : (
+                  <ChevronDown size={13} className="text-gray-400 shrink-0" />
+                )}
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Gear library
+                </span>
+              </button>
+              {!libraryCollapsed && (
+                <div className="flex-1 overflow-hidden">
+                  <LibraryPanel
+                    gearItems={gearItems}
+                    categories={categories}
+                    listItemGearIds={listItemGearIds}
+                    onAdd={(item) => addMut.mutate(item)}
+                  />
+                </div>
+              )}
+            </div>
+          </aside>
+
+          {/* RIGHT column — weight table + items */}
+          <div className="flex-1 min-w-0 space-y-4">
             {/* Mobile: Add from library button */}
             <div className="lg:hidden">
               <button
@@ -267,17 +399,29 @@ export default function ListDetailPage() {
               </button>
             </div>
 
-            {/* Weight table — always visible above items */}
+            {/* Weight summary — collapsible */}
             {listItems.length > 0 && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                  Weight summary
-                </p>
-                <WeightTable items={listItems as ListItemWithGear[]} categories={categories} />
+              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                <button
+                  onClick={() => setWeightCollapsed((v) => !v)}
+                  className="flex w-full items-center gap-1.5 px-3 py-2 border-b border-gray-200 bg-gray-50 hover:bg-gray-100"
+                >
+                  {weightCollapsed ? (
+                    <ChevronRight size={13} className="text-gray-400 shrink-0" />
+                  ) : (
+                    <ChevronDown size={13} className="text-gray-400 shrink-0" />
+                  )}
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Weight summary
+                  </span>
+                </button>
+                {!weightCollapsed && (
+                  <WeightTable items={listItems as ListItemWithGear[]} categories={categories} />
+                )}
               </div>
             )}
 
-            {/* Items grouped by category — real categories sortable, uncategorised pinned at end */}
+            {/* Items grouped by category */}
             {listItems.length === 0 ? (
               <div className="flex h-32 items-center justify-center rounded-xl border-2 border-dashed border-gray-200">
                 <p className="text-sm text-gray-400">No items — add from your gear library</p>
@@ -365,6 +509,21 @@ export default function ListDetailPage() {
           saving={importMut.isPending}
           onConfirm={() => importMut.mutate(importPreview)}
           onClose={() => setImportPreview(null)}
+        />
+      )}
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <TypedConfirmDialog
+          title="Delete list"
+          message={`This will permanently delete "${list.name}" and all of its items. This cannot be undone.`}
+          confirmPhrase={list.name}
+          confirmLabel="Delete list"
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => {
+            setConfirmDelete(false)
+            deleteListMut.mutate(list.id)
+          }}
         />
       )}
     </div>
@@ -470,7 +629,6 @@ function PackingView({
 
   return (
     <div className="space-y-4">
-      {/* Progress bar */}
       <div className="rounded-xl border border-gray-200 bg-white p-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-gray-700">
@@ -499,7 +657,6 @@ function PackingView({
         </div>
       </div>
 
-      {/* Items by category */}
       {grouped.map((group) => (
         <div key={group.category?.id ?? '__uncategorised__'}>
           <p className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
