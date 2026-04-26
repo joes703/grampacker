@@ -1,3 +1,34 @@
+export type List = {
+  id: string
+  user_id: string
+  name: string
+  description: string | null
+  share_token: string
+  is_shared: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export type ListItem = {
+  id: string
+  list_id: string
+  gear_item_id: string | null
+  quantity: number
+  weight_grams: number
+  is_worn: boolean
+  is_consumable: boolean
+  is_packed: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+// ListItem joined with its source GearItem (null when gear was deleted)
+export type ListItemWithGear = ListItem & {
+  gear_item: Pick<GearItem, 'id' | 'name' | 'description' | 'weight_grams' | 'category_id'> | null
+}
+
 export type Category = {
   id: string
   user_id: string

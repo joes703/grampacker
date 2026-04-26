@@ -1,9 +1,12 @@
 import { supabase } from './supabase'
-import type { Category, GearItem } from './types'
+import type { Category, GearItem, List, ListItem, ListItemWithGear } from './types'
+import { generateShareToken } from './share-token'
 
 export const queryKeys = {
   categories: () => ['categories'] as const,
   gearItems: () => ['gear-items'] as const,
+  lists: () => ['lists'] as const,
+  listItems: (listId: string) => ['list-items', listId] as const,
 }
 
 // ── Fetchers ──────────────────────────────────────────────────────────────────
@@ -102,6 +105,158 @@ export async function bulkMoveToCategoryGearItems(
     .update({ category_id: categoryId })
     .in('id', ids)
   if (error) throw error
+}
+
+// ── List fetchers ─────────────────────────────────────────────────────────────
+
+export async function fetchLists(): Promise<List[]> {
+  const { data, error } = await supabase
+    .from('lists')
+    .select('*')
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true })
+  if (error) throw error
+  return data
+}
+
+export async function fetchListItems(listId: string): Promise<ListItemWithGear[]> {
+  const { data, error } = await supabase
+    .from('list_items')
+    .select('*, gear_item:gear_items(id, name, description, weight_grams, category_id)')
+    .eq('list_id', listId)
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data as ListItemWithGear[]
+}
+
+// Public read (shared list, no auth)
+export async function fetchSharedList(token: string): Promise<List | null> {
+  const { data, error } = await supabase
+    .from('lists')
+    .select('*')
+    .eq('share_token', token)
+    .eq('is_shared', true)
+    .single()
+  if (error) return null
+  return data
+}
+
+export async function fetchSharedListItems(listId: string): Promise<ListItemWithGear[]> {
+  const { data, error } = await supabase
+    .from('list_items')
+    .select('*, gear_item:gear_items(id, name, description, weight_grams, category_id)')
+    .eq('list_id', listId)
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data as ListItemWithGear[]
+}
+
+// ── List mutations ────────────────────────────────────────────────────────────
+
+export async function createList(
+  userId: string,
+  name: string,
+  sortOrder: number,
+): Promise<List> {
+  const { data, error } = await supabase
+    .from('lists')
+    .insert({
+      user_id: userId,
+      name,
+      sort_order: sortOrder,
+      share_token: generateShareToken(),
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateList(
+  id: string,
+  patch: Partial<Pick<List, 'name' | 'description' | 'is_shared' | 'sort_order'>>,
+): Promise<void> {
+  const { error } = await supabase.from('lists').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteList(id: string): Promise<void> {
+  const { error } = await supabase.from('lists').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function reorderLists(updates: { id: string; sort_order: number }[]): Promise<void> {
+  await Promise.all(updates.map(({ id, sort_order }) => updateList(id, { sort_order })))
+}
+
+export async function duplicateList(source: List, userId: string, sortOrder: number): Promise<List> {
+  const { data: newList, error: listErr } = await supabase
+    .from('lists')
+    .insert({
+      user_id: userId,
+      name: `${source.name} (copy)`,
+      description: source.description,
+      sort_order: sortOrder,
+      share_token: generateShareToken(),
+    })
+    .select()
+    .single()
+  if (listErr) throw listErr
+
+  const { data: items, error: itemsErr } = await supabase
+    .from('list_items')
+    .select('*')
+    .eq('list_id', source.id)
+  if (itemsErr) throw itemsErr
+
+  if (items.length > 0) {
+    const copies = items.map(({ id: _id, list_id: _lid, created_at: _ca, updated_at: _ua, ...rest }: ListItem) => ({
+      ...rest,
+      list_id: newList.id,
+    }))
+    const { error: insertErr } = await supabase.from('list_items').insert(copies)
+    if (insertErr) throw insertErr
+  }
+
+  return newList
+}
+
+// ── ListItem mutations ────────────────────────────────────────────────────────
+
+export async function addGearItemToList(
+  listId: string,
+  gearItem: Pick<GearItem, 'id' | 'weight_grams'>,
+  sortOrder: number,
+): Promise<ListItem> {
+  const { data, error } = await supabase
+    .from('list_items')
+    .insert({
+      list_id: listId,
+      gear_item_id: gearItem.id,
+      weight_grams: gearItem.weight_grams,
+      sort_order: sortOrder,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateListItem(
+  id: string,
+  patch: Partial<Pick<ListItem, 'quantity' | 'weight_grams' | 'is_worn' | 'is_consumable' | 'is_packed' | 'sort_order'>>,
+): Promise<void> {
+  const { error } = await supabase.from('list_items').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteListItem(id: string): Promise<void> {
+  const { error } = await supabase.from('list_items').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function reorderListItems(updates: { id: string; sort_order: number }[]): Promise<void> {
+  await Promise.all(updates.map(({ id, sort_order }) => updateListItem(id, { sort_order })))
 }
 
 // ── Default categories ────────────────────────────────────────────────────────
