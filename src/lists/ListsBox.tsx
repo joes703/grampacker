@@ -92,7 +92,7 @@ export default function ListsBox({
         )}
       </div>
 
-      <div className="border-t border-gray-100 bg-gray-50 p-2">
+      <div className="border-t border-gray-100 bg-gray-50 p-1">
         {creating ? (
           <input
             autoFocus
@@ -113,7 +113,7 @@ export default function ListsBox({
         ) : (
           <button
             onClick={onStartNew}
-            className="flex w-full items-center justify-center gap-1 rounded px-2 py-1.5 text-sm text-blue-600 hover:bg-blue-50"
+            className="flex w-full items-center justify-center gap-1 rounded px-2 py-1 text-sm text-blue-600 hover:bg-blue-50"
           >
             <Plus size={14} /> New list
           </button>
