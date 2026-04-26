@@ -72,7 +72,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
       <div
         ref={setNodeRef}
         style={sortableStyle}
-        className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors ${
+        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1 text-sm transition-colors ${
           item.is_packed ? 'border-green-200 bg-green-50' : 'border-gray-100 bg-white'
         }`}
       >
@@ -108,7 +108,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
     <div
       ref={setNodeRef}
       style={sortableStyle}
-      className="group relative flex items-center gap-1.5 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm"
+      className="group relative flex items-center gap-1.5 rounded-lg border border-gray-100 bg-white px-3 py-1 text-sm"
     >
       {/* Drag handle — appears on row hover at the left edge */}
       <button
@@ -132,7 +132,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
       <button
         onClick={() => onUpdate({ is_worn: !item.is_worn, is_consumable: false })}
         title={item.is_worn ? 'Worn — click to clear' : 'Mark as worn'}
-        className={`shrink-0 w-7 h-7 inline-flex items-center justify-center rounded ${
+        className={`shrink-0 w-7 h-6 inline-flex items-center justify-center rounded ${
           item.is_worn ? 'bg-purple-100 text-purple-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
         }`}
       >
@@ -143,7 +143,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
       <button
         onClick={() => onUpdate({ is_consumable: !item.is_consumable, is_worn: false })}
         title={item.is_consumable ? 'Consumable — click to clear' : 'Mark as consumable'}
-        className={`shrink-0 w-7 h-7 inline-flex items-center justify-center rounded ${
+        className={`shrink-0 w-7 h-6 inline-flex items-center justify-center rounded ${
           item.is_consumable ? 'bg-orange-100 text-orange-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
         }`}
       >
@@ -217,7 +217,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
       <button
         onClick={onDelete}
         title="Remove from list"
-        className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 inline-flex items-center justify-center rounded bg-white shadow-sm text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+        className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-6 inline-flex items-center justify-center rounded bg-white shadow-sm text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
       >
         <Trash2 size={14} />
       </button>

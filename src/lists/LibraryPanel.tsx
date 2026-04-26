@@ -135,7 +135,7 @@ function CategoryGroup({
           {items.map((item) => {
             const inList = listItemGearIds.has(item.id)
             return (
-              <div key={item.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50">
+              <div key={item.id} className="flex items-center gap-2 px-3 py-1 hover:bg-gray-50">
                 <p className="flex-1 min-w-0 truncate text-sm font-medium text-gray-800">{item.name}</p>
                 <span className="shrink-0 text-xs text-gray-500 tabular-nums">
                   {formatItemWeight(item.weight_grams, weightUnit)}
