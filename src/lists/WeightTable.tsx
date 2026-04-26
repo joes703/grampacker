@@ -48,37 +48,30 @@ export default function WeightTable({ items, categories }: Props) {
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-gray-50 text-xs font-medium text-gray-500">
-            <th className="py-1 pl-4 pr-3 text-left">Category</th>
-            <th className="py-1 px-3 text-right">g</th>
-            <th className="py-1 px-3 text-right">lb + oz</th>
-          </tr>
-        </thead>
+      <table className="w-full text-sm text-gray-700">
         <tbody className="divide-y divide-gray-50">
           {catRows.map((row) => (
-            <tr key={row.name} className="text-gray-600">
+            <tr key={row.name}>
               <td className="py-1 pl-4 pr-3">{row.name}</td>
               <td className="py-1 px-3 text-right tabular-nums">{fmtG(row.grams)}</td>
               <td className="py-1 px-3 text-right tabular-nums">{fmtLbOz(row.grams)}</td>
             </tr>
           ))}
         </tbody>
-        <tfoot className="divide-y divide-gray-100 text-sm font-semibold border-t-2 border-gray-200">
-          <tr className="bg-blue-50 text-blue-800">
+        <tfoot className="divide-y divide-gray-100 border-t-2 border-gray-200">
+          <tr className="font-semibold">
             <td className="py-1 pl-4 pr-3">Base weight</td>
             <td className="py-1 px-3 text-right tabular-nums">{fmtG(baseGrams)}</td>
             <td className="py-1 px-3 text-right tabular-nums">{fmtLbOz(baseGrams)}</td>
           </tr>
           {consumableGrams > 0 && (
-            <tr className="text-orange-700">
+            <tr>
               <td className="py-1 pl-4 pr-3">Consumables</td>
               <td className="py-1 px-3 text-right tabular-nums">{fmtG(consumableGrams)}</td>
               <td className="py-1 px-3 text-right tabular-nums">{fmtLbOz(consumableGrams)}</td>
             </tr>
           )}
-          <tr className="bg-gray-900 text-white">
+          <tr className="font-semibold">
             <td className="py-1 pl-4 pr-3">Total pack weight</td>
             <td className="py-1 px-3 text-right tabular-nums">{fmtG(totalPackGrams)}</td>
             <td className="py-1 px-3 text-right tabular-nums">{fmtLbOz(totalPackGrams)}</td>
