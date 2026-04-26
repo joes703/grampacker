@@ -20,12 +20,15 @@ export default function WeightTable({ items, categories }: Props) {
   // Accumulate base weight (non-worn, non-consumable) per category
   const basePerCat = new Map<string | null, number>()
   let consumableGrams = 0
+  let wornGrams = 0
 
   for (const item of items) {
     const w = item.weight_grams * item.quantity
     if (item.is_consumable) {
       consumableGrams += w
-    } else if (!item.is_worn) {
+    } else if (item.is_worn) {
+      wornGrams += w
+    } else {
       const key = item.gear_item?.category_id ?? null
       basePerCat.set(key, (basePerCat.get(key) ?? 0) + w)
     }
@@ -52,29 +55,36 @@ export default function WeightTable({ items, categories }: Props) {
         <tbody className="divide-y divide-gray-50">
           {catRows.map((row) => (
             <tr key={row.name}>
-              <td className="py-1 pl-4 pr-3">{row.name}</td>
-              <td className="py-1 px-3 text-right tabular-nums">{fmtG(row.grams)}</td>
-              <td className="py-1 px-3 text-right tabular-nums">{fmtLbOz(row.grams)}</td>
+              <td className="py-0.5 pl-4 pr-3">{row.name}</td>
+              <td className="py-0.5 px-3 text-right tabular-nums">{fmtG(row.grams)}</td>
+              <td className="py-0.5 px-3 text-right tabular-nums">{fmtLbOz(row.grams)}</td>
             </tr>
           ))}
         </tbody>
         <tfoot className="divide-y divide-gray-100 border-t-2 border-gray-200">
           <tr className="font-semibold">
-            <td className="py-1 pl-4 pr-3">Base weight</td>
-            <td className="py-1 px-3 text-right tabular-nums">{fmtG(baseGrams)}</td>
-            <td className="py-1 px-3 text-right tabular-nums">{fmtLbOz(baseGrams)}</td>
+            <td className="py-0.5 pl-4 pr-3">Base weight</td>
+            <td className="py-0.5 px-3 text-right tabular-nums">{fmtG(baseGrams)}</td>
+            <td className="py-0.5 px-3 text-right tabular-nums">{fmtLbOz(baseGrams)}</td>
           </tr>
           {consumableGrams > 0 && (
             <tr>
-              <td className="py-1 pl-4 pr-3">Consumables</td>
-              <td className="py-1 px-3 text-right tabular-nums">{fmtG(consumableGrams)}</td>
-              <td className="py-1 px-3 text-right tabular-nums">{fmtLbOz(consumableGrams)}</td>
+              <td className="py-0.5 pl-4 pr-3">Consumables</td>
+              <td className="py-0.5 px-3 text-right tabular-nums">{fmtG(consumableGrams)}</td>
+              <td className="py-0.5 px-3 text-right tabular-nums">{fmtLbOz(consumableGrams)}</td>
+            </tr>
+          )}
+          {wornGrams > 0 && (
+            <tr className="text-gray-500">
+              <td className="py-0.5 pl-4 pr-3">Worn (not added)</td>
+              <td className="py-0.5 px-3 text-right tabular-nums">{fmtG(wornGrams)}</td>
+              <td className="py-0.5 px-3 text-right tabular-nums">{fmtLbOz(wornGrams)}</td>
             </tr>
           )}
           <tr className="font-semibold">
-            <td className="py-1 pl-4 pr-3">Total pack weight</td>
-            <td className="py-1 px-3 text-right tabular-nums">{fmtG(totalPackGrams)}</td>
-            <td className="py-1 px-3 text-right tabular-nums">{fmtLbOz(totalPackGrams)}</td>
+            <td className="py-0.5 pl-4 pr-3">Total pack weight</td>
+            <td className="py-0.5 px-3 text-right tabular-nums">{fmtG(totalPackGrams)}</td>
+            <td className="py-0.5 px-3 text-right tabular-nums">{fmtLbOz(totalPackGrams)}</td>
           </tr>
         </tfoot>
       </table>
