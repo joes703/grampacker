@@ -212,7 +212,7 @@ function ListsBoxRow({
 
   if (renaming) {
     return (
-      <div ref={setNodeRef} style={sortableStyle} className="px-2 py-1.5">
+      <div ref={setNodeRef} style={sortableStyle} className="px-2 py-0.5">
         <input
           ref={inputRef}
           value={draft}
@@ -241,7 +241,7 @@ function ListsBoxRow({
         ref={setActivatorNodeRef as unknown as (node: HTMLButtonElement | null) => void}
         {...listeners}
         {...attributes}
-        className="cursor-grab touch-none px-1 py-1.5 text-gray-300 hover:text-gray-500 active:cursor-grabbing shrink-0"
+        className="cursor-grab touch-none px-1 py-0.5 text-gray-300 hover:text-gray-500 active:cursor-grabbing shrink-0"
         tabIndex={-1}
         aria-label="Drag to reorder list"
       >
@@ -251,7 +251,7 @@ function ListsBoxRow({
       <button
         onClick={onSelect}
         onDoubleClick={() => { setDraft(list.name); setRenaming(true) }}
-        className={`flex-1 min-w-0 text-left pr-3 py-1.5 text-sm ${
+        className={`flex-1 min-w-0 text-left pr-3 py-0.5 text-sm ${
           active ? 'text-blue-700 font-medium' : 'text-gray-700'
         }`}
         title="Click to switch · double-click to rename"
