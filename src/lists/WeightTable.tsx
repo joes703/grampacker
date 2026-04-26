@@ -74,13 +74,13 @@ export default function WeightTable({ items, categories }: Props) {
             </tr>
           )}
           {wornGrams > 0 && (
-            <tr className="text-gray-500">
+            <tr className="text-gray-400">
               <td className="py-0.5 pl-4 pr-3">Worn (not added)</td>
               <td className="py-0.5 px-3 text-right tabular-nums">{fmtG(wornGrams)}</td>
               <td className="py-0.5 px-3 text-right tabular-nums">{fmtLbOz(wornGrams)}</td>
             </tr>
           )}
-          <tr className="font-semibold">
+          <tr className="font-semibold border-t-2 border-gray-200">
             <td className="py-0.5 pl-4 pr-3">Total pack weight</td>
             <td className="py-0.5 px-3 text-right tabular-nums">{fmtG(totalPackGrams)}</td>
             <td className="py-0.5 px-3 text-right tabular-nums">{fmtLbOz(totalPackGrams)}</td>
