@@ -81,12 +81,10 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
   // Normal (edit) row: aligned columns matching the category header
   return (
     <div className="group relative flex items-center gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm">
-      {/* Name + description (flex-1) */}
-      <div className="flex-1 min-w-0 flex items-baseline gap-2 truncate">
-        <span className="font-medium text-gray-900">{name}</span>
-        {description && (
-          <span className="min-w-0 truncate text-xs text-gray-500">{description}</span>
-        )}
+      {/* Name + description as proportional columns — name : description = 1 : 2 */}
+      <div className="flex-1 min-w-0 flex items-center gap-3">
+        <span className="flex-1 min-w-0 truncate font-medium text-gray-900">{name}</span>
+        <span className="flex-[2] min-w-0 truncate text-xs text-gray-500">{description}</span>
       </div>
 
       {/* Worn (Shirt) */}
