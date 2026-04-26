@@ -141,7 +141,7 @@ function SharedCategoryGroup({ name, items }: { name: string; items: ListItemWit
       </div>
 
       {/* Items */}
-      <div className="space-y-0.5 pl-2">
+      <div className="pl-2">
         {items.map((item) => (
           <SharedItemRow key={item.id} item={item} />
         ))}
