@@ -70,7 +70,7 @@ export default function SharePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto max-w-3xl px-4 py-10">
+      <div className="mx-auto max-w-5xl px-4 py-10">
         {/* Header */}
         <div className="mb-1">
           <h1 className="text-2xl font-bold text-gray-900">{list.name}</h1>
