@@ -10,7 +10,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { ArrowLeft, BookOpen, Share2, Table2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, PackageCheck, RotateCcw, Share2, Table2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import {
   queryKeys,
@@ -30,7 +30,7 @@ import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
 import LibrarySheet from './LibrarySheet'
 
-type Tab = 'items' | 'weight'
+type Tab = 'items' | 'weight' | 'pack'
 
 export default function ListDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -88,6 +88,13 @@ export default function ListDetailPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
   })
 
+  async function resetPacked() {
+    await Promise.all(
+      listItems.filter((i) => i.is_packed).map((i) => updateListItem(i.id, { is_packed: false })),
+    )
+    qc.invalidateQueries({ queryKey: queryKeys.listItems(id!) })
+  }
+
   function handleDragEnd(e: DragEndEvent) {
     const { active, over } = e
     if (!over || active.id === over.id) return
@@ -143,6 +150,9 @@ export default function ListDetailPage() {
         </TabBtn>
         <TabBtn active={tab === 'weight'} onClick={() => setTab('weight')}>
           <Table2 size={14} /> Weight table
+        </TabBtn>
+        <TabBtn active={tab === 'pack'} onClick={() => setTab('pack')}>
+          <PackageCheck size={14} /> Pack
         </TabBtn>
       </div>
 
@@ -207,6 +217,14 @@ export default function ListDetailPage() {
         <WeightTable items={listItems as ListItemWithGear[]} categories={categories} />
       )}
 
+      {tab === 'pack' && (
+        <PackingView
+          items={listItems}
+          onToggle={(itemId, packed) => updateMut.mutate({ itemId, patch: { is_packed: packed } })}
+          onReset={resetPacked}
+        />
+      )}
+
       {/* Mobile sheet */}
       <LibrarySheet
         open={sheetOpen}
@@ -216,6 +234,85 @@ export default function ListDetailPage() {
         listItemGearIds={listItemGearIds}
         onAdd={(item) => { addMut.mutate(item); setSheetOpen(false) }}
       />
+    </div>
+  )
+}
+
+function PackingView({
+  items,
+  onToggle,
+  onReset,
+}: {
+  items: ListItemWithGear[]
+  onToggle: (itemId: string, packed: boolean) => void
+  onReset: () => void
+}) {
+  const total = items.length
+  const packed = items.filter((i) => i.is_packed).length
+  const pct = total === 0 ? 0 : Math.round((packed / total) * 100)
+  const done = packed === total && total > 0
+
+  return (
+    <div className="space-y-4">
+      {/* Progress bar */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-medium text-gray-700">
+            {packed} / {total} packed
+          </span>
+          <div className="flex items-center gap-2">
+            {done && (
+              <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                All packed!
+              </span>
+            )}
+            <button
+              onClick={onReset}
+              disabled={packed === 0}
+              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40"
+            >
+              <RotateCcw size={12} /> Reset
+            </button>
+          </div>
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+          <div
+            className={`h-2 rounded-full transition-all ${done ? 'bg-green-500' : 'bg-blue-500'}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Item checklist */}
+      <div className="space-y-1">
+        {items.map((item) => {
+          const name = item.gear_item?.name ?? '(deleted item)'
+          const label = item.quantity > 1 ? `${name} ×${item.quantity}` : name
+          return (
+            <label
+              key={item.id}
+              className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
+                item.is_packed
+                  ? 'border-green-200 bg-green-50'
+                  : 'border-gray-100 bg-white hover:bg-gray-50'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={item.is_packed}
+                onChange={(e) => onToggle(item.id, e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600"
+              />
+              <span className={`flex-1 min-w-0 truncate ${item.is_packed ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                {label}
+              </span>
+              <span className="shrink-0 tabular-nums text-xs text-gray-400">
+                {item.weight_grams * item.quantity}g
+              </span>
+            </label>
+          )
+        })}
+      </div>
     </div>
   )
 }
