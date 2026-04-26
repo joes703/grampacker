@@ -16,13 +16,19 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
   const [weightDraft, setWeightDraft] = useState(String(item.weight_grams))
   const weightInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    setWeightDraft(String(item.weight_grams))
-  }, [item.weight_grams])
+  const [editingQty, setEditingQty] = useState(false)
+  const [qtyDraft, setQtyDraft] = useState(String(item.quantity))
+  const qtyInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { setWeightDraft(String(item.weight_grams)) }, [item.weight_grams])
+  useEffect(() => { setQtyDraft(String(item.quantity)) }, [item.quantity])
 
   useEffect(() => {
     if (editingWeight) weightInputRef.current?.focus()
   }, [editingWeight])
+  useEffect(() => {
+    if (editingQty) { qtyInputRef.current?.focus(); qtyInputRef.current?.select() }
+  }, [editingQty])
 
   function commitWeight() {
     const parsed = parseInt(weightDraft, 10)
@@ -31,9 +37,17 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
     setEditingWeight(false)
   }
 
+  function commitQty() {
+    const parsed = parseInt(qtyDraft, 10)
+    const clamped = isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, 99)
+    if (clamped !== item.quantity) onUpdate({ quantity: clamped })
+    setEditingQty(false)
+  }
+
   const sourceWeight = item.gear_item?.weight_grams
   const outOfSync = sourceWeight !== undefined && sourceWeight !== item.weight_grams
   const name = item.gear_item?.name ?? '(deleted item)'
+  const description = item.gear_item?.description ?? ''
 
   return (
     <div
@@ -54,14 +68,41 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         />
       )}
 
-      {/* Name */}
-      <span
-        className={`flex-1 min-w-0 truncate font-medium ${
-          packMode && item.is_packed ? 'text-gray-400 line-through' : 'text-gray-900'
-        }`}
-      >
-        {name}
-      </span>
+      {/* Name + description */}
+      <div className="flex-1 min-w-0 flex items-baseline gap-2 truncate">
+        <span
+          className={`font-medium ${
+            packMode && item.is_packed ? 'text-gray-400 line-through' : 'text-gray-900'
+          }`}
+        >
+          {name}
+        </span>
+        {!packMode && description && (
+          <span className="min-w-0 truncate text-xs text-gray-500">{description}</span>
+        )}
+      </div>
+
+      {/* Worn / Consumable (hidden in pack mode) */}
+      {!packMode && (
+        <>
+          <button
+            onClick={() => {
+              if (item.is_worn) onUpdate({ is_worn: false })
+              else onUpdate({ is_worn: true, is_consumable: false })
+            }}
+            title="Worn (excluded from pack weight)"
+            className={`rounded px-1.5 py-0.5 text-xs font-medium ${item.is_worn ? 'bg-purple-100 text-purple-700' : 'text-gray-400 hover:text-gray-600'}`}
+          >W</button>
+          <button
+            onClick={() => {
+              if (item.is_consumable) onUpdate({ is_consumable: false })
+              else onUpdate({ is_consumable: true, is_worn: false })
+            }}
+            title="Consumable (added to pack weight separately)"
+            className={`rounded px-1.5 py-0.5 text-xs font-medium ${item.is_consumable ? 'bg-orange-100 text-orange-700' : 'text-gray-400 hover:text-gray-600'}`}
+          >C</button>
+        </>
+      )}
 
       {/* Out-of-sync indicator (hidden in pack mode) */}
       {!packMode && outOfSync && (
@@ -104,50 +145,43 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         </button>
       )}
 
-      {/* Quantity stepper (hidden in pack mode) */}
+      {/* Quantity (click to edit, with native number input arrows) — hidden in pack mode */}
       {!packMode && (
-      <div className="flex items-center gap-0.5 shrink-0">
-        <button
-          onClick={() => item.quantity > 1 && onUpdate({ quantity: item.quantity - 1 })}
-          disabled={item.quantity <= 1}
-          className="w-5 h-5 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30 text-center leading-none"
-        >−</button>
-        <span className="w-4 text-center text-xs tabular-nums text-gray-700">{item.quantity}</span>
-        <button
-          onClick={() => item.quantity < 99 && onUpdate({ quantity: item.quantity + 1 })}
-          disabled={item.quantity >= 99}
-          className="w-5 h-5 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30 text-center leading-none"
-        >+</button>
-      </div>
+        editingQty ? (
+          <input
+            ref={qtyInputRef}
+            type="number"
+            min={1}
+            max={99}
+            value={qtyDraft}
+            onChange={(e) => setQtyDraft(e.target.value)}
+            onBlur={commitQty}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitQty()
+              if (e.key === 'Escape') { setQtyDraft(String(item.quantity)); setEditingQty(false) }
+            }}
+            className="w-14 rounded border border-blue-400 px-1.5 py-0.5 text-right text-sm tabular-nums focus:outline-none"
+          />
+        ) : (
+          <button
+            onClick={() => setEditingQty(true)}
+            title="Click to edit quantity"
+            className="shrink-0 w-10 text-right tabular-nums text-gray-600 hover:text-blue-600 text-xs"
+          >
+            ×{item.quantity}
+          </button>
+        )
       )}
 
-      {/* Worn / Consumable / Delete (hidden in pack mode) */}
+      {/* Delete (hidden in pack mode) */}
       {!packMode && (
-        <>
-          <button
-            onClick={() => {
-              if (item.is_worn) onUpdate({ is_worn: false })
-              else onUpdate({ is_worn: true, is_consumable: false })
-            }}
-            title="Worn (excluded from pack weight)"
-            className={`rounded px-1.5 py-0.5 text-xs font-medium ${item.is_worn ? 'bg-purple-100 text-purple-700' : 'text-gray-400 hover:text-gray-600'}`}
-          >W</button>
-          <button
-            onClick={() => {
-              if (item.is_consumable) onUpdate({ is_consumable: false })
-              else onUpdate({ is_consumable: true, is_worn: false })
-            }}
-            title="Consumable (added to pack weight separately)"
-            className={`rounded px-1.5 py-0.5 text-xs font-medium ${item.is_consumable ? 'bg-orange-100 text-orange-700' : 'text-gray-400 hover:text-gray-600'}`}
-          >C</button>
-          <button
-            onClick={onDelete}
-            title="Remove from list"
-            className="rounded p-1 text-gray-400 hover:text-red-600"
-          >
-            <Trash2 size={14} />
-          </button>
-        </>
+        <button
+          onClick={onDelete}
+          title="Remove from list"
+          className="rounded p-1 text-gray-400 hover:text-red-600"
+        >
+          <Trash2 size={14} />
+        </button>
       )}
     </div>
   )
