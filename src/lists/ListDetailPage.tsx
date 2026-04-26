@@ -1,7 +1,17 @@
 import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, BookOpen, ChevronDown, ChevronRight, PackageCheck, RotateCcw, Share2, Upload, X } from 'lucide-react'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { ArrowLeft, BookOpen, ChevronDown, ChevronRight, GripVertical, PackageCheck, RotateCcw, Share2, Upload, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import {
   queryKeys,
@@ -13,10 +23,12 @@ import {
   updateListItem,
   deleteListItem,
   updateList,
+  reorderCategories,
   importCsvRowsToList,
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, Category } from '../lib/types'
 import { parseListCsv, type ListImportRow } from '../lib/csv'
+import { formatGrams } from '../lib/weight'
 import ListItemRow from './ListItemRow'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
@@ -79,6 +91,25 @@ export default function ListDetailPage() {
     mutationFn: (shared: boolean) => updateList(id!, { is_shared: shared }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
   })
+
+  const reorderCatsMut = useMutation({
+    mutationFn: reorderCategories,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.categories() }),
+  })
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+  function handleCategoryDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
+    const oldIndex = sortedCats.findIndex((c) => c.id === active.id)
+    const newIndex = sortedCats.findIndex((c) => c.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const reordered = arrayMove(sortedCats, oldIndex, newIndex)
+    qc.setQueryData(queryKeys.categories(), reordered)
+    reorderCatsMut.mutate(reordered.map((c, i) => ({ id: c.id, sort_order: i })))
+  }
 
   const importMut = useMutation({
     mutationFn: (rows: ListImportRow[]) =>
@@ -224,7 +255,7 @@ export default function ListDetailPage() {
             </div>
           </div>
 
-          {/* Right column: items + weight table */}
+          {/* Right column: weight table + items */}
           <div className="flex-1 min-w-0 space-y-6">
             {/* Mobile: Add from library button */}
             <div className="lg:hidden">
@@ -236,32 +267,53 @@ export default function ListDetailPage() {
               </button>
             </div>
 
-            {/* Items grouped by category */}
-            {listItems.length === 0 ? (
-              <div className="flex h-32 items-center justify-center rounded-xl border-2 border-dashed border-gray-200">
-                <p className="text-sm text-gray-400">No items — add from your gear library</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {grouped.map((group) => (
-                  <ListCategoryGroup
-                    key={group.category?.id ?? '__uncategorised__'}
-                    name={group.category?.name ?? 'Uncategorised'}
-                    items={group.items}
-                    onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
-                    onDelete={(itemId) => deleteMut.mutate(itemId)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Weight table — always visible below items */}
+            {/* Weight table — always visible above items */}
             {listItems.length > 0 && (
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
                   Weight summary
                 </p>
                 <WeightTable items={listItems as ListItemWithGear[]} categories={categories} />
+              </div>
+            )}
+
+            {/* Items grouped by category — real categories sortable, uncategorised pinned at end */}
+            {listItems.length === 0 ? (
+              <div className="flex h-32 items-center justify-center rounded-xl border-2 border-dashed border-gray-200">
+                <p className="text-sm text-gray-400">No items — add from your gear library</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
+                  <SortableContext
+                    items={grouped.filter((g) => g.category !== null).map((g) => g.category!.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {grouped
+                      .filter((g) => g.category !== null)
+                      .map((group) => (
+                        <SortableListCategoryGroup
+                          key={group.category!.id}
+                          id={group.category!.id}
+                          name={group.category!.name}
+                          items={group.items}
+                          onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
+                          onDelete={(itemId) => deleteMut.mutate(itemId)}
+                        />
+                      ))}
+                  </SortableContext>
+                </DndContext>
+                {grouped
+                  .filter((g) => g.category === null)
+                  .map((group) => (
+                    <ListCategoryGroup
+                      key="__uncategorised__"
+                      name="Uncategorised"
+                      items={group.items}
+                      onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
+                      onDelete={(itemId) => deleteMut.mutate(itemId)}
+                    />
+                  ))}
               </div>
             )}
           </div>
@@ -321,33 +373,34 @@ export default function ListDetailPage() {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function ListCategoryGroup({
-  name,
-  items,
-  onUpdate,
-  onDelete,
-}: {
+type GroupProps = {
   name: string
   items: ListItemWithGear[]
   onUpdate: (itemId: string, patch: Parameters<typeof updateListItem>[1]) => void
   onDelete: (itemId: string) => void
-}) {
+  dragHandle?: React.ReactNode
+}
+
+function ListCategoryGroup({ name, items, onUpdate, onDelete, dragHandle }: GroupProps) {
   const [collapsed, setCollapsed] = useState(false)
 
   return (
     <div>
-      <button
-        onClick={() => setCollapsed((v) => !v)}
-        className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 bg-gray-100 hover:bg-gray-200 text-left mb-1"
-      >
-        {collapsed ? (
-          <ChevronRight size={14} className="text-gray-400 shrink-0" />
-        ) : (
-          <ChevronDown size={14} className="text-gray-400 shrink-0" />
-        )}
-        <span className="flex-1 text-sm font-medium text-gray-700">{name}</span>
-        <span className="text-xs text-gray-400">{items.length}</span>
-      </button>
+      <div className="flex items-center gap-1 rounded-lg px-2 py-1.5 bg-gray-100 mb-1">
+        {dragHandle}
+        <button
+          onClick={() => setCollapsed((v) => !v)}
+          className="flex flex-1 items-center gap-1.5 text-left"
+        >
+          {collapsed ? (
+            <ChevronRight size={14} className="text-gray-400 shrink-0" />
+          ) : (
+            <ChevronDown size={14} className="text-gray-400 shrink-0" />
+          )}
+          <span className="flex-1 text-sm font-medium text-gray-700">{name}</span>
+          <span className="text-xs text-gray-400">{items.length}</span>
+        </button>
+      </div>
       {!collapsed && (
         <div className="space-y-0.5 pl-2">
           {items.map((item) => (
@@ -360,6 +413,41 @@ function ListCategoryGroup({
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function SortableListCategoryGroup(props: GroupProps & { id: string }) {
+  const { id, ...rest } = props
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
+
+  const handle = (
+    <button
+      ref={setActivatorNodeRef as unknown as (node: HTMLButtonElement | null) => void}
+      {...listeners}
+      {...attributes}
+      className="cursor-grab touch-none text-gray-400 hover:text-gray-600 active:cursor-grabbing shrink-0"
+      tabIndex={-1}
+      aria-label="Drag to reorder category"
+    >
+      <GripVertical size={14} />
+    </button>
+  )
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
+    >
+      <ListCategoryGroup {...rest} dragHandle={handle} />
     </div>
   )
 }
@@ -444,7 +532,7 @@ function PackingView({
                     {label}
                   </span>
                   <span className="shrink-0 tabular-nums text-xs text-gray-400">
-                    {item.weight_grams * item.quantity}g
+                    {formatGrams(item.weight_grams * item.quantity)}
                   </span>
                 </label>
               )
@@ -502,7 +590,7 @@ function ImportPreviewDialog({
               {rows.map((row, i) => (
                 <tr key={i} className="hover:bg-gray-50">
                   <td className="px-4 py-1.5 font-medium text-gray-800 max-w-[160px] truncate">{row.name}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{row.weight_grams}g</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{formatGrams(row.weight_grams)}</td>
                   <td className="px-3 py-1.5 text-gray-500">{row.category || '—'}</td>
                   <td className="px-3 py-1.5 text-center text-xs">
                     {row.is_worn && <span className="text-purple-600 mr-1">W</span>}

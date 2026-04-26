@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
+import { formatGrams } from '../lib/weight'
 
 type Props = {
   gearItems: GearItem[]
@@ -130,14 +131,9 @@ function CategoryGroup({
             const inList = listItemGearIds.has(item.id)
             return (
               <div key={item.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50">
-                <div className="flex-1 min-w-0">
-                  <p className="truncate text-sm font-medium text-gray-800">{item.name}</p>
-                  {item.description && (
-                    <p className="truncate text-xs text-gray-400">{item.description}</p>
-                  )}
-                </div>
+                <p className="flex-1 min-w-0 truncate text-sm font-medium text-gray-800">{item.name}</p>
                 <span className="shrink-0 text-xs text-gray-500 tabular-nums">
-                  {item.weight_grams}g
+                  {formatGrams(item.weight_grams)}
                 </span>
                 <button
                   onClick={() => !inList && onAdd(item)}

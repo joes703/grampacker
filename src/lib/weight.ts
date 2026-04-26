@@ -8,13 +8,18 @@ export function gramsToOz(grams: number): number {
 
 // Individual item weight (oz only, never compound lb+oz)
 export function formatItemWeight(grams: number, unit: WeightUnit): string {
-  if (unit === 'g') return `${grams} g`
+  if (unit === 'g') return `${grams.toLocaleString()} g`
   return `${(gramsToOz(grams)).toFixed(1)} oz`
+}
+
+// Convenience: always-grams formatter (used wherever we don't need unit toggling)
+export function formatGrams(grams: number): string {
+  return `${grams.toLocaleString()} g`
 }
 
 // Summary/total weight (compound lb+oz when >= 1 lb)
 export function formatTotalWeight(grams: number, unit: WeightUnit): string {
-  if (unit === 'g') return `${grams} g`
+  if (unit === 'g') return `${grams.toLocaleString()} g`
   const oz = gramsToOz(grams)
   if (oz < 16) return `${oz.toFixed(1)} oz`
   const lb = Math.floor(oz / 16)

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Trash2, AlertTriangle } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
+import { formatGrams } from '../lib/weight'
 
 type Props = {
   item: ListItemWithGear
@@ -41,7 +42,7 @@ export default function ListItemRow({ item, onUpdate, onDelete }: Props) {
       {outOfSync && (
         <button
           onClick={() => onUpdate({ weight_grams: sourceWeight! })}
-          title={`Library weight is ${sourceWeight}g — click to sync`}
+          title={`Library weight is ${formatGrams(sourceWeight!)} — click to sync`}
           className="shrink-0 text-amber-500 hover:text-amber-600"
         >
           <AlertTriangle size={14} />
@@ -70,7 +71,7 @@ export default function ListItemRow({ item, onUpdate, onDelete }: Props) {
           title="Click to edit weight"
           className="shrink-0 tabular-nums text-gray-600 hover:text-blue-600"
         >
-          {item.weight_grams}g
+          {formatGrams(item.weight_grams)}
         </button>
       )}
 
