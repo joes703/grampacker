@@ -111,19 +111,6 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         <UtensilsCrossed size={14} />
       </button>
 
-      {/* Out-of-sync indicator (reserves width even when absent) */}
-      <div className="shrink-0 w-5 inline-flex items-center justify-center">
-        {outOfSync && (
-          <button
-            onClick={() => onUpdate({ weight_grams: sourceWeight! })}
-            title={`Library weight is ${formatItemWeight(sourceWeight!, weightUnit)} — click to sync`}
-            className="text-amber-500 hover:text-amber-600"
-          >
-            <AlertTriangle size={14} />
-          </button>
-        )}
-      </div>
-
       {/* Quantity (before weight) */}
       {editingQty ? (
         <input
@@ -150,31 +137,42 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         </button>
       )}
 
-      {/* Weight */}
-      {editingWeight ? (
-        <input
-          ref={weightInputRef}
-          type="number"
-          min={0}
-          max={100000}
-          value={weightDraft}
-          onChange={(e) => setWeightDraft(e.target.value)}
-          onBlur={commitWeight}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitWeight()
-            if (e.key === 'Escape') { setWeightDraft(String(item.weight_grams)); setEditingWeight(false) }
-          }}
-          className="shrink-0 w-16 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
-        />
-      ) : (
-        <button
-          onClick={() => setEditingWeight(true)}
-          title="Click to edit weight"
-          className="shrink-0 w-16 text-right tabular-nums text-gray-600 hover:text-blue-600"
-        >
-          {formatItemWeight(item.weight_grams, weightUnit)}
-        </button>
-      )}
+      {/* Weight (with optional out-of-sync indicator hanging to the left) */}
+      <div className="relative shrink-0 w-16">
+        {outOfSync && (
+          <button
+            onClick={() => onUpdate({ weight_grams: sourceWeight! })}
+            title={`Library weight is ${formatItemWeight(sourceWeight!, weightUnit)} — click to sync`}
+            className="absolute -left-4 top-1/2 -translate-y-1/2 text-amber-500 hover:text-amber-600"
+          >
+            <AlertTriangle size={12} />
+          </button>
+        )}
+        {editingWeight ? (
+          <input
+            ref={weightInputRef}
+            type="number"
+            min={0}
+            max={100000}
+            value={weightDraft}
+            onChange={(e) => setWeightDraft(e.target.value)}
+            onBlur={commitWeight}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitWeight()
+              if (e.key === 'Escape') { setWeightDraft(String(item.weight_grams)); setEditingWeight(false) }
+            }}
+            className="w-full rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
+          />
+        ) : (
+          <button
+            onClick={() => setEditingWeight(true)}
+            title="Click to edit weight"
+            className="w-full text-right tabular-nums text-gray-600 hover:text-blue-600"
+          >
+            {formatItemWeight(item.weight_grams, weightUnit)}
+          </button>
+        )}
+      </div>
 
       {/* Delete — only on row hover (absolute so it doesn't reserve a column) */}
       <button
