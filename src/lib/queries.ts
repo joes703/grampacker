@@ -142,6 +142,19 @@ export async function fetchSharedList(token: string): Promise<List | null> {
   return data
 }
 
+// Categories referenced by the items in a shared list (public read).
+// Relies on the categories_public_select_via_shared_list RLS policy.
+export async function fetchSharedListCategories(categoryIds: string[]): Promise<Category[]> {
+  if (categoryIds.length === 0) return []
+  const { data, error } = await supabase
+    .from('categories')
+    .select('*')
+    .in('id', categoryIds)
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data
+}
+
 export async function fetchSharedListItems(listId: string): Promise<ListItemWithGear[]> {
   const { data, error } = await supabase
     .from('list_items')
