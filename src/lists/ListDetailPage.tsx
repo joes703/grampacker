@@ -593,26 +593,44 @@ type GroupProps = {
 function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDelete, dragHandle }: GroupProps) {
   const [collapsed, setCollapsed] = useState(false)
   const packedCount = items.filter((i) => i.is_packed).length
+  const totalGrams = items.reduce((s, i) => s + i.weight_grams * i.quantity, 0)
 
   return (
     <div>
-      <div className="flex items-center gap-1 rounded-lg px-2 py-1.5 bg-gray-100 mb-1">
+      {/* Header — also functions as the column header for Weight / Qty */}
+      <div className="flex items-center gap-2 rounded-lg px-3 py-1.5 bg-gray-100 mb-1">
         {dragHandle}
         <button
           onClick={() => setCollapsed((v) => !v)}
-          className="flex flex-1 items-center gap-1.5 text-left"
+          className="flex flex-1 min-w-0 items-center gap-1.5 text-left"
         >
           {collapsed ? (
             <ChevronRight size={14} className="text-gray-400 shrink-0" />
           ) : (
             <ChevronDown size={14} className="text-gray-400 shrink-0" />
           )}
-          <span className="flex-1 text-sm font-medium text-gray-700">{name}</span>
-          <span className="text-xs text-gray-400">
-            {packMode ? `${packedCount} / ${items.length}` : items.length}
+          <span className="truncate text-sm font-medium text-gray-700">{name}</span>
+          <span className="shrink-0 text-xs text-gray-400">
+            {packMode ? `${packedCount} / ${items.length}` : `(${items.length})`}
           </span>
         </button>
+        {!packMode && (
+          <>
+            <div className="shrink-0 w-7" />
+            <div className="shrink-0 w-7" />
+            <div className="shrink-0 w-5" />
+            <div className="shrink-0 w-16 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              Weight
+            </div>
+            <div className="shrink-0 w-14 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              Qty
+            </div>
+            <div className="shrink-0 w-7" />
+          </>
+        )}
       </div>
+
+      {/* Items + footer (footer is the row's "total" line, lined up under Weight) */}
       {!collapsed && (
         <div className="space-y-0.5 pl-2">
           {items.map((item) => (
@@ -625,6 +643,19 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
               onDelete={() => onDelete(item.id)}
             />
           ))}
+          {!packMode && items.length > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 text-xs">
+              <div className="flex-1 min-w-0" />
+              <div className="shrink-0 w-7" />
+              <div className="shrink-0 w-7" />
+              <div className="shrink-0 w-5" />
+              <div className="shrink-0 w-16 text-right tabular-nums font-semibold text-gray-700">
+                {formatItemWeight(totalGrams, weightUnit)}
+              </div>
+              <div className="shrink-0 w-14" />
+              <div className="shrink-0 w-7" />
+            </div>
+          )}
         </div>
       )}
     </div>
