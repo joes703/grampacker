@@ -1,4 +1,5 @@
 import { NavLink, useNavigate } from 'react-router'
+import { LogOut, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 export default function NavBar() {
@@ -31,11 +32,21 @@ export default function NavBar() {
             Lists
           </NavLink>
         </nav>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
+          <NavLink
+            to="/settings"
+            className={({ isActive }) =>
+              `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
+            }
+          >
+            <Settings size={14} />
+            Settings
+          </NavLink>
           <button
             onClick={handleSignOut}
-            className="rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
           >
+            <LogOut size={14} />
             Sign out
           </button>
         </div>

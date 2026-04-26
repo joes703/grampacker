@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
-import { formatGrams } from '../lib/weight'
+import { formatItemWeight, type WeightUnit } from '../lib/weight'
 
 type Props = {
   gearItems: GearItem[]
   categories: Category[]
   listItemGearIds: Set<string>
+  weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
 }
 
-export default function LibraryPanel({ gearItems, categories, listItemGearIds, onAdd }: Props) {
+export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd }: Props) {
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState(new Set<string>())
 
@@ -71,6 +72,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, o
                 collapsed={collapsed.has(category.id)}
                 onToggle={() => toggleCollapse(category.id)}
                 listItemGearIds={listItemGearIds}
+                weightUnit={weightUnit}
                 onAdd={onAdd}
               />
             ))}
@@ -81,6 +83,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, o
                 collapsed={collapsed.has('__uncategorised__')}
                 onToggle={() => toggleCollapse('__uncategorised__')}
                 listItemGearIds={listItemGearIds}
+                weightUnit={weightUnit}
                 onAdd={onAdd}
               />
             )}
@@ -97,6 +100,7 @@ function CategoryGroup({
   collapsed,
   onToggle,
   listItemGearIds,
+  weightUnit,
   onAdd,
 }: {
   name: string
@@ -104,6 +108,7 @@ function CategoryGroup({
   collapsed: boolean
   onToggle: () => void
   listItemGearIds: Set<string>
+  weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
 }) {
   return (
@@ -133,7 +138,7 @@ function CategoryGroup({
               <div key={item.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50">
                 <p className="flex-1 min-w-0 truncate text-sm font-medium text-gray-800">{item.name}</p>
                 <span className="shrink-0 text-xs text-gray-500 tabular-nums">
-                  {formatGrams(item.weight_grams)}
+                  {formatItemWeight(item.weight_grams, weightUnit)}
                 </span>
                 <button
                   onClick={() => !inList && onAdd(item)}

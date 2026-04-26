@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router'
 import NavBar from './NavBar'
 import GearLibraryPage from '../gear/GearLibraryPage'
 import ListDetailPage from '../lists/ListDetailPage'
+import SettingsPage from '../settings/SettingsPage'
 
 function NotFound() {
   return (
@@ -21,6 +22,7 @@ export default function AppShell() {
           <Route path="/gear" element={<GearLibraryPage />} />
           <Route path="/lists" element={<ListDetailPage />} />
           <Route path="/lists/:id" element={<ListDetailPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
