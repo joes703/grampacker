@@ -619,13 +619,12 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
             <div className="shrink-0 w-7" />
             <div className="shrink-0 w-7" />
             <div className="shrink-0 w-5" />
-            <div className="shrink-0 w-16 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-              Weight
-            </div>
             <div className="shrink-0 w-14 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
               Qty
             </div>
-            <div className="shrink-0 w-7" />
+            <div className="shrink-0 w-16 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              Weight
+            </div>
           </>
         )}
       </div>
@@ -649,11 +648,10 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
               <div className="shrink-0 w-7" />
               <div className="shrink-0 w-7" />
               <div className="shrink-0 w-5" />
+              <div className="shrink-0 w-14" />
               <div className="shrink-0 w-16 text-right tabular-nums font-semibold text-gray-700">
                 {formatItemWeight(totalGrams, weightUnit)}
               </div>
-              <div className="shrink-0 w-14" />
-              <div className="shrink-0 w-7" />
             </div>
           )}
         </div>
