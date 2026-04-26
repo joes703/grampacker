@@ -1,16 +1,7 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { ArrowLeft, BookOpen, Download, PackageCheck, RotateCcw, Share2, Table2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, ChevronDown, ChevronRight, PackageCheck, RotateCcw, Share2, Upload, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import {
   queryKeys,
@@ -22,25 +13,29 @@ import {
   updateListItem,
   deleteListItem,
   updateList,
-  reorderListItems,
+  importCsvRowsToList,
 } from '../lib/queries'
-import type { GearItem, ListItemWithGear } from '../lib/types'
-import { listItemsToCsv, downloadCsv } from '../lib/csv'
+import type { GearItem, ListItemWithGear, Category } from '../lib/types'
+import { parseListCsv, type ListImportRow } from '../lib/csv'
 import ListItemRow from './ListItemRow'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
 import LibrarySheet from './LibrarySheet'
 
-type Tab = 'items' | 'weight' | 'pack'
+type Tab = 'items' | 'pack'
 
 export default function ListDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  useAuth()
+  const { session } = useAuth()
+  const userId = session!.user.id
   const qc = useQueryClient()
 
   const [tab, setTab] = useState<Tab>('items')
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [importPreview, setImportPreview] = useState<ListImportRow[] | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
 
   const { data: lists = [] } = useQuery({ queryKey: queryKeys.lists(), queryFn: fetchLists })
   const list = lists.find((l) => l.id === id)
@@ -61,7 +56,7 @@ export default function ListDetailPage() {
     queryFn: fetchCategories,
   })
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  // ── Mutations ──────────────────────────────────────────────────────────────
 
   const addMut = useMutation({
     mutationFn: (item: GearItem) =>
@@ -80,13 +75,20 @@ export default function ListDetailPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(id!) }),
   })
 
-  const reorderMut = useMutation({
-    mutationFn: (updates: { id: string; sort_order: number }[]) => reorderListItems(updates),
-  })
-
   const shareToggleMut = useMutation({
     mutationFn: (shared: boolean) => updateList(id!, { is_shared: shared }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
+  })
+
+  const importMut = useMutation({
+    mutationFn: (rows: ListImportRow[]) =>
+      importCsvRowsToList(id!, userId, rows, gearItems, categories, listItems.length),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.listItems(id!) })
+      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
+      qc.invalidateQueries({ queryKey: queryKeys.categories() })
+      setImportPreview(null)
+    },
   })
 
   async function resetPacked() {
@@ -96,19 +98,46 @@ export default function ListDetailPage() {
     qc.invalidateQueries({ queryKey: queryKeys.listItems(id!) })
   }
 
-  function handleDragEnd(e: DragEndEvent) {
-    const { active, over } = e
-    if (!over || active.id === over.id) return
-    const oldIndex = listItems.findIndex((i) => i.id === active.id)
-    const newIndex = listItems.findIndex((i) => i.id === over.id)
-    const reordered = arrayMove(listItems, oldIndex, newIndex)
-    qc.setQueryData(queryKeys.listItems(id!), reordered)
-    reorderMut.mutate(reordered.map((item, idx) => ({ id: item.id, sort_order: idx })))
+  // ── CSV import ─────────────────────────────────────────────────────────────
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (importInputRef.current) importInputRef.current.value = ''
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string
+      const result = parseListCsv(text)
+      if (typeof result === 'string') setImportError(result)
+      else setImportPreview(result)
+    }
+    reader.readAsText(file)
   }
+
+  // ── Derived data ───────────────────────────────────────────────────────────
 
   const listItemGearIds = new Set(
     listItems.filter((i) => i.gear_item_id !== null).map((i) => i.gear_item_id as string),
   )
+
+  // Group list items by category (ordered by category sort_order)
+  const catMap = new Map(categories.map((c) => [c.id, c]))
+  const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
+
+  type Group = { category: Category | null; items: ListItemWithGear[] }
+  const grouped: Group[] = sortedCats
+    .map((cat) => ({
+      category: cat,
+      items: listItems.filter((i) => i.gear_item?.category_id === cat.id),
+    }))
+    .filter((g) => g.items.length > 0)
+
+  const uncategorisedItems = listItems.filter(
+    (i) => !i.gear_item || i.gear_item.category_id === null || !catMap.has(i.gear_item.category_id),
+  )
+  if (uncategorisedItems.length > 0) grouped.push({ category: null, items: uncategorisedItems })
+
+  // ── Loading / not found ────────────────────────────────────────────────────
 
   if (!list) {
     return (
@@ -118,10 +147,12 @@ export default function ListDetailPage() {
     )
   }
 
+  // ── Render ─────────────────────────────────────────────────────────────────
+
   return (
     <div className="flex flex-col gap-4">
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <button
           onClick={() => navigate('/lists')}
           className="rounded p-1 text-gray-400 hover:text-gray-700"
@@ -130,6 +161,24 @@ export default function ListDetailPage() {
           <ArrowLeft size={18} />
         </button>
         <h1 className="flex-1 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
+
+        {/* Import CSV */}
+        <button
+          onClick={() => importInputRef.current?.click()}
+          title="Import list from CSV"
+          className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+        >
+          <Upload size={14} /> Import
+        </button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={handleImportFile}
+        />
+
+        {/* Share toggle */}
         <button
           onClick={() => shareToggleMut.mutate(!list.is_shared)}
           title={list.is_shared ? `Sharing on — token: ${list.share_token}` : 'Enable sharing'}
@@ -149,70 +198,20 @@ export default function ListDetailPage() {
         <TabBtn active={tab === 'items'} onClick={() => setTab('items')}>
           <BookOpen size={14} /> Items
         </TabBtn>
-        <TabBtn active={tab === 'weight'} onClick={() => setTab('weight')}>
-          <Table2 size={14} /> Weight table
-        </TabBtn>
         <TabBtn active={tab === 'pack'} onClick={() => setTab('pack')}>
           <PackageCheck size={14} /> Pack
         </TabBtn>
-        <div className="ml-auto pb-px">
-          <button
-            onClick={() => {
-              const csv = listItemsToCsv(listItems as ListItemWithGear[], categories)
-              downloadCsv(`${list.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.csv`, csv)
-            }}
-            disabled={listItems.length === 0}
-            title="Export list as CSV"
-            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-          >
-            <Download size={14} /> Export
-          </button>
-        </div>
       </div>
 
+      {/* ── Items tab ── */}
       {tab === 'items' && (
         <div className="flex gap-4">
-          {/* List items column */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-gray-500">{listItems.length} items</p>
-              {/* Mobile: open sheet */}
-              <button
-                onClick={() => setSheetOpen(true)}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 lg:hidden"
-              >
-                <BookOpen size={14} /> Add from library
-              </button>
-            </div>
-
-            {listItems.length === 0 ? (
-              <div className="flex h-32 items-center justify-center rounded-xl border-2 border-dashed border-gray-200">
-                <p className="text-sm text-gray-400">No items — add from your gear library</p>
-              </div>
-            ) : (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext
-                  items={listItems.map((i) => i.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="space-y-1">
-                    {listItems.map((item) => (
-                      <ListItemRow
-                        key={item.id}
-                        item={item}
-                        onUpdate={(patch) => updateMut.mutate({ itemId: item.id, patch })}
-                        onDelete={() => deleteMut.mutate(item.id)}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            )}
-          </div>
-
-          {/* Desktop library sidebar */}
-          <div className="hidden lg:flex w-72 shrink-0 flex-col rounded-xl border border-gray-200 bg-white overflow-hidden" style={{ maxHeight: '70vh' }}>
-            <div className="px-3 py-2 border-b border-gray-200">
+          {/* Desktop library sidebar — LEFT */}
+          <div
+            className="hidden lg:flex w-72 shrink-0 flex-col rounded-xl border border-gray-200 bg-white overflow-hidden"
+            style={{ maxHeight: '75vh' }}
+          >
+            <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Gear library</p>
             </div>
             <div className="flex-1 overflow-hidden">
@@ -224,16 +223,56 @@ export default function ListDetailPage() {
               />
             </div>
           </div>
+
+          {/* Right column: items + weight table */}
+          <div className="flex-1 min-w-0 space-y-6">
+            {/* Mobile: Add from library button */}
+            <div className="lg:hidden">
+              <button
+                onClick={() => setSheetOpen(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+              >
+                <BookOpen size={14} /> Add from library
+              </button>
+            </div>
+
+            {/* Items grouped by category */}
+            {listItems.length === 0 ? (
+              <div className="flex h-32 items-center justify-center rounded-xl border-2 border-dashed border-gray-200">
+                <p className="text-sm text-gray-400">No items — add from your gear library</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {grouped.map((group) => (
+                  <ListCategoryGroup
+                    key={group.category?.id ?? '__uncategorised__'}
+                    name={group.category?.name ?? 'Uncategorised'}
+                    items={group.items}
+                    onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
+                    onDelete={(itemId) => deleteMut.mutate(itemId)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Weight table — always visible below items */}
+            {listItems.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Weight summary
+                </p>
+                <WeightTable items={listItems as ListItemWithGear[]} categories={categories} />
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {tab === 'weight' && (
-        <WeightTable items={listItems as ListItemWithGear[]} categories={categories} />
-      )}
-
+      {/* ── Pack tab ── */}
       {tab === 'pack' && (
         <PackingView
           items={listItems}
+          grouped={grouped}
           onToggle={(itemId, packed) => updateMut.mutate({ itemId, patch: { is_packed: packed } })}
           onReset={resetPacked}
         />
@@ -248,16 +287,91 @@ export default function ListDetailPage() {
         listItemGearIds={listItemGearIds}
         onAdd={(item) => { addMut.mutate(item); setSheetOpen(false) }}
       />
+
+      {/* Import error */}
+      {importError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg">
+            <h2 className="text-base font-semibold text-gray-900 mb-2">Import error</h2>
+            <p className="text-sm text-red-600 mb-4">{importError}</p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setImportError(null)}
+                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import preview */}
+      {importPreview && (
+        <ImportPreviewDialog
+          rows={importPreview}
+          saving={importMut.isPending}
+          onConfirm={() => importMut.mutate(importPreview)}
+          onClose={() => setImportPreview(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Sub-components ─────────────────────────────────────────────────────────────
+
+function ListCategoryGroup({
+  name,
+  items,
+  onUpdate,
+  onDelete,
+}: {
+  name: string
+  items: ListItemWithGear[]
+  onUpdate: (itemId: string, patch: Parameters<typeof updateListItem>[1]) => void
+  onDelete: (itemId: string) => void
+}) {
+  const [collapsed, setCollapsed] = useState(false)
+
+  return (
+    <div>
+      <button
+        onClick={() => setCollapsed((v) => !v)}
+        className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 bg-gray-100 hover:bg-gray-200 text-left mb-1"
+      >
+        {collapsed ? (
+          <ChevronRight size={14} className="text-gray-400 shrink-0" />
+        ) : (
+          <ChevronDown size={14} className="text-gray-400 shrink-0" />
+        )}
+        <span className="flex-1 text-sm font-medium text-gray-700">{name}</span>
+        <span className="text-xs text-gray-400">{items.length}</span>
+      </button>
+      {!collapsed && (
+        <div className="space-y-0.5 pl-2">
+          {items.map((item) => (
+            <ListItemRow
+              key={item.id}
+              item={item}
+              onUpdate={(patch) => onUpdate(item.id, patch)}
+              onDelete={() => onDelete(item.id)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
 function PackingView({
   items,
+  grouped,
   onToggle,
   onReset,
 }: {
   items: ListItemWithGear[]
+  grouped: { category: { name: string; id: string } | null; items: ListItemWithGear[] }[]
   onToggle: (itemId: string, packed: boolean) => void
   onReset: () => void
 }) {
@@ -297,35 +411,123 @@ function PackingView({
         </div>
       </div>
 
-      {/* Item checklist */}
-      <div className="space-y-1">
-        {items.map((item) => {
-          const name = item.gear_item?.name ?? '(deleted item)'
-          const label = item.quantity > 1 ? `${name} ×${item.quantity}` : name
-          return (
-            <label
-              key={item.id}
-              className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
-                item.is_packed
-                  ? 'border-green-200 bg-green-50'
-                  : 'border-gray-100 bg-white hover:bg-gray-50'
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={item.is_packed}
-                onChange={(e) => onToggle(item.id, e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600"
-              />
-              <span className={`flex-1 min-w-0 truncate ${item.is_packed ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
-                {label}
-              </span>
-              <span className="shrink-0 tabular-nums text-xs text-gray-400">
-                {item.weight_grams * item.quantity}g
-              </span>
-            </label>
-          )
-        })}
+      {/* Items by category */}
+      {grouped.map((group) => (
+        <div key={group.category?.id ?? '__uncategorised__'}>
+          <p className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            {group.category?.name ?? 'Uncategorised'}
+          </p>
+          <div className="space-y-1">
+            {group.items.map((item) => {
+              const name = item.gear_item?.name ?? '(deleted item)'
+              const label = item.quantity > 1 ? `${name} ×${item.quantity}` : name
+              return (
+                <label
+                  key={item.id}
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
+                    item.is_packed
+                      ? 'border-green-200 bg-green-50'
+                      : 'border-gray-100 bg-white hover:bg-gray-50'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={item.is_packed}
+                    onChange={(e) => onToggle(item.id, e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                  />
+                  <span
+                    className={`flex-1 min-w-0 truncate ${
+                      item.is_packed ? 'text-gray-400 line-through' : 'text-gray-800'
+                    }`}
+                  >
+                    {label}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-xs text-gray-400">
+                    {item.weight_grams * item.quantity}g
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ImportPreviewDialog({
+  rows,
+  saving,
+  onConfirm,
+  onClose,
+}: {
+  rows: ListImportRow[]
+  saving: boolean
+  onConfirm: () => void
+  onClose: () => void
+}) {
+  const wornCount = rows.filter((r) => r.is_worn).length
+  const consumCount = rows.filter((r) => r.is_consumable).length
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-lg rounded-xl bg-white shadow-lg flex flex-col max-h-[80vh]">
+        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">
+              Import {rows.length} item{rows.length !== 1 ? 's' : ''} to list
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              New items will be added to your gear library. Items already in the library won't be duplicated.
+              {wornCount > 0 && ` ${wornCount} worn.`}
+              {consumCount > 0 && ` ${consumCount} consumable.`}
+            </p>
+          </div>
+          <button onClick={onClose} className="ml-4 text-gray-400 hover:text-gray-600">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-gray-50 text-xs font-medium text-gray-500">
+              <tr>
+                <th className="px-4 py-2 text-left">Name</th>
+                <th className="px-3 py-2 text-right">Weight</th>
+                <th className="px-3 py-2 text-left">Category</th>
+                <th className="px-3 py-2 text-center">Flags</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {rows.map((row, i) => (
+                <tr key={i} className="hover:bg-gray-50">
+                  <td className="px-4 py-1.5 font-medium text-gray-800 max-w-[160px] truncate">{row.name}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{row.weight_grams}g</td>
+                  <td className="px-3 py-1.5 text-gray-500">{row.category || '—'}</td>
+                  <td className="px-3 py-1.5 text-center text-xs">
+                    {row.is_worn && <span className="text-purple-600 mr-1">W</span>}
+                    {row.is_consumable && <span className="text-orange-600">C</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100">
+          <button
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={saving}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? 'Importing…' : `Import ${rows.length} item${rows.length !== 1 ? 's' : ''}`}
+          </button>
+        </div>
       </div>
     </div>
   )

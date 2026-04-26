@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Plus, Check } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 
 type Props = {
@@ -11,19 +11,36 @@ type Props = {
 
 export default function LibraryPanel({ gearItems, categories, listItemGearIds, onAdd }: Props) {
   const [search, setSearch] = useState('')
+  const [collapsed, setCollapsed] = useState(new Set<string>())
 
-  const catMap = new Map(categories.map((c) => [c.id, c.name]))
+  function toggleCollapse(key: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
 
-  const filtered = search.trim()
+  const q = search.trim().toLowerCase()
+  const filtered = q
     ? gearItems.filter(
         (g) =>
-          g.name.toLowerCase().includes(search.toLowerCase()) ||
-          (g.description?.toLowerCase().includes(search.toLowerCase()) ?? false),
+          g.name.toLowerCase().includes(q) ||
+          (g.description?.toLowerCase().includes(q) ?? false),
       )
     : gearItems
 
+  // Build groups ordered by category sort_order
+  const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
+  const groups = sortedCats
+    .map((cat) => ({ category: cat, items: filtered.filter((g) => g.category_id === cat.id) }))
+    .filter((g) => g.items.length > 0)
+
+  const uncategorised = filtered.filter((g) => g.category_id === null)
+
   return (
     <div className="flex h-full flex-col">
+      {/* Search */}
       <div className="p-3 border-b border-gray-200">
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -36,32 +53,108 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, o
           />
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
-        {filtered.length === 0 ? (
-          <p className="p-4 text-center text-xs text-gray-400 italic">No items found</p>
+
+      {/* Category groups */}
+      <div className="flex-1 overflow-y-auto">
+        {groups.length === 0 && uncategorised.length === 0 ? (
+          <p className="p-4 text-center text-xs text-gray-400 italic">
+            {q ? 'No items found' : 'No gear items yet'}
+          </p>
         ) : (
-          filtered.map((item) => {
+          <>
+            {groups.map(({ category, items }) => (
+              <CategoryGroup
+                key={category.id}
+                name={category.name}
+                items={items}
+                collapsed={collapsed.has(category.id)}
+                onToggle={() => toggleCollapse(category.id)}
+                listItemGearIds={listItemGearIds}
+                onAdd={onAdd}
+              />
+            ))}
+            {uncategorised.length > 0 && (
+              <CategoryGroup
+                name="Uncategorised"
+                items={uncategorised}
+                collapsed={collapsed.has('__uncategorised__')}
+                onToggle={() => toggleCollapse('__uncategorised__')}
+                listItemGearIds={listItemGearIds}
+                onAdd={onAdd}
+              />
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CategoryGroup({
+  name,
+  items,
+  collapsed,
+  onToggle,
+  listItemGearIds,
+  onAdd,
+}: {
+  name: string
+  items: GearItem[]
+  collapsed: boolean
+  onToggle: () => void
+  listItemGearIds: Set<string>
+  onAdd: (item: GearItem) => void
+}) {
+  return (
+    <div>
+      {/* Category header */}
+      <button
+        onClick={onToggle}
+        className="flex w-full items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-left border-b border-gray-100"
+      >
+        {collapsed ? (
+          <ChevronRight size={13} className="shrink-0 text-gray-400" />
+        ) : (
+          <ChevronDown size={13} className="shrink-0 text-gray-400" />
+        )}
+        <span className="flex-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+          {name}
+        </span>
+        <span className="text-xs text-gray-400">{items.length}</span>
+      </button>
+
+      {/* Items */}
+      {!collapsed && (
+        <div className="divide-y divide-gray-50">
+          {items.map((item) => {
             const inList = listItemGearIds.has(item.id)
-            const catName = item.category_id ? catMap.get(item.category_id) : null
             return (
-              <div key={item.id} className="flex items-center gap-2 px-3 py-2">
+              <div key={item.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50">
                 <div className="flex-1 min-w-0">
                   <p className="truncate text-sm font-medium text-gray-800">{item.name}</p>
-                  {catName && <p className="text-xs text-gray-400">{catName}</p>}
+                  {item.description && (
+                    <p className="truncate text-xs text-gray-400">{item.description}</p>
+                  )}
                 </div>
-                <span className="shrink-0 text-xs text-gray-500 tabular-nums">{item.weight_grams}g</span>
+                <span className="shrink-0 text-xs text-gray-500 tabular-nums">
+                  {item.weight_grams}g
+                </span>
                 <button
                   onClick={() => !inList && onAdd(item)}
                   title={inList ? 'Already in list' : 'Add to list'}
-                  className={`shrink-0 rounded p-1 ${inList ? 'text-green-500 cursor-default' : 'text-gray-400 hover:text-blue-600'}`}
+                  className={`shrink-0 rounded p-0.5 ${
+                    inList
+                      ? 'text-green-400 cursor-default'
+                      : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'
+                  }`}
                 >
-                  {inList ? <Check size={14} /> : <Plus size={14} />}
+                  <Plus size={15} />
                 </button>
               </div>
             )
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
     </div>
   )
 }

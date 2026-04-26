@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import type { Category, GearItem, List, ListItem, ListItemWithGear } from './types'
 import { generateShareToken } from './share-token'
+import type { ListImportRow } from './csv'
 
 export const queryKeys = {
   categories: () => ['categories'] as const,
@@ -257,6 +258,74 @@ export async function deleteListItem(id: string): Promise<void> {
 
 export async function reorderListItems(updates: { id: string; sort_order: number }[]): Promise<void> {
   await Promise.all(updates.map(({ id, sort_order }) => updateListItem(id, { sort_order })))
+}
+
+// ── CSV list import ───────────────────────────────────────────────────────────
+
+export async function importCsvRowsToList(
+  listId: string,
+  userId: string,
+  rows: ListImportRow[],
+  existingGearItems: GearItem[],
+  existingCategories: Category[],
+  currentListItemCount: number,
+): Promise<void> {
+  // 1. Resolve/create categories
+  const catByName = new Map(existingCategories.map((c) => [c.name.toLowerCase(), c.id]))
+
+  const uniqueCatNames = [...new Set(rows.map((r) => r.category.trim()).filter(Boolean))]
+  for (const name of uniqueCatNames) {
+    if (!catByName.has(name.toLowerCase())) {
+      const created = await createCategory(userId, name, existingCategories.length + catByName.size)
+      catByName.set(name.toLowerCase(), created.id)
+    }
+  }
+
+  // 2. Resolve/create gear items (match by name, case-insensitive)
+  const gearByName = new Map(existingGearItems.map((g) => [g.name.toLowerCase(), g]))
+
+  const newGearRows: object[] = []
+  for (const row of rows) {
+    if (!gearByName.has(row.name.toLowerCase())) {
+      const categoryId = row.category.trim() ? (catByName.get(row.category.trim().toLowerCase()) ?? null) : null
+      newGearRows.push({
+        user_id: userId,
+        name: row.name,
+        description: row.description,
+        weight_grams: row.weight_grams,
+        category_id: categoryId,
+        sort_order: existingGearItems.length + newGearRows.length,
+      })
+    }
+  }
+
+  if (newGearRows.length > 0) {
+    const { data: created, error } = await supabase
+      .from('gear_items')
+      .insert(newGearRows)
+      .select('id, name')
+    if (error) throw error
+    for (const g of created) {
+      gearByName.set(g.name.toLowerCase(), g as GearItem)
+    }
+  }
+
+  // 3. Add all rows to the list
+  const listItemRows = rows.map((row, i) => {
+    const gear = gearByName.get(row.name.toLowerCase())
+    return {
+      list_id: listId,
+      gear_item_id: gear?.id ?? null,
+      weight_grams: row.weight_grams,
+      quantity: row.quantity,
+      is_worn: row.is_worn,
+      is_consumable: row.is_consumable,
+      sort_order: currentListItemCount + i,
+    }
+  })
+
+  const { error: liErr } = await supabase.from('list_items').insert(listItemRows)
+  if (liErr) throw liErr
 }
 
 // ── Default categories ────────────────────────────────────────────────────────

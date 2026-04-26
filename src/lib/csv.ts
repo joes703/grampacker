@@ -127,30 +127,106 @@ export function gearItemsToCsv(items: GearItem[], categories: Category[]): strin
   return toCsv(rows)
 }
 
+function toGrams(value: string, unit: string): number {
+  const n = parseFloat(value)
+  if (isNaN(n) || n < 0) return 0
+  let grams: number
+  switch (unit.trim().toLowerCase()) {
+    case 'oz':  grams = n * 28.3495; break
+    case 'lb':  grams = n * 453.592; break
+    case 'kg':  grams = n * 1000;    break
+    default:    grams = n            // g or unknown — treat as grams
+  }
+  return Math.min(Math.round(grams), 100000)
+}
+
 // Returns parsed rows ready for import, or an error string.
+// Accepts our own export format AND the Lighterpack format:
+//   Item Name, Category, desc, qty, weight, unit, url, price, worn, consumable
 export function parseGearCsv(text: string): GearCsvRow[] | string {
   const rows = parseCsv(text)
   if (rows.length === 0) return 'File appears empty or has no data rows.'
 
-  // Accept common column name variants
   const sample = rows[0]
   const keys = Object.keys(sample)
-  const hasName = keys.some((k) => k === 'name')
+
+  // Resolve column names (case-insensitive, support aliases)
+  const nameKey   = keys.find((k) => k === 'name' || k === 'item name')
   const weightKey = keys.find((k) => k === 'weight_grams' || k === 'weight (g)' || k === 'weight')
+  const unitKey   = keys.find((k) => k === 'unit')
+  const descKey   = keys.find((k) => k === 'description' || k === 'desc')
+  const catKey    = keys.find((k) => k === 'category')
 
-  if (!hasName) return 'Missing required column: name'
-  if (!weightKey) return 'Missing required column: weight_grams (or weight)'
+  if (!nameKey)   return 'Missing required column: "name" or "Item Name"'
+  if (!weightKey) return 'Missing required column: "weight_grams" or "weight"'
 
-  return rows.map((row) => {
-    const rawWeight = row[weightKey] ?? '0'
-    const parsed = parseInt(rawWeight, 10)
-    return {
-      name: row['name'] ?? '',
-      description: row['description'] || null,
-      weight_grams: isNaN(parsed) || parsed < 0 ? 0 : Math.min(parsed, 100000),
-      category: row['category'] ?? '',
-    }
-  }).filter((r) => r.name.trim().length > 0)
+  return rows
+    .map((row) => {
+      const unit = unitKey ? (row[unitKey] ?? 'g') : 'g'
+      return {
+        name:         (row[nameKey] ?? '').trim().slice(0, 256),
+        description:  descKey ? (row[descKey] || null) : null,
+        weight_grams: toGrams(row[weightKey] ?? '0', unit),
+        category:     catKey ? (row[catKey] ?? '') : '',
+      }
+    })
+    .filter((r) => r.name.length > 0)
+}
+
+// ── List import helpers ───────────────────────────────────────────────────────
+
+export type ListImportRow = {
+  name: string
+  description: string | null
+  weight_grams: number
+  category: string
+  quantity: number
+  is_worn: boolean
+  is_consumable: boolean
+}
+
+function toBool(v: string | undefined): boolean {
+  const s = (v ?? '').trim()
+  return s === '1' || s.toLowerCase() === 'yes' || s.toLowerCase() === 'true'
+}
+
+// Parses a Lighterpack-style CSV into list import rows.
+// Accepts: Item Name, Category, desc, qty, weight, unit, url, price, worn, consumable
+// Also accepts our own list export format.
+export function parseListCsv(text: string): ListImportRow[] | string {
+  const rows = parseCsv(text)
+  if (rows.length === 0) return 'File appears empty or has no data rows.'
+
+  const sample = rows[0]
+  const keys = Object.keys(sample)
+
+  const nameKey     = keys.find((k) => k === 'name' || k === 'item name')
+  const weightKey   = keys.find((k) => k === 'weight_grams' || k === 'weight (g)' || k === 'weight')
+  const unitKey     = keys.find((k) => k === 'unit')
+  const descKey     = keys.find((k) => k === 'description' || k === 'desc')
+  const catKey      = keys.find((k) => k === 'category')
+  const qtyKey      = keys.find((k) => k === 'quantity' || k === 'qty')
+  const wornKey     = keys.find((k) => k === 'worn' || k === 'is_worn')
+  const consumKey   = keys.find((k) => k === 'consumable' || k === 'is_consumable')
+
+  if (!nameKey)   return 'Missing required column: "name" or "Item Name"'
+  if (!weightKey) return 'Missing required column: "weight_grams" or "weight"'
+
+  return rows
+    .map((row) => {
+      const unit = unitKey ? (row[unitKey] ?? 'g') : 'g'
+      const rawQty = qtyKey ? parseInt(row[qtyKey] ?? '1', 10) : 1
+      return {
+        name:         (row[nameKey] ?? '').trim().slice(0, 256),
+        description:  descKey ? (row[descKey] || null) : null,
+        weight_grams: toGrams(row[weightKey] ?? '0', unit),
+        category:     catKey ? (row[catKey] ?? '') : '',
+        quantity:     isNaN(rawQty) || rawQty < 1 ? 1 : Math.min(rawQty, 99),
+        is_worn:      wornKey ? toBool(row[wornKey]) : false,
+        is_consumable: consumKey ? toBool(row[consumKey]) : false,
+      }
+    })
+    .filter((r) => r.name.length > 0)
 }
 
 // ── List export helpers ───────────────────────────────────────────────────────
