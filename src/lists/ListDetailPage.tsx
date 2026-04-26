@@ -47,7 +47,7 @@ import {
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
 import { parseListCsv, listItemsToCsv, downloadCsv, type ListImportRow } from '../lib/csv'
-import { formatGrams } from '../lib/weight'
+import { formatItemWeight, getWeightUnit, setWeightUnit, type WeightUnit } from '../lib/weight'
 import ListItemRow from './ListItemRow'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
@@ -121,6 +121,13 @@ function ListDetailInner({
 }) {
   const [mode, setMode] = useState<Mode>('edit')
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [weightUnit, setWeightUnitState] = useState<WeightUnit>(getWeightUnit)
+
+  function toggleWeightUnit() {
+    const next: WeightUnit = weightUnit === 'g' ? 'oz' : 'g'
+    setWeightUnit(next)
+    setWeightUnitState(next)
+  }
   const [sheetOpen, setSheetOpen] = useState(false)
   const [importPreview, setImportPreview] = useState<ListImportRow[] | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
@@ -313,6 +320,15 @@ function ListDetailInner({
         </button>
         <h1 className="flex-1 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
 
+        {/* g/oz toggle */}
+        <button
+          onClick={toggleWeightUnit}
+          title={`Switch to ${weightUnit === 'g' ? 'oz' : 'g'}`}
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+        >
+          {weightUnit}
+        </button>
+
         {/* Pack-mode toggle (icon) */}
         <button
           onClick={() => setMode(mode === 'pack' ? 'edit' : 'pack')}
@@ -406,6 +422,7 @@ function ListDetailInner({
                     gearItems={gearItems}
                     categories={categories}
                     listItemGearIds={listItemGearIds}
+                    weightUnit={weightUnit}
                     onAdd={(item) => addMut.mutate(item)}
                   />
                 </div>
@@ -478,6 +495,7 @@ function ListDetailInner({
                         name={group.category!.name}
                         items={group.items}
                         packMode={mode === 'pack'}
+                        weightUnit={weightUnit}
                         onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
                         onDelete={(itemId) => deleteMut.mutate(itemId)}
                       />
@@ -492,6 +510,7 @@ function ListDetailInner({
                     name="Uncategorised"
                     items={group.items}
                     packMode={mode === 'pack'}
+                    weightUnit={weightUnit}
                     onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
                     onDelete={(itemId) => deleteMut.mutate(itemId)}
                   />
@@ -508,6 +527,7 @@ function ListDetailInner({
         gearItems={gearItems}
         categories={categories}
         listItemGearIds={listItemGearIds}
+        weightUnit={weightUnit}
         onAdd={(item) => { addMut.mutate(item); setSheetOpen(false) }}
       />
 
@@ -564,12 +584,13 @@ type GroupProps = {
   name: string
   items: ListItemWithGear[]
   packMode: boolean
+  weightUnit: WeightUnit
   onUpdate: (itemId: string, patch: Parameters<typeof updateListItem>[1]) => void
   onDelete: (itemId: string) => void
   dragHandle?: React.ReactNode
 }
 
-function ListCategoryGroup({ name, items, packMode, onUpdate, onDelete, dragHandle }: GroupProps) {
+function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDelete, dragHandle }: GroupProps) {
   const [collapsed, setCollapsed] = useState(false)
   const packedCount = items.filter((i) => i.is_packed).length
 
@@ -599,6 +620,7 @@ function ListCategoryGroup({ name, items, packMode, onUpdate, onDelete, dragHand
               key={item.id}
               item={item}
               packMode={packMode}
+              weightUnit={weightUnit}
               onUpdate={(patch) => onUpdate(item.id, patch)}
               onDelete={() => onDelete(item.id)}
             />
@@ -733,7 +755,7 @@ function ImportPreviewDialog({
               {rows.map((row, i) => (
                 <tr key={i} className="hover:bg-gray-50">
                   <td className="px-4 py-1.5 font-medium text-gray-800 max-w-[160px] truncate">{row.name}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{formatGrams(row.weight_grams)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{formatItemWeight(row.weight_grams, 'g')}</td>
                   <td className="px-3 py-1.5 text-gray-500">{row.category || '—'}</td>
                   <td className="px-3 py-1.5 text-center text-xs">
                     {row.is_worn && <span className="text-purple-600 mr-1">W</span>}

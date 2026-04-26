@@ -1,5 +1,6 @@
 import { Drawer } from 'vaul'
 import type { GearItem, Category } from '../lib/types'
+import type { WeightUnit } from '../lib/weight'
 import LibraryPanel from './LibraryPanel'
 
 type Props = {
@@ -8,10 +9,11 @@ type Props = {
   gearItems: GearItem[]
   categories: Category[]
   listItemGearIds: Set<string>
+  weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
 }
 
-export default function LibrarySheet({ open, onClose, gearItems, categories, listItemGearIds, onAdd }: Props) {
+export default function LibrarySheet({ open, onClose, gearItems, categories, listItemGearIds, weightUnit, onAdd }: Props) {
   return (
     <Drawer.Root open={open} onOpenChange={(v) => !v && onClose()}>
       <Drawer.Portal>
@@ -26,6 +28,7 @@ export default function LibrarySheet({ open, onClose, gearItems, categories, lis
               gearItems={gearItems}
               categories={categories}
               listItemGearIds={listItemGearIds}
+              weightUnit={weightUnit}
               onAdd={(item) => { onAdd(item) }}
             />
           </div>

@@ -1,16 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
 import { Trash2, AlertTriangle } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
-import { formatGrams } from '../lib/weight'
+import { formatItemWeight, type WeightUnit } from '../lib/weight'
 
 type Props = {
   item: ListItemWithGear
+  weightUnit: WeightUnit
   packMode?: boolean
   onUpdate: (patch: Partial<Pick<ListItemWithGear, 'quantity' | 'weight_grams' | 'is_worn' | 'is_consumable' | 'is_packed'>>) => void
   onDelete: () => void
 }
 
-export default function ListItemRow({ item, packMode = false, onUpdate, onDelete }: Props) {
+export default function ListItemRow({ item, weightUnit, packMode = false, onUpdate, onDelete }: Props) {
   const [editingWeight, setEditingWeight] = useState(false)
   const [weightDraft, setWeightDraft] = useState(String(item.weight_grams))
   const weightInputRef = useRef<HTMLInputElement>(null)
@@ -66,7 +67,7 @@ export default function ListItemRow({ item, packMode = false, onUpdate, onDelete
       {!packMode && outOfSync && (
         <button
           onClick={() => onUpdate({ weight_grams: sourceWeight! })}
-          title={`Library weight is ${formatGrams(sourceWeight!)} — click to sync`}
+          title={`Library weight is ${formatItemWeight(sourceWeight!, weightUnit)} — click to sync`}
           className="shrink-0 text-amber-500 hover:text-amber-600"
         >
           <AlertTriangle size={14} />
@@ -76,7 +77,7 @@ export default function ListItemRow({ item, packMode = false, onUpdate, onDelete
       {/* Weight: read-only in pack mode, click to edit otherwise */}
       {packMode ? (
         <span className="shrink-0 tabular-nums text-gray-500 text-xs">
-          {formatGrams(item.weight_grams * item.quantity)}
+          {formatItemWeight(item.weight_grams * item.quantity, weightUnit)}
         </span>
       ) : editingWeight ? (
         <input
@@ -99,7 +100,7 @@ export default function ListItemRow({ item, packMode = false, onUpdate, onDelete
           title="Click to edit weight"
           className="shrink-0 tabular-nums text-gray-600 hover:text-blue-600"
         >
-          {formatGrams(item.weight_grams)}
+          {formatItemWeight(item.weight_grams, weightUnit)}
         </button>
       )}
 
