@@ -72,11 +72,8 @@ export default function SharePage() {
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-3xl px-4 py-10">
         {/* Header */}
-        <div className="mb-1 flex items-baseline gap-3">
+        <div className="mb-1">
           <h1 className="text-2xl font-bold text-gray-900">{list.name}</h1>
-          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-            Shared
-          </span>
         </div>
         {list.description && (
           <p className="mb-6 text-sm text-gray-500">{list.description}</p>
@@ -119,7 +116,6 @@ function SharedCategoryGroup({ name, items }: { name: string; items: ListItemWit
       {/* Category header — also the column header */}
       <div className="flex items-center gap-2 rounded-lg px-3 py-1.5 bg-gray-100 mb-1">
         <span className="flex-1 min-w-0 truncate text-sm font-medium text-gray-700">{name}</span>
-        <span className="shrink-0 text-xs text-gray-400">({items.length})</span>
         <div className="shrink-0 w-7" />
         <div className="shrink-0 w-7" />
         <div className="shrink-0 w-10 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
