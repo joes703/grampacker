@@ -1,12 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Download, MoreVertical, Plus, Share2, Trash2, Upload } from 'lucide-react'
+import { Download, MoreVertical, Plus, Trash2, Upload } from 'lucide-react'
 import type { List } from '../lib/types'
 
 type RowActions = {
   onImport: (list: List) => void
   onExport: (list: List) => void
-  onShareToggle: (list: List) => void
   onDelete: (list: List) => void
 }
 
@@ -36,7 +35,6 @@ export default function ListsBox({
   onRename,
   onImport,
   onExport,
-  onShareToggle,
   onDelete,
 }: Props) {
   return (
@@ -58,7 +56,6 @@ export default function ListsBox({
               onRename={(name) => onRename(list, name)}
               onImport={() => onImport(list)}
               onExport={() => onExport(list)}
-              onShareToggle={() => onShareToggle(list)}
               onDelete={() => onDelete(list)}
             />
           ))
@@ -103,7 +100,6 @@ function ListsBoxRow({
   onRename,
   onImport,
   onExport,
-  onShareToggle,
   onDelete,
 }: {
   list: List
@@ -112,7 +108,6 @@ function ListsBoxRow({
   onRename: (name: string) => void
   onImport: () => void
   onExport: () => void
-  onShareToggle: () => void
   onDelete: () => void
 }) {
   const [renaming, setRenaming] = useState(false)
@@ -223,9 +218,6 @@ function ListsBoxRow({
           </MenuItem>
           <MenuItem icon={<Download size={13} />} onClick={() => { setMenuPos(null); onExport() }}>
             Export CSV
-          </MenuItem>
-          <MenuItem icon={<Share2 size={13} />} onClick={() => { setMenuPos(null); onShareToggle() }}>
-            {list.is_shared ? `Sharing: ${list.share_token}` : 'Share'}
           </MenuItem>
           <div className="my-1 border-t border-gray-100" />
           <MenuItem icon={<Trash2 size={13} />} onClick={() => { setMenuPos(null); onDelete() }} danger>

@@ -13,9 +13,12 @@ import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } 
 import { CSS } from '@dnd-kit/utilities'
 import {
   BookOpen,
+  Check,
   ChevronDown,
   ChevronRight,
+  Copy,
   GripVertical,
+  Link2,
   PanelLeftClose,
   PanelLeftOpen,
   RotateCcw,
@@ -107,6 +110,7 @@ function ListDetailInner({
   const [importError, setImportError] = useState<string | null>(null)
   const [confirmDeleteList, setConfirmDeleteList] = useState<List | null>(null)
   const [pendingImportId, setPendingImportId] = useState<string | null>(null)
+  const [copiedShareUrl, setCopiedShareUrl] = useState(false)
   const [creatingList, setCreatingList] = useState(false)
   const [newListDraft, setNewListDraft] = useState('')
   const [libraryCollapsed, setLibraryCollapsed] = useState(false)
@@ -172,6 +176,12 @@ function ListDetailInner({
       qc.invalidateQueries({ queryKey: queryKeys.categories() })
       setImportPreview(null)
     },
+  })
+
+  const setPrivacyMut = useMutation({
+    mutationFn: ({ id, isShared }: { id: string; isShared: boolean }) =>
+      updateList(id, { is_shared: isShared }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
   })
 
   const renameMut = useMutation({
@@ -288,11 +298,53 @@ function ListDetailInner({
           <ModeBtn active={mode === 'pack'} onClick={() => setMode('pack')}>Pack mode</ModeBtn>
         </div>
 
-        {list.is_shared && (
-          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-            Shared · {list.share_token}
-          </span>
-        )}
+        {/* Privacy toggle (pill) */}
+        <div className="inline-flex rounded-full border border-gray-300 bg-gray-50 p-0.5 text-sm">
+          <ModeBtn
+            active={!list.is_shared}
+            onClick={() => list.is_shared && setPrivacyMut.mutate({ id: list.id, isShared: false })}
+          >
+            Private
+          </ModeBtn>
+          <ModeBtn
+            active={list.is_shared}
+            onClick={() => !list.is_shared && setPrivacyMut.mutate({ id: list.id, isShared: true })}
+          >
+            Public
+          </ModeBtn>
+        </div>
+
+        {/* Copy URL button — only when public */}
+        {list.is_shared && (() => {
+          const shareUrl = `${window.location.origin}/r/${list.share_token}`
+          return (
+            <button
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(shareUrl)
+                  setCopiedShareUrl(true)
+                  setTimeout(() => setCopiedShareUrl(false), 1500)
+                } catch {
+                  // ignore — clipboard not available
+                }
+              }}
+              title={shareUrl}
+              className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            >
+              {copiedShareUrl ? (
+                <>
+                  <Check size={12} className="text-green-600" /> Copied!
+                </>
+              ) : (
+                <>
+                  <Link2 size={12} />
+                  <span className="font-mono">/r/{list.share_token}</span>
+                  <Copy size={12} />
+                </>
+              )}
+            </button>
+          )
+        })()}
       </div>
 
       {/* Hidden file input — triggered by per-list Import menu action */}
@@ -339,7 +391,6 @@ function ListDetailInner({
                 const csv = listItemsToCsv(items as ListItemWithGear[], categories)
                 downloadCsv(`${l.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`, csv)
               }}
-              onShareToggle={(l) => updateList(l.id, { is_shared: !l.is_shared }).then(() => qc.invalidateQueries({ queryKey: queryKeys.lists() }))}
               onDelete={(l) => setConfirmDeleteList(l)}
             />
 
