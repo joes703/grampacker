@@ -22,6 +22,37 @@ export function formatTotalWeight(grams: number, unit: WeightUnit): string {
   return `${lb} lb ${remOz} oz`
 }
 
+export function gramsToLbOzParts(grams: number): { lb: number; oz: number } {
+  const totalOz = gramsToOz(grams)
+  const lb = Math.floor(totalOz / 16)
+  const oz = totalOz % 16
+  return { lb, oz }
+}
+
+export type WeightRollup = {
+  totalGrams: number
+  wornGrams: number
+  consumableGrams: number
+  baseGrams: number // total - worn - consumable
+}
+
+export function computeWeightRollup(
+  items: { weight_grams: number; quantity: number; is_worn: boolean; is_consumable: boolean }[],
+): WeightRollup {
+  let totalGrams = 0
+  let wornGrams = 0
+  let consumableGrams = 0
+
+  for (const item of items) {
+    const w = item.weight_grams * item.quantity
+    totalGrams += w
+    if (item.is_worn) wornGrams += w
+    else if (item.is_consumable) consumableGrams += w
+  }
+
+  return { totalGrams, wornGrams, consumableGrams, baseGrams: totalGrams - wornGrams - consumableGrams }
+}
+
 export function getWeightUnit(): WeightUnit {
   return (localStorage.getItem('weightUnit') as WeightUnit) ?? 'g'
 }
