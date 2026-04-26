@@ -164,13 +164,13 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
             if (e.key === 'Enter') commitQty()
             if (e.key === 'Escape') { setQtyDraft(String(item.quantity)); setEditingQty(false) }
           }}
-          className="shrink-0 w-14 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
+          className="shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
         />
       ) : (
         <button
           onClick={() => setEditingQty(true)}
           title="Click to edit quantity"
-          className="shrink-0 w-14 text-right tabular-nums text-gray-600 hover:text-blue-600"
+          className="shrink-0 w-12 text-right tabular-nums text-gray-600 hover:text-blue-600"
         >
           {item.quantity}
         </button>
