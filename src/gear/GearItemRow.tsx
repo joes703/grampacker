@@ -116,7 +116,7 @@ export default function GearItemRow({
           </div>
         )}
       </div>
-      <span className="shrink-0 text-sm text-gray-600 tabular-nums">
+      <span className="shrink-0 w-16 text-right text-sm text-gray-600 tabular-nums">
         {formatItemWeight(item.weight_grams, weightUnit)}
       </span>
       {!selectMode && (
