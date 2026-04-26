@@ -15,14 +15,9 @@ import {
   BookOpen,
   ChevronDown,
   ChevronRight,
-  Download,
   GripVertical,
   PackageCheck,
-  Plus,
   RotateCcw,
-  Share2,
-  Trash2,
-  Upload,
   X,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
@@ -108,7 +103,8 @@ function ListDetailInner({
   const [sheetOpen, setSheetOpen] = useState(false)
   const [importPreview, setImportPreview] = useState<ListImportRow[] | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmDeleteList, setConfirmDeleteList] = useState<List | null>(null)
+  const [pendingImportId, setPendingImportId] = useState<string | null>(null)
   const [creatingList, setCreatingList] = useState(false)
   const [newListDraft, setNewListDraft] = useState('')
   const [libraryCollapsed, setLibraryCollapsed] = useState(false)
@@ -116,6 +112,15 @@ function ListDetailInner({
   const importInputRef = useRef<HTMLInputElement>(null)
 
   const list = lists.find((l) => l.id === listId)
+
+  // After navigating to a list because the user clicked Import on it from the menu,
+  // open the file picker once we land on that list.
+  useEffect(() => {
+    if (pendingImportId && pendingImportId === listId) {
+      setPendingImportId(null)
+      importInputRef.current?.click()
+    }
+  }, [pendingImportId, listId])
 
   const { data: listItems = [] } = useQuery({
     queryKey: queryKeys.listItems(listId),
@@ -149,11 +154,6 @@ function ListDetailInner({
   const deleteMut = useMutation({
     mutationFn: (itemId: string) => deleteListItem(itemId),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) }),
-  })
-
-  const shareToggleMut = useMutation({
-    mutationFn: (shared: boolean) => updateList(listId, { is_shared: shared }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
   })
 
   const reorderCatsMut = useMutation({
@@ -233,12 +233,6 @@ function ListDetailInner({
     reader.readAsText(file)
   }
 
-  function handleExport() {
-    if (!list) return
-    const csv = listItemsToCsv(listItems as ListItemWithGear[], categories)
-    downloadCsv(`${list.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`, csv)
-  }
-
   // ── Derived data ───────────────────────────────────────────────────────────
 
   const listItemGearIds = new Set(
@@ -276,62 +270,23 @@ function ListDetailInner({
   return (
     <div className="flex flex-col gap-4">
       {/* Header */}
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center gap-3">
         <h1 className="flex-1 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
-
-        <button
-          onClick={() => setCreatingList(true)}
-          title="Create a new list"
-          className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          <Plus size={14} /> New list
-        </button>
-
-        <button
-          onClick={() => importInputRef.current?.click()}
-          title="Import list from CSV"
-          className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
-        >
-          <Upload size={14} /> Import
-        </button>
-        <input
-          ref={importInputRef}
-          type="file"
-          accept=".csv,text/csv"
-          className="hidden"
-          onChange={handleImportFile}
-        />
-
-        <button
-          onClick={handleExport}
-          disabled={listItems.length === 0}
-          title="Export list as CSV"
-          className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-        >
-          <Download size={14} /> Export
-        </button>
-
-        <button
-          onClick={() => shareToggleMut.mutate(!list.is_shared)}
-          title={list.is_shared ? `Sharing on — token: ${list.share_token}` : 'Enable sharing'}
-          className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
-            list.is_shared
-              ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
-              : 'border-gray-300 text-gray-600 hover:bg-gray-100'
-          }`}
-        >
-          <Share2 size={14} />
-          {list.is_shared ? list.share_token : 'Share'}
-        </button>
-
-        <button
-          onClick={() => setConfirmDelete(true)}
-          title="Delete list"
-          className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-300"
-        >
-          <Trash2 size={14} /> Delete
-        </button>
+        {list.is_shared && (
+          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+            Shared · {list.share_token}
+          </span>
+        )}
       </div>
+
+      {/* Hidden file input — triggered by per-list Import menu action */}
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={handleImportFile}
+      />
 
       {/* Tab bar */}
       <div className="flex items-center gap-1 border-b border-gray-200">
@@ -366,6 +321,20 @@ function ListDetailInner({
               onCancelNew={() => { setCreatingList(false); setNewListDraft('') }}
               onSelect={(l) => navigate(`/lists/${l.id}`)}
               onRename={(l, name) => renameMut.mutate({ id: l.id, name })}
+              onImport={(l) => {
+                if (l.id === list.id) importInputRef.current?.click()
+                else { setPendingImportId(l.id); navigate(`/lists/${l.id}`) }
+              }}
+              onExport={async (l) => {
+                const items = await qc.fetchQuery({
+                  queryKey: queryKeys.listItems(l.id),
+                  queryFn: () => fetchListItems(l.id),
+                })
+                const csv = listItemsToCsv(items as ListItemWithGear[], categories)
+                downloadCsv(`${l.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`, csv)
+              }}
+              onShareToggle={(l) => updateList(l.id, { is_shared: !l.is_shared }).then(() => qc.invalidateQueries({ queryKey: queryKeys.lists() }))}
+              onDelete={(l) => setConfirmDeleteList(l)}
             />
 
             {/* Library panel — collapsible */}
@@ -522,16 +491,17 @@ function ListDetailInner({
       )}
 
       {/* Delete confirmation */}
-      {confirmDelete && (
+      {confirmDeleteList && (
         <TypedConfirmDialog
           title="Delete list"
-          message={`This will permanently delete "${list.name}" and all of its items. This cannot be undone.`}
+          message={`This will permanently delete "${confirmDeleteList.name}" and all of its items. This cannot be undone.`}
           confirmPhrase="delete"
           confirmLabel="Delete list"
-          onCancel={() => setConfirmDelete(false)}
+          onCancel={() => setConfirmDeleteList(null)}
           onConfirm={() => {
-            setConfirmDelete(false)
-            deleteListMut.mutate(list.id)
+            const target = confirmDeleteList
+            setConfirmDeleteList(null)
+            deleteListMut.mutate(target.id)
           }}
         />
       )}
