@@ -137,7 +137,6 @@ function ListDetailInner({
   const [creatingList, setCreatingList] = useState(false)
   const [newListDraft, setNewListDraft] = useState('')
   const [libraryCollapsed, setLibraryCollapsed] = useState(false)
-  const [weightCollapsed, setWeightCollapsed] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
 
   const list = lists.find((l) => l.id === listId)
@@ -215,6 +214,11 @@ function ListDetailInner({
 
   const reorderItemsMut = useMutation({
     mutationFn: reorderListItems,
+  })
+
+  const notesMut = useMutation({
+    mutationFn: (description: string) => updateList(listId, { description: description || null }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
   })
 
   const renameMut = useMutation({
@@ -457,27 +461,21 @@ function ListDetailInner({
             />
           )}
 
-          {/* Weight summary — collapsible */}
-          {listItems.length > 0 && (
-            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-              <button
-                onClick={() => setWeightCollapsed((v) => !v)}
-                className="flex w-full items-center gap-1.5 px-3 py-2 border-b border-gray-200 bg-gray-50 hover:bg-gray-100"
-              >
-                {weightCollapsed ? (
-                  <ChevronRight size={13} className="text-gray-400 shrink-0" />
-                ) : (
-                  <ChevronDown size={13} className="text-gray-400 shrink-0" />
-                )}
-                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Weight summary
-                </span>
-              </button>
-              {!weightCollapsed && (
+          {/* Notes + Weight summary — side by side, equal halves */}
+          <div className={`grid gap-4 ${listItems.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
+            <PanelCard title="Notes">
+              <NotesEditor
+                key={list.id}
+                initial={list.description ?? ''}
+                onSave={(v) => notesMut.mutate(v)}
+              />
+            </PanelCard>
+            {listItems.length > 0 && (
+              <PanelCard title="Weight summary">
                 <WeightTable items={listItems as ListItemWithGear[]} categories={categories} />
-              )}
-            </div>
-          )}
+              </PanelCard>
+            )}
+          </div>
 
           {/* Items grouped by category */}
           {listItems.length === 0 ? (
@@ -865,6 +863,43 @@ function ImportPreviewDialog({
         </div>
       </div>
     </div>
+  )
+}
+
+function PanelCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden flex flex-col">
+      <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</p>
+      </div>
+      <div className="flex-1 flex flex-col">{children}</div>
+    </div>
+  )
+}
+
+function NotesEditor({
+  initial,
+  onSave,
+}: {
+  initial: string
+  onSave: (description: string) => void
+}) {
+  const [draft, setDraft] = useState(initial)
+
+  function commit() {
+    const trimmed = draft.trim()
+    if (trimmed !== initial.trim()) onSave(trimmed)
+  }
+
+  return (
+    <textarea
+      value={draft}
+      maxLength={2000}
+      placeholder="Add notes about this packing list…"
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      className="flex-1 min-h-[8rem] w-full resize-none px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none"
+    />
   )
 }
 

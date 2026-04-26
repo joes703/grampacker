@@ -72,22 +72,25 @@ export default function SharePage() {
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-5xl px-4 py-10">
         {/* Header */}
-        <div className="mb-1">
-          <h1 className="text-2xl font-bold text-gray-900">{list.name}</h1>
-        </div>
-        {list.description && (
-          <p className="mb-6 text-sm text-gray-500">{list.description}</p>
-        )}
+        <h1 className="mb-6 text-2xl font-bold text-gray-900">{list.name}</h1>
 
-        {/* Weight summary */}
-        {items.length > 0 && (
-          <div className="mb-6">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-              Weight summary
-            </p>
-            <WeightTable items={items} categories={categories} />
-          </div>
-        )}
+        {/* Notes + Weight summary — side by side, equal halves (read-only) */}
+        <div className={`mb-6 grid gap-4 ${items.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
+          <SharedPanelCard title="Notes">
+            {list.description ? (
+              <p className="px-3 py-2 text-sm text-gray-700 whitespace-pre-line min-h-[8rem]">
+                {list.description}
+              </p>
+            ) : (
+              <p className="px-3 py-2 text-sm text-gray-400 italic min-h-[8rem]">No notes</p>
+            )}
+          </SharedPanelCard>
+          {items.length > 0 && (
+            <SharedPanelCard title="Weight summary">
+              <WeightTable items={items} categories={categories} />
+            </SharedPanelCard>
+          )}
+        </div>
 
         {/* Items grouped by category */}
         <div className="space-y-4">
@@ -104,6 +107,17 @@ export default function SharePage() {
           Made with grampacker
         </p>
       </div>
+    </div>
+  )
+}
+
+function SharedPanelCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden flex flex-col">
+      <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</p>
+      </div>
+      <div className="flex-1 flex flex-col">{children}</div>
     </div>
   )
 }
