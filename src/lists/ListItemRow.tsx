@@ -97,7 +97,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
           {item.is_consumable && <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />}
         </span>
         <span className="shrink-0 w-10 text-right tabular-nums text-xs text-gray-500">
-          ×{item.quantity}
+          {item.quantity}
         </span>
       </div>
     )
