@@ -42,6 +42,7 @@ import {
   createList,
   duplicateList,
   reorderCategories,
+  reorderLists,
   importCsvRowsToList,
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
@@ -187,6 +188,10 @@ function ListDetailInner({
       qc.invalidateQueries({ queryKey: queryKeys.lists() })
       navigate(`/lists/${created.id}`)
     },
+  })
+
+  const reorderListsMut = useMutation({
+    mutationFn: reorderLists,
   })
 
   const renameMut = useMutation({
@@ -361,6 +366,12 @@ function ListDetailInner({
               }}
               onDuplicate={(l) => duplicateMut.mutate(l)}
               onDelete={(l) => setConfirmDeleteList(l)}
+              onReorder={(orderedIds) => {
+                const byId = new Map(lists.map((l) => [l.id, l]))
+                const reordered = orderedIds.map((id) => byId.get(id)!).filter(Boolean)
+                qc.setQueryData(queryKeys.lists(), reordered)
+                reorderListsMut.mutate(reordered.map((l, i) => ({ id: l.id, sort_order: i })))
+              }}
             />
 
             {/* Library panel — collapsible */}

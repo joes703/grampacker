@@ -1,6 +1,16 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { CopyPlus, Download, MoreVertical, Plus, Trash2, Upload } from 'lucide-react'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { CopyPlus, Download, GripVertical, MoreVertical, Plus, Trash2, Upload } from 'lucide-react'
 import type { List } from '../lib/types'
 
 type RowActions = {
@@ -21,6 +31,7 @@ type Props = RowActions & {
   onCancelNew: () => void
   onSelect: (list: List) => void
   onRename: (list: List, name: string) => void
+  onReorder: (orderedIds: string[]) => void
 }
 
 export default function ListsBox({
@@ -38,7 +49,19 @@ export default function ListsBox({
   onExport,
   onDuplicate,
   onDelete,
+  onReorder,
 }: Props) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+  function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const oldIndex = lists.findIndex((l) => l.id === active.id)
+    const newIndex = lists.findIndex((l) => l.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    onReorder(arrayMove(lists, oldIndex, newIndex).map((l) => l.id))
+  }
+
   return (
     <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden">
       <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
@@ -49,19 +72,23 @@ export default function ListsBox({
         {lists.length === 0 ? (
           <p className="px-3 py-3 text-center text-xs text-gray-400 italic">No lists yet</p>
         ) : (
-          lists.map((list) => (
-            <ListsBoxRow
-              key={list.id}
-              list={list}
-              active={list.id === activeId}
-              onSelect={() => onSelect(list)}
-              onRename={(name) => onRename(list, name)}
-              onImport={() => onImport(list)}
-              onExport={() => onExport(list)}
-              onDuplicate={() => onDuplicate(list)}
-              onDelete={() => onDelete(list)}
-            />
-          ))
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={lists.map((l) => l.id)} strategy={verticalListSortingStrategy}>
+              {lists.map((list) => (
+                <ListsBoxRow
+                  key={list.id}
+                  list={list}
+                  active={list.id === activeId}
+                  onSelect={() => onSelect(list)}
+                  onRename={(name) => onRename(list, name)}
+                  onImport={() => onImport(list)}
+                  onExport={() => onExport(list)}
+                  onDuplicate={() => onDuplicate(list)}
+                  onDelete={() => onDelete(list)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 
@@ -123,6 +150,16 @@ function ListsBoxRow({
   const menuRef = useRef<HTMLDivElement>(null)
   const menuOpen = menuPos !== null
 
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: list.id })
+
   useEffect(() => {
     if (renaming) inputRef.current?.select()
   }, [renaming])
@@ -167,9 +204,15 @@ function ListsBoxRow({
     setRenaming(false)
   }
 
+  const sortableStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+
   if (renaming) {
     return (
-      <div className="px-2 py-1.5">
+      <div ref={setNodeRef} style={sortableStyle} className="px-2 py-1.5">
         <input
           ref={inputRef}
           value={draft}
@@ -187,14 +230,28 @@ function ListsBoxRow({
 
   return (
     <div
+      ref={setNodeRef}
+      style={sortableStyle}
       className={`group relative flex items-center transition-colors ${
         active ? 'bg-blue-50' : 'hover:bg-gray-50'
       }`}
     >
+      {/* Drag handle */}
+      <button
+        ref={setActivatorNodeRef as unknown as (node: HTMLButtonElement | null) => void}
+        {...listeners}
+        {...attributes}
+        className="cursor-grab touch-none px-1 py-1.5 text-gray-300 hover:text-gray-500 active:cursor-grabbing shrink-0"
+        tabIndex={-1}
+        aria-label="Drag to reorder list"
+      >
+        <GripVertical size={13} />
+      </button>
+
       <button
         onClick={onSelect}
         onDoubleClick={() => { setDraft(list.name); setRenaming(true) }}
-        className={`flex-1 min-w-0 text-left px-3 py-1.5 text-sm ${
+        className={`flex-1 min-w-0 text-left pr-3 py-1.5 text-sm ${
           active ? 'text-blue-700 font-medium' : 'text-gray-700'
         }`}
         title="Click to switch · double-click to rename"
