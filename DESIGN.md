@@ -9,17 +9,18 @@ This doc is the seed for the v2 implementation chat. It is not final — library
 ## Stack
 
 **Frontend**
-- React (TO VERIFY: latest stable)
-- TypeScript (TO VERIFY: latest stable)
-- Vite as the build tool (TO VERIFY: latest stable)
-- Tailwind CSS for styling (TO VERIFY: latest stable — note that v3→v4 was a breaking change; pin to v4+)
-- React Router for routing (TO VERIFY: latest stable)
-- TanStack Query for server state and caching (TO VERIFY: latest stable)
-- `@supabase/supabase-js` for the Supabase client (TO VERIFY: latest stable)
-- `dnd-kit` for drag-and-drop (TO VERIFY: latest stable)
-- `vaul` for the mobile bottom sheet (TO VERIFY: latest stable)
-- `papaparse` for CSV parsing (TO VERIFY: latest stable)
-- `vite-plugin-pwa` for PWA support (TO VERIFY: latest stable)
+- React 19.2.5
+- TypeScript 6.0.3 — see notes below
+- Vite 8.0.9 — see notes below
+- Tailwind CSS 4.2.0 — **config idiom changed from v3**; see notes below
+- React Router 7.14.2 — use **library mode** (not framework mode); see notes below
+- TanStack Query (`@tanstack/react-query`) 5.99.2
+- `@supabase/supabase-js` 2.103.3
+- `@dnd-kit/core` 6.3.1 — use the **legacy stable package**; see notes below
+- `vaul` 1.1.2 — for the mobile bottom sheet
+- `papaparse` 5.5.3 — CSV parsing; types in `@types/papaparse` (separate install)
+- `vite-plugin-pwa` 1.2.0 — PWA support
+- `fflate` 0.8.2 — client-side zip generation for data export (resolved open question; preferred over JSZip)
 
 **Backend**
 - Supabase (managed Postgres, Auth, Storage if needed)
@@ -31,11 +32,78 @@ This doc is the seed for the v2 implementation chat. It is not final — library
 - Domain: `grampacker.app`, registered via Cloudflare
 
 **Dev tooling**
-- ESLint + Prettier (TO VERIFY: current configs and recommended rulesets)
-- Vitest for unit tests (TO VERIFY: latest stable)
+- ESLint v9 + Prettier — **flat config format** (`eslint.config.js`, not `.eslintrc`); see notes below
+- Vitest 4.1.4 for unit tests
 - Playwright for end-to-end tests, if/when added
 
-**Version verification rule**: every library version above must be confirmed via web search at the start of the new chat. No version is final until it has been searched and confirmed against the current ecosystem. APIs and config formats change between major versions — verify the *current idioms*, not just the version string.
+**Version verification rule**: every library version above was confirmed via web search on 2026-04-25. APIs and config formats change between major versions — see the version notes section below before starting Phase 1.
+
+---
+
+## Version Notes (verified 2026-04-25)
+
+These are the idiom changes discovered during version verification that affect how we set things up. Read before starting Phase 1.
+
+### TypeScript 6.0
+- `strict: true` is now the **default** — no need to set it in `tsconfig.json` for a new project
+- Use `"moduleResolution": "bundler"` (not `"node"`) for Vite projects
+- `"target": "ES2020"` or higher — `"es5"` is removed
+- `"types": []` is the new default; global ambient types must be listed explicitly. **Vite projects must include `"types": ["vite/client"]`** — without it, `import.meta.env` and CSS side-effect imports both produce type errors
+- `esModuleInterop` is now always on and cannot be set to false
+- TypeScript 7.0 (Go-based compiler, 10x faster) is in beta — TS 6.0 is the last JS-based release; upgrade path will exist
+
+### Vite 8
+- Rolldown (Rust-based) replaces Rollup as the default bundler — 10–30x faster production builds
+- Plugin API is backward-compatible; our config should work as expected
+- No action required beyond installing 8.x
+
+### Tailwind CSS 4.2 — breaking config change from v3
+Old v3 idiom (do not use):
+```js
+// tailwind.config.js — gone
+// postcss.config.js — gone
+// @tailwind base; @tailwind components; @tailwind utilities; — gone
+```
+New v4 idiom:
+```ts
+// vite.config.ts
+import tailwindcss from '@tailwindcss/vite'
+export default defineConfig({ plugins: [tailwindcss()] })
+```
+```css
+/* src/index.css */
+@import "tailwindcss";
+/* Custom tokens via @theme {} blocks, not JS config */
+```
+Install: `npm i -D tailwindcss @tailwindcss/vite`
+
+### React Router 7
+v7 merged with Remix and has two modes. **We use library mode** (no `react-router.config.ts`):
+- Works exactly like v6 — `<BrowserRouter>`, `<Routes>`, `<Route>`, `useNavigate`, etc.
+- No SSR, no build-time rendering, just client-side routing — perfect for Cloudflare Pages static hosting
+- Framework mode (the other mode) is Remix-style, has `ssr: false` SPA option, but has more ceremony and some rough edges in pure-SPA scenarios; not needed here
+
+### dnd-kit
+The library is in architectural transition:
+- `@dnd-kit/core` v6.3.1: stable, well-documented, last published ~1 year ago — **use this**
+- `@dnd-kit/react` v0.4.0: new architecture, actively developed, but pre-1.0 and not yet production-ready per the maintainer
+- Re-evaluate `@dnd-kit/react` if it hits 1.0 before we start Phase 3 (drag-and-drop is Phase 2–3 work)
+
+### ESLint v9 flat config
+`.eslintrc.*` files are gone. Config is now `eslint.config.js` exporting an array:
+```js
+// eslint.config.js
+import tseslint from 'typescript-eslint'
+import prettierConfig from 'eslint-config-prettier'
+export default tseslint.config(
+  ...tseslint.configs.recommended,
+  prettierConfig,          // must be last — disables formatting rules
+)
+```
+Install: `npm i -D eslint typescript-eslint prettier eslint-config-prettier`
+
+### Zip library (open question resolved)
+Use **fflate** v0.8.2 for client-side zip generation. Faster than JSZip, modern streaming API, works well in browsers and PWAs. For our data export volumes (small files) the performance difference is academic, but fflate is the better-maintained library.
 
 ---
 
@@ -549,7 +617,7 @@ Things deliberately not decided here, to be resolved in the new chat:
 
 1. **Default categories: trigger vs. client-side seeding.** Trigger is more atomic; client is easier to debug. Lean client.
 2. **PWA install prompt UX.** Browser default vs. custom. Recommend browser default for v1.
-3. **Data export `account.json` format and zip generation.** v1 generates a zip server-side; in v2 we do it client-side with a zip library (TO VERIFY: which library is current). The data is the user's own — no privacy issue with client-side generation.
+3. **Data export `account.json` format and zip generation.** v1 generates a zip server-side; in v2 we do it client-side. Use **fflate** v0.8.2 (resolved — see Version Notes). The data is the user's own — no privacy issue with client-side generation.
 4. **Whether to add tests as we go or in a dedicated phase.** Recommend: pure functions get tests during their phase (csv.ts, weight.ts); component tests only for genuinely tricky components.
 
 ## Decisions Locked In
@@ -569,8 +637,8 @@ The new chat starts with three documents:
 3. A short kickoff prompt (context, model strategy, version verification rule)
 
 The new chat's first job is **not** to write code. It's to:
-1. Web-search and confirm current versions for every library marked TO VERIFY
-2. Update this document with confirmed versions
+1. ~~Web-search and confirm current versions for every library marked TO VERIFY~~ ✓ Done 2026-04-25
+2. ~~Update this document with confirmed versions~~ ✓ Done 2026-04-25
 3. Then begin Phase 1
 
 Model strategy in the new chat:
