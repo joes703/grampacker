@@ -16,7 +16,8 @@ import {
   ChevronDown,
   ChevronRight,
   GripVertical,
-  PackageCheck,
+  PanelLeftClose,
+  PanelLeftOpen,
   RotateCcw,
   X,
 } from 'lucide-react'
@@ -47,7 +48,7 @@ import ListsBox from './ListsBox'
 import ListsEmptyState from './ListsEmptyState'
 import TypedConfirmDialog from '../components/TypedConfirmDialog'
 
-type Tab = 'items' | 'pack'
+type Mode = 'edit' | 'pack'
 
 export default function ListDetailPage() {
   const { id: routeId } = useParams<{ id?: string }>()
@@ -99,7 +100,8 @@ function ListDetailInner({
   qc: ReturnType<typeof useQueryClient>
   navigate: ReturnType<typeof useNavigate>
 }) {
-  const [tab, setTab] = useState<Tab>('items')
+  const [mode, setMode] = useState<Mode>('edit')
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [importPreview, setImportPreview] = useState<ListImportRow[] | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
@@ -271,7 +273,21 @@ function ListDetailInner({
     <div className="flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-center gap-3">
+        <button
+          onClick={() => setSidebarOpen((v) => !v)}
+          title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+          className="hidden lg:inline-flex rounded p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+        >
+          {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+        </button>
         <h1 className="flex-1 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
+
+        {/* Mode toggle (pill) */}
+        <div className="inline-flex rounded-full border border-gray-300 bg-gray-50 p-0.5 text-sm">
+          <ModeBtn active={mode === 'edit'} onClick={() => setMode('edit')}>Edit</ModeBtn>
+          <ModeBtn active={mode === 'pack'} onClick={() => setMode('pack')}>Pack mode</ModeBtn>
+        </div>
+
         {list.is_shared && (
           <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
             Shared · {list.share_token}
@@ -288,20 +304,10 @@ function ListDetailInner({
         onChange={handleImportFile}
       />
 
-      {/* Tab bar */}
-      <div className="flex items-center gap-1 border-b border-gray-200">
-        <TabBtn active={tab === 'items'} onClick={() => setTab('items')}>
-          <BookOpen size={14} /> Items
-        </TabBtn>
-        <TabBtn active={tab === 'pack'} onClick={() => setTab('pack')}>
-          <PackageCheck size={14} /> Pack
-        </TabBtn>
-      </div>
-
-      {/* ── Items tab — two-column grid ── */}
-      {tab === 'items' && (
-        <div className="flex gap-4 items-start">
-          {/* LEFT column — Lists box (always visible) + Library panel (collapsible) */}
+      {/* Two-column grid (sidebar can be collapsed) */}
+      <div className="flex gap-4 items-start">
+        {/* LEFT column — Lists box (always visible) + Library panel (collapsible). Hidden when sidebar is closed on desktop. */}
+        {sidebarOpen && (
           <aside
             className="hidden lg:flex w-72 shrink-0 flex-col gap-4 sticky self-start"
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
@@ -364,93 +370,94 @@ function ListDetailInner({
               )}
             </div>
           </aside>
+        )}
 
-          {/* RIGHT column — weight table + items */}
-          <div className="flex-1 min-w-0 space-y-4">
-            {/* Mobile: Add from library button */}
-            <div className="lg:hidden">
-              <button
-                onClick={() => setSheetOpen(true)}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
-              >
-                <BookOpen size={14} /> Add from library
-              </button>
-            </div>
-
-            {/* Weight summary — collapsible */}
-            {listItems.length > 0 && (
-              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-                <button
-                  onClick={() => setWeightCollapsed((v) => !v)}
-                  className="flex w-full items-center gap-1.5 px-3 py-2 border-b border-gray-200 bg-gray-50 hover:bg-gray-100"
-                >
-                  {weightCollapsed ? (
-                    <ChevronRight size={13} className="text-gray-400 shrink-0" />
-                  ) : (
-                    <ChevronDown size={13} className="text-gray-400 shrink-0" />
-                  )}
-                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Weight summary
-                  </span>
-                </button>
-                {!weightCollapsed && (
-                  <WeightTable items={listItems as ListItemWithGear[]} categories={categories} />
-                )}
-              </div>
-            )}
-
-            {/* Items grouped by category */}
-            {listItems.length === 0 ? (
-              <div className="flex h-32 items-center justify-center rounded-xl border-2 border-dashed border-gray-200">
-                <p className="text-sm text-gray-400">No items — add from your gear library</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
-                  <SortableContext
-                    items={grouped.filter((g) => g.category !== null).map((g) => g.category!.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {grouped
-                      .filter((g) => g.category !== null)
-                      .map((group) => (
-                        <SortableListCategoryGroup
-                          key={group.category!.id}
-                          id={group.category!.id}
-                          name={group.category!.name}
-                          items={group.items}
-                          onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
-                          onDelete={(itemId) => deleteMut.mutate(itemId)}
-                        />
-                      ))}
-                  </SortableContext>
-                </DndContext>
-                {grouped
-                  .filter((g) => g.category === null)
-                  .map((group) => (
-                    <ListCategoryGroup
-                      key="__uncategorised__"
-                      name="Uncategorised"
-                      items={group.items}
-                      onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
-                      onDelete={(itemId) => deleteMut.mutate(itemId)}
-                    />
-                  ))}
-              </div>
-            )}
+        {/* RIGHT column — weight table + items (always visible; packing checkbox column appears in pack mode) */}
+        <div className="flex-1 min-w-0 space-y-4">
+          {/* Mobile: Add from library button */}
+          <div className="lg:hidden">
+            <button
+              onClick={() => setSheetOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+            >
+              <BookOpen size={14} /> Add from library
+            </button>
           </div>
-        </div>
-      )}
 
-      {/* ── Pack tab ── */}
-      {tab === 'pack' && (
-        <PackingView
-          items={listItems}
-          grouped={grouped}
-          onToggle={(itemId, packed) => updateMut.mutate({ itemId, patch: { is_packed: packed } })}
-          onReset={resetPacked}
-        />
-      )}
+          {/* Pack-mode progress bar */}
+          {mode === 'pack' && listItems.length > 0 && (
+            <PackingProgress
+              total={listItems.length}
+              packed={listItems.filter((i) => i.is_packed).length}
+              onReset={resetPacked}
+            />
+          )}
+
+          {/* Weight summary — collapsible */}
+          {listItems.length > 0 && (
+            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+              <button
+                onClick={() => setWeightCollapsed((v) => !v)}
+                className="flex w-full items-center gap-1.5 px-3 py-2 border-b border-gray-200 bg-gray-50 hover:bg-gray-100"
+              >
+                {weightCollapsed ? (
+                  <ChevronRight size={13} className="text-gray-400 shrink-0" />
+                ) : (
+                  <ChevronDown size={13} className="text-gray-400 shrink-0" />
+                )}
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Weight summary
+                </span>
+              </button>
+              {!weightCollapsed && (
+                <WeightTable items={listItems as ListItemWithGear[]} categories={categories} />
+              )}
+            </div>
+          )}
+
+          {/* Items grouped by category */}
+          {listItems.length === 0 ? (
+            <div className="flex h-32 items-center justify-center rounded-xl border-2 border-dashed border-gray-200">
+              <p className="text-sm text-gray-400">No items — add from your gear library</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
+                <SortableContext
+                  items={grouped.filter((g) => g.category !== null).map((g) => g.category!.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {grouped
+                    .filter((g) => g.category !== null)
+                    .map((group) => (
+                      <SortableListCategoryGroup
+                        key={group.category!.id}
+                        id={group.category!.id}
+                        name={group.category!.name}
+                        items={group.items}
+                        packMode={mode === 'pack'}
+                        onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
+                        onDelete={(itemId) => deleteMut.mutate(itemId)}
+                      />
+                    ))}
+                </SortableContext>
+              </DndContext>
+              {grouped
+                .filter((g) => g.category === null)
+                .map((group) => (
+                  <ListCategoryGroup
+                    key="__uncategorised__"
+                    name="Uncategorised"
+                    items={group.items}
+                    packMode={mode === 'pack'}
+                    onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
+                    onDelete={(itemId) => deleteMut.mutate(itemId)}
+                  />
+                ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Mobile sheet */}
       <LibrarySheet
@@ -514,13 +521,15 @@ function ListDetailInner({
 type GroupProps = {
   name: string
   items: ListItemWithGear[]
+  packMode: boolean
   onUpdate: (itemId: string, patch: Parameters<typeof updateListItem>[1]) => void
   onDelete: (itemId: string) => void
   dragHandle?: React.ReactNode
 }
 
-function ListCategoryGroup({ name, items, onUpdate, onDelete, dragHandle }: GroupProps) {
+function ListCategoryGroup({ name, items, packMode, onUpdate, onDelete, dragHandle }: GroupProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const packedCount = items.filter((i) => i.is_packed).length
 
   return (
     <div>
@@ -536,7 +545,9 @@ function ListCategoryGroup({ name, items, onUpdate, onDelete, dragHandle }: Grou
             <ChevronDown size={14} className="text-gray-400 shrink-0" />
           )}
           <span className="flex-1 text-sm font-medium text-gray-700">{name}</span>
-          <span className="text-xs text-gray-400">{items.length}</span>
+          <span className="text-xs text-gray-400">
+            {packMode ? `${packedCount} / ${items.length}` : items.length}
+          </span>
         </button>
       </div>
       {!collapsed && (
@@ -545,6 +556,7 @@ function ListCategoryGroup({ name, items, onUpdate, onDelete, dragHandle }: Grou
             <ListItemRow
               key={item.id}
               item={item}
+              packMode={packMode}
               onUpdate={(patch) => onUpdate(item.id, patch)}
               onDelete={() => onDelete(item.id)}
             />
@@ -590,92 +602,45 @@ function SortableListCategoryGroup(props: GroupProps & { id: string }) {
   )
 }
 
-function PackingView({
-  items,
-  grouped,
-  onToggle,
+function PackingProgress({
+  total,
+  packed,
   onReset,
 }: {
-  items: ListItemWithGear[]
-  grouped: { category: { name: string; id: string } | null; items: ListItemWithGear[] }[]
-  onToggle: (itemId: string, packed: boolean) => void
+  total: number
+  packed: number
   onReset: () => void
 }) {
-  const total = items.length
-  const packed = items.filter((i) => i.is_packed).length
   const pct = total === 0 ? 0 : Math.round((packed / total) * 100)
   const done = packed === total && total > 0
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-gray-700">
-            {packed} / {total} packed
-          </span>
-          <div className="flex items-center gap-2">
-            {done && (
-              <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                All packed!
-              </span>
-            )}
-            <button
-              onClick={onReset}
-              disabled={packed === 0}
-              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40"
-            >
-              <RotateCcw size={12} /> Reset
-            </button>
-          </div>
-        </div>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-          <div
-            className={`h-2 rounded-full transition-all ${done ? 'bg-green-500' : 'bg-blue-500'}`}
-            style={{ width: `${pct}%` }}
-          />
+    <div className="rounded-xl border border-gray-200 bg-white p-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-gray-700">
+          {packed} / {total} packed
+        </span>
+        <div className="flex items-center gap-2">
+          {done && (
+            <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+              All packed!
+            </span>
+          )}
+          <button
+            onClick={onReset}
+            disabled={packed === 0}
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40"
+          >
+            <RotateCcw size={12} /> Reset
+          </button>
         </div>
       </div>
-
-      {grouped.map((group) => (
-        <div key={group.category?.id ?? '__uncategorised__'}>
-          <p className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
-            {group.category?.name ?? 'Uncategorised'}
-          </p>
-          <div className="space-y-1">
-            {group.items.map((item) => {
-              const name = item.gear_item?.name ?? '(deleted item)'
-              const label = item.quantity > 1 ? `${name} ×${item.quantity}` : name
-              return (
-                <label
-                  key={item.id}
-                  className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
-                    item.is_packed
-                      ? 'border-green-200 bg-green-50'
-                      : 'border-gray-100 bg-white hover:bg-gray-50'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={item.is_packed}
-                    onChange={(e) => onToggle(item.id, e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
-                  />
-                  <span
-                    className={`flex-1 min-w-0 truncate ${
-                      item.is_packed ? 'text-gray-400 line-through' : 'text-gray-800'
-                    }`}
-                  >
-                    {label}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-xs text-gray-400">
-                    {formatGrams(item.weight_grams * item.quantity)}
-                  </span>
-                </label>
-              )
-            })}
-          </div>
-        </div>
-      ))}
+      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+        <div
+          className={`h-2 rounded-full transition-all ${done ? 'bg-green-500' : 'bg-blue-500'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
     </div>
   )
 }
@@ -757,7 +722,7 @@ function ImportPreviewDialog({
   )
 }
 
-function TabBtn({
+function ModeBtn({
   active,
   onClick,
   children,
@@ -769,10 +734,10 @@ function TabBtn({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px ${
+      className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
         active
-          ? 'border-blue-600 text-blue-700'
-          : 'border-transparent text-gray-500 hover:text-gray-700'
+          ? 'bg-white text-gray-900 shadow-sm'
+          : 'text-gray-500 hover:text-gray-700'
       }`}
     >
       {children}
