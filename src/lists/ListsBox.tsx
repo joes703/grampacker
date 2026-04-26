@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Download, MoreVertical, Plus, Share2, Trash2, Upload } from 'lucide-react'
 import type { List } from '../lib/types'
 
@@ -116,9 +117,11 @@ function ListsBoxRow({
 }) {
   const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState(list.name)
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const menuOpen = menuPos !== null
 
   useEffect(() => {
     if (renaming) inputRef.current?.select()
@@ -127,13 +130,36 @@ function ListsBoxRow({
   useEffect(() => {
     if (!menuOpen) return
     function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
+      const t = e.target as Node
+      if (
+        menuRef.current && !menuRef.current.contains(t) &&
+        triggerRef.current && !triggerRef.current.contains(t)
+      ) {
+        setMenuPos(null)
       }
     }
+    function handleScroll() {
+      setMenuPos(null)
+    }
     document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    window.addEventListener('scroll', handleScroll, true)
+    window.addEventListener('resize', handleScroll)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('scroll', handleScroll, true)
+      window.removeEventListener('resize', handleScroll)
+    }
   }, [menuOpen])
+
+  function openMenu() {
+    if (!triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    const menuWidth = 176 // matches w-44
+    setMenuPos({
+      top: rect.bottom + 4,
+      left: Math.max(8, rect.right - menuWidth),
+    })
+  }
 
   function commit() {
     const trimmed = draft.trim()
@@ -176,37 +202,38 @@ function ListsBoxRow({
         <span className="truncate block">{list.name}</span>
       </button>
 
-      {/* 3-dot menu */}
-      <div className="relative shrink-0 pr-1" ref={menuRef}>
-        <button
-          onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v) }}
-          className="rounded p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-          aria-label="List options"
+      {/* 3-dot menu trigger */}
+      <button
+        ref={triggerRef}
+        onClick={(e) => { e.stopPropagation(); menuOpen ? setMenuPos(null) : openMenu() }}
+        className="shrink-0 mr-1 rounded p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+        aria-label="List options"
+      >
+        <MoreVertical size={14} />
+      </button>
+
+      {menuOpen && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-50 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+          style={{ top: menuPos.top, left: menuPos.left }}
         >
-          <MoreVertical size={14} />
-        </button>
-        {menuOpen && (
-          <div className="absolute right-0 top-7 z-30 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-md">
-            <MenuItem icon={<Upload size={13} />} onClick={() => { setMenuOpen(false); onImport() }}>
-              Import CSV
-            </MenuItem>
-            <MenuItem icon={<Download size={13} />} onClick={() => { setMenuOpen(false); onExport() }}>
-              Export CSV
-            </MenuItem>
-            <MenuItem icon={<Share2 size={13} />} onClick={() => { setMenuOpen(false); onShareToggle() }}>
-              {list.is_shared ? `Sharing: ${list.share_token}` : 'Share'}
-            </MenuItem>
-            <div className="my-1 border-t border-gray-100" />
-            <MenuItem
-              icon={<Trash2 size={13} />}
-              onClick={() => { setMenuOpen(false); onDelete() }}
-              danger
-            >
-              Delete
-            </MenuItem>
-          </div>
-        )}
-      </div>
+          <MenuItem icon={<Upload size={13} />} onClick={() => { setMenuPos(null); onImport() }}>
+            Import CSV
+          </MenuItem>
+          <MenuItem icon={<Download size={13} />} onClick={() => { setMenuPos(null); onExport() }}>
+            Export CSV
+          </MenuItem>
+          <MenuItem icon={<Share2 size={13} />} onClick={() => { setMenuPos(null); onShareToggle() }}>
+            {list.is_shared ? `Sharing: ${list.share_token}` : 'Share'}
+          </MenuItem>
+          <div className="my-1 border-t border-gray-100" />
+          <MenuItem icon={<Trash2 size={13} />} onClick={() => { setMenuPos(null); onDelete() }} danger>
+            Delete
+          </MenuItem>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }
