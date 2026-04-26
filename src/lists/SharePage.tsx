@@ -2,7 +2,7 @@ import { useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { fetchSharedList, fetchSharedListItems } from '../lib/queries'
 import WeightTable from './WeightTable'
-import { computeWeightRollup, formatTotalWeight } from '../lib/weight'
+import { computeWeightRollup, formatTotalWeight, formatGrams } from '../lib/weight'
 
 export default function SharePage() {
   const { token } = useParams<{ token: string }>()
@@ -102,7 +102,7 @@ export default function SharePage() {
                 {item.is_consumable && (
                   <span className="shrink-0 rounded-full bg-orange-100 px-1.5 py-0.5 text-xs text-orange-700">Consumable</span>
                 )}
-                <span className="shrink-0 tabular-nums text-gray-500">{item.weight_grams * item.quantity}g</span>
+                <span className="shrink-0 tabular-nums text-gray-500">{formatGrams(item.weight_grams * item.quantity)}</span>
               </div>
             )
           })}
