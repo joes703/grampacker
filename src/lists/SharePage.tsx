@@ -165,7 +165,7 @@ function SharedItemRow({ item }: { item: ListItemWithGear }) {
   const description = item.gear_item?.description ?? ''
 
   return (
-    <div className="flex items-center gap-1.5 rounded-lg border border-gray-100 bg-white px-3 py-0.5 text-sm">
+    <div className="flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-0.5 text-sm">
       {/* Name + description columns 1:2 */}
       <div className="flex-1 min-w-0 flex items-center gap-3">
         <span className="flex-1 min-w-0 truncate font-medium text-gray-900">{name}</span>
