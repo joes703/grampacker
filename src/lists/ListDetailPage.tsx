@@ -58,6 +58,8 @@ import TypedConfirmDialog from '../components/TypedConfirmDialog'
 
 type Mode = 'edit' | 'pack'
 
+const LAST_LIST_KEY = 'grampacker:lastListId'
+
 export default function ListDetailPage() {
   const { id: routeId } = useParams<{ id?: string }>()
   const navigate = useNavigate()
@@ -74,13 +76,22 @@ export default function ListDetailPage() {
   const listsByRecent = [...lists].sort(
     (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
   )
-  const fallbackList = listsByRecent[0]
 
-  // Redirect /lists → /lists/<most recent> when no route id is present
+  // Pick the redirect target: last list the user viewed (if it still exists), else most-recently-updated
+  const lastViewedId = typeof localStorage !== 'undefined' ? localStorage.getItem(LAST_LIST_KEY) : null
+  const lastViewed = lastViewedId ? lists.find((l) => l.id === lastViewedId) : null
+  const fallbackList = lastViewed ?? listsByRecent[0]
+
+  // Redirect /lists → /lists/<target> when no route id is present
   useEffect(() => {
     if (listsLoading) return
     if (!routeId && fallbackList) navigate(`/lists/${fallbackList.id}`, { replace: true })
   }, [routeId, fallbackList, listsLoading, navigate])
+
+  // Remember the currently viewed list so we can return to it next visit
+  useEffect(() => {
+    if (routeId) localStorage.setItem(LAST_LIST_KEY, routeId)
+  }, [routeId])
 
   // No id and no lists → empty state
   if (!routeId && !listsLoading && lists.length === 0) {
