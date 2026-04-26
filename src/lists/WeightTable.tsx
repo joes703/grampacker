@@ -7,7 +7,7 @@ type Props = {
 }
 
 function fmtG(grams: number): string {
-  return `${grams.toLocaleString()} g`
+  return `${grams} g`
 }
 
 function fmtLbOz(grams: number): string {

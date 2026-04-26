@@ -97,7 +97,7 @@ export default function GearItemRow({
           className="h-4 w-4 rounded border-gray-300 text-blue-600"
         />
       )}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 flex items-baseline gap-2 truncate">
         <InlineText
           value={item.name}
           onSave={(v) => onInlineSave({ name: v })}
@@ -108,7 +108,7 @@ export default function GearItemRow({
             value={item.description ?? ''}
             placeholder="Add description"
             onSave={(v) => onInlineSave({ description: v })}
-            className="block text-xs text-gray-500 mt-0.5"
+            className="min-w-0 text-xs text-gray-500"
           />
         )}
       </div>
