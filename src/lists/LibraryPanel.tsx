@@ -56,7 +56,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, o
       </div>
 
       {/* Category groups */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {groups.length === 0 && uncategorised.length === 0 ? (
           <p className="p-4 text-center text-xs text-gray-400 italic">
             {q ? 'No items found' : 'No gear items yet'}

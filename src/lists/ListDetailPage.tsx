@@ -18,6 +18,7 @@ import {
   Download,
   GripVertical,
   PackageCheck,
+  Plus,
   RotateCcw,
   Share2,
   Trash2,
@@ -279,6 +280,14 @@ function ListDetailInner({
         <h1 className="flex-1 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
 
         <button
+          onClick={() => setCreatingList(true)}
+          title="Create a new list"
+          className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          <Plus size={14} /> New list
+        </button>
+
+        <button
           onClick={() => importInputRef.current?.click()}
           title="Import list from CSV"
           className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
@@ -339,8 +348,8 @@ function ListDetailInner({
         <div className="flex gap-4 items-start">
           {/* LEFT column — Lists box (always visible) + Library panel (collapsible) */}
           <aside
-            className="hidden lg:flex w-72 shrink-0 flex-col gap-4 sticky"
-            style={{ top: '1rem', maxHeight: 'calc(100vh - 2rem)' }}
+            className="hidden lg:flex w-72 shrink-0 flex-col gap-4 sticky self-start"
+            style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
           >
             <ListsBox
               lists={lists}
@@ -517,7 +526,7 @@ function ListDetailInner({
         <TypedConfirmDialog
           title="Delete list"
           message={`This will permanently delete "${list.name}" and all of its items. This cannot be undone.`}
-          confirmPhrase={list.name}
+          confirmPhrase="delete"
           confirmLabel="Delete list"
           onCancel={() => setConfirmDelete(false)}
           onConfirm={() => {
