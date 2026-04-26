@@ -43,6 +43,7 @@ import {
   duplicateList,
   reorderCategories,
   reorderLists,
+  reorderListItems,
   importCsvRowsToList,
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
@@ -210,6 +211,10 @@ function ListDetailInner({
 
   const reorderListsMut = useMutation({
     mutationFn: reorderLists,
+  })
+
+  const reorderItemsMut = useMutation({
+    mutationFn: reorderListItems,
   })
 
   const renameMut = useMutation({
@@ -498,6 +503,20 @@ function ListDetailInner({
                         weightUnit={weightUnit}
                         onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
                         onDelete={(itemId) => deleteMut.mutate(itemId)}
+                        onReorderItems={(reorderedItems) => {
+                          // Re-assign each item's existing sort_order slot in the new order
+                          const slots = reorderedItems
+                            .map((i) => i.sort_order)
+                            .slice()
+                            .sort((a, b) => a - b)
+                          const updates = reorderedItems.map((i, idx) => ({ id: i.id, sort_order: slots[idx] }))
+                          // Optimistically reflect new ordering
+                          const byId = new Map(updates.map((u) => [u.id, u.sort_order]))
+                          qc.setQueryData(queryKeys.listItems(listId), (prev: ListItemWithGear[] | undefined) =>
+                            (prev ?? []).map((i) => byId.has(i.id) ? { ...i, sort_order: byId.get(i.id)! } : i),
+                          )
+                          reorderItemsMut.mutate(updates)
+                        }}
                       />
                     ))}
                 </SortableContext>
@@ -512,6 +531,18 @@ function ListDetailInner({
                     packMode={mode === 'pack'}
                     weightUnit={weightUnit}
                     onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
+                    onReorderItems={(reorderedItems) => {
+                      const slots = reorderedItems
+                        .map((i) => i.sort_order)
+                        .slice()
+                        .sort((a, b) => a - b)
+                      const updates = reorderedItems.map((i, idx) => ({ id: i.id, sort_order: slots[idx] }))
+                      const byId = new Map(updates.map((u) => [u.id, u.sort_order]))
+                      qc.setQueryData(queryKeys.listItems(listId), (prev: ListItemWithGear[] | undefined) =>
+                        (prev ?? []).map((i) => byId.has(i.id) ? { ...i, sort_order: byId.get(i.id)! } : i),
+                      )
+                      reorderItemsMut.mutate(updates)
+                    }}
                     onDelete={(itemId) => deleteMut.mutate(itemId)}
                   />
                 ))}
@@ -587,13 +618,25 @@ type GroupProps = {
   weightUnit: WeightUnit
   onUpdate: (itemId: string, patch: Parameters<typeof updateListItem>[1]) => void
   onDelete: (itemId: string) => void
+  onReorderItems: (orderedItems: ListItemWithGear[]) => void
   dragHandle?: React.ReactNode
 }
 
-function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDelete, dragHandle }: GroupProps) {
+function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDelete, onReorderItems, dragHandle }: GroupProps) {
   const [collapsed, setCollapsed] = useState(false)
   const packedCount = items.filter((i) => i.is_packed).length
   const totalGrams = items.reduce((s, i) => s + i.weight_grams * i.quantity, 0)
+
+  const itemSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+  function handleItemDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const oldIndex = items.findIndex((i) => i.id === active.id)
+    const newIndex = items.findIndex((i) => i.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    onReorderItems(arrayMove(items, oldIndex, newIndex))
+  }
 
   return (
     <div>
@@ -631,16 +674,20 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
       {/* Items + footer (footer is the row's "total" line, lined up under Weight) */}
       {!collapsed && (
         <div className="space-y-0.5 pl-2">
-          {items.map((item) => (
-            <ListItemRow
-              key={item.id}
-              item={item}
-              packMode={packMode}
-              weightUnit={weightUnit}
-              onUpdate={(patch) => onUpdate(item.id, patch)}
-              onDelete={() => onDelete(item.id)}
-            />
-          ))}
+          <DndContext sensors={itemSensors} collisionDetection={closestCenter} onDragEnd={handleItemDragEnd}>
+            <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+              {items.map((item) => (
+                <ListItemRow
+                  key={item.id}
+                  item={item}
+                  packMode={packMode}
+                  weightUnit={weightUnit}
+                  onUpdate={(patch) => onUpdate(item.id, patch)}
+                  onDelete={() => onDelete(item.id)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
           {!packMode && items.length > 0 && (
             <div className="flex items-center gap-2 px-3 py-1.5 text-xs">
               <div className="flex-1 min-w-0" />

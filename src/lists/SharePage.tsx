@@ -1,8 +1,10 @@
 import { useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { fetchSharedList, fetchSharedListItems } from '../lib/queries'
+import { Shirt, UtensilsCrossed } from 'lucide-react'
+import { fetchSharedList, fetchSharedListItems, fetchSharedListCategories } from '../lib/queries'
+import type { Category, ListItemWithGear } from '../lib/types'
+import { formatItemWeight } from '../lib/weight'
 import WeightTable from './WeightTable'
-import { computeWeightRollup, formatTotalWeight, formatGrams } from '../lib/weight'
 
 export default function SharePage() {
   const { token } = useParams<{ token: string }>()
@@ -19,15 +21,15 @@ export default function SharePage() {
     enabled: Boolean(list?.id),
   })
 
-  // Categories needed for WeightTable grouping — public RLS allows reading them
-  // since categories has no public policy, we fetch with the anon key which is fine
-  // for display (they're not sensitive). Actually categories are owner-only in RLS,
-  // so we won't have them on a public page — pass empty array and WeightTable will
-  // show "Uncategorised" for everything, which is acceptable.
+  // Fetch only the categories actually referenced by this list's items.
+  const categoryIds = [...new Set(
+    items.map((i) => i.gear_item?.category_id ?? null).filter((c): c is string => c !== null),
+  )]
+
   const { data: categories = [] } = useQuery({
-    queryKey: ['shared-categories'],
-    queryFn: async () => [],
-    enabled: false,
+    queryKey: ['shared-list-categories', list?.id, categoryIds.join(',')],
+    queryFn: () => fetchSharedListCategories(categoryIds),
+    enabled: Boolean(list?.id) && categoryIds.length > 0,
   })
 
   if (listLoading || itemsLoading) {
@@ -49,18 +51,26 @@ export default function SharePage() {
     )
   }
 
-  const rollup = computeWeightRollup(
-    items.map((i) => ({
-      weight_grams: i.weight_grams,
-      quantity: i.quantity,
-      is_worn: i.is_worn,
-      is_consumable: i.is_consumable,
-    })),
+  // Group items by category, ordered by category.sort_order; uncategorised last.
+  const catMap = new Map(categories.map((c) => [c.id, c]))
+  const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
+
+  type Group = { category: Category | null; items: ListItemWithGear[] }
+  const grouped: Group[] = sortedCats
+    .map((cat) => ({
+      category: cat,
+      items: items.filter((i) => i.gear_item?.category_id === cat.id),
+    }))
+    .filter((g) => g.items.length > 0)
+
+  const uncategorisedItems = items.filter(
+    (i) => !i.gear_item || i.gear_item.category_id === null || !catMap.has(i.gear_item.category_id),
   )
+  if (uncategorisedItems.length > 0) grouped.push({ category: null, items: uncategorisedItems })
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto max-w-2xl px-4 py-10">
+      <div className="mx-auto max-w-3xl px-4 py-10">
         {/* Header */}
         <div className="mb-1 flex items-baseline gap-3">
           <h1 className="text-2xl font-bold text-gray-900">{list.name}</h1>
@@ -69,49 +79,31 @@ export default function SharePage() {
           </span>
         </div>
         {list.description && (
-          <p className="mb-4 text-sm text-gray-500">{list.description}</p>
+          <p className="mb-6 text-sm text-gray-500">{list.description}</p>
         )}
 
-        {/* Summary stats */}
-        <div className="mb-6 flex flex-wrap gap-4 rounded-xl border border-gray-200 bg-white p-4">
-          <Stat label="Total" value={formatTotalWeight(rollup.totalGrams, 'g')} sub={formatTotalWeight(rollup.totalGrams, 'oz')} />
-          <Stat label="Base weight" value={formatTotalWeight(rollup.baseGrams, 'g')} sub={formatTotalWeight(rollup.baseGrams, 'oz')} highlight />
-          {rollup.wornGrams > 0 && (
-            <Stat label="Worn" value={formatTotalWeight(rollup.wornGrams, 'g')} sub={formatTotalWeight(rollup.wornGrams, 'oz')} />
-          )}
-          {rollup.consumableGrams > 0 && (
-            <Stat label="Consumable" value={formatTotalWeight(rollup.consumableGrams, 'g')} sub={formatTotalWeight(rollup.consumableGrams, 'oz')} />
-          )}
-          <Stat label="Items" value={String(items.length)} />
+        {/* Weight summary */}
+        {items.length > 0 && (
+          <div className="mb-6">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Weight summary
+            </p>
+            <WeightTable items={items} categories={categories} />
+          </div>
+        )}
+
+        {/* Items grouped by category */}
+        <div className="space-y-4">
+          {grouped.map((group) => (
+            <SharedCategoryGroup
+              key={group.category?.id ?? '__uncategorised__'}
+              name={group.category?.name ?? 'Uncategorised'}
+              items={group.items}
+            />
+          ))}
         </div>
 
-        {/* Item list */}
-        <div className="mb-6 space-y-1">
-          {items.map((item) => {
-            const name = item.gear_item?.name ?? '(deleted item)'
-            const label = item.quantity > 1 ? `${name} ×${item.quantity}` : name
-            return (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 rounded-lg bg-white px-3 py-2 text-sm border border-gray-100"
-              >
-                <span className="flex-1 min-w-0 truncate text-gray-800">{label}</span>
-                {item.is_worn && (
-                  <span className="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700">Worn</span>
-                )}
-                {item.is_consumable && (
-                  <span className="shrink-0 rounded-full bg-orange-100 px-1.5 py-0.5 text-xs text-orange-700">Consumable</span>
-                )}
-                <span className="shrink-0 tabular-nums text-gray-500">{formatGrams(item.weight_grams * item.quantity)}</span>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Weight table */}
-        <WeightTable items={items} categories={categories} />
-
-        <p className="mt-6 text-center text-xs text-gray-400">
+        <p className="mt-8 text-center text-xs text-gray-400">
           Made with grampacker
         </p>
       </div>
@@ -119,12 +111,76 @@ export default function SharePage() {
   )
 }
 
-function Stat({ label, value, sub, highlight }: { label: string; value: string; sub?: string; highlight?: boolean }) {
+function SharedCategoryGroup({ name, items }: { name: string; items: ListItemWithGear[] }) {
+  const totalGrams = items.reduce((s, i) => s + i.weight_grams * i.quantity, 0)
+
   return (
-    <div className={`flex flex-col ${highlight ? 'text-blue-700' : 'text-gray-700'}`}>
-      <span className="text-xs text-gray-400">{label}</span>
-      <span className="text-base font-semibold">{value}</span>
-      {sub && <span className="text-xs text-gray-400">{sub}</span>}
+    <div>
+      {/* Category header — also the column header */}
+      <div className="flex items-center gap-2 rounded-lg px-3 py-1.5 bg-gray-100 mb-1">
+        <span className="flex-1 min-w-0 truncate text-sm font-medium text-gray-700">{name}</span>
+        <span className="shrink-0 text-xs text-gray-400">({items.length})</span>
+        <div className="shrink-0 w-7" />
+        <div className="shrink-0 w-7" />
+        <div className="shrink-0 w-10 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+          Qty
+        </div>
+        <div className="shrink-0 w-16 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+          Weight
+        </div>
+      </div>
+
+      {/* Items */}
+      <div className="space-y-0.5 pl-2">
+        {items.map((item) => (
+          <SharedItemRow key={item.id} item={item} />
+        ))}
+        {/* Footer total */}
+        <div className="flex items-center gap-2 px-3 py-1.5 text-xs">
+          <div className="flex-1 min-w-0" />
+          <div className="shrink-0 w-7" />
+          <div className="shrink-0 w-7" />
+          <div className="shrink-0 w-10" />
+          <div className="shrink-0 w-16 text-right tabular-nums font-semibold text-gray-700">
+            {formatItemWeight(totalGrams, 'g')}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SharedItemRow({ item }: { item: ListItemWithGear }) {
+  const name = item.gear_item?.name ?? '(deleted item)'
+  const description = item.gear_item?.description ?? ''
+
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm">
+      {/* Name + description columns 1:2 */}
+      <div className="flex-1 min-w-0 flex items-center gap-3">
+        <span className="flex-1 min-w-0 truncate font-medium text-gray-900">{name}</span>
+        <span className="flex-[2] min-w-0 truncate text-xs text-gray-500">{description}</span>
+      </div>
+
+      {/* Worn status (display-only) */}
+      <span className="shrink-0 w-7 inline-flex items-center justify-center">
+        {item.is_worn && <Shirt size={14} className="text-purple-600" aria-label="Worn" />}
+      </span>
+
+      {/* Consumable status (display-only) */}
+      <span className="shrink-0 w-7 inline-flex items-center justify-center">
+        {item.is_consumable && <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />}
+      </span>
+
+      {/* Qty */}
+      <span className="shrink-0 w-10 text-right tabular-nums text-gray-600">
+        {item.quantity}
+      </span>
+
+      {/* Weight */}
+      <span className="shrink-0 w-16 text-right tabular-nums text-gray-600">
+        {formatItemWeight(item.weight_grams, 'g')}
+      </span>
     </div>
   )
 }

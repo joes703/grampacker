@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
-import { AlertTriangle, Shirt, Trash2, UtensilsCrossed } from 'lucide-react'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { AlertTriangle, GripVertical, Shirt, Trash2, UtensilsCrossed } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 
@@ -12,6 +14,21 @@ type Props = {
 }
 
 export default function ListItemRow({ item, weightUnit, packMode = false, onUpdate, onDelete }: Props) {
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id, disabled: packMode })
+
+  const sortableStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
   const [editingWeight, setEditingWeight] = useState(false)
   const [weightDraft, setWeightDraft] = useState(String(item.weight_grams))
   const weightInputRef = useRef<HTMLInputElement>(null)
@@ -49,10 +66,12 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
   const name = item.gear_item?.name ?? '(deleted item)'
   const description = item.gear_item?.description ?? ''
 
-  // Pack mode: simple checklist row, no column alignment needed
+  // Pack mode: checklist row — name, worn/consumable status, qty
   if (packMode) {
     return (
       <div
+        ref={setNodeRef}
+        style={sortableStyle}
         className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
           item.is_packed ? 'border-green-200 bg-green-50' : 'border-gray-100 bg-white'
         }`}
@@ -71,8 +90,14 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         >
           {name}
         </span>
-        <span className="shrink-0 tabular-nums text-gray-500 text-xs">
-          {formatItemWeight(item.weight_grams * item.quantity, weightUnit)}
+        <span className="shrink-0 w-7 inline-flex items-center justify-center">
+          {item.is_worn && <Shirt size={14} className="text-purple-600" aria-label="Worn" />}
+        </span>
+        <span className="shrink-0 w-7 inline-flex items-center justify-center">
+          {item.is_consumable && <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />}
+        </span>
+        <span className="shrink-0 w-10 text-right tabular-nums text-xs text-gray-500">
+          ×{item.quantity}
         </span>
       </div>
     )
@@ -80,7 +105,23 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
 
   // Normal (edit) row: aligned columns matching the category header
   return (
-    <div className="group relative flex items-center gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm">
+    <div
+      ref={setNodeRef}
+      style={sortableStyle}
+      className="group relative flex items-center gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm"
+    >
+      {/* Drag handle — appears on row hover at the left edge */}
+      <button
+        ref={setActivatorNodeRef as unknown as (node: HTMLButtonElement | null) => void}
+        {...listeners}
+        {...attributes}
+        tabIndex={-1}
+        aria-label="Drag to reorder"
+        className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full cursor-grab touch-none p-1 text-gray-300 hover:text-gray-500 active:cursor-grabbing opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+      >
+        <GripVertical size={14} />
+      </button>
+
       {/* Name + description as proportional columns — name : description = 1 : 2 */}
       <div className="flex-1 min-w-0 flex items-center gap-3">
         <span className="flex-1 min-w-0 truncate font-medium text-gray-900">{name}</span>
