@@ -50,8 +50,7 @@ export default function WeightTable({ items, categories }: Props) {
   if (items.length === 0) return null
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-      <table className="w-full text-sm text-gray-700">
+    <table className="w-full text-sm text-gray-700">
         <tbody className="divide-y divide-gray-50">
           {catRows.map((row) => (
             <tr key={row.name}>
@@ -87,7 +86,6 @@ export default function WeightTable({ items, categories }: Props) {
             <td className="py-0.5 px-3 text-right tabular-nums">{fmtLbOz(totalPackGrams)}</td>
           </tr>
         </tfoot>
-      </table>
-    </div>
+    </table>
   )
 }
