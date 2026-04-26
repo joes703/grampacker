@@ -72,8 +72,8 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
       <div
         ref={setNodeRef}
         style={sortableStyle}
-        className={`flex items-center gap-1.5 rounded-lg border px-3 py-0.5 text-sm transition-colors ${
-          item.is_packed ? 'border-green-200 bg-green-50' : 'border-gray-100 bg-white'
+        className={`flex items-center gap-1.5 border-b border-gray-100 px-3 py-0.5 text-sm transition-colors ${
+          item.is_packed ? 'bg-green-50' : 'bg-white'
         }`}
       >
         <input
@@ -108,7 +108,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
     <div
       ref={setNodeRef}
       style={sortableStyle}
-      className="group relative flex items-center gap-1.5 rounded-lg border border-gray-100 bg-white px-3 py-0.5 text-sm"
+      className="group relative flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-0.5 text-sm"
     >
       {/* Drag handle — appears on row hover at the left edge */}
       <button
