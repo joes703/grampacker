@@ -114,7 +114,7 @@ function SharedCategoryGroup({ name, items }: { name: string; items: ListItemWit
   return (
     <div>
       {/* Category header — also the column header */}
-      <div className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 bg-gray-100 mb-1">
+      <div className="flex items-center gap-1.5 rounded-lg px-3 py-1 bg-gray-100 mb-1">
         <span className="flex-1 min-w-0 truncate text-sm font-medium text-gray-700">{name}</span>
         <div className="shrink-0 w-7" />
         <div className="shrink-0 w-7" />
@@ -132,7 +132,7 @@ function SharedCategoryGroup({ name, items }: { name: string; items: ListItemWit
           <SharedItemRow key={item.id} item={item} />
         ))}
         {/* Footer total */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs">
+        <div className="flex items-center gap-1.5 px-3 py-1 text-xs">
           <div className="flex-1 min-w-0" />
           <div className="shrink-0 w-7" />
           <div className="shrink-0 w-7" />
@@ -151,7 +151,7 @@ function SharedItemRow({ item }: { item: ListItemWithGear }) {
   const description = item.gear_item?.description ?? ''
 
   return (
-    <div className="flex items-center gap-1.5 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm">
+    <div className="flex items-center gap-1.5 rounded-lg border border-gray-100 bg-white px-3 py-1 text-sm">
       {/* Name + description columns 1:2 */}
       <div className="flex-1 min-w-0 flex items-center gap-3">
         <span className="flex-1 min-w-0 truncate font-medium text-gray-900">{name}</span>
