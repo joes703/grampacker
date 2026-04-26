@@ -11,14 +11,17 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { createPortal } from 'react-dom'
 import {
   BookOpen,
   Check,
   ChevronDown,
   ChevronRight,
+  ClipboardList,
   Copy,
+  Globe,
   GripVertical,
-  Link2,
+  Lock,
   PanelLeftClose,
   PanelLeftOpen,
   RotateCcw,
@@ -37,6 +40,7 @@ import {
   updateList,
   deleteList,
   createList,
+  duplicateList,
   reorderCategories,
   importCsvRowsToList,
 } from '../lib/queries'
@@ -110,7 +114,6 @@ function ListDetailInner({
   const [importError, setImportError] = useState<string | null>(null)
   const [confirmDeleteList, setConfirmDeleteList] = useState<List | null>(null)
   const [pendingImportId, setPendingImportId] = useState<string | null>(null)
-  const [copiedShareUrl, setCopiedShareUrl] = useState(false)
   const [creatingList, setCreatingList] = useState(false)
   const [newListDraft, setNewListDraft] = useState('')
   const [libraryCollapsed, setLibraryCollapsed] = useState(false)
@@ -178,10 +181,12 @@ function ListDetailInner({
     },
   })
 
-  const setPrivacyMut = useMutation({
-    mutationFn: ({ id, isShared }: { id: string; isShared: boolean }) =>
-      updateList(id, { is_shared: isShared }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
+  const duplicateMut = useMutation({
+    mutationFn: (target: List) => duplicateList(target, userId, lists.length),
+    onSuccess: (created) => {
+      qc.invalidateQueries({ queryKey: queryKeys.lists() })
+      navigate(`/lists/${created.id}`)
+    },
   })
 
   const renameMut = useMutation({
@@ -292,59 +297,22 @@ function ListDetailInner({
         </button>
         <h1 className="flex-1 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
 
-        {/* Mode toggle (pill) */}
-        <div className="inline-flex rounded-full border border-gray-300 bg-gray-50 p-0.5 text-sm">
-          <ModeBtn active={mode === 'edit'} onClick={() => setMode('edit')}>Edit</ModeBtn>
-          <ModeBtn active={mode === 'pack'} onClick={() => setMode('pack')}>Pack mode</ModeBtn>
-        </div>
+        {/* Pack-mode toggle (icon) */}
+        <button
+          onClick={() => setMode(mode === 'pack' ? 'edit' : 'pack')}
+          title={mode === 'pack' ? 'Pack mode: on' : 'Pack mode: off'}
+          aria-pressed={mode === 'pack'}
+          className={`inline-flex items-center justify-center rounded-lg border p-1.5 ${
+            mode === 'pack'
+              ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+              : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          <ClipboardList size={16} />
+        </button>
 
-        {/* Privacy toggle (pill) */}
-        <div className="inline-flex rounded-full border border-gray-300 bg-gray-50 p-0.5 text-sm">
-          <ModeBtn
-            active={!list.is_shared}
-            onClick={() => list.is_shared && setPrivacyMut.mutate({ id: list.id, isShared: false })}
-          >
-            Private
-          </ModeBtn>
-          <ModeBtn
-            active={list.is_shared}
-            onClick={() => !list.is_shared && setPrivacyMut.mutate({ id: list.id, isShared: true })}
-          >
-            Public
-          </ModeBtn>
-        </div>
-
-        {/* Copy URL button — only when public */}
-        {list.is_shared && (() => {
-          const shareUrl = `${window.location.origin}/r/${list.share_token}`
-          return (
-            <button
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(shareUrl)
-                  setCopiedShareUrl(true)
-                  setTimeout(() => setCopiedShareUrl(false), 1500)
-                } catch {
-                  // ignore — clipboard not available
-                }
-              }}
-              title={shareUrl}
-              className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
-            >
-              {copiedShareUrl ? (
-                <>
-                  <Check size={12} className="text-green-600" /> Copied!
-                </>
-              ) : (
-                <>
-                  <Link2 size={12} />
-                  <span className="font-mono">/r/{list.share_token}</span>
-                  <Copy size={12} />
-                </>
-              )}
-            </button>
-          )
-        })()}
+        {/* Privacy toggle (icon + popover) */}
+        <PrivacyButton list={list} />
       </div>
 
       {/* Hidden file input — triggered by per-list Import menu action */}
@@ -391,6 +359,7 @@ function ListDetailInner({
                 const csv = listItemsToCsv(items as ListItemWithGear[], categories)
                 downloadCsv(`${l.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`, csv)
               }}
+              onDuplicate={(l) => duplicateMut.mutate(l)}
               onDelete={(l) => setConfirmDeleteList(l)}
             />
 
@@ -773,25 +742,130 @@ function ImportPreviewDialog({
   )
 }
 
-function ModeBtn({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
+function PrivacyButton({ list }: { list: List }) {
+  const qc = useQueryClient()
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
+  const [copied, setCopied] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const open = pos !== null
+
+  const toggleMut = useMutation({
+    mutationFn: () => updateList(list.id, { is_shared: !list.is_shared }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
+  })
+
+  function openPopover() {
+    if (!triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    setPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right })
+  }
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e: MouseEvent) {
+      const t = e.target as Node
+      if (
+        popoverRef.current && !popoverRef.current.contains(t) &&
+        triggerRef.current && !triggerRef.current.contains(t)
+      ) {
+        setPos(null)
+      }
+    }
+    function handleScroll() { setPos(null) }
+    document.addEventListener('mousedown', handleClick)
+    window.addEventListener('scroll', handleScroll, true)
+    window.addEventListener('resize', handleScroll)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('scroll', handleScroll, true)
+      window.removeEventListener('resize', handleScroll)
+    }
+  }, [open])
+
+  const shareUrl = `${window.location.origin}/r/${list.share_token}`
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        onClick={() => (open ? setPos(null) : openPopover())}
+        title={list.is_shared ? 'Public — click to manage' : 'Private — click to manage'}
+        aria-pressed={list.is_shared}
+        className={`inline-flex items-center justify-center rounded-lg border p-1.5 ${
+          list.is_shared
+            ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
+            : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+        }`}
+      >
+        {list.is_shared ? <Globe size={16} /> : <Lock size={16} />}
+      </button>
+
+      {open && pos && createPortal(
+        <div
+          ref={popoverRef}
+          className="fixed z-50 w-80 rounded-lg border border-gray-200 bg-white p-3 shadow-lg"
+          style={{ top: pos.top, right: pos.right }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-800">Public link</span>
+            <ToggleSwitch checked={list.is_shared} onChange={() => toggleMut.mutate()} />
+          </div>
+          {list.is_shared ? (
+            <>
+              <p className="text-xs text-gray-500 mb-2">Anyone with this link can view the list.</p>
+              <div className="flex gap-1">
+                <input
+                  readOnly
+                  value={shareUrl}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="flex-1 min-w-0 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-mono text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(shareUrl)
+                      setCopied(true)
+                      setTimeout(() => setCopied(false), 1500)
+                    } catch {
+                      // ignore — clipboard unavailable
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+                >
+                  {copied ? (
+                    <><Check size={12} className="text-green-600" /> Copied</>
+                  ) : (
+                    <><Copy size={12} /> Copy</>
+                  )}
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-gray-500">Toggle on to share this list with anyone via link.</p>
+          )}
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
+function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return (
     <button
-      onClick={onClick}
-      className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-        active
-          ? 'bg-white text-gray-900 shadow-sm'
-          : 'text-gray-500 hover:text-gray-700'
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+        checked ? 'bg-blue-600' : 'bg-gray-300'
       }`}
     >
-      {children}
+      <span
+        className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
+          checked ? 'translate-x-[18px]' : 'translate-x-0.5'
+        }`}
+      />
     </button>
   )
 }

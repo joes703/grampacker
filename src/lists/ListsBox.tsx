@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Download, MoreVertical, Plus, Trash2, Upload } from 'lucide-react'
+import { CopyPlus, Download, MoreVertical, Plus, Trash2, Upload } from 'lucide-react'
 import type { List } from '../lib/types'
 
 type RowActions = {
   onImport: (list: List) => void
   onExport: (list: List) => void
+  onDuplicate: (list: List) => void
   onDelete: (list: List) => void
 }
 
@@ -35,6 +36,7 @@ export default function ListsBox({
   onRename,
   onImport,
   onExport,
+  onDuplicate,
   onDelete,
 }: Props) {
   return (
@@ -56,6 +58,7 @@ export default function ListsBox({
               onRename={(name) => onRename(list, name)}
               onImport={() => onImport(list)}
               onExport={() => onExport(list)}
+              onDuplicate={() => onDuplicate(list)}
               onDelete={() => onDelete(list)}
             />
           ))
@@ -100,6 +103,7 @@ function ListsBoxRow({
   onRename,
   onImport,
   onExport,
+  onDuplicate,
   onDelete,
 }: {
   list: List
@@ -108,6 +112,7 @@ function ListsBoxRow({
   onRename: (name: string) => void
   onImport: () => void
   onExport: () => void
+  onDuplicate: () => void
   onDelete: () => void
 }) {
   const [renaming, setRenaming] = useState(false)
@@ -218,6 +223,9 @@ function ListsBoxRow({
           </MenuItem>
           <MenuItem icon={<Download size={13} />} onClick={() => { setMenuPos(null); onExport() }}>
             Export CSV
+          </MenuItem>
+          <MenuItem icon={<CopyPlus size={13} />} onClick={() => { setMenuPos(null); onDuplicate() }}>
+            Duplicate
           </MenuItem>
           <div className="my-1 border-t border-gray-100" />
           <MenuItem icon={<Trash2 size={13} />} onClick={() => { setMenuPos(null); onDelete() }} danger>
