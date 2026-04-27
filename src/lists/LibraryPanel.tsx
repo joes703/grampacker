@@ -159,11 +159,11 @@ function CategoryGroup({
 
       {/* Items */}
       {!collapsed && (
-        <div className="divide-y divide-gray-50">
+        <div>
           {items.map((item) => {
             const inList = listItemGearIds.has(item.id)
             return (
-              <div key={item.id} className="group relative">
+              <div key={item.id} className="group relative border-b border-gray-100">
                 <button
                   type="button"
                   onClick={() => (inList ? onRemove(item) : onAdd(item))}
@@ -197,7 +197,7 @@ function CategoryGroup({
                     type="button"
                     onClick={() => onRequestDelete(item)}
                     title="Delete from inventory"
-                    className="pointer-events-auto rounded p-0.5 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                    className="pointer-events-auto shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
                   >
                     <Trash2 size={13} />
                   </button>

@@ -26,7 +26,7 @@ export default function GearItemRow({
 }: Props) {
   return (
     <div
-      className={`flex items-center gap-2 rounded-lg px-3 py-0.5 text-sm ${
+      className={`flex items-center gap-2 border-b border-gray-100 px-3 py-0.5 text-sm ${
         selected ? 'bg-blue-50' : 'hover:bg-gray-50'
       }`}
     >
@@ -65,14 +65,14 @@ export default function GearItemRow({
           <button
             onClick={onEdit}
             title="Edit item"
-            className="rounded p-1 text-gray-400 hover:text-gray-700"
+            className="shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-gray-700"
           >
             <Pencil size={14} />
           </button>
           <button
             onClick={onDelete}
             title="Delete item"
-            className="rounded p-1 text-gray-400 hover:text-red-600"
+            className="shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-red-600"
           >
             <Trash2 size={14} />
           </button>

@@ -412,7 +412,7 @@ function ListDetailInner({
         {/* LEFT column — Lists box (always visible) + Library panel (collapsible). Hidden when sidebar is closed on desktop. */}
         {sidebarOpen && (
           <aside
-            className="hidden lg:flex w-72 shrink-0 flex-col gap-4 sticky self-start"
+            className="hidden lg:flex w-80 shrink-0 flex-col gap-4 sticky self-start"
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
           >
             <ListsBox
