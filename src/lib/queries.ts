@@ -328,12 +328,24 @@ export async function importCsvRowsToList(
     }
   }
 
-  // 2. Resolve/create gear items (match by name, case-insensitive)
-  const gearByName = new Map(existingGearItems.map((g) => [g.name.toLowerCase(), g]))
+  // 2. Resolve/create gear items (match by name, case-insensitive). We only
+  // need each gear's id downstream — track that, not the whole row, so the
+  // freshly-inserted partial selects don't have to be cast to a full GearItem.
+  type NewGearRow = {
+    user_id: string
+    name: string
+    description: string | null
+    weight_grams: number
+    category_id: string | null
+    sort_order: number
+  }
+  const gearIdByName = new Map<string, string>(
+    existingGearItems.map((g) => [g.name.toLowerCase(), g.id]),
+  )
 
-  const newGearRows: object[] = []
+  const newGearRows: NewGearRow[] = []
   for (const row of rows) {
-    if (!gearByName.has(row.name.toLowerCase())) {
+    if (!gearIdByName.has(row.name.toLowerCase())) {
       const categoryId = row.category.trim() ? (catByName.get(row.category.trim().toLowerCase()) ?? null) : null
       newGearRows.push({
         user_id: userId,
@@ -353,18 +365,18 @@ export async function importCsvRowsToList(
       .select('id, name')
     if (error) throw error
     for (const g of created) {
-      gearByName.set(g.name.toLowerCase(), g as GearItem)
+      gearIdByName.set(g.name.toLowerCase(), g.id)
     }
   }
 
   // 3. Add all rows to the list (gear_item_id is required; if a row had no name/match, skip it)
   const listItemRows = rows
     .map((row, i) => {
-      const gear = gearByName.get(row.name.toLowerCase())
-      if (!gear) return null
+      const gearId = gearIdByName.get(row.name.toLowerCase())
+      if (!gearId) return null
       return {
         list_id: listId,
-        gear_item_id: gear.id,
+        gear_item_id: gearId,
         quantity: row.quantity,
         is_worn: row.is_worn,
         is_consumable: row.is_consumable,
