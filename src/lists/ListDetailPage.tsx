@@ -463,7 +463,7 @@ function ListDetailInner({
                   onClick={() => navigate(`/gear?from=${list.id}`)}
                   className="text-xs text-blue-600 hover:text-blue-700"
                 >
-                  Manage →
+                  Manage
                 </button>
               </div>
               <div className="flex-1 overflow-hidden">
