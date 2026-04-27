@@ -157,7 +157,6 @@ function ListDetailInner({
   const [pendingImportId, setPendingImportId] = useState<string | null>(null)
   const [creatingList, setCreatingList] = useState(false)
   const [newListDraft, setNewListDraft] = useState('')
-  const [libraryCollapsed, setLibraryCollapsed] = useState(false)
   const {
     inputRef: importInputRef,
     onChange: handleImportFile,
@@ -491,24 +490,15 @@ function ListDetailInner({
               }}
             />
 
-            {/* Library panel — collapsible */}
+            {/* Library panel */}
             <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
-              <button
-                onClick={() => setLibraryCollapsed((v) => !v)}
-                className="flex items-center gap-1.5 px-3 py-2 border-b border-gray-200 bg-gray-50 hover:bg-gray-100"
-              >
-                {libraryCollapsed ? (
-                  <ChevronRight size={13} className="text-gray-400 shrink-0" />
-                ) : (
-                  <ChevronDown size={13} className="text-gray-400 shrink-0" />
-                )}
+              <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
                 <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Gear library
                 </span>
-              </button>
-              {!libraryCollapsed && (
-                <div className="flex-1 overflow-hidden">
-                  <LibraryPanel
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <LibraryPanel
                     gearItems={gearItems}
                     categories={categories}
                     listItemGearIds={listItemGearIds}
@@ -520,8 +510,7 @@ function ListDetailInner({
                     }}
                     onDelete={(item) => deleteGearItemMut.mutate(item.id)}
                   />
-                </div>
-              )}
+              </div>
             </div>
           </aside>
         )}
