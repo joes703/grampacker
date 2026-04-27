@@ -154,7 +154,7 @@ function CategoryGroup({
         <span className="flex-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
           {name}
         </span>
-        <span className="text-xs text-gray-400">{items.length}</span>
+        <span className="text-xs tabular-nums text-gray-400">{items.length}</span>
       </button>
 
       {/* Items */}

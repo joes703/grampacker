@@ -116,7 +116,7 @@ function CategorySectionInner(
         ) : (
           <span className="flex-1 text-sm font-medium text-gray-700 select-none">
             {name}
-            <span className="ml-1.5 text-xs font-normal text-gray-500">({items.length})</span>
+            <span className="ml-1.5 text-xs font-normal tabular-nums text-gray-500">({items.length})</span>
           </span>
         )}
 
