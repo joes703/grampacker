@@ -4,16 +4,19 @@ import { CSS } from '@dnd-kit/utilities'
 import { AlertTriangle, GripVertical, Shirt, Trash2, UtensilsCrossed } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
+import InlineText from '../components/InlineText'
 
 type Props = {
   item: ListItemWithGear
   weightUnit: WeightUnit
   packMode?: boolean
   onUpdate: (patch: Partial<Pick<ListItemWithGear, 'quantity' | 'weight_grams' | 'is_worn' | 'is_consumable' | 'is_packed'>>) => void
+  onSaveName?: (name: string) => void
+  onSaveDescription?: (description: string) => void
   onDelete: () => void
 }
 
-export default function ListItemRow({ item, weightUnit, packMode = false, onUpdate, onDelete }: Props) {
+export default function ListItemRow({ item, weightUnit, packMode = false, onUpdate, onSaveName, onSaveDescription, onDelete }: Props) {
   const {
     attributes,
     listeners,
@@ -124,8 +127,29 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
 
       {/* Name + description as proportional columns — name : description = 2 : 3 */}
       <div className="flex-1 min-w-0 flex items-center gap-3">
-        <span className="flex-[2] min-w-0 truncate font-medium text-gray-900">{name}</span>
-        <span className="flex-[3] min-w-0 truncate text-xs text-gray-500">{description}</span>
+        <div className="flex-[2] min-w-0">
+          {onSaveName ? (
+            <InlineText
+              value={name}
+              onSave={onSaveName}
+              className="block w-full truncate font-medium text-gray-900"
+            />
+          ) : (
+            <span className="block w-full truncate font-medium text-gray-400 italic">{name}</span>
+          )}
+        </div>
+        <div className="flex-[3] min-w-0">
+          {onSaveDescription ? (
+            <InlineText
+              value={description}
+              placeholder="Add description"
+              onSave={onSaveDescription}
+              className="block w-full truncate text-xs text-gray-500"
+            />
+          ) : (
+            <span className="block w-full truncate text-xs text-gray-500">{description}</span>
+          )}
+        </div>
       </div>
 
       {/* Worn (Shirt) */}
