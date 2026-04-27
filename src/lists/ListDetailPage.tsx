@@ -13,8 +13,6 @@ import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-ki
 import {
   BookOpen,
   ClipboardList,
-  PanelLeftClose,
-  PanelLeftOpen,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import {
@@ -126,7 +124,12 @@ function ListDetailInner({
   navigate: ReturnType<typeof useNavigate>
 }) {
   const [mode, setMode] = useState<Mode>('edit')
+  // Sidebar (Lists box + gear library panel) auto-collapses in pack mode so
+  // the user can focus on packing, and re-opens on return to edit mode.
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  useEffect(() => {
+    setSidebarOpen(mode !== 'pack')
+  }, [mode])
   const { weightUnit, toggleWeightUnit } = useWeightUnit()
   const [sheetOpen, setSheetOpen] = useState(false)
   const [importPreview, setImportPreview] = useState<ListImportRow[] | null>(null)
@@ -351,6 +354,9 @@ function ListDetailInner({
     <div className="flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-center gap-3">
+        {/* Manual sidebar toggle disabled — sidebar now auto-collapses in pack
+            mode (see effect above) and stays open in edit mode. To restore
+            manual toggling, uncomment this button and drop the effect.
         <button
           onClick={() => setSidebarOpen((v) => !v)}
           title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
@@ -358,6 +364,7 @@ function ListDetailInner({
         >
           {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
         </button>
+        */}
         <InlineTitle
           key={list.id}
           name={list.name}
@@ -451,7 +458,7 @@ function ListDetailInner({
                 <button
                   type="button"
                   onClick={() => navigate(`/gear?from=${list.id}`)}
-                  className="text-sm text-blue-600 hover:underline"
+                  className="text-xs text-blue-600 hover:text-blue-700"
                 >
                   Manage →
                 </button>
