@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Shirt, UtensilsCrossed, XCircle } from 'lucide-react'
 import RowIconButton from '../components/RowIconButton'
+import WeightInput from '../components/WeightInput'
 
 export type AddItemData = {
   name: string
@@ -22,7 +23,7 @@ type Props = {
 export default function AddItemRow({ onSubmit, onCancel }: Props) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [weight, setWeight] = useState('0')
+  const [weightGrams, setWeightGrams] = useState(0)
   const [quantity, setQuantity] = useState('1')
   const [worn, setWorn] = useState(false)
   const [consumable, setConsumable] = useState(false)
@@ -30,7 +31,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
   function commit() {
     const trimmed = name.trim()
     if (!trimmed) return
-    const w = Math.max(0, Math.min(parseInt(weight, 10) || 0, 100000))
+    const w = Math.max(0, Math.min(weightGrams, 100000))
     const q = Math.max(1, Math.min(parseInt(quantity, 10) || 1, 99))
     onSubmit({
       name: trimmed.slice(0, 256),
@@ -108,14 +109,12 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
         onKeyDown={handleKey}
         className="shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
       />
-      <input
-        type="number"
-        min={0}
-        max={100000}
-        value={weight}
-        onChange={(e) => setWeight(e.target.value)}
+      <WeightInput
+        grams={weightGrams}
+        onChange={setWeightGrams}
         onKeyDown={handleKey}
-        className="shrink-0 w-16 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
+        className="shrink-0 w-24"
+        inputClassName="flex-1 min-w-0 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
       />
 
       <RowIconButton
