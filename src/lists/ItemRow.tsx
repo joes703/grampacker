@@ -8,6 +8,7 @@ import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
+import WeightInput from '../components/WeightInput'
 
 // Single source of truth for a list item row. Used by both the authenticated
 // list detail view and the public share view. Editing affordances are gated
@@ -62,14 +63,14 @@ export default function ItemRow({
 }: Props) {
   const itemWeight = item.gear_item?.weight_grams ?? 0
   const [editingWeight, setEditingWeight] = useState(false)
-  const [weightDraft, setWeightDraft] = useState(String(itemWeight))
+  const [weightDraftGrams, setWeightDraftGrams] = useState(itemWeight)
   const weightInputRef = useRef<HTMLInputElement>(null)
 
   const [editingQty, setEditingQty] = useState(false)
   const [qtyDraft, setQtyDraft] = useState(String(item.quantity))
   const qtyInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { setWeightDraft(String(itemWeight)) }, [itemWeight])
+  useEffect(() => { setWeightDraftGrams(itemWeight) }, [itemWeight])
   useEffect(() => { setQtyDraft(String(item.quantity)) }, [item.quantity])
 
   useEffect(() => {
@@ -80,8 +81,7 @@ export default function ItemRow({
   }, [editingQty])
 
   function commitWeight() {
-    const parsed = parseInt(weightDraft, 10)
-    const clamped = isNaN(parsed) || parsed < 0 ? 0 : Math.min(parsed, 100000)
+    const clamped = Math.max(0, Math.min(weightDraftGrams, 100000))
     if (clamped !== itemWeight && onSaveWeight) onSaveWeight(clamped)
     setEditingWeight(false)
   }
@@ -237,30 +237,28 @@ export default function ItemRow({
 
       {/* Weight — clickable when editable, static otherwise */}
       {onSaveWeight && editingWeight ? (
-        <input
-          ref={weightInputRef}
-          type="number"
-          min={0}
-          max={100000}
-          value={weightDraft}
-          onChange={(e) => setWeightDraft(e.target.value)}
+        <WeightInput
+          inputRef={weightInputRef}
+          grams={weightDraftGrams}
+          onChange={setWeightDraftGrams}
           onBlur={commitWeight}
           onKeyDown={(e) => {
             if (e.key === 'Enter') commitWeight()
-            if (e.key === 'Escape') { setWeightDraft(String(itemWeight)); setEditingWeight(false) }
+            if (e.key === 'Escape') { setWeightDraftGrams(itemWeight); setEditingWeight(false) }
           }}
-          className="shrink-0 w-16 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
+          className="shrink-0 w-24"
+          inputClassName="flex-1 min-w-0 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
         />
       ) : onSaveWeight ? (
         <button
           onClick={() => setEditingWeight(true)}
           title="Click to edit weight"
-          className="shrink-0 w-16 text-right tabular-nums text-gray-600 hover:text-blue-600"
+          className="shrink-0 w-24 text-right tabular-nums text-gray-600 hover:text-blue-600"
         >
           {formatItemWeight(itemWeight, weightUnit)}
         </button>
       ) : (
-        <span className="shrink-0 w-16 text-right tabular-nums text-gray-600">
+        <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
           {formatItemWeight(itemWeight, weightUnit)}
         </span>
       )}

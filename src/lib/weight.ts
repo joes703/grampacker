@@ -1,9 +1,15 @@
 export type WeightUnit = 'g' | 'oz'
 
-const OZ_PER_GRAM = 0.035274
+const OZ_PER_GRAM = 0.035274 // 1 / 28.3495
 
-function gramsToOz(grams: number): number {
+export function gramsToOz(grams: number): number {
   return grams * OZ_PER_GRAM
+}
+
+// Inverse of gramsToOz. Returns a fractional gram value; callers that need
+// integer grams (storage / display rounding) should Math.round the result.
+export function ozToGrams(oz: number): number {
+  return oz / OZ_PER_GRAM
 }
 
 // Individual item weight (oz only, never compound lb+oz). Pass 'g' when the

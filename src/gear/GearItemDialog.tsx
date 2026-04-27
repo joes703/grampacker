@@ -2,6 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react'
 import { X } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
 import Modal from '../components/Modal'
+import WeightInput from '../components/WeightInput'
 
 type Props = {
   categories: Category[]
@@ -27,7 +28,7 @@ export default function GearItemDialog({
 }: Props) {
   const [name, setName] = useState(item?.name ?? '')
   const [description, setDescription] = useState(item?.description ?? '')
-  const [weightInput, setWeightInput] = useState(String(item?.weight_grams ?? 0))
+  const [weightGrams, setWeightGrams] = useState(item?.weight_grams ?? 0)
   const [categoryId, setCategoryId] = useState<string | null>(
     item?.category_id ?? defaultCategoryId,
   )
@@ -36,17 +37,16 @@ export default function GearItemDialog({
     // Reset form when item changes (e.g. switching between edit targets)
     setName(item?.name ?? '')
     setDescription(item?.description ?? '')
-    setWeightInput(String(item?.weight_grams ?? 0))
+    setWeightGrams(item?.weight_grams ?? 0)
     setCategoryId(item?.category_id ?? defaultCategoryId)
   }, [item, defaultCategoryId])
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    const weight = parseInt(weightInput, 10)
     onSave({
       name: name.trim(),
       description: description.trim() || null,
-      weight_grams: isNaN(weight) || weight < 0 ? 0 : Math.min(weight, 100000),
+      weight_grams: Math.max(0, Math.min(weightGrams, 100000)),
       category_id: categoryId,
     })
   }
@@ -93,18 +93,16 @@ export default function GearItemDialog({
             />
           </div>
           <div className="flex gap-4">
-            <div className="w-32">
+            <div className="w-40">
               <label htmlFor="gi-weight" className="block text-sm font-medium text-gray-700 mb-1">
-                Weight (g)
+                Weight
               </label>
-              <input
-                id="gi-weight"
-                type="number"
-                min={0}
-                max={100000}
-                value={weightInput}
-                onChange={(e) => setWeightInput(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <WeightInput
+                inputId="gi-weight"
+                grams={weightGrams}
+                onChange={setWeightGrams}
+                className="w-full"
+                inputClassName="flex-1 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div className="flex-1">

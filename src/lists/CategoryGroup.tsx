@@ -137,7 +137,7 @@ export default function CategoryGroup({
             <div className="shrink-0 w-12 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
               Qty
             </div>
-            <div className="shrink-0 w-16 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            <div className="shrink-0 w-24 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
               Weight
             </div>
             {showKebabSlot && <div className="shrink-0 w-7" />}
@@ -193,7 +193,7 @@ export default function CategoryGroup({
               <div className="shrink-0 w-7" />
               <div className="shrink-0 w-7" />
               <div className="shrink-0 w-12" />
-              <div className="shrink-0 w-16 text-right tabular-nums font-semibold text-gray-700">
+              <div className="shrink-0 w-24 text-right tabular-nums font-semibold text-gray-700">
                 {items.length > 0 ? formatItemWeight(totalGrams, weightUnit) : ''}
               </div>
               {showKebabSlot && <div className="shrink-0 w-7" />}
