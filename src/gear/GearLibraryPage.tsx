@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -33,11 +33,12 @@ import {
   bulkDeleteGearItems,
   bulkMoveToCategoryGearItems,
   createListFromSelection,
+  importGearItems,
 } from '../lib/queries'
 import type { Category, GearItem } from '../lib/types'
 import { getWeightUnit, setWeightUnit, formatItemWeight, type WeightUnit } from '../lib/weight'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
-import { supabase } from '../lib/supabase'
+import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
 import GearItemDialog from './GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -103,7 +104,8 @@ export default function GearLibraryPage() {
   function toggleCollapse(id: string) {
     setCollapsed((prev) => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }
@@ -111,7 +113,8 @@ export default function GearLibraryPage() {
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }
@@ -122,29 +125,17 @@ export default function GearLibraryPage() {
   }
 
   // ── CSV import/export ─────────────────────────────────────────────────────────
-  const importInputRef = useRef<HTMLInputElement>(null)
+  const { inputRef: importInputRef, onChange: handleImportFile } = useCsvFileInput<GearCsvRow>(
+    parseGearCsv,
+    {
+      onParsed: (rows) => setDialog({ type: 'import-preview', rows }),
+      onError: (message) => setDialog({ type: 'import-error', message }),
+    },
+  )
 
   function handleExport() {
     const csv = gearItemsToCsv(allItems, categories)
     downloadCsv('gear-library.csv', csv)
-  }
-
-  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!importInputRef.current) return
-    importInputRef.current.value = ''
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string
-      const result = parseGearCsv(text)
-      if (typeof result === 'string') {
-        setDialog({ type: 'import-error', message: result })
-      } else {
-        setDialog({ type: 'import-preview', rows: result })
-      }
-    }
-    reader.readAsText(file)
   }
 
   // ── Mutations ─────────────────────────────────────────────────────────────────
@@ -217,30 +208,7 @@ export default function GearLibraryPage() {
   })
 
   const importItems = useMutation({
-    mutationFn: async (rows: GearCsvRow[]) => {
-      // Resolve category names → ids, creating missing categories
-      const uniqueNames = [...new Set(rows.map((r) => r.category.trim()).filter(Boolean))]
-      const catByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.id]))
-
-      for (const name of uniqueNames) {
-        if (!catByName.has(name.toLowerCase())) {
-          const created = await createCategory(userId, name, categories.length + catByName.size)
-          catByName.set(name.toLowerCase(), created.id)
-        }
-      }
-
-      const items = rows.map((row, i) => ({
-        user_id: userId,
-        name: row.name.trim().slice(0, 256),
-        description: row.description ? row.description.slice(0, 2000) : null,
-        weight_grams: row.weight_grams,
-        category_id: row.category.trim() ? (catByName.get(row.category.trim().toLowerCase()) ?? null) : null,
-        sort_order: allItems.length + i,
-      }))
-
-      const { error } = await supabase.from('gear_items').insert(items)
-      if (error) throw error
-    },
+    mutationFn: (rows: GearCsvRow[]) => importGearItems(userId, rows, categories, allItems.length),
     onSuccess: () => { invalidateBoth(); setDialog(null) },
   })
 

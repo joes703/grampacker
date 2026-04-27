@@ -263,7 +263,7 @@ function ListsBoxRow({
       {/* 3-dot menu trigger */}
       <button
         ref={triggerRef}
-        onClick={(e) => { e.stopPropagation(); menuOpen ? setMenuPos(null) : openMenu() }}
+        onClick={(e) => { e.stopPropagation(); if (menuOpen) setMenuPos(null); else openMenu() }}
         className="shrink-0 mr-1 rounded p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100"
         aria-label="List options"
       >

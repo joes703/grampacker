@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import type { Category, GearItem, List, ListItem, ListItemWithGear } from './types'
 import { generateShareToken } from './share-token'
-import type { ListImportRow } from './csv'
+import type { GearCsvRow, ListImportRow } from './csv'
 
 export const queryKeys = {
   categories: () => ['categories'] as const,
@@ -171,12 +171,14 @@ export async function createList(
   userId: string,
   name: string,
   sortOrder: number,
+  description: string | null = null,
 ): Promise<List> {
   const { data, error } = await supabase
     .from('lists')
     .insert({
       user_id: userId,
       name,
+      description,
       sort_order: sortOrder,
       share_token: generateShareToken(),
     })
@@ -212,18 +214,7 @@ export async function createListFromSelection(
   gearItemIds: string[],
   sortOrder: number,
 ): Promise<List> {
-  const { data: newList, error: listErr } = await supabase
-    .from('lists')
-    .insert({
-      user_id: userId,
-      name,
-      description,
-      sort_order: sortOrder,
-      share_token: generateShareToken(),
-    })
-    .select()
-    .single()
-  if (listErr) throw listErr
+  const newList = await createList(userId, name, sortOrder, description)
 
   if (gearItemIds.length > 0) {
     const rows = gearItemIds.map((id, i) => ({
@@ -258,9 +249,16 @@ export async function duplicateList(source: List, userId: string, sortOrder: num
   if (itemsErr) throw itemsErr
 
   if (items.length > 0) {
-    const copies = items.map(({ id: _id, list_id: _lid, created_at: _ca, updated_at: _ua, ...rest }: ListItem) => ({
-      ...rest,
+    // Copy only the user-editable fields onto the new list. id / list_id /
+    // created_at / updated_at are owned by the database.
+    const copies = (items as ListItem[]).map((item) => ({
       list_id: newList.id,
+      gear_item_id: item.gear_item_id,
+      quantity: item.quantity,
+      is_worn: item.is_worn,
+      is_consumable: item.is_consumable,
+      is_packed: item.is_packed,
+      sort_order: item.sort_order,
     }))
     const { error: insertErr } = await supabase.from('list_items').insert(copies)
     if (insertErr) throw insertErr
@@ -275,6 +273,7 @@ export async function addGearItemToList(
   listId: string,
   gearItemId: string,
   sortOrder: number,
+  fields: Partial<Pick<ListItem, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed'>> = {},
 ): Promise<ListItem> {
   const { data, error } = await supabase
     .from('list_items')
@@ -282,6 +281,7 @@ export async function addGearItemToList(
       list_id: listId,
       gear_item_id: gearItemId,
       sort_order: sortOrder,
+      ...fields,
     })
     .select()
     .single()
@@ -375,6 +375,41 @@ export async function importCsvRowsToList(
 
   const { error: liErr } = await supabase.from('list_items').insert(listItemRows)
   if (liErr) throw liErr
+}
+
+// ── CSV gear import ───────────────────────────────────────────────────────────
+
+// Bulk-import gear items from CSV rows. Creates any categories that don't
+// exist yet (matched by name, case-insensitive), then inserts every row.
+export async function importGearItems(
+  userId: string,
+  rows: GearCsvRow[],
+  existingCategories: Category[],
+  currentItemCount: number,
+): Promise<void> {
+  const catByName = new Map(existingCategories.map((c) => [c.name.toLowerCase(), c.id]))
+
+  const uniqueNames = [...new Set(rows.map((r) => r.category.trim()).filter(Boolean))]
+  for (const name of uniqueNames) {
+    if (!catByName.has(name.toLowerCase())) {
+      const created = await createCategory(userId, name, existingCategories.length + catByName.size)
+      catByName.set(name.toLowerCase(), created.id)
+    }
+  }
+
+  const items = rows.map((row, i) => ({
+    user_id: userId,
+    name: row.name.trim().slice(0, 256),
+    description: row.description ? row.description.slice(0, 2000) : null,
+    weight_grams: row.weight_grams,
+    category_id: row.category.trim()
+      ? (catByName.get(row.category.trim().toLowerCase()) ?? null)
+      : null,
+    sort_order: currentItemCount + i,
+  }))
+
+  const { error } = await supabase.from('gear_items').insert(items)
+  if (error) throw error
 }
 
 // ── Default categories ────────────────────────────────────────────────────────
