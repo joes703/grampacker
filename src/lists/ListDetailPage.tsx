@@ -19,6 +19,9 @@ import {
   ChevronRight,
   ClipboardList,
   Copy,
+  Shirt,
+  UtensilsCrossed,
+  XCircle,
   Globe,
   GripVertical,
   Lock,
@@ -62,6 +65,15 @@ import ListsEmptyState from './ListsEmptyState'
 import TypedConfirmDialog from '../components/TypedConfirmDialog'
 
 type Mode = 'edit' | 'pack'
+
+type AddItemData = {
+  name: string
+  description: string | null
+  weight_grams: number
+  quantity: number
+  is_worn: boolean
+  is_consumable: boolean
+}
 
 const LAST_LIST_KEY = 'grampacker:lastListId'
 
@@ -249,15 +261,23 @@ function ListDetailInner({
   })
 
   // "+ Add new item" inside a category — creates a gear_item (so it lives in the
-  // gear library too), then adds it to this list under the same category.
+  // gear library too), then adds it to this list under the same category. The
+  // draft row in ListCategoryGroup collects all the fields up front.
   const addNewItemMut = useMutation({
-    mutationFn: async ({ categoryId, name }: { categoryId: string | null; name: string }) => {
+    mutationFn: async ({ categoryId, data }: { categoryId: string | null; data: AddItemData }) => {
       const newGear = await createGearItem(
         userId,
-        { name, description: null, weight_grams: 0, category_id: categoryId },
+        { name: data.name, description: data.description, weight_grams: data.weight_grams, category_id: categoryId },
         gearItems.length,
       )
-      await addGearItemToList(listId, newGear.id, listItems.length)
+      const newListItem = await addGearItemToList(listId, newGear.id, listItems.length)
+      if (data.quantity !== 1 || data.is_worn || data.is_consumable) {
+        await updateListItem(newListItem.id, {
+          quantity: data.quantity,
+          is_worn: data.is_worn,
+          is_consumable: data.is_consumable,
+        })
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
@@ -553,7 +573,7 @@ function ListDetailInner({
                         onSaveGearName={(gearId, n) => updateGearItemMut.mutate({ id: gearId, patch: { name: n } })}
                         onSaveGearDescription={(gearId, d) => updateGearItemMut.mutate({ id: gearId, patch: { description: d } })}
                         onSaveGearWeight={(gearId, w) => updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } })}
-                        onAddItem={(n) => addNewItemMut.mutate({ categoryId: group.category!.id, name: n })}
+                        onAddItem={(data) => addNewItemMut.mutate({ categoryId: group.category!.id, data })}
                         onReorderItems={(reorderedItems) => {
                           // Re-assign each item's existing sort_order slot in the new order
                           const slots = reorderedItems
@@ -589,7 +609,7 @@ function ListDetailInner({
                     onSaveGearName={(gearId, n) => updateGearItemMut.mutate({ id: gearId, patch: { name: n } })}
                     onSaveGearDescription={(gearId, d) => updateGearItemMut.mutate({ id: gearId, patch: { description: d } })}
                     onSaveGearWeight={(gearId, w) => updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } })}
-                    onAddItem={(n) => addNewItemMut.mutate({ categoryId: null, name: n })}
+                    onAddItem={(data) => addNewItemMut.mutate({ categoryId: null, data })}
                     onReorderItems={(reorderedItems) => {
                       const slots = reorderedItems
                         .map((i) => i.sort_order)
@@ -685,20 +705,12 @@ type GroupProps = {
   onSaveGearName: (gearItemId: string, name: string) => void
   onSaveGearDescription: (gearItemId: string, description: string) => void
   onSaveGearWeight: (gearItemId: string, weight_grams: number) => void
-  onAddItem: (name: string) => void
+  onAddItem: (data: AddItemData) => void
   dragHandle?: React.ReactNode
 }
 
 function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDelete, onReorderItems, onSaveGearName, onSaveGearDescription, onSaveGearWeight, onAddItem, dragHandle }: GroupProps) {
   const [adding, setAdding] = useState(false)
-  const [draft, setDraft] = useState('')
-
-  function commitAdd() {
-    const trimmed = draft.trim()
-    if (trimmed) onAddItem(trimmed)
-    setDraft('')
-    setAdding(false)
-  }
   const [collapsed, setCollapsed] = useState(false)
   const packedCount = items.filter((i) => i.is_packed).length
   const totalGrams = items.reduce((s, i) => s + (i.gear_item?.weight_grams ?? 0) * i.quantity, 0)
@@ -780,32 +792,23 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
             </SortableContext>
           </DndContext>
 
-          {/* Combined footer row — "+ Add new item" on the left, category total on the right.
-              Non-pack only; total cell stays empty when the category is empty. */}
-          {!packMode && (
+          {/* Draft row when adding — full editable item row */}
+          {!packMode && adding && (
+            <AddItemRow
+              onSubmit={(data) => { onAddItem(data); setAdding(false) }}
+              onCancel={() => setAdding(false)}
+            />
+          )}
+
+          {/* Footer row — "+ Add new item" on the left, category total on the right */}
+          {!packMode && !adding && (
             <div className="flex items-center gap-1.5 px-3 py-0.5 text-xs">
-              {adding ? (
-                <input
-                  autoFocus
-                  type="text"
-                  value={draft}
-                  placeholder="New item name"
-                  onChange={(e) => setDraft(e.target.value)}
-                  onBlur={() => { if (draft.trim()) commitAdd(); else { setDraft(''); setAdding(false) } }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') commitAdd()
-                    if (e.key === 'Escape') { setDraft(''); setAdding(false) }
-                  }}
-                  className="flex-1 min-w-0 rounded border border-blue-400 px-1 py-0.5 text-sm focus:outline-none"
-                />
-              ) : (
-                <button
-                  onClick={() => setAdding(true)}
-                  className="flex flex-1 min-w-0 items-center gap-1 text-left text-gray-400 hover:text-blue-600"
-                >
-                  <Plus size={12} /> Add new item
-                </button>
-              )}
+              <button
+                onClick={() => setAdding(true)}
+                className="flex flex-1 min-w-0 items-center gap-1 text-left text-gray-400 hover:text-blue-600"
+              >
+                <Plus size={12} /> Add new item
+              </button>
               <div className="shrink-0 w-7" />
               <div className="shrink-0 w-7" />
               <div className="shrink-0 w-12" />
@@ -1053,6 +1056,117 @@ function NotesEditor({
       onBlur={commit}
       className="flex-1 min-h-[8rem] w-full resize-none px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none"
     />
+  )
+}
+
+function AddItemRow({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (data: AddItemData) => void
+  onCancel: () => void
+}) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [weight, setWeight] = useState('0')
+  const [quantity, setQuantity] = useState('1')
+  const [worn, setWorn] = useState(false)
+  const [consumable, setConsumable] = useState(false)
+  const nameRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { nameRef.current?.focus() }, [])
+
+  function commit() {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    const w = Math.max(0, Math.min(parseInt(weight, 10) || 0, 100000))
+    const q = Math.max(1, Math.min(parseInt(quantity, 10) || 1, 99))
+    onSubmit({
+      name: trimmed.slice(0, 256),
+      description: description.trim() ? description.trim().slice(0, 2000) : null,
+      weight_grams: w,
+      quantity: q,
+      is_worn: worn,
+      is_consumable: consumable,
+    })
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') commit()
+    if (e.key === 'Escape') onCancel()
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 border-b border-gray-100 bg-blue-50/40 px-3 py-0.5 text-sm">
+      <div className="flex-1 min-w-0 flex items-center gap-3">
+        <input
+          ref={nameRef}
+          value={name}
+          placeholder="Item name"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={handleKey}
+          maxLength={256}
+          className="flex-[2] min-w-0 rounded border border-blue-400 px-1 py-0.5 text-sm font-medium focus:outline-none"
+        />
+        <input
+          value={description}
+          placeholder="Description (optional)"
+          onChange={(e) => setDescription(e.target.value)}
+          onKeyDown={handleKey}
+          maxLength={2000}
+          className="flex-[3] min-w-0 rounded border border-gray-200 px-1 py-0.5 text-xs focus:outline-none focus:border-blue-400"
+        />
+      </div>
+
+      <button
+        type="button"
+        onClick={() => { setWorn((v) => !v); if (!worn) setConsumable(false) }}
+        title="Worn"
+        className={`shrink-0 w-7 h-6 inline-flex items-center justify-center rounded ${
+          worn ? 'bg-purple-100 text-purple-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+        }`}
+      >
+        <Shirt size={14} />
+      </button>
+      <button
+        type="button"
+        onClick={() => { setConsumable((v) => !v); if (!consumable) setWorn(false) }}
+        title="Consumable"
+        className={`shrink-0 w-7 h-6 inline-flex items-center justify-center rounded ${
+          consumable ? 'bg-orange-100 text-orange-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+        }`}
+      >
+        <UtensilsCrossed size={14} />
+      </button>
+
+      <input
+        type="number"
+        min={1}
+        max={99}
+        value={quantity}
+        onChange={(e) => setQuantity(e.target.value)}
+        onKeyDown={handleKey}
+        className="shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
+      />
+      <input
+        type="number"
+        min={0}
+        max={100000}
+        value={weight}
+        onChange={(e) => setWeight(e.target.value)}
+        onKeyDown={handleKey}
+        className="shrink-0 w-16 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
+      />
+
+      <button
+        type="button"
+        onClick={onCancel}
+        title="Cancel"
+        className="shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
+      >
+        <XCircle size={14} />
+      </button>
+    </div>
   )
 }
 
