@@ -311,21 +311,12 @@ function ListDetailInner({
   })
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-  const itemSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
-  // Active list-item id during drag (for the DragOverlay).
-  const [activeItemId, setActiveItemId] = useState<string | null>(null)
-
-  function handleCategoryDragEnd(e: DragEndEvent) {
-    const { active, over } = e
-    if (!over || active.id === over.id) return
-    const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
-    const oldIndex = sortedCats.findIndex((c) => c.id === active.id)
-    const newIndex = sortedCats.findIndex((c) => c.id === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
-    const reordered = arrayMove(sortedCats, oldIndex, newIndex)
-    reorderCatsMut.mutate(reordered.map((c, i) => ({ id: c.id, sort_order: i })))
-  }
+  // Active drag id (item id OR category id). The DragOverlay below uses it to
+  // render an item-row clone during item drag; for category drag we render
+  // null so dnd-kit's default behaviour (the original element follows the
+  // cursor) applies.
+  const [activeId, setActiveId] = useState<string | null>(null)
 
   // Cross-category move: updates gear_items.category_id (global, propagates to
   // every list containing this gear item) and renumbers list_items.sort_order
@@ -382,40 +373,50 @@ function ListDetailInner({
     },
   })
 
-  function handleItemDragStart(e: DragStartEvent) {
-    setActiveItemId(String(e.active.id))
+  function handleDragStart(e: DragStartEvent) {
+    setActiveId(String(e.active.id))
   }
 
-  function handleItemDragCancel() {
-    setActiveItemId(null)
+  function handleDragCancel() {
+    setActiveId(null)
   }
 
-  // Page-level item drag handler. Branches on what the user dropped onto:
-  //   - empty/own category drop zone → no-op
-  //   - item in same category → sort_order reorder (existing behavior)
-  //   - item in different category, OR a category drop zone for a different
-  //     category → cross-category move via moveAcrossCategoriesMut.
-  function handleItemDragEnd(e: DragEndEvent) {
-    setActiveItemId(null)
+  // Single page-level drag handler. Branches on whether active.id is a
+  // category id (run the category-drag flow) or an item id (run the item-drag
+  // flow with same-cat sort vs cross-cat move logic).
+  function handleDragEnd(e: DragEndEvent) {
+    setActiveId(null)
     const { active, over } = e
     if (!over) return
     if (active.id === over.id) return
 
-    const activeItem = listItems.find((i) => i.id === active.id)
+    const activeIdStr = String(active.id)
+    const overIdStr = String(over.id)
+
+    // Category-drag branch: active.id is a category id.
+    if (categories.some((c) => c.id === activeIdStr)) {
+      const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
+      const oldIndex = sortedCats.findIndex((c) => c.id === activeIdStr)
+      const newIndex = sortedCats.findIndex((c) => c.id === overIdStr)
+      if (oldIndex === -1 || newIndex === -1) return
+      const reordered = arrayMove(sortedCats, oldIndex, newIndex)
+      reorderCatsMut.mutate(reordered.map((c, i) => ({ id: c.id, sort_order: i })))
+      return
+    }
+
+    // Item-drag branch.
+    const activeItem = listItems.find((i) => i.id === activeIdStr)
     if (!activeItem || !activeItem.gear_item) return
     const activeCat = activeItem.gear_item.category_id ?? null
     const gearItemId = activeItem.gear_item.id
 
-    const overId = String(over.id)
-    const parsedCat = parseCategoryDroppableId(overId)
-
+    const parsedCat = parseCategoryDroppableId(overIdStr)
     let destCat: string | null
     let overItemId: string | null = null
     if (parsedCat !== undefined) {
       destCat = parsedCat
     } else {
-      // over.id is an item id — find its category
-      overItemId = overId
+      overItemId = overIdStr
       const overItem = listItems.find((i) => i.id === overItemId)
       if (!overItem) return
       destCat = overItem.gear_item?.category_id ?? null
@@ -427,7 +428,7 @@ function ListDetailInner({
       const itemsInCat = listItems.filter(
         (i) => (i.gear_item?.category_id ?? null) === activeCat,
       )
-      const oldIndex = itemsInCat.findIndex((i) => i.id === active.id)
+      const oldIndex = itemsInCat.findIndex((i) => i.id === activeIdStr)
       const newIndex = itemsInCat.findIndex((i) => i.id === overItemId)
       if (oldIndex === -1 || newIndex === -1) return
       const reordered = arrayMove(itemsInCat, oldIndex, newIndex)
@@ -684,56 +685,58 @@ function ListDetailInner({
               },
             }
             // Flat item id list across all categories, in render order. The
-            // page-level <SortableContext> needs every draggable id registered;
+            // inner <SortableContext> needs every draggable id registered;
             // verticalListSortingStrategy handles cross-category visual shifts.
             const flatItemIds = grouped.flatMap((g) => g.items.map((i) => i.id))
-            const activeItem = activeItemId
-              ? listItems.find((i) => i.id === activeItemId)
+            const activeItem = activeId
+              ? listItems.find((i) => i.id === activeId)
               : null
             return (
               <div className="space-y-4">
                 <DndContext
-                  sensors={itemSensors}
+                  sensors={sensors}
                   collisionDetection={closestCenter}
-                  onDragStart={handleItemDragStart}
-                  onDragEnd={handleItemDragEnd}
-                  onDragCancel={handleItemDragCancel}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  onDragCancel={handleDragCancel}
                 >
-                  <SortableContext items={flatItemIds} strategy={verticalListSortingStrategy}>
-                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
-                      <SortableContext
-                        items={grouped.filter((g) => g.category !== null).map((g) => g.category!.id)}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        <div className="space-y-4">
-                          {grouped
-                            .filter((g) => g.category !== null)
-                            .map((group) => (
-                              <SortableCategoryGroup
-                                key={group.category!.id}
-                                id={group.category!.id}
-                                categoryId={group.category!.id}
-                                name={group.category!.name}
-                                items={group.items}
-                                {...sharedGroupProps}
-                                onAddItem={(data) => addNewItemMut.mutate({ categoryId: group.category!.id, data })}
-                              />
-                            ))}
-                        </div>
-                      </SortableContext>
-                    </DndContext>
-                    {grouped
-                      .filter((g) => g.category === null)
-                      .map((group) => (
-                        <CategoryGroup
-                          key="__uncategorised__"
-                          name="Uncategorised"
-                          categoryId={null}
-                          items={group.items}
-                          {...sharedGroupProps}
-                          onAddItem={(data) => addNewItemMut.mutate({ categoryId: null, data })}
-                        />
-                      ))}
+                  {/* Categories SortableContext is outer; items inner. With
+                      one DndContext, every useSortable inside reads the
+                      nearest SortableContext (items). Item drag gets the
+                      strategy auto-shift; category drag fires but renders
+                      via dnd-kit's default (original element follows the
+                      cursor) since its id isn't in the inner items list. */}
+                  <SortableContext
+                    items={grouped.filter((g) => g.category !== null).map((g) => g.category!.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <SortableContext items={flatItemIds} strategy={verticalListSortingStrategy}>
+                      {grouped
+                        .filter((g) => g.category !== null)
+                        .map((group) => (
+                          <SortableCategoryGroup
+                            key={group.category!.id}
+                            id={group.category!.id}
+                            categoryId={group.category!.id}
+                            name={group.category!.name}
+                            items={group.items}
+                            {...sharedGroupProps}
+                            onAddItem={(data) => addNewItemMut.mutate({ categoryId: group.category!.id, data })}
+                          />
+                        ))}
+                      {grouped
+                        .filter((g) => g.category === null)
+                        .map((group) => (
+                          <CategoryGroup
+                            key="__uncategorised__"
+                            name="Uncategorised"
+                            categoryId={null}
+                            items={group.items}
+                            {...sharedGroupProps}
+                            onAddItem={(data) => addNewItemMut.mutate({ categoryId: null, data })}
+                          />
+                        ))}
+                    </SortableContext>
                   </SortableContext>
                   <DragOverlay>
                     {activeItem ? (
