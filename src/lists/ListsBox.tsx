@@ -71,7 +71,7 @@ export default function ListsBox({
 
       <div className="flex-1 overflow-y-auto divide-y divide-gray-50" style={{ maxHeight: '40vh' }}>
         {lists.length === 0 ? (
-          <p className="px-3 py-3 text-center text-xs text-gray-400 italic">No lists yet</p>
+          <p className="px-3 py-3 text-center text-sm text-gray-400 italic">No lists yet</p>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={lists.map((l) => l.id)} strategy={verticalListSortingStrategy}>

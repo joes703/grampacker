@@ -114,7 +114,7 @@ function CategorySectionInner(
             className="flex-1 rounded border border-blue-400 bg-white px-1.5 py-0.5 text-sm font-medium focus:outline-none"
           />
         ) : (
-          <span className="flex-1 text-sm font-medium text-gray-800 select-none">
+          <span className="flex-1 text-sm font-medium text-gray-700 select-none">
             {name}
             <span className="ml-1.5 text-xs font-normal text-gray-500">({items.length})</span>
           </span>
@@ -176,7 +176,7 @@ function CategorySectionInner(
       {!collapsed && (
         <div className="mt-1 pl-6">
           {items.length === 0 ? (
-            <p className="py-2 px-3 text-xs text-gray-400 italic">No items</p>
+            <p className="py-2 px-3 text-sm text-gray-400 italic">No items</p>
           ) : (
             items.map((item) => (
               <GearItemRow

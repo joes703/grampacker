@@ -7,7 +7,7 @@ import SettingsPage from '../settings/SettingsPage'
 function NotFound() {
   return (
     <div className="flex h-64 items-center justify-center rounded-xl border-2 border-dashed border-gray-200">
-      <p className="text-sm text-gray-400">Page not found</p>
+      <p className="text-sm text-gray-400 italic">Page not found</p>
     </div>
   )
 }
