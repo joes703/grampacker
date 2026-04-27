@@ -42,9 +42,9 @@ import {
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
 import { parseListCsv, listItemsToCsv, downloadCsv, type ListImportRow } from '../lib/csv'
-import { getWeightUnit, setWeightUnit, type WeightUnit } from '../lib/weight'
 import { getLastListId, setLastListId } from '../lib/preferences'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
+import { useWeightUnit } from '../lib/use-weight-unit'
 import { assignSortOrderSlots, groupListItemsByCategory } from '../lib/grouping'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
@@ -127,13 +127,7 @@ function ListDetailInner({
 }) {
   const [mode, setMode] = useState<Mode>('edit')
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [weightUnit, setWeightUnitState] = useState<WeightUnit>(getWeightUnit)
-
-  function toggleWeightUnit() {
-    const next: WeightUnit = weightUnit === 'g' ? 'oz' : 'g'
-    setWeightUnit(next)
-    setWeightUnitState(next)
-  }
+  const { weightUnit, toggleWeightUnit } = useWeightUnit()
   const [sheetOpen, setSheetOpen] = useState(false)
   const [importPreview, setImportPreview] = useState<ListImportRow[] | null>(null)
   const [importError, setImportError] = useState<string | null>(null)

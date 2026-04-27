@@ -37,9 +37,10 @@ import {
   makeOptimisticReorder,
 } from '../lib/queries'
 import type { Category, GearItem } from '../lib/types'
-import { getWeightUnit, setWeightUnit, formatItemWeight, type WeightUnit } from '../lib/weight'
+import { formatItemWeight } from '../lib/weight'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
+import { useWeightUnit } from '../lib/use-weight-unit'
 import { groupGearItemsByCategory } from '../lib/grouping'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
 import GearItemDialog from './GearItemDialog'
@@ -84,14 +85,8 @@ export default function GearLibraryPage() {
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set<string>())
   const [collapsed, setCollapsed] = useState(new Set<string>())
-  const [weightUnit, setWeightUnitState] = useState<WeightUnit>(getWeightUnit)
+  const { weightUnit, toggleWeightUnit } = useWeightUnit()
   const [newCategoryName, setNewCategoryName] = useState('')
-
-  function toggleWeightUnit() {
-    const next: WeightUnit = weightUnit === 'g' ? 'oz' : 'g'
-    setWeightUnit(next)
-    setWeightUnitState(next)
-  }
 
   function toggleCollapse(id: string) {
     setCollapsed((prev) => {
