@@ -34,6 +34,7 @@ import {
   bulkMoveToCategoryGearItems,
   createListFromSelection,
   importGearItems,
+  makeOptimisticReorder,
 } from '../lib/queries'
 import type { Category, GearItem } from '../lib/types'
 import { getWeightUnit, setWeightUnit, formatItemWeight, type WeightUnit } from '../lib/weight'
@@ -168,7 +169,7 @@ export default function GearLibraryPage() {
 
   const reorderCats = useMutation({
     mutationFn: reorderCategories,
-    onSuccess: invalidateCats,
+    ...makeOptimisticReorder<Category>(qc, queryKeys.categories()),
   })
 
   const addItem = useMutation({
