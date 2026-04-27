@@ -32,7 +32,7 @@ export default function SignupPage() {
     }
 
     setLoading(false)
-    navigate('/gear')
+    navigate('/lists')
   }
 
   return (

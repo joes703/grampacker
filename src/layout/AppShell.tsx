@@ -18,7 +18,7 @@ export default function AppShell() {
       <NavBar />
       <main className="mx-auto max-w-7xl px-4 py-8">
         <Routes>
-          <Route path="/" element={<Navigate to="/gear" replace />} />
+          <Route path="/" element={<Navigate to="/lists" replace />} />
           <Route path="/gear" element={<GearLibraryPage />} />
           <Route path="/lists" element={<ListDetailPage />} />
           <Route path="/lists/:id" element={<ListDetailPage />} />

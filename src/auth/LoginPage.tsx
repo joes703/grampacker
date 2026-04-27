@@ -22,7 +22,7 @@ export default function LoginPage() {
         setError('Invalid email or password.')
       }
     } else {
-      navigate('/gear')
+      navigate('/lists')
     }
   }
 

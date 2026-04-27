@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router'
+import { Link, NavLink, useNavigate } from 'react-router'
 import { LogOut, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -13,25 +13,9 @@ export default function NavBar() {
   return (
     <header className="border-b border-gray-200 bg-white">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4">
-        <span className="text-lg font-bold text-gray-900">grampacker</span>
-        <nav className="flex gap-1">
-          <NavLink
-            to="/gear"
-            className={({ isActive }) =>
-              `rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
-            }
-          >
-            Gear
-          </NavLink>
-          <NavLink
-            to="/lists"
-            className={({ isActive }) =>
-              `rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
-            }
-          >
-            Lists
-          </NavLink>
-        </nav>
+        <Link to="/" className="text-lg font-bold text-gray-900 hover:text-gray-700">
+          grampacker
+        </Link>
         <div className="ml-auto flex items-center gap-1">
           <NavLink
             to="/settings"

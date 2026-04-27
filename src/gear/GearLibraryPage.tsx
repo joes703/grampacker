@@ -15,8 +15,8 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router'
-import { Download, Plus, Search, Upload, X } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router'
+import { ArrowLeft, Download, Plus, Search, Upload, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import {
   queryKeys,
@@ -68,6 +68,9 @@ export default function GearLibraryPage() {
   const userId = session!.user.id
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const fromListId = searchParams.get('from')
+  const backTarget = fromListId ? `/lists/${fromListId}` : '/lists'
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const { data: categories = [] } = useQuery({
@@ -219,6 +222,16 @@ export default function GearLibraryPage() {
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div>
+      {/* Back to list */}
+      <button
+        type="button"
+        onClick={() => navigate(backTarget)}
+        className="mb-4 inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600"
+      >
+        <ArrowLeft size={14} />
+        {fromListId ? 'Back to list' : 'Back to lists'}
+      </button>
+
       {/* Page header */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <h1 className="text-xl font-bold text-gray-900">
