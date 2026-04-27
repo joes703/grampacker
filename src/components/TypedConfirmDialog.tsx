@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Modal from './Modal'
 
 type Props = {
   title: string
@@ -21,8 +22,14 @@ export default function TypedConfirmDialog({
   const matches = typed === confirmPhrase
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+    <Modal
+      open
+      onClose={onCancel}
+      title={title}
+      className="w-full max-w-md"
+      closeOnBackdropClick={false}
+    >
+      <div className="p-6">
         <h2 className="text-base font-semibold text-gray-900 mb-2">{title}</h2>
         <p className="text-sm text-gray-600 mb-3">{message}</p>
         <p className="text-xs text-gray-500 mb-1">
@@ -37,12 +44,14 @@ export default function TypedConfirmDialog({
         />
         <div className="flex justify-end gap-2">
           <button
+            type="button"
             onClick={onCancel}
             className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={onConfirm}
             disabled={!matches}
             className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -51,6 +60,6 @@ export default function TypedConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }

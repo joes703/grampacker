@@ -43,6 +43,7 @@ import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
 import GearItemDialog from './GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
+import Modal from '../components/Modal'
 
 type DialogState =
   | { type: 'create-item'; categoryId?: string | null }
@@ -548,12 +549,13 @@ export default function GearLibraryPage() {
       )}
 
       {dialog?.type === 'import-error' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg">
+        <Modal open onClose={() => setDialog(null)} title="Import error" className="w-full max-w-sm">
+          <div className="p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-2">Import error</h2>
             <p className="text-sm text-red-600 mb-4">{dialog.message}</p>
             <div className="flex justify-end">
               <button
+                type="button"
                 onClick={() => setDialog(null)}
                 className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
               >
@@ -561,7 +563,7 @@ export default function GearLibraryPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {dialog?.type === 'import-preview' && (
@@ -599,18 +601,17 @@ function CreateListFromSelectionDialog({
   const canSubmit = !blocked && !saving && trimmed.length > 0
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-md rounded-xl bg-white shadow-lg">
-        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">Create list from selection</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X size={18} />
-          </button>
-        </div>
-        <form
-          onSubmit={(e) => { e.preventDefault(); if (canSubmit) onSubmit(trimmed, description.trim() || null) }}
-          className="px-6 py-4 space-y-4"
-        >
+    <Modal open onClose={onClose} title="Create list from selection" className="w-full max-w-md" closeOnBackdropClick={false}>
+      <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
+        <h2 className="text-base font-semibold text-gray-900">Create list from selection</h2>
+        <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <X size={18} />
+        </button>
+      </div>
+      <form
+        onSubmit={(e) => { e.preventDefault(); if (canSubmit) onSubmit(trimmed, description.trim() || null) }}
+        className="px-6 py-4 space-y-4"
+      >
           <p className="text-sm text-gray-600">
             {selectedCount} item{selectedCount === 1 ? '' : 's'} will be added to the new list.
           </p>
@@ -672,9 +673,8 @@ function CreateListFromSelectionDialog({
               {saving ? 'Creating…' : 'Create list'}
             </button>
           </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Modal>
   )
 }
 
@@ -690,53 +690,59 @@ function ImportPreviewDialog({
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-lg rounded-xl bg-white shadow-lg flex flex-col max-h-[80vh]">
-        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">
-            Import {rows.length} item{rows.length !== 1 ? 's' : ''}
-          </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X size={18} />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-gray-50 text-xs font-medium text-gray-500">
-              <tr>
-                <th className="px-4 py-2 text-left">Name</th>
-                <th className="px-3 py-2 text-right">Weight</th>
-                <th className="px-3 py-2 text-left">Category</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {rows.map((row, i) => (
-                <tr key={i} className="hover:bg-gray-50">
-                  <td className="px-4 py-1.5 font-medium text-gray-800 max-w-[180px] truncate">{row.name}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{formatItemWeight(row.weight_grams, 'g')}</td>
-                  <td className="px-3 py-1.5 text-gray-500">{row.category || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100">
-          <button
-            onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onConfirm(rows)}
-            disabled={saving}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {saving ? 'Importing…' : `Import ${rows.length} item${rows.length !== 1 ? 's' : ''}`}
-          </button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title={`Import ${rows.length} item${rows.length !== 1 ? 's' : ''}`}
+      className="w-full max-w-lg flex flex-col max-h-[80vh]"
+      closeOnBackdropClick={false}
+    >
+      <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
+        <h2 className="text-base font-semibold text-gray-900">
+          Import {rows.length} item{rows.length !== 1 ? 's' : ''}
+        </h2>
+        <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <X size={18} />
+        </button>
       </div>
-    </div>
+      <div className="flex-1 overflow-y-auto">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-gray-50 text-xs font-medium text-gray-500">
+            <tr>
+              <th className="px-4 py-2 text-left">Name</th>
+              <th className="px-3 py-2 text-right">Weight</th>
+              <th className="px-3 py-2 text-left">Category</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {rows.map((row, i) => (
+              <tr key={i} className="hover:bg-gray-50">
+                <td className="px-4 py-1.5 font-medium text-gray-800 max-w-[180px] truncate">{row.name}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{formatItemWeight(row.weight_grams, 'g')}</td>
+                <td className="px-3 py-1.5 text-gray-500">{row.category || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => onConfirm(rows)}
+          disabled={saving}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {saving ? 'Importing…' : `Import ${rows.length} item${rows.length !== 1 ? 's' : ''}`}
+        </button>
+      </div>
+    </Modal>
   )
 }
 
@@ -753,12 +759,11 @@ function BulkMoveCategoryDialog({
 }) {
   const [selected, setSelected] = useState<string>('')
 
+  const heading = `Move ${count} item${count !== 1 ? 's' : ''} to category`
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg">
-        <h2 className="text-base font-semibold text-gray-900 mb-4">
-          Move {count} item{count !== 1 ? 's' : ''} to category
-        </h2>
+    <Modal open onClose={onClose} title={heading} className="w-full max-w-sm">
+      <div className="p-6">
+        <h2 className="text-base font-semibold text-gray-900 mb-4">{heading}</h2>
         <select
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
@@ -773,12 +778,14 @@ function BulkMoveCategoryDialog({
         </select>
         <div className="mt-4 flex justify-end gap-2">
           <button
+            type="button"
             onClick={onClose}
             className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={() => onMove(selected || null)}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
@@ -786,6 +793,6 @@ function BulkMoveCategoryDialog({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
