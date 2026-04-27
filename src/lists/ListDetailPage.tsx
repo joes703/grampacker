@@ -512,11 +512,15 @@ function ListDetailInner({
                             .slice()
                             .sort((a, b) => a - b)
                           const updates = reorderedItems.map((i, idx) => ({ id: i.id, sort_order: slots[idx] }))
-                          // Optimistically reflect new ordering
                           const byId = new Map(updates.map((u) => [u.id, u.sort_order]))
-                          qc.setQueryData(queryKeys.listItems(listId), (prev: ListItemWithGear[] | undefined) =>
-                            (prev ?? []).map((i) => byId.has(i.id) ? { ...i, sort_order: byId.get(i.id)! } : i),
-                          )
+                          // Optimistically: rewrite sort_order AND re-sort the cached array so the
+                          // filter-by-category step downstream reflects the new visual order.
+                          qc.setQueryData(queryKeys.listItems(listId), (prev: ListItemWithGear[] | undefined) => {
+                            if (!prev) return prev
+                            return prev
+                              .map((i) => byId.has(i.id) ? { ...i, sort_order: byId.get(i.id)! } : i)
+                              .sort((a, b) => a.sort_order - b.sort_order)
+                          })
                           reorderItemsMut.mutate(updates)
                         }}
                       />
@@ -540,9 +544,12 @@ function ListDetailInner({
                         .sort((a, b) => a - b)
                       const updates = reorderedItems.map((i, idx) => ({ id: i.id, sort_order: slots[idx] }))
                       const byId = new Map(updates.map((u) => [u.id, u.sort_order]))
-                      qc.setQueryData(queryKeys.listItems(listId), (prev: ListItemWithGear[] | undefined) =>
-                        (prev ?? []).map((i) => byId.has(i.id) ? { ...i, sort_order: byId.get(i.id)! } : i),
-                      )
+                      qc.setQueryData(queryKeys.listItems(listId), (prev: ListItemWithGear[] | undefined) => {
+                        if (!prev) return prev
+                        return prev
+                          .map((i) => byId.has(i.id) ? { ...i, sort_order: byId.get(i.id)! } : i)
+                          .sort((a, b) => a.sort_order - b.sort_order)
+                      })
                       reorderItemsMut.mutate(updates)
                     }}
                     onDelete={(itemId) => deleteMut.mutate(itemId)}
