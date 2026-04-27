@@ -6,6 +6,7 @@ import type { SyntheticListenerMap } from '@dnd-kit/core/dist/hooks/utilities'
 import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Plus, Check, X } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
 import type { WeightUnit } from '../lib/weight'
+import { asButtonRef } from '../lib/dnd'
 import GearItemRow from './GearItemRow'
 
 type CategorySectionProps = {
@@ -221,7 +222,7 @@ export function SortableCategorySection(props: CategorySectionProps & { id: stri
     >
       <CategorySectionInner
         {...rest}
-        dragHandleRef={setActivatorNodeRef as unknown as (node: HTMLButtonElement | null) => void}
+        dragHandleRef={asButtonRef(setActivatorNodeRef)}
         dragHandleListeners={listeners}
         dragHandleAttributes={attributes}
       />

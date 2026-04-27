@@ -289,10 +289,11 @@ export async function addGearItemToList(
   return data
 }
 
-export async function updateListItem(
-  id: string,
-  patch: Partial<Pick<ListItem, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed' | 'sort_order'>>,
-): Promise<void> {
+export type ListItemPatch = Partial<
+  Pick<ListItem, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed' | 'sort_order'>
+>
+
+export async function updateListItem(id: string, patch: ListItemPatch): Promise<void> {
   const { error } = await supabase.from('list_items').update(patch).eq('id', id)
   if (error) throw error
 }

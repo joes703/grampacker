@@ -4,6 +4,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Shirt, UtensilsCrossed, XCircle } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
+import { asButtonRef } from '../lib/dnd'
 import InlineText from '../components/InlineText'
 
 type Props = {
@@ -115,7 +116,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
     >
       {/* Drag handle — appears on row hover at the left edge */}
       <button
-        ref={setActivatorNodeRef as unknown as (node: HTMLButtonElement | null) => void}
+        ref={asButtonRef(setActivatorNodeRef)}
         {...listeners}
         {...attributes}
         tabIndex={-1}
