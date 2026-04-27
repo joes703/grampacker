@@ -1,12 +1,14 @@
 import { useState, useMemo } from 'react'
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -41,8 +43,9 @@ import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../l
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useToggleSet } from '../lib/use-toggle-set'
-import { groupGearItemsByCategory } from '../lib/grouping'
-import { SortableCategorySection, StaticCategorySection } from './CategorySection'
+import { groupGearItemsByCategory, assignSortOrderSlots } from '../lib/grouping'
+import { SortableCategorySection, StaticCategorySection, parseGearCategoryDroppableId } from './CategorySection'
+import GearItemRow from './GearItemRow'
 import GearItemDialog from './GearItemDialog'
 import CreateListFromSelectionDialog from './CreateListFromSelectionDialog'
 import GearImportPreviewDialog from './GearImportPreviewDialog'
@@ -197,14 +200,149 @@ export default function GearLibraryPage() {
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+  const itemSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  )
+  const [activeItemId, setActiveItemId] = useState<string | null>(null)
 
-  function handleDragEnd(event: DragEndEvent) {
+  function handleCategoryDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
     const oldIndex = categories.findIndex((c) => c.id === active.id)
     const newIndex = categories.findIndex((c) => c.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
     const reordered = arrayMove(categories, oldIndex, newIndex)
     reorderCats.mutate(reordered.map((c, i) => ({ id: c.id, sort_order: i })))
+  }
+
+  // Within-category sort drag for gear items. Updates gear_items.sort_order
+  // for the affected category. Optimistic via the existing
+  // makeOptimisticReorder helper on ['gear-items'].
+  const reorderGearItemsMut = useMutation({
+    mutationFn: async (updates: { id: string; sort_order: number }[]) => {
+      await Promise.all(updates.map((u) => updateGearItem(u.id, { sort_order: u.sort_order })))
+    },
+    ...makeOptimisticReorder<GearItem>(qc, queryKeys.gearItems()),
+  })
+
+  // Cross-category move on the gear library page. Updates gear_items.category_id
+  // for the moved item and renumbers gear_items.sort_order in the destination
+  // so the row lands where the user dropped it. Optimistic on ['gear-items'];
+  // ['list-items'] (broad) is invalidated on settle so any list embedding the
+  // moved gear item refreshes its embedded gear_item.category_id.
+  const moveGearAcrossCategoriesMut = useMutation({
+    mutationFn: async ({
+      movedItemId,
+      newCategoryId,
+      sortUpdates,
+    }: {
+      movedItemId: string
+      newCategoryId: string | null
+      sortUpdates: { id: string; sort_order: number }[]
+    }) => {
+      const movedSort = sortUpdates.find((u) => u.id === movedItemId)
+      await updateGearItem(movedItemId, {
+        category_id: newCategoryId,
+        ...(movedSort ? { sort_order: movedSort.sort_order } : {}),
+      })
+      const others = sortUpdates.filter((u) => u.id !== movedItemId)
+      if (others.length) {
+        await Promise.all(others.map((u) => updateGearItem(u.id, { sort_order: u.sort_order })))
+      }
+    },
+    onMutate: async ({ movedItemId, newCategoryId, sortUpdates }) => {
+      await qc.cancelQueries({ queryKey: queryKeys.gearItems() })
+      const previous = qc.getQueryData<GearItem[]>(queryKeys.gearItems())
+      const sortMap = new Map(sortUpdates.map((u) => [u.id, u.sort_order]))
+      qc.setQueryData<GearItem[]>(queryKeys.gearItems(), (curr) => {
+        if (!curr) return curr
+        return curr.map((g) => {
+          let next = g
+          if (g.id === movedItemId) next = { ...next, category_id: newCategoryId }
+          if (sortMap.has(g.id)) next = { ...next, sort_order: sortMap.get(g.id)! }
+          return next
+        })
+      })
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(queryKeys.gearItems(), ctx.previous)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
+      qc.invalidateQueries({ queryKey: ['list-items'] })
+    },
+  })
+
+  function handleItemDragStart(e: DragStartEvent) {
+    setActiveItemId(String(e.active.id))
+  }
+
+  function handleItemDragCancel() {
+    setActiveItemId(null)
+  }
+
+  // Branches on what the user dropped onto: same-category sort vs.
+  // cross-category move. Mirrors the list view's onDragEnd flow.
+  function handleItemDragEnd(e: DragEndEvent) {
+    setActiveItemId(null)
+    const { active, over } = e
+    if (!over) return
+    if (active.id === over.id) return
+
+    const activeItem = allItems.find((i) => i.id === active.id)
+    if (!activeItem) return
+    const activeCat = activeItem.category_id ?? null
+
+    const overId = String(over.id)
+    const parsedCat = parseGearCategoryDroppableId(overId)
+
+    let destCat: string | null
+    let overItemId: string | null = null
+    if (parsedCat !== undefined) {
+      destCat = parsedCat
+    } else {
+      overItemId = overId
+      const overItem = allItems.find((i) => i.id === overItemId)
+      if (!overItem) return
+      destCat = overItem.category_id ?? null
+    }
+
+    if (destCat === activeCat) {
+      // Same-category sort reorder
+      if (!overItemId) return
+      const itemsInCat = allItems.filter((i) => (i.category_id ?? null) === activeCat)
+      const oldIndex = itemsInCat.findIndex((i) => i.id === active.id)
+      const newIndex = itemsInCat.findIndex((i) => i.id === overItemId)
+      if (oldIndex === -1 || newIndex === -1) return
+      const reordered = arrayMove(itemsInCat, oldIndex, newIndex)
+      reorderGearItemsMut.mutate(assignSortOrderSlots(reordered))
+      return
+    }
+
+    // Cross-category drop: insert the moved item into the destination's
+    // ordered list at the drop position, then renumber slot values.
+    const destItems = allItems
+      .filter((i) => (i.category_id ?? null) === destCat && i.id !== activeItem.id)
+      .sort((a, b) => a.sort_order - b.sort_order)
+    let insertIdx: number
+    if (overItemId) {
+      const idx = destItems.findIndex((i) => i.id === overItemId)
+      insertIdx = idx === -1 ? destItems.length : idx
+    } else {
+      insertIdx = destItems.length
+    }
+    const newDestOrder = [
+      ...destItems.slice(0, insertIdx),
+      activeItem,
+      ...destItems.slice(insertIdx),
+    ]
+    const sortUpdates = assignSortOrderSlots(newDestOrder)
+    moveGearAcrossCategoriesMut.mutate({
+      movedItemId: activeItem.id,
+      newCategoryId: destCat,
+      sortUpdates,
+    })
   }
 
   // ── Derived data ──────────────────────────────────────────────────────────────
@@ -355,55 +493,88 @@ export default function GearLibraryPage() {
       {/* Category list */}
       {isLoading ? (
         <p className="text-sm text-gray-400">Loading…</p>
-      ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={categories.map((c) => c.id)}
-            strategy={verticalListSortingStrategy}
+      ) : (() => {
+        // Flat list of every gear item id in render order, for the page-level
+        // item SortableContext. The category-level context registers only
+        // category ids; the two are disjoint and bind to their own contexts.
+        const flatItemIds = groups.flatMap((g) => g.items.map((i) => i.id))
+        const activeItem = activeItemId
+          ? allItems.find((i) => i.id === activeItemId)
+          : null
+        return (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleCategoryDragEnd}
           >
-            {groups.map((group) => {
-              const commonProps = {
-                items: group.items,
-                weightUnit,
-                collapsed: collapsed.has(group.category?.id ?? '__uncategorised__'),
-                onToggleCollapse: () =>
-                  toggleCollapse(group.category?.id ?? '__uncategorised__'),
-                selectMode,
-                selectedIds,
-                onToggleSelect: toggleSelect,
-                onInlineSave: (id: string, patch: Partial<Pick<GearItem, 'name' | 'description'>>) =>
-                  editItem.mutate({ id, patch }),
-                onEditItem: (item: GearItem) => setDialog({ type: 'edit-item', item }),
-                onDeleteItem: (item: GearItem) => setDialog({ type: 'delete-item', item }),
-                onRenameCategory: (id: string, name: string) =>
-                  renameCategory.mutate({ id, name }),
-                onDeleteCategory: (cat: Category) =>
-                  setDialog({ type: 'delete-category', category: cat }),
-                onAddItemToCategory: (categoryId: string | null) =>
-                  setDialog({ type: 'create-item', categoryId }),
-              }
+            <SortableContext
+              items={categories.map((c) => c.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <DndContext
+                sensors={itemSensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleItemDragStart}
+                onDragEnd={handleItemDragEnd}
+                onDragCancel={handleItemDragCancel}
+              >
+                <SortableContext items={flatItemIds} strategy={verticalListSortingStrategy}>
+                  {groups.map((group) => {
+                    const commonProps = {
+                      items: group.items,
+                      weightUnit,
+                      collapsed: collapsed.has(group.category?.id ?? '__uncategorised__'),
+                      onToggleCollapse: () =>
+                        toggleCollapse(group.category?.id ?? '__uncategorised__'),
+                      selectMode,
+                      selectedIds,
+                      onToggleSelect: toggleSelect,
+                      onInlineSave: (id: string, patch: Partial<Pick<GearItem, 'name' | 'description'>>) =>
+                        editItem.mutate({ id, patch }),
+                      onEditItem: (item: GearItem) => setDialog({ type: 'edit-item', item }),
+                      onDeleteItem: (item: GearItem) => setDialog({ type: 'delete-item', item }),
+                      onRenameCategory: (id: string, name: string) =>
+                        renameCategory.mutate({ id, name }),
+                      onDeleteCategory: (cat: Category) =>
+                        setDialog({ type: 'delete-category', category: cat }),
+                      onAddItemToCategory: (categoryId: string | null) =>
+                        setDialog({ type: 'create-item', categoryId }),
+                    }
 
-              if (group.category === null) {
-                return (
-                  <StaticCategorySection key="__uncategorised__" category={null} {...commonProps} />
-                )
-              }
-              return (
-                <SortableCategorySection
-                  key={group.category.id}
-                  id={group.category.id}
-                  category={group.category}
-                  {...commonProps}
-                />
-              )
-            })}
-          </SortableContext>
-        </DndContext>
-      )}
+                    if (group.category === null) {
+                      return (
+                        <StaticCategorySection key="__uncategorised__" category={null} {...commonProps} />
+                      )
+                    }
+                    return (
+                      <SortableCategorySection
+                        key={group.category.id}
+                        id={group.category.id}
+                        category={group.category}
+                        {...commonProps}
+                      />
+                    )
+                  })}
+                </SortableContext>
+                <DragOverlay>
+                  {activeItem ? (
+                    <GearItemRow
+                      item={activeItem}
+                      weightUnit={weightUnit}
+                      selectMode={false}
+                      selected={false}
+                      onToggleSelect={() => {}}
+                      onInlineSave={() => {}}
+                      onEdit={() => {}}
+                      onDelete={() => {}}
+                    />
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
+            </SortableContext>
+          </DndContext>
+        )
+      })()}
 
       {/* Bulk actions toolbar */}
       {selectMode && selectedIds.size > 0 && (

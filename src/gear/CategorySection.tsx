@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useDroppable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { DraggableAttributes } from '@dnd-kit/core'
@@ -7,8 +8,21 @@ import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Plus, Check, X
 import type { Category, GearItem } from '../lib/types'
 import type { WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
-import GearItemRow from './GearItemRow'
+import { SortableGearItemRow } from './GearItemRow'
 import RowIconButton from '../components/RowIconButton'
+
+// Droppable id namespace for the gear library page's category drop zones.
+// Mirrors the namespacing used on the list view (CategoryGroup).
+export const GEAR_CATEGORY_DROP_PREFIX = 'gear-category-drop:'
+export const GEAR_UNCATEGORISED_KEY = '__uncategorised__'
+export function gearCategoryDroppableId(categoryId: string | null): string {
+  return `${GEAR_CATEGORY_DROP_PREFIX}${categoryId ?? GEAR_UNCATEGORISED_KEY}`
+}
+export function parseGearCategoryDroppableId(id: string): string | null | undefined {
+  if (!id.startsWith(GEAR_CATEGORY_DROP_PREFIX)) return undefined
+  const v = id.slice(GEAR_CATEGORY_DROP_PREFIX.length)
+  return v === GEAR_UNCATEGORISED_KEY ? null : v
+}
 
 type CategorySectionProps = {
   category: Category | null // null = Uncategorised
@@ -72,6 +86,11 @@ function CategorySectionInner(
 
   const isUncategorised = category === null
   const name = category?.name ?? 'Uncategorised'
+  // Drop target so the page-level onDragEnd can resolve a drop on this
+  // section's body (or its empty-state) to a category id.
+  const droppable = useDroppable({
+    id: gearCategoryDroppableId(category?.id ?? null),
+  })
 
   return (
     <div className="mb-2">
@@ -176,12 +195,15 @@ function CategorySectionInner(
 
       {/* Items */}
       {!collapsed && (
-        <div className="mt-1 pl-2">
+        <div
+          ref={droppable.setNodeRef}
+          className={`mt-1 pl-2 ${droppable.isOver ? 'rounded ring-2 ring-blue-300 ring-inset' : ''}`}
+        >
           {items.length === 0 ? (
             <p className="py-2 px-3 text-sm text-gray-400 italic">No items</p>
           ) : (
             items.map((item) => (
-              <GearItemRow
+              <SortableGearItemRow
                 key={item.id}
                 item={item}
                 weightUnit={weightUnit}
