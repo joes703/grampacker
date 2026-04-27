@@ -226,7 +226,7 @@ export default function GearLibraryPage() {
       <button
         type="button"
         onClick={() => navigate(backTarget)}
-        className="mb-4 inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600"
+        className="mb-4 inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
       >
         <ArrowLeft size={14} />
         {fromListId ? 'Back to list' : 'Back to lists'}
@@ -234,7 +234,7 @@ export default function GearLibraryPage() {
 
       {/* Page header */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
-        <h1 className="text-xl font-bold text-gray-900">
+        <h1 className="text-xl font-semibold text-gray-900">
           Gear Library
           <span className="ml-2 text-sm font-normal text-gray-500">{allItems.length} items</span>
         </h1>
@@ -250,21 +250,21 @@ export default function GearLibraryPage() {
         </div>
         <button
           onClick={toggleWeightUnit}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
           {weightUnit === 'g' ? 'g' : 'oz'}
         </button>
         {selectMode ? (
           <button
             onClick={exitSelectMode}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Cancel
           </button>
         ) : (
           <button
             onClick={() => setSelectMode(true)}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Select
           </button>
@@ -273,14 +273,14 @@ export default function GearLibraryPage() {
           onClick={handleExport}
           disabled={allItems.length === 0}
           title="Export gear library as CSV"
-          className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+          className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
         >
           <Download size={14} /> Export
         </button>
         <button
           onClick={openImportPicker}
           title="Import gear items from CSV"
-          className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
           <Upload size={14} /> Import
         </button>

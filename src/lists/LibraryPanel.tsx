@@ -64,7 +64,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
       {/* Category groups */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {groups.length === 0 && uncategorised.length === 0 ? (
-          <p className="p-4 text-center text-xs text-gray-400 italic">
+          <p className="p-4 text-center text-sm text-gray-400 italic">
             {q ? 'No items found' : 'No gear items yet'}
           </p>
         ) : (
@@ -172,7 +172,7 @@ function CategoryGroup({
                 >
                   <span
                     className={`flex-1 min-w-0 truncate text-sm font-medium ${
-                      inList ? 'text-gray-400' : 'text-gray-800'
+                      inList ? 'text-gray-400' : 'text-gray-900'
                     }`}
                   >
                     {item.name}

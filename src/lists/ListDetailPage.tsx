@@ -451,7 +451,7 @@ function ListDetailInner({
                 <button
                   type="button"
                   onClick={() => navigate(`/gear?from=${list.id}`)}
-                  className="text-xs font-medium text-gray-500 hover:text-blue-600"
+                  className="text-sm text-blue-600 hover:underline"
                 >
                   Manage →
                 </button>
@@ -514,7 +514,7 @@ function ListDetailInner({
           {/* Items grouped by category */}
           {listItems.length === 0 ? (
             <div className="flex h-32 items-center justify-center rounded-xl border-2 border-dashed border-gray-200">
-              <p className="text-sm text-gray-400">No items — add from your gear library</p>
+              <p className="text-sm text-gray-400 italic">No items — add from your gear library</p>
             </div>
           ) : (() => {
             // Props shared by every category group on this page. Per-category

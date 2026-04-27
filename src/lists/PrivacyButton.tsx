@@ -78,7 +78,7 @@ export default function PrivacyButton({ list }: Props) {
           style={{ top: pos.top, right: pos.right }}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-800">Public link</span>
+            <span className="text-sm font-medium text-gray-900">Public link</span>
             <ToggleSwitch checked={list.is_shared} onChange={() => toggleMut.mutate()} />
           </div>
           {list.is_shared ? (
