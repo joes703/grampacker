@@ -52,6 +52,7 @@ import {
   updateGearItem,
   createGearItem,
   deleteGearItem,
+  makeOptimisticReorder,
   type ListItemPatch,
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
@@ -213,7 +214,7 @@ function ListDetailInner({
 
   const reorderCatsMut = useMutation({
     mutationFn: reorderCategories,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.categories() }),
+    ...makeOptimisticReorder<Category>(qc, queryKeys.categories()),
   })
 
   const importMut = useMutation({
@@ -237,10 +238,12 @@ function ListDetailInner({
 
   const reorderListsMut = useMutation({
     mutationFn: reorderLists,
+    ...makeOptimisticReorder<List>(qc, queryKeys.lists()),
   })
 
   const reorderItemsMut = useMutation({
     mutationFn: reorderListItems,
+    ...makeOptimisticReorder<ListItemWithGear>(qc, queryKeys.listItems(listId)),
   })
 
   const notesMut = useMutation({
@@ -329,24 +332,15 @@ function ListDetailInner({
     const newIndex = sortedCats.findIndex((c) => c.id === over.id)
     if (oldIndex === -1 || newIndex === -1) return
     const reordered = arrayMove(sortedCats, oldIndex, newIndex)
-    qc.setQueryData(queryKeys.categories(), reordered)
     reorderCatsMut.mutate(reordered.map((c, i) => ({ id: c.id, sort_order: i })))
   }
 
-  // Reorder list items within a single category. Reuses the existing
-  // sort_order slots from the moved subset so we don't have to renumber the
-  // entire list, then optimistically rewrites the cached array (re-sorted by
-  // sort_order so the per-category filter downstream sees the new order).
+  // Reorder list items within a single category by re-using the existing
+  // sort_order slots from the moved subset (avoids renumbering the whole list).
+  // The optimistic cache update + rollback is handled by the mutation itself.
   function handleItemsReorder(reorderedItems: ListItemWithGear[]) {
     const slots = reorderedItems.map((i) => i.sort_order).slice().sort((a, b) => a - b)
     const updates = reorderedItems.map((i, idx) => ({ id: i.id, sort_order: slots[idx] }))
-    const byId = new Map(updates.map((u) => [u.id, u.sort_order]))
-    qc.setQueryData(queryKeys.listItems(listId), (prev: ListItemWithGear[] | undefined) => {
-      if (!prev) return prev
-      return prev
-        .map((i) => byId.has(i.id) ? { ...i, sort_order: byId.get(i.id)! } : i)
-        .sort((a, b) => a.sort_order - b.sort_order)
-    })
     reorderItemsMut.mutate(updates)
   }
 
@@ -483,10 +477,7 @@ function ListDetailInner({
               onDuplicate={(l) => duplicateMut.mutate(l)}
               onDelete={(l) => setConfirmDeleteList(l)}
               onReorder={(orderedIds) => {
-                const byId = new Map(lists.map((l) => [l.id, l]))
-                const reordered = orderedIds.map((id) => byId.get(id)!).filter(Boolean)
-                qc.setQueryData(queryKeys.lists(), reordered)
-                reorderListsMut.mutate(reordered.map((l, i) => ({ id: l.id, sort_order: i })))
+                reorderListsMut.mutate(orderedIds.map((id, i) => ({ id, sort_order: i })))
               }}
             />
 

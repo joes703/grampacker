@@ -1,3 +1,4 @@
+import type { QueryClient, QueryKey } from '@tanstack/react-query'
 import { supabase } from './supabase'
 import type { Category, GearItem, List, ListItem, ListItemWithGear } from './types'
 import { generateShareToken } from './share-token'
@@ -422,6 +423,50 @@ export async function importGearItems(
 
   const { error } = await supabase.from('gear_items').insert(items)
   if (error) throw error
+}
+
+// ── Reorder mutation lifecycle ────────────────────────────────────────────────
+
+// Canonical optimistic-update lifecycle for any reorder mutation that takes
+// `{id, sort_order}[]`. Handles cancel → snapshot → optimistic write → roll
+// back on error → settle (invalidate). Drop into a useMutation alongside its
+// mutationFn:
+//
+//   useMutation({
+//     mutationFn: reorderCategories,
+//     ...makeOptimisticReorder<Category>(qc, queryKeys.categories()),
+//   })
+//
+// The cached array gets each affected item's sort_order rewritten in place
+// and is then re-sorted by sort_order so the visual order matches.
+export function makeOptimisticReorder<T extends { id: string; sort_order: number }>(
+  qc: QueryClient,
+  queryKey: QueryKey,
+) {
+  return {
+    onMutate: async (updates: { id: string; sort_order: number }[]) => {
+      await qc.cancelQueries({ queryKey })
+      const previous = qc.getQueryData<T[]>(queryKey)
+      const byId = new Map(updates.map((u) => [u.id, u.sort_order]))
+      qc.setQueryData<T[]>(queryKey, (curr) => {
+        if (!curr) return curr
+        return curr
+          .map((item) => (byId.has(item.id) ? { ...item, sort_order: byId.get(item.id)! } : item))
+          .sort((a, b) => a.sort_order - b.sort_order)
+      })
+      return { previous }
+    },
+    onError: (
+      _err: unknown,
+      _vars: unknown,
+      ctx: { previous: T[] | undefined } | undefined,
+    ) => {
+      if (ctx?.previous) qc.setQueryData(queryKey, ctx.previous)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey })
+    },
+  }
 }
 
 // ── Default categories ────────────────────────────────────────────────────────
