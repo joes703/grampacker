@@ -2,10 +2,9 @@ import { useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { fetchSharedList, fetchSharedListItems, fetchSharedListCategories } from '../lib/queries'
 import type { Category, ListItemWithGear } from '../lib/types'
-import { formatItemWeight } from '../lib/weight'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
-import ItemRow from './ItemRow'
+import CategoryGroup from './CategoryGroup'
 
 export default function SharePage() {
   const { token } = useParams<{ token: string }>()
@@ -96,10 +95,12 @@ export default function SharePage() {
         {/* Items grouped by category */}
         <div className="space-y-4">
           {grouped.map((group) => (
-            <SharedCategoryGroup
+            <CategoryGroup
               key={group.category?.id ?? '__uncategorised__'}
               name={group.category?.name ?? 'Uncategorised'}
               items={group.items}
+              weightUnit="g"
+              collapsible={false}
             />
           ))}
         </div>
@@ -107,44 +108,6 @@ export default function SharePage() {
         <p className="mt-8 text-center text-xs text-gray-400">
           Made with grampacker
         </p>
-      </div>
-    </div>
-  )
-}
-
-function SharedCategoryGroup({ name, items }: { name: string; items: ListItemWithGear[] }) {
-  const totalGrams = items.reduce((s, i) => s + (i.gear_item?.weight_grams ?? 0) * i.quantity, 0)
-
-  return (
-    <div>
-      {/* Category header — also the column header */}
-      <div className="flex items-center gap-1.5 rounded-lg px-3 py-0.5 bg-gray-100 mb-1">
-        <span className="flex-1 min-w-0 truncate text-sm font-medium text-gray-700">{name}</span>
-        <div className="shrink-0 w-7" />
-        <div className="shrink-0 w-7" />
-        <div className="shrink-0 w-10 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-          Qty
-        </div>
-        <div className="shrink-0 w-16 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-          Weight
-        </div>
-      </div>
-
-      {/* Items */}
-      <div className="pl-2">
-        {items.map((item) => (
-          <ItemRow key={item.id} item={item} weightUnit="g" />
-        ))}
-        {/* Footer total */}
-        <div className="flex items-center gap-1.5 px-3 py-0.5 text-xs">
-          <div className="flex-1 min-w-0" />
-          <div className="shrink-0 w-7" />
-          <div className="shrink-0 w-7" />
-          <div className="shrink-0 w-10" />
-          <div className="shrink-0 w-16 text-right tabular-nums font-semibold text-gray-700">
-            {formatItemWeight(totalGrams, 'g')}
-          </div>
-        </div>
       </div>
     </div>
   )
