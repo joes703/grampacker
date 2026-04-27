@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, MoreHorizontal, Pencil, Shirt, Trash2, UtensilsCrossed, XCircle } from 'lucide-react'
+import { GripVertical, MoreVertical, Pencil, Shirt, Trash2, UtensilsCrossed, XCircle } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
@@ -301,7 +301,7 @@ function RowKebab({ onEdit, onDeleteFromInventory }: { onEdit: () => void; onDel
         aria-label="Item options"
         className="shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-gray-700"
       >
-        <MoreHorizontal size={14} />
+        <MoreVertical size={14} />
       </button>
 
       {menuOpen && menuPos && createPortal(

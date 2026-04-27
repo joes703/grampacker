@@ -62,7 +62,7 @@ export default function Modal({
       aria-label={title}
       onClose={onClose}
       onClick={handleClick}
-      className={`rounded-xl bg-white p-0 shadow-lg backdrop:bg-black/40 ${className ?? ''}`}
+      className={`m-auto rounded-xl bg-white p-0 shadow-lg backdrop:bg-black/40 ${className ?? ''}`}
     >
       {children}
     </dialog>
