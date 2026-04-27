@@ -1,9 +1,14 @@
-import { useRef, type ChangeEventHandler } from 'react'
+import { useCallback, useRef, type ChangeEventHandler } from 'react'
 
-// Wires a hidden <input type="file"> to a CSV parser. Caller binds inputRef +
-// onChange to the input and calls inputRef.current?.click() to open the file
-// picker. The input is reset after every change so re-selecting the same file
-// works.
+// Wires a hidden <input type="file"> to a CSV parser.
+//
+// - Bind `inputRef` to the hidden input's ref.
+// - Bind `onChange` to its onChange.
+// - Call `openPicker()` to programmatically open the file picker.
+//
+// The input is reset after every change so re-selecting the same file works.
+// `openPicker` is stable across renders so consumers can put it in
+// useEffect dep arrays without dragging the ref in.
 export function useCsvFileInput<T>(
   parser: (text: string) => T[] | string,
   handlers: {
@@ -13,6 +18,7 @@ export function useCsvFileInput<T>(
 ): {
   inputRef: React.RefObject<HTMLInputElement | null>
   onChange: ChangeEventHandler<HTMLInputElement>
+  openPicker: () => void
 } {
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -30,5 +36,9 @@ export function useCsvFileInput<T>(
     reader.readAsText(file)
   }
 
-  return { inputRef, onChange }
+  const openPicker = useCallback(() => {
+    inputRef.current?.click()
+  }, [])
+
+  return { inputRef, onChange, openPicker }
 }
