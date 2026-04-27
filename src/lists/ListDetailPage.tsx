@@ -61,6 +61,7 @@ import { formatItemWeight, getWeightUnit, setWeightUnit, type WeightUnit } from 
 import { getLastListId, setLastListId } from '../lib/preferences'
 import { asButtonRef } from '../lib/dnd'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
+import { assignSortOrderSlots, groupListItemsByCategory } from '../lib/grouping'
 import ListItemRow from './ListItemRow'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
@@ -340,9 +341,7 @@ function ListDetailInner({
   // sort_order slots from the moved subset (avoids renumbering the whole list).
   // The optimistic cache update + rollback is handled by the mutation itself.
   function handleItemsReorder(reorderedItems: ListItemWithGear[]) {
-    const slots = reorderedItems.map((i) => i.sort_order).slice().sort((a, b) => a - b)
-    const updates = reorderedItems.map((i, idx) => ({ id: i.id, sort_order: slots[idx] }))
-    reorderItemsMut.mutate(updates)
+    reorderItemsMut.mutate(assignSortOrderSlots(reorderedItems))
   }
 
   async function resetPacked() {
@@ -359,21 +358,7 @@ function ListDetailInner({
     listItems.filter((i) => i.gear_item_id !== null).map((i) => i.gear_item_id as string),
   )
 
-  const catMap = new Map(categories.map((c) => [c.id, c]))
-  const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
-
-  type Group = { category: Category | null; items: ListItemWithGear[] }
-  const grouped: Group[] = sortedCats
-    .map((cat) => ({
-      category: cat,
-      items: listItems.filter((i) => i.gear_item?.category_id === cat.id),
-    }))
-    .filter((g) => g.items.length > 0)
-
-  const uncategorisedItems = listItems.filter(
-    (i) => !i.gear_item || i.gear_item.category_id === null || !catMap.has(i.gear_item.category_id),
-  )
-  if (uncategorisedItems.length > 0) grouped.push({ category: null, items: uncategorisedItems })
+  const grouped = groupListItemsByCategory(listItems, categories)
 
   // ── Not found ──────────────────────────────────────────────────────────────
 

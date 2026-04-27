@@ -40,6 +40,7 @@ import type { Category, GearItem } from '../lib/types'
 import { getWeightUnit, setWeightUnit, formatItemWeight, type WeightUnit } from '../lib/weight'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
+import { groupGearItemsByCategory } from '../lib/grouping'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
 import GearItemDialog from './GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -56,17 +57,6 @@ type DialogState =
   | { type: 'import-error'; message: string }
   | { type: 'create-list-from-selection' }
 
-type Group = { category: Category | null; items: GearItem[] }
-
-function groupItems(items: GearItem[], categories: Category[]): Group[] {
-  const groups: Group[] = categories.map((cat) => ({
-    category: cat,
-    items: items.filter((i) => i.category_id === cat.id),
-  }))
-  const uncategorised = items.filter((i) => i.category_id === null)
-  if (uncategorised.length > 0) groups.push({ category: null, items: uncategorised })
-  return groups
-}
 
 export default function GearLibraryPage() {
   const { session } = useAuth()
@@ -241,7 +231,7 @@ export default function GearLibraryPage() {
   }, [allItems, search])
 
   const groups = useMemo(
-    () => groupItems(filteredItems, categories),
+    () => groupGearItemsByCategory(filteredItems, categories),
     [filteredItems, categories],
   )
 
