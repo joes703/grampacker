@@ -187,10 +187,6 @@ function ListDetailInner({
     mutationFn: (item: GearItem) =>
       addGearItemToList(listId, item.id, listItems.length),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) }),
-    onError: (err) => {
-      console.error('addGearItemToList failed:', err)
-      alert(`Couldn't add to list: ${err instanceof Error ? err.message : String(err)}`)
-    },
   })
 
   const updateMut = useMutation({
@@ -505,6 +501,10 @@ function ListDetailInner({
                     listItemGearIds={listItemGearIds}
                     weightUnit={weightUnit}
                     onAdd={(item) => addMut.mutate(item)}
+                    onRemove={(item) => {
+                      const li = listItems.find((l) => l.gear_item_id === item.id)
+                      if (li) deleteMut.mutate(li.id)
+                    }}
                     onDelete={(item) => deleteGearItemMut.mutate(item.id)}
                   />
                 </div>
@@ -646,6 +646,10 @@ function ListDetailInner({
         listItemGearIds={listItemGearIds}
         weightUnit={weightUnit}
         onAdd={(item) => { addMut.mutate(item); setSheetOpen(false) }}
+        onRemove={(item) => {
+          const li = listItems.find((l) => l.gear_item_id === item.id)
+          if (li) deleteMut.mutate(li.id)
+        }}
         onDelete={(item) => deleteGearItemMut.mutate(item.id)}
       />
 

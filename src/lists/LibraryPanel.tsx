@@ -10,10 +10,11 @@ type Props = {
   listItemGearIds: Set<string>
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
+  onRemove: (item: GearItem) => void
   onDelete: (item: GearItem) => void
 }
 
-export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onDelete }: Props) {
+export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove, onDelete }: Props) {
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState(new Set<string>())
   const [deleteCandidate, setDeleteCandidate] = useState<GearItem | null>(null)
@@ -77,6 +78,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
                 listItemGearIds={listItemGearIds}
                 weightUnit={weightUnit}
                 onAdd={onAdd}
+                onRemove={onRemove}
                 onRequestDelete={(item) => setDeleteCandidate(item)}
               />
             ))}
@@ -89,6 +91,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
                 listItemGearIds={listItemGearIds}
                 weightUnit={weightUnit}
                 onAdd={onAdd}
+                onRemove={onRemove}
                 onRequestDelete={(item) => setDeleteCandidate(item)}
               />
             )}
@@ -122,6 +125,7 @@ function CategoryGroup({
   listItemGearIds,
   weightUnit,
   onAdd,
+  onRemove,
   onRequestDelete,
 }: {
   name: string
@@ -131,6 +135,7 @@ function CategoryGroup({
   listItemGearIds: Set<string>
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
+  onRemove: (item: GearItem) => void
   onRequestDelete: (item: GearItem) => void
 }) {
   return (
@@ -159,11 +164,9 @@ function CategoryGroup({
             return (
               <div
                 key={item.id}
-                onClick={inList ? undefined : () => onAdd(item)}
-                title={inList ? 'Already on this list' : 'Click to add to list'}
-                className={`group relative flex items-center gap-2 px-3 py-0.5 ${
-                  inList ? 'cursor-default' : 'cursor-pointer hover:bg-gray-50'
-                }`}
+                onClick={() => (inList ? onRemove(item) : onAdd(item))}
+                title={inList ? 'Click to remove from list' : 'Click to add to list'}
+                className="group relative flex items-center gap-2 px-3 py-0.5 cursor-pointer hover:bg-gray-50"
               >
                 <p
                   className={`flex-1 min-w-0 truncate text-sm font-medium ${
