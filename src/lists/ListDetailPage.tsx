@@ -24,6 +24,7 @@ import {
   Lock,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
   RotateCcw,
   X,
 } from 'lucide-react'
@@ -46,6 +47,7 @@ import {
   reorderListItems,
   importCsvRowsToList,
   updateGearItem,
+  createGearItem,
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
 import { parseListCsv, listItemsToCsv, downloadCsv, type ListImportRow } from '../lib/csv'
@@ -231,6 +233,23 @@ function ListDetailInner({
       qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
       // Invalidate every list-items cache (any list that embeds this gear item)
       qc.invalidateQueries({ queryKey: ['list-items'] })
+    },
+  })
+
+  // "+ Add new item" inside a category — creates a gear_item (so it lives in the
+  // gear library too), then adds it to this list under the same category.
+  const addNewItemMut = useMutation({
+    mutationFn: async ({ categoryId, name }: { categoryId: string | null; name: string }) => {
+      const newGear = await createGearItem(
+        userId,
+        { name, description: null, weight_grams: 0, category_id: categoryId },
+        gearItems.length,
+      )
+      await addGearItemToList(listId, { id: newGear.id, weight_grams: 0 }, listItems.length)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
+      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
     },
   })
 
@@ -520,6 +539,7 @@ function ListDetailInner({
                         onDelete={(itemId) => deleteMut.mutate(itemId)}
                         onSaveGearName={(gearId, n) => updateGearItemMut.mutate({ id: gearId, patch: { name: n } })}
                         onSaveGearDescription={(gearId, d) => updateGearItemMut.mutate({ id: gearId, patch: { description: d } })}
+                        onAddItem={(n) => addNewItemMut.mutate({ categoryId: group.category!.id, name: n })}
                         onReorderItems={(reorderedItems) => {
                           // Re-assign each item's existing sort_order slot in the new order
                           const slots = reorderedItems
@@ -554,6 +574,7 @@ function ListDetailInner({
                     onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
                     onSaveGearName={(gearId, n) => updateGearItemMut.mutate({ id: gearId, patch: { name: n } })}
                     onSaveGearDescription={(gearId, d) => updateGearItemMut.mutate({ id: gearId, patch: { description: d } })}
+                    onAddItem={(n) => addNewItemMut.mutate({ categoryId: null, name: n })}
                     onReorderItems={(reorderedItems) => {
                       const slots = reorderedItems
                         .map((i) => i.sort_order)
@@ -647,10 +668,20 @@ type GroupProps = {
   onReorderItems: (orderedItems: ListItemWithGear[]) => void
   onSaveGearName: (gearItemId: string, name: string) => void
   onSaveGearDescription: (gearItemId: string, description: string) => void
+  onAddItem: (name: string) => void
   dragHandle?: React.ReactNode
 }
 
-function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDelete, onReorderItems, onSaveGearName, onSaveGearDescription, dragHandle }: GroupProps) {
+function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDelete, onReorderItems, onSaveGearName, onSaveGearDescription, onAddItem, dragHandle }: GroupProps) {
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState('')
+
+  function commitAdd() {
+    const trimmed = draft.trim()
+    if (trimmed) onAddItem(trimmed)
+    setDraft('')
+    setAdding(false)
+  }
   const [collapsed, setCollapsed] = useState(false)
   const packedCount = items.filter((i) => i.is_packed).length
   const totalGrams = items.reduce((s, i) => s + i.weight_grams * i.quantity, 0)
@@ -729,6 +760,35 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
               })}
             </SortableContext>
           </DndContext>
+
+          {/* + Add new item — non-pack only */}
+          {!packMode && (
+            adding ? (
+              <div className="flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-0.5 text-sm">
+                <input
+                  autoFocus
+                  type="text"
+                  value={draft}
+                  placeholder="New item name"
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={() => { if (draft.trim()) commitAdd(); else { setDraft(''); setAdding(false) } }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitAdd()
+                    if (e.key === 'Escape') { setDraft(''); setAdding(false) }
+                  }}
+                  className="flex-1 min-w-0 rounded border border-blue-400 px-1 py-0.5 text-sm focus:outline-none"
+                />
+              </div>
+            ) : (
+              <button
+                onClick={() => setAdding(true)}
+                className="flex w-full items-center gap-1 border-b border-gray-100 px-3 py-0.5 text-xs text-gray-400 hover:text-blue-600 hover:bg-gray-50"
+              >
+                <Plus size={12} /> Add new item
+              </button>
+            )
+          )}
+
           {!packMode && items.length > 0 && (
             <div className="flex items-center gap-1.5 px-3 py-0.5 text-xs">
               <div className="flex-1 min-w-0" />
