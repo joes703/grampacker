@@ -88,7 +88,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
           className="h-4 w-4 rounded border-gray-300 text-blue-600 shrink-0"
         />
         <span
-          className={`flex-1 min-w-0 truncate font-medium ${
+          className={`flex-1 min-w-0 truncate font-normal ${
             item.is_packed ? 'text-gray-400 line-through' : 'text-gray-900'
           }`}
         >
@@ -133,10 +133,10 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
             <InlineText
               value={name}
               onSave={onSaveName}
-              className="block w-full truncate font-medium text-gray-900"
+              className="block w-full truncate font-normal text-gray-900"
             />
           ) : (
-            <span className="block w-full truncate font-medium text-gray-400 italic">{name}</span>
+            <span className="block w-full truncate font-normal text-gray-400 italic">{name}</span>
           )}
         </div>
         <div className="flex-[3] min-w-0">
@@ -145,10 +145,10 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
               value={description}
               placeholder="Add description"
               onSave={onSaveDescription}
-              className="block w-full truncate text-xs text-gray-500"
+              className="block w-full truncate text-sm font-normal text-gray-500"
             />
           ) : (
-            <span className="block w-full truncate text-xs text-gray-500">{description}</span>
+            <span className="block w-full truncate text-sm font-normal text-gray-500">{description}</span>
           )}
         </div>
       </div>

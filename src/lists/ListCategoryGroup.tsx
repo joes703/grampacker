@@ -125,7 +125,7 @@ export default function ListCategoryGroup({ name, items, packMode, weightUnit, o
 
           {/* Footer row — "+ Add new item" on the left, category total on the right */}
           {!packMode && !adding && (
-            <div className="flex items-center gap-1.5 px-3 py-0.5 text-xs">
+            <div className="flex items-center gap-1.5 px-3 py-0.5 text-sm">
               <button
                 onClick={() => setAdding(true)}
                 className="flex flex-1 min-w-0 items-center gap-1 text-left text-gray-400 hover:text-blue-600"

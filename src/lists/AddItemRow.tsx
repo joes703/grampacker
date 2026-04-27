@@ -69,7 +69,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
           onChange={(e) => setName(e.target.value)}
           onKeyDown={handleKey}
           maxLength={256}
-          className="flex-[2] min-w-0 rounded border border-blue-400 px-1 py-0.5 text-sm font-medium focus:outline-none"
+          className="flex-[2] min-w-0 rounded border border-blue-400 px-1 py-0.5 text-sm font-normal focus:outline-none"
         />
         <input
           value={description}
@@ -77,7 +77,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
           onChange={(e) => setDescription(e.target.value)}
           onKeyDown={handleKey}
           maxLength={2000}
-          className="flex-[3] min-w-0 rounded border border-gray-200 px-1 py-0.5 text-xs focus:outline-none focus:border-blue-400"
+          className="flex-[3] min-w-0 rounded border border-gray-200 px-1 py-0.5 text-sm font-normal focus:outline-none focus:border-blue-400"
         />
       </div>
 

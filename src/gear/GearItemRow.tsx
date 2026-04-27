@@ -43,7 +43,7 @@ export default function GearItemRow({
           <InlineText
             value={item.name}
             onSave={(v) => onInlineSave({ name: v })}
-            className="block w-full truncate font-medium text-gray-900"
+            className="block w-full truncate font-normal text-gray-900"
           />
         </div>
         {(item.description !== null || !selectMode) && (

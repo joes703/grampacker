@@ -151,7 +151,7 @@ function CategoryGroup({
         ) : (
           <ChevronDown size={13} className="shrink-0 text-gray-400" />
         )}
-        <span className="flex-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <span className="flex-1 text-sm font-medium text-gray-700">
           {name}
         </span>
         <span className="text-xs tabular-nums text-gray-400">{items.length}</span>
@@ -171,7 +171,7 @@ function CategoryGroup({
                   className="flex w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
                 >
                   <span
-                    className={`flex-1 min-w-0 truncate text-sm font-medium ${
+                    className={`flex-1 min-w-0 truncate text-sm font-normal ${
                       inList ? 'text-gray-400' : 'text-gray-900'
                     }`}
                   >
