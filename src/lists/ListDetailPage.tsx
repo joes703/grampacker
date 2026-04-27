@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -11,24 +11,15 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { createPortal } from 'react-dom'
 import {
   BookOpen,
-  Check,
   ChevronDown,
   ChevronRight,
   ClipboardList,
-  Copy,
-  Shirt,
-  UtensilsCrossed,
-  XCircle,
-  Globe,
   GripVertical,
-  Lock,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
-  X,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import {
@@ -70,19 +61,13 @@ import ListsEmptyState from './ListsEmptyState'
 import PackingProgress from './PackingProgress'
 import InlineTitle from './InlineTitle'
 import NotesEditor from './NotesEditor'
+import AddItemRow, { type AddItemData } from './AddItemRow'
+import PrivacyButton from './PrivacyButton'
+import ListImportPreviewDialog from './ListImportPreviewDialog'
 import TypedConfirmDialog from '../components/TypedConfirmDialog'
 import Modal from '../components/Modal'
 
 type Mode = 'edit' | 'pack'
-
-type AddItemData = {
-  name: string
-  description: string | null
-  weight_grams: number
-  quantity: number
-  is_worn: boolean
-  is_consumable: boolean
-}
 
 export default function ListDetailPage() {
   const { id: routeId } = useParams<{ id?: string }>()
@@ -629,7 +614,7 @@ function ListDetailInner({
 
       {/* Import preview */}
       {importPreview && (
-        <ImportPreviewDialog
+        <ListImportPreviewDialog
           rows={importPreview}
           saving={importMut.isPending}
           onConfirm={() => importMut.mutate(importPreview)}
@@ -823,89 +808,6 @@ function SortableListCategoryGroup(props: GroupProps & { id: string }) {
   )
 }
 
-function ImportPreviewDialog({
-  rows,
-  saving,
-  onConfirm,
-  onClose,
-}: {
-  rows: ListImportRow[]
-  saving: boolean
-  onConfirm: () => void
-  onClose: () => void
-}) {
-  const wornCount = rows.filter((r) => r.is_worn).length
-  const consumCount = rows.filter((r) => r.is_consumable).length
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={`Import ${rows.length} item${rows.length !== 1 ? 's' : ''} to list`}
-      className="w-full max-w-lg flex flex-col max-h-[80vh]"
-      closeOnBackdropClick={false}
-    >
-      <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">
-            Import {rows.length} item{rows.length !== 1 ? 's' : ''} to list
-          </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            New items will be added to your gear library. Items already in the library won't be duplicated.
-            {wornCount > 0 && ` ${wornCount} worn.`}
-            {consumCount > 0 && ` ${consumCount} consumable.`}
-          </p>
-        </div>
-        <button type="button" onClick={onClose} className="ml-4 text-gray-400 hover:text-gray-600">
-          <X size={18} />
-        </button>
-      </div>
-        <div className="flex-1 overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-gray-50 text-xs font-medium text-gray-500">
-              <tr>
-                <th className="px-4 py-2 text-left">Name</th>
-                <th className="px-3 py-2 text-right">Weight</th>
-                <th className="px-3 py-2 text-left">Category</th>
-                <th className="px-3 py-2 text-center">Flags</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {rows.map((row, i) => (
-                <tr key={i} className="hover:bg-gray-50">
-                  <td className="px-4 py-1.5 font-medium text-gray-800 max-w-[160px] truncate">{row.name}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{formatItemWeight(row.weight_grams, 'g')}</td>
-                  <td className="px-3 py-1.5 text-gray-500">{row.category || '—'}</td>
-                  <td className="px-3 py-1.5 text-center text-xs">
-                    {row.is_worn && <span className="text-purple-600 mr-1">W</span>}
-                    {row.is_consumable && <span className="text-orange-600">C</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100">
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={onConfirm}
-          disabled={saving}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? 'Importing…' : `Import ${rows.length} item${rows.length !== 1 ? 's' : ''}`}
-        </button>
-      </div>
-    </Modal>
-  )
-}
-
 function PanelCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden flex flex-col">
@@ -917,251 +819,3 @@ function PanelCard({ title, children }: { title: string; children: React.ReactNo
   )
 }
 
-function AddItemRow({
-  onSubmit,
-  onCancel,
-}: {
-  onSubmit: (data: AddItemData) => void
-  onCancel: () => void
-}) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [weight, setWeight] = useState('0')
-  const [quantity, setQuantity] = useState('1')
-  const [worn, setWorn] = useState(false)
-  const [consumable, setConsumable] = useState(false)
-
-  function commit() {
-    const trimmed = name.trim()
-    if (!trimmed) return
-    const w = Math.max(0, Math.min(parseInt(weight, 10) || 0, 100000))
-    const q = Math.max(1, Math.min(parseInt(quantity, 10) || 1, 99))
-    onSubmit({
-      name: trimmed.slice(0, 256),
-      description: description.trim() ? description.trim().slice(0, 2000) : null,
-      weight_grams: w,
-      quantity: q,
-      is_worn: worn,
-      is_consumable: consumable,
-    })
-  }
-
-  function handleKey(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') commit()
-    if (e.key === 'Escape') onCancel()
-  }
-
-  // Commit (or cancel, if name is empty) when focus leaves the entire row —
-  // not just one input. relatedTarget is the element receiving focus next; if
-  // it's a child of this row, the user is just tabbing between fields and we
-  // shouldn't commit yet.
-  function handleRowBlur(e: React.FocusEvent<HTMLDivElement>) {
-    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
-    if (name.trim()) commit()
-    else onCancel()
-  }
-
-  return (
-    <div
-      onBlur={handleRowBlur}
-      className="flex items-center gap-1.5 border-b border-gray-100 bg-blue-50/40 px-3 py-0.5 text-sm"
-    >
-      <div className="flex-1 min-w-0 flex items-center gap-3">
-        <input
-          autoFocus
-          value={name}
-          placeholder="Item name"
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={handleKey}
-          maxLength={256}
-          className="flex-[2] min-w-0 rounded border border-blue-400 px-1 py-0.5 text-sm font-medium focus:outline-none"
-        />
-        <input
-          value={description}
-          placeholder="Description (optional)"
-          onChange={(e) => setDescription(e.target.value)}
-          onKeyDown={handleKey}
-          maxLength={2000}
-          className="flex-[3] min-w-0 rounded border border-gray-200 px-1 py-0.5 text-xs focus:outline-none focus:border-blue-400"
-        />
-      </div>
-
-      <button
-        type="button"
-        onClick={() => { setWorn((v) => !v); if (!worn) setConsumable(false) }}
-        title="Worn"
-        className={`shrink-0 w-7 h-6 inline-flex items-center justify-center rounded ${
-          worn ? 'bg-purple-100 text-purple-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
-        }`}
-      >
-        <Shirt size={14} />
-      </button>
-      <button
-        type="button"
-        onClick={() => { setConsumable((v) => !v); if (!consumable) setWorn(false) }}
-        title="Consumable"
-        className={`shrink-0 w-7 h-6 inline-flex items-center justify-center rounded ${
-          consumable ? 'bg-orange-100 text-orange-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
-        }`}
-      >
-        <UtensilsCrossed size={14} />
-      </button>
-
-      <input
-        type="number"
-        min={1}
-        max={99}
-        value={quantity}
-        onChange={(e) => setQuantity(e.target.value)}
-        onKeyDown={handleKey}
-        className="shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
-      />
-      <input
-        type="number"
-        min={0}
-        max={100000}
-        value={weight}
-        onChange={(e) => setWeight(e.target.value)}
-        onKeyDown={handleKey}
-        className="shrink-0 w-16 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
-      />
-
-      <button
-        type="button"
-        onClick={onCancel}
-        title="Cancel"
-        className="shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
-      >
-        <XCircle size={14} />
-      </button>
-    </div>
-  )
-}
-
-function PrivacyButton({ list }: { list: List }) {
-  const qc = useQueryClient()
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
-  const [copied, setCopied] = useState(false)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const popoverRef = useRef<HTMLDivElement>(null)
-  const open = pos !== null
-
-  const toggleMut = useMutation({
-    mutationFn: () => updateList(list.id, { is_shared: !list.is_shared }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
-  })
-
-  function openPopover() {
-    if (!triggerRef.current) return
-    const rect = triggerRef.current.getBoundingClientRect()
-    setPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right })
-  }
-
-  useEffect(() => {
-    if (!open) return
-    function handleClick(e: MouseEvent) {
-      const t = e.target as Node
-      if (
-        popoverRef.current && !popoverRef.current.contains(t) &&
-        triggerRef.current && !triggerRef.current.contains(t)
-      ) {
-        setPos(null)
-      }
-    }
-    function handleScroll() { setPos(null) }
-    document.addEventListener('mousedown', handleClick)
-    window.addEventListener('scroll', handleScroll, true)
-    window.addEventListener('resize', handleScroll)
-    return () => {
-      document.removeEventListener('mousedown', handleClick)
-      window.removeEventListener('scroll', handleScroll, true)
-      window.removeEventListener('resize', handleScroll)
-    }
-  }, [open])
-
-  const shareUrl = `${window.location.origin}/r/${list.share_token}`
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        onClick={() => (open ? setPos(null) : openPopover())}
-        title={list.is_shared ? 'Public — click to manage' : 'Private — click to manage'}
-        aria-pressed={list.is_shared}
-        className={`inline-flex items-center justify-center rounded-lg border p-1.5 ${
-          list.is_shared
-            ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
-            : 'border-gray-300 text-gray-500 hover:bg-gray-50'
-        }`}
-      >
-        {list.is_shared ? <Globe size={16} /> : <Lock size={16} />}
-      </button>
-
-      {open && pos && createPortal(
-        <div
-          ref={popoverRef}
-          className="fixed z-50 w-80 rounded-lg border border-gray-200 bg-white p-3 shadow-lg"
-          style={{ top: pos.top, right: pos.right }}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-800">Public link</span>
-            <ToggleSwitch checked={list.is_shared} onChange={() => toggleMut.mutate()} />
-          </div>
-          {list.is_shared ? (
-            <>
-              <p className="text-xs text-gray-500 mb-2">Anyone with this link can view the list.</p>
-              <div className="flex gap-1">
-                <input
-                  readOnly
-                  value={shareUrl}
-                  onFocus={(e) => e.currentTarget.select()}
-                  className="flex-1 min-w-0 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-mono text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(shareUrl)
-                      setCopied(true)
-                      setTimeout(() => setCopied(false), 1500)
-                    } catch {
-                      // ignore — clipboard unavailable
-                    }
-                  }}
-                  className="inline-flex items-center gap-1 rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
-                >
-                  {copied ? (
-                    <><Check size={12} className="text-green-600" /> Copied</>
-                  ) : (
-                    <><Copy size={12} /> Copy</>
-                  )}
-                </button>
-              </div>
-            </>
-          ) : (
-            <p className="text-xs text-gray-500">Toggle on to share this list with anyone via link.</p>
-          )}
-        </div>,
-        document.body,
-      )}
-    </>
-  )
-}
-
-function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: () => void }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={checked}
-      onClick={onChange}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-        checked ? 'bg-blue-600' : 'bg-gray-300'
-      }`}
-    >
-      <span
-        className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
-          checked ? 'translate-x-[18px]' : 'translate-x-0.5'
-        }`}
-      />
-    </button>
-  )
-}
