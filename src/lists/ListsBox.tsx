@@ -12,6 +12,7 @@ import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } 
 import { CSS } from '@dnd-kit/utilities'
 import { CopyPlus, Download, GripVertical, MoreVertical, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import type { List } from '../lib/types'
+import { asButtonRef } from '../lib/dnd'
 
 type RowActions = {
   onImport: (list: List) => void
@@ -238,7 +239,7 @@ function ListsBoxRow({
     >
       {/* Drag handle */}
       <button
-        ref={setActivatorNodeRef as unknown as (node: HTMLButtonElement | null) => void}
+        ref={asButtonRef(setActivatorNodeRef)}
         {...listeners}
         {...attributes}
         className="cursor-grab touch-none px-1 py-0.5 text-gray-300 hover:text-gray-500 active:cursor-grabbing shrink-0"

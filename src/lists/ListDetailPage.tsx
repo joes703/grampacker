@@ -52,11 +52,13 @@ import {
   updateGearItem,
   createGearItem,
   deleteGearItem,
+  type ListItemPatch,
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
 import { parseListCsv, listItemsToCsv, downloadCsv, type ListImportRow } from '../lib/csv'
 import { formatItemWeight, getWeightUnit, setWeightUnit, type WeightUnit } from '../lib/weight'
 import { getLastListId, setLastListId } from '../lib/preferences'
+import { asButtonRef } from '../lib/dnd'
 import ListItemRow from './ListItemRow'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
@@ -189,7 +191,7 @@ function ListDetailInner({
   })
 
   const updateMut = useMutation({
-    mutationFn: ({ itemId, patch }: { itemId: string; patch: Parameters<typeof updateListItem>[1] }) =>
+    mutationFn: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) =>
       updateListItem(itemId, patch),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) }),
   })
@@ -322,6 +324,23 @@ function ListDetailInner({
     const reordered = arrayMove(sortedCats, oldIndex, newIndex)
     qc.setQueryData(queryKeys.categories(), reordered)
     reorderCatsMut.mutate(reordered.map((c, i) => ({ id: c.id, sort_order: i })))
+  }
+
+  // Reorder list items within a single category. Reuses the existing
+  // sort_order slots from the moved subset so we don't have to renumber the
+  // entire list, then optimistically rewrites the cached array (re-sorted by
+  // sort_order so the per-category filter downstream sees the new order).
+  function handleItemsReorder(reorderedItems: ListItemWithGear[]) {
+    const slots = reorderedItems.map((i) => i.sort_order).slice().sort((a, b) => a - b)
+    const updates = reorderedItems.map((i, idx) => ({ id: i.id, sort_order: slots[idx] }))
+    const byId = new Map(updates.map((u) => [u.id, u.sort_order]))
+    qc.setQueryData(queryKeys.listItems(listId), (prev: ListItemWithGear[] | undefined) => {
+      if (!prev) return prev
+      return prev
+        .map((i) => byId.has(i.id) ? { ...i, sort_order: byId.get(i.id)! } : i)
+        .sort((a, b) => a.sort_order - b.sort_order)
+    })
+    reorderItemsMut.mutate(updates)
   }
 
   async function resetPacked() {
@@ -554,85 +573,59 @@ function ListDetailInner({
             <div className="flex h-32 items-center justify-center rounded-xl border-2 border-dashed border-gray-200">
               <p className="text-sm text-gray-400">No items — add from your gear library</p>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
-                <SortableContext
-                  items={grouped.filter((g) => g.category !== null).map((g) => g.category!.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {grouped
-                    .filter((g) => g.category !== null)
-                    .map((group) => (
-                      <SortableListCategoryGroup
-                        key={group.category!.id}
-                        id={group.category!.id}
-                        name={group.category!.name}
-                        items={group.items}
-                        packMode={mode === 'pack'}
-                        weightUnit={weightUnit}
-                        onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
-                        onDelete={(itemId) => deleteMut.mutate(itemId)}
-                        onSaveGearName={(gearId, n) => updateGearItemMut.mutate({ id: gearId, patch: { name: n } })}
-                        onSaveGearDescription={(gearId, d) => updateGearItemMut.mutate({ id: gearId, patch: { description: d } })}
-                        onSaveGearWeight={(gearId, w) => updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } })}
-                        onAddItem={(data) => addNewItemMut.mutate({ categoryId: group.category!.id, data })}
-                        onReorderItems={(reorderedItems) => {
-                          // Re-assign each item's existing sort_order slot in the new order
-                          const slots = reorderedItems
-                            .map((i) => i.sort_order)
-                            .slice()
-                            .sort((a, b) => a - b)
-                          const updates = reorderedItems.map((i, idx) => ({ id: i.id, sort_order: slots[idx] }))
-                          const byId = new Map(updates.map((u) => [u.id, u.sort_order]))
-                          // Optimistically: rewrite sort_order AND re-sort the cached array so the
-                          // filter-by-category step downstream reflects the new visual order.
-                          qc.setQueryData(queryKeys.listItems(listId), (prev: ListItemWithGear[] | undefined) => {
-                            if (!prev) return prev
-                            return prev
-                              .map((i) => byId.has(i.id) ? { ...i, sort_order: byId.get(i.id)! } : i)
-                              .sort((a, b) => a.sort_order - b.sort_order)
-                          })
-                          reorderItemsMut.mutate(updates)
-                        }}
-                      />
-                    ))}
-                </SortableContext>
-              </DndContext>
-              {grouped
-                .filter((g) => g.category === null)
-                .map((group) => (
-                  <ListCategoryGroup
-                    key="__uncategorised__"
-                    name="Uncategorised"
-                    items={group.items}
-                    packMode={mode === 'pack'}
-                    weightUnit={weightUnit}
-                    onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
-                    onSaveGearName={(gearId, n) => updateGearItemMut.mutate({ id: gearId, patch: { name: n } })}
-                    onSaveGearDescription={(gearId, d) => updateGearItemMut.mutate({ id: gearId, patch: { description: d } })}
-                    onSaveGearWeight={(gearId, w) => updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } })}
-                    onAddItem={(data) => addNewItemMut.mutate({ categoryId: null, data })}
-                    onReorderItems={(reorderedItems) => {
-                      const slots = reorderedItems
-                        .map((i) => i.sort_order)
-                        .slice()
-                        .sort((a, b) => a - b)
-                      const updates = reorderedItems.map((i, idx) => ({ id: i.id, sort_order: slots[idx] }))
-                      const byId = new Map(updates.map((u) => [u.id, u.sort_order]))
-                      qc.setQueryData(queryKeys.listItems(listId), (prev: ListItemWithGear[] | undefined) => {
-                        if (!prev) return prev
-                        return prev
-                          .map((i) => byId.has(i.id) ? { ...i, sort_order: byId.get(i.id)! } : i)
-                          .sort((a, b) => a.sort_order - b.sort_order)
-                      })
-                      reorderItemsMut.mutate(updates)
-                    }}
-                    onDelete={(itemId) => deleteMut.mutate(itemId)}
-                  />
-                ))}
-            </div>
-          )}
+          ) : (() => {
+            // Props shared by every category group on this page. Per-category
+            // bits (id, name, items, onAddItem with the right categoryId) are
+            // applied at each callsite.
+            const sharedGroupProps = {
+              packMode: mode === 'pack',
+              weightUnit,
+              onUpdate: (itemId: string, patch: ListItemPatch) =>
+                updateMut.mutate({ itemId, patch }),
+              onDelete: (itemId: string) => deleteMut.mutate(itemId),
+              onSaveGearName: (gearId: string, n: string) =>
+                updateGearItemMut.mutate({ id: gearId, patch: { name: n } }),
+              onSaveGearDescription: (gearId: string, d: string) =>
+                updateGearItemMut.mutate({ id: gearId, patch: { description: d } }),
+              onSaveGearWeight: (gearId: string, w: number) =>
+                updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } }),
+              onReorderItems: handleItemsReorder,
+            }
+            return (
+              <div className="space-y-4">
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
+                  <SortableContext
+                    items={grouped.filter((g) => g.category !== null).map((g) => g.category!.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {grouped
+                      .filter((g) => g.category !== null)
+                      .map((group) => (
+                        <SortableListCategoryGroup
+                          key={group.category!.id}
+                          id={group.category!.id}
+                          name={group.category!.name}
+                          items={group.items}
+                          {...sharedGroupProps}
+                          onAddItem={(data) => addNewItemMut.mutate({ categoryId: group.category!.id, data })}
+                        />
+                      ))}
+                  </SortableContext>
+                </DndContext>
+                {grouped
+                  .filter((g) => g.category === null)
+                  .map((group) => (
+                    <ListCategoryGroup
+                      key="__uncategorised__"
+                      name="Uncategorised"
+                      items={group.items}
+                      {...sharedGroupProps}
+                      onAddItem={(data) => addNewItemMut.mutate({ categoryId: null, data })}
+                    />
+                  ))}
+              </div>
+            )
+          })()}
         </div>
       </div>
 
@@ -706,7 +699,7 @@ type GroupProps = {
   items: ListItemWithGear[]
   packMode: boolean
   weightUnit: WeightUnit
-  onUpdate: (itemId: string, patch: Parameters<typeof updateListItem>[1]) => void
+  onUpdate: (itemId: string, patch: ListItemPatch) => void
   onDelete: (itemId: string) => void
   onReorderItems: (orderedItems: ListItemWithGear[]) => void
   onSaveGearName: (gearItemId: string, name: string) => void
@@ -845,7 +838,7 @@ function SortableListCategoryGroup(props: GroupProps & { id: string }) {
 
   const handle = (
     <button
-      ref={setActivatorNodeRef as unknown as (node: HTMLButtonElement | null) => void}
+      ref={asButtonRef(setActivatorNodeRef)}
       {...listeners}
       {...attributes}
       className="cursor-grab touch-none text-gray-400 hover:text-gray-600 active:cursor-grabbing shrink-0"
@@ -1079,9 +1072,6 @@ function AddItemRow({
   const [quantity, setQuantity] = useState('1')
   const [worn, setWorn] = useState(false)
   const [consumable, setConsumable] = useState(false)
-  const nameRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => { nameRef.current?.focus() }, [])
 
   function commit() {
     const trimmed = name.trim()
@@ -1107,7 +1097,7 @@ function AddItemRow({
     <div className="flex items-center gap-1.5 border-b border-gray-100 bg-blue-50/40 px-3 py-0.5 text-sm">
       <div className="flex-1 min-w-0 flex items-center gap-3">
         <input
-          ref={nameRef}
+          autoFocus
           value={name}
           placeholder="Item name"
           onChange={(e) => setName(e.target.value)}

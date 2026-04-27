@@ -438,6 +438,29 @@ orchestration roots (`ListDetailPage.tsx` 1,307 LOC, `GearLibraryPage.tsx`
   `if (!cancelled)` flag. Or just let the listener be the only writer.
 - **Risk of fixing**: small.
 
+### M18 · Pre-existing ESLint errors surfaced during Batch 1 verification
+- **Location**: `src/gear/GearLibraryPage.tsx:106, 114` (the
+  `toggleCollapse` / `toggleSelect` ternary), `src/lib/queries.ts:261` (the
+  `_id, _lid, _ca, _ua` underscore-prefix destructure inside `duplicateList`),
+  `src/lists/LibraryPanel.tsx:25` (collapse toggle), `src/lists/ListsBox.tsx:265`
+  (kebab open toggle).
+- **Standard violated**: §11 anti-pattern #6 (sort/filter / mutate inside
+  event handlers — adjacent flavor). Style consistency.
+- **Severity**: medium.
+- **Description**: `eslint .` reports 8 errors:
+  - `@typescript-eslint/no-unused-expressions` — `set.has(id) ? set.delete(id)
+    : set.add(id)` is a ternary used as a statement. Lint rejects the
+    pattern; the fix is `if (set.has(id)) set.delete(id); else set.add(id)`,
+    or just `set[set.has(id) ? 'delete' : 'add'](id)`.
+  - `@typescript-eslint/no-unused-vars` — `_id`, `_lid`, `_ca`, `_ua` in the
+    `duplicateList` destructure are flagged because the project's eslint
+    config doesn't whitelist underscore-prefixed names. Fix: configure
+    `argsIgnorePattern: '^_'` and `varsIgnorePattern: '^_'` in the eslint
+    config, or rewrite the destructure to drop the unused names.
+- **Suggested fix**: the lint errors are all small mechanical fixes; address
+  in Batch 3 with the other M4-M14 cluster work.
+- **Risk of fixing**: small.
+
 ### L7 · `<button>` elements inside non-form contexts without `type="button"`
 - **Location**: many (kebab triggers, drag handles, action buttons).
 - **Standard violated**: §1 forms.
