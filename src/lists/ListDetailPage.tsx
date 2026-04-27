@@ -3,11 +3,13 @@ import { useParams, useNavigate } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core'
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import {
@@ -57,6 +59,8 @@ import PrivacyButton from './PrivacyButton'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
 import CategoryGroup, { SortableCategoryGroup } from './CategoryGroup'
 import PanelCard from './PanelCard'
+import { parseCategoryDroppableId } from './CategoryGroup'
+import ItemRow from './ItemRow'
 import GearItemDialog from '../gear/GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
@@ -307,6 +311,10 @@ function ListDetailInner({
   })
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const itemSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+  // Active list-item id during drag (for the DragOverlay).
+  const [activeItemId, setActiveItemId] = useState<string | null>(null)
 
   function handleCategoryDragEnd(e: DragEndEvent) {
     const { active, over } = e
@@ -319,11 +327,134 @@ function ListDetailInner({
     reorderCatsMut.mutate(reordered.map((c, i) => ({ id: c.id, sort_order: i })))
   }
 
-  // Reorder list items within a single category by re-using the existing
-  // sort_order slots from the moved subset (avoids renumbering the whole list).
-  // The optimistic cache update + rollback is handled by the mutation itself.
-  function handleItemsReorder(reorderedItems: ListItemWithGear[]) {
-    reorderItemsMut.mutate(assignSortOrderSlots(reorderedItems))
+  // Cross-category move: updates gear_items.category_id (global, propagates to
+  // every list containing this gear item) and renumbers list_items.sort_order
+  // in the destination category so the moved row lands where the user dropped
+  // it. Optimistic across both ['list-items', listId] and ['gear-items']; on
+  // error both rollback. ['list-items'] (broad) is invalidated on settle so
+  // other lists embedding the same gear item refresh.
+  const moveAcrossCategoriesMut = useMutation({
+    mutationFn: async ({
+      gearItemId,
+      newCategoryId,
+      sortUpdates,
+    }: {
+      gearItemId: string
+      newCategoryId: string | null
+      sortUpdates: { id: string; sort_order: number }[]
+    }) => {
+      await updateGearItem(gearItemId, { category_id: newCategoryId })
+      if (sortUpdates.length) await reorderListItems(sortUpdates)
+    },
+    onMutate: async ({ gearItemId, newCategoryId, sortUpdates }) => {
+      await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
+      await qc.cancelQueries({ queryKey: queryKeys.gearItems() })
+      const prevListItems = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
+      const prevGearItems = qc.getQueryData<GearItem[]>(queryKeys.gearItems())
+      const sortMap = new Map(sortUpdates.map((u) => [u.id, u.sort_order]))
+      qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) => {
+        if (!curr) return curr
+        return curr.map((li) => {
+          let next = li
+          if (li.gear_item?.id === gearItemId) {
+            next = { ...next, gear_item: { ...next.gear_item!, category_id: newCategoryId } }
+          }
+          if (sortMap.has(li.id)) next = { ...next, sort_order: sortMap.get(li.id)! }
+          return next
+        })
+      })
+      qc.setQueryData<GearItem[]>(queryKeys.gearItems(), (curr) => {
+        if (!curr) return curr
+        return curr.map((g) =>
+          g.id === gearItemId ? { ...g, category_id: newCategoryId } : g,
+        )
+      })
+      return { prevListItems, prevGearItems }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prevListItems) qc.setQueryData(queryKeys.listItems(listId), ctx.prevListItems)
+      if (ctx?.prevGearItems) qc.setQueryData(queryKeys.gearItems(), ctx.prevGearItems)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+      qc.invalidateQueries({ queryKey: ['list-items'] })
+      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
+    },
+  })
+
+  function handleItemDragStart(e: DragStartEvent) {
+    setActiveItemId(String(e.active.id))
+  }
+
+  function handleItemDragCancel() {
+    setActiveItemId(null)
+  }
+
+  // Page-level item drag handler. Branches on what the user dropped onto:
+  //   - empty/own category drop zone → no-op
+  //   - item in same category → sort_order reorder (existing behavior)
+  //   - item in different category, OR a category drop zone for a different
+  //     category → cross-category move via moveAcrossCategoriesMut.
+  function handleItemDragEnd(e: DragEndEvent) {
+    setActiveItemId(null)
+    const { active, over } = e
+    if (!over) return
+    if (active.id === over.id) return
+
+    const activeItem = listItems.find((i) => i.id === active.id)
+    if (!activeItem || !activeItem.gear_item) return
+    const activeCat = activeItem.gear_item.category_id ?? null
+    const gearItemId = activeItem.gear_item.id
+
+    const overId = String(over.id)
+    const parsedCat = parseCategoryDroppableId(overId)
+
+    let destCat: string | null
+    let overItemId: string | null = null
+    if (parsedCat !== undefined) {
+      destCat = parsedCat
+    } else {
+      // over.id is an item id — find its category
+      overItemId = overId
+      const overItem = listItems.find((i) => i.id === overItemId)
+      if (!overItem) return
+      destCat = overItem.gear_item?.category_id ?? null
+    }
+
+    if (destCat === activeCat) {
+      // Same-category sort reorder
+      if (!overItemId) return
+      const itemsInCat = listItems.filter(
+        (i) => (i.gear_item?.category_id ?? null) === activeCat,
+      )
+      const oldIndex = itemsInCat.findIndex((i) => i.id === active.id)
+      const newIndex = itemsInCat.findIndex((i) => i.id === overItemId)
+      if (oldIndex === -1 || newIndex === -1) return
+      const reordered = arrayMove(itemsInCat, oldIndex, newIndex)
+      reorderItemsMut.mutate(assignSortOrderSlots(reordered))
+      return
+    }
+
+    // Cross-category drop. Compute destination items in their new order with
+    // the moved item inserted, then renumber the destination's sort_order
+    // slots from the existing pool of values.
+    const destItems = listItems.filter(
+      (i) => (i.gear_item?.category_id ?? null) === destCat && i.id !== activeItem.id,
+    )
+    let insertIdx: number
+    if (overItemId) {
+      const idx = destItems.findIndex((i) => i.id === overItemId)
+      insertIdx = idx === -1 ? destItems.length : idx
+    } else {
+      insertIdx = destItems.length
+    }
+    const newDestOrder = [
+      ...destItems.slice(0, insertIdx),
+      activeItem,
+      ...destItems.slice(insertIdx),
+    ]
+    const sortUpdates = assignSortOrderSlots(newDestOrder)
+    moveAcrossCategoriesMut.mutate({ gearItemId, newCategoryId: destCat, sortUpdates })
   }
 
   async function resetPacked() {
@@ -533,6 +664,7 @@ function ListDetailInner({
             const sharedGroupProps = {
               packMode: mode === 'pack',
               weightUnit,
+              sortable: true,
               onUpdate: (itemId: string, patch: ListItemPatch) =>
                 updateMut.mutate({ itemId, patch }),
               onDelete: (itemId: string) => deleteMut.mutate(itemId),
@@ -542,7 +674,6 @@ function ListDetailInner({
                 updateGearItemMut.mutate({ id: gearId, patch: { description: d } }),
               onSaveGearWeight: (gearId: string, w: number) =>
                 updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } }),
-              onReorderItems: handleItemsReorder,
               onEditGearItem: (gearId: string) => {
                 const g = gearItems.find((x) => x.id === gearId)
                 if (g) setEditingGearItem(g)
@@ -552,38 +683,64 @@ function ListDetailInner({
                 if (g) setDeleteGearCandidate(g)
               },
             }
+            // Flat item id list across all categories, in render order. The
+            // page-level <SortableContext> needs every draggable id registered;
+            // verticalListSortingStrategy handles cross-category visual shifts.
+            const flatItemIds = grouped.flatMap((g) => g.items.map((i) => i.id))
+            const activeItem = activeItemId
+              ? listItems.find((i) => i.id === activeItemId)
+              : null
             return (
               <div className="space-y-4">
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
-                  <SortableContext
-                    items={grouped.filter((g) => g.category !== null).map((g) => g.category!.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
+                <DndContext
+                  sensors={itemSensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={handleItemDragStart}
+                  onDragEnd={handleItemDragEnd}
+                  onDragCancel={handleItemDragCancel}
+                >
+                  <SortableContext items={flatItemIds} strategy={verticalListSortingStrategy}>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
+                      <SortableContext
+                        items={grouped.filter((g) => g.category !== null).map((g) => g.category!.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <div className="space-y-4">
+                          {grouped
+                            .filter((g) => g.category !== null)
+                            .map((group) => (
+                              <SortableCategoryGroup
+                                key={group.category!.id}
+                                id={group.category!.id}
+                                categoryId={group.category!.id}
+                                name={group.category!.name}
+                                items={group.items}
+                                {...sharedGroupProps}
+                                onAddItem={(data) => addNewItemMut.mutate({ categoryId: group.category!.id, data })}
+                              />
+                            ))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
                     {grouped
-                      .filter((g) => g.category !== null)
+                      .filter((g) => g.category === null)
                       .map((group) => (
-                        <SortableCategoryGroup
-                          key={group.category!.id}
-                          id={group.category!.id}
-                          name={group.category!.name}
+                        <CategoryGroup
+                          key="__uncategorised__"
+                          name="Uncategorised"
+                          categoryId={null}
                           items={group.items}
                           {...sharedGroupProps}
-                          onAddItem={(data) => addNewItemMut.mutate({ categoryId: group.category!.id, data })}
+                          onAddItem={(data) => addNewItemMut.mutate({ categoryId: null, data })}
                         />
                       ))}
                   </SortableContext>
+                  <DragOverlay>
+                    {activeItem ? (
+                      <ItemRow item={activeItem} weightUnit={weightUnit} />
+                    ) : null}
+                  </DragOverlay>
                 </DndContext>
-                {grouped
-                  .filter((g) => g.category === null)
-                  .map((group) => (
-                    <CategoryGroup
-                      key="__uncategorised__"
-                      name="Uncategorised"
-                      items={group.items}
-                      {...sharedGroupProps}
-                      onAddItem={(data) => addNewItemMut.mutate({ categoryId: null, data })}
-                    />
-                  ))}
               </div>
             )
           })()}

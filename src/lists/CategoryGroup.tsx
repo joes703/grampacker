@@ -1,13 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { useDroppable } from '@dnd-kit/core'
+import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ChevronDown, ChevronRight, GripVertical, Plus } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
@@ -17,6 +10,20 @@ import { asButtonRef } from '../lib/dnd'
 import ItemRow, { SortableItemRow } from './ItemRow'
 import AddItemRow, { type AddItemData } from './AddItemRow'
 
+// Droppable id namespace for category drop zones. The page-level
+// onDragEnd resolves these to a category id (or null for uncategorised)
+// before mutating. Namespaced so it can never collide with a list_items.id.
+export const CATEGORY_DROP_PREFIX = 'category-drop:'
+export const UNCATEGORISED_KEY = '__uncategorised__'
+export function categoryDroppableId(categoryId: string | null): string {
+  return `${CATEGORY_DROP_PREFIX}${categoryId ?? UNCATEGORISED_KEY}`
+}
+export function parseCategoryDroppableId(id: string): string | null | undefined {
+  if (!id.startsWith(CATEGORY_DROP_PREFIX)) return undefined
+  const v = id.slice(CATEGORY_DROP_PREFIX.length)
+  return v === UNCATEGORISED_KEY ? null : v
+}
+
 // Single source of truth for a category section. Used by both the
 // authenticated list detail view and the public share view.
 //
@@ -24,9 +31,13 @@ import AddItemRow, { type AddItemData } from './AddItemRow'
 // header labels, item rows, and footer totals always line up.
 //
 // Editing affordances are gated on which handlers are passed:
-//   - onReorderItems     ⇒ rows are wrapped in DndContext + SortableContext
-//                          and rendered as SortableItemRow. Without it, rows
-//                          are plain ItemRow (no drag).
+//   - sortable           ⇒ rows render as SortableItemRow. Must be inside a
+//                          page-level <SortableContext> covering all items.
+//                          Without it, rows are plain ItemRow (no drag).
+//   - categoryId         ⇒ category section registers as a drop target so
+//                          the page-level onDragEnd can resolve cross-cat
+//                          drops to this category. null ⇒ uncategorised.
+//                          undefined ⇒ no drop target (share view).
 //   - onAddItem          ⇒ "+ Add new item" footer button + AddItemRow draft.
 //   - onDelete + onUpdate + onSaveGear* + onEditGearItem + onDeleteGearItem
 //                        ⇒ forwarded per-row to ItemRow's editing affordances.
@@ -41,9 +52,13 @@ export type GroupProps = {
   weightUnit: WeightUnit
   packMode?: boolean
   collapsible?: boolean
+  /** Category id used for drop-target registration. null = uncategorised.
+   *  undefined disables the drop target (share view). */
+  categoryId?: string | null
+  /** Render rows as SortableItemRow (must be inside a page-level SortableContext). */
+  sortable?: boolean
   onUpdate?: (itemId: string, patch: ListItemPatch) => void
   onDelete?: (itemId: string) => void
-  onReorderItems?: (orderedItems: ListItemWithGear[]) => void
   onSaveGearName?: (gearItemId: string, name: string) => void
   onSaveGearDescription?: (gearItemId: string, description: string) => void
   onSaveGearWeight?: (gearItemId: string, weight_grams: number) => void
@@ -61,9 +76,10 @@ export default function CategoryGroup({
   weightUnit,
   packMode = false,
   collapsible = true,
+  categoryId,
+  sortable = false,
   onUpdate,
   onDelete,
-  onReorderItems,
   onSaveGearName,
   onSaveGearDescription,
   onSaveGearWeight,
@@ -78,17 +94,12 @@ export default function CategoryGroup({
   const totalGrams = items.reduce((s, i) => s + (i.gear_item?.weight_grams ?? 0) * i.quantity, 0)
   const showKebabSlot = !packMode && Boolean(onDelete)
 
-  const itemSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-
-  function handleItemDragEnd(e: DragEndEvent) {
-    if (!onReorderItems) return
-    const { active, over } = e
-    if (!over || active.id === over.id) return
-    const oldIndex = items.findIndex((i) => i.id === active.id)
-    const newIndex = items.findIndex((i) => i.id === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
-    onReorderItems(arrayMove(items, oldIndex, newIndex))
-  }
+  // Drop target for cross-category drops. Disabled when categoryId is undefined
+  // (e.g. the share view doesn't allow drops at all).
+  const droppable = useDroppable({
+    id: categoryId === undefined ? '__disabled__' : categoryDroppableId(categoryId),
+    disabled: categoryId === undefined,
+  })
 
   // Per-row props builder — same shape for SortableItemRow and ItemRow.
   function rowPropsFor(item: ListItemWithGear) {
@@ -155,18 +166,13 @@ export default function CategoryGroup({
 
       {/* Items + footer (footer is the row's "total" line, lined up under Weight) */}
       {!collapsed && (
-        <div className="pl-2">
-          {onReorderItems ? (
-            <DndContext sensors={itemSensors} collisionDetection={closestCenter} onDragEnd={handleItemDragEnd}>
-              <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-                {items.map((item) => (
-                  <SortableItemRow key={item.id} {...rowPropsFor(item)} />
-                ))}
-              </SortableContext>
-            </DndContext>
-          ) : (
-            items.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)
-          )}
+        <div
+          ref={droppable.setNodeRef}
+          className={`pl-2 ${droppable.isOver ? 'rounded ring-2 ring-blue-300 ring-inset' : ''}`}
+        >
+          {sortable
+            ? items.map((item) => <SortableItemRow key={item.id} {...rowPropsFor(item)} />)
+            : items.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}
 
           {/* Draft row when adding — full editable item row */}
           {!packMode && onAddItem && adding && (
