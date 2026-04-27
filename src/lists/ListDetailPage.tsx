@@ -28,7 +28,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
-  RotateCcw,
   X,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
@@ -68,6 +67,9 @@ import LibraryPanel from './LibraryPanel'
 import LibrarySheet from './LibrarySheet'
 import ListsBox from './ListsBox'
 import ListsEmptyState from './ListsEmptyState'
+import PackingProgress from './PackingProgress'
+import InlineTitle from './InlineTitle'
+import NotesEditor from './NotesEditor'
 import TypedConfirmDialog from '../components/TypedConfirmDialog'
 import Modal from '../components/Modal'
 
@@ -821,49 +823,6 @@ function SortableListCategoryGroup(props: GroupProps & { id: string }) {
   )
 }
 
-function PackingProgress({
-  total,
-  packed,
-  onReset,
-}: {
-  total: number
-  packed: number
-  onReset: () => void
-}) {
-  const pct = total === 0 ? 0 : Math.round((packed / total) * 100)
-  const done = packed === total && total > 0
-
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium text-gray-700">
-          {packed} / {total} packed
-        </span>
-        <div className="flex items-center gap-2">
-          {done && (
-            <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-              All packed!
-            </span>
-          )}
-          <button
-            onClick={onReset}
-            disabled={packed === 0}
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40"
-          >
-            <RotateCcw size={12} /> Reset
-          </button>
-        </div>
-      </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-        <div
-          className={`h-2 rounded-full transition-all ${done ? 'bg-green-500' : 'bg-blue-500'}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  )
-}
-
 function ImportPreviewDialog({
   rows,
   saving,
@@ -947,49 +906,6 @@ function ImportPreviewDialog({
   )
 }
 
-function InlineTitle({ name, onSave }: { name: string; onSave: (next: string) => void }) {
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(name)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (editing) inputRef.current?.select()
-  }, [editing])
-
-  function commit() {
-    const trimmed = draft.trim()
-    if (trimmed && trimmed !== name) onSave(trimmed)
-    setEditing(false)
-  }
-
-  if (editing) {
-    return (
-      <input
-        ref={inputRef}
-        value={draft}
-        maxLength={256}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') commit()
-          if (e.key === 'Escape') { setDraft(name); setEditing(false) }
-        }}
-        className="flex-1 min-w-0 rounded border border-blue-400 bg-white px-2 py-0.5 text-xl font-semibold text-gray-900 focus:outline-none"
-      />
-    )
-  }
-
-  return (
-    <h1
-      onClick={() => { setDraft(name); setEditing(true) }}
-      title="Click to rename"
-      className="flex-1 min-w-0 cursor-text truncate rounded px-2 py-0.5 -mx-2 text-xl font-semibold text-gray-900 hover:bg-gray-100"
-    >
-      {name}
-    </h1>
-  )
-}
-
 function PanelCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden flex flex-col">
@@ -998,32 +914,6 @@ function PanelCard({ title, children }: { title: string; children: React.ReactNo
       </div>
       <div className="flex-1 flex flex-col">{children}</div>
     </div>
-  )
-}
-
-function NotesEditor({
-  initial,
-  onSave,
-}: {
-  initial: string
-  onSave: (description: string) => void
-}) {
-  const [draft, setDraft] = useState(initial)
-
-  function commit() {
-    const trimmed = draft.trim()
-    if (trimmed !== initial.trim()) onSave(trimmed)
-  }
-
-  return (
-    <textarea
-      value={draft}
-      maxLength={2000}
-      placeholder="Add notes about this packing list…"
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      className="flex-1 min-h-[8rem] w-full resize-none px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none"
-    />
   )
 }
 
