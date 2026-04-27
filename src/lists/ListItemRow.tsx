@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Shirt, UtensilsCrossed, XCircle } from 'lucide-react'
+import { GripVertical, MoreHorizontal, Pencil, Shirt, Trash2, UtensilsCrossed, XCircle } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
@@ -16,9 +17,13 @@ type Props = {
   onSaveDescription?: (description: string) => void
   onSaveWeight?: (weight_grams: number) => void
   onDelete: () => void
+  // Kebab actions — only relevant when the row has a backing gear_item.
+  // Caller passes undefined for "(deleted item)" rows so the kebab is hidden.
+  onEditGearItem?: () => void
+  onDeleteGearItem?: () => void
 }
 
-export default function ListItemRow({ item, weightUnit, packMode = false, onUpdate, onSaveName, onSaveDescription, onSaveWeight, onDelete }: Props) {
+export default function ListItemRow({ item, weightUnit, packMode = false, onUpdate, onSaveName, onSaveDescription, onSaveWeight, onDelete, onEditGearItem, onDeleteGearItem }: Props) {
   const {
     attributes,
     listeners,
@@ -235,6 +240,105 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
       >
         <XCircle size={14} />
       </button>
+
+      {/* Kebab — Edit / Delete from inventory. Hidden when there's no backing
+          gear_item (i.e. the row is "(deleted item)" with nothing to edit). */}
+      {onEditGearItem && onDeleteGearItem && (
+        <RowKebab onEdit={onEditGearItem} onDeleteFromInventory={onDeleteGearItem} />
+      )}
     </div>
+  )
+}
+
+// Kebab popover — three-dot button + portal-rendered menu (Edit /
+// Delete from inventory). Each ListItemRow owns its own popover state
+// so multiple kebabs can't open at once and click-outside closes
+// only the relevant menu.
+function RowKebab({ onEdit, onDeleteFromInventory }: { onEdit: () => void; onDeleteFromInventory: () => void }) {
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const menuOpen = menuPos !== null
+
+  useEffect(() => {
+    if (!menuOpen) return
+    function handleClick(e: MouseEvent) {
+      const t = e.target as Node
+      if (
+        menuRef.current && !menuRef.current.contains(t) &&
+        triggerRef.current && !triggerRef.current.contains(t)
+      ) {
+        setMenuPos(null)
+      }
+    }
+    function handleScroll() { setMenuPos(null) }
+    document.addEventListener('mousedown', handleClick)
+    window.addEventListener('scroll', handleScroll, true)
+    window.addEventListener('resize', handleScroll)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('scroll', handleScroll, true)
+      window.removeEventListener('resize', handleScroll)
+    }
+  }, [menuOpen])
+
+  function openMenu() {
+    if (!triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    const menuWidth = 192 // matches w-48
+    setMenuPos({
+      top: rect.bottom + 4,
+      left: Math.max(8, rect.right - menuWidth),
+    })
+  }
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); if (menuOpen) setMenuPos(null); else openMenu() }}
+        aria-label="Item options"
+        className="shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-gray-700"
+      >
+        <MoreHorizontal size={14} />
+      </button>
+
+      {menuOpen && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+          style={{ top: menuPos.top, left: menuPos.left }}
+        >
+          <MenuItem icon={<Pencil size={13} />} onClick={() => { setMenuPos(null); onEdit() }}>
+            Edit
+          </MenuItem>
+          <div className="my-1 border-t border-gray-100" />
+          <MenuItem
+            icon={<Trash2 size={13} />}
+            onClick={() => { setMenuPos(null); onDeleteFromInventory() }}
+            danger
+          >
+            Delete from inventory
+          </MenuItem>
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
+function MenuItem({ icon, children, onClick, danger }: { icon: React.ReactNode; children: React.ReactNode; onClick: () => void; danger?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
+        danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-100'
+      }`}
+    >
+      {icon}
+      <span className="truncate">{children}</span>
+    </button>
   )
 }

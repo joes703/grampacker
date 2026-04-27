@@ -29,10 +29,14 @@ export type GroupProps = {
   onSaveGearDescription: (gearItemId: string, description: string) => void
   onSaveGearWeight: (gearItemId: string, weight_grams: number) => void
   onAddItem: (data: AddItemData) => void
+  // Kebab handlers receive the gear item's id; the parent resolves to a full
+  // GearItem from its gearItems query before opening dialogs.
+  onEditGearItem: (gearItemId: string) => void
+  onDeleteGearItem: (gearItemId: string) => void
   dragHandle?: React.ReactNode
 }
 
-export default function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDelete, onReorderItems, onSaveGearName, onSaveGearDescription, onSaveGearWeight, onAddItem, dragHandle }: GroupProps) {
+export default function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDelete, onReorderItems, onSaveGearName, onSaveGearDescription, onSaveGearWeight, onAddItem, onEditGearItem, onDeleteGearItem, dragHandle }: GroupProps) {
   const [adding, setAdding] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const packedCount = items.filter((i) => i.is_packed).length
@@ -108,6 +112,8 @@ export default function ListCategoryGroup({ name, items, packMode, weightUnit, o
                     onSaveName={gearId ? (n) => onSaveGearName(gearId, n) : undefined}
                     onSaveDescription={gearId ? (d) => onSaveGearDescription(gearId, d) : undefined}
                     onSaveWeight={gearId ? (w) => onSaveGearWeight(gearId, w) : undefined}
+                    onEditGearItem={gearId ? () => onEditGearItem(gearId) : undefined}
+                    onDeleteGearItem={gearId ? () => onDeleteGearItem(gearId) : undefined}
                     onDelete={() => onDelete(item.id)}
                   />
                 )

@@ -56,6 +56,7 @@ import { type AddItemData } from './AddItemRow'
 import PrivacyButton from './PrivacyButton'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
 import ListCategoryGroup, { SortableListCategoryGroup } from './ListCategoryGroup'
+import GearItemDialog from '../gear/GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 
@@ -135,6 +136,8 @@ function ListDetailInner({
   const [importPreview, setImportPreview] = useState<ListImportRow[] | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [confirmDeleteList, setConfirmDeleteList] = useState<List | null>(null)
+  const [editingGearItem, setEditingGearItem] = useState<GearItem | null>(null)
+  const [deleteGearCandidate, setDeleteGearCandidate] = useState<GearItem | null>(null)
   const [pendingImportId, setPendingImportId] = useState<string | null>(null)
   const [creatingList, setCreatingList] = useState(false)
   const [newListDraft, setNewListDraft] = useState('')
@@ -540,6 +543,14 @@ function ListDetailInner({
               onSaveGearWeight: (gearId: string, w: number) =>
                 updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } }),
               onReorderItems: handleItemsReorder,
+              onEditGearItem: (gearId: string) => {
+                const g = gearItems.find((x) => x.id === gearId)
+                if (g) setEditingGearItem(g)
+              },
+              onDeleteGearItem: (gearId: string) => {
+                const g = gearItems.find((x) => x.id === gearId)
+                if (g) setDeleteGearCandidate(g)
+              },
             }
             return (
               <div className="space-y-4">
@@ -636,6 +647,43 @@ function ListDetailInner({
             const target = confirmDeleteList
             setConfirmDeleteList(null)
             deleteListMut.mutate(target.id)
+          }}
+        />
+      )}
+
+      {/* Gear-item edit (reached from the kebab on each list-view row).
+          Reuses GearItemDialog from the gear library page; updateGearItemMut
+          invalidates ['list-items'] so other lists pick up the change. */}
+      {editingGearItem && (
+        <GearItemDialog
+          categories={categories}
+          item={editingGearItem}
+          saving={updateGearItemMut.isPending}
+          onClose={() => setEditingGearItem(null)}
+          onSave={(patch) => {
+            const target = editingGearItem
+            updateGearItemMut.mutate(
+              { id: target.id, patch },
+              { onSuccess: () => setEditingGearItem(null) },
+            )
+          }}
+        />
+      )}
+
+      {/* Delete-from-inventory confirm (reached from the kebab). Removes the
+          gear item from the library; list_items survive as "(deleted item)"
+          due to ON DELETE SET NULL on gear_item_id. */}
+      {deleteGearCandidate && (
+        <ConfirmDialog
+          title="Delete from inventory"
+          message={`This will remove "${deleteGearCandidate.name}" from your inventory and from any list it appears on. This cannot be undone.`}
+          confirmLabel="Delete"
+          dangerous
+          onCancel={() => setDeleteGearCandidate(null)}
+          onConfirm={() => {
+            const target = deleteGearCandidate
+            setDeleteGearCandidate(null)
+            deleteGearItemMut.mutate(target.id)
           }}
         />
       )}
