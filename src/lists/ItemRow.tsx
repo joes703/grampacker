@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -8,37 +8,57 @@ import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
 import InlineText from '../components/InlineText'
 
+// Single source of truth for a list item row. Used by both the authenticated
+// list detail view and the public share view. Editing affordances are gated
+// on whether the corresponding handler is passed:
+//   - `onUpdate` enables Worn / Consumable toggle buttons (and the qty edit
+//     button, since qty changes write through onUpdate).
+//   - `onSaveName` / `onSaveDescription` enable inline-edit text via
+//     `InlineText`; absent ⇒ static span with the same typography.
+//   - `onSaveWeight` enables the clickable weight cell.
+//   - `onDelete` (remove from list) enables the kebab. Without it, no kebab.
+//   - `onEditGearItem` / `onDeleteGearItem` add the Edit / Delete-from-
+//     inventory items to the kebab; without them the kebab shows only
+//     "Remove from list".
+//   - `dragHandle` injects a drag handle button (rendered absolute-left).
+//     Provided by the SortableItemRow wrapper, omitted by share view.
+//   - `outerRef` / `outerStyle` are the dnd-kit ref + transform style passed
+//     by the sortable wrapper. Share view omits both.
+//
+// Pack-mode rendering branches early and only renders the checklist-style
+// row (checkbox + name + status icons + qty). Pack mode is authed-only;
+// share view never passes packMode.
 type Props = {
   item: ListItemWithGear
   weightUnit: WeightUnit
   packMode?: boolean
-  onUpdate: (patch: Partial<Pick<ListItemWithGear, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed'>>) => void
+  onUpdate?: (patch: Partial<Pick<ListItemWithGear, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed'>>) => void
   onSaveName?: (name: string) => void
   onSaveDescription?: (description: string) => void
   onSaveWeight?: (weight_grams: number) => void
-  onDelete: () => void
-  // Kebab actions — only relevant when the row has a backing gear_item.
-  // Caller passes undefined for "(deleted item)" rows so the kebab is hidden.
+  onDelete?: () => void
   onEditGearItem?: () => void
   onDeleteGearItem?: () => void
+  dragHandle?: ReactNode
+  outerRef?: (el: HTMLElement | null) => void
+  outerStyle?: React.CSSProperties
 }
 
-export default function ListItemRow({ item, weightUnit, packMode = false, onUpdate, onSaveName, onSaveDescription, onSaveWeight, onDelete, onEditGearItem, onDeleteGearItem }: Props) {
-  const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id, disabled: packMode })
-
-  const sortableStyle = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  }
+export default function ItemRow({
+  item,
+  weightUnit,
+  packMode = false,
+  onUpdate,
+  onSaveName,
+  onSaveDescription,
+  onSaveWeight,
+  onDelete,
+  onEditGearItem,
+  onDeleteGearItem,
+  dragHandle,
+  outerRef,
+  outerStyle,
+}: Props) {
   const itemWeight = item.gear_item?.weight_grams ?? 0
   const [editingWeight, setEditingWeight] = useState(false)
   const [weightDraft, setWeightDraft] = useState(String(itemWeight))
@@ -68,19 +88,21 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
   function commitQty() {
     const parsed = parseInt(qtyDraft, 10)
     const clamped = isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, 99)
-    if (clamped !== item.quantity) onUpdate({ quantity: clamped })
+    if (clamped !== item.quantity && onUpdate) onUpdate({ quantity: clamped })
     setEditingQty(false)
   }
 
   const name = item.gear_item?.name ?? '(deleted item)'
   const description = item.gear_item?.description ?? ''
+  const editable = Boolean(onUpdate)
+  const showKebab = Boolean(onDelete)
 
   // Pack mode: checklist row — name, worn/consumable status, qty
   if (packMode) {
     return (
       <div
-        ref={setNodeRef}
-        style={sortableStyle}
+        ref={outerRef}
+        style={outerStyle}
         className={`flex items-center gap-1.5 border-b border-gray-100 px-3 py-0.5 text-sm transition-colors ${
           item.is_packed ? 'bg-green-50' : 'bg-white'
         }`}
@@ -88,7 +110,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         <input
           type="checkbox"
           checked={item.is_packed}
-          onChange={(e) => onUpdate({ is_packed: e.target.checked })}
+          onChange={(e) => onUpdate?.({ is_packed: e.target.checked })}
           aria-label="Packed"
           className="h-4 w-4 rounded border-gray-300 text-blue-600 shrink-0"
         />
@@ -112,24 +134,14 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
     )
   }
 
-  // Normal (edit) row: aligned columns matching the category header
+  // Normal (edit / read-only) row: aligned columns matching the category header
   return (
     <div
-      ref={setNodeRef}
-      style={sortableStyle}
+      ref={outerRef}
+      style={outerStyle}
       className="group relative flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-0.5 text-sm"
     >
-      {/* Drag handle — appears on row hover at the left edge */}
-      <button
-        ref={asButtonRef(setActivatorNodeRef)}
-        {...listeners}
-        {...attributes}
-        tabIndex={-1}
-        aria-label="Drag to reorder"
-        className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full cursor-grab touch-none p-1 text-gray-300 hover:text-gray-500 active:cursor-grabbing opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-      >
-        <GripVertical size={14} />
-      </button>
+      {dragHandle}
 
       {/* Name + description as proportional columns — name : description = 2 : 3 */}
       <div className="flex-1 min-w-0 flex items-center gap-3">
@@ -140,6 +152,8 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
               onSave={onSaveName}
               className="block w-full truncate font-normal text-gray-900"
             />
+          ) : item.gear_item ? (
+            <span className="block w-full truncate font-normal text-gray-900">{name}</span>
           ) : (
             <span className="block w-full truncate font-normal text-gray-400 italic">{name}</span>
           )}
@@ -158,30 +172,42 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         </div>
       </div>
 
-      {/* Worn (Shirt) */}
-      <button
-        onClick={() => onUpdate({ is_worn: !item.is_worn, is_consumable: false })}
-        title={item.is_worn ? 'Worn — click to clear' : 'Mark as worn'}
-        className={`shrink-0 w-7 h-6 inline-flex items-center justify-center rounded ${
-          item.is_worn ? 'bg-purple-100 text-purple-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
-        }`}
-      >
-        <Shirt size={14} />
-      </button>
+      {/* Worn (Shirt) — toggle button when editable; static icon-only span otherwise */}
+      {editable ? (
+        <button
+          onClick={() => onUpdate!({ is_worn: !item.is_worn, is_consumable: false })}
+          title={item.is_worn ? 'Worn — click to clear' : 'Mark as worn'}
+          className={`shrink-0 w-7 h-6 inline-flex items-center justify-center rounded ${
+            item.is_worn ? 'bg-purple-100 text-purple-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+          }`}
+        >
+          <Shirt size={14} />
+        </button>
+      ) : (
+        <span className="shrink-0 w-7 inline-flex items-center justify-center">
+          {item.is_worn && <Shirt size={14} className="text-purple-600" aria-label="Worn" />}
+        </span>
+      )}
 
       {/* Consumable (UtensilsCrossed) */}
-      <button
-        onClick={() => onUpdate({ is_consumable: !item.is_consumable, is_worn: false })}
-        title={item.is_consumable ? 'Consumable — click to clear' : 'Mark as consumable'}
-        className={`shrink-0 w-7 h-6 inline-flex items-center justify-center rounded ${
-          item.is_consumable ? 'bg-orange-100 text-orange-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
-        }`}
-      >
-        <UtensilsCrossed size={14} />
-      </button>
+      {editable ? (
+        <button
+          onClick={() => onUpdate!({ is_consumable: !item.is_consumable, is_worn: false })}
+          title={item.is_consumable ? 'Consumable — click to clear' : 'Mark as consumable'}
+          className={`shrink-0 w-7 h-6 inline-flex items-center justify-center rounded ${
+            item.is_consumable ? 'bg-orange-100 text-orange-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+          }`}
+        >
+          <UtensilsCrossed size={14} />
+        </button>
+      ) : (
+        <span className="shrink-0 w-7 inline-flex items-center justify-center">
+          {item.is_consumable && <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />}
+        </span>
+      )}
 
-      {/* Quantity (before weight) */}
-      {editingQty ? (
+      {/* Quantity — clickable when editable, static otherwise */}
+      {editable && editingQty ? (
         <input
           ref={qtyInputRef}
           type="number"
@@ -196,7 +222,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
           }}
           className="shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
         />
-      ) : (
+      ) : editable ? (
         <button
           onClick={() => setEditingQty(true)}
           title="Click to edit quantity"
@@ -204,10 +230,14 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         >
           {item.quantity}
         </button>
+      ) : (
+        <span className="shrink-0 w-12 text-right tabular-nums text-gray-600">
+          {item.quantity}
+        </span>
       )}
 
-      {/* Weight */}
-      {editingWeight ? (
+      {/* Weight — clickable when editable, static otherwise */}
+      {onSaveWeight && editingWeight ? (
         <input
           ref={weightInputRef}
           type="number"
@@ -222,7 +252,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
           }}
           className="shrink-0 w-16 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
         />
-      ) : (
+      ) : onSaveWeight ? (
         <button
           onClick={() => setEditingWeight(true)}
           title="Click to edit weight"
@@ -230,23 +260,73 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         >
           {formatItemWeight(itemWeight, weightUnit)}
         </button>
+      ) : (
+        <span className="shrink-0 w-16 text-right tabular-nums text-gray-600">
+          {formatItemWeight(itemWeight, weightUnit)}
+        </span>
       )}
 
-      {/* Kebab — Remove from list (always), Edit + Delete from inventory
-          (only when the row has a backing gear_item). */}
-      <RowKebab
-        onRemoveFromList={onDelete}
-        onEdit={onEditGearItem}
-        onDeleteFromInventory={onDeleteGearItem}
-      />
+      {/* Kebab — Remove from list (always when handler present), Edit + Delete
+          from inventory (only when handlers present). Hidden entirely on
+          read-only rows. */}
+      {showKebab && (
+        <RowKebab
+          onRemoveFromList={onDelete!}
+          onEdit={onEditGearItem}
+          onDeleteFromInventory={onDeleteGearItem}
+        />
+      )}
     </div>
+  )
+}
+
+// Sortable wrapper for the authenticated list view. Calls useSortable, wires
+// the row's outer ref + transform style + drag-handle button, and forwards
+// everything else to ItemRow. Must be rendered inside a SortableContext.
+export function SortableItemRow(props: Omit<Props, 'dragHandle' | 'outerRef' | 'outerStyle'>) {
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: props.item.id, disabled: props.packMode })
+
+  const sortableStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+
+  const handle = (
+    <button
+      ref={asButtonRef(setActivatorNodeRef)}
+      {...listeners}
+      {...attributes}
+      tabIndex={-1}
+      aria-label="Drag to reorder"
+      className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full cursor-grab touch-none p-1 text-gray-300 hover:text-gray-500 active:cursor-grabbing opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+    >
+      <GripVertical size={14} />
+    </button>
+  )
+
+  return (
+    <ItemRow
+      {...props}
+      dragHandle={props.packMode ? undefined : handle}
+      outerRef={setNodeRef}
+      outerStyle={sortableStyle}
+    />
   )
 }
 
 // Kebab popover — three-dot button + portal-rendered menu. Items: Remove
 // from list (always), Edit and Delete from inventory (only when there's a
 // backing gear_item to act on; "(deleted item)" rows show only Remove).
-// Each ListItemRow owns its own popover state so multiple kebabs can't
+// Each ItemRow owns its own popover state so multiple kebabs can't
 // open at once and click-outside closes only the relevant menu.
 function RowKebab({
   onRemoveFromList,

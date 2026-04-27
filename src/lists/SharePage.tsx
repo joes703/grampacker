@@ -1,11 +1,11 @@
 import { useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Shirt, UtensilsCrossed } from 'lucide-react'
 import { fetchSharedList, fetchSharedListItems, fetchSharedListCategories } from '../lib/queries'
 import type { Category, ListItemWithGear } from '../lib/types'
 import { formatItemWeight } from '../lib/weight'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
+import ItemRow from './ItemRow'
 
 export default function SharePage() {
   const { token } = useParams<{ token: string }>()
@@ -133,7 +133,7 @@ function SharedCategoryGroup({ name, items }: { name: string; items: ListItemWit
       {/* Items */}
       <div className="pl-2">
         {items.map((item) => (
-          <SharedItemRow key={item.id} item={item} />
+          <ItemRow key={item.id} item={item} weightUnit="g" />
         ))}
         {/* Footer total */}
         <div className="flex items-center gap-1.5 px-3 py-0.5 text-xs">
@@ -150,37 +150,3 @@ function SharedCategoryGroup({ name, items }: { name: string; items: ListItemWit
   )
 }
 
-function SharedItemRow({ item }: { item: ListItemWithGear }) {
-  const name = item.gear_item?.name ?? '(deleted item)'
-  const description = item.gear_item?.description ?? ''
-
-  return (
-    <div className="flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-0.5 text-sm">
-      {/* Name + description columns 2:3 */}
-      <div className="flex-1 min-w-0 flex items-center gap-3">
-        <span className="flex-[2] min-w-0 truncate font-medium text-gray-900">{name}</span>
-        <span className="flex-[3] min-w-0 truncate text-xs text-gray-500">{description}</span>
-      </div>
-
-      {/* Worn status (display-only) */}
-      <span className="shrink-0 w-7 inline-flex items-center justify-center">
-        {item.is_worn && <Shirt size={14} className="text-purple-600" aria-label="Worn" />}
-      </span>
-
-      {/* Consumable status (display-only) */}
-      <span className="shrink-0 w-7 inline-flex items-center justify-center">
-        {item.is_consumable && <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />}
-      </span>
-
-      {/* Qty */}
-      <span className="shrink-0 w-10 text-right tabular-nums text-gray-600">
-        {item.quantity}
-      </span>
-
-      {/* Weight */}
-      <span className="shrink-0 w-16 text-right tabular-nums text-gray-600">
-        {formatItemWeight(item.gear_item?.weight_grams ?? 0, 'g')}
-      </span>
-    </div>
-  )
-}
