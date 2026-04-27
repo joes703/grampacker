@@ -4,3 +4,12 @@ dist
 .env.local
 .env.*.local
 *.tsbuildinfo
+
+# Lighthouse / Chrome DevTools report exports — generated locally, never
+# checked in
+*.report.html
+*.report.json
+lighthouse-report.*
+chromewebdata_*
+localhost_*.html
+localhost_*.json
