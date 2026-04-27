@@ -438,6 +438,27 @@ orchestration roots (`ListDetailPage.tsx` 1,307 LOC, `GearLibraryPage.tsx`
   `if (!cancelled)` flag. Or just let the listener be the only writer.
 - **Risk of fixing**: small.
 
+### M19 · `useCsvFileInput` consumer puts a stable ref in the useEffect deps
+- **Location**: `src/lists/ListDetailPage.tsx` ~line 167 — the
+  `useEffect([pendingImportId, listId, importInputRef])` that fires the file
+  picker after a navigate-then-import jump.
+- **Standard violated**: §11 anti-pattern (silencing lint by adding stable
+  refs to dep arrays). Refs are stable; adding them to deps is a no-op at
+  runtime but a code smell that hides the real shape of the dependency.
+- **Severity**: low.
+- **Description**: When `useCsvFileInput` was extracted in Batch 3, the
+  custom hook returned its `inputRef`, which broke the lint rule's special
+  case for `useRef`-created refs and triggered an exhaustive-deps warning.
+  The expedient fix was to add the ref to the deps. The right fix is for the
+  hook to expose a stable callback (e.g. `openPicker`) instead of having the
+  consumer dereference the ref inside an effect.
+- **Suggested fix**: Add an `openPicker` to `useCsvFileInput`'s return value,
+  wrapped in `useCallback(() => inputRef.current?.click(), [])`. Consumers
+  call `openPicker()` instead of `importInputRef.current?.click()`. The ref
+  is then only used in the JSX `ref={...}` binding, which doesn't need to
+  appear in any dep array.
+- **Risk of fixing**: small.
+
 ### M18 · Pre-existing ESLint errors surfaced during Batch 1 verification
 - **Location**: `src/gear/GearLibraryPage.tsx:106, 114` (the
   `toggleCollapse` / `toggleSelect` ternary), `src/lib/queries.ts:261` (the

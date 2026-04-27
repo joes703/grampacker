@@ -155,7 +155,11 @@ function ListDetailInner({
   const [creatingList, setCreatingList] = useState(false)
   const [newListDraft, setNewListDraft] = useState('')
   const [libraryCollapsed, setLibraryCollapsed] = useState(false)
-  const { inputRef: importInputRef, onChange: handleImportFile } = useCsvFileInput<ListImportRow>(
+  const {
+    inputRef: importInputRef,
+    onChange: handleImportFile,
+    openPicker: openImportPicker,
+  } = useCsvFileInput<ListImportRow>(
     parseListCsv,
     { onParsed: setImportPreview, onError: setImportError },
   )
@@ -167,9 +171,9 @@ function ListDetailInner({
   useEffect(() => {
     if (pendingImportId && pendingImportId === listId) {
       setPendingImportId(null)
-      importInputRef.current?.click()
+      openImportPicker()
     }
-  }, [pendingImportId, listId, importInputRef])
+  }, [pendingImportId, listId, openImportPicker])
 
   const { data: listItems = [] } = useQuery({
     queryKey: queryKeys.listItems(listId),
@@ -463,7 +467,7 @@ function ListDetailInner({
               onSelect={(l) => navigate(`/lists/${l.id}`)}
               onRename={(l, name) => renameMut.mutate({ id: l.id, name })}
               onImport={(l) => {
-                if (l.id === list.id) importInputRef.current?.click()
+                if (l.id === list.id) openImportPicker()
                 else { setPendingImportId(l.id); navigate(`/lists/${l.id}`) }
               }}
               onExport={async (l) => {
@@ -1081,8 +1085,21 @@ function AddItemRow({
     if (e.key === 'Escape') onCancel()
   }
 
+  // Commit (or cancel, if name is empty) when focus leaves the entire row —
+  // not just one input. relatedTarget is the element receiving focus next; if
+  // it's a child of this row, the user is just tabbing between fields and we
+  // shouldn't commit yet.
+  function handleRowBlur(e: React.FocusEvent<HTMLDivElement>) {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+    if (name.trim()) commit()
+    else onCancel()
+  }
+
   return (
-    <div className="flex items-center gap-1.5 border-b border-gray-100 bg-blue-50/40 px-3 py-0.5 text-sm">
+    <div
+      onBlur={handleRowBlur}
+      className="flex items-center gap-1.5 border-b border-gray-100 bg-blue-50/40 px-3 py-0.5 text-sm"
+    >
       <div className="flex-1 min-w-0 flex items-center gap-3">
         <input
           autoFocus

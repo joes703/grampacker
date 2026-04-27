@@ -125,7 +125,11 @@ export default function GearLibraryPage() {
   }
 
   // ── CSV import/export ─────────────────────────────────────────────────────────
-  const { inputRef: importInputRef, onChange: handleImportFile } = useCsvFileInput<GearCsvRow>(
+  const {
+    inputRef: importInputRef,
+    onChange: handleImportFile,
+    openPicker: openImportPicker,
+  } = useCsvFileInput<GearCsvRow>(
     parseGearCsv,
     {
       onParsed: (rows) => setDialog({ type: 'import-preview', rows }),
@@ -288,7 +292,7 @@ export default function GearLibraryPage() {
           <Download size={14} /> Export
         </button>
         <button
-          onClick={() => importInputRef.current?.click()}
+          onClick={openImportPicker}
           title="Import gear items from CSV"
           className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
         >
