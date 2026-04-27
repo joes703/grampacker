@@ -56,6 +56,7 @@ import {
 import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
 import { parseListCsv, listItemsToCsv, downloadCsv, type ListImportRow } from '../lib/csv'
 import { formatItemWeight, getWeightUnit, setWeightUnit, type WeightUnit } from '../lib/weight'
+import { getLastListId, setLastListId } from '../lib/preferences'
 import ListItemRow from './ListItemRow'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
@@ -75,8 +76,6 @@ type AddItemData = {
   is_consumable: boolean
 }
 
-const LAST_LIST_KEY = 'grampacker:lastListId'
-
 export default function ListDetailPage() {
   const { id: routeId } = useParams<{ id?: string }>()
   const navigate = useNavigate()
@@ -95,7 +94,7 @@ export default function ListDetailPage() {
   )
 
   // Pick the redirect target: last list the user viewed (if it still exists), else most-recently-updated
-  const lastViewedId = typeof localStorage !== 'undefined' ? localStorage.getItem(LAST_LIST_KEY) : null
+  const lastViewedId = getLastListId()
   const lastViewed = lastViewedId ? lists.find((l) => l.id === lastViewedId) : null
   const fallbackList = lastViewed ?? listsByRecent[0]
 
@@ -107,7 +106,7 @@ export default function ListDetailPage() {
 
   // Remember the currently viewed list so we can return to it next visit
   useEffect(() => {
-    if (routeId) localStorage.setItem(LAST_LIST_KEY, routeId)
+    if (routeId) setLastListId(routeId)
   }, [routeId])
 
   // No id and no lists → empty state
