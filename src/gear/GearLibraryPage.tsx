@@ -40,6 +40,7 @@ import type { Category, GearItem } from '../lib/types'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useWeightUnit } from '../lib/use-weight-unit'
+import { useToggleSet } from '../lib/use-toggle-set'
 import { groupGearItemsByCategory } from '../lib/grouping'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
 import GearItemDialog from './GearItemDialog'
@@ -86,32 +87,14 @@ export default function GearLibraryPage() {
   const [search, setSearch] = useState('')
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [selectMode, setSelectMode] = useState(false)
-  const [selectedIds, setSelectedIds] = useState(new Set<string>())
-  const [collapsed, setCollapsed] = useState(new Set<string>())
+  const { set: selectedIds, toggle: toggleSelect, clear: clearSelected, reset: resetSelected } = useToggleSet<string>()
+  const { set: collapsed, toggle: toggleCollapse } = useToggleSet<string>()
   const { weightUnit, toggleWeightUnit } = useWeightUnit()
   const [newCategoryName, setNewCategoryName] = useState('')
 
-  function toggleCollapse(id: string) {
-    setCollapsed((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
   function exitSelectMode() {
     setSelectMode(false)
-    setSelectedIds(new Set())
+    clearSelected()
   }
 
   // ── CSV import/export ─────────────────────────────────────────────────────────
@@ -413,8 +396,8 @@ export default function GearLibraryPage() {
       {selectMode && selectedIds.size > 0 && (
         <BulkActionsToolbar
           selectedCount={selectedIds.size}
-          onSelectAll={() => setSelectedIds(new Set(filteredItems.map((i) => i.id)))}
-          onDeselectAll={() => setSelectedIds(new Set())}
+          onSelectAll={() => resetSelected(filteredItems.map((i) => i.id))}
+          onDeselectAll={clearSelected}
           onCreateList={() => setDialog({ type: 'create-list-from-selection' })}
           onMoveToCategory={() => setDialog({ type: 'bulk-move' })}
           onDelete={() => bulkDelete.mutate(Array.from(selectedIds))}
