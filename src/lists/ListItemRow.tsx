@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertTriangle, GripVertical, Shirt, UtensilsCrossed, XCircle } from 'lucide-react'
+import { GripVertical, Shirt, UtensilsCrossed, XCircle } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import InlineText from '../components/InlineText'
@@ -64,8 +64,6 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
     setEditingQty(false)
   }
 
-  const sourceWeight = item.gear_item?.weight_grams
-  const outOfSync = sourceWeight !== undefined && sourceWeight !== item.weight_grams
   const name = item.gear_item?.name ?? '(deleted item)'
   const description = item.gear_item?.description ?? ''
 
@@ -200,42 +198,31 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         </button>
       )}
 
-      {/* Weight (with optional out-of-sync indicator hanging to the left) */}
-      <div className="relative shrink-0 w-16">
-        {outOfSync && (
-          <button
-            onClick={() => onUpdate({ weight_grams: sourceWeight! })}
-            title={`Library weight is ${formatItemWeight(sourceWeight!, weightUnit)} — click to sync`}
-            className="absolute -left-4 top-1/2 -translate-y-1/2 text-amber-500 hover:text-amber-600"
-          >
-            <AlertTriangle size={12} />
-          </button>
-        )}
-        {editingWeight ? (
-          <input
-            ref={weightInputRef}
-            type="number"
-            min={0}
-            max={100000}
-            value={weightDraft}
-            onChange={(e) => setWeightDraft(e.target.value)}
-            onBlur={commitWeight}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitWeight()
-              if (e.key === 'Escape') { setWeightDraft(String(item.weight_grams)); setEditingWeight(false) }
-            }}
-            className="w-full rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
-          />
-        ) : (
-          <button
-            onClick={() => setEditingWeight(true)}
-            title="Click to edit weight"
-            className="w-full text-right tabular-nums text-gray-600 hover:text-blue-600"
-          >
-            {formatItemWeight(item.weight_grams, weightUnit)}
-          </button>
-        )}
-      </div>
+      {/* Weight */}
+      {editingWeight ? (
+        <input
+          ref={weightInputRef}
+          type="number"
+          min={0}
+          max={100000}
+          value={weightDraft}
+          onChange={(e) => setWeightDraft(e.target.value)}
+          onBlur={commitWeight}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitWeight()
+            if (e.key === 'Escape') { setWeightDraft(String(item.weight_grams)); setEditingWeight(false) }
+          }}
+          className="shrink-0 w-16 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
+        />
+      ) : (
+        <button
+          onClick={() => setEditingWeight(true)}
+          title="Click to edit weight"
+          className="shrink-0 w-16 text-right tabular-nums text-gray-600 hover:text-blue-600"
+        >
+          {formatItemWeight(item.weight_grams, weightUnit)}
+        </button>
+      )}
 
       {/* Remove from list — visible X in flow (does NOT delete from inventory) */}
       <button
