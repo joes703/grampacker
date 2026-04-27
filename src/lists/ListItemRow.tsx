@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, MoreVertical, Pencil, Shirt, Trash2, UtensilsCrossed, XCircle } from 'lucide-react'
+import { CircleMinus, GripVertical, MoreVertical, Pencil, Shirt, Trash2, UtensilsCrossed } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
@@ -232,29 +232,31 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         </button>
       )}
 
-      {/* Remove from list — visible X in flow (does NOT delete from inventory) */}
-      <button
-        onClick={onDelete}
-        title="Remove from list"
-        className="shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
-      >
-        <XCircle size={14} />
-      </button>
-
-      {/* Kebab — Edit / Delete from inventory. Hidden when there's no backing
-          gear_item (i.e. the row is "(deleted item)" with nothing to edit). */}
-      {onEditGearItem && onDeleteGearItem && (
-        <RowKebab onEdit={onEditGearItem} onDeleteFromInventory={onDeleteGearItem} />
-      )}
+      {/* Kebab — Remove from list (always), Edit + Delete from inventory
+          (only when the row has a backing gear_item). */}
+      <RowKebab
+        onRemoveFromList={onDelete}
+        onEdit={onEditGearItem}
+        onDeleteFromInventory={onDeleteGearItem}
+      />
     </div>
   )
 }
 
-// Kebab popover — three-dot button + portal-rendered menu (Edit /
-// Delete from inventory). Each ListItemRow owns its own popover state
-// so multiple kebabs can't open at once and click-outside closes
-// only the relevant menu.
-function RowKebab({ onEdit, onDeleteFromInventory }: { onEdit: () => void; onDeleteFromInventory: () => void }) {
+// Kebab popover — three-dot button + portal-rendered menu. Items: Remove
+// from list (always), Edit and Delete from inventory (only when there's a
+// backing gear_item to act on; "(deleted item)" rows show only Remove).
+// Each ListItemRow owns its own popover state so multiple kebabs can't
+// open at once and click-outside closes only the relevant menu.
+function RowKebab({
+  onRemoveFromList,
+  onEdit,
+  onDeleteFromInventory,
+}: {
+  onRemoveFromList: () => void
+  onEdit?: () => void
+  onDeleteFromInventory?: () => void
+}) {
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -310,17 +312,29 @@ function RowKebab({ onEdit, onDeleteFromInventory }: { onEdit: () => void; onDel
           className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
           style={{ top: menuPos.top, left: menuPos.left }}
         >
-          <MenuItem icon={<Pencil size={13} />} onClick={() => { setMenuPos(null); onEdit() }}>
-            Edit
-          </MenuItem>
-          <div className="my-1 border-t border-gray-100" />
           <MenuItem
-            icon={<Trash2 size={13} />}
-            onClick={() => { setMenuPos(null); onDeleteFromInventory() }}
-            danger
+            icon={<CircleMinus size={13} />}
+            onClick={() => { setMenuPos(null); onRemoveFromList() }}
           >
-            Delete from inventory
+            Remove from list
           </MenuItem>
+          {onEdit && (
+            <MenuItem icon={<Pencil size={13} />} onClick={() => { setMenuPos(null); onEdit() }}>
+              Edit
+            </MenuItem>
+          )}
+          {onDeleteFromInventory && (
+            <>
+              <div className="my-1 border-t border-gray-100" />
+              <MenuItem
+                icon={<Trash2 size={13} />}
+                onClick={() => { setMenuPos(null); onDeleteFromInventory() }}
+                danger
+              >
+                Delete from inventory
+              </MenuItem>
+            </>
+          )}
         </div>,
         document.body,
       )}
