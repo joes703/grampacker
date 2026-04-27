@@ -48,6 +48,7 @@ import {
   importCsvRowsToList,
   updateGearItem,
   createGearItem,
+  deleteGearItem,
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
 import { parseListCsv, listItemsToCsv, downloadCsv, type ListImportRow } from '../lib/csv'
@@ -232,6 +233,17 @@ function ListDetailInner({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
       // Invalidate every list-items cache (any list that embeds this gear item)
+      qc.invalidateQueries({ queryKey: ['list-items'] })
+    },
+  })
+
+  // Delete a gear item entirely (from the gear library and every list that uses it).
+  // gear_items.id is referenced by list_items with ON DELETE SET NULL on gear_item_id,
+  // so existing list_items survive but render as "(deleted item)" until removed.
+  const deleteGearItemMut = useMutation({
+    mutationFn: (id: string) => deleteGearItem(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
       qc.invalidateQueries({ queryKey: ['list-items'] })
     },
   })
@@ -469,6 +481,7 @@ function ListDetailInner({
                     listItemGearIds={listItemGearIds}
                     weightUnit={weightUnit}
                     onAdd={(item) => addMut.mutate(item)}
+                    onDelete={(item) => deleteGearItemMut.mutate(item.id)}
                   />
                 </div>
               )}
@@ -607,6 +620,7 @@ function ListDetailInner({
         listItemGearIds={listItemGearIds}
         weightUnit={weightUnit}
         onAdd={(item) => { addMut.mutate(item); setSheetOpen(false) }}
+        onDelete={(item) => deleteGearItemMut.mutate(item.id)}
       />
 
       {/* Import error */}
@@ -726,6 +740,7 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
             <div className="shrink-0 w-16 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
               Weight
             </div>
+            <div className="shrink-0 w-7" />
           </>
         ) : (
           <>
@@ -798,6 +813,7 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
               <div className="shrink-0 w-16 text-right tabular-nums font-semibold text-gray-700">
                 {formatItemWeight(totalGrams, weightUnit)}
               </div>
+              <div className="shrink-0 w-7" />
             </div>
           )}
         </div>
