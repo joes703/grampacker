@@ -45,6 +45,7 @@ import {
   reorderLists,
   reorderListItems,
   importCsvRowsToList,
+  updateGearItem,
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
 import { parseListCsv, listItemsToCsv, downloadCsv, type ListImportRow } from '../lib/csv'
@@ -219,6 +220,18 @@ function ListDetailInner({
   const notesMut = useMutation({
     mutationFn: (description: string) => updateList(listId, { description: description || null }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
+  })
+
+  // Editing an item's name/description from the list view writes to gear_items so
+  // it propagates to the gear library and any other list that uses the same item.
+  const updateGearItemMut = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateGearItem>[1] }) =>
+      updateGearItem(id, patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
+      // Invalidate every list-items cache (any list that embeds this gear item)
+      qc.invalidateQueries({ queryKey: ['list-items'] })
+    },
   })
 
   const renameMut = useMutation({
@@ -505,6 +518,8 @@ function ListDetailInner({
                         weightUnit={weightUnit}
                         onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
                         onDelete={(itemId) => deleteMut.mutate(itemId)}
+                        onSaveGearName={(gearId, n) => updateGearItemMut.mutate({ id: gearId, patch: { name: n } })}
+                        onSaveGearDescription={(gearId, d) => updateGearItemMut.mutate({ id: gearId, patch: { description: d } })}
                         onReorderItems={(reorderedItems) => {
                           // Re-assign each item's existing sort_order slot in the new order
                           const slots = reorderedItems
@@ -537,6 +552,8 @@ function ListDetailInner({
                     packMode={mode === 'pack'}
                     weightUnit={weightUnit}
                     onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
+                    onSaveGearName={(gearId, n) => updateGearItemMut.mutate({ id: gearId, patch: { name: n } })}
+                    onSaveGearDescription={(gearId, d) => updateGearItemMut.mutate({ id: gearId, patch: { description: d } })}
                     onReorderItems={(reorderedItems) => {
                       const slots = reorderedItems
                         .map((i) => i.sort_order)
@@ -628,10 +645,12 @@ type GroupProps = {
   onUpdate: (itemId: string, patch: Parameters<typeof updateListItem>[1]) => void
   onDelete: (itemId: string) => void
   onReorderItems: (orderedItems: ListItemWithGear[]) => void
+  onSaveGearName: (gearItemId: string, name: string) => void
+  onSaveGearDescription: (gearItemId: string, description: string) => void
   dragHandle?: React.ReactNode
 }
 
-function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDelete, onReorderItems, dragHandle }: GroupProps) {
+function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDelete, onReorderItems, onSaveGearName, onSaveGearDescription, dragHandle }: GroupProps) {
   const [collapsed, setCollapsed] = useState(false)
   const packedCount = items.filter((i) => i.is_packed).length
   const totalGrams = items.reduce((s, i) => s + i.weight_grams * i.quantity, 0)
@@ -693,16 +712,21 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
         <div className="pl-2">
           <DndContext sensors={itemSensors} collisionDetection={closestCenter} onDragEnd={handleItemDragEnd}>
             <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-              {items.map((item) => (
-                <ListItemRow
-                  key={item.id}
-                  item={item}
-                  packMode={packMode}
-                  weightUnit={weightUnit}
-                  onUpdate={(patch) => onUpdate(item.id, patch)}
-                  onDelete={() => onDelete(item.id)}
-                />
-              ))}
+              {items.map((item) => {
+                const gearId = item.gear_item?.id
+                return (
+                  <ListItemRow
+                    key={item.id}
+                    item={item}
+                    packMode={packMode}
+                    weightUnit={weightUnit}
+                    onUpdate={(patch) => onUpdate(item.id, patch)}
+                    onSaveName={gearId ? (n) => onSaveGearName(gearId, n) : undefined}
+                    onSaveDescription={gearId ? (d) => onSaveGearDescription(gearId, d) : undefined}
+                    onDelete={() => onDelete(item.id)}
+                  />
+                )
+              })}
             </SortableContext>
           </DndContext>
           {!packMode && items.length > 0 && (
