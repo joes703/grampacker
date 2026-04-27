@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Plus, Search, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Search, Trash2 } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import TypedConfirmDialog from '../components/TypedConfirmDialog'
@@ -157,26 +157,32 @@ function CategoryGroup({
           {items.map((item) => {
             const inList = listItemGearIds.has(item.id)
             return (
-              <div key={item.id} className="flex items-center gap-2 px-3 py-0.5 hover:bg-gray-50">
-                <p className="flex-1 min-w-0 truncate text-sm font-medium text-gray-800">{item.name}</p>
-                <span className="shrink-0 text-xs text-gray-500 tabular-nums">
+              <div
+                key={item.id}
+                onClick={inList ? undefined : () => onAdd(item)}
+                title={inList ? 'Already on this list' : 'Click to add to list'}
+                className={`group flex items-center gap-2 px-3 py-0.5 ${
+                  inList ? 'cursor-default' : 'cursor-pointer hover:bg-gray-50'
+                }`}
+              >
+                <p
+                  className={`flex-1 min-w-0 truncate text-sm font-medium ${
+                    inList ? 'text-gray-400' : 'text-gray-800'
+                  }`}
+                >
+                  {item.name}
+                </p>
+                <span
+                  className={`shrink-0 text-xs tabular-nums ${
+                    inList ? 'text-gray-300' : 'text-gray-500'
+                  }`}
+                >
                   {formatItemWeight(item.weight_grams, weightUnit)}
                 </span>
                 <button
-                  onClick={() => !inList && onAdd(item)}
-                  title={inList ? 'Already in list' : 'Add to list'}
-                  className={`shrink-0 rounded p-0.5 ${
-                    inList
-                      ? 'text-green-400 cursor-default'
-                      : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'
-                  }`}
-                >
-                  <Plus size={15} />
-                </button>
-                <button
-                  onClick={() => onRequestDelete(item)}
+                  onClick={(e) => { e.stopPropagation(); onRequestDelete(item) }}
                   title="Delete from inventory"
-                  className="shrink-0 rounded p-0.5 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                  className="shrink-0 rounded p-0.5 text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
                 >
                   <Trash2 size={13} />
                 </button>
