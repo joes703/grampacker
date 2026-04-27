@@ -59,6 +59,7 @@ import { parseListCsv, listItemsToCsv, downloadCsv, type ListImportRow } from '.
 import { formatItemWeight, getWeightUnit, setWeightUnit, type WeightUnit } from '../lib/weight'
 import { getLastListId, setLastListId } from '../lib/preferences'
 import { asButtonRef } from '../lib/dnd'
+import { useCsvFileInput } from '../lib/use-csv-file-input'
 import ListItemRow from './ListItemRow'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
@@ -154,7 +155,10 @@ function ListDetailInner({
   const [creatingList, setCreatingList] = useState(false)
   const [newListDraft, setNewListDraft] = useState('')
   const [libraryCollapsed, setLibraryCollapsed] = useState(false)
-  const importInputRef = useRef<HTMLInputElement>(null)
+  const { inputRef: importInputRef, onChange: handleImportFile } = useCsvFileInput<ListImportRow>(
+    parseListCsv,
+    { onParsed: setImportPreview, onError: setImportError },
+  )
 
   const list = lists.find((l) => l.id === listId)
 
@@ -165,7 +169,7 @@ function ListDetailInner({
       setPendingImportId(null)
       importInputRef.current?.click()
     }
-  }, [pendingImportId, listId])
+  }, [pendingImportId, listId, importInputRef])
 
   const { data: listItems = [] } = useQuery({
     queryKey: queryKeys.listItems(listId),
@@ -271,14 +275,11 @@ function ListDetailInner({
         { name: data.name, description: data.description, weight_grams: data.weight_grams, category_id: categoryId },
         gearItems.length,
       )
-      const newListItem = await addGearItemToList(listId, newGear.id, listItems.length)
-      if (data.quantity !== 1 || data.is_worn || data.is_consumable) {
-        await updateListItem(newListItem.id, {
-          quantity: data.quantity,
-          is_worn: data.is_worn,
-          is_consumable: data.is_consumable,
-        })
-      }
+      await addGearItemToList(listId, newGear.id, listItems.length, {
+        quantity: data.quantity,
+        is_worn: data.is_worn,
+        is_consumable: data.is_consumable,
+      })
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
@@ -350,19 +351,6 @@ function ListDetailInner({
     qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
   }
 
-  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (importInputRef.current) importInputRef.current.value = ''
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string
-      const result = parseListCsv(text)
-      if (typeof result === 'string') setImportError(result)
-      else setImportPreview(result)
-    }
-    reader.readAsText(file)
-  }
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
