@@ -16,7 +16,7 @@ import {
 } from '@dnd-kit/sortable'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
-import { Download, ListPlus, Plus, Search, Upload, X } from 'lucide-react'
+import { Download, Plus, Search, Upload, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import {
   queryKeys,
@@ -37,13 +37,16 @@ import {
   makeOptimisticReorder,
 } from '../lib/queries'
 import type { Category, GearItem } from '../lib/types'
-import { formatItemWeight } from '../lib/weight'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { groupGearItemsByCategory } from '../lib/grouping'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
 import GearItemDialog from './GearItemDialog'
+import CreateListFromSelectionDialog from './CreateListFromSelectionDialog'
+import GearImportPreviewDialog from './GearImportPreviewDialog'
+import BulkMoveCategoryDialog from './BulkMoveCategoryDialog'
+import BulkActionsToolbar from './BulkActionsToolbar'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 
@@ -407,62 +410,16 @@ export default function GearLibraryPage() {
       )}
 
       {/* Bulk actions toolbar */}
-      {selectMode && selectedIds.size > 0 && (() => {
-        const overListCap = selectedIds.size > 300
-        return (
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white px-4 py-3">
-          <div className="mx-auto flex max-w-7xl items-center gap-3">
-            <span
-              className={`text-sm ${
-                overListCap
-                  ? 'rounded-md bg-red-50 px-2 py-0.5 font-medium text-red-700'
-                  : 'text-gray-600'
-              }`}
-            >
-              {selectedIds.size} selected
-              {overListCap && ' · max 300 per list'}
-            </span>
-            <button
-              onClick={() => {
-                const all = filteredItems.map((i) => i.id)
-                setSelectedIds(new Set(all))
-              }}
-              className="text-sm text-blue-600 hover:underline"
-            >
-              Select all
-            </button>
-            <button
-              onClick={() => setSelectedIds(new Set())}
-              className="text-sm text-gray-500 hover:underline"
-            >
-              Deselect all
-            </button>
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                onClick={() => setDialog({ type: 'create-list-from-selection' })}
-                disabled={overListCap}
-                title={overListCap ? `Lists can hold at most 300 items (you've selected ${selectedIds.size})` : undefined}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
-              >
-                <ListPlus size={14} /> Create list
-              </button>
-              <button
-                onClick={() => setDialog({ type: 'bulk-move' })}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Move to category
-              </button>
-              <button
-                onClick={() => bulkDelete.mutate(Array.from(selectedIds))}
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
-              >
-                Delete ({selectedIds.size})
-              </button>
-            </div>
-          </div>
-        </div>
-        )
-      })()}
+      {selectMode && selectedIds.size > 0 && (
+        <BulkActionsToolbar
+          selectedCount={selectedIds.size}
+          onSelectAll={() => setSelectedIds(new Set(filteredItems.map((i) => i.id)))}
+          onDeselectAll={() => setSelectedIds(new Set())}
+          onCreateList={() => setDialog({ type: 'create-list-from-selection' })}
+          onMoveToCategory={() => setDialog({ type: 'bulk-move' })}
+          onDelete={() => bulkDelete.mutate(Array.from(selectedIds))}
+        />
+      )}
 
       {/* Dialogs */}
       {(dialog?.type === 'create-item' || dialog?.type === 'edit-item') && (
@@ -552,7 +509,7 @@ export default function GearLibraryPage() {
       )}
 
       {dialog?.type === 'import-preview' && (
-        <ImportPreviewDialog
+        <GearImportPreviewDialog
           rows={dialog.rows}
           saving={importItems.isPending}
           onConfirm={(rows) => importItems.mutate(rows)}
@@ -560,224 +517,5 @@ export default function GearLibraryPage() {
         />
       )}
     </div>
-  )
-}
-
-function CreateListFromSelectionDialog({
-  selectedCount,
-  existingListCount,
-  saving,
-  onSubmit,
-  onClose,
-}: {
-  selectedCount: number
-  existingListCount: number
-  saving: boolean
-  onSubmit: (name: string, description: string | null) => void
-  onClose: () => void
-}) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-
-  const listCapHit = existingListCount >= 100
-  const itemCapHit = selectedCount > 300
-  const blocked = listCapHit || itemCapHit
-  const trimmed = name.trim()
-  const canSubmit = !blocked && !saving && trimmed.length > 0
-
-  return (
-    <Modal open onClose={onClose} title="Create list from selection" className="w-full max-w-md" closeOnBackdropClick={false}>
-      <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
-        <h2 className="text-base font-semibold text-gray-900">Create list from selection</h2>
-        <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
-          <X size={18} />
-        </button>
-      </div>
-      <form
-        onSubmit={(e) => { e.preventDefault(); if (canSubmit) onSubmit(trimmed, description.trim() || null) }}
-        className="px-6 py-4 space-y-4"
-      >
-          <p className="text-sm text-gray-600">
-            {selectedCount} item{selectedCount === 1 ? '' : 's'} will be added to the new list.
-          </p>
-
-          {listCapHit && (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              You've reached the 100-list limit. Delete an existing list before creating a new one.
-            </p>
-          )}
-          {itemCapHit && (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              Lists can hold at most 300 items. You've selected {selectedCount}. Reduce the selection and try again.
-            </p>
-          )}
-
-          <div>
-            <label htmlFor="cls-name" className="block text-sm font-medium text-gray-700 mb-1">
-              List name
-            </label>
-            <input
-              id="cls-name"
-              autoFocus
-              type="text"
-              required
-              maxLength={256}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="cls-desc" className="block text-sm font-medium text-gray-700 mb-1">
-              Description <span className="text-xs font-normal text-gray-400">(optional)</span>
-            </label>
-            <textarea
-              id="cls-desc"
-              maxLength={2000}
-              rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!canSubmit}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              {saving ? 'Creating…' : 'Create list'}
-            </button>
-          </div>
-      </form>
-    </Modal>
-  )
-}
-
-function ImportPreviewDialog({
-  rows,
-  saving,
-  onConfirm,
-  onClose,
-}: {
-  rows: GearCsvRow[]
-  saving: boolean
-  onConfirm: (rows: GearCsvRow[]) => void
-  onClose: () => void
-}) {
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={`Import ${rows.length} item${rows.length !== 1 ? 's' : ''}`}
-      className="w-full max-w-lg flex flex-col max-h-[80vh]"
-      closeOnBackdropClick={false}
-    >
-      <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
-        <h2 className="text-base font-semibold text-gray-900">
-          Import {rows.length} item{rows.length !== 1 ? 's' : ''}
-        </h2>
-        <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
-          <X size={18} />
-        </button>
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-gray-50 text-xs font-medium text-gray-500">
-            <tr>
-              <th className="px-4 py-2 text-left">Name</th>
-              <th className="px-3 py-2 text-right">Weight</th>
-              <th className="px-3 py-2 text-left">Category</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {rows.map((row, i) => (
-              <tr key={i} className="hover:bg-gray-50">
-                <td className="px-4 py-1.5 font-medium text-gray-800 max-w-[180px] truncate">{row.name}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{formatItemWeight(row.weight_grams, 'g')}</td>
-                <td className="px-3 py-1.5 text-gray-500">{row.category || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100">
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={() => onConfirm(rows)}
-          disabled={saving}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? 'Importing…' : `Import ${rows.length} item${rows.length !== 1 ? 's' : ''}`}
-        </button>
-      </div>
-    </Modal>
-  )
-}
-
-function BulkMoveCategoryDialog({
-  categories,
-  count,
-  onMove,
-  onClose,
-}: {
-  categories: Category[]
-  count: number
-  onMove: (categoryId: string | null) => void
-  onClose: () => void
-}) {
-  const [selected, setSelected] = useState<string>('')
-
-  const heading = `Move ${count} item${count !== 1 ? 's' : ''} to category`
-  return (
-    <Modal open onClose={onClose} title={heading} className="w-full max-w-sm">
-      <div className="p-6">
-        <h2 className="text-base font-semibold text-gray-900 mb-4">{heading}</h2>
-        <select
-          value={selected}
-          onChange={(e) => setSelected(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">— Uncategorised —</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => onMove(selected || null)}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            Move
-          </button>
-        </div>
-      </div>
-    </Modal>
   )
 }
