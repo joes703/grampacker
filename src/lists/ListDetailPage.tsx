@@ -477,7 +477,6 @@ function ListDetailInner({
                       const li = listItems.find((l) => l.gear_item_id === item.id)
                       if (li) deleteMut.mutate(li.id)
                     }}
-                    onDelete={(item) => deleteGearItemMut.mutate(item.id)}
                   />
               </div>
             </div>
@@ -603,7 +602,6 @@ function ListDetailInner({
           const li = listItems.find((l) => l.gear_item_id === item.id)
           if (li) deleteMut.mutate(li.id)
         }}
-        onDelete={(item) => deleteGearItemMut.mutate(item.id)}
       />
 
       {/* Import error */}

@@ -1,8 +1,7 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Search, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
-import ConfirmDialog from '../components/ConfirmDialog'
 
 type Props = {
   gearItems: GearItem[]
@@ -11,13 +10,11 @@ type Props = {
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
   onRemove: (item: GearItem) => void
-  onDelete: (item: GearItem) => void
 }
 
-export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove, onDelete }: Props) {
+export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove }: Props) {
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState(new Set<string>())
-  const [deleteCandidate, setDeleteCandidate] = useState<GearItem | null>(null)
 
   function toggleCollapse(key: string) {
     setCollapsed((prev) => {
@@ -80,7 +77,6 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
                 weightUnit={weightUnit}
                 onAdd={onAdd}
                 onRemove={onRemove}
-                onRequestDelete={(item) => setDeleteCandidate(item)}
               />
             ))}
             {uncategorised.length > 0 && (
@@ -93,27 +89,11 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
                 weightUnit={weightUnit}
                 onAdd={onAdd}
                 onRemove={onRemove}
-                onRequestDelete={(item) => setDeleteCandidate(item)}
               />
             )}
           </>
         )}
       </div>
-
-      {deleteCandidate && (
-        <ConfirmDialog
-          title="Delete from inventory"
-          message={`This will remove "${deleteCandidate.name}" from your inventory and from any list it appears on. This cannot be undone.`}
-          confirmLabel="Delete"
-          dangerous
-          onCancel={() => setDeleteCandidate(null)}
-          onConfirm={() => {
-            const item = deleteCandidate
-            setDeleteCandidate(null)
-            onDelete(item)
-          }}
-        />
-      )}
     </div>
   )
 }
@@ -127,7 +107,6 @@ function CategoryGroup({
   weightUnit,
   onAdd,
   onRemove,
-  onRequestDelete,
 }: {
   name: string
   items: GearItem[]
@@ -137,7 +116,6 @@ function CategoryGroup({
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
   onRemove: (item: GearItem) => void
-  onRequestDelete: (item: GearItem) => void
 }) {
   return (
     <div>
@@ -157,13 +135,13 @@ function CategoryGroup({
         <span className="text-xs tabular-nums text-gray-400">{items.length}</span>
       </button>
 
-      {/* Items */}
+      {/* Items — pure picker rows. Click toggles add/remove on the active list. */}
       {!collapsed && (
         <div>
           {items.map((item) => {
             const inList = listItemGearIds.has(item.id)
             return (
-              <div key={item.id} className="group relative border-b border-gray-100">
+              <div key={item.id} className="border-b border-gray-100">
                 <button
                   type="button"
                   onClick={() => (inList ? onRemove(item) : onAdd(item))}
@@ -185,23 +163,6 @@ function CategoryGroup({
                     {formatItemWeight(item.weight_grams, weightUnit)}
                   </span>
                 </button>
-
-                {/* Hover overlay — gradient fades the row contents under the trash
-                    icon so text doesn't show through. Sibling of the row button so
-                    nothing nests inside another <button>. */}
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-y-0 right-0 flex items-center pl-8 pr-2 bg-gradient-to-l from-gray-50 via-gray-50 to-transparent opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150"
-                >
-                  <button
-                    type="button"
-                    onClick={() => onRequestDelete(item)}
-                    title="Delete from inventory"
-                    className="pointer-events-auto shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
               </div>
             )
           })}
