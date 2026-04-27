@@ -197,23 +197,14 @@ export default function GearLibraryPage() {
 
   // ── Drag and drop ─────────────────────────────────────────────────────────────
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
-  const itemSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  )
-  const [activeItemId, setActiveItemId] = useState<string | null>(null)
-
-  function handleCategoryDragEnd(event: DragEndEvent) {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    const oldIndex = categories.findIndex((c) => c.id === active.id)
-    const newIndex = categories.findIndex((c) => c.id === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
-    const reordered = arrayMove(categories, oldIndex, newIndex)
-    reorderCats.mutate(reordered.map((c, i) => ({ id: c.id, sort_order: i })))
-  }
+  // Active drag id (item id OR category id). The DragOverlay renders an
+  // item-row clone for item drags; category drag falls back to dnd-kit's
+  // default (original element follows the cursor) since its id isn't in the
+  // inner items SortableContext.
+  const [activeId, setActiveId] = useState<string | null>(null)
 
   // Within-category sort drag for gear items. Updates gear_items.sort_order
   // for the affected category. Optimistic via the existing
@@ -274,35 +265,48 @@ export default function GearLibraryPage() {
     },
   })
 
-  function handleItemDragStart(e: DragStartEvent) {
-    setActiveItemId(String(e.active.id))
+  function handleDragStart(e: DragStartEvent) {
+    setActiveId(String(e.active.id))
   }
 
-  function handleItemDragCancel() {
-    setActiveItemId(null)
+  function handleDragCancel() {
+    setActiveId(null)
   }
 
-  // Branches on what the user dropped onto: same-category sort vs.
-  // cross-category move. Mirrors the list view's onDragEnd flow.
-  function handleItemDragEnd(e: DragEndEvent) {
-    setActiveItemId(null)
+  // Single page-level drag handler. Branches on whether active.id is a
+  // category id (run the category reorder flow) or an item id (run the
+  // same-cat sort vs cross-cat move flow).
+  function handleDragEnd(e: DragEndEvent) {
+    setActiveId(null)
     const { active, over } = e
     if (!over) return
     if (active.id === over.id) return
 
-    const activeItem = allItems.find((i) => i.id === active.id)
+    const activeIdStr = String(active.id)
+    const overIdStr = String(over.id)
+
+    // Category-drag branch.
+    if (categories.some((c) => c.id === activeIdStr)) {
+      const oldIndex = categories.findIndex((c) => c.id === activeIdStr)
+      const newIndex = categories.findIndex((c) => c.id === overIdStr)
+      if (oldIndex === -1 || newIndex === -1) return
+      const reordered = arrayMove(categories, oldIndex, newIndex)
+      reorderCats.mutate(reordered.map((c, i) => ({ id: c.id, sort_order: i })))
+      return
+    }
+
+    // Item-drag branch.
+    const activeItem = allItems.find((i) => i.id === activeIdStr)
     if (!activeItem) return
     const activeCat = activeItem.category_id ?? null
 
-    const overId = String(over.id)
-    const parsedCat = parseGearCategoryDroppableId(overId)
-
+    const parsedCat = parseGearCategoryDroppableId(overIdStr)
     let destCat: string | null
     let overItemId: string | null = null
     if (parsedCat !== undefined) {
       destCat = parsedCat
     } else {
-      overItemId = overId
+      overItemId = overIdStr
       const overItem = allItems.find((i) => i.id === overItemId)
       if (!overItem) return
       destCat = overItem.category_id ?? null
@@ -312,7 +316,7 @@ export default function GearLibraryPage() {
       // Same-category sort reorder
       if (!overItemId) return
       const itemsInCat = allItems.filter((i) => (i.category_id ?? null) === activeCat)
-      const oldIndex = itemsInCat.findIndex((i) => i.id === active.id)
+      const oldIndex = itemsInCat.findIndex((i) => i.id === activeIdStr)
       const newIndex = itemsInCat.findIndex((i) => i.id === overItemId)
       if (oldIndex === -1 || newIndex === -1) return
       const reordered = arrayMove(itemsInCat, oldIndex, newIndex)
@@ -494,84 +498,83 @@ export default function GearLibraryPage() {
       {isLoading ? (
         <p className="text-sm text-gray-400">Loading…</p>
       ) : (() => {
-        // Flat list of every gear item id in render order, for the page-level
-        // item SortableContext. The category-level context registers only
-        // category ids; the two are disjoint and bind to their own contexts.
+        // Flat list of every gear item id in render order. The inner
+        // SortableContext owns the items list; verticalListSortingStrategy
+        // handles cross-category visual shifts.
         const flatItemIds = groups.flatMap((g) => g.items.map((i) => i.id))
-        const activeItem = activeItemId
-          ? allItems.find((i) => i.id === activeItemId)
+        const activeItem = activeId
+          ? allItems.find((i) => i.id === activeId)
           : null
         return (
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
-            onDragEnd={handleCategoryDragEnd}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
           >
+            {/* Categories SortableContext is outer; items inner. With one
+                DndContext, every useSortable inside reads the nearest
+                SortableContext (items). Item drag gets strategy auto-shift;
+                category drag fires but no auto-shift — the original element
+                follows the cursor via dnd-kit's default. */}
             <SortableContext
               items={categories.map((c) => c.id)}
               strategy={verticalListSortingStrategy}
             >
-              <DndContext
-                sensors={itemSensors}
-                collisionDetection={closestCenter}
-                onDragStart={handleItemDragStart}
-                onDragEnd={handleItemDragEnd}
-                onDragCancel={handleItemDragCancel}
-              >
-                <SortableContext items={flatItemIds} strategy={verticalListSortingStrategy}>
-                  {groups.map((group) => {
-                    const commonProps = {
-                      items: group.items,
-                      weightUnit,
-                      collapsed: collapsed.has(group.category?.id ?? '__uncategorised__'),
-                      onToggleCollapse: () =>
-                        toggleCollapse(group.category?.id ?? '__uncategorised__'),
-                      selectMode,
-                      selectedIds,
-                      onToggleSelect: toggleSelect,
-                      onInlineSave: (id: string, patch: Partial<Pick<GearItem, 'name' | 'description'>>) =>
-                        editItem.mutate({ id, patch }),
-                      onEditItem: (item: GearItem) => setDialog({ type: 'edit-item', item }),
-                      onDeleteItem: (item: GearItem) => setDialog({ type: 'delete-item', item }),
-                      onRenameCategory: (id: string, name: string) =>
-                        renameCategory.mutate({ id, name }),
-                      onDeleteCategory: (cat: Category) =>
-                        setDialog({ type: 'delete-category', category: cat }),
-                      onAddItemToCategory: (categoryId: string | null) =>
-                        setDialog({ type: 'create-item', categoryId }),
-                    }
+              <SortableContext items={flatItemIds} strategy={verticalListSortingStrategy}>
+                {groups.map((group) => {
+                  const commonProps = {
+                    items: group.items,
+                    weightUnit,
+                    collapsed: collapsed.has(group.category?.id ?? '__uncategorised__'),
+                    onToggleCollapse: () =>
+                      toggleCollapse(group.category?.id ?? '__uncategorised__'),
+                    selectMode,
+                    selectedIds,
+                    onToggleSelect: toggleSelect,
+                    onInlineSave: (id: string, patch: Partial<Pick<GearItem, 'name' | 'description'>>) =>
+                      editItem.mutate({ id, patch }),
+                    onEditItem: (item: GearItem) => setDialog({ type: 'edit-item', item }),
+                    onDeleteItem: (item: GearItem) => setDialog({ type: 'delete-item', item }),
+                    onRenameCategory: (id: string, name: string) =>
+                      renameCategory.mutate({ id, name }),
+                    onDeleteCategory: (cat: Category) =>
+                      setDialog({ type: 'delete-category', category: cat }),
+                    onAddItemToCategory: (categoryId: string | null) =>
+                      setDialog({ type: 'create-item', categoryId }),
+                  }
 
-                    if (group.category === null) {
-                      return (
-                        <StaticCategorySection key="__uncategorised__" category={null} {...commonProps} />
-                      )
-                    }
+                  if (group.category === null) {
                     return (
-                      <SortableCategorySection
-                        key={group.category.id}
-                        id={group.category.id}
-                        category={group.category}
-                        {...commonProps}
-                      />
+                      <StaticCategorySection key="__uncategorised__" category={null} {...commonProps} />
                     )
-                  })}
-                </SortableContext>
-                <DragOverlay>
-                  {activeItem ? (
-                    <GearItemRow
-                      item={activeItem}
-                      weightUnit={weightUnit}
-                      selectMode={false}
-                      selected={false}
-                      onToggleSelect={() => {}}
-                      onInlineSave={() => {}}
-                      onEdit={() => {}}
-                      onDelete={() => {}}
+                  }
+                  return (
+                    <SortableCategorySection
+                      key={group.category.id}
+                      id={group.category.id}
+                      category={group.category}
+                      {...commonProps}
                     />
-                  ) : null}
-                </DragOverlay>
-              </DndContext>
+                  )
+                })}
+              </SortableContext>
             </SortableContext>
+            <DragOverlay>
+              {activeItem ? (
+                <GearItemRow
+                  item={activeItem}
+                  weightUnit={weightUnit}
+                  selectMode={false}
+                  selected={false}
+                  onToggleSelect={() => {}}
+                  onInlineSave={() => {}}
+                  onEdit={() => {}}
+                  onDelete={() => {}}
+                />
+              ) : null}
+            </DragOverlay>
           </DndContext>
         )
       })()}
