@@ -35,7 +35,7 @@ import {
   createListFromSelection,
 } from '../lib/queries'
 import type { Category, GearItem } from '../lib/types'
-import { getWeightUnit, setWeightUnit, formatGrams, type WeightUnit } from '../lib/weight'
+import { getWeightUnit, setWeightUnit, formatItemWeight, type WeightUnit } from '../lib/weight'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
 import { supabase } from '../lib/supabase'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
@@ -740,7 +740,7 @@ function ImportPreviewDialog({
               {rows.map((row, i) => (
                 <tr key={i} className="hover:bg-gray-50">
                   <td className="px-4 py-1.5 font-medium text-gray-800 max-w-[180px] truncate">{row.name}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{formatGrams(row.weight_grams)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{formatItemWeight(row.weight_grams, 'g')}</td>
                   <td className="px-3 py-1.5 text-gray-500">{row.category || '—'}</td>
                 </tr>
               ))}
