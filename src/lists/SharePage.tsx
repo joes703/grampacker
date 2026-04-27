@@ -72,7 +72,7 @@ export default function SharePage() {
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-5xl px-4 py-10">
         {/* Header */}
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">{list.name}</h1>
+        <h1 className="mb-6 text-xl font-semibold text-gray-900">{list.name}</h1>
 
         {/* Notes + Weight summary — side by side, equal halves (read-only) */}
         <div className={`mb-6 grid gap-4 ${items.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
