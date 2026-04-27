@@ -15,12 +15,14 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Download, Plus, Search, Upload, X } from 'lucide-react'
+import { useNavigate } from 'react-router'
+import { Download, ListPlus, Plus, Search, Upload, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import {
   queryKeys,
   fetchCategories,
   fetchGearItems,
+  fetchLists,
   createCategory,
   updateCategory,
   deleteCategory,
@@ -30,6 +32,7 @@ import {
   deleteGearItem,
   bulkDeleteGearItems,
   bulkMoveToCategoryGearItems,
+  createListFromSelection,
 } from '../lib/queries'
 import type { Category, GearItem } from '../lib/types'
 import { getWeightUnit, setWeightUnit, formatGrams, type WeightUnit } from '../lib/weight'
@@ -48,6 +51,7 @@ type DialogState =
   | { type: 'bulk-move' }
   | { type: 'import-preview'; rows: GearCsvRow[] }
   | { type: 'import-error'; message: string }
+  | { type: 'create-list-from-selection' }
 
 type Group = { category: Category | null; items: GearItem[] }
 
@@ -65,6 +69,7 @@ export default function GearLibraryPage() {
   const { session } = useAuth()
   const userId = session!.user.id
   const qc = useQueryClient()
+  const navigate = useNavigate()
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const { data: categories = [] } = useQuery({
@@ -74,6 +79,10 @@ export default function GearLibraryPage() {
   const { data: allItems = [], isLoading } = useQuery({
     queryKey: queryKeys.gearItems(),
     queryFn: fetchGearItems,
+  })
+  const { data: lists = [] } = useQuery({
+    queryKey: queryKeys.lists(),
+    queryFn: fetchLists,
   })
 
   // ── Local state ───────────────────────────────────────────────────────────────
@@ -193,6 +202,18 @@ export default function GearLibraryPage() {
     mutationFn: ({ ids, categoryId }: { ids: string[]; categoryId: string | null }) =>
       bulkMoveToCategoryGearItems(ids, categoryId),
     onSuccess: () => { invalidateItems(); exitSelectMode() },
+  })
+
+  const createListFromSelectionMut = useMutation({
+    mutationFn: ({ name, description, ids }: { name: string; description: string | null; ids: string[] }) =>
+      createListFromSelection(userId, name, description, ids, lists.length),
+    onSuccess: (newList) => {
+      qc.invalidateQueries({ queryKey: queryKeys.lists() })
+      qc.invalidateQueries({ queryKey: queryKeys.listItems(newList.id) })
+      setDialog(null)
+      exitSelectMode()
+      navigate(`/lists/${newList.id}`)
+    },
   })
 
   const importItems = useMutation({
@@ -448,6 +469,12 @@ export default function GearLibraryPage() {
             </button>
             <div className="ml-auto flex items-center gap-2">
               <button
+                onClick={() => setDialog({ type: 'create-list-from-selection' })}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <ListPlus size={14} /> Create list
+              </button>
+              <button
                 onClick={() => setDialog({ type: 'bulk-move' })}
                 className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
@@ -521,6 +548,18 @@ export default function GearLibraryPage() {
         />
       )}
 
+      {dialog?.type === 'create-list-from-selection' && (
+        <CreateListFromSelectionDialog
+          selectedCount={selectedIds.size}
+          existingListCount={lists.length}
+          saving={createListFromSelectionMut.isPending}
+          onSubmit={(name, description) =>
+            createListFromSelectionMut.mutate({ name, description, ids: Array.from(selectedIds) })
+          }
+          onClose={() => setDialog(null)}
+        />
+      )}
+
       {dialog?.type === 'import-error' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg">
@@ -546,6 +585,108 @@ export default function GearLibraryPage() {
           onClose={() => setDialog(null)}
         />
       )}
+    </div>
+  )
+}
+
+function CreateListFromSelectionDialog({
+  selectedCount,
+  existingListCount,
+  saving,
+  onSubmit,
+  onClose,
+}: {
+  selectedCount: number
+  existingListCount: number
+  saving: boolean
+  onSubmit: (name: string, description: string | null) => void
+  onClose: () => void
+}) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+
+  const listCapHit = existingListCount >= 100
+  const itemCapHit = selectedCount > 300
+  const blocked = listCapHit || itemCapHit
+  const trimmed = name.trim()
+  const canSubmit = !blocked && !saving && trimmed.length > 0
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-md rounded-xl bg-white shadow-lg">
+        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
+          <h2 className="text-base font-semibold text-gray-900">Create list from selection</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={18} />
+          </button>
+        </div>
+        <form
+          onSubmit={(e) => { e.preventDefault(); if (canSubmit) onSubmit(trimmed, description.trim() || null) }}
+          className="px-6 py-4 space-y-4"
+        >
+          <p className="text-sm text-gray-600">
+            {selectedCount} item{selectedCount === 1 ? '' : 's'} will be added to the new list.
+          </p>
+
+          {listCapHit && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              You've reached the 100-list limit. Delete an existing list before creating a new one.
+            </p>
+          )}
+          {itemCapHit && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              Lists can hold at most 300 items. You've selected {selectedCount}. Reduce the selection and try again.
+            </p>
+          )}
+
+          <div>
+            <label htmlFor="cls-name" className="block text-sm font-medium text-gray-700 mb-1">
+              List name
+            </label>
+            <input
+              id="cls-name"
+              autoFocus
+              type="text"
+              required
+              maxLength={256}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="cls-desc" className="block text-sm font-medium text-gray-700 mb-1">
+              Description <span className="text-xs font-normal text-gray-400">(optional)</span>
+            </label>
+            <textarea
+              id="cls-desc"
+              maxLength={2000}
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? 'Creating…' : 'Create list'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

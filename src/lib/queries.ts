@@ -203,6 +203,40 @@ export async function reorderLists(updates: { id: string; sort_order: number }[]
   await Promise.all(updates.map(({ id, sort_order }) => updateList(id, { sort_order })))
 }
 
+// Create a new list and immediately populate it with the given gear items.
+// Used by the "Create list from selection" flow in the gear library.
+export async function createListFromSelection(
+  userId: string,
+  name: string,
+  description: string | null,
+  gearItemIds: string[],
+  sortOrder: number,
+): Promise<List> {
+  const { data: newList, error: listErr } = await supabase
+    .from('lists')
+    .insert({
+      user_id: userId,
+      name,
+      description,
+      sort_order: sortOrder,
+      share_token: generateShareToken(),
+    })
+    .select()
+    .single()
+  if (listErr) throw listErr
+
+  if (gearItemIds.length > 0) {
+    const rows = gearItemIds.map((id, i) => ({
+      list_id: newList.id,
+      gear_item_id: id,
+      sort_order: i,
+    }))
+    const { error } = await supabase.from('list_items').insert(rows)
+    if (error) throw error
+  }
+  return newList
+}
+
 export async function duplicateList(source: List, userId: string, sortOrder: number): Promise<List> {
   const { data: newList, error: listErr } = await supabase
     .from('lists')
