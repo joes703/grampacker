@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { ChevronDown, ChevronRight, Search, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { ChevronDown, ChevronRight, MoreHorizontal, Pencil, Search, Trash2 } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
-import TypedConfirmDialog from '../components/TypedConfirmDialog'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 type Props = {
   gearItems: GearItem[]
@@ -11,10 +12,11 @@ type Props = {
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
   onRemove: (item: GearItem) => void
+  onEdit: (item: GearItem) => void
   onDelete: (item: GearItem) => void
 }
 
-export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove, onDelete }: Props) {
+export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove, onEdit, onDelete }: Props) {
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState(new Set<string>())
   const [deleteCandidate, setDeleteCandidate] = useState<GearItem | null>(null)
@@ -80,6 +82,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
                 weightUnit={weightUnit}
                 onAdd={onAdd}
                 onRemove={onRemove}
+                onEdit={onEdit}
                 onRequestDelete={(item) => setDeleteCandidate(item)}
               />
             ))}
@@ -93,6 +96,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
                 weightUnit={weightUnit}
                 onAdd={onAdd}
                 onRemove={onRemove}
+                onEdit={onEdit}
                 onRequestDelete={(item) => setDeleteCandidate(item)}
               />
             )}
@@ -101,11 +105,11 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
       </div>
 
       {deleteCandidate && (
-        <TypedConfirmDialog
+        <ConfirmDialog
           title="Delete from inventory"
-          message={`This will permanently delete "${deleteCandidate.name}" from your gear library and remove it from every list that contains it.`}
-          confirmPhrase={deleteCandidate.name}
-          confirmLabel="Delete item"
+          message={`This will remove "${deleteCandidate.name}" from your inventory and from any list it appears on. This cannot be undone.`}
+          confirmLabel="Delete"
+          dangerous
           onCancel={() => setDeleteCandidate(null)}
           onConfirm={() => {
             const item = deleteCandidate
@@ -127,6 +131,7 @@ function CategoryGroup({
   weightUnit,
   onAdd,
   onRemove,
+  onEdit,
   onRequestDelete,
 }: {
   name: string
@@ -137,6 +142,7 @@ function CategoryGroup({
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
   onRemove: (item: GearItem) => void
+  onEdit: (item: GearItem) => void
   onRequestDelete: (item: GearItem) => void
 }) {
   return (
@@ -160,53 +166,160 @@ function CategoryGroup({
       {/* Items */}
       {!collapsed && (
         <div>
-          {items.map((item) => {
-            const inList = listItemGearIds.has(item.id)
-            return (
-              <div key={item.id} className="group relative border-b border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => (inList ? onRemove(item) : onAdd(item))}
-                  title={inList ? 'Click to remove from list' : 'Click to add to list'}
-                  className="flex w-full min-h-7 items-center gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
-                >
-                  <span
-                    className={`flex-1 min-w-0 truncate text-sm font-normal ${
-                      inList ? 'text-gray-400' : 'text-gray-900'
-                    }`}
-                  >
-                    {item.name}
-                  </span>
-                  <span
-                    className={`shrink-0 text-xs tabular-nums ${
-                      inList ? 'text-gray-300' : 'text-gray-500'
-                    }`}
-                  >
-                    {formatItemWeight(item.weight_grams, weightUnit)}
-                  </span>
-                </button>
-
-                {/* Hover overlay — gradient fades the row contents under the trash
-                    icon so text doesn't show through. Sibling of the row button so
-                    nothing nests inside another <button>. */}
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-y-0 right-0 flex items-center pl-8 pr-2 bg-gradient-to-l from-gray-50 via-gray-50 to-transparent opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150"
-                >
-                  <button
-                    type="button"
-                    onClick={() => onRequestDelete(item)}
-                    title="Delete from inventory"
-                    className="pointer-events-auto shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </div>
-            )
-          })}
+          {items.map((item) => (
+            <LibraryItemRow
+              key={item.id}
+              item={item}
+              inList={listItemGearIds.has(item.id)}
+              weightUnit={weightUnit}
+              onAdd={onAdd}
+              onRemove={onRemove}
+              onEdit={onEdit}
+              onRequestDelete={onRequestDelete}
+            />
+          ))}
         </div>
       )}
     </div>
+  )
+}
+
+// Single panel row: clicking the row body adds/removes the item, the kebab
+// opens a small menu with Edit / Delete-from-inventory. Per-row menu state
+// (open + position) is colocated here so each row manages its own popover.
+function LibraryItemRow({
+  item,
+  inList,
+  weightUnit,
+  onAdd,
+  onRemove,
+  onEdit,
+  onRequestDelete,
+}: {
+  item: GearItem
+  inList: boolean
+  weightUnit: WeightUnit
+  onAdd: (item: GearItem) => void
+  onRemove: (item: GearItem) => void
+  onEdit: (item: GearItem) => void
+  onRequestDelete: (item: GearItem) => void
+}) {
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const menuOpen = menuPos !== null
+
+  useEffect(() => {
+    if (!menuOpen) return
+    function handleClick(e: MouseEvent) {
+      const t = e.target as Node
+      if (
+        menuRef.current && !menuRef.current.contains(t) &&
+        triggerRef.current && !triggerRef.current.contains(t)
+      ) {
+        setMenuPos(null)
+      }
+    }
+    function handleScroll() { setMenuPos(null) }
+    document.addEventListener('mousedown', handleClick)
+    window.addEventListener('scroll', handleScroll, true)
+    window.addEventListener('resize', handleScroll)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('scroll', handleScroll, true)
+      window.removeEventListener('resize', handleScroll)
+    }
+  }, [menuOpen])
+
+  function openMenu() {
+    if (!triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    const menuWidth = 176 // matches w-44
+    setMenuPos({
+      top: rect.bottom + 4,
+      left: Math.max(8, rect.right - menuWidth),
+    })
+  }
+
+  return (
+    <div className="flex items-center border-b border-gray-100 hover:bg-gray-50 focus-within:bg-gray-50">
+      <button
+        type="button"
+        onClick={() => (inList ? onRemove(item) : onAdd(item))}
+        title={inList ? 'Click to remove from list' : 'Click to add to list'}
+        className="flex flex-1 min-w-0 items-center gap-2 px-3 py-0.5 text-left focus:outline-none"
+      >
+        <span
+          className={`flex-1 min-w-0 truncate text-sm font-normal ${
+            inList ? 'text-gray-400' : 'text-gray-900'
+          }`}
+        >
+          {item.name}
+        </span>
+        <span
+          className={`shrink-0 text-xs tabular-nums ${
+            inList ? 'text-gray-300' : 'text-gray-500'
+          }`}
+        >
+          {formatItemWeight(item.weight_grams, weightUnit)}
+        </span>
+      </button>
+
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); if (menuOpen) setMenuPos(null); else openMenu() }}
+        aria-label="Item options"
+        className="shrink-0 mr-1 inline-flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:text-gray-700"
+      >
+        <MoreHorizontal size={14} />
+      </button>
+
+      {menuOpen && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-50 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+          style={{ top: menuPos.top, left: menuPos.left }}
+        >
+          <MenuItem icon={<Pencil size={13} />} onClick={() => { setMenuPos(null); onEdit(item) }}>
+            Edit
+          </MenuItem>
+          <div className="my-1 border-t border-gray-100" />
+          <MenuItem
+            icon={<Trash2 size={13} />}
+            onClick={() => { setMenuPos(null); onRequestDelete(item) }}
+            danger
+          >
+            Delete from inventory
+          </MenuItem>
+        </div>,
+        document.body,
+      )}
+    </div>
+  )
+}
+
+function MenuItem({
+  icon,
+  children,
+  onClick,
+  danger,
+}: {
+  icon: React.ReactNode
+  children: React.ReactNode
+  onClick: () => void
+  danger?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
+        danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-100'
+      }`}
+    >
+      {icon}
+      <span className="truncate">{children}</span>
+    </button>
   )
 }
