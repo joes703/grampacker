@@ -780,10 +780,11 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
             </SortableContext>
           </DndContext>
 
-          {/* + Add new item — non-pack only */}
+          {/* Combined footer row — "+ Add new item" on the left, category total on the right.
+              Non-pack only; total cell stays empty when the category is empty. */}
           {!packMode && (
-            adding ? (
-              <div className="flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-0.5 text-sm">
+            <div className="flex items-center gap-1.5 px-3 py-0.5 text-xs">
+              {adding ? (
                 <input
                   autoFocus
                   type="text"
@@ -797,25 +798,19 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
                   }}
                   className="flex-1 min-w-0 rounded border border-blue-400 px-1 py-0.5 text-sm focus:outline-none"
                 />
-              </div>
-            ) : (
-              <button
-                onClick={() => setAdding(true)}
-                className="flex w-full items-center gap-1 border-b border-gray-100 px-3 py-0.5 text-xs text-gray-400 hover:text-blue-600 hover:bg-gray-50"
-              >
-                <Plus size={12} /> Add new item
-              </button>
-            )
-          )}
-
-          {!packMode && items.length > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-0.5 text-xs">
-              <div className="flex-1 min-w-0" />
+              ) : (
+                <button
+                  onClick={() => setAdding(true)}
+                  className="flex flex-1 min-w-0 items-center gap-1 text-left text-gray-400 hover:text-blue-600"
+                >
+                  <Plus size={12} /> Add new item
+                </button>
+              )}
               <div className="shrink-0 w-7" />
               <div className="shrink-0 w-7" />
               <div className="shrink-0 w-12" />
               <div className="shrink-0 w-16 text-right tabular-nums font-semibold text-gray-700">
-                {formatItemWeight(totalGrams, weightUnit)}
+                {items.length > 0 ? formatItemWeight(totalGrams, weightUnit) : ''}
               </div>
               <div className="shrink-0 w-7" />
             </div>
