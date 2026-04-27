@@ -2,12 +2,14 @@ import { useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { fetchSharedList, fetchSharedListItems, fetchSharedListCategories } from '../lib/queries'
 import type { Category, ListItemWithGear } from '../lib/types'
+import { useWeightUnit } from '../lib/use-weight-unit'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
 
 export default function SharePage() {
   const { token } = useParams<{ token: string }>()
+  const { weightUnit, toggleWeightUnit } = useWeightUnit()
 
   const { data: list, isLoading: listLoading } = useQuery({
     queryKey: ['shared-list', token],
@@ -72,7 +74,16 @@ export default function SharePage() {
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-5xl px-4 py-10">
         {/* Header */}
-        <h1 className="mb-6 text-xl font-semibold text-gray-900">{list.name}</h1>
+        <div className="mb-6 flex items-center gap-3">
+          <h1 className="flex-1 min-w-0 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
+          <button
+            onClick={toggleWeightUnit}
+            title={`Switch to ${weightUnit === 'g' ? 'oz' : 'g'}`}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          >
+            {weightUnit}
+          </button>
+        </div>
 
         {/* Notes + Weight summary — side by side, equal halves (read-only) */}
         <div className={`mb-6 grid gap-4 ${items.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
@@ -99,7 +110,7 @@ export default function SharePage() {
               key={group.category?.id ?? '__uncategorised__'}
               name={group.category?.name ?? 'Uncategorised'}
               items={group.items}
-              weightUnit="g"
+              weightUnit={weightUnit}
               collapsible={false}
             />
           ))}
