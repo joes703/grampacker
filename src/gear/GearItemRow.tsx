@@ -1,6 +1,10 @@
-import { Pencil, Trash2 } from 'lucide-react'
+import { type ReactNode } from 'react'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { GripVertical, Pencil, Trash2 } from 'lucide-react'
 import type { GearItem } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
+import { asButtonRef } from '../lib/dnd'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
 
@@ -13,6 +17,10 @@ type Props = {
   onInlineSave: (patch: Partial<Pick<GearItem, 'name' | 'description'>>) => void
   onEdit: () => void
   onDelete: () => void
+  // Drag plumbing — populated by SortableGearItemRow.
+  dragHandle?: ReactNode
+  outerRef?: (el: HTMLElement | null) => void
+  outerStyle?: React.CSSProperties
 }
 
 export default function GearItemRow({
@@ -24,13 +32,19 @@ export default function GearItemRow({
   onInlineSave,
   onEdit,
   onDelete,
+  dragHandle,
+  outerRef,
+  outerStyle,
 }: Props) {
   return (
     <div
-      className={`flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-0.5 text-sm ${
+      ref={outerRef}
+      style={outerStyle}
+      className={`group relative flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-0.5 text-sm ${
         selected ? 'bg-blue-50' : 'hover:bg-gray-50'
       }`}
     >
+      {dragHandle}
       {selectMode && (
         <input
           type="checkbox"
@@ -79,5 +93,50 @@ export default function GearItemRow({
         </>
       )}
     </div>
+  )
+}
+
+// Sortable wrapper for the gear library page. Calls useSortable, wires the
+// row's outer ref + transform style + a hover-revealed drag handle, then
+// forwards everything to GearItemRow. Must be inside a SortableContext.
+// Drag is disabled in select mode so the row's checkbox doesn't compete with
+// the drag activator.
+export function SortableGearItemRow(props: Omit<Props, 'dragHandle' | 'outerRef' | 'outerStyle'>) {
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: props.item.id, disabled: props.selectMode })
+
+  const sortableStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+
+  const handle = props.selectMode ? undefined : (
+    <RowIconButton
+      ref={asButtonRef(setActivatorNodeRef)}
+      {...listeners}
+      {...attributes}
+      tabIndex={-1}
+      variant="dragHandle"
+      ariaLabel="Drag to reorder"
+      icon={<GripVertical size={14} />}
+      className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+    />
+  )
+
+  return (
+    <GearItemRow
+      {...props}
+      dragHandle={handle}
+      outerRef={setNodeRef}
+      outerStyle={sortableStyle}
+    />
   )
 }
