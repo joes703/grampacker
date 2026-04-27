@@ -7,6 +7,7 @@ import type { ListItemWithGear } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
 import InlineText from '../components/InlineText'
+import RowIconButton from '../components/RowIconButton'
 
 // Single source of truth for a list item row. Used by both the authenticated
 // list detail view and the public share view. Editing affordances are gated
@@ -174,15 +175,14 @@ export default function ItemRow({
 
       {/* Worn (Shirt) — toggle button when editable; static icon-only span otherwise */}
       {editable ? (
-        <button
+        <RowIconButton
+          variant="purpleToggle"
+          active={item.is_worn}
           onClick={() => onUpdate!({ is_worn: !item.is_worn, is_consumable: false })}
           title={item.is_worn ? 'Worn — click to clear' : 'Mark as worn'}
-          className={`shrink-0 w-7 h-6 inline-flex items-center justify-center rounded ${
-            item.is_worn ? 'bg-purple-100 text-purple-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
-          }`}
-        >
-          <Shirt size={14} />
-        </button>
+          ariaLabel={item.is_worn ? 'Worn — click to clear' : 'Mark as worn'}
+          icon={<Shirt size={14} />}
+        />
       ) : (
         <span className="shrink-0 w-7 inline-flex items-center justify-center">
           {item.is_worn && <Shirt size={14} className="text-purple-600" aria-label="Worn" />}
@@ -191,15 +191,14 @@ export default function ItemRow({
 
       {/* Consumable (UtensilsCrossed) */}
       {editable ? (
-        <button
+        <RowIconButton
+          variant="orangeToggle"
+          active={item.is_consumable}
           onClick={() => onUpdate!({ is_consumable: !item.is_consumable, is_worn: false })}
           title={item.is_consumable ? 'Consumable — click to clear' : 'Mark as consumable'}
-          className={`shrink-0 w-7 h-6 inline-flex items-center justify-center rounded ${
-            item.is_consumable ? 'bg-orange-100 text-orange-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
-          }`}
-        >
-          <UtensilsCrossed size={14} />
-        </button>
+          ariaLabel={item.is_consumable ? 'Consumable — click to clear' : 'Mark as consumable'}
+          icon={<UtensilsCrossed size={14} />}
+        />
       ) : (
         <span className="shrink-0 w-7 inline-flex items-center justify-center">
           {item.is_consumable && <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />}
@@ -301,16 +300,16 @@ export function SortableItemRow(props: Omit<Props, 'dragHandle' | 'outerRef' | '
   }
 
   const handle = (
-    <button
+    <RowIconButton
       ref={asButtonRef(setActivatorNodeRef)}
       {...listeners}
       {...attributes}
       tabIndex={-1}
-      aria-label="Drag to reorder"
-      className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full cursor-grab touch-none p-1 text-gray-300 hover:text-gray-500 active:cursor-grabbing opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-    >
-      <GripVertical size={14} />
-    </button>
+      variant="dragHandle"
+      ariaLabel="Drag to reorder"
+      icon={<GripVertical size={14} />}
+      className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+    />
   )
 
   return (
@@ -376,15 +375,12 @@ function RowKebab({
 
   return (
     <>
-      <button
+      <RowIconButton
         ref={triggerRef}
-        type="button"
         onClick={(e) => { e.stopPropagation(); if (menuOpen) setMenuPos(null); else openMenu() }}
-        aria-label="Item options"
-        className="shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-gray-700"
-      >
-        <MoreVertical size={14} />
-      </button>
+        ariaLabel="Item options"
+        icon={<MoreVertical size={14} />}
+      />
 
       {menuOpen && menuPos && createPortal(
         <div

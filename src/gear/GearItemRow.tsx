@@ -2,6 +2,7 @@ import { Pencil, Trash2 } from 'lucide-react'
 import type { GearItem } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import InlineText from '../components/InlineText'
+import RowIconButton from '../components/RowIconButton'
 
 type Props = {
   item: GearItem
@@ -62,20 +63,19 @@ export default function GearItemRow({
       </span>
       {!selectMode && (
         <>
-          <button
+          <RowIconButton
             onClick={onEdit}
             title="Edit item"
-            className="shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-gray-700"
-          >
-            <Pencil size={14} />
-          </button>
-          <button
+            ariaLabel="Edit item"
+            icon={<Pencil size={14} />}
+          />
+          <RowIconButton
+            variant="danger"
             onClick={onDelete}
             title="Delete item"
-            className="shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-red-600"
-          >
-            <Trash2 size={14} />
-          </button>
+            ariaLabel="Delete item"
+            icon={<Trash2 size={14} />}
+          />
         </>
       )}
     </div>
