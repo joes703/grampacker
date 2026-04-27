@@ -168,7 +168,7 @@ function CategoryGroup({
                   type="button"
                   onClick={() => (inList ? onRemove(item) : onAdd(item))}
                   title={inList ? 'Click to remove from list' : 'Click to add to list'}
-                  className="flex w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
+                  className="flex w-full min-h-6 items-center gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
                 >
                   <span
                     className={`flex-1 min-w-0 truncate text-sm font-normal ${
