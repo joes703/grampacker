@@ -27,7 +27,7 @@ export default function GearItemRow({
 }: Props) {
   return (
     <div
-      className={`flex items-center gap-2 border-b border-gray-100 bg-white px-3 py-0.5 text-sm ${
+      className={`flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-0.5 text-sm ${
         selected ? 'bg-blue-50' : 'hover:bg-gray-50'
       }`}
     >
@@ -53,12 +53,12 @@ export default function GearItemRow({
               value={item.description ?? ''}
               placeholder="Add description"
               onSave={(v) => onInlineSave({ description: v })}
-              className="block w-full truncate text-xs text-gray-500"
+              className="block w-full truncate text-sm font-normal text-gray-500"
             />
           </div>
         )}
       </div>
-      <span className="shrink-0 w-16 text-right text-sm text-gray-600 tabular-nums">
+      <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
         {formatItemWeight(item.weight_grams, weightUnit)}
       </span>
       {!selectMode && (
