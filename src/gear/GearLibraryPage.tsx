@@ -448,10 +448,21 @@ export default function GearLibraryPage() {
       )}
 
       {/* Bulk actions toolbar */}
-      {selectMode && selectedIds.size > 0 && (
+      {selectMode && selectedIds.size > 0 && (() => {
+        const overListCap = selectedIds.size > 300
+        return (
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white px-4 py-3">
           <div className="mx-auto flex max-w-7xl items-center gap-3">
-            <span className="text-sm text-gray-600">{selectedIds.size} selected</span>
+            <span
+              className={`text-sm ${
+                overListCap
+                  ? 'rounded-md bg-red-50 px-2 py-0.5 font-medium text-red-700'
+                  : 'text-gray-600'
+              }`}
+            >
+              {selectedIds.size} selected
+              {overListCap && ' · max 300 per list'}
+            </span>
             <button
               onClick={() => {
                 const all = filteredItems.map((i) => i.id)
@@ -470,7 +481,9 @@ export default function GearLibraryPage() {
             <div className="ml-auto flex items-center gap-2">
               <button
                 onClick={() => setDialog({ type: 'create-list-from-selection' })}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                disabled={overListCap}
+                title={overListCap ? `Lists can hold at most 300 items (you've selected ${selectedIds.size})` : undefined}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
               >
                 <ListPlus size={14} /> Create list
               </button>
@@ -489,7 +502,8 @@ export default function GearLibraryPage() {
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* Dialogs */}
       {(dialog?.type === 'create-item' || dialog?.type === 'edit-item') && (
