@@ -13,9 +13,8 @@ export type List = {
 export type ListItem = {
   id: string
   list_id: string
-  gear_item_id: string | null
+  gear_item_id: string
   quantity: number
-  weight_grams: number
   is_worn: boolean
   is_consumable: boolean
   is_packed: boolean

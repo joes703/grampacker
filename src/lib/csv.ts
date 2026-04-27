@@ -238,7 +238,7 @@ export function listItemsToCsv(items: ListItemWithGear[], categories: Category[]
   const rows = items.map((item) => ({
     name: item.gear_item?.name ?? '(deleted item)',
     description: item.gear_item?.description ?? '',
-    weight_grams: item.weight_grams,
+    weight_grams: item.gear_item?.weight_grams ?? 0,
     quantity: item.quantity,
     worn: item.is_worn ? 'yes' : 'no',
     consumable: item.is_consumable ? 'yes' : 'no',

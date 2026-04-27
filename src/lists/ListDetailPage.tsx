@@ -173,7 +173,7 @@ function ListDetailInner({
 
   const addMut = useMutation({
     mutationFn: (item: GearItem) =>
-      addGearItemToList(listId, { id: item.id, weight_grams: item.weight_grams }, listItems.length),
+      addGearItemToList(listId, item.id, listItems.length),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) }),
   })
 
@@ -257,7 +257,7 @@ function ListDetailInner({
         { name, description: null, weight_grams: 0, category_id: categoryId },
         gearItems.length,
       )
-      await addGearItemToList(listId, { id: newGear.id, weight_grams: 0 }, listItems.length)
+      await addGearItemToList(listId, newGear.id, listItems.length)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
@@ -552,6 +552,7 @@ function ListDetailInner({
                         onDelete={(itemId) => deleteMut.mutate(itemId)}
                         onSaveGearName={(gearId, n) => updateGearItemMut.mutate({ id: gearId, patch: { name: n } })}
                         onSaveGearDescription={(gearId, d) => updateGearItemMut.mutate({ id: gearId, patch: { description: d } })}
+                        onSaveGearWeight={(gearId, w) => updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } })}
                         onAddItem={(n) => addNewItemMut.mutate({ categoryId: group.category!.id, name: n })}
                         onReorderItems={(reorderedItems) => {
                           // Re-assign each item's existing sort_order slot in the new order
@@ -587,6 +588,7 @@ function ListDetailInner({
                     onUpdate={(itemId, patch) => updateMut.mutate({ itemId, patch })}
                     onSaveGearName={(gearId, n) => updateGearItemMut.mutate({ id: gearId, patch: { name: n } })}
                     onSaveGearDescription={(gearId, d) => updateGearItemMut.mutate({ id: gearId, patch: { description: d } })}
+                    onSaveGearWeight={(gearId, w) => updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } })}
                     onAddItem={(n) => addNewItemMut.mutate({ categoryId: null, name: n })}
                     onReorderItems={(reorderedItems) => {
                       const slots = reorderedItems
@@ -682,11 +684,12 @@ type GroupProps = {
   onReorderItems: (orderedItems: ListItemWithGear[]) => void
   onSaveGearName: (gearItemId: string, name: string) => void
   onSaveGearDescription: (gearItemId: string, description: string) => void
+  onSaveGearWeight: (gearItemId: string, weight_grams: number) => void
   onAddItem: (name: string) => void
   dragHandle?: React.ReactNode
 }
 
-function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDelete, onReorderItems, onSaveGearName, onSaveGearDescription, onAddItem, dragHandle }: GroupProps) {
+function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDelete, onReorderItems, onSaveGearName, onSaveGearDescription, onSaveGearWeight, onAddItem, dragHandle }: GroupProps) {
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState('')
 
@@ -698,7 +701,7 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
   }
   const [collapsed, setCollapsed] = useState(false)
   const packedCount = items.filter((i) => i.is_packed).length
-  const totalGrams = items.reduce((s, i) => s + i.weight_grams * i.quantity, 0)
+  const totalGrams = items.reduce((s, i) => s + (i.gear_item?.weight_grams ?? 0) * i.quantity, 0)
 
   const itemSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -769,6 +772,7 @@ function ListCategoryGroup({ name, items, packMode, weightUnit, onUpdate, onDele
                     onUpdate={(patch) => onUpdate(item.id, patch)}
                     onSaveName={gearId ? (n) => onSaveGearName(gearId, n) : undefined}
                     onSaveDescription={gearId ? (d) => onSaveGearDescription(gearId, d) : undefined}
+                    onSaveWeight={gearId ? (w) => onSaveGearWeight(gearId, w) : undefined}
                     onDelete={() => onDelete(item.id)}
                   />
                 )

@@ -123,7 +123,7 @@ function SharedPanelCard({ title, children }: { title: string; children: React.R
 }
 
 function SharedCategoryGroup({ name, items }: { name: string; items: ListItemWithGear[] }) {
-  const totalGrams = items.reduce((s, i) => s + i.weight_grams * i.quantity, 0)
+  const totalGrams = items.reduce((s, i) => s + (i.gear_item?.weight_grams ?? 0) * i.quantity, 0)
 
   return (
     <div>
@@ -189,7 +189,7 @@ function SharedItemRow({ item }: { item: ListItemWithGear }) {
 
       {/* Weight */}
       <span className="shrink-0 w-16 text-right tabular-nums text-gray-600">
-        {formatItemWeight(item.weight_grams, 'g')}
+        {formatItemWeight(item.gear_item?.weight_grams ?? 0, 'g')}
       </span>
     </div>
   )
