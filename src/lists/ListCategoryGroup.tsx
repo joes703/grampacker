@@ -64,7 +64,7 @@ export default function ListCategoryGroup({ name, items, packMode, weightUnit, o
             <ChevronDown size={14} className="text-gray-400 shrink-0" />
           )}
           <span className="truncate text-sm font-medium text-gray-700">{name}</span>
-          <span className="shrink-0 text-xs text-gray-400">
+          <span className="shrink-0 text-xs tabular-nums text-gray-400">
             {packMode ? `${packedCount} / ${items.length}` : `(${items.length})`}
           </span>
         </button>

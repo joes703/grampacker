@@ -13,7 +13,7 @@ export default function PackingProgress({ total, packed, onReset }: Props) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium text-gray-700">
+        <span className="text-sm font-medium tabular-nums text-gray-700">
           {packed} / {total} packed
         </span>
         <div className="flex items-center gap-2">
