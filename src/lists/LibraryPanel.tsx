@@ -161,7 +161,7 @@ function CategoryGroup({
                 key={item.id}
                 onClick={inList ? undefined : () => onAdd(item)}
                 title={inList ? 'Already on this list' : 'Click to add to list'}
-                className={`group flex items-center gap-2 px-3 py-0.5 ${
+                className={`group relative flex items-center gap-2 px-3 py-0.5 ${
                   inList ? 'cursor-default' : 'cursor-pointer hover:bg-gray-50'
                 }`}
               >
@@ -179,13 +179,21 @@ function CategoryGroup({
                 >
                   {formatItemWeight(item.weight_grams, weightUnit)}
                 </span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onRequestDelete(item) }}
-                  title="Delete from inventory"
-                  className="shrink-0 rounded p-0.5 text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+
+                {/* Hover overlay — gradient fades content to the row's hover color
+                    under the trash icon so text doesn't show through */}
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-y-0 right-0 flex items-center pl-8 pr-2 bg-gradient-to-l from-gray-50 via-gray-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150"
                 >
-                  <Trash2 size={13} />
-                </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onRequestDelete(item) }}
+                    title="Delete from inventory"
+                    className="pointer-events-auto rounded p-0.5 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               </div>
             )
           })}
