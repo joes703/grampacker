@@ -163,35 +163,39 @@ function CategoryGroup({
           {items.map((item) => {
             const inList = listItemGearIds.has(item.id)
             return (
-              <div
-                key={item.id}
-                onClick={() => (inList ? onRemove(item) : onAdd(item))}
-                title={inList ? 'Click to remove from list' : 'Click to add to list'}
-                className="group relative flex items-center gap-2 px-3 py-0.5 cursor-pointer hover:bg-gray-50"
-              >
-                <p
-                  className={`flex-1 min-w-0 truncate text-sm font-medium ${
-                    inList ? 'text-gray-400' : 'text-gray-800'
-                  }`}
+              <div key={item.id} className="group relative">
+                <button
+                  type="button"
+                  onClick={() => (inList ? onRemove(item) : onAdd(item))}
+                  title={inList ? 'Click to remove from list' : 'Click to add to list'}
+                  className="flex w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
                 >
-                  {item.name}
-                </p>
-                <span
-                  className={`shrink-0 text-xs tabular-nums ${
-                    inList ? 'text-gray-300' : 'text-gray-500'
-                  }`}
-                >
-                  {formatItemWeight(item.weight_grams, weightUnit)}
-                </span>
+                  <span
+                    className={`flex-1 min-w-0 truncate text-sm font-medium ${
+                      inList ? 'text-gray-400' : 'text-gray-800'
+                    }`}
+                  >
+                    {item.name}
+                  </span>
+                  <span
+                    className={`shrink-0 text-xs tabular-nums ${
+                      inList ? 'text-gray-300' : 'text-gray-500'
+                    }`}
+                  >
+                    {formatItemWeight(item.weight_grams, weightUnit)}
+                  </span>
+                </button>
 
-                {/* Hover overlay — gradient fades content to the row's hover color
-                    under the trash icon so text doesn't show through */}
+                {/* Hover overlay — gradient fades the row contents under the trash
+                    icon so text doesn't show through. Sibling of the row button so
+                    nothing nests inside another <button>. */}
                 <div
                   aria-hidden
-                  className="pointer-events-none absolute inset-y-0 right-0 flex items-center pl-8 pr-2 bg-gradient-to-l from-gray-50 via-gray-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                  className="pointer-events-none absolute inset-y-0 right-0 flex items-center pl-8 pr-2 bg-gradient-to-l from-gray-50 via-gray-50 to-transparent opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150"
                 >
                   <button
-                    onClick={(e) => { e.stopPropagation(); onRequestDelete(item) }}
+                    type="button"
+                    onClick={() => onRequestDelete(item)}
                     title="Delete from inventory"
                     className="pointer-events-auto rounded p-0.5 text-gray-400 hover:text-red-600 hover:bg-red-50"
                   >
