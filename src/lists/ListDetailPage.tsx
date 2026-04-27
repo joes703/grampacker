@@ -120,7 +120,10 @@ export default function ListDetailPage() {
   // No id and still resolving → render nothing while redirect runs
   if (!routeId) return null
 
-  return <ListDetailInner listId={routeId} lists={lists} listsByRecent={listsByRecent} userId={userId} qc={qc} navigate={navigate} />
+  // key={routeId} forces a fresh ListDetailInner instance per list, so local
+  // state (open dialogs, draft inputs, sidebar collapse, etc.) doesn't leak
+  // when the user switches lists.
+  return <ListDetailInner key={routeId} listId={routeId} lists={lists} listsByRecent={listsByRecent} userId={userId} qc={qc} navigate={navigate} />
 }
 
 function ListDetailInner({
