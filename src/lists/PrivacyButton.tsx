@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createPortal } from 'react-dom'
-import { Check, Copy, Globe, Lock } from 'lucide-react'
+import { Check, Copy, Globe } from 'lucide-react'
 import type { List } from '../lib/types'
 import { queryKeys, updateList } from '../lib/queries'
 
@@ -62,13 +62,11 @@ export default function PrivacyButton({ list }: Props) {
         onClick={() => (open ? setPos(null) : openPopover())}
         title={list.is_shared ? 'Public — click to manage' : 'Private — click to manage'}
         aria-pressed={list.is_shared}
-        className={`inline-flex items-center justify-center rounded-lg border p-1.5 ${
-          list.is_shared
-            ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
-            : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+        className={`inline-flex items-center justify-center rounded-lg border border-gray-300 p-1.5 hover:bg-gray-50 ${
+          list.is_shared ? 'text-blue-600' : 'text-gray-400'
         }`}
       >
-        {list.is_shared ? <Globe size={16} /> : <Lock size={16} />}
+        <Globe size={16} />
       </button>
 
       {open && pos && createPortal(
