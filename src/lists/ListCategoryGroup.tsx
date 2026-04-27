@@ -14,7 +14,7 @@ import type { ListItemWithGear } from '../lib/types'
 import type { ListItemPatch } from '../lib/queries'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
-import ListItemRow from './ListItemRow'
+import { SortableItemRow } from './ItemRow'
 import AddItemRow, { type AddItemData } from './AddItemRow'
 
 export type GroupProps = {
@@ -103,7 +103,7 @@ export default function ListCategoryGroup({ name, items, packMode, weightUnit, o
               {items.map((item) => {
                 const gearId = item.gear_item?.id
                 return (
-                  <ListItemRow
+                  <SortableItemRow
                     key={item.id}
                     item={item}
                     packMode={packMode}
