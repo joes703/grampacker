@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertTriangle, GripVertical, Shirt, Trash2, UtensilsCrossed } from 'lucide-react'
+import { AlertTriangle, GripVertical, Shirt, UtensilsCrossed, XCircle } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import InlineText from '../components/InlineText'
@@ -237,13 +237,13 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
         )}
       </div>
 
-      {/* Delete — only on row hover (absolute so it doesn't reserve a column) */}
+      {/* Remove from list — visible X in flow (does NOT delete from inventory) */}
       <button
         onClick={onDelete}
         title="Remove from list"
-        className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-6 inline-flex items-center justify-center rounded bg-white shadow-sm text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+        className="shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
       >
-        <Trash2 size={14} />
+        <XCircle size={14} />
       </button>
     </div>
   )

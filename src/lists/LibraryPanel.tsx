@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, Search, Trash2 } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
+import TypedConfirmDialog from '../components/TypedConfirmDialog'
 
 type Props = {
   gearItems: GearItem[]
@@ -9,11 +10,13 @@ type Props = {
   listItemGearIds: Set<string>
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
+  onDelete: (item: GearItem) => void
 }
 
-export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd }: Props) {
+export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onDelete }: Props) {
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState(new Set<string>())
+  const [deleteCandidate, setDeleteCandidate] = useState<GearItem | null>(null)
 
   function toggleCollapse(key: string) {
     setCollapsed((prev) => {
@@ -74,6 +77,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
                 listItemGearIds={listItemGearIds}
                 weightUnit={weightUnit}
                 onAdd={onAdd}
+                onRequestDelete={(item) => setDeleteCandidate(item)}
               />
             ))}
             {uncategorised.length > 0 && (
@@ -85,11 +89,27 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
                 listItemGearIds={listItemGearIds}
                 weightUnit={weightUnit}
                 onAdd={onAdd}
+                onRequestDelete={(item) => setDeleteCandidate(item)}
               />
             )}
           </>
         )}
       </div>
+
+      {deleteCandidate && (
+        <TypedConfirmDialog
+          title="Delete from inventory"
+          message={`This will permanently delete "${deleteCandidate.name}" from your gear library and remove it from every list that contains it.`}
+          confirmPhrase={deleteCandidate.name}
+          confirmLabel="Delete item"
+          onCancel={() => setDeleteCandidate(null)}
+          onConfirm={() => {
+            const item = deleteCandidate
+            setDeleteCandidate(null)
+            onDelete(item)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -102,6 +122,7 @@ function CategoryGroup({
   listItemGearIds,
   weightUnit,
   onAdd,
+  onRequestDelete,
 }: {
   name: string
   items: GearItem[]
@@ -110,6 +131,7 @@ function CategoryGroup({
   listItemGearIds: Set<string>
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
+  onRequestDelete: (item: GearItem) => void
 }) {
   return (
     <div>
@@ -150,6 +172,13 @@ function CategoryGroup({
                   }`}
                 >
                   <Plus size={15} />
+                </button>
+                <button
+                  onClick={() => onRequestDelete(item)}
+                  title="Delete from inventory"
+                  className="shrink-0 rounded p-0.5 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                >
+                  <Trash2 size={13} />
                 </button>
               </div>
             )
