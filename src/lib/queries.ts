@@ -239,15 +239,14 @@ export async function duplicateList(source: List, userId: string, sortOrder: num
 
 export async function addGearItemToList(
   listId: string,
-  gearItem: Pick<GearItem, 'id' | 'weight_grams'>,
+  gearItemId: string,
   sortOrder: number,
 ): Promise<ListItem> {
   const { data, error } = await supabase
     .from('list_items')
     .insert({
       list_id: listId,
-      gear_item_id: gearItem.id,
-      weight_grams: gearItem.weight_grams,
+      gear_item_id: gearItemId,
       sort_order: sortOrder,
     })
     .select()
@@ -258,7 +257,7 @@ export async function addGearItemToList(
 
 export async function updateListItem(
   id: string,
-  patch: Partial<Pick<ListItem, 'quantity' | 'weight_grams' | 'is_worn' | 'is_consumable' | 'is_packed' | 'sort_order'>>,
+  patch: Partial<Pick<ListItem, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed' | 'sort_order'>>,
 ): Promise<void> {
   const { error } = await supabase.from('list_items').update(patch).eq('id', id)
   if (error) throw error
@@ -323,19 +322,21 @@ export async function importCsvRowsToList(
     }
   }
 
-  // 3. Add all rows to the list
-  const listItemRows = rows.map((row, i) => {
-    const gear = gearByName.get(row.name.toLowerCase())
-    return {
-      list_id: listId,
-      gear_item_id: gear?.id ?? null,
-      weight_grams: row.weight_grams,
-      quantity: row.quantity,
-      is_worn: row.is_worn,
-      is_consumable: row.is_consumable,
-      sort_order: currentListItemCount + i,
-    }
-  })
+  // 3. Add all rows to the list (gear_item_id is required; if a row had no name/match, skip it)
+  const listItemRows = rows
+    .map((row, i) => {
+      const gear = gearByName.get(row.name.toLowerCase())
+      if (!gear) return null
+      return {
+        list_id: listId,
+        gear_item_id: gear.id,
+        quantity: row.quantity,
+        is_worn: row.is_worn,
+        is_consumable: row.is_consumable,
+        sort_order: currentListItemCount + i,
+      }
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
 
   const { error: liErr } = await supabase.from('list_items').insert(listItemRows)
   if (liErr) throw liErr

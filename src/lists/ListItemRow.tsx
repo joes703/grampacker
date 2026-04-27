@@ -10,13 +10,14 @@ type Props = {
   item: ListItemWithGear
   weightUnit: WeightUnit
   packMode?: boolean
-  onUpdate: (patch: Partial<Pick<ListItemWithGear, 'quantity' | 'weight_grams' | 'is_worn' | 'is_consumable' | 'is_packed'>>) => void
+  onUpdate: (patch: Partial<Pick<ListItemWithGear, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed'>>) => void
   onSaveName?: (name: string) => void
   onSaveDescription?: (description: string) => void
+  onSaveWeight?: (weight_grams: number) => void
   onDelete: () => void
 }
 
-export default function ListItemRow({ item, weightUnit, packMode = false, onUpdate, onSaveName, onSaveDescription, onDelete }: Props) {
+export default function ListItemRow({ item, weightUnit, packMode = false, onUpdate, onSaveName, onSaveDescription, onSaveWeight, onDelete }: Props) {
   const {
     attributes,
     listeners,
@@ -32,15 +33,16 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
     transition,
     opacity: isDragging ? 0.4 : 1,
   }
+  const itemWeight = item.gear_item?.weight_grams ?? 0
   const [editingWeight, setEditingWeight] = useState(false)
-  const [weightDraft, setWeightDraft] = useState(String(item.weight_grams))
+  const [weightDraft, setWeightDraft] = useState(String(itemWeight))
   const weightInputRef = useRef<HTMLInputElement>(null)
 
   const [editingQty, setEditingQty] = useState(false)
   const [qtyDraft, setQtyDraft] = useState(String(item.quantity))
   const qtyInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { setWeightDraft(String(item.weight_grams)) }, [item.weight_grams])
+  useEffect(() => { setWeightDraft(String(itemWeight)) }, [itemWeight])
   useEffect(() => { setQtyDraft(String(item.quantity)) }, [item.quantity])
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
   function commitWeight() {
     const parsed = parseInt(weightDraft, 10)
     const clamped = isNaN(parsed) || parsed < 0 ? 0 : Math.min(parsed, 100000)
-    if (clamped !== item.weight_grams) onUpdate({ weight_grams: clamped })
+    if (clamped !== itemWeight && onSaveWeight) onSaveWeight(clamped)
     setEditingWeight(false)
   }
 
@@ -210,7 +212,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
           onBlur={commitWeight}
           onKeyDown={(e) => {
             if (e.key === 'Enter') commitWeight()
-            if (e.key === 'Escape') { setWeightDraft(String(item.weight_grams)); setEditingWeight(false) }
+            if (e.key === 'Escape') { setWeightDraft(String(itemWeight)); setEditingWeight(false) }
           }}
           className="shrink-0 w-16 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
         />
@@ -220,7 +222,7 @@ export default function ListItemRow({ item, weightUnit, packMode = false, onUpda
           title="Click to edit weight"
           className="shrink-0 w-16 text-right tabular-nums text-gray-600 hover:text-blue-600"
         >
-          {formatItemWeight(item.weight_grams, weightUnit)}
+          {formatItemWeight(itemWeight, weightUnit)}
         </button>
       )}
 
