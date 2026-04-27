@@ -56,7 +56,6 @@ import { type AddItemData } from './AddItemRow'
 import PrivacyButton from './PrivacyButton'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
 import ListCategoryGroup, { SortableListCategoryGroup } from './ListCategoryGroup'
-import GearItemDialog from '../gear/GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 
@@ -136,7 +135,6 @@ function ListDetailInner({
   const [importPreview, setImportPreview] = useState<ListImportRow[] | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [confirmDeleteList, setConfirmDeleteList] = useState<List | null>(null)
-  const [editingGearItem, setEditingGearItem] = useState<GearItem | null>(null)
   const [pendingImportId, setPendingImportId] = useState<string | null>(null)
   const [creatingList, setCreatingList] = useState(false)
   const [newListDraft, setNewListDraft] = useState('')
@@ -476,7 +474,6 @@ function ListDetailInner({
                       const li = listItems.find((l) => l.gear_item_id === item.id)
                       if (li) deleteMut.mutate(li.id)
                     }}
-                    onEdit={(item) => setEditingGearItem(item)}
                     onDelete={(item) => deleteGearItemMut.mutate(item.id)}
                   />
               </div>
@@ -595,7 +592,6 @@ function ListDetailInner({
           const li = listItems.find((l) => l.gear_item_id === item.id)
           if (li) deleteMut.mutate(li.id)
         }}
-        onEdit={(item) => setEditingGearItem(item)}
         onDelete={(item) => deleteGearItemMut.mutate(item.id)}
       />
 
@@ -644,25 +640,6 @@ function ListDetailInner({
         />
       )}
 
-      {/* Gear-item edit dialog — reached from the kebab menu on library-panel
-          rows. Reuses the same GearItemDialog the gear library page uses, so
-          edits write back through updateGearItemMut and propagate to every
-          list that embeds this gear item. */}
-      {editingGearItem && (
-        <GearItemDialog
-          categories={categories}
-          item={editingGearItem}
-          saving={updateGearItemMut.isPending}
-          onClose={() => setEditingGearItem(null)}
-          onSave={(patch) => {
-            const target = editingGearItem
-            updateGearItemMut.mutate(
-              { id: target.id, patch },
-              { onSuccess: () => setEditingGearItem(null) },
-            )
-          }}
-        />
-      )}
     </div>
   )
 }
