@@ -5,6 +5,7 @@ import { fetchSharedList, fetchSharedListItems, fetchSharedListCategories } from
 import type { Category, ListItemWithGear } from '../lib/types'
 import { formatItemWeight } from '../lib/weight'
 import WeightTable from './WeightTable'
+import PanelCard from './PanelCard'
 
 export default function SharePage() {
   const { token } = useParams<{ token: string }>()
@@ -76,7 +77,7 @@ export default function SharePage() {
 
         {/* Notes + Weight summary — side by side, equal halves (read-only) */}
         <div className={`mb-6 grid gap-4 ${items.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
-          <SharedPanelCard title="Notes">
+          <PanelCard title="Notes">
             {list.description ? (
               <p className="px-3 py-2 text-sm text-gray-700 whitespace-pre-line min-h-[8rem]">
                 {list.description}
@@ -84,11 +85,11 @@ export default function SharePage() {
             ) : (
               <p className="px-3 py-2 text-sm text-gray-400 italic min-h-[8rem]">No notes</p>
             )}
-          </SharedPanelCard>
+          </PanelCard>
           {items.length > 0 && (
-            <SharedPanelCard title="Weight summary">
+            <PanelCard title="Weight summary">
               <WeightTable items={items} categories={categories} />
-            </SharedPanelCard>
+            </PanelCard>
           )}
         </div>
 
@@ -107,17 +108,6 @@ export default function SharePage() {
           Made with grampacker
         </p>
       </div>
-    </div>
-  )
-}
-
-function SharedPanelCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden flex flex-col">
-      <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</p>
-      </div>
-      <div className="flex-1 flex flex-col">{children}</div>
     </div>
   )
 }
