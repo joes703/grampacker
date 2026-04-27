@@ -11,10 +11,11 @@ type Props = {
   listItemGearIds: Set<string>
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
+  onRemove: (item: GearItem) => void
   onDelete: (item: GearItem) => void
 }
 
-export default function LibrarySheet({ open, onClose, gearItems, categories, listItemGearIds, weightUnit, onAdd, onDelete }: Props) {
+export default function LibrarySheet({ open, onClose, gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove, onDelete }: Props) {
   return (
     <Drawer.Root open={open} onOpenChange={(v) => !v && onClose()}>
       <Drawer.Portal>
@@ -31,6 +32,7 @@ export default function LibrarySheet({ open, onClose, gearItems, categories, lis
               listItemGearIds={listItemGearIds}
               weightUnit={weightUnit}
               onAdd={(item) => { onAdd(item) }}
+              onRemove={onRemove}
               onDelete={onDelete}
             />
           </div>
