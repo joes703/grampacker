@@ -187,6 +187,10 @@ function ListDetailInner({
     mutationFn: (item: GearItem) =>
       addGearItemToList(listId, item.id, listItems.length),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) }),
+    onError: (err) => {
+      console.error('addGearItemToList failed:', err)
+      alert(`Couldn't add to list: ${err instanceof Error ? err.message : String(err)}`)
+    },
   })
 
   const updateMut = useMutation({
