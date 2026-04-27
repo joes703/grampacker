@@ -8,6 +8,7 @@ import type { Category, GearItem } from '../lib/types'
 import type { WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
 import GearItemRow from './GearItemRow'
+import RowIconButton from '../components/RowIconButton'
 
 type CategorySectionProps = {
   category: Category | null // null = Uncategorised
@@ -78,16 +79,15 @@ function CategorySectionInner(
       <div className="flex items-center gap-1 rounded-lg px-2 py-0.5 bg-gray-100">
         {/* Drag handle — only for real categories */}
         {!isUncategorised && dragHandleRef ? (
-          <button
+          <RowIconButton
             ref={dragHandleRef}
             {...dragHandleListeners}
             {...dragHandleAttributes}
-            className="cursor-grab touch-none text-gray-400 hover:text-gray-600 active:cursor-grabbing"
             tabIndex={-1}
-            aria-label="Drag to reorder"
-          >
-            <GripVertical size={16} />
-          </button>
+            variant="dragHandle"
+            ariaLabel="Drag to reorder"
+            icon={<GripVertical size={16} />}
+          />
         ) : (
           <span className="w-5" />
         )}
@@ -123,32 +123,30 @@ function CategorySectionInner(
         {/* Header actions — hidden in select mode */}
         {!selectMode && !renaming && (
           <div className="flex items-center gap-0.5 ml-auto">
-            <button
+            <RowIconButton
               onClick={() => onAddItemToCategory(category?.id ?? null)}
               title="Add item to this category"
-              className="rounded p-1 text-gray-400 hover:text-gray-700"
-            >
-              <Plus size={14} />
-            </button>
+              ariaLabel="Add item to this category"
+              icon={<Plus size={14} />}
+            />
             {!isUncategorised && (
               <>
-                <button
+                <RowIconButton
                   onClick={() => {
                     setRenameDraft(category!.name)
                     setRenaming(true)
                   }}
                   title="Rename category"
-                  className="rounded p-1 text-gray-400 hover:text-gray-700"
-                >
-                  <Pencil size={14} />
-                </button>
-                <button
+                  ariaLabel="Rename category"
+                  icon={<Pencil size={14} />}
+                />
+                <RowIconButton
+                  variant="danger"
                   onClick={() => onDeleteCategory(category!)}
                   title="Delete category"
-                  className="rounded p-1 text-gray-400 hover:text-red-600"
-                >
-                  <Trash2 size={14} />
-                </button>
+                  ariaLabel="Delete category"
+                  icon={<Trash2 size={14} />}
+                />
               </>
             )}
           </div>
@@ -156,18 +154,22 @@ function CategorySectionInner(
 
         {renaming && (
           <div className="flex items-center gap-0.5 ml-auto">
-            <button onClick={commitRename} className="rounded p-1 text-green-600 hover:text-green-700">
-              <Check size={14} />
-            </button>
-            <button
+            <RowIconButton
+              variant="success"
+              onClick={commitRename}
+              title="Confirm rename"
+              ariaLabel="Confirm rename"
+              icon={<Check size={14} />}
+            />
+            <RowIconButton
               onClick={() => {
                 setRenameDraft(category?.name ?? '')
                 setRenaming(false)
               }}
-              className="rounded p-1 text-gray-400 hover:text-gray-600"
-            >
-              <X size={14} />
-            </button>
+              title="Cancel rename"
+              ariaLabel="Cancel rename"
+              icon={<X size={14} />}
+            />
           </div>
         )}
       </div>

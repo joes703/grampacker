@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Shirt, UtensilsCrossed, XCircle } from 'lucide-react'
+import RowIconButton from '../components/RowIconButton'
 
 export type AddItemData = {
   name: string
@@ -81,26 +82,22 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
         />
       </div>
 
-      <button
-        type="button"
+      <RowIconButton
+        variant="purpleToggle"
+        active={worn}
         onClick={() => { setWorn((v) => !v); if (!worn) setConsumable(false) }}
         title="Worn"
-        className={`shrink-0 w-7 h-6 inline-flex items-center justify-center rounded ${
-          worn ? 'bg-purple-100 text-purple-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
-        }`}
-      >
-        <Shirt size={14} />
-      </button>
-      <button
-        type="button"
+        ariaLabel="Worn"
+        icon={<Shirt size={14} />}
+      />
+      <RowIconButton
+        variant="orangeToggle"
+        active={consumable}
         onClick={() => { setConsumable((v) => !v); if (!consumable) setWorn(false) }}
         title="Consumable"
-        className={`shrink-0 w-7 h-6 inline-flex items-center justify-center rounded ${
-          consumable ? 'bg-orange-100 text-orange-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
-        }`}
-      >
-        <UtensilsCrossed size={14} />
-      </button>
+        ariaLabel="Consumable"
+        icon={<UtensilsCrossed size={14} />}
+      />
 
       <input
         type="number"
@@ -121,14 +118,13 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
         className="shrink-0 w-16 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
       />
 
-      <button
-        type="button"
+      <RowIconButton
+        variant="danger"
         onClick={onCancel}
         title="Cancel"
-        className="shrink-0 w-7 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
-      >
-        <XCircle size={14} />
-      </button>
+        ariaLabel="Cancel"
+        icon={<XCircle size={14} />}
+      />
     </div>
   )
 }

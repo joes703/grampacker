@@ -13,6 +13,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { CopyPlus, Download, GripVertical, MoreVertical, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import type { List } from '../lib/types'
 import { asButtonRef } from '../lib/dnd'
+import RowIconButton from '../components/RowIconButton'
 
 type RowActions = {
   onImport: (list: List) => void
@@ -238,16 +239,15 @@ function ListsBoxRow({
       }`}
     >
       {/* Drag handle */}
-      <button
+      <RowIconButton
         ref={asButtonRef(setActivatorNodeRef)}
         {...listeners}
         {...attributes}
-        className="cursor-grab touch-none px-1 py-0.5 text-gray-300 hover:text-gray-500 active:cursor-grabbing shrink-0"
         tabIndex={-1}
-        aria-label="Drag to reorder list"
-      >
-        <GripVertical size={13} />
-      </button>
+        variant="dragHandle"
+        ariaLabel="Drag to reorder list"
+        icon={<GripVertical size={13} />}
+      />
 
       <button
         onClick={onSelect}
@@ -261,14 +261,13 @@ function ListsBoxRow({
       </button>
 
       {/* 3-dot menu trigger */}
-      <button
+      <RowIconButton
         ref={triggerRef}
         onClick={(e) => { e.stopPropagation(); if (menuOpen) setMenuPos(null); else openMenu() }}
-        className="shrink-0 mr-1 rounded p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-        aria-label="List options"
-      >
-        <MoreVertical size={14} />
-      </button>
+        ariaLabel="List options"
+        icon={<MoreVertical size={14} />}
+        className="mr-1"
+      />
 
       {menuOpen && menuPos && createPortal(
         <div
