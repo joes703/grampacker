@@ -55,7 +55,7 @@ import NotesEditor from './NotesEditor'
 import { type AddItemData } from './AddItemRow'
 import PrivacyButton from './PrivacyButton'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
-import ListCategoryGroup, { SortableListCategoryGroup } from './ListCategoryGroup'
+import CategoryGroup, { SortableCategoryGroup } from './CategoryGroup'
 import PanelCard from './PanelCard'
 import GearItemDialog from '../gear/GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -260,7 +260,7 @@ function ListDetailInner({
 
   // "+ Add new item" inside a category — creates a gear_item (so it lives in the
   // gear library too), then adds it to this list under the same category. The
-  // draft row in ListCategoryGroup collects all the fields up front.
+  // draft row in CategoryGroup collects all the fields up front.
   const addNewItemMut = useMutation({
     mutationFn: async ({ categoryId, data }: { categoryId: string | null; data: AddItemData }) => {
       const newGear = await createGearItem(
@@ -562,7 +562,7 @@ function ListDetailInner({
                     {grouped
                       .filter((g) => g.category !== null)
                       .map((group) => (
-                        <SortableListCategoryGroup
+                        <SortableCategoryGroup
                           key={group.category!.id}
                           id={group.category!.id}
                           name={group.category!.name}
@@ -576,7 +576,7 @@ function ListDetailInner({
                 {grouped
                   .filter((g) => g.category === null)
                   .map((group) => (
-                    <ListCategoryGroup
+                    <CategoryGroup
                       key="__uncategorised__"
                       name="Uncategorised"
                       items={group.items}
