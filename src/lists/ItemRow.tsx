@@ -144,6 +144,11 @@ export default function ItemRow({
     >
       {dragHandle}
 
+      {/* Desktop branch (≥ lg) — display:contents so existing children
+          continue to participate in the outer flex layout exactly as before.
+          Internal structure of this branch is unchanged from the
+          single-row layout that has shipped to date. */}
+      <div className="hidden lg:contents">
       {/* Name + description as proportional columns — name : description = 2 : 3 */}
       <div className="flex-1 min-w-0 flex items-center gap-3">
         <div className="flex-[2] min-w-0">
@@ -273,7 +278,89 @@ export default function ItemRow({
           onDeleteFromInventory={onDeleteGearItem}
         />
       )}
+      </div>
+
+      {/* Mobile branch (< lg) — two-line stacked layout. Tap-to-edit body on
+          the left (opens GearItemDialog via onEditGearItem when available),
+          larger kebab on the right. Worn / consumable shown as non-interactive
+          indicators in a fixed-width column at the start of the row. Quantity
+          appears as "×N" suffix on the name when > 1; full editing is via
+          the kebab → Edit. */}
+      <div className="lg:hidden flex flex-1 items-stretch min-h-11">
+        {onEditGearItem ? (
+          <button
+            type="button"
+            onClick={onEditGearItem}
+            className="flex flex-1 min-w-0 flex-col justify-center text-left"
+          >
+            <MobileRowLines item={item} name={name} description={description} weightUnit={weightUnit} />
+          </button>
+        ) : (
+          <div className="flex flex-1 min-w-0 flex-col justify-center">
+            <MobileRowLines item={item} name={name} description={description} weightUnit={weightUnit} />
+          </div>
+        )}
+        {showKebab && (
+          <RowKebab
+            onRemoveFromList={onDelete!}
+            onEdit={onEditGearItem}
+            onDeleteFromInventory={onDeleteGearItem}
+            triggerClassName="!w-11 !h-11 self-center"
+          />
+        )}
+      </div>
     </div>
+  )
+}
+
+// Mobile row body: indicator column + name (with "×N" qty suffix) + weight
+// on Line 1, optional muted description on Line 2. No interactive controls
+// here — the parent button handles tap-to-edit; the kebab is a sibling.
+function MobileRowLines({
+  item,
+  name,
+  description,
+  weightUnit,
+}: {
+  item: ListItemWithGear
+  name: string
+  description: string
+  weightUnit: WeightUnit
+}) {
+  const itemWeight = item.gear_item?.weight_grams ?? 0
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 inline-flex w-6 h-6 items-center justify-center">
+          {item.is_worn ? (
+            <Shirt size={14} className="text-purple-600" aria-label="Worn" />
+          ) : item.is_consumable ? (
+            <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />
+          ) : null}
+        </span>
+        <span
+          className={`flex-1 min-w-0 truncate text-sm font-normal ${
+            item.gear_item ? 'text-gray-900' : 'text-gray-400 italic'
+          }`}
+        >
+          {name}
+          {item.quantity > 1 && (
+            <span className="ml-1 text-gray-500 tabular-nums">×{item.quantity}</span>
+          )}
+        </span>
+        <span className="shrink-0 text-sm tabular-nums text-gray-600">
+          {formatItemWeight(itemWeight, weightUnit)}
+        </span>
+      </div>
+      {description && (
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className="shrink-0 w-6" />
+          <span className="flex-1 min-w-0 truncate text-sm font-normal text-gray-500">
+            {description}
+          </span>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -329,10 +416,14 @@ function RowKebab({
   onRemoveFromList,
   onEdit,
   onDeleteFromInventory,
+  triggerClassName,
 }: {
   onRemoveFromList: () => void
   onEdit?: () => void
   onDeleteFromInventory?: () => void
+  /** Override the trigger button's className. Default keeps the desktop
+   *  row-icon sizing (w-7 h-6); the mobile row passes a 44×44 tap target. */
+  triggerClassName?: string
 }) {
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -378,6 +469,7 @@ function RowKebab({
         onClick={(e) => { e.stopPropagation(); if (menuOpen) setMenuPos(null); else openMenu() }}
         ariaLabel="Item options"
         icon={<MoreVertical size={14} />}
+        className={triggerClassName}
       />
 
       {menuOpen && menuPos && createPortal(
