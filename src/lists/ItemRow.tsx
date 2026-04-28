@@ -144,168 +144,160 @@ export default function ItemRow({
     >
       {dragHandle}
 
-      {/* Desktop branch (≥ lg) — display:contents so existing children
-          continue to participate in the outer flex layout exactly as before.
-          Internal structure of this branch is unchanged from the
-          single-row layout that has shipped to date. */}
+      {/* Desktop branch (≥ lg) — display:contents so children flow into the
+          outer flex layout. Internal structure preserved verbatim from the
+          interactive single-row layout that has shipped to date. */}
       <div className="hidden lg:contents">
-      {/* Name + description as proportional columns — name : description = 2 : 3 */}
-      <div className="flex-1 min-w-0 flex items-center gap-3">
-        <div className="flex-[2] min-w-0">
-          {onSaveName ? (
-            <InlineText
-              value={name}
-              onSave={onSaveName}
-              className="block w-full truncate font-normal text-gray-900"
-            />
-          ) : item.gear_item ? (
-            <span className="block w-full truncate font-normal text-gray-900">{name}</span>
-          ) : (
-            <span className="block w-full truncate font-normal text-gray-400 italic">{name}</span>
-          )}
+        {/* Name + description as proportional columns — name : description = 2 : 3 */}
+        <div className="flex-1 min-w-0 flex items-center gap-3">
+          <div className="flex-[2] min-w-0">
+            {onSaveName ? (
+              <InlineText
+                value={name}
+                onSave={onSaveName}
+                className="block w-full truncate font-normal text-gray-900"
+              />
+            ) : item.gear_item ? (
+              <span className="block w-full truncate font-normal text-gray-900">{name}</span>
+            ) : (
+              <span className="block w-full truncate font-normal text-gray-400 italic">{name}</span>
+            )}
+          </div>
+          <div className="flex-[3] min-w-0">
+            {onSaveDescription ? (
+              <InlineText
+                value={description}
+                placeholder="Add description"
+                onSave={onSaveDescription}
+                className="block w-full truncate text-sm font-normal text-gray-500"
+              />
+            ) : (
+              <span className="block w-full truncate text-sm font-normal text-gray-500">{description}</span>
+            )}
+          </div>
         </div>
-        <div className="flex-[3] min-w-0">
-          {onSaveDescription ? (
-            <InlineText
-              value={description}
-              placeholder="Add description"
-              onSave={onSaveDescription}
-              className="block w-full truncate text-sm font-normal text-gray-500"
-            />
-          ) : (
-            <span className="block w-full truncate text-sm font-normal text-gray-500">{description}</span>
-          )}
-        </div>
-      </div>
 
-      {/* Worn (Shirt) — toggle button when editable; static icon-only span otherwise */}
-      {editable ? (
-        <RowIconButton
-          variant="purpleToggle"
-          active={item.is_worn}
-          onClick={() => onUpdate!({ is_worn: !item.is_worn, is_consumable: false })}
-          title={item.is_worn ? 'Worn — click to clear' : 'Mark as worn'}
-          ariaLabel={item.is_worn ? 'Worn — click to clear' : 'Mark as worn'}
-          icon={<Shirt size={14} />}
-        />
-      ) : (
-        <span className="shrink-0 w-7 inline-flex items-center justify-center">
-          {item.is_worn && <Shirt size={14} className="text-purple-600" aria-label="Worn" />}
-        </span>
-      )}
+        {/* Worn (Shirt) — toggle button when editable; static icon-only span otherwise */}
+        {editable ? (
+          <RowIconButton
+            variant="purpleToggle"
+            active={item.is_worn}
+            onClick={() => onUpdate!({ is_worn: !item.is_worn, is_consumable: false })}
+            title={item.is_worn ? 'Worn — click to clear' : 'Mark as worn'}
+            ariaLabel={item.is_worn ? 'Worn — click to clear' : 'Mark as worn'}
+            icon={<Shirt size={14} />}
+          />
+        ) : (
+          <span className="shrink-0 w-7 inline-flex items-center justify-center">
+            {item.is_worn && <Shirt size={14} className="text-purple-600" aria-label="Worn" />}
+          </span>
+        )}
 
-      {/* Consumable (UtensilsCrossed) */}
-      {editable ? (
-        <RowIconButton
-          variant="orangeToggle"
-          active={item.is_consumable}
-          onClick={() => onUpdate!({ is_consumable: !item.is_consumable, is_worn: false })}
-          title={item.is_consumable ? 'Consumable — click to clear' : 'Mark as consumable'}
-          ariaLabel={item.is_consumable ? 'Consumable — click to clear' : 'Mark as consumable'}
-          icon={<UtensilsCrossed size={14} />}
-        />
-      ) : (
-        <span className="shrink-0 w-7 inline-flex items-center justify-center">
-          {item.is_consumable && <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />}
-        </span>
-      )}
+        {/* Consumable (UtensilsCrossed) */}
+        {editable ? (
+          <RowIconButton
+            variant="orangeToggle"
+            active={item.is_consumable}
+            onClick={() => onUpdate!({ is_consumable: !item.is_consumable, is_worn: false })}
+            title={item.is_consumable ? 'Consumable — click to clear' : 'Mark as consumable'}
+            ariaLabel={item.is_consumable ? 'Consumable — click to clear' : 'Mark as consumable'}
+            icon={<UtensilsCrossed size={14} />}
+          />
+        ) : (
+          <span className="shrink-0 w-7 inline-flex items-center justify-center">
+            {item.is_consumable && <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />}
+          </span>
+        )}
 
-      {/* Quantity — clickable when editable, static otherwise */}
-      {editable && editingQty ? (
-        <input
-          ref={qtyInputRef}
-          type="number"
-          min={1}
-          max={99}
-          value={qtyDraft}
-          onChange={(e) => setQtyDraft(e.target.value)}
-          onBlur={commitQty}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitQty()
-            if (e.key === 'Escape') { setQtyDraft(String(item.quantity)); setEditingQty(false) }
-          }}
-          className="shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
-        />
-      ) : editable ? (
-        <button
-          onClick={() => setEditingQty(true)}
-          title="Click to edit quantity"
-          className="shrink-0 w-12 text-right tabular-nums text-gray-600 hover:text-blue-600"
-        >
-          {item.quantity}
-        </button>
-      ) : (
-        <span className="shrink-0 w-12 text-right tabular-nums text-gray-600">
-          {item.quantity}
-        </span>
-      )}
-
-      {/* Weight — clickable when editable, static otherwise */}
-      {onSaveWeight && editingWeight ? (
-        <WeightInput
-          inputRef={weightInputRef}
-          grams={weightDraftGrams}
-          onChange={setWeightDraftGrams}
-          onBlur={commitWeight}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitWeight()
-            if (e.key === 'Escape') { setWeightDraftGrams(itemWeight); setEditingWeight(false) }
-          }}
-          className="shrink-0 w-24"
-          inputClassName="flex-1 min-w-0 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
-        />
-      ) : onSaveWeight ? (
-        <button
-          onClick={() => setEditingWeight(true)}
-          title="Click to edit weight"
-          className="shrink-0 w-24 text-right tabular-nums text-gray-600 hover:text-blue-600"
-        >
-          {formatItemWeight(itemWeight, weightUnit)}
-        </button>
-      ) : (
-        <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
-          {formatItemWeight(itemWeight, weightUnit)}
-        </span>
-      )}
-
-      {/* Kebab — Remove from list (always when handler present), Edit + Delete
-          from inventory (only when handlers present). Hidden entirely on
-          read-only rows. */}
-      {showKebab && (
-        <RowKebab
-          onRemoveFromList={onDelete!}
-          onEdit={onEditGearItem}
-          onDeleteFromInventory={onDeleteGearItem}
-        />
-      )}
-      </div>
-
-      {/* Mobile branch (< lg) — two-line stacked layout. Tap-to-edit body on
-          the left (opens GearItemDialog via onEditGearItem when available),
-          larger kebab on the right. Worn / consumable shown as non-interactive
-          indicators in a fixed-width column at the start of the row. Quantity
-          appears as "×N" suffix on the name when > 1; full editing is via
-          the kebab → Edit. */}
-      <div className="lg:hidden flex flex-1 items-stretch min-h-11">
-        {onEditGearItem ? (
+        {/* Quantity — clickable when editable, static otherwise */}
+        {editable && editingQty ? (
+          <input
+            ref={qtyInputRef}
+            type="number"
+            min={1}
+            max={99}
+            value={qtyDraft}
+            onChange={(e) => setQtyDraft(e.target.value)}
+            onBlur={commitQty}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitQty()
+              if (e.key === 'Escape') { setQtyDraft(String(item.quantity)); setEditingQty(false) }
+            }}
+            className="shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
+          />
+        ) : editable ? (
           <button
-            type="button"
-            onClick={onEditGearItem}
-            className="flex flex-1 min-w-0 flex-col justify-center text-left"
+            onClick={() => setEditingQty(true)}
+            title="Click to edit quantity"
+            className="shrink-0 w-12 text-right tabular-nums text-gray-600 hover:text-blue-600"
           >
-            <MobileRowLines item={item} name={name} description={description} weightUnit={weightUnit} />
+            {item.quantity}
           </button>
         ) : (
-          <div className="flex flex-1 min-w-0 flex-col justify-center">
-            <MobileRowLines item={item} name={name} description={description} weightUnit={weightUnit} />
-          </div>
+          <span className="shrink-0 w-12 text-right tabular-nums text-gray-600">
+            {item.quantity}
+          </span>
         )}
+
+        {/* Weight — clickable when editable, static otherwise */}
+        {onSaveWeight && editingWeight ? (
+          <WeightInput
+            inputRef={weightInputRef}
+            grams={weightDraftGrams}
+            onChange={setWeightDraftGrams}
+            onBlur={commitWeight}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitWeight()
+              if (e.key === 'Escape') { setWeightDraftGrams(itemWeight); setEditingWeight(false) }
+            }}
+            className="shrink-0 w-24"
+            inputClassName="flex-1 min-w-0 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
+          />
+        ) : onSaveWeight ? (
+          <button
+            onClick={() => setEditingWeight(true)}
+            title="Click to edit weight"
+            className="shrink-0 w-24 text-right tabular-nums text-gray-600 hover:text-blue-600"
+          >
+            {formatItemWeight(itemWeight, weightUnit)}
+          </button>
+        ) : (
+          <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
+            {formatItemWeight(itemWeight, weightUnit)}
+          </span>
+        )}
+
+        {/* Kebab — Remove from list (always when handler present), Edit + Delete
+            from inventory (only when handlers present). Hidden entirely on
+            read-only rows. */}
         {showKebab && (
           <RowKebab
             onRemoveFromList={onDelete!}
             onEdit={onEditGearItem}
             onDeleteFromInventory={onDeleteGearItem}
-            triggerClassName="!w-11 !h-11 self-center"
+          />
+        )}
+      </div>
+
+      {/* Mobile branch (< lg) — visually mirrors the desktop row, but every
+          in-row control renders as a static span (no buttons, no inputs, no
+          focus rings, no aria-pressed). The whole row body is one tappable
+          element that opens the edit dialog (or a non-interactive div when
+          there's no edit handler — share view, "(deleted item)" rows). The
+          kebab remains a real, focusable button next to it. */}
+      <div className="lg:hidden flex flex-1 items-center gap-1.5">
+        <MobileRowBody
+          item={item}
+          name={name}
+          description={description}
+          weightUnit={weightUnit}
+          onTap={onEditGearItem}
+        />
+        {showKebab && (
+          <RowKebab
+            onRemoveFromList={onDelete!}
+            onEdit={onEditGearItem}
+            onDeleteFromInventory={onDeleteGearItem}
           />
         )}
       </div>
@@ -313,55 +305,71 @@ export default function ItemRow({
   )
 }
 
-// Mobile row body: indicator column + name (with "×N" qty suffix) + weight
-// on Line 1, optional muted description on Line 2. No interactive controls
-// here — the parent button handles tap-to-edit; the kebab is a sibling.
-function MobileRowLines({
+// Mobile row body — same column geometry as the desktop interactive row,
+// but rendered with static <span> elements throughout. The wrapping element
+// is a single <button> when an edit handler is provided (tap opens the edit
+// dialog) and a plain <div> otherwise (read-only rows on the share view, or
+// "(deleted item)" placeholders).
+function MobileRowBody({
   item,
   name,
   description,
   weightUnit,
+  onTap,
 }: {
   item: ListItemWithGear
   name: string
   description: string
   weightUnit: WeightUnit
+  onTap?: () => void
 }) {
   const itemWeight = item.gear_item?.weight_grams ?? 0
-  return (
+  const cells = (
     <>
-      <div className="flex items-center gap-2">
-        <span className="shrink-0 inline-flex w-6 h-6 items-center justify-center">
-          {item.is_worn ? (
-            <Shirt size={14} className="text-purple-600" aria-label="Worn" />
-          ) : item.is_consumable ? (
-            <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />
-          ) : null}
-        </span>
-        <span
-          className={`flex-1 min-w-0 truncate text-sm font-normal ${
-            item.gear_item ? 'text-gray-900' : 'text-gray-400 italic'
-          }`}
-        >
-          {name}
-          {item.quantity > 1 && (
-            <span className="ml-1 text-gray-500 tabular-nums">×{item.quantity}</span>
+      {/* Name + description columns — same 2:3 ratio + typography as desktop */}
+      <div className="flex-1 min-w-0 flex items-center gap-3">
+        <div className="flex-[2] min-w-0">
+          {item.gear_item ? (
+            <span className="block w-full truncate font-normal text-gray-900">{name}</span>
+          ) : (
+            <span className="block w-full truncate font-normal text-gray-400 italic">{name}</span>
           )}
-        </span>
-        <span className="shrink-0 text-sm tabular-nums text-gray-600">
-          {formatItemWeight(itemWeight, weightUnit)}
-        </span>
-      </div>
-      {description && (
-        <div className="flex items-center gap-2 mt-0.5">
-          <span className="shrink-0 w-6" />
-          <span className="flex-1 min-w-0 truncate text-sm font-normal text-gray-500">
-            {description}
-          </span>
         </div>
-      )}
+        <div className="flex-[3] min-w-0">
+          <span className="block w-full truncate text-sm font-normal text-gray-500">{description}</span>
+        </div>
+      </div>
+      {/* Worn — static icon-only span (icon visible only when on) */}
+      <span className="shrink-0 w-7 inline-flex items-center justify-center">
+        {item.is_worn && <Shirt size={14} className="text-purple-600" aria-label="Worn" />}
+      </span>
+      {/* Consumable — static icon-only span */}
+      <span className="shrink-0 w-7 inline-flex items-center justify-center">
+        {item.is_consumable && <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />}
+      </span>
+      {/* Quantity — static span */}
+      <span className="shrink-0 w-12 text-right tabular-nums text-gray-600">
+        {item.quantity}
+      </span>
+      {/* Weight — static span */}
+      <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
+        {formatItemWeight(itemWeight, weightUnit)}
+      </span>
     </>
   )
+  if (onTap) {
+    return (
+      <button
+        type="button"
+        onClick={onTap}
+        aria-label="Edit item"
+        className="flex flex-1 min-w-0 items-center gap-1.5 text-left"
+      >
+        {cells}
+      </button>
+    )
+  }
+  return <div className="flex flex-1 min-w-0 items-center gap-1.5">{cells}</div>
 }
 
 // Sortable wrapper for the authenticated list view. Calls useSortable, wires
@@ -416,14 +424,10 @@ function RowKebab({
   onRemoveFromList,
   onEdit,
   onDeleteFromInventory,
-  triggerClassName,
 }: {
   onRemoveFromList: () => void
   onEdit?: () => void
   onDeleteFromInventory?: () => void
-  /** Override the trigger button's className. Default keeps the desktop
-   *  row-icon sizing (w-7 h-6); the mobile row passes a 44×44 tap target. */
-  triggerClassName?: string
 }) {
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -469,7 +473,6 @@ function RowKebab({
         onClick={(e) => { e.stopPropagation(); if (menuOpen) setMenuPos(null); else openMenu() }}
         ariaLabel="Item options"
         icon={<MoreVertical size={14} />}
-        className={triggerClassName}
       />
 
       {menuOpen && menuPos && createPortal(

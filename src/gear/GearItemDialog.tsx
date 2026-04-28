@@ -1,19 +1,33 @@
 import { useState, useEffect, type FormEvent } from 'react'
-import { X } from 'lucide-react'
+import { Minus, Plus, Shirt, UtensilsCrossed, X } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
 import Modal from '../components/Modal'
 import WeightInput from '../components/WeightInput'
+
+export type GearPatch = {
+  name: string
+  description: string | null
+  weight_grams: number
+  category_id: string | null
+}
+
+export type ListContextPatch = {
+  quantity: number
+  is_worn: boolean
+  is_consumable: boolean
+}
 
 type Props = {
   categories: Category[]
   item?: GearItem
   defaultCategoryId?: string | null
-  onSave: (data: {
-    name: string
-    description: string | null
-    weight_grams: number
-    category_id: string | null
-  }) => void
+  /** When provided, the dialog renders an "On this list" section with
+   *  quantity / worn / consumable fields, and onSave receives a second
+   *  argument with the list-item patch. Omitted from the gear-library
+   *  edit path; the bottom section doesn't render and onSave's second
+   *  argument is null. */
+  listContext?: ListContextPatch
+  onSave: (gearPatch: GearPatch, listPatch: ListContextPatch | null) => void
   onClose: () => void
   saving?: boolean
 }
@@ -22,6 +36,7 @@ export default function GearItemDialog({
   categories,
   item,
   defaultCategoryId = null,
+  listContext,
   onSave,
   onClose,
   saving = false,
@@ -32,28 +47,56 @@ export default function GearItemDialog({
   const [categoryId, setCategoryId] = useState<string | null>(
     item?.category_id ?? defaultCategoryId,
   )
+  const [quantity, setQuantity] = useState(listContext?.quantity ?? 1)
+  const [worn, setWorn] = useState(listContext?.is_worn ?? false)
+  const [consumable, setConsumable] = useState(listContext?.is_consumable ?? false)
 
   useEffect(() => {
-    // Reset form when item changes (e.g. switching between edit targets)
+    // Reset form when item or list context changes (e.g. switching edit targets)
     setName(item?.name ?? '')
     setDescription(item?.description ?? '')
     setWeightGrams(item?.weight_grams ?? 0)
     setCategoryId(item?.category_id ?? defaultCategoryId)
-  }, [item, defaultCategoryId])
+    setQuantity(listContext?.quantity ?? 1)
+    setWorn(listContext?.is_worn ?? false)
+    setConsumable(listContext?.is_consumable ?? false)
+  }, [item, defaultCategoryId, listContext])
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    onSave({
+    const gearPatch: GearPatch = {
       name: name.trim(),
       description: description.trim() || null,
       weight_grams: Math.max(0, Math.min(weightGrams, 100000)),
       category_id: categoryId,
-    })
+    }
+    const listPatch: ListContextPatch | null = listContext
+      ? {
+          quantity: Math.max(1, Math.min(99, Math.round(quantity) || 1)),
+          is_worn: worn,
+          is_consumable: consumable,
+        }
+      : null
+    onSave(gearPatch, listPatch)
+  }
+
+  // Worn/consumable XOR: ticking one unticks the other. Reflects the DB
+  // CHECK constraint (worn_xor_consumable) and matches the in-row toggle
+  // semantics on desktop.
+  function toggleWorn() {
+    const next = !worn
+    setWorn(next)
+    if (next) setConsumable(false)
+  }
+  function toggleConsumable() {
+    const next = !consumable
+    setConsumable(next)
+    if (next) setWorn(false)
   }
 
   const isEdit = Boolean(item)
-
   const heading = isEdit ? 'Edit item' : 'New item'
+
   return (
     <Modal open onClose={onClose} title={heading} className="w-full max-w-md" closeOnBackdropClick={false}>
       <div className="p-6">
@@ -124,6 +167,78 @@ export default function GearItemDialog({
               </select>
             </div>
           </div>
+
+          {/* List-context section — quantity / worn / consumable. Only shown
+              when the dialog was opened from a list (listContext provided).
+              The gear-library edit path omits listContext, so this section
+              doesn't render and the dialog stays as it was. */}
+          {listContext && (
+            <div className="border-t border-gray-200 pt-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                On this list
+              </p>
+              <div>
+                <label htmlFor="gi-qty" className="block text-sm font-medium text-gray-700 mb-1">
+                  Quantity
+                </label>
+                <div className="inline-flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                    disabled={quantity <= 1}
+                    aria-label="Decrease quantity"
+                    className="inline-flex w-11 h-11 items-center justify-center rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Minus size={16} />
+                  </button>
+                  <input
+                    id="gi-qty"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={99}
+                    value={quantity}
+                    onChange={(e) =>
+                      setQuantity(Math.max(1, Math.min(99, parseInt(e.target.value, 10) || 1)))
+                    }
+                    className="w-16 h-11 rounded-lg border border-gray-300 px-2 text-center text-base tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((q) => Math.min(99, q + 1))}
+                    disabled={quantity >= 99}
+                    aria-label="Increase quantity"
+                    className="inline-flex w-11 h-11 items-center justify-center rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={worn}
+                    onChange={toggleWorn}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                  />
+                  <Shirt size={14} className="text-purple-600" />
+                  <span className="text-sm text-gray-700">Worn (not added to pack weight)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={consumable}
+                    onChange={toggleConsumable}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                  />
+                  <UtensilsCrossed size={14} className="text-orange-600" />
+                  <span className="text-sm text-gray-700">Consumable (food, fuel, water)</span>
+                </label>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"

@@ -147,6 +147,10 @@ function ListDetailInner({
   const [importError, setImportError] = useState<string | null>(null)
   const [confirmDeleteList, setConfirmDeleteList] = useState<List | null>(null)
   const [editingGearItem, setEditingGearItem] = useState<GearItem | null>(null)
+  // The list_item paired with editingGearItem; together they let the edit
+  // dialog show "On this list" fields (quantity / worn / consumable) and
+  // fire a list_items update alongside the gear_items update on save.
+  const [editingListItem, setEditingListItem] = useState<ListItemWithGear | null>(null)
   const [deleteGearCandidate, setDeleteGearCandidate] = useState<GearItem | null>(null)
   const [pendingImportId, setPendingImportId] = useState<string | null>(null)
   const [creatingList, setCreatingList] = useState(false)
@@ -527,7 +531,11 @@ function ListDetailInner({
         updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } }),
       onEditGearItem: (gearId: string) => {
         const g = gearItems.find((x) => x.id === gearId)
-        if (g) setEditingGearItem(g)
+        const li = listItems.find((l) => l.gear_item?.id === gearId)
+        if (g) {
+          setEditingGearItem(g)
+          setEditingListItem(li ?? null)
+        }
       },
       onDeleteGearItem: (gearId: string) => {
         const g = gearItems.find((x) => x.id === gearId)
@@ -535,7 +543,7 @@ function ListDetailInner({
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode, weightUnit, showUnpackedOnly, gearItems],
+    [mode, weightUnit, showUnpackedOnly, gearItems, listItems],
   )
 
   // ── Not found ──────────────────────────────────────────────────────────────
@@ -851,21 +859,47 @@ function ListDetailInner({
         />
       )}
 
-      {/* Gear-item edit (reached from the kebab on each list-view row).
-          Reuses GearItemDialog from the gear library page; updateGearItemMut
-          invalidates ['list-items'] so other lists pick up the change. */}
+      {/* Gear-item edit (reached from the row tap on mobile or the kebab →
+          Edit on any viewport). Reuses GearItemDialog and, when a list_item
+          accompanies the gear item, renders an "On this list" section with
+          quantity / worn / consumable controls. Save fires updateGearItem
+          for the gear-level patch and updateListItem for the list-level
+          patch in parallel via mutateAsync; the dialog stays open until
+          both succeed. updateGearItemMut already invalidates
+          ['list-items'] (broad) so other lists pick up the change. */}
       {editingGearItem && (
         <GearItemDialog
           categories={categories}
           item={editingGearItem}
-          saving={updateGearItemMut.isPending}
-          onClose={() => setEditingGearItem(null)}
-          onSave={(patch) => {
-            const target = editingGearItem
-            updateGearItemMut.mutate(
-              { id: target.id, patch },
-              { onSuccess: () => setEditingGearItem(null) },
-            )
+          listContext={
+            editingListItem
+              ? {
+                  quantity: editingListItem.quantity,
+                  is_worn: editingListItem.is_worn,
+                  is_consumable: editingListItem.is_consumable,
+                }
+              : undefined
+          }
+          saving={updateGearItemMut.isPending || updateMut.isPending}
+          onClose={() => {
+            setEditingGearItem(null)
+            setEditingListItem(null)
+          }}
+          onSave={async (gearPatch, listPatch) => {
+            const gearTarget = editingGearItem
+            const listTarget = editingListItem
+            try {
+              await Promise.all([
+                updateGearItemMut.mutateAsync({ id: gearTarget.id, patch: gearPatch }),
+                listPatch && listTarget
+                  ? updateMut.mutateAsync({ itemId: listTarget.id, patch: listPatch })
+                  : Promise.resolve(),
+              ])
+              setEditingGearItem(null)
+              setEditingListItem(null)
+            } catch {
+              // Mutation surface their own error toast/log; keep dialog open.
+            }
           }}
         />
       )}

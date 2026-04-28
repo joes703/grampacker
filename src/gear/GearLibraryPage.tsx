@@ -630,11 +630,13 @@ export default function GearLibraryPage() {
           defaultCategoryId={dialog.type === 'create-item' ? dialog.categoryId : undefined}
           saving={addItem.isPending || editItem.isPending}
           onClose={() => setDialog(null)}
-          onSave={(data) => {
+          onSave={(gearPatch) => {
+            // Gear library page never opens the dialog with a list context,
+            // so listPatch is always null here and is ignored.
             if (dialog.type === 'edit-item') {
-              editItem.mutate({ id: dialog.item.id, patch: data }, { onSuccess: () => setDialog(null) })
+              editItem.mutate({ id: dialog.item.id, patch: gearPatch }, { onSuccess: () => setDialog(null) })
             } else {
-              addItem.mutate(data, { onSuccess: () => setDialog(null) })
+              addItem.mutate(gearPatch, { onSuccess: () => setDialog(null) })
             }
           }}
         />

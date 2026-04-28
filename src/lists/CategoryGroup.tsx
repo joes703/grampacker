@@ -161,11 +161,8 @@ export default function CategoryGroup({
         ) : (
           <span className="flex-1 min-w-0 truncate text-sm font-medium text-gray-700">{name}</span>
         )}
-        {/* Column-label stubs align the header with desktop row columns. On
-            mobile (< lg) the row layout is two-line stacked, so these stubs
-            don't apply — wrap in display:contents above lg, hidden below. */}
         {!packMode ? (
-          <div className="hidden lg:contents">
+          <>
             <div className="shrink-0 w-7" />
             <div className="shrink-0 w-7" />
             <div className="shrink-0 w-12 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
@@ -175,15 +172,15 @@ export default function CategoryGroup({
               Weight
             </div>
             {showKebabSlot && <div className="shrink-0 w-7" />}
-          </div>
+          </>
         ) : (
-          <div className="hidden lg:contents">
+          <>
             <div className="shrink-0 w-7" />
             <div className="shrink-0 w-7" />
             <div className="shrink-0 w-10 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
               Qty
             </div>
-          </div>
+          </>
         )}
       </div>
 
@@ -219,17 +216,13 @@ export default function CategoryGroup({
               ) : (
                 <div className="flex-1 min-w-0" />
               )}
-              {/* Desktop column stubs that align footer with row columns.
-                  Mobile collapses to "+ Add" on the left, total on the right. */}
-              <div className="hidden lg:contents">
-                <div className="shrink-0 w-7" />
-                <div className="shrink-0 w-7" />
-                <div className="shrink-0 w-12" />
-              </div>
+              <div className="shrink-0 w-7" />
+              <div className="shrink-0 w-7" />
+              <div className="shrink-0 w-12" />
               <div className="shrink-0 w-24 text-right tabular-nums font-semibold text-gray-700">
                 {items.length > 0 ? formatItemWeight(totalGrams, weightUnit) : ''}
               </div>
-              {showKebabSlot && <div className="hidden lg:block shrink-0 w-7" />}
+              {showKebabSlot && <div className="shrink-0 w-7" />}
             </div>
           )}
         </div>
