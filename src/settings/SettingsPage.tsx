@@ -13,8 +13,10 @@ import {
 } from '../lib/queries'
 import { gearItemsToCsv, listItemsToCsv } from '../lib/csv'
 import TypedConfirmDialog from '../components/TypedConfirmDialog'
+import { useDocumentTitle } from '../lib/use-document-title'
 
 export default function SettingsPage() {
+  useDocumentTitle('Settings')
   const { session } = useAuth()
   const email = session?.user.email ?? ''
 
