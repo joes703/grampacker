@@ -1,13 +1,23 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, Navigate, useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
+import { useAuth } from './AuthProvider'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  // Reactively bounce already-authenticated users so a tab whose session
+  // arrives via cross-tab sync (or any other post-mount source) doesn't
+  // strand on the form. Matches PrivateRoute's loading semantics:
+  // render nothing until the initial getSession() resolves.
+  const { session, loading: authLoading } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  if (authLoading) return null
+  if (session) return <Navigate to="/lists" replace />
+
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
