@@ -279,80 +279,62 @@ export default function ItemRow({
         )}
       </div>
 
-      {/* Mobile branch (< lg) — visually mirrors the desktop row, but every
-          in-row control renders as a static span (no buttons, no inputs, no
-          focus rings, no aria-pressed). The whole row body is one tappable
-          element that opens the edit dialog (or a non-interactive div when
-          there's no edit handler — share view, "(deleted item)" rows). The
-          kebab remains a real, focusable button next to it. */}
-      <div className="lg:hidden flex flex-1 items-center gap-1.5">
+      {/* Mobile branch (< lg) — name + single worn/consumable slot + qty +
+          weight, rendered as static spans. Description and kebab are
+          intentionally dropped: editing happens in the modal that opens on
+          row tap. Read-only rows (share view, deleted-item placeholders)
+          render as a non-interactive div instead of a button. */}
+      <div className="lg:hidden flex flex-1 items-center gap-1">
         <MobileRowBody
           item={item}
           name={name}
-          description={description}
           weightUnit={weightUnit}
           onTap={onEditGearItem}
         />
-        {showKebab && (
-          <RowKebab
-            onRemoveFromList={onDelete!}
-            onEdit={onEditGearItem}
-            onDeleteFromInventory={onDeleteGearItem}
-          />
-        )}
       </div>
     </div>
   )
 }
 
-// Mobile row body — same column geometry as the desktop interactive row,
-// but rendered with static <span> elements throughout. The wrapping element
-// is a single <button> when an edit handler is provided (tap opens the edit
-// dialog) and a plain <div> otherwise (read-only rows on the share view, or
-// "(deleted item)" placeholders).
+// Mobile row body — name + a single worn/consumable indicator slot + qty +
+// weight. Description is dropped on mobile (it's redundant with the modal
+// editor and waste viewport on a 375 px screen). Worn and consumable share
+// one slot since the DB CHECK constraint guarantees they're mutually
+// exclusive. The wrapping element is a <button> when onTap is provided
+// (tap opens the edit dialog) and a plain <div> otherwise.
 function MobileRowBody({
   item,
   name,
-  description,
   weightUnit,
   onTap,
 }: {
   item: ListItemWithGear
   name: string
-  description: string
   weightUnit: WeightUnit
   onTap?: () => void
 }) {
   const itemWeight = item.gear_item?.weight_grams ?? 0
   const cells = (
     <>
-      {/* Name + description columns — same 2:3 ratio + typography as desktop */}
-      <div className="flex-1 min-w-0 flex items-center gap-3">
-        <div className="flex-[2] min-w-0">
-          {item.gear_item ? (
-            <span className="block w-full truncate font-normal text-gray-900">{name}</span>
-          ) : (
-            <span className="block w-full truncate font-normal text-gray-400 italic">{name}</span>
-          )}
-        </div>
-        <div className="flex-[3] min-w-0">
-          <span className="block w-full truncate text-sm font-normal text-gray-500">{description}</span>
-        </div>
+      <div className="flex-1 min-w-0">
+        {item.gear_item ? (
+          <span className="block w-full truncate font-normal text-gray-900">{name}</span>
+        ) : (
+          <span className="block w-full truncate font-normal text-gray-400 italic">{name}</span>
+        )}
       </div>
-      {/* Worn — static icon-only span (icon visible only when on) */}
-      <span className="shrink-0 w-7 inline-flex items-center justify-center">
-        {item.is_worn && <Shirt size={14} className="text-purple-600" aria-label="Worn" />}
+      {/* Single worn/consumable indicator slot */}
+      <span className="shrink-0 w-6 inline-flex items-center justify-center">
+        {item.is_worn ? (
+          <Shirt size={14} className="text-purple-600" aria-label="Worn" />
+        ) : item.is_consumable ? (
+          <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />
+        ) : null}
       </span>
-      {/* Consumable — static icon-only span */}
-      <span className="shrink-0 w-7 inline-flex items-center justify-center">
-        {item.is_consumable && <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />}
-      </span>
-      {/* Quantity — static span */}
-      <span className="shrink-0 w-12 text-right tabular-nums text-gray-600">
+      <span className="shrink-0 w-8 text-right tabular-nums text-gray-600">
         {item.quantity}
       </span>
-      {/* Weight — static span */}
-      <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
+      <span className="shrink-0 w-20 text-right tabular-nums text-gray-600">
         {formatItemWeight(itemWeight, weightUnit)}
       </span>
     </>
@@ -363,13 +345,13 @@ function MobileRowBody({
         type="button"
         onClick={onTap}
         aria-label="Edit item"
-        className="flex flex-1 min-w-0 items-center gap-1.5 text-left"
+        className="flex flex-1 min-w-0 items-center gap-2 text-left"
       >
         {cells}
       </button>
     )
   }
-  return <div className="flex flex-1 min-w-0 items-center gap-1.5">{cells}</div>
+  return <div className="flex flex-1 min-w-0 items-center gap-2">{cells}</div>
 }
 
 // Sortable wrapper for the authenticated list view. Calls useSortable, wires

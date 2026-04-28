@@ -659,17 +659,10 @@ function ListDetailInner({
 
             {/* Library panel */}
             <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
-              <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center px-3 py-2 border-b border-gray-200 bg-gray-50">
                 <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Gear library
                 </span>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/gear?from=${list.id}`)}
-                  className="text-xs text-blue-600 hover:text-blue-700"
-                >
-                  Manage
-                </button>
               </div>
               <div className="flex-1 overflow-hidden">
                 <LibraryPanel
@@ -901,6 +894,26 @@ function ListDetailInner({
               // Mutation surface their own error toast/log; keep dialog open.
             }
           }}
+          onRemoveFromList={
+            editingListItem
+              ? () => {
+                  const target = editingListItem
+                  setEditingGearItem(null)
+                  setEditingListItem(null)
+                  deleteMut.mutate(target.id)
+                }
+              : undefined
+          }
+          onDeleteFromInventory={
+            editingListItem
+              ? () => {
+                  const target = editingGearItem
+                  setEditingGearItem(null)
+                  setEditingListItem(null)
+                  setDeleteGearCandidate(target)
+                }
+              : undefined
+          }
         />
       )}
 

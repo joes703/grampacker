@@ -24,7 +24,12 @@ export default function LibrarySheet({ open, onClose, gearItems, categories, lis
           <Drawer.Title className="px-4 py-2 text-sm font-semibold text-gray-900">
             Gear library
           </Drawer.Title>
-          <div className="flex-1 overflow-hidden">
+          {/* min-h-0 lets this flex item shrink below its content's intrinsic
+              height so the inner overflow-y-auto in LibraryPanel can take
+              over scrolling. Without it, the panel grows to content height
+              and the parent's max-h-[80vh] clips without the inner list
+              ever becoming scrollable on mobile. */}
+          <div className="flex-1 min-h-0 overflow-hidden">
             <LibraryPanel
               gearItems={gearItems}
               categories={categories}
