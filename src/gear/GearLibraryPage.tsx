@@ -53,6 +53,7 @@ import BulkMoveCategoryDialog from './BulkMoveCategoryDialog'
 import BulkActionsToolbar from './BulkActionsToolbar'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
+import { useDocumentTitle } from '../lib/use-document-title'
 
 type DialogState =
   | { type: 'create-item'; categoryId?: string | null }
@@ -67,6 +68,7 @@ type DialogState =
 
 
 export default function GearLibraryPage() {
+  useDocumentTitle('Gear')
   const { session } = useAuth()
   const userId = session!.user.id
   const qc = useQueryClient()

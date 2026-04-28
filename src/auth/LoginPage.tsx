@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
+import { useDocumentTitle } from '../lib/use-document-title'
 import { useAuth } from './AuthProvider'
 
 export default function LoginPage() {
+  useDocumentTitle('Sign in')
   const navigate = useNavigate()
   // Reactively bounce already-authenticated users so a tab whose session
   // arrives via cross-tab sync (or any other post-mount source) doesn't

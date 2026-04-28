@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchSharedList, fetchSharedListItems, fetchSharedListCategories } from '../lib/queries'
 import type { Category, ListItemWithGear } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
+import { useDocumentTitle } from '../lib/use-document-title'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
@@ -16,6 +17,7 @@ export default function SharePage() {
     queryFn: () => fetchSharedList(token!),
     enabled: Boolean(token),
   })
+  useDocumentTitle(list?.name ?? null)
 
   const { data: items = [], isLoading: itemsLoading } = useQuery({
     queryKey: ['shared-list-items', list?.id],

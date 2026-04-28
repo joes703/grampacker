@@ -2,9 +2,11 @@ import { useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
 import { seedDefaultCategories } from '../lib/queries'
+import { useDocumentTitle } from '../lib/use-document-title'
 import { useAuth } from './AuthProvider'
 
 export default function SignupPage() {
+  useDocumentTitle('Sign up')
   const navigate = useNavigate()
   // Reactively bounce already-authenticated users — see LoginPage for the
   // motivating cross-tab cold-load case.

@@ -64,10 +64,16 @@ import ItemRow from './ItemRow'
 import GearItemDialog from '../gear/GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
+import { useDocumentTitle } from '../lib/use-document-title'
 
 type Mode = 'edit' | 'pack'
 
 export default function ListDetailPage() {
+  // Default title for the wrapper; ListDetailInner overrides with the list
+  // name once it mounts and the list resolves. Stays as "Lists" during the
+  // brief redirect window, on the empty-state path, and while no routeId
+  // has been resolved.
+  useDocumentTitle('Lists')
   const { id: routeId } = useParams<{ id?: string }>()
   const navigate = useNavigate()
   const { session } = useAuth()
@@ -165,6 +171,10 @@ function ListDetailInner({
   )
 
   const list = lists.find((l) => l.id === listId)
+  // Inner overrides the wrapper's "Lists" default with the list name once
+  // it resolves; falls back to "Lists" while the lists query is pending so
+  // the title doesn't briefly drop to the bare app name.
+  useDocumentTitle(list?.name ?? 'Lists')
 
   // After navigating to a list because the user clicked Import on it from the menu,
   // open the file picker once we land on that list.
