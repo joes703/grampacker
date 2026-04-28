@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 
@@ -148,6 +148,9 @@ function CategoryGroup({
                   title={inList ? 'Click to remove from list' : 'Click to add to list'}
                   className="flex w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
                 >
+                  {inList && (
+                    <Check size={14} className="shrink-0 text-green-600" aria-label="On the list" />
+                  )}
                   <span
                     className={`flex-1 min-w-0 truncate text-sm font-normal ${
                       inList ? 'text-gray-400' : 'text-gray-900'
