@@ -1,14 +1,22 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, Navigate, useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
 import { seedDefaultCategories } from '../lib/queries'
+import { useAuth } from './AuthProvider'
 
 export default function SignupPage() {
   const navigate = useNavigate()
+  // Reactively bounce already-authenticated users — see LoginPage for the
+  // motivating cross-tab cold-load case.
+  const { session, loading: authLoading } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  if (authLoading) return null
+  if (session) return <Navigate to="/lists" replace />
+
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
