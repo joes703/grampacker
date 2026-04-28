@@ -791,7 +791,7 @@ function ListDetailInner({
         categories={categories}
         listItemGearIds={listItemGearIds}
         weightUnit={weightUnit}
-        onAdd={(item) => { addMut.mutate(item); setSheetOpen(false) }}
+        onAdd={(item) => addMut.mutate(item)}
         onRemove={(item) => {
           const li = listItems.find((l) => l.gear_item_id === item.id)
           if (li) deleteMut.mutate(li.id)
