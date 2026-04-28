@@ -1,6 +1,7 @@
 import { Link, NavLink, useNavigate } from 'react-router'
 import { Backpack, HelpCircle, Info, LogOut, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import HamburgerMenu from './HamburgerMenu'
 
 export default function NavBar() {
   const navigate = useNavigate()
@@ -16,7 +17,9 @@ export default function NavBar() {
         <Link to="/" className="text-lg font-bold text-gray-900 hover:text-gray-700">
           grampacker
         </Link>
-        <div className="ml-auto flex items-center gap-1">
+        {/* Desktop link cluster — hidden on mobile, where the bottom tab bar
+            covers Lists/Gear and the hamburger covers everything else. */}
+        <div className="ml-auto hidden lg:flex items-center gap-1">
           <NavLink
             to="/gear"
             className={({ isActive }) =>
@@ -60,6 +63,10 @@ export default function NavBar() {
             <LogOut size={14} />
             Sign out
           </button>
+        </div>
+        {/* Mobile-only trigger for the secondary-destination popover. */}
+        <div className="ml-auto lg:hidden">
+          <HamburgerMenu />
         </div>
       </div>
     </header>
