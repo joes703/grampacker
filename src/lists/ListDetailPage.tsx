@@ -326,18 +326,18 @@ function ListDetailInner({
   // other lists embedding the same gear item refresh.
   const moveAcrossCategoriesMut = useMutation({
     mutationFn: async ({
-      gearItemId,
+      movedItemId,
       newCategoryId,
       sortUpdates,
     }: {
-      gearItemId: string
+      movedItemId: string
       newCategoryId: string | null
       sortUpdates: { id: string; sort_order: number }[]
     }) => {
-      await updateGearItem(gearItemId, { category_id: newCategoryId })
+      await updateGearItem(movedItemId, { category_id: newCategoryId })
       if (sortUpdates.length) await reorderListItems(sortUpdates)
     },
-    onMutate: async ({ gearItemId, newCategoryId, sortUpdates }) => {
+    onMutate: async ({ movedItemId, newCategoryId, sortUpdates }) => {
       await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
       await qc.cancelQueries({ queryKey: queryKeys.gearItems() })
       const prevListItems = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
@@ -347,7 +347,7 @@ function ListDetailInner({
         if (!curr) return curr
         return curr.map((li) => {
           let next = li
-          if (li.gear_item?.id === gearItemId) {
+          if (li.gear_item?.id === movedItemId) {
             next = { ...next, gear_item: { ...next.gear_item!, category_id: newCategoryId } }
           }
           if (sortMap.has(li.id)) next = { ...next, sort_order: sortMap.get(li.id)! }
@@ -357,7 +357,7 @@ function ListDetailInner({
       qc.setQueryData<GearItem[]>(queryKeys.gearItems(), (curr) => {
         if (!curr) return curr
         return curr.map((g) =>
-          g.id === gearItemId ? { ...g, category_id: newCategoryId } : g,
+          g.id === movedItemId ? { ...g, category_id: newCategoryId } : g,
         )
       })
       return { prevListItems, prevGearItems }
@@ -367,7 +367,9 @@ function ListDetailInner({
       if (ctx?.prevGearItems) qc.setQueryData(queryKeys.gearItems(), ctx.prevGearItems)
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+      // Broad ['list-items'] covers the active list AND every other list
+      // embedding the moved gear item — invalidating the specific listId
+      // again would be redundant.
       qc.invalidateQueries({ queryKey: ['list-items'] })
       qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
     },
@@ -430,7 +432,7 @@ function ListDetailInner({
     const activeItem = listItems.find((i) => i.id === activeIdStr)
     if (!activeItem || !activeItem.gear_item) return
     const activeCat = activeItem.gear_item.category_id ?? null
-    const gearItemId = activeItem.gear_item.id
+    const movedItemId = activeItem.gear_item.id
 
     const parsedCat = parseCategoryDroppableId(overIdStr)
     let destCat: string | null
@@ -479,7 +481,7 @@ function ListDetailInner({
       ...destItems.slice(insertIdx),
     ]
     const sortUpdates = assignSortOrderSlots(newDestOrder)
-    moveAcrossCategoriesMut.mutate({ gearItemId, newCategoryId: destCat, sortUpdates })
+    moveAcrossCategoriesMut.mutate({ movedItemId, newCategoryId: destCat, sortUpdates })
   }
 
   async function resetPacked() {
