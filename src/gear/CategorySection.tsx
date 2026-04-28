@@ -15,7 +15,7 @@ import RowIconButton from '../components/RowIconButton'
 // Distinct prefix from the list view's so debug output stays readable;
 // implementation comes from the shared helper.
 const GEAR_CATEGORY_DROP_PREFIX = 'gear-category-drop:'
-export const gearCategoryDroppableId = (categoryId: string | null): string =>
+const gearCategoryDroppableId = (categoryId: string | null): string =>
   makeCategoryDroppableId(GEAR_CATEGORY_DROP_PREFIX, categoryId)
 export const parseGearCategoryDroppableId = makeCategoryDroppableParser(GEAR_CATEGORY_DROP_PREFIX)
 

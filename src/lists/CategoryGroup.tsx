@@ -14,7 +14,7 @@ import AddItemRow, { type AddItemData } from './AddItemRow'
 // onDragEnd resolves these to a category id (or null for uncategorised)
 // before mutating. Namespaced so it can never collide with a list_items.id.
 const CATEGORY_DROP_PREFIX = 'category-drop:'
-export const categoryDroppableId = (categoryId: string | null): string =>
+const categoryDroppableId = (categoryId: string | null): string =>
   makeCategoryDroppableId(CATEGORY_DROP_PREFIX, categoryId)
 export const parseCategoryDroppableId = makeCategoryDroppableParser(CATEGORY_DROP_PREFIX)
 
@@ -23,6 +23,14 @@ export const parseCategoryDroppableId = makeCategoryDroppableParser(CATEGORY_DRO
 //
 // Column widths (header / footer / row Qty stubs) are defined here so the
 // header labels, item rows, and footer totals always line up.
+//
+// Drag context: the authed list view uses ONE page-level <DndContext> with
+// two nested <SortableContext>s — categories outer, items inner — and a
+// single branched onDragEnd that dispatches by id type. CategoryGroup itself
+// no longer creates its own DndContext / SortableContext (it did, in the
+// older nested-context era); it just registers a useDroppable for cross-
+// category drops and delegates row rendering. The share view passes neither
+// `sortable` nor `categoryId`, so no drag plumbing engages.
 //
 // Editing affordances are gated on which handlers are passed:
 //   - sortable           ⇒ rows render as SortableItemRow. Must be inside a
@@ -38,7 +46,8 @@ export const parseCategoryDroppableId = makeCategoryDroppableParser(CATEGORY_DRO
 //   - collapsible        ⇒ header gets a chevron + count badge + toggle.
 //                          Default true (authed); share view passes false.
 //   - packMode           ⇒ pack-mode header (qty-only, no weight column) +
-//                          pack-mode row layout. Authed-only.
+//                          pack-mode row layout. Authed-only. Also disables
+//                          category drag in SortableCategoryGroup below.
 //   - dragHandle         ⇒ injected by SortableCategoryGroup wrapper.
 export type GroupProps = {
   name: string

@@ -62,6 +62,10 @@ export default function Modal({
       aria-label={title}
       onClose={onClose}
       onClick={handleClick}
+      // m-auto restores native dialog centering: the UA stylesheet's
+      // dialog:modal { margin: auto } gets overridden by Tailwind preflight's
+      // `* { margin: 0 }` (author origin > UA), so without this an opened
+      // dialog renders pinned to top: 0; left: 0 instead of centered.
       className={`m-auto rounded-xl bg-white p-0 shadow-lg backdrop:bg-black/40 ${className ?? ''}`}
     >
       {children}
