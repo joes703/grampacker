@@ -98,13 +98,17 @@ export default function ItemRow({
   const editable = Boolean(onUpdate)
   const showKebab = Boolean(onDelete)
 
-  // Pack mode: checklist row — name, worn/consumable status, qty
+  // Pack mode: checklist row — name, worn/consumable status, qty.
+  // On mobile, the right-side stack (worn / consumable / qty) used to leave
+  // visible empty space between the icon slots and the qty column. Tighter
+  // gaps (gap-0.5) and narrower w/c slots (w-6) below lg pull them together
+  // without changing the desktop layout.
   if (packMode) {
     return (
       <div
         ref={outerRef}
         style={outerStyle}
-        className={`flex items-center gap-1.5 border-b border-gray-100 px-3 py-0.5 text-sm transition-colors ${
+        className={`flex items-center gap-0.5 lg:gap-1.5 border-b border-gray-100 px-2 lg:px-3 py-0.5 text-sm transition-colors ${
           item.is_packed ? 'bg-green-50' : 'bg-white'
         }`}
       >
@@ -122,10 +126,10 @@ export default function ItemRow({
         >
           {name}
         </span>
-        <span className="shrink-0 w-7 inline-flex items-center justify-center">
+        <span className="shrink-0 w-6 lg:w-7 inline-flex items-center justify-center">
           {item.is_worn && <Shirt size={14} className="text-purple-600" aria-label="Worn" />}
         </span>
-        <span className="shrink-0 w-7 inline-flex items-center justify-center">
+        <span className="shrink-0 w-6 lg:w-7 inline-flex items-center justify-center">
           {item.is_consumable && <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />}
         </span>
         <span className="shrink-0 w-10 text-right tabular-nums text-xs text-gray-500">

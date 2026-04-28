@@ -137,8 +137,12 @@ export default function CategoryGroup({
 
   return (
     <div>
-      {/* Header — also functions as the column header for Weight / Qty */}
-      <div className="flex items-center gap-1.5 rounded-lg px-3 py-0.5 bg-gray-100 mb-1">
+      {/* Header — also functions as the column header for Weight / Qty.
+          In pack mode the header tightens on mobile so the Qty label stays
+          aligned over the (newly tightened) pack-mode row's qty column. */}
+      <div className={`flex items-center rounded-lg py-0.5 bg-gray-100 mb-1 ${
+        packMode ? 'gap-0.5 lg:gap-1.5 px-2 lg:px-3' : 'gap-1.5 px-3'
+      }`}>
         {dragHandle}
         {collapsible ? (
           <button
@@ -190,8 +194,8 @@ export default function CategoryGroup({
           </>
         ) : (
           <>
-            <div className="shrink-0 w-7" />
-            <div className="shrink-0 w-7" />
+            <div className="shrink-0 w-6 lg:w-7" />
+            <div className="shrink-0 w-6 lg:w-7" />
             <div className="shrink-0 w-10 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
               Qty
             </div>
