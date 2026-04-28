@@ -148,6 +148,12 @@ function ListDetailInner({
   // full items array. Lifted here because both PackingProgress (the toggle)
   // and CategoryGroup (the filter consumer) live as children of this page.
   const [showUnpackedOnly, setShowUnpackedOnly] = useState(false)
+  // Pack-mode "Group worn" toggle — when true, is_worn items are pulled out
+  // of their categories and rendered in a flat Worn section at the bottom,
+  // mirroring how worn gear sits by the door rather than in the pack. State
+  // is per-instance (resets on list switch via key=routeId) and pack-mode
+  // only; edit mode ignores it.
+  const [groupWorn, setGroupWorn] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [importPreview, setImportPreview] = useState<ListImportRow[] | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
@@ -519,6 +525,20 @@ function ListDetailInner({
 
   const grouped = groupListItemsByCategory(listItems, categories)
 
+  // Pack-mode + Group Worn: split the grouped items into "regular" (rendered
+  // in their categories with worn items hidden) and "worn" (flattened in
+  // walk-categories order — categories in display order, items in
+  // sort_order within each — and rendered in the trailing Worn section).
+  // When the toggle is off, displayedGrouped === grouped and wornItems is
+  // empty so the existing render path is preserved exactly.
+  const showWornGroup = mode === 'pack' && groupWorn
+  const displayedGrouped = showWornGroup
+    ? grouped.map((g) => ({ ...g, items: g.items.filter((i) => !i.is_worn) }))
+    : grouped
+  const wornItems = showWornGroup
+    ? grouped.flatMap((g) => g.items.filter((i) => i.is_worn))
+    : []
+
   // Per-row handler bag passed to every CategoryGroup. Memoized so each
   // category section doesn't re-render on every parent state change — only
   // when one of these dependencies actually moves. The mutation `.mutate`
@@ -711,6 +731,8 @@ function ListDetailInner({
               onReset={resetPacked}
               showUnpackedOnly={showUnpackedOnly}
               onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
+              groupWorn={groupWorn}
+              onToggleGroupWorn={() => setGroupWorn((v) => !v)}
             />
           )}
 
@@ -739,7 +761,9 @@ function ListDetailInner({
             // Flat item id list across all categories, in render order. The
             // inner <SortableContext> needs every draggable id registered;
             // verticalListSortingStrategy handles cross-category visual shifts.
-            const flatItemIds = grouped.flatMap((g) => g.items.map((i) => i.id))
+            // Uses displayedGrouped so worn items pulled into the Worn
+            // section don't double-register when groupWorn is on.
+            const flatItemIds = displayedGrouped.flatMap((g) => g.items.map((i) => i.id))
             const activeItem = activeId
               ? listItems.find((i) => i.id === activeId)
               : null
@@ -759,11 +783,11 @@ function ListDetailInner({
                       via dnd-kit's default (original element follows the
                       cursor) since its id isn't in the inner items list. */}
                   <SortableContext
-                    items={grouped.filter((g) => g.category !== null).map((g) => g.category!.id)}
+                    items={displayedGrouped.filter((g) => g.category !== null).map((g) => g.category!.id)}
                     strategy={verticalListSortingStrategy}
                   >
                     <SortableContext items={flatItemIds} strategy={verticalListSortingStrategy}>
-                      {grouped
+                      {displayedGrouped
                         .filter((g) => g.category !== null)
                         .map((group) => (
                           <SortableCategoryGroup
@@ -776,7 +800,7 @@ function ListDetailInner({
                             onAddItem={(data) => addNewItemMut.mutate({ categoryId: group.category!.id, data })}
                           />
                         ))}
-                      {grouped
+                      {displayedGrouped
                         .filter((g) => g.category === null)
                         .map((group) => (
                           <CategoryGroup
@@ -796,6 +820,25 @@ function ListDetailInner({
                     ) : null}
                   </DragOverlay>
                 </DndContext>
+
+                {/* Worn section — pack-mode only, only when toggle is on and
+                    there's at least one worn item. Sits outside the DndContext
+                    (drag is disabled in pack mode anyway, and the section
+                    isn't a drop target). sortable=false so rows render as
+                    plain ItemRow without engaging dnd-kit. The items array
+                    walks categories in display order so the in-section
+                    order is stable and predictable. */}
+                {showWornGroup && wornItems.length > 0 && (
+                  <CategoryGroup
+                    name="Worn"
+                    items={wornItems}
+                    weightUnit={weightUnit}
+                    packMode
+                    sortable={false}
+                    showUnpackedOnly={showUnpackedOnly}
+                    onUpdate={sharedGroupProps.onUpdate}
+                  />
+                )}
               </div>
             )
           })()}
