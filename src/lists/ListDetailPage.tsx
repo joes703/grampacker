@@ -137,6 +137,11 @@ function ListDetailInner({
     setSidebarOpen(mode !== 'pack')
   }, [mode])
   const { weightUnit, toggleWeightUnit } = useWeightUnit()
+  // Pack-mode filter: when true, hide already-packed items from each
+  // category. Header counts and the "complete" affordance still reflect the
+  // full items array. Lifted here because both PackingProgress (the toggle)
+  // and CategoryGroup (the filter consumer) live as children of this page.
+  const [showUnpackedOnly, setShowUnpackedOnly] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [importPreview, setImportPreview] = useState<ListImportRow[] | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
@@ -510,6 +515,7 @@ function ListDetailInner({
       packMode: mode === 'pack',
       weightUnit,
       sortable: true,
+      showUnpackedOnly,
       onUpdate: (itemId: string, patch: ListItemPatch) =>
         updateMut.mutate({ itemId, patch }),
       onDelete: (itemId: string) => deleteMut.mutate(itemId),
@@ -529,7 +535,7 @@ function ListDetailInner({
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode, weightUnit, gearItems],
+    [mode, weightUnit, showUnpackedOnly, gearItems],
   )
 
   // ── Not found ──────────────────────────────────────────────────────────────
@@ -692,6 +698,8 @@ function ListDetailInner({
               total={listItems.length}
               packed={listItems.filter((i) => i.is_packed).length}
               onReset={resetPacked}
+              showUnpackedOnly={showUnpackedOnly}
+              onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
             />
           )}
 

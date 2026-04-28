@@ -1,18 +1,29 @@
+import { useState } from 'react'
 import { RotateCcw } from 'lucide-react'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 type Props = {
   total: number
   packed: number
   onReset: () => void
+  showUnpackedOnly: boolean
+  onToggleShowUnpackedOnly: () => void
 }
 
-export default function PackingProgress({ total, packed, onReset }: Props) {
+export default function PackingProgress({
+  total,
+  packed,
+  onReset,
+  showUnpackedOnly,
+  onToggleShowUnpackedOnly,
+}: Props) {
   const pct = total === 0 ? 0 : Math.round((packed / total) * 100)
   const done = packed === total && total > 0
+  const [confirmingReset, setConfirmingReset] = useState(false)
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 gap-2">
         <span className="text-sm font-medium tabular-nums text-gray-700">
           {packed} / {total} packed
         </span>
@@ -24,7 +35,20 @@ export default function PackingProgress({ total, packed, onReset }: Props) {
           )}
           <button
             type="button"
-            onClick={onReset}
+            onClick={onToggleShowUnpackedOnly}
+            aria-pressed={showUnpackedOnly}
+            title={showUnpackedOnly ? 'Showing unpacked only — click to show all' : 'Show unpacked only'}
+            className={`rounded-lg border px-3 py-1 text-xs font-medium ${
+              showUnpackedOnly
+                ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            Unpacked only
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmingReset(true)}
             disabled={packed === 0}
             className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40"
           >
@@ -38,6 +62,19 @@ export default function PackingProgress({ total, packed, onReset }: Props) {
           style={{ width: `${pct}%` }}
         />
       </div>
+      {confirmingReset && (
+        <ConfirmDialog
+          title="Reset packing?"
+          message="All items will be marked unpacked. This won't change your inventory, weights, or quantities."
+          confirmLabel="Reset"
+          dangerous
+          onCancel={() => setConfirmingReset(false)}
+          onConfirm={() => {
+            setConfirmingReset(false)
+            onReset()
+          }}
+        />
+      )}
     </div>
   )
 }

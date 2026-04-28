@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ChevronDown, ChevronRight, GripVertical, Plus } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, GripVertical, Plus } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { ListItemPatch } from '../lib/queries'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
@@ -60,6 +60,10 @@ export type GroupProps = {
   categoryId?: string | null
   /** Render rows as SortableItemRow (must be inside a page-level SortableContext). */
   sortable?: boolean
+  /** Pack mode filter: when true, hide already-packed items from the rendered
+   *  list. Header counts and the "complete" affordance still reflect the full
+   *  items array. Authed pack-mode only; share view never sets this. */
+  showUnpackedOnly?: boolean
   onUpdate?: (itemId: string, patch: ListItemPatch) => void
   onDelete?: (itemId: string) => void
   onSaveGearName?: (gearItemId: string, name: string) => void
@@ -81,6 +85,7 @@ export default function CategoryGroup({
   collapsible = true,
   categoryId,
   sortable = false,
+  showUnpackedOnly = false,
   onUpdate,
   onDelete,
   onSaveGearName,
@@ -96,6 +101,15 @@ export default function CategoryGroup({
   const packedCount = items.filter((i) => i.is_packed).length
   const totalGrams = items.reduce((s, i) => s + (i.gear_item?.weight_grams ?? 0) * i.quantity, 0)
   const showKebabSlot = !packMode && Boolean(onDelete)
+  // "Complete" = pack mode, has items, every item packed. The header still
+  // renders so the user can orient even when items are filtered out.
+  const complete = packMode && items.length > 0 && packedCount === items.length
+  // When the unpacked-only filter is on, hide packed items from the rendered
+  // list. Header counts and the complete affordance still use the full items
+  // array so orientation is preserved.
+  const visibleItems = packMode && showUnpackedOnly
+    ? items.filter((i) => !i.is_packed)
+    : items
 
   // Drop target for cross-category drops. Disabled when categoryId is undefined
   // (e.g. the share view doesn't allow drops at all).
@@ -136,10 +150,13 @@ export default function CategoryGroup({
             ) : (
               <ChevronDown size={14} className="text-gray-400 shrink-0" />
             )}
-            <span className="truncate text-sm font-medium text-gray-700">{name}</span>
+            <span className={`truncate text-sm font-medium ${complete ? 'text-gray-400' : 'text-gray-700'}`}>{name}</span>
             <span className="shrink-0 text-xs tabular-nums text-gray-400">
               {packMode ? `${packedCount} / ${items.length}` : `(${items.length})`}
             </span>
+            {complete && (
+              <Check size={14} className="shrink-0 text-green-600" aria-label="All packed" />
+            )}
           </button>
         ) : (
           <span className="flex-1 min-w-0 truncate text-sm font-medium text-gray-700">{name}</span>
@@ -174,8 +191,8 @@ export default function CategoryGroup({
           className={`pl-2 ${droppable.isOver ? 'rounded ring-2 ring-blue-300 ring-inset' : ''}`}
         >
           {sortable
-            ? items.map((item) => <SortableItemRow key={item.id} {...rowPropsFor(item)} />)
-            : items.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}
+            ? visibleItems.map((item) => <SortableItemRow key={item.id} {...rowPropsFor(item)} />)
+            : visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}
 
           {/* Draft row when adding — full editable item row */}
           {!packMode && onAddItem && adding && (
