@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -497,6 +497,38 @@ function ListDetailInner({
 
   const grouped = groupListItemsByCategory(listItems, categories)
 
+  // Per-row handler bag passed to every CategoryGroup. Memoized so each
+  // category section doesn't re-render on every parent state change — only
+  // when one of these dependencies actually moves. The mutation `.mutate`
+  // refs are stable across renders by TanStack Query, so they don't need to
+  // be in the deps list.
+  const sharedGroupProps = useMemo(
+    () => ({
+      packMode: mode === 'pack',
+      weightUnit,
+      sortable: true,
+      onUpdate: (itemId: string, patch: ListItemPatch) =>
+        updateMut.mutate({ itemId, patch }),
+      onDelete: (itemId: string) => deleteMut.mutate(itemId),
+      onSaveGearName: (gearId: string, n: string) =>
+        updateGearItemMut.mutate({ id: gearId, patch: { name: n } }),
+      onSaveGearDescription: (gearId: string, d: string) =>
+        updateGearItemMut.mutate({ id: gearId, patch: { description: d } }),
+      onSaveGearWeight: (gearId: string, w: number) =>
+        updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } }),
+      onEditGearItem: (gearId: string) => {
+        const g = gearItems.find((x) => x.id === gearId)
+        if (g) setEditingGearItem(g)
+      },
+      onDeleteGearItem: (gearId: string) => {
+        const g = gearItems.find((x) => x.id === gearId)
+        if (g) setDeleteGearCandidate(g)
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mode, weightUnit, gearItems],
+  )
+
   // ── Not found ──────────────────────────────────────────────────────────────
 
   if (!list) {
@@ -682,31 +714,6 @@ function ListDetailInner({
               <p className="text-sm text-gray-400 italic">No items — add from your gear library</p>
             </div>
           ) : (() => {
-            // Props shared by every category group on this page. Per-category
-            // bits (id, name, items, onAddItem with the right categoryId) are
-            // applied at each callsite.
-            const sharedGroupProps = {
-              packMode: mode === 'pack',
-              weightUnit,
-              sortable: true,
-              onUpdate: (itemId: string, patch: ListItemPatch) =>
-                updateMut.mutate({ itemId, patch }),
-              onDelete: (itemId: string) => deleteMut.mutate(itemId),
-              onSaveGearName: (gearId: string, n: string) =>
-                updateGearItemMut.mutate({ id: gearId, patch: { name: n } }),
-              onSaveGearDescription: (gearId: string, d: string) =>
-                updateGearItemMut.mutate({ id: gearId, patch: { description: d } }),
-              onSaveGearWeight: (gearId: string, w: number) =>
-                updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } }),
-              onEditGearItem: (gearId: string) => {
-                const g = gearItems.find((x) => x.id === gearId)
-                if (g) setEditingGearItem(g)
-              },
-              onDeleteGearItem: (gearId: string) => {
-                const g = gearItems.find((x) => x.id === gearId)
-                if (g) setDeleteGearCandidate(g)
-              },
-            }
             // Flat item id list across all categories, in render order. The
             // inner <SortableContext> needs every draggable id registered;
             // verticalListSortingStrategy handles cross-category visual shifts.
