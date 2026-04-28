@@ -397,8 +397,29 @@ function ListDetailInner({
     if (categories.some((c) => c.id === activeIdStr)) {
       const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
       const oldIndex = sortedCats.findIndex((c) => c.id === activeIdStr)
-      const newIndex = sortedCats.findIndex((c) => c.id === overIdStr)
-      if (oldIndex === -1 || newIndex === -1) return
+      if (oldIndex === -1) return
+
+      // Resolve over.id to a target category id. closestCenter picks the
+      // closest droppable, which is often an item row or a category drop
+      // zone rather than the raw category outer-wrapper id — handle all
+      // three shapes here.
+      let destCatId: string | null
+      if (sortedCats.some((c) => c.id === overIdStr)) {
+        destCatId = overIdStr
+      } else {
+        const parsed = parseCategoryDroppableId(overIdStr)
+        if (parsed !== undefined) {
+          destCatId = parsed
+        } else {
+          const overItem = listItems.find((i) => i.id === overIdStr)
+          destCatId = overItem?.gear_item?.category_id ?? null
+        }
+      }
+      // Uncategorised is not a real category row — no reorder target.
+      if (destCatId === null) return
+      const newIndex = sortedCats.findIndex((c) => c.id === destCatId)
+      if (newIndex === -1 || newIndex === oldIndex) return
+
       const reordered = arrayMove(sortedCats, oldIndex, newIndex)
       reorderCatsMut.mutate(reordered.map((c, i) => ({ id: c.id, sort_order: i })))
       return
