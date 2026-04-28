@@ -212,9 +212,11 @@ export default function CategoryGroup({
 }
 
 // Sortable wrapper for the authenticated list view's category-level
-// drag-and-drop. Must be rendered inside a SortableContext.
+// drag-and-drop. Must be rendered inside a SortableContext. Disabled
+// in pack mode so structural changes are inert (matches how item drag
+// is gated inside SortableItemRow).
 export function SortableCategoryGroup(props: GroupProps & { id: string }) {
-  const { id, ...rest } = props
+  const { id, packMode, ...rest } = props
   const {
     attributes,
     listeners,
@@ -223,9 +225,9 @@ export function SortableCategoryGroup(props: GroupProps & { id: string }) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id })
+  } = useSortable({ id, disabled: packMode })
 
-  const handle = (
+  const handle = packMode ? undefined : (
     <button
       ref={asButtonRef(setActivatorNodeRef)}
       {...listeners}
@@ -243,7 +245,7 @@ export function SortableCategoryGroup(props: GroupProps & { id: string }) {
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
     >
-      <CategoryGroup {...rest} dragHandle={handle} />
+      <CategoryGroup {...rest} packMode={packMode} dragHandle={handle} />
     </div>
   )
 }
