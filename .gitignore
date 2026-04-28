@@ -5,6 +5,9 @@ dist
 .env.*.local
 *.tsbuildinfo
 
+# Claude Code project-level tooling config (per-clone, not shared)
+/.claude/
+
 # Lighthouse / Chrome DevTools report exports — generated locally, never
 # checked in
 *.report.html
