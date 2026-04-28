@@ -74,3 +74,7 @@ You can use it to clean up after a CSV import, reorganize categories, or build a
 ### Exporting and deleting
 
 You can download your full gear inventory and all your lists as a single zip file in one click. You can delete your account at any time. Both options are in account settings, no friction either way.
+
+## Contact
+
+For bugs or feature ideas: hello@grampacker.app.
