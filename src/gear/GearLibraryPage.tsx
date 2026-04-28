@@ -284,9 +284,10 @@ export default function GearLibraryPage() {
 
     const activeIdStr = String(active.id)
     const overIdStr = String(over.id)
+    const categoryIds = new Set(categories.map((c) => c.id))
 
     // Category-drag branch.
-    if (categories.some((c) => c.id === activeIdStr)) {
+    if (categoryIds.has(activeIdStr)) {
       const oldIndex = categories.findIndex((c) => c.id === activeIdStr)
       if (oldIndex === -1) return
 
@@ -295,7 +296,7 @@ export default function GearLibraryPage() {
       // zone rather than the raw category outer-wrapper id — handle all
       // three shapes here.
       let destCatId: string | null
-      if (categories.some((c) => c.id === overIdStr)) {
+      if (categoryIds.has(overIdStr)) {
         destCatId = overIdStr
       } else {
         const parsed = parseGearCategoryDroppableId(overIdStr)

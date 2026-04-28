@@ -392,9 +392,10 @@ function ListDetailInner({
 
     const activeIdStr = String(active.id)
     const overIdStr = String(over.id)
+    const categoryIds = new Set(categories.map((c) => c.id))
 
     // Category-drag branch: active.id is a category id.
-    if (categories.some((c) => c.id === activeIdStr)) {
+    if (categoryIds.has(activeIdStr)) {
       const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
       const oldIndex = sortedCats.findIndex((c) => c.id === activeIdStr)
       if (oldIndex === -1) return
@@ -404,7 +405,7 @@ function ListDetailInner({
       // zone rather than the raw category outer-wrapper id — handle all
       // three shapes here.
       let destCatId: string | null
-      if (sortedCats.some((c) => c.id === overIdStr)) {
+      if (categoryIds.has(overIdStr)) {
         destCatId = overIdStr
       } else {
         const parsed = parseCategoryDroppableId(overIdStr)
