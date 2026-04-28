@@ -1,5 +1,5 @@
 import { Link, NavLink, useNavigate } from 'react-router'
-import { LogOut, Settings } from 'lucide-react'
+import { HelpCircle, Info, LogOut, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 export default function NavBar() {
@@ -17,6 +17,24 @@ export default function NavBar() {
           grampacker
         </Link>
         <div className="ml-auto flex items-center gap-1">
+          <NavLink
+            to="/help"
+            className={({ isActive }) =>
+              `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
+            }
+          >
+            <HelpCircle size={14} />
+            Help
+          </NavLink>
+          <NavLink
+            to="/about"
+            className={({ isActive }) =>
+              `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
+            }
+          >
+            <Info size={14} />
+            About
+          </NavLink>
           <NavLink
             to="/settings"
             className={({ isActive }) =>

@@ -3,6 +3,8 @@ import NavBar from './NavBar'
 import GearLibraryPage from '../gear/GearLibraryPage'
 import ListDetailPage from '../lists/ListDetailPage'
 import SettingsPage from '../settings/SettingsPage'
+import HelpPage from '../help/HelpPage'
+import AboutPage from '../about/AboutPage'
 
 function NotFound() {
   return (
@@ -23,6 +25,8 @@ export default function AppShell() {
           <Route path="/lists" element={<ListDetailPage />} />
           <Route path="/lists/:id" element={<ListDetailPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/help" element={<HelpPage />} />
+          <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
