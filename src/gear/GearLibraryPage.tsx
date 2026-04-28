@@ -207,13 +207,22 @@ export default function GearLibraryPage() {
   const [activeId, setActiveId] = useState<string | null>(null)
 
   // Within-category sort drag for gear items. Updates gear_items.sort_order
-  // for the affected category. Optimistic via the existing
-  // makeOptimisticReorder helper on ['gear-items'].
+  // for the affected category. Optimistic via makeOptimisticReorder on
+  // ['gear-items']; the mutationFn fans out per-item updateGearItem calls,
+  // so a partial failure can leave the backend in a partially-applied state.
+  // The explicit onSettled below overrides the helper's default to invalidate
+  // both ['gear-items'] AND ['list-items'] (broad), matching what
+  // moveGearAcrossCategoriesMut does — so any view that embeds gear items
+  // refetches the actual backend state on settle.
   const reorderGearItemsMut = useMutation({
     mutationFn: async (updates: { id: string; sort_order: number }[]) => {
       await Promise.all(updates.map((u) => updateGearItem(u.id, { sort_order: u.sort_order })))
     },
     ...makeOptimisticReorder<GearItem>(qc, queryKeys.gearItems()),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
+      qc.invalidateQueries({ queryKey: ['list-items'] })
+    },
   })
 
   // Cross-category move on the gear library page. Updates gear_items.category_id
