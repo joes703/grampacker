@@ -459,10 +459,12 @@ function ListDetailInner({
 
     // Cross-category drop. Compute destination items in their new order with
     // the moved item inserted, then renumber the destination's sort_order
-    // slots from the existing pool of values.
-    const destItems = listItems.filter(
-      (i) => (i.gear_item?.category_id ?? null) === destCat && i.id !== activeItem.id,
-    )
+    // slots from the existing pool of values. Sort explicitly: fetchListItems
+    // returns sorted, but the previous optimistic update may have left the
+    // cache out of order, so we can't rely on filter preserving sort_order.
+    const destItems = listItems
+      .filter((i) => (i.gear_item?.category_id ?? null) === destCat && i.id !== activeItem.id)
+      .sort((a, b) => a.sort_order - b.sort_order)
     let insertIdx: number
     if (overItemId) {
       const idx = destItems.findIndex((i) => i.id === overItemId)
