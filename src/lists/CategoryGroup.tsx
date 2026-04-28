@@ -6,23 +6,17 @@ import { ChevronDown, ChevronRight, GripVertical, Plus } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { ListItemPatch } from '../lib/queries'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
-import { asButtonRef } from '../lib/dnd'
+import { asButtonRef, makeCategoryDroppableId, makeCategoryDroppableParser } from '../lib/dnd'
 import ItemRow, { SortableItemRow } from './ItemRow'
 import AddItemRow, { type AddItemData } from './AddItemRow'
 
-// Droppable id namespace for category drop zones. The page-level
+// Droppable id namespace for list-view category drop zones. The page-level
 // onDragEnd resolves these to a category id (or null for uncategorised)
 // before mutating. Namespaced so it can never collide with a list_items.id.
-export const CATEGORY_DROP_PREFIX = 'category-drop:'
-export const UNCATEGORISED_KEY = '__uncategorised__'
-export function categoryDroppableId(categoryId: string | null): string {
-  return `${CATEGORY_DROP_PREFIX}${categoryId ?? UNCATEGORISED_KEY}`
-}
-export function parseCategoryDroppableId(id: string): string | null | undefined {
-  if (!id.startsWith(CATEGORY_DROP_PREFIX)) return undefined
-  const v = id.slice(CATEGORY_DROP_PREFIX.length)
-  return v === UNCATEGORISED_KEY ? null : v
-}
+const CATEGORY_DROP_PREFIX = 'category-drop:'
+export const categoryDroppableId = (categoryId: string | null): string =>
+  makeCategoryDroppableId(CATEGORY_DROP_PREFIX, categoryId)
+export const parseCategoryDroppableId = makeCategoryDroppableParser(CATEGORY_DROP_PREFIX)
 
 // Single source of truth for a category section. Used by both the
 // authenticated list detail view and the public share view.

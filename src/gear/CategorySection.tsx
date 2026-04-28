@@ -7,22 +7,17 @@ import type { SyntheticListenerMap } from '@dnd-kit/core/dist/hooks/utilities'
 import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Plus, Check, X } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
 import type { WeightUnit } from '../lib/weight'
-import { asButtonRef } from '../lib/dnd'
+import { asButtonRef, makeCategoryDroppableId, makeCategoryDroppableParser } from '../lib/dnd'
 import { SortableGearItemRow } from './GearItemRow'
 import RowIconButton from '../components/RowIconButton'
 
 // Droppable id namespace for the gear library page's category drop zones.
-// Mirrors the namespacing used on the list view (CategoryGroup).
-export const GEAR_CATEGORY_DROP_PREFIX = 'gear-category-drop:'
-export const GEAR_UNCATEGORISED_KEY = '__uncategorised__'
-export function gearCategoryDroppableId(categoryId: string | null): string {
-  return `${GEAR_CATEGORY_DROP_PREFIX}${categoryId ?? GEAR_UNCATEGORISED_KEY}`
-}
-export function parseGearCategoryDroppableId(id: string): string | null | undefined {
-  if (!id.startsWith(GEAR_CATEGORY_DROP_PREFIX)) return undefined
-  const v = id.slice(GEAR_CATEGORY_DROP_PREFIX.length)
-  return v === GEAR_UNCATEGORISED_KEY ? null : v
-}
+// Distinct prefix from the list view's so debug output stays readable;
+// implementation comes from the shared helper.
+const GEAR_CATEGORY_DROP_PREFIX = 'gear-category-drop:'
+export const gearCategoryDroppableId = (categoryId: string | null): string =>
+  makeCategoryDroppableId(GEAR_CATEGORY_DROP_PREFIX, categoryId)
+export const parseGearCategoryDroppableId = makeCategoryDroppableParser(GEAR_CATEGORY_DROP_PREFIX)
 
 type CategorySectionProps = {
   category: Category | null // null = Uncategorised
