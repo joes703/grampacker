@@ -288,8 +288,29 @@ export default function GearLibraryPage() {
     // Category-drag branch.
     if (categories.some((c) => c.id === activeIdStr)) {
       const oldIndex = categories.findIndex((c) => c.id === activeIdStr)
-      const newIndex = categories.findIndex((c) => c.id === overIdStr)
-      if (oldIndex === -1 || newIndex === -1) return
+      if (oldIndex === -1) return
+
+      // Resolve over.id to a target category id. closestCenter picks the
+      // closest droppable, which is often an item row or a category drop
+      // zone rather than the raw category outer-wrapper id — handle all
+      // three shapes here.
+      let destCatId: string | null
+      if (categories.some((c) => c.id === overIdStr)) {
+        destCatId = overIdStr
+      } else {
+        const parsed = parseGearCategoryDroppableId(overIdStr)
+        if (parsed !== undefined) {
+          destCatId = parsed
+        } else {
+          const overItem = allItems.find((i) => i.id === overIdStr)
+          destCatId = overItem?.category_id ?? null
+        }
+      }
+      // Uncategorised is not a real category row — no reorder target.
+      if (destCatId === null) return
+      const newIndex = categories.findIndex((c) => c.id === destCatId)
+      if (newIndex === -1 || newIndex === oldIndex) return
+
       const reordered = arrayMove(categories, oldIndex, newIndex)
       reorderCats.mutate(reordered.map((c, i) => ({ id: c.id, sort_order: i })))
       return
