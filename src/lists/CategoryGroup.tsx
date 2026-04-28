@@ -163,15 +163,30 @@ export default function CategoryGroup({
         )}
         {!packMode ? (
           <>
-            <div className="shrink-0 w-7" />
-            <div className="shrink-0 w-7" />
-            <div className="shrink-0 w-12 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-              Qty
+            {/* Desktop column-stubs (≥ lg) — align with desktop ItemRow's
+                worn/consumable/qty/weight/kebab columns. */}
+            <div className="hidden lg:contents">
+              <div className="shrink-0 w-7" />
+              <div className="shrink-0 w-7" />
+              <div className="shrink-0 w-12 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                Qty
+              </div>
+              <div className="shrink-0 w-24 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                Weight
+              </div>
+              {showKebabSlot && <div className="shrink-0 w-7" />}
             </div>
-            <div className="shrink-0 w-24 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-              Weight
+            {/* Mobile column-stubs (< lg) — single w/c slot, narrower qty
+                and weight columns matching MobileRowBody. No kebab stub. */}
+            <div className="lg:hidden flex items-center gap-2">
+              <div className="shrink-0 w-6" />
+              <div className="shrink-0 w-8 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                Qty
+              </div>
+              <div className="shrink-0 w-20 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                Weight
+              </div>
             </div>
-            {showKebabSlot && <div className="shrink-0 w-7" />}
           </>
         ) : (
           <>
@@ -203,7 +218,8 @@ export default function CategoryGroup({
           )}
 
           {/* Footer row — "+ Add new item" on the left (only when authed),
-              category total on the right. */}
+              category total on the right. Column stubs branch on viewport
+              to keep the total aligned under the Weight column. */}
           {!packMode && !adding && (
             <div className="flex items-center gap-1.5 px-3 py-0.5 text-sm">
               {onAddItem ? (
@@ -216,13 +232,22 @@ export default function CategoryGroup({
               ) : (
                 <div className="flex-1 min-w-0" />
               )}
-              <div className="shrink-0 w-7" />
-              <div className="shrink-0 w-7" />
-              <div className="shrink-0 w-12" />
-              <div className="shrink-0 w-24 text-right tabular-nums font-semibold text-gray-700">
-                {items.length > 0 ? formatItemWeight(totalGrams, weightUnit) : ''}
+              <div className="hidden lg:contents">
+                <div className="shrink-0 w-7" />
+                <div className="shrink-0 w-7" />
+                <div className="shrink-0 w-12" />
+                <div className="shrink-0 w-24 text-right tabular-nums font-semibold text-gray-700">
+                  {items.length > 0 ? formatItemWeight(totalGrams, weightUnit) : ''}
+                </div>
+                {showKebabSlot && <div className="shrink-0 w-7" />}
               </div>
-              {showKebabSlot && <div className="shrink-0 w-7" />}
+              <div className="lg:hidden flex items-center gap-2">
+                <div className="shrink-0 w-6" />
+                <div className="shrink-0 w-8" />
+                <div className="shrink-0 w-20 text-right tabular-nums font-semibold text-gray-700">
+                  {items.length > 0 ? formatItemWeight(totalGrams, weightUnit) : ''}
+                </div>
+              </div>
             </div>
           )}
         </div>

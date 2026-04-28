@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react'
-import { Minus, Plus, Shirt, UtensilsCrossed, X } from 'lucide-react'
+import { CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
 import Modal from '../components/Modal'
 import WeightInput from '../components/WeightInput'
@@ -30,6 +30,11 @@ type Props = {
   onSave: (gearPatch: GearPatch, listPatch: ListContextPatch | null) => void
   onClose: () => void
   saving?: boolean
+  /** Mobile-only (< lg) action buttons. Both render only when listContext
+   *  is also provided (i.e. the dialog was opened from a list). On desktop
+   *  these actions are reached via the row kebab. */
+  onRemoveFromList?: () => void
+  onDeleteFromInventory?: () => void
 }
 
 export default function GearItemDialog({
@@ -40,6 +45,8 @@ export default function GearItemDialog({
   onSave,
   onClose,
   saving = false,
+  onRemoveFromList,
+  onDeleteFromInventory,
 }: Props) {
   const [name, setName] = useState(item?.name ?? '')
   const [description, setDescription] = useState(item?.description ?? '')
@@ -236,6 +243,39 @@ export default function GearItemDialog({
                   <span className="text-sm text-gray-700">Consumable (food, fuel, water)</span>
                 </label>
               </div>
+            </div>
+          )}
+
+          {/* Mobile-only list-context actions. On desktop these live in the
+              row kebab; surfacing them here would duplicate UX. Gated on
+              listContext + handler — gear-inventory edits don't show them. */}
+          {listContext && (onRemoveFromList || onDeleteFromInventory) && (
+            <div className="lg:hidden border-t border-gray-200 pt-4 space-y-3">
+              {onRemoveFromList && (
+                <button
+                  type="button"
+                  onClick={onRemoveFromList}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  <CircleMinus size={14} />
+                  Remove from list
+                </button>
+              )}
+              {onDeleteFromInventory && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-red-700 mb-2">
+                    Danger
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onDeleteFromInventory}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
+                  >
+                    <Trash2 size={14} />
+                    Delete from inventory
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
