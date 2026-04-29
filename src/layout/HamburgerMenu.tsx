@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
 import { HelpCircle, Info, LogOut, Menu, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { usePortalPopover } from '../lib/use-portal-popover'
 
 // Mobile-only kebab-style menu for the secondary destinations that don't fit
 // in the bottom tab bar (Help, About, Settings, Sign out). Modeled on the
@@ -16,27 +17,12 @@ export default function HamburgerMenu() {
   const menuRef = useRef<HTMLDivElement>(null)
   const open = menuPos !== null
 
-  useEffect(() => {
-    if (!open) return
-    function handleClick(e: MouseEvent) {
-      const t = e.target as Node
-      if (
-        menuRef.current && !menuRef.current.contains(t) &&
-        triggerRef.current && !triggerRef.current.contains(t)
-      ) {
-        setMenuPos(null)
-      }
-    }
-    function dismiss() { setMenuPos(null) }
-    document.addEventListener('mousedown', handleClick)
-    window.addEventListener('scroll', dismiss, true)
-    window.addEventListener('resize', dismiss)
-    return () => {
-      document.removeEventListener('mousedown', handleClick)
-      window.removeEventListener('scroll', dismiss, true)
-      window.removeEventListener('resize', dismiss)
-    }
-  }, [open])
+  usePortalPopover({
+    isOpen: open,
+    onClose: () => setMenuPos(null),
+    triggerRef,
+    contentRef: menuRef,
+  })
 
   function openMenu() {
     if (!triggerRef.current) return
