@@ -534,9 +534,10 @@ export default function GearLibraryPage() {
       })()}
 
       {/* Bulk actions toolbar */}
-      {selectMode && selectedIds.size > 0 && (
+      {selectMode && (
         <BulkActionsToolbar
           selectedCount={selectedIds.size}
+          selectableTotal={filteredItems.length}
           onSelectAll={() => resetSelected(filteredItems.map((i) => i.id))}
           onDeselectAll={clearSelected}
           onCreateList={() => setDialog({ type: 'create-list-from-selection' })}
