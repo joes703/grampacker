@@ -3,6 +3,7 @@ import { useAuth } from './auth/AuthProvider'
 import LoginPage from './auth/LoginPage'
 import SignupPage from './auth/SignupPage'
 import AppShell from './layout/AppShell'
+import AboutPage from './about/AboutPage'
 import SharePage from './lists/SharePage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -17,6 +18,9 @@ export default function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<SignupPage />} />
       <Route path="/r/:token" element={<SharePage />} />
+      {/* Public — readable without a session. AboutPage owns its own
+          chrome (auth-aware mini-header) since it sits outside AppShell. */}
+      <Route path="/about" element={<AboutPage />} />
       <Route
         path="/*"
         element={
