@@ -75,6 +75,40 @@ You can use it to clean up after a CSV import, reorganize categories, or build a
 
 You can download your full gear inventory and all your lists as a single zip file in one click. You can delete your account at any time. Both options are in account settings, no friction either way.
 
+## FAQ
+
+### Why a separate gear inventory?
+
+Your inventory is the source of truth for everything you own. Each item lives there once, with one weight. Lists are built from inventory, and edits flow both ways. The inventory has its own Manage mode for bulk work: multi-select, move categories, delete, or turn a selection into a new list.
+
+### Why does editing a list item change the inventory?
+
+Because most edits are real corrections. I weighed it more accurately, I added a note, I fixed the brand name. Those changes should stick across every list.
+
+When you actually want a one-off, like a borrowed item or a substitute for one trip, you can create a new item instead. The coupling is intentional.
+
+### Why these specific weight totals?
+
+Every item is base, consumable, or worn.
+
+- **Base** is gear that goes in your pack.
+- **Consumables** are food, fuel, and water. They start full and end empty.
+- **Worn** items are on your body when you start walking, like boots and trekking poles.
+
+The total I show is **base + consumables**. That's what's actually on your back at the trailhead. Worn items count toward what you're carrying overall, but they're not in your pack, so they don't belong in pack weight.
+
+### Why can't I drag from the picker?
+
+Drag-and-drop is good for moving things you've already placed. It's slower than a click when you're picking from a long list. Inside a list, drag sorts and re-categorizes. From the picker, click adds and click again removes.
+
+### Why no images?
+
+Storage costs scale with users in a way I can't sustain for free. Hosting user-uploaded images also means moderating content, which I don't want to do.
+
+### Why does grampacker work like an app on my phone?
+
+grampacker is a Progressive Web App, or PWA. A PWA is a website you can add to your home screen so it behaves like an installed app. No app store, no install. I use packing mode on my phone often, and I wanted that to work well without anyone having to download a native app.
+
 ## Contact
 
-For bugs or feature ideas: hello@grampacker.app.
+For bugs or feature ideas: hello [at] grampacker [dot] app.
