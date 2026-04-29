@@ -27,8 +27,8 @@ import { useEffect, useRef, type RefObject } from 'react'
 export function usePortalPopover(opts: {
   isOpen: boolean
   onClose: () => void
-  triggerRef: RefObject<HTMLElement>
-  contentRef: RefObject<HTMLElement>
+  triggerRef: RefObject<HTMLElement | null>
+  contentRef: RefObject<HTMLElement | null>
   closeOnScroll?: boolean
   closeOnResize?: boolean
   closeOnEscape?: boolean
