@@ -1,11 +1,11 @@
-// dnd-kit's setActivatorNodeRef has a generic Element ref shape that doesn't
-// narrow to HTMLButtonElement automatically. Wrap the cast here so the
-// awkward `as unknown as ...` doesn't have to live at every drag-handle
-// callsite.
+// dnd-kit's setActivatorNodeRef takes a generic HTMLElement; our drag-handle
+// callsites pass <button> refs. Wrap as a thin adapter that forwards the
+// argument — HTMLButtonElement extends HTMLElement so the call is safe and
+// no cast is needed.
 export function asButtonRef(
   setRef: (node: HTMLElement | null) => void,
 ): (node: HTMLButtonElement | null) => void {
-  return setRef as unknown as (node: HTMLButtonElement | null) => void
+  return (node) => setRef(node)
 }
 
 // ── Category drop-zone droppable ids ─────────────────────────────────────────

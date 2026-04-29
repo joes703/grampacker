@@ -183,12 +183,14 @@ export default function ItemRow({
           </div>
         </div>
 
-        {/* Worn (Shirt) — toggle button when editable; static icon-only span otherwise */}
-        {editable ? (
+        {/* Worn (Shirt) — toggle button when editable; static icon-only span otherwise.
+            Branch on `onUpdate` directly (not the derived `editable` bool) so
+            TS narrows the function type inside the truthy branch. */}
+        {onUpdate ? (
           <RowIconButton
             variant="purpleToggle"
             active={item.is_worn}
-            onClick={() => onUpdate!({ is_worn: !item.is_worn, is_consumable: false })}
+            onClick={() => onUpdate({ is_worn: !item.is_worn, is_consumable: false })}
             title={item.is_worn ? 'Worn — click to clear' : 'Mark as worn'}
             ariaLabel={item.is_worn ? 'Worn — click to clear' : 'Mark as worn'}
             icon={<Shirt size={14} />}
@@ -200,11 +202,11 @@ export default function ItemRow({
         )}
 
         {/* Consumable (UtensilsCrossed) */}
-        {editable ? (
+        {onUpdate ? (
           <RowIconButton
             variant="orangeToggle"
             active={item.is_consumable}
-            onClick={() => onUpdate!({ is_consumable: !item.is_consumable, is_worn: false })}
+            onClick={() => onUpdate({ is_consumable: !item.is_consumable, is_worn: false })}
             title={item.is_consumable ? 'Consumable — click to clear' : 'Mark as consumable'}
             ariaLabel={item.is_consumable ? 'Consumable — click to clear' : 'Mark as consumable'}
             icon={<UtensilsCrossed size={14} />}

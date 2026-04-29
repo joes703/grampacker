@@ -28,10 +28,15 @@ export function useCsvFileInput<T>(
     if (!file) return
     const reader = new FileReader()
     reader.onload = (ev) => {
-      const text = ev.target?.result as string
-      const result = parser(text)
-      if (typeof result === 'string') handlers.onError(result)
-      else handlers.onParsed(result)
+      // FileReader.result is `string | ArrayBuffer | null`. We invoked
+      // readAsText(), so a string is the expected shape — but narrow it
+      // explicitly rather than casting so a future caller switching to
+      // readAsArrayBuffer() doesn't silently feed bytes to a text parser.
+      const result = ev.target?.result
+      if (typeof result !== 'string') return
+      const parsed = parser(result)
+      if (typeof parsed === 'string') handlers.onError(parsed)
+      else handlers.onParsed(parsed)
     }
     reader.readAsText(file)
   }
