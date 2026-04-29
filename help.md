@@ -14,15 +14,15 @@ There are a few other pages/views you may find helpful:
 - List pack mode. This is a simplified view of your list, with checkboxes added to help you pack.
 - Public share. You can enable and disable a public read only copy of a list. Helpful for getting advice on your list ahead of a trip.
 
-Base weight is the weight of all of your gear minus consumables (food, fuel, water) and the things you wear Total pack weight is base weight + consumables. Worn items are shown but are not added to anything else. 
+Base weight is the weight of all of your gear minus consumables (food, fuel, water) and the things you wear. Total pack weight is base weight + consumables. Worn items are shown but are not added to anything else.
 
 ## Build a list
 
 There are 3 ways to create a gear list. 
 
-1. Import a CSV from Ligherpack (or with those columns) into a new list.
-2. Import a CSV of your gear into the Gear List and then add gear from the gear picker by clicking on each item --OR-- from the gear list, select your items, and create a new list. 
-3. Click on new item and start adding items. 
+1. Import a CSV from Lighterpack (or with those columns) into a new list.
+2. Import a CSV of your gear into the Gear Library, then either add items to a list from the gear picker, or select items in the Gear Library and create a new list from the selection.
+3. Click on new item and start adding items.
 
 The library panel on the left of a list shows your full inventory. Click an item to add it to the list. Click again to remove it.
 
@@ -64,7 +64,7 @@ Account settings has both: download a single zip with your full inventory and ev
 
 ### Why a separate gear inventory?
 
-I wanted a source of truth for everything I own. Lists can be built from inventory, and edits flow both ways in case you don't want to work in both. The inventory has its own Manage mode for move categories, deleting item(s), or to create a new list from your selection. I try not to force the inventory, so you can do most things from the list view.
+I wanted a source of truth for everything I own. Lists can be built from inventory, and edits flow both ways in case you don't want to work in both. The inventory has its own multi-select mode (the Select button) for moving categories, deleting items, or creating a new list from your selection. I try not to force the inventory, so you can do most things from the list view.
 
 ### Why does editing a list item change the inventory?
 
