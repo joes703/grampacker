@@ -35,6 +35,11 @@ type Props = {
    *  these actions are reached via the row kebab. */
   onRemoveFromList?: () => void
   onDeleteFromInventory?: () => void
+  /** Save-time error surfaced from the parent. Rendered inline in the dialog
+   *  body so the user sees it without a toast and can retry without losing
+   *  their edits. Owned by the parent since it knows which mutation failed
+   *  and what state the DB is left in. */
+  saveError?: string | null
 }
 
 export default function GearItemDialog({
@@ -47,6 +52,7 @@ export default function GearItemDialog({
   saving = false,
   onRemoveFromList,
   onDeleteFromInventory,
+  saveError = null,
 }: Props) {
   const [name, setName] = useState(item?.name ?? '')
   const [description, setDescription] = useState(item?.description ?? '')
@@ -279,6 +285,15 @@ export default function GearItemDialog({
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {saveError && (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            >
+              {saveError}
             </div>
           )}
 
