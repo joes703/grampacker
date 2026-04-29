@@ -252,7 +252,7 @@ function DeleteAccount() {
         <TypedConfirmDialog
           title="Delete account"
           message="This will permanently delete your account and everything in it. There is no recovery."
-          confirmPhrase="delete my account"
+          confirmPhrase="delete"
           confirmLabel={busy ? 'Deleting…' : 'Delete account'}
           onCancel={() => setConfirming(false)}
           onConfirm={() => {
