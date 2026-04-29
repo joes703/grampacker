@@ -24,6 +24,7 @@ import {
   addGearItemToList,
   updateListItem,
   deleteListItem,
+  resetPackedForList,
   updateList,
   deleteList,
   createList,
@@ -516,18 +517,35 @@ function ListDetailInner({
   }
 
   async function resetPacked() {
-    await Promise.all(
-      listItems.filter((i) => i.is_packed).map((i) => updateListItem(i.id, { is_packed: false })),
+    // Optimistic clear — flip is_packed=false on every cached item so the UI
+    // updates immediately, then issue a single PATCH and invalidate to settle.
+    await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
+    const previous = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
+    qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
+      curr ? curr.map((i) => (i.is_packed ? { ...i, is_packed: false } : i)) : curr,
     )
-    qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+    try {
+      await resetPackedForList(listId)
+    } catch (err) {
+      if (previous) qc.setQueryData(queryKeys.listItems(listId), previous)
+      throw err
+    } finally {
+      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+    }
   }
 
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
-  const listItemGearIds = new Set(listItems.map((i) => i.gear_item_id))
+  const listItemGearIds = useMemo(
+    () => new Set(listItems.map((i) => i.gear_item_id)),
+    [listItems],
+  )
 
-  const grouped = groupListItemsByCategory(listItems, categories)
+  const grouped = useMemo(
+    () => groupListItemsByCategory(listItems, categories),
+    [listItems, categories],
+  )
 
   // Pack-mode + Group Worn: split the grouped items into "regular" (rendered
   // in their categories with worn items hidden) and "worn" (flattened in
@@ -536,18 +554,29 @@ function ListDetailInner({
   // When the toggle is off, displayedGrouped === grouped and wornItems is
   // empty so the existing render path is preserved exactly.
   const showWornGroup = mode === 'pack' && groupWorn
-  const displayedGrouped = showWornGroup
-    ? grouped.map((g) => ({ ...g, items: g.items.filter((i) => !i.is_worn) }))
-    : grouped
-  const wornItems = showWornGroup
-    ? grouped.flatMap((g) => g.items.filter((i) => i.is_worn))
-    : []
+  const displayedGrouped = useMemo(
+    () =>
+      showWornGroup
+        ? grouped.map((g) => ({ ...g, items: g.items.filter((i) => !i.is_worn) }))
+        : grouped,
+    [grouped, showWornGroup],
+  )
+  const wornItems = useMemo(
+    () => (showWornGroup ? grouped.flatMap((g) => g.items.filter((i) => i.is_worn)) : []),
+    [grouped, showWornGroup],
+  )
 
   // Per-row handler bag passed to every CategoryGroup. Memoized so each
-  // category section doesn't re-render on every parent state change — only
-  // when one of these dependencies actually moves. The mutation `.mutate`
-  // refs are stable across renders by TanStack Query, so they don't need to
-  // be in the deps list.
+  // category section doesn't re-render on every parent state change.
+  //
+  // Mutation refs are intentionally NOT in deps. TanStack Query rebuilds the
+  // useMutation result object on every render (the wrapper is fresh; only the
+  // internal `.mutate` callback is stable), so depending on `updateMut` etc.
+  // would defeat the memo and re-create this bag every render. Calling
+  // `.mutate` through the live binding is safe: the closure resolves
+  // `updateMut.mutate` at call time, which is always the current stable ref.
+  // useState setters (setEditingGearItem etc.) are React-guaranteed stable
+  // and included for completeness.
   const sharedGroupProps = useMemo(
     () => ({
       packMode: mode === 'pack',
@@ -576,7 +605,7 @@ function ListDetailInner({
         if (g) setDeleteGearCandidate(g)
       },
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above re: mutation refs
     [mode, weightUnit, showUnpackedOnly, gearItems, listItems],
   )
 

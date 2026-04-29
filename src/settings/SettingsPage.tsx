@@ -9,8 +9,9 @@ import {
   fetchCategories,
   fetchGearItems,
   fetchLists,
-  fetchListItems,
+  fetchAllUserListItems,
 } from '../lib/queries'
+import type { ListItemWithGear } from '../lib/types'
 import { gearItemsToCsv, listItemsToCsv } from '../lib/csv'
 import TypedConfirmDialog from '../components/TypedConfirmDialog'
 import { useDocumentTitle } from '../lib/use-document-title'
@@ -143,28 +144,36 @@ function ChangePasswordForm() {
 
 function DownloadAllData() {
   const qc = useQueryClient()
+  const { session } = useAuth()
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 
   async function handleDownload() {
+    if (!session) return
+    const userId = session.user.id
     setBusy(true)
     setMsg(null)
     try {
-      const [categories, gearItems, lists] = await Promise.all([
+      const [categories, gearItems, lists, allItems] = await Promise.all([
         qc.fetchQuery({ queryKey: ['categories'], queryFn: fetchCategories }),
         qc.fetchQuery({ queryKey: ['gear-items'], queryFn: fetchGearItems }),
         qc.fetchQuery({ queryKey: ['lists'], queryFn: fetchLists }),
+        fetchAllUserListItems(userId),
       ])
 
       const files: Record<string, Uint8Array> = {}
       files['gear-library.csv'] = strToU8(gearItemsToCsv(gearItems, categories))
 
+      const itemsByListId = new Map<string, ListItemWithGear[]>()
+      for (const item of allItems) {
+        const arr = itemsByListId.get(item.list_id) ?? []
+        arr.push(item)
+        itemsByListId.set(item.list_id, arr)
+      }
+
       const seen = new Map<string, number>()
       for (const list of lists) {
-        const items = await qc.fetchQuery({
-          queryKey: ['list-items', list.id],
-          queryFn: () => fetchListItems(list.id),
-        })
+        const items = itemsByListId.get(list.id) ?? []
         const base = list.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase().replace(/^-|-$/g, '') || 'list'
         const count = seen.get(base) ?? 0
         seen.set(base, count + 1)
