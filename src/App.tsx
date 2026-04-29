@@ -5,14 +5,16 @@ import AppRoutes from './routes'
 
 // Global default error handler for every useMutation in the app. Per-mutation
 // onError still wins for surfacing errors inline; this just guarantees no
-// failed write disappears silently. Once we have a toast system, route through
-// it from here.
+// failed write disappears silently in development. Gated on import.meta.env.DEV
+// so production builds stay quiet — temporary until a toast system lands and
+// we route user-facing failures through it from here.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { staleTime: 1000 * 30 },
   },
   mutationCache: new MutationCache({
     onError: (error, _vars, _ctx, mutation) => {
+      if (!import.meta.env.DEV) return
       const key = mutation.options.mutationKey?.join('/') ?? 'mutation'
       console.error(`[${key}] failed:`, error)
     },

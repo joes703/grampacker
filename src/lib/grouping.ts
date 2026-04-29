@@ -2,10 +2,15 @@ import type { Category, GearItem, ListItemWithGear } from './types'
 
 export type CategoryGroup<T> = { category: Category | null; items: T[] }
 
-// Group list items by their gear item's category. Categories are emitted in
-// `Category.sort_order` order; items with no resolvable category fall into a
-// trailing `category: null` group ("Uncategorised"). Categories with no
-// matching items are omitted.
+/**
+ * Group list items by their gear item's category. Categories are emitted in
+ * `Category.sort_order` order; items with no resolvable category fall into a
+ * trailing `category: null` group ("Uncategorised").
+ *
+ * Empty categories are filtered OUT — the list view shouldn't show category
+ * sections that contain none of this list's items. (This is the deliberate
+ * divergence from `groupGearItemsByCategory`, which retains them.)
+ */
 export function groupListItemsByCategory(
   items: ListItemWithGear[],
   categories: Category[],
@@ -28,10 +33,17 @@ export function groupListItemsByCategory(
   return groups
 }
 
-// Group gear-library items by their category_id. Categories are emitted in
-// `Category.sort_order` order (the input array's order — caller pre-sorts);
-// items with no category_id fall into a trailing `category: null` group only
-// if any exist.
+/**
+ * Group gear-library items by their category_id. Categories are emitted in
+ * `Category.sort_order` order (the input array's order — caller pre-sorts);
+ * items with no category_id fall into a trailing `category: null` group
+ * only if any exist.
+ *
+ * Empty categories are RETAINED — the gear library renders a category
+ * section even when it has no items so the user can drag items into it
+ * and use the "+ Add item to this category" affordance. (This is the
+ * deliberate divergence from `groupListItemsByCategory`.)
+ */
 export function groupGearItemsByCategory(
   items: GearItem[],
   categories: Category[],

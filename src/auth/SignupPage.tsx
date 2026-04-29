@@ -19,7 +19,6 @@ export default function SignupPage() {
   if (authLoading) return null
   if (session) return <Navigate to="/lists" replace />
 
-
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)

@@ -11,8 +11,19 @@ import RowIconButton from '../components/RowIconButton'
 import WeightInput from '../components/WeightInput'
 
 // Single source of truth for a list item row. Used by both the authenticated
-// list detail view and the public share view. Editing affordances are gated
-// on whether the corresponding handler is passed:
+// list detail view and the public share view.
+//
+// Responsive pattern (mobile vs. desktop split):
+//   The non-pack-mode body renders BOTH a `hidden lg:contents` desktop
+//   subtree (full inline-edit row: name + description, worn, consumable,
+//   qty, weight, kebab) AND a `lg:hidden` mobile subtree (compact row that
+//   opens the edit dialog on tap). At any viewport only one is visible.
+//   This is intentional — the two layouts diverge enough (column counts,
+//   icon-button affordances vs. modal-on-tap) that branching JSX is
+//   clearer than trying to converge them with CSS alone. Don't take a
+//   pass to delete one branch as "dead code"; both are load-bearing.
+//
+// Editing affordances are gated on whether the corresponding handler is passed:
 //   - `onUpdate` enables Worn / Consumable toggle buttons (and the qty edit
 //     button, since qty changes write through onUpdate).
 //   - `onSaveName` / `onSaveDescription` enable inline-edit text via
