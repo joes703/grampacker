@@ -216,14 +216,20 @@ export function parseListCsv(text: string): ListImportRow[] | string {
     .map((row) => {
       const unit = unitKey ? (row[unitKey] ?? 'g') : 'g'
       const rawQty = qtyKey ? parseInt(row[qtyKey] ?? '1', 10) : 1
+      const isWorn = wornKey ? toBool(row[wornKey]) : false
+      const isConsumable = consumKey ? toBool(row[consumKey]) : false
+      // worn_xor_consumable is a DB CHECK constraint; if both are truthy in
+      // the CSV the insert fails with a generic error. Silently normalise
+      // by clearing both — the user can re-flag the right one in the UI.
+      const bothSet = isWorn && isConsumable
       return {
         name:         (row[nameKey] ?? '').trim().slice(0, 256),
         description:  descKey ? (row[descKey] || null) : null,
         weight_grams: toGrams(row[weightKey] ?? '0', unit),
         category:     catKey ? (row[catKey] ?? '') : '',
         quantity:     isNaN(rawQty) || rawQty < 1 ? 1 : Math.min(rawQty, 99),
-        is_worn:      wornKey ? toBool(row[wornKey]) : false,
-        is_consumable: consumKey ? toBool(row[consumKey]) : false,
+        is_worn:      bothSet ? false : isWorn,
+        is_consumable: bothSet ? false : isConsumable,
       }
     })
     .filter((r) => r.name.length > 0)
