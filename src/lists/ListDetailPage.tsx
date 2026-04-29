@@ -72,6 +72,19 @@ import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
 
 type Mode = 'edit' | 'pack'
 
+// Every transient dialog/modal/inline-form on this page lives in one
+// discriminated union, set/cleared atomically. `null` is the closed state
+// (matching the pattern in src/gear/GearLibraryPage.tsx). edit-gear folds
+// the optional list-item context AND the partial-save error message into
+// one variant so they can never drift apart.
+type DialogState =
+  | { type: 'edit-gear'; gear: GearItem; listItem: ListItemWithGear | null; saveError: string | null }
+  | { type: 'delete-gear'; candidate: GearItem }
+  | { type: 'import-preview'; rows: ListImportRow[] }
+  | { type: 'import-error'; message: string }
+  | { type: 'confirm-delete-list'; list: List }
+  | { type: 'creating-list'; draft: string }
+
 export default function ListDetailPage() {
   // Default title for the wrapper; ListDetailInner overrides with the list
   // name once it mounts and the list resolves. Stays as "Lists" during the
@@ -144,12 +157,6 @@ function ListDetailInner({
   navigate: ReturnType<typeof useNavigate>
 }) {
   const [mode, setMode] = useState<Mode>('edit')
-  // Sidebar (Lists box + gear library panel) auto-collapses in pack mode so
-  // the user can focus on packing, and re-opens on return to edit mode.
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  useEffect(() => {
-    setSidebarOpen(mode !== 'pack')
-  }, [mode])
   const { weightUnit, toggleWeightUnit } = useWeightUnit()
   // Pack-mode filter: when true, hide already-packed items from each
   // category. Header counts and the "complete" affordance still reflect the
@@ -167,29 +174,26 @@ function ListDetailInner({
   // toggle the same state. The hook also sets `available` so NavBar knows
   // to render the trigger only on this page.
   const { open: drawerOpen, setOpen: setDrawerOpen } = useRegisterSidebarDrawer()
-  const [importPreview, setImportPreview] = useState<ListImportRow[] | null>(null)
-  const [importError, setImportError] = useState<string | null>(null)
-  const [confirmDeleteList, setConfirmDeleteList] = useState<List | null>(null)
-  const [editingGearItem, setEditingGearItem] = useState<GearItem | null>(null)
-  // The list_item paired with editingGearItem; together they let the edit
-  // dialog show "On this list" fields (quantity / worn / consumable) and
-  // fire a list_items update alongside the gear_items update on save.
-  const [editingListItem, setEditingListItem] = useState<ListItemWithGear | null>(null)
-  // Surfaces gear-dialog save failures back into the dialog body. Cleared on
-  // dialog close and at the start of the next save attempt; set to a
-  // user-facing message that names which side failed (gear vs list_item).
-  const [gearDialogError, setGearDialogError] = useState<string | null>(null)
-  const [deleteGearCandidate, setDeleteGearCandidate] = useState<GearItem | null>(null)
+  // Single discriminated union for every transient dialog/modal/inline-form
+  // on this page. Mirrors the pattern in src/gear/GearLibraryPage.tsx —
+  // `type` discriminator, `null` for the closed state. Folding gearDialogError
+  // (for partial-save messaging) into the edit-gear variant means closing the
+  // dialog or switching to a different gear item naturally discards the
+  // error: there's no separate state to keep in sync.
+  // pendingImportId is intentionally NOT in this union — it's a cross-route
+  // signal that survives navigation, consumed by an effect on the next mount.
+  const [dialog, setDialog] = useState<DialogState | null>(null)
   const [pendingImportId, setPendingImportId] = useState<string | null>(null)
-  const [creatingList, setCreatingList] = useState(false)
-  const [newListDraft, setNewListDraft] = useState('')
   const {
     inputRef: importInputRef,
     onChange: handleImportFile,
     openPicker: openImportPicker,
   } = useCsvFileInput<ListImportRow>(
     parseListCsv,
-    { onParsed: setImportPreview, onError: setImportError },
+    {
+      onParsed: (rows) => setDialog({ type: 'import-preview', rows }),
+      onError: (message) => setDialog({ type: 'import-error', message }),
+    },
   )
 
   const list = lists.find((l) => l.id === listId)
@@ -253,7 +257,7 @@ function ListDetailInner({
       qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
       qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
       qc.invalidateQueries({ queryKey: queryKeys.categories() })
-      setImportPreview(null)
+      setDialog(null)
     },
   })
 
@@ -345,8 +349,7 @@ function ListDetailInner({
     mutationFn: (name: string) => createList(userId, name, lists.length),
     onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: queryKeys.lists() })
-      setCreatingList(false)
-      setNewListDraft('')
+      setDialog(null)
       navigate(`/lists/${created.id}`)
     },
   })
@@ -491,8 +494,8 @@ function ListDetailInner({
   // would defeat the memo and re-create this bag every render. Calling
   // `.mutate` through the live binding is safe: the closure resolves
   // `updateMut.mutate` at call time, which is always the current stable ref.
-  // useState setters (setEditingGearItem etc.) are React-guaranteed stable
-  // and included for completeness.
+  // setDialog (the React useState setter) is React-guaranteed stable and
+  // included for completeness.
   const sharedGroupProps = useMemo(
     () => ({
       packMode: mode === 'pack',
@@ -511,14 +514,11 @@ function ListDetailInner({
       onEditGearItem: (gearId: string) => {
         const g = gearItems.find((x) => x.id === gearId)
         const li = listItems.find((l) => l.gear_item.id === gearId)
-        if (g) {
-          setEditingGearItem(g)
-          setEditingListItem(li ?? null)
-        }
+        if (g) setDialog({ type: 'edit-gear', gear: g, listItem: li ?? null, saveError: null })
       },
       onDeleteGearItem: (gearId: string) => {
         const g = gearItems.find((x) => x.id === gearId)
-        if (g) setDeleteGearCandidate(g)
+        if (g) setDialog({ type: 'delete-gear', candidate: g })
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above re: mutation refs
@@ -541,17 +541,6 @@ function ListDetailInner({
     <div className="flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-center gap-3">
-        {/* Manual sidebar toggle disabled — sidebar now auto-collapses in pack
-            mode (see effect above) and stays open in edit mode. To restore
-            manual toggling, uncomment this button and drop the effect.
-        <button
-          onClick={() => setSidebarOpen((v) => !v)}
-          title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-          className="hidden lg:inline-flex rounded p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-        >
-          {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
-        </button>
-        */}
         <InlineTitle
           key={list.id}
           name={list.name}
@@ -594,10 +583,12 @@ function ListDetailInner({
         onChange={handleImportFile}
       />
 
-      {/* Two-column grid (sidebar can be collapsed) */}
+      {/* Two-column grid (sidebar collapses in pack mode). The visibility
+          condition is `mode !== 'pack'` — derived directly, not stored. */}
       <div className="flex gap-4 items-start">
-        {/* LEFT column — Lists box (always visible) + Library panel (collapsible). Hidden when sidebar is closed on desktop. */}
-        {sidebarOpen && (
+        {/* LEFT column — Lists box + Library panel. Hidden in pack mode on
+            desktop so the user can focus on packing. */}
+        {mode !== 'pack' && (
           <aside
             className="hidden lg:flex w-80 shrink-0 flex-col gap-4 sticky self-start"
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
@@ -605,16 +596,17 @@ function ListDetailInner({
             <ListsBox
               lists={lists}
               activeId={list.id}
-              creating={creatingList}
-              newDraft={newListDraft}
-              onNewDraftChange={setNewListDraft}
-              onStartNew={() => setCreatingList(true)}
+              creating={dialog?.type === 'creating-list'}
+              newDraft={dialog?.type === 'creating-list' ? dialog.draft : ''}
+              onNewDraftChange={(v) => setDialog({ type: 'creating-list', draft: v })}
+              onStartNew={() => setDialog({ type: 'creating-list', draft: '' })}
               onSubmitNew={() => {
-                const trimmed = newListDraft.trim()
+                const draft = dialog?.type === 'creating-list' ? dialog.draft : ''
+                const trimmed = draft.trim()
                 if (trimmed) createListMut.mutate(trimmed)
-                else { setCreatingList(false); setNewListDraft('') }
+                else setDialog(null)
               }}
-              onCancelNew={() => { setCreatingList(false); setNewListDraft('') }}
+              onCancelNew={() => setDialog(null)}
               onSelect={(l) => navigate(`/lists/${l.id}`)}
               onRename={(l, name) => renameMut.mutate({ id: l.id, name })}
               onImport={(l) => {
@@ -630,7 +622,7 @@ function ListDetailInner({
                 downloadCsv(`${l.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`, csv)
               }}
               onDuplicate={(l) => duplicateMut.mutate(l)}
-              onDelete={(l) => setConfirmDeleteList(l)}
+              onDelete={(l) => setDialog({ type: 'confirm-delete-list', list: l })}
               onReorder={(orderedIds) => {
                 reorderListsMut.mutate(orderedIds.map((id, i) => ({ id, sort_order: i })))
               }}
@@ -811,16 +803,17 @@ function ListDetailInner({
               <ListsBox
                 lists={lists}
                 activeId={list.id}
-                creating={creatingList}
-                newDraft={newListDraft}
-                onNewDraftChange={setNewListDraft}
-                onStartNew={() => setCreatingList(true)}
+                creating={dialog?.type === 'creating-list'}
+                newDraft={dialog?.type === 'creating-list' ? dialog.draft : ''}
+                onNewDraftChange={(v) => setDialog({ type: 'creating-list', draft: v })}
+                onStartNew={() => setDialog({ type: 'creating-list', draft: '' })}
                 onSubmitNew={() => {
-                  const trimmed = newListDraft.trim()
+                  const draft = dialog?.type === 'creating-list' ? dialog.draft : ''
+                  const trimmed = draft.trim()
                   if (trimmed) createListMut.mutate(trimmed)
-                  else { setCreatingList(false); setNewListDraft('') }
+                  else setDialog(null)
                 }}
-                onCancelNew={() => { setCreatingList(false); setNewListDraft('') }}
+                onCancelNew={() => setDialog(null)}
                 onSelect={(l) => {
                   setDrawerOpen(false)
                   navigate(`/lists/${l.id}`)
@@ -839,7 +832,7 @@ function ListDetailInner({
                   downloadCsv(`${l.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`, csv)
                 }}
                 onDuplicate={(l) => duplicateMut.mutate(l)}
-                onDelete={(l) => setConfirmDeleteList(l)}
+                onDelete={(l) => setDialog({ type: 'confirm-delete-list', list: l })}
                 onReorder={(orderedIds) => {
                   reorderListsMut.mutate(orderedIds.map((id, i) => ({ id, sort_order: i })))
                 }}
@@ -870,15 +863,15 @@ function ListDetailInner({
       </Drawer.Root>
 
       {/* Import error */}
-      {importError && (
-        <Modal open onClose={() => setImportError(null)} title="Import error" className="w-full max-w-sm">
+      {dialog?.type === 'import-error' && (
+        <Modal open onClose={() => setDialog(null)} title="Import error" className="w-full max-w-sm">
           <div className="p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-2">Import error</h2>
-            <p className="text-sm text-red-600 mb-4">{importError}</p>
+            <p className="text-sm text-red-600 mb-4">{dialog.message}</p>
             <div className="flex justify-end">
               <button
                 type="button"
-                onClick={() => setImportError(null)}
+                onClick={() => setDialog(null)}
                 className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
               >
                 Close
@@ -889,26 +882,26 @@ function ListDetailInner({
       )}
 
       {/* Import preview */}
-      {importPreview && (
+      {dialog?.type === 'import-preview' && (
         <ListImportPreviewDialog
-          rows={importPreview}
+          rows={dialog.rows}
           saving={importMut.isPending}
-          onConfirm={() => importMut.mutate(importPreview)}
-          onClose={() => setImportPreview(null)}
+          onConfirm={() => importMut.mutate(dialog.rows)}
+          onClose={() => setDialog(null)}
         />
       )}
 
       {/* Delete confirmation */}
-      {confirmDeleteList && (
+      {dialog?.type === 'confirm-delete-list' && (
         <ConfirmDialog
           title="Delete list"
-          message={`This will permanently delete "${confirmDeleteList.name}" and all of its items. This cannot be undone.`}
+          message={`This will permanently delete "${dialog.list.name}" and all of its items. This cannot be undone.`}
           confirmLabel="Delete list"
           dangerous
-          onCancel={() => setConfirmDeleteList(null)}
+          onCancel={() => setDialog(null)}
           onConfirm={() => {
-            const target = confirmDeleteList
-            setConfirmDeleteList(null)
+            const target = dialog.list
+            setDialog(null)
             deleteListMut.mutate(target.id)
           }}
         />
@@ -921,73 +914,67 @@ function ListDetailInner({
           Save runs sequentially: gear first, then the per-list patch. If
           the gear write fails, nothing is applied. If the gear write
           succeeds but the list write fails, the gear changes are committed
-          but the list_item is unchanged — surfaced via gearDialogError so
+          but the list_item is unchanged — surfaced via dialog.saveError so
           the user can retry (PATCH is idempotent on the gear side) or
           close to keep the partial result intentionally.
           updateGearItemMut already invalidates ['list-items'] (broad) so
           other lists pick up the change. */}
-      {editingGearItem && (
+      {dialog?.type === 'edit-gear' && (
         <GearItemDialog
           categories={categories}
-          item={editingGearItem}
+          item={dialog.gear}
           listContext={
-            editingListItem
+            dialog.listItem
               ? {
-                  quantity: editingListItem.quantity,
-                  is_worn: editingListItem.is_worn,
-                  is_consumable: editingListItem.is_consumable,
+                  quantity: dialog.listItem.quantity,
+                  is_worn: dialog.listItem.is_worn,
+                  is_consumable: dialog.listItem.is_consumable,
                 }
               : undefined
           }
           saving={updateGearItemMut.isPending || updateMut.isPending}
-          saveError={gearDialogError}
-          onClose={() => {
-            setEditingGearItem(null)
-            setEditingListItem(null)
-            setGearDialogError(null)
-          }}
+          saveError={dialog.saveError}
+          onClose={() => setDialog(null)}
           onSave={async (gearPatch, listPatch) => {
-            const gearTarget = editingGearItem
-            const listTarget = editingListItem
+            const gearTarget = dialog.gear
+            const listTarget = dialog.listItem
             // Reset prior error so the user sees fresh state for this attempt.
-            setGearDialogError(null)
+            // Spread the variant so we keep the targets while clearing saveError.
+            setDialog({ ...dialog, saveError: null })
             try {
               await updateGearItemMut.mutateAsync({ id: gearTarget.id, patch: gearPatch })
             } catch {
-              setGearDialogError("Couldn't save gear changes. No changes were applied.")
+              setDialog({ ...dialog, saveError: "Couldn't save gear changes. No changes were applied." })
               return
             }
             if (listPatch && listTarget) {
               try {
                 await updateMut.mutateAsync({ itemId: listTarget.id, patch: listPatch })
               } catch {
-                setGearDialogError(
-                  "Saved gear changes, but couldn't update this list item. Try again, or close to keep just the gear changes.",
-                )
+                setDialog({
+                  ...dialog,
+                  saveError:
+                    "Saved gear changes, but couldn't update this list item. Try again, or close to keep just the gear changes.",
+                })
                 return
               }
             }
-            setEditingGearItem(null)
-            setEditingListItem(null)
-            setGearDialogError(null)
+            setDialog(null)
           }}
           onRemoveFromList={
-            editingListItem
+            dialog.listItem
               ? () => {
-                  const target = editingListItem
-                  setEditingGearItem(null)
-                  setEditingListItem(null)
+                  const target = dialog.listItem!
+                  setDialog(null)
                   deleteMut.mutate(target.id)
                 }
               : undefined
           }
           onDeleteFromInventory={
-            editingListItem
+            dialog.listItem
               ? () => {
-                  const target = editingGearItem
-                  setEditingGearItem(null)
-                  setEditingListItem(null)
-                  setDeleteGearCandidate(target)
+                  const target = dialog.gear
+                  setDialog({ type: 'delete-gear', candidate: target })
                 }
               : undefined
           }
@@ -997,16 +984,16 @@ function ListDetailInner({
       {/* Delete-from-inventory confirm (reached from the kebab). Removes the
           gear item from the library and cascades to every list_item that
           references it (ON DELETE CASCADE on gear_item_id). */}
-      {deleteGearCandidate && (
+      {dialog?.type === 'delete-gear' && (
         <ConfirmDialog
           title="Delete from inventory"
-          message={`This will remove "${deleteGearCandidate.name}" from your inventory and from any list it appears on. This cannot be undone.`}
+          message={`This will remove "${dialog.candidate.name}" from your inventory and from any list it appears on. This cannot be undone.`}
           confirmLabel="Delete"
           dangerous
-          onCancel={() => setDeleteGearCandidate(null)}
+          onCancel={() => setDialog(null)}
           onConfirm={() => {
-            const target = deleteGearCandidate
-            setDeleteGearCandidate(null)
+            const target = dialog.candidate
+            setDialog(null)
             deleteGearItemMut.mutate(target.id)
           }}
         />
