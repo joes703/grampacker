@@ -6,6 +6,7 @@ import { CircleMinus, GripVertical, MoreVertical, Pencil, Shirt, Trash2, Utensil
 import type { ListItemWithGear } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
+import { usePortalPopover } from '../lib/use-portal-popover'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
 import WeightInput from '../components/WeightInput'
@@ -433,27 +434,12 @@ function RowKebab({
   const menuRef = useRef<HTMLDivElement>(null)
   const menuOpen = menuPos !== null
 
-  useEffect(() => {
-    if (!menuOpen) return
-    function handleClick(e: MouseEvent) {
-      const t = e.target as Node
-      if (
-        menuRef.current && !menuRef.current.contains(t) &&
-        triggerRef.current && !triggerRef.current.contains(t)
-      ) {
-        setMenuPos(null)
-      }
-    }
-    function handleScroll() { setMenuPos(null) }
-    document.addEventListener('mousedown', handleClick)
-    window.addEventListener('scroll', handleScroll, true)
-    window.addEventListener('resize', handleScroll)
-    return () => {
-      document.removeEventListener('mousedown', handleClick)
-      window.removeEventListener('scroll', handleScroll, true)
-      window.removeEventListener('resize', handleScroll)
-    }
-  }, [menuOpen])
+  usePortalPopover({
+    isOpen: menuOpen,
+    onClose: () => setMenuPos(null),
+    triggerRef,
+    contentRef: menuRef,
+  })
 
   function openMenu() {
     if (!triggerRef.current) return
