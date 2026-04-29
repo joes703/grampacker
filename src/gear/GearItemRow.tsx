@@ -1,10 +1,12 @@
-import { type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Pencil, Trash2 } from 'lucide-react'
+import { GripVertical, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import type { GearItem } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
+import { usePortalPopover } from '../lib/use-portal-popover'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
 
@@ -55,9 +57,11 @@ export default function GearItemRow({
         />
       )}
 
-      {/* Desktop branch (≥ lg) — preserves the existing inline-edit row
-          layout: name + description as 2:3 columns, weight, and the
-          edit/delete icon buttons (only when not in select mode). */}
+      {/* Desktop branch (≥ lg) — name + description (2:3 cols), weight,
+          and a kebab menu for Edit / Delete actions. The kebab pattern
+          mirrors the list page's RowKebab so both pages share one row-
+          action affordance. Hidden in select mode (selection itself
+          replaces per-row actions). */}
       <div className="hidden lg:contents">
         <div className="flex-1 min-w-0 flex items-center gap-3">
           <div className="flex-[2] min-w-0">
@@ -81,23 +85,7 @@ export default function GearItemRow({
         <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
           {formatItemWeight(item.weight_grams, weightUnit)}
         </span>
-        {!selectMode && (
-          <>
-            <RowIconButton
-              onClick={onEdit}
-              title="Edit item"
-              ariaLabel="Edit item"
-              icon={<Pencil size={14} />}
-            />
-            <RowIconButton
-              variant="danger"
-              onClick={onDelete}
-              title="Delete item"
-              ariaLabel="Delete item"
-              icon={<Trash2 size={14} />}
-            />
-          </>
-        )}
+        {!selectMode && <GearRowKebab onEdit={onEdit} onDelete={onDelete} />}
       </div>
 
       {/* Mobile branch (< lg) — name + weight only, no description, no
@@ -120,6 +108,93 @@ export default function GearItemRow({
         </button>
       </div>
     </div>
+  )
+}
+
+// Kebab popover — three-dot button + portal-rendered menu. Mirrors
+// `RowKebab` on the list page (src/lists/ItemRow.tsx) so both pages share
+// one row-action pattern. Items: Edit (opens GearItemDialog), Delete from
+// inventory (red, opens the confirm dialog). Each row owns its own popover
+// state so multiple kebabs can't open at once and the dismiss listeners
+// only target the relevant menu.
+function GearRowKebab({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const menuOpen = menuPos !== null
+
+  usePortalPopover({
+    isOpen: menuOpen,
+    onClose: () => setMenuPos(null),
+    triggerRef,
+    contentRef: menuRef,
+  })
+
+  function openMenu() {
+    if (!triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    const menuWidth = 192 // matches w-48
+    setMenuPos({
+      top: rect.bottom + 4,
+      left: Math.max(8, rect.right - menuWidth),
+    })
+  }
+
+  return (
+    <>
+      <RowIconButton
+        ref={triggerRef}
+        onClick={(e) => { e.stopPropagation(); if (menuOpen) setMenuPos(null); else openMenu() }}
+        ariaLabel="Item options"
+        icon={<MoreVertical size={14} />}
+      />
+
+      {menuOpen && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+          style={{ top: menuPos.top, left: menuPos.left }}
+        >
+          <MenuItem icon={<Pencil size={13} />} onClick={() => { setMenuPos(null); onEdit() }}>
+            Edit
+          </MenuItem>
+          <div className="my-1 border-t border-gray-100" />
+          <MenuItem
+            icon={<Trash2 size={13} />}
+            onClick={() => { setMenuPos(null); onDelete() }}
+            danger
+          >
+            Delete from inventory
+          </MenuItem>
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
+function MenuItem({
+  icon,
+  children,
+  onClick,
+  danger,
+}: {
+  icon: React.ReactNode
+  children: React.ReactNode
+  onClick: () => void
+  danger?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
+        danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-100'
+      }`}
+    >
+      {icon}
+      <span className="truncate">{children}</span>
+    </button>
   )
 }
 
