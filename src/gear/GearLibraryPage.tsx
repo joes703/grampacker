@@ -641,6 +641,16 @@ export default function GearLibraryPage() {
               addItem.mutate(gearPatch, { onSuccess: () => setDialog(null) })
             }
           }}
+          // Mobile-only Delete from inventory action inside the dialog.
+          // Replaces the trash icon that used to sit in the row on desktop
+          // (still present on lg+ via the inline RowIconButton). Hands off
+          // to the same delete-item ConfirmDialog flow as the desktop
+          // trash button by transitioning dialog state.
+          onDeleteFromInventory={
+            dialog.type === 'edit-item'
+              ? () => setDialog({ type: 'delete-item', item: dialog.item })
+              : undefined
+          }
         />
       )}
 
