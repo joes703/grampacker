@@ -83,11 +83,12 @@ export default function PackingProgress({
         />
       </div>
       {confirmingReset && (
+        // Reset is recoverable (just clears is_packed flags), so the confirm
+        // uses ConfirmDialog's default neutral styling — no `dangerous` flag.
         <ConfirmDialog
           title="Reset packing?"
           message="All items will be marked unpacked. This won't change your inventory, weights, or quantities."
           confirmLabel="Reset"
-          dangerous
           onCancel={() => setConfirmingReset(false)}
           onConfirm={() => {
             setConfirmingReset(false)

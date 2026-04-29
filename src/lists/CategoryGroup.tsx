@@ -271,7 +271,11 @@ export default function CategoryGroup({
 // drag-and-drop. Must be rendered inside a SortableContext. Disabled
 // in pack mode so structural changes are inert (matches how item drag
 // is gated inside SortableItemRow).
-export function SortableCategoryGroup(props: GroupProps & { id: string }) {
+//
+// `id` doubles as both the dnd-kit sortable id AND the inner CategoryGroup's
+// `categoryId` — they're always the category's UUID. Callers pass it once;
+// the wrapper threads it through.
+export function SortableCategoryGroup(props: Omit<GroupProps, 'categoryId'> & { id: string }) {
   const { id, packMode, ...rest } = props
   const {
     attributes,
@@ -301,7 +305,7 @@ export function SortableCategoryGroup(props: GroupProps & { id: string }) {
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
     >
-      <CategoryGroup {...rest} packMode={packMode} dragHandle={handle} />
+      <CategoryGroup {...rest} categoryId={id} packMode={packMode} dragHandle={handle} />
     </div>
   )
 }

@@ -829,7 +829,6 @@ function ListDetailInner({
                           <SortableCategoryGroup
                             key={group.category!.id}
                             id={group.category!.id}
-                            categoryId={group.category!.id}
                             name={group.category!.name}
                             items={group.items}
                             {...sharedGroupProps}

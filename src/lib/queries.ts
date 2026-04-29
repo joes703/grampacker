@@ -493,6 +493,16 @@ export async function importGearItems(
 //
 // The cached array gets each affected item's sort_order rewritten in place
 // and is then re-sorted by sort_order so the visual order matches.
+//
+// IMPORTANT: `updates` must be a permutation of an existing subset of the
+// cached rows — i.e. every id in `updates` must already exist in the cache,
+// and the sort_order values must be a permutation of those rows' existing
+// sort_order values. Passing a partial subset with arbitrary values can
+// silently corrupt the cache: rows you didn't touch keep their old
+// sort_order, the merged + sorted result then puts them in surprising
+// positions, and the optimistic state diverges from the eventual server
+// truth until the next refetch. `assignSortOrderSlots` (in grouping.ts) is
+// the canonical way to build a safe `updates` array.
 export function makeOptimisticReorder<T extends { id: string; sort_order: number }>(
   qc: QueryClient,
   queryKey: QueryKey,

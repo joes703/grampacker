@@ -437,7 +437,7 @@ export default function GearLibraryPage() {
           onClick={toggleWeightUnit}
           className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
-          {weightUnit === 'g' ? 'g' : 'oz'}
+          {weightUnit}
         </button>
         {selectMode ? (
           <button
@@ -666,8 +666,8 @@ export default function GearLibraryPage() {
 
       {dialog?.type === 'delete-item' && (
         <ConfirmDialog
-          title="Delete item"
-          message={`Delete "${dialog.item.name}"? This will remove it from all lists.`}
+          title="Delete from inventory"
+          message={`This will remove "${dialog.item.name}" from your inventory and from any list it appears on. This cannot be undone.`}
           confirmLabel="Delete"
           dangerous
           onCancel={() => setDialog(null)}
