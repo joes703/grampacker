@@ -1,22 +1,13 @@
 import { useState, type ReactNode } from 'react'
-import { useDroppable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Check, ChevronDown, ChevronRight, GripVertical, Plus } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { ListItemPatch } from '../lib/queries'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
-import { asButtonRef, makeCategoryDroppableId, makeCategoryDroppableParser } from '../lib/dnd'
+import { asButtonRef } from '../lib/dnd'
 import ItemRow, { SortableItemRow } from './ItemRow'
 import AddItemRow, { type AddItemData } from './AddItemRow'
-
-// Droppable id namespace for list-view category drop zones. The page-level
-// onDragEnd resolves these to a category id (or null for uncategorised)
-// before mutating. Namespaced so it can never collide with a list_items.id.
-const CATEGORY_DROP_PREFIX = 'category-drop:'
-const categoryDroppableId = (categoryId: string | null): string =>
-  makeCategoryDroppableId(CATEGORY_DROP_PREFIX, categoryId)
-export const parseCategoryDroppableId = makeCategoryDroppableParser(CATEGORY_DROP_PREFIX)
 
 // Single source of truth for a category section. Used by both the
 // authenticated list detail view and the public share view.
@@ -27,19 +18,17 @@ export const parseCategoryDroppableId = makeCategoryDroppableParser(CATEGORY_DRO
 // Drag context: the authed list view uses ONE page-level <DndContext> with
 // two nested <SortableContext>s — categories outer, items inner — and a
 // single branched onDragEnd that dispatches by id type. CategoryGroup itself
-// no longer creates its own DndContext / SortableContext (it did, in the
-// older nested-context era); it just registers a useDroppable for cross-
-// category drops and delegates row rendering. The share view passes neither
-// `sortable` nor `categoryId`, so no drag plumbing engages.
+// doesn't register a drop target — DnD is within-category reorder only;
+// recategorizing happens through the item edit modal. The share view passes
+// neither `sortable` nor `categoryId`, so no drag plumbing engages.
 //
 // Editing affordances are gated on which handlers are passed:
 //   - sortable           ⇒ rows render as SortableItemRow. Must be inside a
 //                          page-level <SortableContext> covering all items.
 //                          Without it, rows are plain ItemRow (no drag).
-//   - categoryId         ⇒ category section registers as a drop target so
-//                          the page-level onDragEnd can resolve cross-cat
-//                          drops to this category. null ⇒ uncategorised.
-//                          undefined ⇒ no drop target (share view).
+//   - categoryId         ⇒ used for stable region ids (aria-controls) and
+//                          surfacing the category context to add-item flows.
+//                          null ⇒ uncategorised. undefined ⇒ share view.
 //   - onAddItem          ⇒ "+ Add new item" footer button + AddItemRow draft.
 //   - onDelete + onUpdate + onSaveGear* + onEditGearItem + onDeleteGearItem
 //                        ⇒ forwarded per-row to ItemRow's editing affordances.
@@ -55,8 +44,8 @@ export type GroupProps = {
   weightUnit: WeightUnit
   packMode?: boolean
   collapsible?: boolean
-  /** Category id used for drop-target registration. null = uncategorised.
-   *  undefined disables the drop target (share view). */
+  /** Stable region id derivation + add-item context. null = uncategorised.
+   *  undefined disables the chevron/region-id behavior (share view). */
   categoryId?: string | null
   /** Render rows as SortableItemRow (must be inside a page-level SortableContext). */
   sortable?: boolean
@@ -114,13 +103,6 @@ export default function CategoryGroup({
   const visibleItems = packMode && showUnpackedOnly
     ? items.filter((i) => !i.is_packed)
     : items
-
-  // Drop target for cross-category drops. Disabled when categoryId is undefined
-  // (e.g. the share view doesn't allow drops at all).
-  const droppable = useDroppable({
-    id: categoryId === undefined ? '__disabled__' : categoryDroppableId(categoryId),
-    disabled: categoryId === undefined,
-  })
 
   // Per-row props builder — same shape for SortableItemRow and ItemRow.
   function rowPropsFor(item: ListItemWithGear) {
@@ -211,11 +193,7 @@ export default function CategoryGroup({
 
       {/* Items + footer (footer is the row's "total" line, lined up under Weight) */}
       {!collapsed && (
-        <div
-          id={regionId}
-          ref={droppable.setNodeRef}
-          className={`pl-2 ${droppable.isOver ? 'rounded ring-2 ring-blue-300 ring-inset' : ''}`}
-        >
+        <div id={regionId} className="pl-2">
           {sortable
             ? visibleItems.map((item) => <SortableItemRow key={item.id} {...rowPropsFor(item)} />)
             : visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}
