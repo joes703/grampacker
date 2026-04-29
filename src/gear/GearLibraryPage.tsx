@@ -44,7 +44,7 @@ import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useToggleSet } from '../lib/use-toggle-set'
 import { groupGearItemsByCategory, assignSortOrderSlots } from '../lib/grouping'
-import { SortableCategorySection, StaticCategorySection, parseGearCategoryDroppableId } from './CategorySection'
+import { SortableCategorySection, StaticCategorySection } from './CategorySection'
 import GearItemRow from './GearItemRow'
 import GearItemDialog from './GearItemDialog'
 import CreateListFromSelectionDialog from './CreateListFromSelectionDialog'
@@ -222,68 +222,15 @@ export default function GearLibraryPage() {
   // for the affected category. Optimistic via makeOptimisticReorder on
   // ['gear-items']; the mutationFn fans out per-item updateGearItem calls,
   // so a partial failure can leave the backend in a partially-applied state.
-  // The explicit onSettled below overrides the helper's default to invalidate
-  // both ['gear-items'] AND ['list-items'] (broad), matching what
-  // moveGearAcrossCategoriesMut does — so any view that embeds gear items
-  // refetches the actual backend state on settle.
+  // No ['list-items'] invalidation — list views order by list_items.sort_order
+  // and group by categories.sort_order, and the gear_item join projection
+  // doesn't include sort_order. A change here is invisible to every list
+  // consumer.
   const reorderGearItemsMut = useMutation({
     mutationFn: async (updates: { id: string; sort_order: number }[]) => {
       await Promise.all(updates.map((u) => updateGearItem(u.id, { sort_order: u.sort_order })))
     },
     ...makeOptimisticReorder<GearItem>(qc, queryKeys.gearItems()),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      qc.invalidateQueries({ queryKey: ['list-items'] })
-    },
-  })
-
-  // Cross-category move on the gear library page. Updates gear_items.category_id
-  // for the moved item and renumbers gear_items.sort_order in the destination
-  // so the row lands where the user dropped it. Optimistic on ['gear-items'];
-  // ['list-items'] (broad) is invalidated on settle so any list embedding the
-  // moved gear item refreshes its embedded gear_item.category_id.
-  const moveGearAcrossCategoriesMut = useMutation({
-    mutationFn: async ({
-      movedItemId,
-      newCategoryId,
-      sortUpdates,
-    }: {
-      movedItemId: string
-      newCategoryId: string | null
-      sortUpdates: { id: string; sort_order: number }[]
-    }) => {
-      const movedSort = sortUpdates.find((u) => u.id === movedItemId)
-      await updateGearItem(movedItemId, {
-        category_id: newCategoryId,
-        ...(movedSort ? { sort_order: movedSort.sort_order } : {}),
-      })
-      const others = sortUpdates.filter((u) => u.id !== movedItemId)
-      if (others.length) {
-        await Promise.all(others.map((u) => updateGearItem(u.id, { sort_order: u.sort_order })))
-      }
-    },
-    onMutate: async ({ movedItemId, newCategoryId, sortUpdates }) => {
-      await qc.cancelQueries({ queryKey: queryKeys.gearItems() })
-      const previous = qc.getQueryData<GearItem[]>(queryKeys.gearItems())
-      const sortMap = new Map(sortUpdates.map((u) => [u.id, u.sort_order]))
-      qc.setQueryData<GearItem[]>(queryKeys.gearItems(), (curr) => {
-        if (!curr) return curr
-        return curr.map((g) => {
-          let next = g
-          if (g.id === movedItemId) next = { ...next, category_id: newCategoryId }
-          if (sortMap.has(g.id)) next = { ...next, sort_order: sortMap.get(g.id)! }
-          return next
-        })
-      })
-      return { previous }
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.previous) qc.setQueryData(queryKeys.gearItems(), ctx.previous)
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      qc.invalidateQueries({ queryKey: ['list-items'] })
-    },
   })
 
   function handleDragStart(e: DragStartEvent) {
@@ -294,9 +241,15 @@ export default function GearLibraryPage() {
     setActiveId(null)
   }
 
-  // Single page-level drag handler. Branches on whether active.id is a
-  // category id (run the category reorder flow) or an item id (run the
-  // same-cat sort vs cross-cat move flow).
+  // Single page-level drag handler. Two cases only:
+  //   1. Reorder categories themselves (drag a category up/down).
+  //   2. Reorder items within their existing category.
+  // Cross-category drops are deliberately rejected — recategorizing a gear
+  // item happens exclusively via the item edit modal (or the multi-select
+  // bulk-move toolbar). A drop whose destination differs from the source
+  // category is ignored (item snaps back); the visual auto-shift during
+  // drag still works because items live in a single page-wide
+  // SortableContext.
   function handleDragEnd(e: DragEndEvent) {
     setActiveId(null)
     const { active, over } = e
@@ -307,26 +260,20 @@ export default function GearLibraryPage() {
     const overIdStr = String(over.id)
     const categoryIds = new Set(categories.map((c) => c.id))
 
-    // Category-drag branch.
+    // Case 1 — category reorder.
     if (categoryIds.has(activeIdStr)) {
       const oldIndex = categories.findIndex((c) => c.id === activeIdStr)
       if (oldIndex === -1) return
 
       // Resolve over.id to a target category id. closestCenter picks the
-      // closest droppable, which is often an item row or a category drop
-      // zone rather than the raw category outer-wrapper id — handle all
-      // three shapes here.
+      // closest droppable, which is often an item row rather than the
+      // category outer-wrapper id, so handle both shapes.
       let destCatId: string | null
       if (categoryIds.has(overIdStr)) {
         destCatId = overIdStr
       } else {
-        const parsed = parseGearCategoryDroppableId(overIdStr)
-        if (parsed !== undefined) {
-          destCatId = parsed
-        } else {
-          const overItem = allItems.find((i) => i.id === overIdStr)
-          destCatId = overItem?.category_id ?? null
-        }
+        const overItem = allItems.find((i) => i.id === overIdStr)
+        destCatId = overItem?.category_id ?? null
       }
       // Uncategorised is not a real category row — no reorder target.
       if (destCatId === null) return
@@ -338,58 +285,22 @@ export default function GearLibraryPage() {
       return
     }
 
-    // Item-drag branch.
+    // Case 2 — within-category item reorder. The drop target must be another
+    // item AND in the same category as the dragged item.
     const activeItem = allItems.find((i) => i.id === activeIdStr)
     if (!activeItem) return
+    const overItem = allItems.find((i) => i.id === overIdStr)
+    if (!overItem) return
     const activeCat = activeItem.category_id ?? null
+    const overCat = overItem.category_id ?? null
+    if (overCat !== activeCat) return
 
-    const parsedCat = parseGearCategoryDroppableId(overIdStr)
-    let destCat: string | null
-    let overItemId: string | null = null
-    if (parsedCat !== undefined) {
-      destCat = parsedCat
-    } else {
-      overItemId = overIdStr
-      const overItem = allItems.find((i) => i.id === overItemId)
-      if (!overItem) return
-      destCat = overItem.category_id ?? null
-    }
-
-    if (destCat === activeCat) {
-      // Same-category sort reorder
-      if (!overItemId) return
-      const itemsInCat = allItems.filter((i) => (i.category_id ?? null) === activeCat)
-      const oldIndex = itemsInCat.findIndex((i) => i.id === activeIdStr)
-      const newIndex = itemsInCat.findIndex((i) => i.id === overItemId)
-      if (oldIndex === -1 || newIndex === -1) return
-      const reordered = arrayMove(itemsInCat, oldIndex, newIndex)
-      reorderGearItemsMut.mutate(assignSortOrderSlots(reordered))
-      return
-    }
-
-    // Cross-category drop: insert the moved item into the destination's
-    // ordered list at the drop position, then renumber slot values.
-    const destItems = allItems
-      .filter((i) => (i.category_id ?? null) === destCat && i.id !== activeItem.id)
-      .sort((a, b) => a.sort_order - b.sort_order)
-    let insertIdx: number
-    if (overItemId) {
-      const idx = destItems.findIndex((i) => i.id === overItemId)
-      insertIdx = idx === -1 ? destItems.length : idx
-    } else {
-      insertIdx = destItems.length
-    }
-    const newDestOrder = [
-      ...destItems.slice(0, insertIdx),
-      activeItem,
-      ...destItems.slice(insertIdx),
-    ]
-    const sortUpdates = assignSortOrderSlots(newDestOrder)
-    moveGearAcrossCategoriesMut.mutate({
-      movedItemId: activeItem.id,
-      newCategoryId: destCat,
-      sortUpdates,
-    })
+    const itemsInCat = allItems.filter((i) => (i.category_id ?? null) === activeCat)
+    const oldIndex = itemsInCat.findIndex((i) => i.id === activeIdStr)
+    const newIndex = itemsInCat.findIndex((i) => i.id === overIdStr)
+    if (oldIndex === -1 || newIndex === -1) return
+    const reordered = arrayMove(itemsInCat, oldIndex, newIndex)
+    reorderGearItemsMut.mutate(assignSortOrderSlots(reordered))
   }
 
   // ── Derived data ──────────────────────────────────────────────────────────────

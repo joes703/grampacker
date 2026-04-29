@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react'
-import { useDroppable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { DraggableAttributes } from '@dnd-kit/core'
@@ -7,17 +6,9 @@ import type { SyntheticListenerMap } from '@dnd-kit/core/dist/hooks/utilities'
 import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Plus, Check, X } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
 import type { WeightUnit } from '../lib/weight'
-import { asButtonRef, makeCategoryDroppableId, makeCategoryDroppableParser } from '../lib/dnd'
+import { asButtonRef } from '../lib/dnd'
 import { SortableGearItemRow } from './GearItemRow'
 import RowIconButton from '../components/RowIconButton'
-
-// Droppable id namespace for the gear library page's category drop zones.
-// Distinct prefix from the list view's so debug output stays readable;
-// implementation comes from the shared helper.
-const GEAR_CATEGORY_DROP_PREFIX = 'gear-category-drop:'
-const gearCategoryDroppableId = (categoryId: string | null): string =>
-  makeCategoryDroppableId(GEAR_CATEGORY_DROP_PREFIX, categoryId)
-export const parseGearCategoryDroppableId = makeCategoryDroppableParser(GEAR_CATEGORY_DROP_PREFIX)
 
 type CategorySectionProps = {
   category: Category | null // null = Uncategorised
@@ -84,11 +75,6 @@ function CategorySectionInner(
   // Stable id for the collapsible items region so the chevron button can
   // announce aria-controls.
   const regionId = `gear-cat-region-${category?.id ?? 'uncategorised'}`
-  // Drop target so the page-level onDragEnd can resolve a drop on this
-  // section's body (or its empty-state) to a category id.
-  const droppable = useDroppable({
-    id: gearCategoryDroppableId(category?.id ?? null),
-  })
 
   return (
     <div className="mb-2">
@@ -199,11 +185,7 @@ function CategorySectionInner(
 
       {/* Items */}
       {!collapsed && (
-        <div
-          id={regionId}
-          ref={droppable.setNodeRef}
-          className={`mt-1 pl-2 ${droppable.isOver ? 'rounded ring-2 ring-blue-300 ring-inset' : ''}`}
-        >
+        <div id={regionId} className="mt-1 pl-2">
           {items.length === 0 ? (
             <p className="py-2 px-3 text-sm text-gray-400 italic">No items</p>
           ) : (
