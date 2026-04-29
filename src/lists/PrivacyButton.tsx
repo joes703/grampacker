@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createPortal } from 'react-dom'
 import { Check, Copy, Globe } from 'lucide-react'
 import type { List } from '../lib/types'
 import { queryKeys, updateList } from '../lib/queries'
+import { usePortalPopover } from '../lib/use-portal-popover'
 
 type Props = { list: List }
 
@@ -30,27 +31,12 @@ export default function PrivacyButton({ list }: Props) {
     setPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right })
   }
 
-  useEffect(() => {
-    if (!open) return
-    function handleClick(e: MouseEvent) {
-      const t = e.target as Node
-      if (
-        popoverRef.current && !popoverRef.current.contains(t) &&
-        triggerRef.current && !triggerRef.current.contains(t)
-      ) {
-        setPos(null)
-      }
-    }
-    function handleScroll() { setPos(null) }
-    document.addEventListener('mousedown', handleClick)
-    window.addEventListener('scroll', handleScroll, true)
-    window.addEventListener('resize', handleScroll)
-    return () => {
-      document.removeEventListener('mousedown', handleClick)
-      window.removeEventListener('scroll', handleScroll, true)
-      window.removeEventListener('resize', handleScroll)
-    }
-  }, [open])
+  usePortalPopover({
+    isOpen: open,
+    onClose: () => setPos(null),
+    triggerRef,
+    contentRef: popoverRef,
+  })
 
   const shareUrl = `${window.location.origin}/r/${list.share_token}`
 
