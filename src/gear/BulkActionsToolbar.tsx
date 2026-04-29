@@ -2,6 +2,9 @@ import { ListPlus } from 'lucide-react'
 
 type Props = {
   selectedCount: number
+  /** Total number of selectable items currently in view. Used by the
+   *  Select-all-vs-Select-none affordance to decide which to show. */
+  selectableTotal: number
   onSelectAll: () => void
   onDeselectAll: () => void
   onCreateList: () => void
@@ -9,11 +12,20 @@ type Props = {
   onDelete: () => void
 }
 
-// Fixed bottom toolbar shown in bulk-select mode. The 300-item cap warning
-// matches the per-list limit enforced server-side; the Create-list button is
-// disabled (with tooltip) once that cap is exceeded.
+// Fixed bottom toolbar shown whenever bulk-select mode is on (regardless of
+// selection count). With zero items selected the action buttons render
+// disabled rather than hidden — the user can see the available actions
+// before making a selection. The 300-item cap warning matches the per-list
+// limit enforced server-side; Create list disables once that cap is
+// exceeded.
+//
+// The Select-all / Select-none control is one-at-a-time: it shows "Select
+// none" only when every selectable item is already selected (and there's
+// at least one to select); otherwise "Select all". A partial selection
+// shows "Select all" so clicking it completes the selection.
 export default function BulkActionsToolbar({
   selectedCount,
+  selectableTotal,
   onSelectAll,
   onDeselectAll,
   onCreateList,
@@ -21,6 +33,8 @@ export default function BulkActionsToolbar({
   onDelete,
 }: Props) {
   const overListCap = selectedCount > 300
+  const allSelected = selectableTotal > 0 && selectedCount >= selectableTotal
+  const noneSelected = selectedCount === 0
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white px-4 py-3">
@@ -35,16 +49,23 @@ export default function BulkActionsToolbar({
           {selectedCount} selected
           {overListCap && ' · max 300 per list'}
         </span>
-        <button onClick={onSelectAll} className="text-sm text-blue-600 hover:underline">
-          Select all
-        </button>
-        <button onClick={onDeselectAll} className="text-sm text-gray-500 hover:underline">
-          Deselect all
-        </button>
+        {allSelected ? (
+          <button onClick={onDeselectAll} className="text-sm text-gray-500 hover:underline">
+            Select none
+          </button>
+        ) : (
+          <button
+            onClick={onSelectAll}
+            disabled={selectableTotal === 0}
+            className="text-sm text-blue-600 hover:underline disabled:text-gray-300 disabled:hover:no-underline disabled:cursor-not-allowed"
+          >
+            Select all
+          </button>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={onCreateList}
-            disabled={overListCap}
+            disabled={noneSelected || overListCap}
             title={overListCap ? `Lists can hold at most 300 items (you've selected ${selectedCount})` : undefined}
             className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
           >
@@ -52,13 +73,15 @@ export default function BulkActionsToolbar({
           </button>
           <button
             onClick={onMoveToCategory}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            disabled={noneSelected}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
           >
             Move to category
           </button>
           <button
             onClick={onDelete}
-            className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium tabular-nums text-white hover:bg-red-700"
+            disabled={noneSelected}
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium tabular-nums text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-600"
           >
             Delete ({selectedCount})
           </button>
