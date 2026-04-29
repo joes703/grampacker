@@ -112,20 +112,24 @@ export default function ItemRow({
           item.is_packed ? 'bg-green-50' : 'bg-white'
         }`}
       >
-        <input
-          type="checkbox"
-          checked={item.is_packed}
-          onChange={(e) => onUpdate?.({ is_packed: e.target.checked })}
-          aria-label="Packed"
-          className="h-4 w-4 rounded border-gray-300 text-blue-600 shrink-0"
-        />
-        <span
-          className={`flex-1 min-w-0 truncate font-normal ${
-            item.is_packed ? 'text-gray-400 line-through' : 'text-gray-900'
-          }`}
-        >
-          {name}
-        </span>
+        {/* Wrapping label means clicking/tapping the name toggles packed,
+            and screen readers announce the item name as the checkbox's
+            accessible name (no separate aria-label needed). */}
+        <label className="flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={item.is_packed}
+            onChange={(e) => onUpdate?.({ is_packed: e.target.checked })}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 shrink-0"
+          />
+          <span
+            className={`flex-1 min-w-0 truncate font-normal ${
+              item.is_packed ? 'text-gray-400 line-through' : 'text-gray-900'
+            }`}
+          >
+            {name}
+          </span>
+        </label>
         <span className="shrink-0 w-6 lg:w-7 inline-flex items-center justify-center">
           {item.is_worn && <Shirt size={14} className="text-purple-600" aria-label="Worn" />}
         </span>
@@ -231,6 +235,7 @@ export default function ItemRow({
           <button
             onClick={() => setEditingQty(true)}
             title="Click to edit quantity"
+            aria-label={`Quantity ${item.quantity} for ${name}, click to edit`}
             className="shrink-0 w-12 text-right tabular-nums text-gray-600 hover:text-blue-600"
           >
             {item.quantity}
@@ -259,6 +264,7 @@ export default function ItemRow({
           <button
             onClick={() => setEditingWeight(true)}
             title="Click to edit weight"
+            aria-label={`Weight ${formatItemWeight(itemWeight, weightUnit)} for ${name}, click to edit`}
             className="shrink-0 w-24 text-right tabular-nums text-gray-600 hover:text-blue-600"
           >
             {formatItemWeight(itemWeight, weightUnit)}

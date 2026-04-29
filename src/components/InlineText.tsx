@@ -45,13 +45,17 @@ export default function InlineText({
     )
   }
 
+  // Render as a transparent <button> so the click-to-edit trigger is
+  // keyboard-reachable (Tab + Enter/Space). The button inherits the
+  // surrounding typography via the className passed in by callers.
   return (
-    <span
+    <button
+      type="button"
       onClick={() => setEditing(true)}
       title={title}
-      className={`cursor-text rounded px-1 py-0.5 hover:bg-gray-100 ${className}`}
+      className={`cursor-text rounded bg-transparent px-1 py-0.5 text-left font-[inherit] text-[length:inherit] text-[color:inherit] hover:bg-gray-100 ${className}`}
     >
       {value || <span className="text-gray-400 italic">{placeholder}</span>}
-    </span>
+    </button>
   )
 }

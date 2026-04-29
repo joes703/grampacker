@@ -39,13 +39,22 @@ export default function InlineTitle({ name, onSave }: Props) {
     )
   }
 
+  // Visual is still an <h1> for document outline; the inner element is a
+  // transparent <button> so the rename trigger is keyboard-reachable
+  // (Tab + Enter/Space). Reset styles let the button inherit the heading's
+  // typography exactly. The native focus ring is preserved for keyboard
+  // users via :focus-visible (Tailwind preflight already adds outline:none
+  // for non-keyboard focus).
   return (
-    <h1
-      onClick={() => { setDraft(name); setEditing(true) }}
-      title="Click to rename"
-      className="flex-1 min-w-0 cursor-text truncate rounded px-2 py-0.5 -mx-2 text-xl font-semibold text-gray-900 hover:bg-gray-100"
-    >
-      {name}
+    <h1 className="flex-1 min-w-0 -mx-2">
+      <button
+        type="button"
+        onClick={() => { setDraft(name); setEditing(true) }}
+        title="Click to rename"
+        className="block w-full cursor-text truncate rounded bg-transparent px-2 py-0.5 text-left text-xl font-semibold text-gray-900 hover:bg-gray-100"
+      >
+        {name}
+      </button>
     </h1>
   )
 }

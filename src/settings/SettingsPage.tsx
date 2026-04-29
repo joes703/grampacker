@@ -107,8 +107,9 @@ function ChangePasswordForm() {
   return (
     <form onSubmit={submit} className="space-y-3 max-w-md">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">New password</label>
+        <label htmlFor="cp-new" className="block text-sm font-medium text-gray-700 mb-1">New password</label>
         <input
+          id="cp-new"
           type="password"
           autoComplete="new-password"
           value={password}
@@ -117,8 +118,9 @@ function ChangePasswordForm() {
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Confirm new password</label>
+        <label htmlFor="cp-confirm" className="block text-sm font-medium text-gray-700 mb-1">Confirm new password</label>
         <input
+          id="cp-confirm"
           type="password"
           autoComplete="new-password"
           value={confirm}

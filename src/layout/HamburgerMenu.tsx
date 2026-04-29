@@ -60,7 +60,6 @@ export default function HamburgerMenu() {
         type="button"
         onClick={() => (open ? setMenuPos(null) : openMenu())}
         aria-label="More options"
-        aria-haspopup="menu"
         aria-expanded={open}
         className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
       >
@@ -68,9 +67,11 @@ export default function HamburgerMenu() {
       </button>
 
       {open && menuPos && createPortal(
+        // Plain <div> with semantic <button>/<a> children — dropping role="menu"
+        // because we don't implement arrow-key navigation (WAI-ARIA's menu
+        // pattern requires it). Tab order is sufficient for four items.
         <div
           ref={menuRef}
-          role="menu"
           className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
           style={{ top: menuPos.top, right: menuPos.right }}
         >
@@ -86,7 +87,6 @@ export default function HamburgerMenu() {
           <div className="my-1 border-t border-gray-100" />
           <button
             type="button"
-            role="menuitem"
             onClick={handleSignOut}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
           >
@@ -114,7 +114,6 @@ function MenuLink({
   return (
     <Link
       to={to}
-      role="menuitem"
       onClick={onClick}
       className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
     >

@@ -81,6 +81,9 @@ function CategorySectionInner(
 
   const isUncategorised = category === null
   const name = category?.name ?? 'Uncategorised'
+  // Stable id for the collapsible items region so the chevron button can
+  // announce aria-controls.
+  const regionId = `gear-cat-region-${category?.id ?? 'uncategorised'}`
   // Drop target so the page-level onDragEnd can resolve a drop on this
   // section's body (or its empty-state) to a category id.
   const droppable = useDroppable({
@@ -107,7 +110,13 @@ function CategorySectionInner(
         )}
 
         {/* Collapse toggle */}
-        <button onClick={onToggleCollapse} className="text-gray-500 hover:text-gray-800">
+        <button
+          onClick={onToggleCollapse}
+          aria-expanded={!collapsed}
+          aria-controls={regionId}
+          aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
+          className="text-gray-500 hover:text-gray-800"
+        >
           {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
         </button>
 
@@ -191,6 +200,7 @@ function CategorySectionInner(
       {/* Items */}
       {!collapsed && (
         <div
+          id={regionId}
           ref={droppable.setNodeRef}
           className={`mt-1 pl-2 ${droppable.isOver ? 'rounded ring-2 ring-blue-300 ring-inset' : ''}`}
         >

@@ -61,6 +61,7 @@ export default function PrivacyButton({ list }: Props) {
         type="button"
         onClick={() => (open ? setPos(null) : openPopover())}
         title={list.is_shared ? 'Public — click to manage' : 'Private — click to manage'}
+        aria-label={list.is_shared ? 'Privacy: public — click to manage' : 'Privacy: private — click to manage'}
         aria-pressed={list.is_shared}
         className={`inline-flex items-center justify-center rounded-lg border border-gray-300 p-1.5 hover:bg-gray-50 ${
           list.is_shared ? 'text-blue-600' : 'text-gray-400'
