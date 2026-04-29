@@ -25,11 +25,21 @@ const components: Components = {
     <ol className="mb-3 ml-6 list-decimal space-y-1 text-sm text-gray-700">{children}</ol>
   ),
   li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  a: ({ href, children }) => (
-    <a href={href} className="text-blue-600 hover:underline">
-      {children}
-    </a>
-  ),
+  a: ({ href, children }) => {
+    // Open external (http/https) links in a new tab. rel="noopener noreferrer"
+    // prevents the new tab from accessing window.opener and from leaking the
+    // referrer. Internal/anchor links (mailto:, #foo, /relative) stay in-tab.
+    const isExternal = typeof href === 'string' && /^https?:\/\//i.test(href)
+    return (
+      <a
+        href={href}
+        className="text-blue-600 hover:underline"
+        {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+      >
+        {children}
+      </a>
+    )
+  },
   strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   code: ({ children }) => (

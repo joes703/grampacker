@@ -5,13 +5,19 @@ import {
   DndContext,
   DragOverlay,
   closestCenter,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
 import { ClipboardList, X } from 'lucide-react'
 import { Drawer } from 'vaul'
 import { useAuth } from '../auth/AuthProvider'
@@ -346,7 +352,10 @@ function ListDetailInner({
     },
   })
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
   // Active drag id (item id OR category id). The DragOverlay below uses it to
   // render an item-row clone during item drag; for category drag we render

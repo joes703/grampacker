@@ -77,6 +77,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
                 weightUnit={weightUnit}
                 onAdd={onAdd}
                 onRemove={onRemove}
+                regionId={`library-cat-${category.id}`}
               />
             ))}
             {uncategorised.length > 0 && (
@@ -89,6 +90,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
                 weightUnit={weightUnit}
                 onAdd={onAdd}
                 onRemove={onRemove}
+                regionId="library-cat-uncategorised"
               />
             )}
           </>
@@ -107,6 +109,7 @@ function CategoryGroup({
   weightUnit,
   onAdd,
   onRemove,
+  regionId,
 }: {
   name: string
   items: GearItem[]
@@ -116,12 +119,15 @@ function CategoryGroup({
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
   onRemove: (item: GearItem) => void
+  regionId: string
 }) {
   return (
     <div>
       {/* Category header */}
       <button
         onClick={onToggle}
+        aria-expanded={!collapsed}
+        aria-controls={regionId}
         className="flex w-full items-center gap-1.5 px-3 py-0.5 bg-gray-50 hover:bg-gray-100 text-left border-b border-gray-100"
       >
         {collapsed ? (
@@ -137,7 +143,7 @@ function CategoryGroup({
 
       {/* Items — pure picker rows. Click toggles add/remove on the active list. */}
       {!collapsed && (
-        <div>
+        <div id={regionId}>
           {items.map((item) => {
             const inList = listItemGearIds.has(item.id)
             return (
@@ -146,6 +152,7 @@ function CategoryGroup({
                   type="button"
                   onClick={() => (inList ? onRemove(item) : onAdd(item))}
                   title={inList ? 'Click to remove from list' : 'Click to add to list'}
+                  aria-label={inList ? `Remove ${item.name} from list` : `Add ${item.name} to list`}
                   className="flex w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
                 >
                   {inList && (

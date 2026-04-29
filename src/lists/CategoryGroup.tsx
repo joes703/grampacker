@@ -98,6 +98,10 @@ export default function CategoryGroup({
 }: GroupProps) {
   const [adding, setAdding] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  // Stable id for the collapsible region so the header button can announce
+  // aria-controls. categoryId is always set when collapsible=true (share view
+  // passes collapsible=false and the button isn't rendered there).
+  const regionId = `cat-region-${categoryId ?? 'uncategorised'}`
   const packedCount = items.filter((i) => i.is_packed).length
   const totalGrams = items.reduce((s, i) => s + i.gear_item.weight_grams * i.quantity, 0)
   const showKebabSlot = !packMode && Boolean(onDelete)
@@ -147,6 +151,8 @@ export default function CategoryGroup({
         {collapsible ? (
           <button
             onClick={() => setCollapsed((v) => !v)}
+            aria-expanded={!collapsed}
+            aria-controls={regionId}
             className="flex flex-1 min-w-0 items-center gap-1.5 text-left"
           >
             {collapsed ? (
@@ -206,6 +212,7 @@ export default function CategoryGroup({
       {/* Items + footer (footer is the row's "total" line, lined up under Weight) */}
       {!collapsed && (
         <div
+          id={regionId}
           ref={droppable.setNodeRef}
           className={`pl-2 ${droppable.isOver ? 'rounded ring-2 ring-blue-300 ring-inset' : ''}`}
         >

@@ -57,6 +57,13 @@ export default function Modal({
   }
 
   return (
+    // The click-events-have-key-events / no-noninteractive-element-interactions
+    // rules want a keyboard handler alongside this onClick. The keyboard
+    // equivalent (Esc to close) is provided by the native <dialog> opened via
+    // showModal() — the browser fires the dialog's `cancel`/`close` events,
+    // which feed onClose. Backdrops are not focusable, so adding an
+    // onKeyDown here would be unreachable for keyboard users.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- backdrop click; Esc handled by native <dialog>
     <dialog
       ref={ref}
       aria-label={title}

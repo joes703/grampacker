@@ -64,23 +64,29 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
       className="flex items-center gap-1.5 border-b border-gray-100 bg-blue-50/40 px-3 py-0.5 text-sm"
     >
       <div className="flex-1 min-w-0 flex items-center gap-3">
-        <input
-          autoFocus
-          value={name}
-          placeholder="Item name"
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={handleKey}
-          maxLength={256}
-          className="flex-[2] min-w-0 rounded border border-blue-400 px-1 py-0.5 text-sm font-normal focus:outline-none"
-        />
-        <input
-          value={description}
-          placeholder="Description (optional)"
-          onChange={(e) => setDescription(e.target.value)}
-          onKeyDown={handleKey}
-          maxLength={2000}
-          className="flex-[3] min-w-0 rounded border border-gray-200 px-1 py-0.5 text-sm font-normal focus:outline-none focus:border-blue-400"
-        />
+        <label className="flex-[2] min-w-0">
+          <span className="sr-only">Item name</span>
+          <input
+            autoFocus
+            value={name}
+            placeholder="Item name"
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={handleKey}
+            maxLength={256}
+            className="w-full rounded border border-blue-400 px-1 py-0.5 text-sm font-normal focus:outline-none"
+          />
+        </label>
+        <label className="flex-[3] min-w-0">
+          <span className="sr-only">Description (optional)</span>
+          <input
+            value={description}
+            placeholder="Description (optional)"
+            onChange={(e) => setDescription(e.target.value)}
+            onKeyDown={handleKey}
+            maxLength={2000}
+            className="w-full rounded border border-gray-200 px-1 py-0.5 text-sm font-normal focus:outline-none focus:border-blue-400"
+          />
+        </label>
       </div>
 
       <RowIconButton
@@ -107,12 +113,14 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
         value={quantity}
         onChange={(e) => setQuantity(e.target.value)}
         onKeyDown={handleKey}
+        aria-label="Quantity"
         className="shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
       />
       <WeightInput
         grams={weightGrams}
         onChange={setWeightGrams}
         onKeyDown={handleKey}
+        ariaLabel="Weight"
         className="shrink-0 w-24"
         inputClassName="flex-1 min-w-0 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
       />

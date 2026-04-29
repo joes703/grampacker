@@ -50,6 +50,7 @@ export default function GearItemRow({
           type="checkbox"
           checked={selected}
           onChange={onToggleSelect}
+          aria-label={selected ? `Deselect ${item.name}` : `Select ${item.name}`}
           className="h-4 w-4 rounded border-gray-300 text-blue-600"
         />
       )}

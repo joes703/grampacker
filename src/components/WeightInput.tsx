@@ -25,6 +25,9 @@ type Props = {
   inputClassName?: string
   inputRef?: Ref<HTMLInputElement>
   inputId?: string
+  /** Accessible name for the number input (used when there's no associated
+   *  <label>, e.g. inline edit rows). The unit-toggle button has its own. */
+  ariaLabel?: string
   /** Fires when focus leaves the entire WeightInput (input AND toggle). */
   onBlur?: () => void
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
@@ -42,6 +45,7 @@ export default function WeightInput({
   inputClassName = '',
   inputRef,
   inputId,
+  ariaLabel,
   onBlur,
   onKeyDown,
 }: Props) {
@@ -103,6 +107,7 @@ export default function WeightInput({
         value={draft}
         onChange={handleChange}
         onKeyDown={onKeyDown}
+        aria-label={ariaLabel}
         className={inputClassName}
       />
       <button
