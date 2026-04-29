@@ -14,7 +14,6 @@ export {
   updateCategory,
   deleteCategory,
   reorderCategories,
-  seedDefaultCategories,
 } from './categories'
 export {
   fetchGearItems,
