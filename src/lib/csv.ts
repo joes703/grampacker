@@ -240,6 +240,14 @@ export function parseListCsv(text: string): ListImportRow[] | string {
 
 import type { ListItemWithGear } from './types'
 
+// Strip the .csv extension and any path prefix from a filename, fall back
+// to a generic label if the result is empty. Used to derive a default
+// list name when importing a CSV into a brand-new list.
+export function nameFromCsvFilename(filename: string): string {
+  const base = filename.replace(/^.*[/\\]/, '').replace(/\.csv$/i, '').trim()
+  return base || 'Imported list'
+}
+
 export function listItemsToCsv(items: ListItemWithGear[], categories: Category[]): string {
   const catMap = new Map(categories.map((c) => [c.id, c.name]))
   const rows = items.map((item) => ({
