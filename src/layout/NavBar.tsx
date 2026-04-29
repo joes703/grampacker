@@ -1,10 +1,12 @@
 import { Link, NavLink, useNavigate } from 'react-router'
-import { Backpack, HelpCircle, Info, LogOut, Settings } from 'lucide-react'
+import { Backpack, HelpCircle, Info, LogOut, PanelLeftOpen, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import HamburgerMenu from './HamburgerMenu'
+import { useSidebarDrawer } from './sidebar-drawer-context'
 
 export default function NavBar() {
   const navigate = useNavigate()
+  const { available, setOpen } = useSidebarDrawer()
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -13,7 +15,22 @@ export default function NavBar() {
 
   return (
     <header className="border-b border-gray-200 bg-white">
-      <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 lg:gap-6 px-4">
+        {/* Mobile sidebar trigger — only renders when the active page has
+            registered sidebar content (today: ListDetailPage). On pages
+            without a drawer, this slot collapses and the brand sits at
+            the left edge. Hidden on desktop, where the page renders the
+            equivalent left aside inline. */}
+        {available && (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-label="Open sidebar"
+            className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
+          >
+            <PanelLeftOpen size={20} />
+          </button>
+        )}
         <Link to="/" className="text-lg font-bold text-gray-900 hover:text-gray-700">
           grampacker
         </Link>
