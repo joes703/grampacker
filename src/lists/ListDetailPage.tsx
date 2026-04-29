@@ -12,10 +12,8 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import {
-  BookOpen,
-  ClipboardList,
-} from 'lucide-react'
+import { ClipboardList, X } from 'lucide-react'
+import { Drawer } from 'vaul'
 import { useAuth } from '../auth/AuthProvider'
 import {
   queryKeys,
@@ -48,7 +46,6 @@ import { useWeightUnit } from '../lib/use-weight-unit'
 import { assignSortOrderSlots, groupListItemsByCategory } from '../lib/grouping'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
-import LibrarySheet from './LibrarySheet'
 import ListsBox from './ListsBox'
 import ListsEmptyState from './ListsEmptyState'
 import PackingProgress from './PackingProgress'
@@ -65,6 +62,7 @@ import GearItemDialog from '../gear/GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 import { useDocumentTitle } from '../lib/use-document-title'
+import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
 
 type Mode = 'edit' | 'pack'
 
@@ -154,7 +152,11 @@ function ListDetailInner({
   // is per-instance (resets on list switch via key=routeId) and pack-mode
   // only; edit mode ignores it.
   const [groupWorn, setGroupWorn] = useState(false)
-  const [sheetOpen, setSheetOpen] = useState(false)
+  // Mobile sidebar drawer — open/setOpen are owned by SidebarDrawerContext
+  // so the trigger button in NavBar (a sibling subtree under AppShell) can
+  // toggle the same state. The hook also sets `available` so NavBar knows
+  // to render the trigger only on this page.
+  const { open: drawerOpen, setOpen: setDrawerOpen } = useRegisterSidebarDrawer()
   const [importPreview, setImportPreview] = useState<ListImportRow[] | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [confirmDeleteList, setConfirmDeleteList] = useState<List | null>(null)
@@ -713,16 +715,6 @@ function ListDetailInner({
 
         {/* RIGHT column — weight table + items (always visible; packing checkbox column appears in pack mode) */}
         <div className="flex-1 min-w-0 space-y-4">
-          {/* Mobile: Add from library button */}
-          <div className="lg:hidden">
-            <button
-              onClick={() => setSheetOpen(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
-            >
-              <BookOpen size={14} /> Add from library
-            </button>
-          </div>
-
           {/* Pack-mode progress bar */}
           {mode === 'pack' && listItems.length > 0 && (
             <PackingProgress
@@ -845,20 +837,91 @@ function ListDetailInner({
         </div>
       </div>
 
-      {/* Mobile sheet */}
-      <LibrarySheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        gearItems={gearItems}
-        categories={categories}
-        listItemGearIds={listItemGearIds}
-        weightUnit={weightUnit}
-        onAdd={(item) => addMut.mutate(item)}
-        onRemove={(item) => {
-          const li = listItems.find((l) => l.gear_item_id === item.id)
-          if (li) deleteMut.mutate(li.id)
-        }}
-      />
+      {/* Mobile sidebar drawer — mirrors the desktop left aside. Slides
+          in from the LEFT, dismissed by overlay tap, the close button,
+          or a left-drag. Stays open across multiple add/remove actions
+          on the gear picker so the user can build up a list quickly;
+          only list selection auto-closes (then immediately navigates).
+          The flex chain inside Drawer.Content uses min-h-0 on each
+          flex-1 wrapper so LibraryPanel's inner overflow-y-auto can
+          engage; otherwise the panel grows to its content height and
+          the bounded drawer never delegates scroll to the inner list. */}
+      <Drawer.Root open={drawerOpen} onOpenChange={setDrawerOpen} direction="left">
+        <Drawer.Portal>
+          <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40 lg:hidden" />
+          <Drawer.Content className="fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-sm flex-col bg-gray-50 lg:hidden">
+            <Drawer.Title className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
+              <span className="text-sm font-semibold text-gray-900">Lists & gear</span>
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(false)}
+                aria-label="Close sidebar"
+                className="rounded p-1 text-gray-400 hover:text-gray-600"
+              >
+                <X size={18} />
+              </button>
+            </Drawer.Title>
+            <div className="flex-1 min-h-0 flex flex-col gap-4 p-4 overflow-hidden">
+              <ListsBox
+                lists={lists}
+                activeId={list.id}
+                creating={creatingList}
+                newDraft={newListDraft}
+                onNewDraftChange={setNewListDraft}
+                onStartNew={() => setCreatingList(true)}
+                onSubmitNew={() => {
+                  const trimmed = newListDraft.trim()
+                  if (trimmed) createListMut.mutate(trimmed)
+                  else { setCreatingList(false); setNewListDraft('') }
+                }}
+                onCancelNew={() => { setCreatingList(false); setNewListDraft('') }}
+                onSelect={(l) => {
+                  setDrawerOpen(false)
+                  navigate(`/lists/${l.id}`)
+                }}
+                onRename={(l, name) => renameMut.mutate({ id: l.id, name })}
+                onImport={(l) => {
+                  if (l.id === list.id) openImportPicker()
+                  else { setPendingImportId(l.id); navigate(`/lists/${l.id}`) }
+                }}
+                onExport={async (l) => {
+                  const items = await qc.fetchQuery({
+                    queryKey: queryKeys.listItems(l.id),
+                    queryFn: () => fetchListItems(l.id),
+                  })
+                  const csv = listItemsToCsv(items as ListItemWithGear[], categories)
+                  downloadCsv(`${l.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`, csv)
+                }}
+                onDuplicate={(l) => duplicateMut.mutate(l)}
+                onDelete={(l) => setConfirmDeleteList(l)}
+                onReorder={(orderedIds) => {
+                  reorderListsMut.mutate(orderedIds.map((id, i) => ({ id, sort_order: i })))
+                }}
+              />
+              <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
+                <div className="flex items-center px-3 py-2 border-b border-gray-200 bg-gray-50">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Gear library
+                  </span>
+                </div>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <LibraryPanel
+                    gearItems={gearItems}
+                    categories={categories}
+                    listItemGearIds={listItemGearIds}
+                    weightUnit={weightUnit}
+                    onAdd={(item) => addMut.mutate(item)}
+                    onRemove={(item) => {
+                      const li = listItems.find((l) => l.gear_item_id === item.id)
+                      if (li) deleteMut.mutate(li.id)
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </Drawer.Content>
+        </Drawer.Portal>
+      </Drawer.Root>
 
       {/* Import error */}
       {importError && (
