@@ -11,6 +11,23 @@ export const queryKeys = {
   listItems: (listId: string) => ['list-items', listId] as const,
 }
 
+// ── Bulk helpers ──────────────────────────────────────────────────────────────
+
+// Single-round-trip sort_order rewrite for any reorder flow. Uses upsert with
+// onConflict: 'id' so every row in `updates` hits the UPDATE path (every id
+// already exists in the table — we never insert here). Empty updates list is a
+// no-op so callers don't have to guard.
+type ReorderableTable = 'lists' | 'list_items' | 'categories' | 'gear_items'
+
+export async function bulkUpdateSortOrder(
+  table: ReorderableTable,
+  updates: { id: string; sort_order: number }[],
+): Promise<void> {
+  if (updates.length === 0) return
+  const { error } = await supabase.from(table).upsert(updates, { onConflict: 'id' })
+  if (error) throw error
+}
+
 // ── Fetchers ──────────────────────────────────────────────────────────────────
 
 export async function fetchCategories(): Promise<Category[]> {
@@ -61,7 +78,7 @@ export async function deleteCategory(id: string): Promise<void> {
 }
 
 export async function reorderCategories(updates: { id: string; sort_order: number }[]): Promise<void> {
-  await Promise.all(updates.map(({ id, sort_order }) => updateCategory(id, { sort_order })))
+  await bulkUpdateSortOrder('categories', updates)
 }
 
 // ── Gear item mutations ───────────────────────────────────────────────────────
@@ -126,6 +143,22 @@ export async function fetchListItems(listId: string): Promise<ListItemWithGear[]
     .from('list_items')
     .select('*, gear_item:gear_items(id, name, description, weight_grams, category_id)')
     .eq('list_id', listId)
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data as ListItemWithGear[]
+}
+
+// Every list_item across every list owned by this user, in one round-trip.
+// Used by Settings → Download all data to avoid an N+1 fetch loop. RLS already
+// scopes to the caller's lists, but the explicit `.eq('list.user_id', userId)`
+// keeps export correctness independent of policy state.
+export async function fetchAllUserListItems(userId: string): Promise<ListItemWithGear[]> {
+  const { data, error } = await supabase
+    .from('list_items')
+    .select(
+      '*, gear_item:gear_items(id, name, description, weight_grams, category_id), list:lists!inner(user_id)',
+    )
+    .eq('list.user_id', userId)
     .order('sort_order', { ascending: true })
   if (error) throw error
   return data as ListItemWithGear[]
@@ -203,7 +236,7 @@ export async function deleteList(id: string): Promise<void> {
 }
 
 export async function reorderLists(updates: { id: string; sort_order: number }[]): Promise<void> {
-  await Promise.all(updates.map(({ id, sort_order }) => updateList(id, { sort_order })))
+  await bulkUpdateSortOrder('lists', updates)
 }
 
 // Create a new list and immediately populate it with the given gear items.
@@ -305,7 +338,18 @@ export async function deleteListItem(id: string): Promise<void> {
 }
 
 export async function reorderListItems(updates: { id: string; sort_order: number }[]): Promise<void> {
-  await Promise.all(updates.map(({ id, sort_order }) => updateListItem(id, { sort_order })))
+  await bulkUpdateSortOrder('list_items', updates)
+}
+
+// Clear is_packed on every packed item in this list in a single round-trip,
+// gated by `is_packed = true` so we touch only rows that need updating.
+export async function resetPackedForList(listId: string): Promise<void> {
+  const { error } = await supabase
+    .from('list_items')
+    .update({ is_packed: false })
+    .eq('list_id', listId)
+    .eq('is_packed', true)
+  if (error) throw error
 }
 
 // ── CSV list import ───────────────────────────────────────────────────────────
