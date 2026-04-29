@@ -10,11 +10,12 @@ function escapeCell(v: string | number | boolean | null | undefined): string {
 }
 
 export function toCsv(rows: Record<string, string | number | boolean | null | undefined>[]): string {
-  if (rows.length === 0) return ''
-  const headers = Object.keys(rows[0])
+  const [first, ...rest] = rows
+  if (!first) return ''
+  const headers = Object.keys(first)
   const lines = [
     headers.map(escapeCell).join(','),
-    ...rows.map((row) => headers.map((h) => escapeCell(row[h])).join(',')),
+    ...[first, ...rest].map((row) => headers.map((h) => escapeCell(row[h])).join(',')),
   ]
   return lines.join('\r\n')
 }
@@ -33,15 +34,15 @@ export function downloadCsv(filename: string, content: string): void {
 
 // Minimal RFC-4180-compliant CSV parser (no external dependency).
 export function parseCsv(text: string): Record<string, string>[] {
-  const lines = splitLines(text)
-  if (lines.length < 2) return []
+  const [headerLine, ...dataLines] = splitLines(text)
+  if (!headerLine || dataLines.length === 0) return []
 
-  const headers = parseRow(lines[0]).map((h) => h.trim().toLowerCase())
+  const headers = parseRow(headerLine).map((h) => h.trim().toLowerCase())
   const result: Record<string, string>[] = []
 
-  for (let i = 1; i < lines.length; i++) {
-    if (!lines[i].trim()) continue
-    const cells = parseRow(lines[i])
+  for (const line of dataLines) {
+    if (!line.trim()) continue
+    const cells = parseRow(line)
     const row: Record<string, string> = {}
     headers.forEach((h, j) => {
       row[h] = (cells[j] ?? '').trim()
@@ -145,9 +146,9 @@ function toGrams(value: string, unit: string): number {
 //   Item Name, Category, desc, qty, weight, unit, url, price, worn, consumable
 export function parseGearCsv(text: string): GearCsvRow[] | string {
   const rows = parseCsv(text)
-  if (rows.length === 0) return 'File appears empty or has no data rows.'
+  const [sample] = rows
+  if (!sample) return 'File appears empty or has no data rows.'
 
-  const sample = rows[0]
   const keys = Object.keys(sample)
 
   // Resolve column names (case-insensitive, support aliases)
@@ -195,9 +196,9 @@ function toBool(v: string | undefined): boolean {
 // Also accepts our own list export format.
 export function parseListCsv(text: string): ListImportRow[] | string {
   const rows = parseCsv(text)
-  if (rows.length === 0) return 'File appears empty or has no data rows.'
+  const [sample] = rows
+  if (!sample) return 'File appears empty or has no data rows.'
 
-  const sample = rows[0]
   const keys = Object.keys(sample)
 
   const nameKey     = keys.find((k) => k === 'name' || k === 'item name')

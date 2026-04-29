@@ -5,6 +5,12 @@ dist
 .env.*.local
 *.tsbuildinfo
 
+# OS / editor cruft
+.DS_Store
+.cursor/
+.vscode/
+.idea/
+
 # Claude Code project-level tooling config (per-clone, not shared)
 /.claude/
 

@@ -284,16 +284,27 @@ export async function duplicateList(source: List, userId: string, sortOrder: num
 
   if (items.length > 0) {
     // Copy only the user-editable fields onto the new list. id / list_id /
-    // created_at / updated_at are owned by the database.
-    const copies = (items as ListItem[]).map((item) => ({
-      list_id: newList.id,
-      gear_item_id: item.gear_item_id,
-      quantity: item.quantity,
-      is_worn: item.is_worn,
-      is_consumable: item.is_consumable,
-      is_packed: item.is_packed,
-      sort_order: item.sort_order,
-    }))
+    // created_at / updated_at are owned by the database. Destructure with
+    // an inline ListItem annotation so the supabase row type lines up
+    // without a whole-array cast.
+    const copies = items.map(
+      ({
+        gear_item_id,
+        quantity,
+        is_worn,
+        is_consumable,
+        is_packed,
+        sort_order,
+      }: ListItem) => ({
+        list_id: newList.id,
+        gear_item_id,
+        quantity,
+        is_worn,
+        is_consumable,
+        is_packed,
+        sort_order,
+      }),
+    )
     const { error: insertErr } = await supabase.from('list_items').insert(copies)
     if (insertErr) throw insertErr
   }
@@ -376,19 +387,18 @@ export async function importCsvRowsToList(
   // 2. Resolve/create gear items (match by name, case-insensitive). We only
   // need each gear's id downstream — track that, not the whole row, so the
   // freshly-inserted partial selects don't have to be cast to a full GearItem.
-  type NewGearRow = {
+  const gearIdByName = new Map<string, string>(
+    existingGearItems.map((g) => [g.name.toLowerCase(), g.id]),
+  )
+
+  const newGearRows: {
     user_id: string
     name: string
     description: string | null
     weight_grams: number
     category_id: string | null
     sort_order: number
-  }
-  const gearIdByName = new Map<string, string>(
-    existingGearItems.map((g) => [g.name.toLowerCase(), g.id]),
-  )
-
-  const newGearRows: NewGearRow[] = []
+  }[] = []
   for (const row of rows) {
     if (!gearIdByName.has(row.name.toLowerCase())) {
       const categoryId = row.category.trim() ? (catByName.get(row.category.trim().toLowerCase()) ?? null) : null

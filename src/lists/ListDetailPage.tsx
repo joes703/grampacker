@@ -336,8 +336,8 @@ function ListDetailInner({
     onSuccess: async (_data, deletedId) => {
       await qc.invalidateQueries({ queryKey: queryKeys.lists() })
       // Switch to the next list (most recent remaining), or empty state
-      const remaining = listsByRecent.filter((l) => l.id !== deletedId)
-      if (remaining.length > 0) navigate(`/lists/${remaining[0].id}`, { replace: true })
+      const [next] = listsByRecent.filter((l) => l.id !== deletedId)
+      if (next) navigate(`/lists/${next.id}`, { replace: true })
       else navigate('/lists', { replace: true })
     },
   })
@@ -723,7 +723,7 @@ function ListDetailInner({
                   queryKey: queryKeys.listItems(l.id),
                   queryFn: () => fetchListItems(l.id),
                 })
-                const csv = listItemsToCsv(items as ListItemWithGear[], categories)
+                const csv = listItemsToCsv(items, categories)
                 downloadCsv(`${l.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`, csv)
               }}
               onDuplicate={(l) => duplicateMut.mutate(l)}
@@ -783,7 +783,7 @@ function ListDetailInner({
             </PanelCard>
             {listItems.length > 0 && (
               <PanelCard title="Weight summary">
-                <WeightTable items={listItems as ListItemWithGear[]} categories={categories} />
+                <WeightTable items={listItems} categories={categories} />
               </PanelCard>
             )}
           </div>
@@ -933,7 +933,7 @@ function ListDetailInner({
                     queryKey: queryKeys.listItems(l.id),
                     queryFn: () => fetchListItems(l.id),
                   })
-                  const csv = listItemsToCsv(items as ListItemWithGear[], categories)
+                  const csv = listItemsToCsv(items, categories)
                   downloadCsv(`${l.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`, csv)
                 }}
                 onDuplicate={(l) => duplicateMut.mutate(l)}

@@ -27,7 +27,11 @@ export function gramsToLbOzParts(grams: number): { lb: number; oz: number } {
 }
 
 export function getWeightUnit(): WeightUnit {
-  return (localStorage.getItem('weightUnit') as WeightUnit) ?? 'g'
+  // localStorage is a trust boundary — anything could be in there. Validate
+  // explicitly and fall back to the default for null, missing, or any
+  // unexpected string.
+  const raw = localStorage.getItem('weightUnit')
+  return raw === 'g' || raw === 'oz' ? raw : 'g'
 }
 
 export function setWeightUnit(unit: WeightUnit): void {
