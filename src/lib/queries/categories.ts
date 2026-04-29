@@ -53,20 +53,3 @@ export async function deleteCategory(id: string): Promise<void> {
 export async function reorderCategories(updates: { id: string; sort_order: number }[]): Promise<void> {
   await bulkUpdateSortOrder('categories', updates)
 }
-
-// ── Default categories ────────────────────────────────────────────────────────
-
-const DEFAULT_CATEGORY_NAMES = [
-  'Pack', 'Shelter', 'Sleep', 'Kitchen', 'Water', 'Clothing', 'Hygiene',
-]
-
-export async function seedDefaultCategories(userId: string): Promise<void> {
-  const rows = DEFAULT_CATEGORY_NAMES.map((name, i) => ({
-    user_id: userId,
-    name,
-    sort_order: i,
-    is_default: true,
-  }))
-  const { error } = await supabase.from('categories').insert(rows)
-  if (error) throw error
-}

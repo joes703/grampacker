@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
-import { seedDefaultCategories } from '../lib/queries'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useAuth } from './AuthProvider'
 
@@ -29,15 +28,11 @@ export default function SignupPage() {
     }
 
     setLoading(true)
-    const { data, error: signUpError } = await supabase.auth.signUp({ email, password })
+    const { error: signUpError } = await supabase.auth.signUp({ email, password })
     if (signUpError) {
       setError('Registration could not be completed. Please try different details.')
       setLoading(false)
       return
-    }
-
-    if (data.user) {
-      await seedDefaultCategories(data.user.id)
     }
 
     setLoading(false)
