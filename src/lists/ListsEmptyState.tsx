@@ -11,6 +11,7 @@ export default function ListsEmptyState() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [name, setName] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   const createMut = useMutation({
     mutationFn: (n: string) => createList(userId, n, 0),
@@ -18,11 +19,15 @@ export default function ListsEmptyState() {
       qc.invalidateQueries({ queryKey: queryKeys.lists() })
       navigate(`/lists/${list.id}`)
     },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Could not create list. Try again.')
+    },
   })
 
   function submit() {
     const trimmed = name.trim()
     if (!trimmed || createMut.isPending) return
+    setError(null)
     createMut.mutate(trimmed)
   }
 
@@ -51,6 +56,7 @@ export default function ListsEmptyState() {
             <Plus size={14} /> Create
           </button>
         </div>
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </div>
     </div>
   )
