@@ -16,12 +16,12 @@ export function groupListItemsByCategory(
   const groups: CategoryGroup<ListItemWithGear>[] = sortedCats
     .map((cat) => ({
       category: cat as Category | null,
-      items: items.filter((i) => i.gear_item?.category_id === cat.id),
+      items: items.filter((i) => i.gear_item.category_id === cat.id),
     }))
     .filter((g) => g.items.length > 0)
 
   const uncategorised = items.filter(
-    (i) => !i.gear_item || i.gear_item.category_id === null || !catMap.has(i.gear_item.category_id),
+    (i) => i.gear_item.category_id === null || !catMap.has(i.gear_item.category_id),
   )
   if (uncategorised.length > 0) groups.push({ category: null, items: uncategorised })
 

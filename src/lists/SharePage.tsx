@@ -27,7 +27,7 @@ export default function SharePage() {
 
   // Fetch only the categories actually referenced by this list's items.
   const categoryIds = [...new Set(
-    items.map((i) => i.gear_item?.category_id ?? null).filter((c): c is string => c !== null),
+    items.map((i) => i.gear_item.category_id).filter((c): c is string => c !== null),
   )]
 
   const { data: categories = [] } = useQuery({
@@ -63,12 +63,12 @@ export default function SharePage() {
   const grouped: Group[] = sortedCats
     .map((cat) => ({
       category: cat,
-      items: items.filter((i) => i.gear_item?.category_id === cat.id),
+      items: items.filter((i) => i.gear_item.category_id === cat.id),
     }))
     .filter((g) => g.items.length > 0)
 
   const uncategorisedItems = items.filter(
-    (i) => !i.gear_item || i.gear_item.category_id === null || !catMap.has(i.gear_item.category_id),
+    (i) => i.gear_item.category_id === null || !catMap.has(i.gear_item.category_id),
   )
   if (uncategorisedItems.length > 0) grouped.push({ category: null, items: uncategorisedItems })
 

@@ -279,8 +279,8 @@ function ListDetailInner({
   })
 
   // Delete a gear item entirely (from the gear library and every list that uses it).
-  // gear_items.id is referenced by list_items with ON DELETE SET NULL on gear_item_id,
-  // so existing list_items survive but render as "(deleted item)" until removed.
+  // gear_items.id is referenced by list_items with ON DELETE CASCADE on gear_item_id,
+  // so deleting a gear item also removes every list_item that references it.
   const deleteGearItemMut = useMutation({
     mutationFn: (id: string) => deleteGearItem(id),
     onSuccess: () => {
@@ -374,8 +374,8 @@ function ListDetailInner({
         if (!curr) return curr
         return curr.map((li) => {
           let next = li
-          if (li.gear_item?.id === movedItemId) {
-            next = { ...next, gear_item: { ...next.gear_item!, category_id: newCategoryId } }
+          if (li.gear_item.id === movedItemId) {
+            next = { ...next, gear_item: { ...next.gear_item, category_id: newCategoryId } }
           }
           if (sortMap.has(li.id)) next = { ...next, sort_order: sortMap.get(li.id)! }
           return next
@@ -442,7 +442,7 @@ function ListDetailInner({
           destCatId = parsed
         } else {
           const overItem = listItems.find((i) => i.id === overIdStr)
-          destCatId = overItem?.gear_item?.category_id ?? null
+          destCatId = overItem?.gear_item.category_id ?? null
         }
       }
       // Uncategorised is not a real category row — no reorder target.
@@ -457,8 +457,8 @@ function ListDetailInner({
 
     // Item-drag branch.
     const activeItem = listItems.find((i) => i.id === activeIdStr)
-    if (!activeItem || !activeItem.gear_item) return
-    const activeCat = activeItem.gear_item.category_id ?? null
+    if (!activeItem) return
+    const activeCat = activeItem.gear_item.category_id
     const movedItemId = activeItem.gear_item.id
 
     const parsedCat = parseCategoryDroppableId(overIdStr)
@@ -470,14 +470,14 @@ function ListDetailInner({
       overItemId = overIdStr
       const overItem = listItems.find((i) => i.id === overItemId)
       if (!overItem) return
-      destCat = overItem.gear_item?.category_id ?? null
+      destCat = overItem.gear_item.category_id
     }
 
     if (destCat === activeCat) {
       // Same-category sort reorder
       if (!overItemId) return
       const itemsInCat = listItems.filter(
-        (i) => (i.gear_item?.category_id ?? null) === activeCat,
+        (i) => i.gear_item.category_id === activeCat,
       )
       const oldIndex = itemsInCat.findIndex((i) => i.id === activeIdStr)
       const newIndex = itemsInCat.findIndex((i) => i.id === overItemId)
@@ -493,7 +493,7 @@ function ListDetailInner({
     // returns sorted, but the previous optimistic update may have left the
     // cache out of order, so we can't rely on filter preserving sort_order.
     const destItems = listItems
-      .filter((i) => (i.gear_item?.category_id ?? null) === destCat && i.id !== activeItem.id)
+      .filter((i) => i.gear_item.category_id === destCat && i.id !== activeItem.id)
       .sort((a, b) => a.sort_order - b.sort_order)
     let insertIdx: number
     if (overItemId) {
@@ -521,9 +521,7 @@ function ListDetailInner({
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
-  const listItemGearIds = new Set(
-    listItems.filter((i) => i.gear_item_id !== null).map((i) => i.gear_item_id as string),
-  )
+  const listItemGearIds = new Set(listItems.map((i) => i.gear_item_id))
 
   const grouped = groupListItemsByCategory(listItems, categories)
 
@@ -563,7 +561,7 @@ function ListDetailInner({
         updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } }),
       onEditGearItem: (gearId: string) => {
         const g = gearItems.find((x) => x.id === gearId)
-        const li = listItems.find((l) => l.gear_item?.id === gearId)
+        const li = listItems.find((l) => l.gear_item.id === gearId)
         if (g) {
           setEditingGearItem(g)
           setEditingListItem(li ?? null)
@@ -1034,8 +1032,8 @@ function ListDetailInner({
       )}
 
       {/* Delete-from-inventory confirm (reached from the kebab). Removes the
-          gear item from the library; list_items survive as "(deleted item)"
-          due to ON DELETE SET NULL on gear_item_id. */}
+          gear item from the library and cascades to every list_item that
+          references it (ON DELETE CASCADE on gear_item_id). */}
       {deleteGearCandidate && (
         <ConfirmDialog
           title="Delete from inventory"

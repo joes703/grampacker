@@ -242,14 +242,14 @@ import type { ListItemWithGear } from './types'
 export function listItemsToCsv(items: ListItemWithGear[], categories: Category[]): string {
   const catMap = new Map(categories.map((c) => [c.id, c.name]))
   const rows = items.map((item) => ({
-    name: item.gear_item?.name ?? '(deleted item)',
-    description: item.gear_item?.description ?? '',
-    weight_grams: item.gear_item?.weight_grams ?? 0,
+    name: item.gear_item.name,
+    description: item.gear_item.description ?? '',
+    weight_grams: item.gear_item.weight_grams,
     quantity: item.quantity,
     worn: item.is_worn ? 'yes' : 'no',
     consumable: item.is_consumable ? 'yes' : 'no',
     packed: item.is_packed ? 'yes' : 'no',
-    category: item.gear_item?.category_id ? (catMap.get(item.gear_item.category_id) ?? '') : '',
+    category: item.gear_item.category_id ? (catMap.get(item.gear_item.category_id) ?? '') : '',
   }))
   return toCsv(rows)
 }

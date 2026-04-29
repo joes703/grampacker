@@ -23,13 +23,13 @@ export default function WeightTable({ items, categories }: Props) {
   let wornGrams = 0
 
   for (const item of items) {
-    const w = (item.gear_item?.weight_grams ?? 0) * item.quantity
+    const w = item.gear_item.weight_grams * item.quantity
     if (item.is_consumable) {
       consumableGrams += w
     } else if (item.is_worn) {
       wornGrams += w
     } else {
-      const key = item.gear_item?.category_id ?? null
+      const key = item.gear_item.category_id
       basePerCat.set(key, (basePerCat.get(key) ?? 0) + w)
     }
   }
