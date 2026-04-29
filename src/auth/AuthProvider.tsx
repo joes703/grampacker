@@ -14,18 +14,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setLoading(false)
-    })
+    let ignored = false
+
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        if (ignored) return
+        setSession(session)
+        setLoading(false)
+      })
+      .catch(() => {
+        if (ignored) return
+        setLoading(false)
+      })
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (ignored) return
       setSession(session)
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      ignored = true
+      subscription.unsubscribe()
+    }
   }, [])
 
   return <AuthContext.Provider value={{ session, loading }}>{children}</AuthContext.Provider>
