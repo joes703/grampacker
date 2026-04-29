@@ -61,7 +61,7 @@ export default function ItemRow({
   outerRef,
   outerStyle,
 }: Props) {
-  const itemWeight = item.gear_item?.weight_grams ?? 0
+  const itemWeight = item.gear_item.weight_grams
   const [editingWeight, setEditingWeight] = useState(false)
   const [weightDraftGrams, setWeightDraftGrams] = useState(itemWeight)
   const weightInputRef = useRef<HTMLInputElement>(null)
@@ -93,8 +93,8 @@ export default function ItemRow({
     setEditingQty(false)
   }
 
-  const name = item.gear_item?.name ?? '(deleted item)'
-  const description = item.gear_item?.description ?? ''
+  const name = item.gear_item.name
+  const description = item.gear_item.description ?? ''
   const editable = Boolean(onUpdate)
   const showKebab = Boolean(onDelete)
 
@@ -161,10 +161,8 @@ export default function ItemRow({
                 onSave={onSaveName}
                 className="block w-full truncate font-normal text-gray-900"
               />
-            ) : item.gear_item ? (
-              <span className="block w-full truncate font-normal text-gray-900">{name}</span>
             ) : (
-              <span className="block w-full truncate font-normal text-gray-400 italic">{name}</span>
+              <span className="block w-full truncate font-normal text-gray-900">{name}</span>
             )}
           </div>
           <div className="flex-[3] min-w-0">
@@ -286,8 +284,8 @@ export default function ItemRow({
       {/* Mobile branch (< lg) — name + single worn/consumable slot + qty +
           weight, rendered as static spans. Description and kebab are
           intentionally dropped: editing happens in the modal that opens on
-          row tap. Read-only rows (share view, deleted-item placeholders)
-          render as a non-interactive div instead of a button. */}
+          row tap. Read-only rows (share view) render as a non-interactive
+          div instead of a button. */}
       <div className="lg:hidden flex flex-1 items-center gap-1">
         <MobileRowBody
           item={item}
@@ -317,15 +315,11 @@ function MobileRowBody({
   weightUnit: WeightUnit
   onTap?: () => void
 }) {
-  const itemWeight = item.gear_item?.weight_grams ?? 0
+  const itemWeight = item.gear_item.weight_grams
   const cells = (
     <>
       <div className="flex-1 min-w-0">
-        {item.gear_item ? (
-          <span className="block w-full truncate font-normal text-gray-900">{name}</span>
-        ) : (
-          <span className="block w-full truncate font-normal text-gray-400 italic">{name}</span>
-        )}
+        <span className="block w-full truncate font-normal text-gray-900">{name}</span>
       </div>
       {/* Single worn/consumable indicator slot */}
       <span className="shrink-0 w-6 inline-flex items-center justify-center">
@@ -402,10 +396,10 @@ export function SortableItemRow(props: Omit<Props, 'dragHandle' | 'outerRef' | '
 }
 
 // Kebab popover — three-dot button + portal-rendered menu. Items: Remove
-// from list (always), Edit and Delete from inventory (only when there's a
-// backing gear_item to act on; "(deleted item)" rows show only Remove).
-// Each ItemRow owns its own popover state so multiple kebabs can't
-// open at once and click-outside closes only the relevant menu.
+// from list (always), Edit and Delete from inventory (only when those
+// handlers are passed). Each ItemRow owns its own popover state so
+// multiple kebabs can't open at once and click-outside closes only the
+// relevant menu.
 function RowKebab({
   onRemoveFromList,
   onEdit,

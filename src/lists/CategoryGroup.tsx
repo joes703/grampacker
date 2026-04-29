@@ -99,7 +99,7 @@ export default function CategoryGroup({
   const [adding, setAdding] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const packedCount = items.filter((i) => i.is_packed).length
-  const totalGrams = items.reduce((s, i) => s + (i.gear_item?.weight_grams ?? 0) * i.quantity, 0)
+  const totalGrams = items.reduce((s, i) => s + i.gear_item.weight_grams * i.quantity, 0)
   const showKebabSlot = !packMode && Boolean(onDelete)
   // "Complete" = pack mode, has items, every item packed. The header still
   // renders so the user can orient even when items are filtered out.
@@ -120,17 +120,17 @@ export default function CategoryGroup({
 
   // Per-row props builder — same shape for SortableItemRow and ItemRow.
   function rowPropsFor(item: ListItemWithGear) {
-    const gearId = item.gear_item?.id
+    const gearId = item.gear_item.id
     return {
       item,
       weightUnit,
       packMode,
       onUpdate: onUpdate ? (patch: ListItemPatch) => onUpdate(item.id, patch) : undefined,
-      onSaveName: gearId && onSaveGearName ? (n: string) => onSaveGearName(gearId, n) : undefined,
-      onSaveDescription: gearId && onSaveGearDescription ? (d: string) => onSaveGearDescription(gearId, d) : undefined,
-      onSaveWeight: gearId && onSaveGearWeight ? (w: number) => onSaveGearWeight(gearId, w) : undefined,
-      onEditGearItem: gearId && onEditGearItem ? () => onEditGearItem(gearId) : undefined,
-      onDeleteGearItem: gearId && onDeleteGearItem ? () => onDeleteGearItem(gearId) : undefined,
+      onSaveName: onSaveGearName ? (n: string) => onSaveGearName(gearId, n) : undefined,
+      onSaveDescription: onSaveGearDescription ? (d: string) => onSaveGearDescription(gearId, d) : undefined,
+      onSaveWeight: onSaveGearWeight ? (w: number) => onSaveGearWeight(gearId, w) : undefined,
+      onEditGearItem: onEditGearItem ? () => onEditGearItem(gearId) : undefined,
+      onDeleteGearItem: onDeleteGearItem ? () => onDeleteGearItem(gearId) : undefined,
       onDelete: onDelete ? () => onDelete(item.id) : undefined,
     }
   }

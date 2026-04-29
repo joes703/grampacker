@@ -23,9 +23,10 @@ export type ListItem = {
   updated_at: string
 }
 
-// ListItem joined with its source GearItem (null when gear was deleted)
+// ListItem joined with its source GearItem. Always present: gear_item_id is
+// NOT NULL with ON DELETE CASCADE, so a list_item cannot outlive its gear.
 export type ListItemWithGear = ListItem & {
-  gear_item: Pick<GearItem, 'id' | 'name' | 'description' | 'weight_grams' | 'category_id'> | null
+  gear_item: Pick<GearItem, 'id' | 'name' | 'description' | 'weight_grams' | 'category_id'>
 }
 
 export type Category = {
