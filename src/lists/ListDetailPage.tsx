@@ -170,6 +170,10 @@ function ListDetailInner({
   // dialog show "On this list" fields (quantity / worn / consumable) and
   // fire a list_items update alongside the gear_items update on save.
   const [editingListItem, setEditingListItem] = useState<ListItemWithGear | null>(null)
+  // Surfaces gear-dialog save failures back into the dialog body. Cleared on
+  // dialog close and at the start of the next save attempt; set to a
+  // user-facing message that names which side failed (gear vs list_item).
+  const [gearDialogError, setGearDialogError] = useState<string | null>(null)
   const [deleteGearCandidate, setDeleteGearCandidate] = useState<GearItem | null>(null)
   const [pendingImportId, setPendingImportId] = useState<string | null>(null)
   const [creatingList, setCreatingList] = useState(false)
@@ -1002,11 +1006,15 @@ function ListDetailInner({
       {/* Gear-item edit (reached from the row tap on mobile or the kebab →
           Edit on any viewport). Reuses GearItemDialog and, when a list_item
           accompanies the gear item, renders an "On this list" section with
-          quantity / worn / consumable controls. Save fires updateGearItem
-          for the gear-level patch and updateListItem for the list-level
-          patch in parallel via mutateAsync; the dialog stays open until
-          both succeed. updateGearItemMut already invalidates
-          ['list-items'] (broad) so other lists pick up the change. */}
+          quantity / worn / consumable controls.
+          Save runs sequentially: gear first, then the per-list patch. If
+          the gear write fails, nothing is applied. If the gear write
+          succeeds but the list write fails, the gear changes are committed
+          but the list_item is unchanged — surfaced via gearDialogError so
+          the user can retry (PATCH is idempotent on the gear side) or
+          close to keep the partial result intentionally.
+          updateGearItemMut already invalidates ['list-items'] (broad) so
+          other lists pick up the change. */}
       {editingGearItem && (
         <GearItemDialog
           categories={categories}
@@ -1021,25 +1029,36 @@ function ListDetailInner({
               : undefined
           }
           saving={updateGearItemMut.isPending || updateMut.isPending}
+          saveError={gearDialogError}
           onClose={() => {
             setEditingGearItem(null)
             setEditingListItem(null)
+            setGearDialogError(null)
           }}
           onSave={async (gearPatch, listPatch) => {
             const gearTarget = editingGearItem
             const listTarget = editingListItem
+            // Reset prior error so the user sees fresh state for this attempt.
+            setGearDialogError(null)
             try {
-              await Promise.all([
-                updateGearItemMut.mutateAsync({ id: gearTarget.id, patch: gearPatch }),
-                listPatch && listTarget
-                  ? updateMut.mutateAsync({ itemId: listTarget.id, patch: listPatch })
-                  : Promise.resolve(),
-              ])
-              setEditingGearItem(null)
-              setEditingListItem(null)
+              await updateGearItemMut.mutateAsync({ id: gearTarget.id, patch: gearPatch })
             } catch {
-              // Mutation surface their own error toast/log; keep dialog open.
+              setGearDialogError("Couldn't save gear changes. No changes were applied.")
+              return
             }
+            if (listPatch && listTarget) {
+              try {
+                await updateMut.mutateAsync({ itemId: listTarget.id, patch: listPatch })
+              } catch {
+                setGearDialogError(
+                  "Saved gear changes, but couldn't update this list item. Try again, or close to keep just the gear changes.",
+                )
+                return
+              }
+            }
+            setEditingGearItem(null)
+            setEditingListItem(null)
+            setGearDialogError(null)
           }}
           onRemoveFromList={
             editingListItem

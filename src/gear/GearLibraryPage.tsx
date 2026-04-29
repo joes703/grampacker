@@ -130,6 +130,11 @@ export default function GearLibraryPage() {
   }
   const invalidateCats = () => qc.invalidateQueries({ queryKey: queryKeys.categories() })
   const invalidateItems = () => qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
+  // Broad ['list-items'] — every list view embeds gear_item via a Supabase
+  // join, so any write that touches gear_items (or cascades into list_items)
+  // must invalidate it. Mirrors the convention in updateGearItemMut /
+  // deleteGearItemMut on ListDetailPage.
+  const invalidateListItems = () => qc.invalidateQueries({ queryKey: ['list-items'] })
 
   const addCategory = useMutation({
     mutationFn: (name: string) =>
@@ -144,7 +149,10 @@ export default function GearLibraryPage() {
 
   const removeCategory = useMutation({
     mutationFn: (id: string) => deleteCategory(id),
-    onSuccess: invalidateBoth,
+    // Deleting a category cascades to gear_items.category_id (SET NULL),
+    // which is embedded in list_items via the gear join — invalidate
+    // list-items too so open list views reflect the new uncategorised state.
+    onSuccess: () => { invalidateBoth(); invalidateListItems() },
   })
 
   const reorderCats = useMutation({
@@ -161,23 +169,25 @@ export default function GearLibraryPage() {
   const editItem = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateGearItem>[1] }) =>
       updateGearItem(id, patch),
-    onSuccess: invalidateItems,
+    onSuccess: () => { invalidateItems(); invalidateListItems() },
   })
 
   const removeItem = useMutation({
     mutationFn: deleteGearItem,
-    onSuccess: invalidateItems,
+    // CASCADE removes the matching list_items rows in the DB; invalidate
+    // ['list-items'] so any open list view refetches and drops them.
+    onSuccess: () => { invalidateItems(); invalidateListItems() },
   })
 
   const bulkDelete = useMutation({
     mutationFn: (ids: string[]) => bulkDeleteGearItems(ids),
-    onSuccess: () => { invalidateItems(); exitSelectMode() },
+    onSuccess: () => { invalidateItems(); invalidateListItems(); exitSelectMode() },
   })
 
   const bulkMove = useMutation({
     mutationFn: ({ ids, categoryId }: { ids: string[]; categoryId: string | null }) =>
       bulkMoveToCategoryGearItems(ids, categoryId),
-    onSuccess: () => { invalidateItems(); exitSelectMode() },
+    onSuccess: () => { invalidateItems(); invalidateListItems(); exitSelectMode() },
   })
 
   const createListFromSelectionMut = useMutation({
