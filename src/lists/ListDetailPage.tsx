@@ -46,7 +46,7 @@ import {
   type ListItemPatch,
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
-import { parseListCsv, listItemsToCsv, downloadCsv, type ListImportRow } from '../lib/csv'
+import { parseListCsv, listItemsToCsv, downloadCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
 import { getLastListId, setLastListId } from '../lib/preferences'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useWeightUnit } from '../lib/use-weight-unit'
@@ -80,7 +80,7 @@ type Mode = 'edit' | 'pack'
 type DialogState =
   | { type: 'edit-gear'; gear: GearItem; listItem: ListItemWithGear | null; saveError: string | null }
   | { type: 'delete-gear'; candidate: GearItem }
-  | { type: 'import-preview'; rows: ListImportRow[] }
+  | { type: 'import-preview'; rows: ListImportRow[]; filename: string }
   | { type: 'import-error'; message: string }
   | { type: 'confirm-delete-list'; list: List }
   | { type: 'creating-list'; draft: string }
@@ -180,10 +180,7 @@ function ListDetailInner({
   // (for partial-save messaging) into the edit-gear variant means closing the
   // dialog or switching to a different gear item naturally discards the
   // error: there's no separate state to keep in sync.
-  // pendingImportId is intentionally NOT in this union — it's a cross-route
-  // signal that survives navigation, consumed by an effect on the next mount.
   const [dialog, setDialog] = useState<DialogState | null>(null)
-  const [pendingImportId, setPendingImportId] = useState<string | null>(null)
   const {
     inputRef: importInputRef,
     onChange: handleImportFile,
@@ -191,7 +188,7 @@ function ListDetailInner({
   } = useCsvFileInput<ListImportRow>(
     parseListCsv,
     {
-      onParsed: (rows) => setDialog({ type: 'import-preview', rows }),
+      onParsed: (rows, filename) => setDialog({ type: 'import-preview', rows, filename }),
       onError: (message) => setDialog({ type: 'import-error', message }),
     },
   )
@@ -201,15 +198,6 @@ function ListDetailInner({
   // it resolves; falls back to "Lists" while the lists query is pending so
   // the title doesn't briefly drop to the bare app name.
   useDocumentTitle(list?.name ?? 'Lists')
-
-  // After navigating to a list because the user clicked Import on it from the menu,
-  // open the file picker once we land on that list.
-  useEffect(() => {
-    if (pendingImportId && pendingImportId === listId) {
-      setPendingImportId(null)
-      openImportPicker()
-    }
-  }, [pendingImportId, listId, openImportPicker])
 
   const { data: listItems = [] } = useQuery({
     queryKey: queryKeys.listItems(listId),
@@ -250,14 +238,23 @@ function ListDetailInner({
     ...makeOptimisticReorder<Category>(qc, queryKeys.categories()),
   })
 
+  // Import-CSV creates a brand new list named after the source filename and
+  // populates it with the CSV rows. Single transaction-shaped flow at the
+  // call-site: createList, then importCsvRowsToList against the new list id.
+  // After success we navigate the user into the new list so they see the
+  // imported items immediately.
   const importMut = useMutation({
-    mutationFn: (rows: ListImportRow[]) =>
-      importCsvRowsToList(listId, userId, rows, gearItems, categories, listItems.length),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+    mutationFn: async ({ name, rows }: { name: string; rows: ListImportRow[] }) => {
+      const newList = await createList(userId, name, lists.length)
+      await importCsvRowsToList(newList.id, userId, rows, gearItems, categories, 0)
+      return newList
+    },
+    onSuccess: (newList) => {
+      qc.invalidateQueries({ queryKey: queryKeys.lists() })
       qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
       qc.invalidateQueries({ queryKey: queryKeys.categories() })
       setDialog(null)
+      navigate(`/lists/${newList.id}`)
     },
   })
 
@@ -609,10 +606,7 @@ function ListDetailInner({
               onCancelNew={() => setDialog(null)}
               onSelect={(l) => navigate(`/lists/${l.id}`)}
               onRename={(l, name) => renameMut.mutate({ id: l.id, name })}
-              onImport={(l) => {
-                if (l.id === list.id) openImportPicker()
-                else { setPendingImportId(l.id); navigate(`/lists/${l.id}`) }
-              }}
+              onStartImport={openImportPicker}
               onExport={async (l) => {
                 const items = await qc.fetchQuery({
                   queryKey: queryKeys.listItems(l.id),
@@ -819,10 +813,7 @@ function ListDetailInner({
                   navigate(`/lists/${l.id}`)
                 }}
                 onRename={(l, name) => renameMut.mutate({ id: l.id, name })}
-                onImport={(l) => {
-                  if (l.id === list.id) openImportPicker()
-                  else { setPendingImportId(l.id); navigate(`/lists/${l.id}`) }
-                }}
+                onStartImport={openImportPicker}
                 onExport={async (l) => {
                   const items = await qc.fetchQuery({
                     queryKey: queryKeys.listItems(l.id),
@@ -886,7 +877,7 @@ function ListDetailInner({
         <ListImportPreviewDialog
           rows={dialog.rows}
           saving={importMut.isPending}
-          onConfirm={() => importMut.mutate(dialog.rows)}
+          onConfirm={() => importMut.mutate({ name: nameFromCsvFilename(dialog.filename), rows: dialog.rows })}
           onClose={() => setDialog(null)}
         />
       )}

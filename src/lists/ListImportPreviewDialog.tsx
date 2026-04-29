@@ -18,14 +18,14 @@ export default function ListImportPreviewDialog({ rows, saving, onConfirm, onClo
     <Modal
       open
       onClose={onClose}
-      title={`Import ${rows.length} item${rows.length !== 1 ? 's' : ''} to list`}
+      title={`Import ${rows.length} item${rows.length !== 1 ? 's' : ''} into a new list`}
       className="w-full max-w-lg flex flex-col max-h-[80vh]"
       closeOnBackdropClick={false}
     >
       <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
         <div>
           <h2 className="text-base font-semibold text-gray-900">
-            Import {rows.length} item{rows.length !== 1 ? 's' : ''} to list
+            Import {rows.length} item{rows.length !== 1 ? 's' : ''} into a new list
           </h2>
           <p className="text-xs text-gray-500 mt-0.5">
             New items will be added to your gear library. Items already in the library won't be duplicated.

@@ -17,7 +17,6 @@ import { usePortalPopover } from '../lib/use-portal-popover'
 import RowIconButton from '../components/RowIconButton'
 
 type RowActions = {
-  onImport: (list: List) => void
   onExport: (list: List) => void
   onDuplicate: (list: List) => void
   onDelete: (list: List) => void
@@ -30,6 +29,7 @@ type Props = RowActions & {
   newDraft: string
   onNewDraftChange: (v: string) => void
   onStartNew: () => void
+  onStartImport: () => void
   onSubmitNew: () => void
   onCancelNew: () => void
   onSelect: (list: List) => void
@@ -44,11 +44,11 @@ export default function ListsBox({
   newDraft,
   onNewDraftChange,
   onStartNew,
+  onStartImport,
   onSubmitNew,
   onCancelNew,
   onSelect,
   onRename,
-  onImport,
   onExport,
   onDuplicate,
   onDelete,
@@ -84,7 +84,6 @@ export default function ListsBox({
                   active={list.id === activeId}
                   onSelect={() => onSelect(list)}
                   onRename={(name) => onRename(list, name)}
-                  onImport={() => onImport(list)}
                   onExport={() => onExport(list)}
                   onDuplicate={() => onDuplicate(list)}
                   onDelete={() => onDelete(list)}
@@ -114,12 +113,20 @@ export default function ListsBox({
             className="w-full rounded border border-blue-400 px-2 py-1 text-sm focus:outline-none"
           />
         ) : (
-          <button
-            onClick={onStartNew}
-            className="flex w-full items-center justify-center gap-1 rounded px-2 py-1 text-sm text-blue-600 hover:bg-blue-50"
-          >
-            <Plus size={14} /> New list
-          </button>
+          <div className="flex gap-1">
+            <button
+              onClick={onStartNew}
+              className="flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 text-sm text-blue-600 hover:bg-blue-50"
+            >
+              <Plus size={14} /> New list
+            </button>
+            <button
+              onClick={onStartImport}
+              className="flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 text-sm text-blue-600 hover:bg-blue-50"
+            >
+              <Upload size={14} /> Import CSV
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -131,7 +138,6 @@ function ListsBoxRow({
   active,
   onSelect,
   onRename,
-  onImport,
   onExport,
   onDuplicate,
   onDelete,
@@ -140,7 +146,6 @@ function ListsBoxRow({
   active: boolean
   onSelect: () => void
   onRename: (name: string) => void
-  onImport: () => void
   onExport: () => void
   onDuplicate: () => void
   onDelete: () => void
@@ -264,9 +269,6 @@ function ListsBoxRow({
             onClick={() => { setMenuPos(null); setDraft(list.name); setRenaming(true) }}
           >
             Rename
-          </MenuItem>
-          <MenuItem icon={<Upload size={13} />} onClick={() => { setMenuPos(null); onImport() }}>
-            Import CSV
           </MenuItem>
           <MenuItem icon={<Download size={13} />} onClick={() => { setMenuPos(null); onExport() }}>
             Export CSV

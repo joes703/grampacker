@@ -12,7 +12,7 @@ import { useCallback, useRef, type ChangeEventHandler } from 'react'
 export function useCsvFileInput<T>(
   parser: (text: string) => T[] | string,
   handlers: {
-    onParsed: (rows: T[]) => void
+    onParsed: (rows: T[], filename: string) => void
     onError: (message: string) => void
   },
 ): {
@@ -26,6 +26,7 @@ export function useCsvFileInput<T>(
     const file = e.target.files?.[0]
     if (inputRef.current) inputRef.current.value = ''
     if (!file) return
+    const filename = file.name
     const reader = new FileReader()
     reader.onload = (ev) => {
       // FileReader.result is `string | ArrayBuffer | null`. We invoked
@@ -36,7 +37,7 @@ export function useCsvFileInput<T>(
       if (typeof result !== 'string') return
       const parsed = parser(result)
       if (typeof parsed === 'string') handlers.onError(parsed)
-      else handlers.onParsed(parsed)
+      else handlers.onParsed(parsed, filename)
     }
     reader.readAsText(file)
   }
