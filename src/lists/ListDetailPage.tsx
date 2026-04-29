@@ -75,7 +75,6 @@ export default function ListDetailPage() {
   const { id: routeId } = useParams<{ id?: string }>()
   const navigate = useNavigate()
   const { session } = useAuth()
-  const userId = session!.user.id
   const qc = useQueryClient()
 
   const { data: lists = [], isLoading: listsLoading } = useQuery({
@@ -111,6 +110,11 @@ export default function ListDetailPage() {
 
   // No id and still resolving → render nothing while redirect runs
   if (!routeId) return null
+
+  // PrivateRoute usually keeps session non-null here, but if it goes null
+  // mid-render (logout), bail out cleanly instead of throwing.
+  if (!session) return null
+  const userId = session.user.id
 
   // key={routeId} forces a fresh ListDetailInner instance per list, so local
   // state (open dialogs, draft inputs, sidebar collapse, etc.) doesn't leak
