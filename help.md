@@ -4,26 +4,25 @@
 
 If you have data in Lighterpack, export it as CSV and import it from /gear. Items, categories, weights, and worn/consumable flags come over.
 
-If you're starting fresh, build up your gear inventory first or jump straight into a list and add items as you go. Either works.
+If you're starting fresh, build up your gear inventory first or jump straight into a list and add items as you go.
 
-## Worn, consumable, and base weight
+## Concepts
 
-Pack weight is the most important number on a packing list, and most apps count it wrong. grampacker treats worn, consumable, and base as separate types so the totals match what's actually on your back.
+You'll probably spend most of the time working in the list page. 
+There are a few other pages/views you may find helpful: 
+- Gear Library. All the gear you own is stored here. 
+- List pack mode. This is a simplified view of your list, with checkboxes added to help you pack.
+- Public share. You can enable and disable a public read only copy of a list. Helpful for getting advice on your list ahead of a trip.
 
-To mark an item, tap the shirt icon (worn) or the crossed-utensils icon (consumable) on its row in a list. The same checkboxes are in the edit modal.
-
-The three types:
-
-- **Base** is gear that goes in your pack. Most things. The default.
-- **Consumable** items are food, fuel, and water. They start full and end empty.
-- **Worn** items are on your body when you start walking, like boots and trekking poles.
-
-Each list shows two totals at the top:
-
-- **Base weight** is the sum of your base items. The number most people optimize.
-- **Total pack weight** is base plus consumables. It's what's actually on your back at the trailhead. Worn items aren't included because they aren't in your pack.
+Base weight is the weight of all of your gear minus consumables (food, fuel, water) and the things you wear Total pack weight is base weight + consumables. Worn items are shown but are not added to anything else. 
 
 ## Build a list
+
+There are 3 ways to create a gear list. 
+
+1. Import a CSV from Ligherpack (or with those columns) into a new list.
+2. Import a CSV of your gear into the Gear List and then add gear from the gear picker by clicking on each item --OR-- from the gear list, select your items, and create a new list. 
+3. Click on new item and start adding items. 
 
 The library panel on the left of a list shows your full inventory. Click an item to add it to the list. Click again to remove it.
 
@@ -45,7 +44,7 @@ Click the globe icon at the top of a list. Flip the Public link toggle on, then 
 
 Click the clipboard icon at the top of a list to enter Pack mode. Tap items to check them off as they go in the bag.
 
-Three controls sit above the list. Unpacked only hides items you've already packed. Group worn pulls worn items into a section at the bottom (mirrors how worn gear sits by the door). Reset clears the checkmarks.
+Two controls sit above the list. Unpacked only hides items you've already packed. Reset clears the checkmarks.
 
 When you're standing over a half-packed bag the night before a 5am drive, you don't want to be navigating a UI. Pack mode is sparse on purpose.
 
@@ -65,13 +64,13 @@ Account settings has both: download a single zip with your full inventory and ev
 
 ### Why a separate gear inventory?
 
-Your inventory is the source of truth for everything you own. Each item lives there once, with one weight. Lists are built from inventory, and edits flow both ways. The inventory has its own Manage mode for bulk work: multi-select, move categories, delete, or turn a selection into a new list.
+I wanted a source of truth for everything I own. Lists can be built from inventory, and edits flow both ways in case you don't want to work in both. The inventory has its own Manage mode for move categories, deleting item(s), or to create a new list from your selection. I try not to force the inventory, so you can do most things from the list view.
 
 ### Why does editing a list item change the inventory?
 
-Because most edits are real corrections. I weighed it more accurately, I added a note, I fixed the brand name. Those changes should stick across every list.
+Because most edits are real corrections. Those changes should stick across every list.
 
-When you actually want a one-off, like a borrowed item or a substitute for one trip, you can create a new item instead. The coupling is intentional.
+When you actually want a one-off, you can create a new item instead. The coupling is intentional so that you don't have to worry about where you created an item. 
 
 ### Why can't I drag from the picker?
 
@@ -80,10 +79,6 @@ Drag-and-drop is good for moving things you've already placed. It's slower than 
 ### Why no images?
 
 Storage costs scale with users in a way I can't sustain for free. Hosting user-uploaded images also means moderating content, which I don't want to do.
-
-### Why does grampacker work like an app on my phone?
-
-grampacker is a Progressive Web App, or PWA. A PWA is a website you can add to your home screen so it behaves like an installed app. No app store, no install. I use packing mode on my phone often, and I wanted that to work well without anyone having to download a native app.
 
 ### What's the tech stack and why?
 
@@ -95,9 +90,9 @@ grampacker is a Progressive Web App, or PWA. A PWA is a website you can add to y
 
 **Supabase** for the backend. It handles authentication, the database, and access control in one service. The database is Postgres, so my data isn't locked into a proprietary format. Access rules are enforced at the database level using row-level security.
 
-**Cloudflare Pages** for hosting. The free tier is generous, every push to GitHub auto-deploys, and it's fast worldwide.
+**Cloudflare Pages** for hosting. 
 
-Fewer moving parts, fewer things to break, less to maintain.
+Fewer moving parts, fewer things to break, hopefully easier to maintain.
 
 ### Did you use AI to build this?
 
