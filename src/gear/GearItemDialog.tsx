@@ -246,12 +246,15 @@ export default function GearItemDialog({
             </div>
           )}
 
-          {/* Mobile-only list-context actions. On desktop these live in the
-              row kebab; surfacing them here would duplicate UX. Gated on
-              listContext + handler — gear-inventory edits don't show them. */}
-          {listContext && (onRemoveFromList || onDeleteFromInventory) && (
+          {/* Mobile-only destructive / scoping actions. On desktop these live
+              in the row kebab (list view) or as inline icon buttons (gear
+              inventory). The wrapper renders if either action is wired;
+              "Remove from list" still requires listContext (it has no
+              meaning outside a list), but "Delete from inventory" applies
+              both to list-view edits and to the gear inventory page. */}
+          {(onRemoveFromList || onDeleteFromInventory) && (
             <div className="lg:hidden border-t border-gray-200 pt-4 space-y-3">
-              {onRemoveFromList && (
+              {listContext && onRemoveFromList && (
                 <button
                   type="button"
                   onClick={onRemoveFromList}

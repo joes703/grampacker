@@ -53,45 +53,71 @@ export default function GearItemRow({
           className="h-4 w-4 rounded border-gray-300 text-blue-600"
         />
       )}
-      <div className="flex-1 min-w-0 flex items-center gap-3">
-        <div className="flex-[2] min-w-0">
-          <InlineText
-            value={item.name}
-            onSave={(v) => onInlineSave({ name: v })}
-            className="block w-full truncate font-normal text-gray-900"
-          />
-        </div>
-        {(item.description !== null || !selectMode) && (
-          <div className="flex-[3] min-w-0">
+
+      {/* Desktop branch (≥ lg) — preserves the existing inline-edit row
+          layout: name + description as 2:3 columns, weight, and the
+          edit/delete icon buttons (only when not in select mode). */}
+      <div className="hidden lg:contents">
+        <div className="flex-1 min-w-0 flex items-center gap-3">
+          <div className="flex-[2] min-w-0">
             <InlineText
-              value={item.description ?? ''}
-              placeholder="Add description"
-              onSave={(v) => onInlineSave({ description: v })}
-              className="block w-full truncate text-sm font-normal text-gray-500"
+              value={item.name}
+              onSave={(v) => onInlineSave({ name: v })}
+              className="block w-full truncate font-normal text-gray-900"
             />
           </div>
+          {(item.description !== null || !selectMode) && (
+            <div className="flex-[3] min-w-0">
+              <InlineText
+                value={item.description ?? ''}
+                placeholder="Add description"
+                onSave={(v) => onInlineSave({ description: v })}
+                className="block w-full truncate text-sm font-normal text-gray-500"
+              />
+            </div>
+          )}
+        </div>
+        <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
+          {formatItemWeight(item.weight_grams, weightUnit)}
+        </span>
+        {!selectMode && (
+          <>
+            <RowIconButton
+              onClick={onEdit}
+              title="Edit item"
+              ariaLabel="Edit item"
+              icon={<Pencil size={14} />}
+            />
+            <RowIconButton
+              variant="danger"
+              onClick={onDelete}
+              title="Delete item"
+              ariaLabel="Delete item"
+              icon={<Trash2 size={14} />}
+            />
+          </>
         )}
       </div>
-      <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
-        {formatItemWeight(item.weight_grams, weightUnit)}
-      </span>
-      {!selectMode && (
-        <>
-          <RowIconButton
-            onClick={onEdit}
-            title="Edit item"
-            ariaLabel="Edit item"
-            icon={<Pencil size={14} />}
-          />
-          <RowIconButton
-            variant="danger"
-            onClick={onDelete}
-            title="Delete item"
-            ariaLabel="Delete item"
-            icon={<Trash2 size={14} />}
-          />
-        </>
-      )}
+
+      {/* Mobile branch (< lg) — name + weight only, no description, no
+          inline icon buttons. The whole row body is one tappable button:
+          tap toggles selection in select mode, otherwise opens the edit
+          dialog. The leading checkbox (rendered above when selectMode is
+          on) is a sibling of the button, so a checkbox tap only fires
+          its own onChange — no double-toggle. */}
+      <div className="lg:hidden flex flex-1 items-center gap-2">
+        <button
+          type="button"
+          onClick={selectMode ? onToggleSelect : onEdit}
+          aria-label={selectMode ? (selected ? 'Deselect item' : 'Select item') : 'Edit item'}
+          className="flex flex-1 min-w-0 items-center gap-2 text-left"
+        >
+          <span className="flex-1 min-w-0 truncate font-normal text-gray-900">{item.name}</span>
+          <span className="shrink-0 w-20 text-right tabular-nums text-gray-600">
+            {formatItemWeight(item.weight_grams, weightUnit)}
+          </span>
+        </button>
+      </div>
     </div>
   )
 }
