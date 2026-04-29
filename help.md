@@ -1,79 +1,65 @@
 # How to use grampacker
 
-## Two ways to start
+## Get started
 
-**If you're coming from Lighterpack**, you can export your data as CSV from Lighterpack and import it here. grampacker reads the standard Lighterpack CSV format, so your items, weights, categories, and worn/consumable flags come over with you.
+If you have data in Lighterpack, export it as CSV and import it from /gear. Items, categories, weights, and worn/consumable flags come over.
 
-**If you're starting fresh**, you can build up your gear inventory first, or just start a list and add items as you go. Either works.
+If you're starting fresh, build up your gear inventory first or jump straight into a list and add items as you go. Either works.
 
-## Concepts
+## Worn, consumable, and base weight
 
-### Inventory and lists
+Pack weight is the most important number on a packing list, and most apps count it wrong. grampacker treats worn, consumable, and base as separate types so the totals match what's actually on your back.
 
-Your gear inventory is your library. Every item you own lives there once. A list is a packing list for a specific trip, built from items in your inventory. They're the same items in two views, so changes you make in one place show up in the other.
+To mark an item, tap the shirt icon (worn) or the crossed-utensils icon (consumable) on its row in a list. The same checkboxes are in the edit modal.
 
-### Worn, consumable, and base weight
+The three types:
 
-Every item in a list is one of three types:
+- **Base** is gear that goes in your pack. Most things. The default.
+- **Consumable** items are food, fuel, and water. They start full and end empty.
+- **Worn** items are on your body when you start walking, like boots and trekking poles.
 
-- **Base** is gear that goes in your pack. The default for most things.
-- **Consumable** items are food, fuel, and water. Tracked separately because they start full and end empty.
-- **Worn** items are on your body when you're walking, like boots or trekking poles. They're not in your pack, so they aren't counted in pack totals.
-
-Each list shows two totals:
+Each list shows two totals at the top:
 
 - **Base weight** is the sum of your base items. The number most people optimize.
-- **Total pack weight** is base plus consumables. What's actually on your back at the trailhead.
+- **Total pack weight** is base plus consumables. It's what's actually on your back at the trailhead. Worn items aren't included because they aren't in your pack.
 
-### Categories
+## Build a list
 
-You define your own categories. There's no fixed list. Type a category name that doesn't exist and it's created.
+The library panel on the left of a list shows your full inventory. Click an item to add it to the list. Click again to remove it.
 
-## How to
+You can also type a new name into the list itself. That creates the item in both the list and your inventory at the same time. The same trick works for categories: type a name that doesn't exist and you've made one.
 
-### Building a list
+## Edit and reorder
 
-The gear picker panel on the left is the easiest way to add items, assuming your inventory is already populated. It shows your full inventory. Click an item to add it to the list. Click it again to remove it. No drag-and-drop, just clicks.
+Click an item's name, description, or weight to edit it inline. Changes save automatically and update the inventory.
 
-You can also add items as you go. Type an item name that isn't in your inventory and you've added it to both the list and the inventory at the same time. Type a category name that doesn't exist and you've made a new category.
+Drag any row up or down to reorder it within its category. To move an item to a different category, open the edit modal and pick from the Category dropdown.
 
-### Editing and organizing a list
+The kebab menu (three dots) on each row has Edit, Remove from list, and Delete from inventory.
 
-You can click an item's name, description, or weight to edit it inline. Changes save automatically and update the inventory.
+## Share a list
 
-You can drag any row up or down to reorder it within its category. Drag it into a different category to move it across.
+Click the globe icon at the top of a list. Flip the Public link toggle on, then copy the URL. Anyone with the link can view the list. They can't edit it, and they don't need an account. Flip the toggle off and the link stops working.
 
-### Sharing a list
+## Pack mode
 
-The globe icon at the top of a list toggles public sharing on or off. When it's on, a public URL appears and you can copy it. When it's off, the URL stops working.
+Click the clipboard icon at the top of a list to enter Pack mode. Tap items to check them off as they go in the bag.
 
-Anyone with the URL can view the list. They can't edit it, and they don't need an account.
+Three controls sit above the list. Unpacked only hides items you've already packed. Group worn pulls worn items into a section at the bottom (mirrors how worn gear sits by the door). Reset clears the checkmarks.
 
-### Packing mode
+When you're standing over a half-packed bag the night before a 5am drive, you don't want to be navigating a UI. Pack mode is sparse on purpose.
 
-Packing mode is a stripped-down view of a list with one purpose: helping you pack. You see your items, you check them off as they go in the bag.
+## Gear library
 
-It's intentionally sparse. No editing, no breakdowns, no extra panels. When you're standing over a half-packed bag the night before a 5am drive, you don't want to be navigating a UI.
+Open /gear from the nav (top bar on desktop, bottom tab bar on mobile).
 
-If you need to change something, exit packing mode back to the list view.
+Click Select to enter multi-select. The bulk action toolbar appears at the bottom with Select all, Select none, Move to category, Delete, and Create list.
 
-### Managing the gear inventory
+Each row has a kebab menu with Edit and Delete from inventory. Categories are draggable to reorder.
 
-The inventory has its own **Manage** mode for working on your gear directly, especially in bulk.
+## Export and delete
 
-In Manage mode you can:
-
-- Edit any item's name, description, weight, or category inline
-- Select one item, or many at once
-- Move the selected items to a different category
-- Delete the selected items
-- Create a new list from the selected items
-
-You can use it to clean up after a CSV import, reorganize categories, or build a list from items you've already picked out.
-
-### Exporting and deleting
-
-You can download your full gear inventory and all your lists as a single zip file in one click. You can delete your account at any time. Both options are in account settings, no friction either way.
+Account settings has both: download a single zip with your full inventory and every list, or delete your account. Both are one click, no friction either way.
 
 ## FAQ
 
@@ -86,16 +72,6 @@ Your inventory is the source of truth for everything you own. Each item lives th
 Because most edits are real corrections. I weighed it more accurately, I added a note, I fixed the brand name. Those changes should stick across every list.
 
 When you actually want a one-off, like a borrowed item or a substitute for one trip, you can create a new item instead. The coupling is intentional.
-
-### Why these specific weight totals?
-
-Every item is base, consumable, or worn.
-
-- **Base** is gear that goes in your pack.
-- **Consumables** are food, fuel, and water. They start full and end empty.
-- **Worn** items are on your body when you start walking, like boots and trekking poles.
-
-The total I show is **base + consumables**. That's what's actually on your back at the trailhead. Worn items count toward what you're carrying overall, but they're not in your pack, so they don't belong in pack weight.
 
 ### Why can't I drag from the picker?
 
