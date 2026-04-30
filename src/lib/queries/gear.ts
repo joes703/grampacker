@@ -2,6 +2,7 @@ import { supabase } from '../supabase'
 import type { Category, GearItem } from '../types'
 import type { GearCsvRow } from '../csv'
 import { resolveOrCreateCategories, resolveOrCreateGearForImport } from './import-helpers'
+import { bulkUpdateSortOrder } from './optimistic'
 
 export async function fetchGearItems(): Promise<GearItem[]> {
   const { data, error } = await supabase
@@ -54,6 +55,10 @@ export async function bulkMoveToCategoryGearItems(
     .update({ category_id: categoryId })
     .in('id', ids)
   if (error) throw error
+}
+
+export async function reorderGearItems(updates: { id: string; sort_order: number }[]): Promise<void> {
+  await bulkUpdateSortOrder('gear_items', updates)
 }
 
 // ── CSV gear import ───────────────────────────────────────────────────────────

@@ -22,6 +22,7 @@ export {
   deleteGearItem,
   bulkDeleteGearItems,
   bulkMoveToCategoryGearItems,
+  reorderGearItems,
   importGearItems,
 } from './gear'
 export {
