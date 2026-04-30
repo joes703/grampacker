@@ -1,5 +1,7 @@
 import { useCallback, useRef, type ChangeEventHandler } from 'react'
 
+const MAX_CSV_BYTES = 2 * 1024 * 1024 // 2 MB; matches SPEC.md
+
 // Wires a hidden <input type="file"> to a CSV parser.
 //
 // - Bind `inputRef` to the hidden input's ref.
@@ -26,6 +28,12 @@ export function useCsvFileInput<T>(
     const file = e.target.files?.[0]
     if (inputRef.current) inputRef.current.value = ''
     if (!file) return
+    if (file.size > MAX_CSV_BYTES) {
+      handlers.onError(
+        'This CSV is larger than 2 MB. Try splitting it into smaller files or check that you uploaded the right file.',
+      )
+      return
+    }
     const filename = file.name
     const reader = new FileReader()
     reader.onload = (ev) => {

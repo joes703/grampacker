@@ -32,7 +32,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
     const trimmed = name.trim()
     if (!trimmed) return
     const w = Math.max(0, Math.min(weightGrams, 100000))
-    const q = Math.max(1, Math.min(parseInt(quantity, 10) || 1, 99))
+    const q = Math.max(1, Math.min(parseInt(quantity, 10) || 1, 9999))
     onSubmit({
       name: trimmed.slice(0, 256),
       description: description.trim() ? description.trim().slice(0, 2000) : null,
@@ -109,7 +109,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
       <input
         type="number"
         min={1}
-        max={99}
+        max={9999}
         value={quantity}
         onChange={(e) => setQuantity(e.target.value)}
         onKeyDown={handleKey}

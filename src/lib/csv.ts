@@ -228,7 +228,7 @@ export function parseListCsv(text: string): ListImportRow[] | string {
         description:  descKey ? (row[descKey] || null) : null,
         weight_grams: toGrams(row[weightKey] ?? '0', unit),
         category:     catKey ? (row[catKey] ?? '') : '',
-        quantity:     isNaN(rawQty) || rawQty < 1 ? 1 : Math.min(rawQty, 99),
+        quantity:     isNaN(rawQty) || rawQty < 1 ? 1 : Math.min(rawQty, 9999),
         is_worn:      bothSet ? false : isWorn,
         is_consumable: bothSet ? false : isConsumable,
       }
@@ -248,6 +248,9 @@ export function nameFromCsvFilename(filename: string): string {
   return base || 'Imported list'
 }
 
+// Every column written here is read back by parseListCsv. is_packed is
+// deliberately excluded — it's per-user runtime checklist state and there's
+// no use case for round-tripping it through CSV.
 export function listItemsToCsv(items: ListItemWithGear[], categories: Category[]): string {
   const catMap = new Map(categories.map((c) => [c.id, c.name]))
   const rows = items.map((item) => ({
@@ -257,7 +260,6 @@ export function listItemsToCsv(items: ListItemWithGear[], categories: Category[]
     quantity: item.quantity,
     worn: item.is_worn ? 'yes' : 'no',
     consumable: item.is_consumable ? 'yes' : 'no',
-    packed: item.is_packed ? 'yes' : 'no',
     category: item.gear_item.category_id ? (catMap.get(item.gear_item.category_id) ?? '') : '',
   }))
   return toCsv(rows)

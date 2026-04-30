@@ -63,6 +63,7 @@ type DialogState =
   | { type: 'delete-category'; category: Category }
   | { type: 'add-category' }
   | { type: 'bulk-move' }
+  | { type: 'import-explainer' }
   | { type: 'import-preview'; rows: GearCsvRow[] }
   | { type: 'import-error'; message: string }
   | { type: 'create-list-from-selection' }
@@ -204,7 +205,7 @@ export default function GearLibraryPage() {
   })
 
   const importItems = useMutation({
-    mutationFn: (rows: GearCsvRow[]) => importGearItems(userId, rows, categories, allItems.length),
+    mutationFn: (rows: GearCsvRow[]) => importGearItems(userId, rows, categories, allItems, allItems.length),
     onSuccess: () => { invalidateBoth(); setDialog(null) },
   })
 
@@ -397,7 +398,7 @@ export default function GearLibraryPage() {
           <Download size={14} /> Export
         </button>
         <button
-          onClick={openImportPicker}
+          onClick={() => setDialog({ type: 'import-explainer' })}
           title="Import gear items from CSV"
           className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
@@ -642,6 +643,36 @@ export default function GearLibraryPage() {
           }
           onClose={() => setDialog(null)}
         />
+      )}
+
+      {dialog?.type === 'import-explainer' && (
+        <Modal open onClose={() => setDialog(null)} title="Import gear inventory" className="w-full max-w-md">
+          <div className="p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-3">Import gear inventory</h2>
+            <p className="text-sm text-gray-600 mb-3">
+              Adds gear directly to your library without creating a list. Useful for importing an existing inventory of gear you own.
+            </p>
+            <p className="text-sm text-gray-600 mb-5">
+              Quantity, worn, and consumable settings from the CSV are ignored. Those apply to list items, not the inventory itself.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDialog(null)}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => { setDialog(null); openImportPicker() }}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {dialog?.type === 'import-error' && (

@@ -113,3 +113,22 @@ Short ADRs covering the major shape decisions for grampacker that aren't obvious
 **Consequences.** Two RLS policies on `lists` and `list_items` — owner gets full access, public anon gets SELECT when the parent list has `is_shared = true`. The public share view at `/r/:token` is its own page (`SharePage.tsx`) with no auth and no edit controls. Per-trip granularity matches how users actually share (one list at a time, with a specific person).
 
 **Alternatives.** (a) Account-wide public profile. Rejected — over-shares; users curate which list they're proud of, not their whole closet. (b) No sharing. Rejected — sharing for advice is a real use case (the FAQ on `/help` calls this out). (c) Authenticated-only sharing (recipient signs in to view). Rejected — adds friction the recipient often doesn't accept; "send a link, no account needed" matches user expectations from Lighterpack and similar apps.
+
+---
+
+## ADR 9: Water (and similar liquid consumables) tracked as 1g gear with quantity = grams
+
+**Date:** 2026-04-30
+
+**Context.** Backpackers care about water weight precisely (it's 30%+ of pack weight on a hot day) but the data model has gear items with integer-gram weights and list items with integer quantity. There's no fractional quantity, no unit-aware weight, and no special handling for liquids. Carrying 3 L of water means 3000 g, but the schema has nowhere to put "3 L" or "3 kg" cleanly.
+
+**Decision.** Treat water as a gear item with `weight_grams = 1` and `quantity = grams of water carried` (~1 g per mL at standard conditions). Same convention for fuel canister contents and similar dense liquid consumables. The `list_items.quantity` cap was raised from 99 to 9999 (DB CHECK + UI inputs + CSV parser clamp) to support up to ~10 L.
+
+**Consequences.** The gear library shows entries like "Water — 1 g" without trip context, which is conceptually awkward for someone browsing inventory. The math works correctly: list weight = `sum(weight_grams × quantity)`, so `1 × 3000 = 3000 g` shows up cleanly in the rollup. CSV import/export round-trips correctly (the dedup rule keys on `category + name + weight`, so "Water" at 1g doesn't collide with a hypothetical "Water" at some other weight). Worn/consumable flags work as expected (mark water consumable).
+
+**Alternatives.**
+- Fractional `quantity` column. Rejected (for now) — schema change for one feature; ripples through every place that does qty math.
+- Per-gear `weight_unit_per_unit` (e.g., a "ml of liquid" mode). Rejected — adds complexity to every weight calculation and a UI surface to explain it.
+- A separate liquid tracker. Rejected — a whole new feature for what's effectively two or three items per trip.
+
+May revisit if more "X grams of substance Y" cases pile up that don't fit the 1g+qty pattern.
