@@ -9,6 +9,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
@@ -244,6 +245,27 @@ function ListDetailInner({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
+  // When dragging a category, the dragged wrapper carries its items along
+  // (they're DOM children). closestCenter measures from the active's center,
+  // and the dragged category's own item rects are physically closest — so
+  // `over` resolves to one of the dragged category's own items, the handler
+  // resolves dest to the same category, and the drop snaps back. Filter the
+  // collision search to category droppables when the active is a category;
+  // item drags use closestCenter unchanged.
+  const categoryIdSet = useMemo(() => new Set(categories.map((c) => c.id)), [categories])
+  const collisionDetection = useMemo<CollisionDetection>(
+    () => (args) => {
+      if (categoryIdSet.has(String(args.active.id))) {
+        return closestCenter({
+          ...args,
+          droppableContainers: args.droppableContainers.filter((c) => categoryIdSet.has(String(c.id))),
+        })
+      }
+      return closestCenter(args)
+    },
+    [categoryIdSet],
+  )
+
   // Active drag id (item id OR category id). The DragOverlay below uses it to
   // render an item-row clone during item drag; for category drag we render
   // null so dnd-kit's default behaviour (the original element follows the
@@ -282,9 +304,10 @@ function ListDetailInner({
       const oldIndex = sortedCats.findIndex((c) => c.id === activeIdStr)
       if (oldIndex === -1) return
 
-      // Resolve over.id to a target category id. closestCenter picks the
-      // closest droppable, which is often an item row rather than the
-      // category outer-wrapper id, so handle both shapes.
+      // Resolve over.id to a target category id. The collisionDetection
+      // filter restricts to category droppables when active is a category,
+      // so over.id is always a category id here. The else branch (over
+      // resolved to an item) shouldn't be reachable but is kept as a defence.
       let destCatId: string | null
       if (categoryIds.has(overIdStr)) {
         destCatId = overIdStr
@@ -529,12 +552,6 @@ function ListDetailInner({
               <p className="text-sm text-gray-400 italic">No items — add from your gear library</p>
             </div>
           ) : (() => {
-            // Flat item id list across all categories, in render order. The
-            // inner <SortableContext> needs every draggable id registered;
-            // verticalListSortingStrategy handles cross-category visual shifts.
-            // Uses displayedGrouped so worn items pulled into the Worn
-            // section don't double-register when groupWorn is on.
-            const flatItemIds = displayedGrouped.flatMap((g) => g.items.map((i) => i.id))
             const activeItem = activeId
               ? listItems.find((i) => i.id === activeId)
               : null
@@ -542,47 +559,43 @@ function ListDetailInner({
               <div className="space-y-4">
                 <DndContext
                   sensors={sensors}
-                  collisionDetection={closestCenter}
+                  collisionDetection={collisionDetection}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
                   onDragCancel={handleDragCancel}
                 >
-                  {/* Categories SortableContext is outer; items inner. With
-                      one DndContext, every useSortable inside reads the
-                      nearest SortableContext (items). Item drag gets the
-                      strategy auto-shift; category drag fires but renders
-                      via dnd-kit's default (original element follows the
-                      cursor) since its id isn't in the inner items list. */}
+                  {/* Categories SortableContext at the page level — its items
+                      list is the category ids, so SortableCategoryGroup's
+                      useSortable resolves to it. Each CategoryGroup renders a
+                      per-category SortableContext internally for its items. */}
                   <SortableContext
                     items={displayedGrouped.filter((g) => g.category !== null).map((g) => g.category!.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    <SortableContext items={flatItemIds} strategy={verticalListSortingStrategy}>
-                      {displayedGrouped
-                        .filter((g) => g.category !== null)
-                        .map((group) => (
-                          <SortableCategoryGroup
-                            key={group.category!.id}
-                            id={group.category!.id}
-                            name={group.category!.name}
-                            items={group.items}
-                            {...sharedGroupProps}
-                            onAddItem={(data) => addNewItemMut.mutate({ categoryId: group.category!.id, data })}
-                          />
-                        ))}
-                      {displayedGrouped
-                        .filter((g) => g.category === null)
-                        .map((group) => (
-                          <CategoryGroup
-                            key="__uncategorised__"
-                            name="Uncategorised"
-                            categoryId={null}
-                            items={group.items}
-                            {...sharedGroupProps}
-                            onAddItem={(data) => addNewItemMut.mutate({ categoryId: null, data })}
-                          />
-                        ))}
-                    </SortableContext>
+                    {displayedGrouped
+                      .filter((g) => g.category !== null)
+                      .map((group) => (
+                        <SortableCategoryGroup
+                          key={group.category!.id}
+                          id={group.category!.id}
+                          name={group.category!.name}
+                          items={group.items}
+                          {...sharedGroupProps}
+                          onAddItem={(data) => addNewItemMut.mutate({ categoryId: group.category!.id, data })}
+                        />
+                      ))}
+                    {displayedGrouped
+                      .filter((g) => g.category === null)
+                      .map((group) => (
+                        <CategoryGroup
+                          key="__uncategorised__"
+                          name="Uncategorised"
+                          categoryId={null}
+                          items={group.items}
+                          {...sharedGroupProps}
+                          onAddItem={(data) => addNewItemMut.mutate({ categoryId: null, data })}
+                        />
+                      ))}
                   </SortableContext>
                   <DragOverlay>
                     {activeItem ? (

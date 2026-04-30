@@ -7,6 +7,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
@@ -212,10 +213,32 @@ export default function GearLibraryPage() {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+
+  // When dragging a category, the dragged wrapper carries its items along
+  // (they're DOM children). closestCenter measures from the active's center,
+  // and the dragged category's own item rects are physically closest — so
+  // `over` resolves to one of the dragged category's own items, the handler
+  // resolves dest to the same category, and the drop snaps back. Filter the
+  // collision search to category droppables when the active is a category;
+  // item drags use closestCenter unchanged.
+  const categoryIdSet = useMemo(() => new Set(categories.map((c) => c.id)), [categories])
+  const collisionDetection = useMemo<CollisionDetection>(
+    () => (args) => {
+      if (categoryIdSet.has(String(args.active.id))) {
+        return closestCenter({
+          ...args,
+          droppableContainers: args.droppableContainers.filter((c) => categoryIdSet.has(String(c.id))),
+        })
+      }
+      return closestCenter(args)
+    },
+    [categoryIdSet],
+  )
+
   // Active drag id (item id OR category id). The DragOverlay renders an
   // item-row clone for item drags; category drag falls back to dnd-kit's
-  // default (original element follows the cursor) since its id isn't in the
-  // inner items SortableContext.
+  // default (original element follows the cursor) since the active id
+  // isn't in the inner items SortableContext.
   const [activeId, setActiveId] = useState<string | null>(null)
 
   // Within-category sort drag for gear items. Updates gear_items.sort_order
@@ -452,68 +475,61 @@ export default function GearLibraryPage() {
       {isLoading ? (
         <p className="text-sm text-gray-400">Loading…</p>
       ) : (() => {
-        // Flat list of every gear item id in render order. The inner
-        // SortableContext owns the items list; verticalListSortingStrategy
-        // handles cross-category visual shifts.
-        const flatItemIds = groups.flatMap((g) => g.items.map((i) => i.id))
         const activeItem = activeId
           ? allItems.find((i) => i.id === activeId)
           : null
         return (
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCenter}
+            collisionDetection={collisionDetection}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             onDragCancel={handleDragCancel}
           >
-            {/* Categories SortableContext is outer; items inner. With one
-                DndContext, every useSortable inside reads the nearest
-                SortableContext (items). Item drag gets strategy auto-shift;
-                category drag fires but no auto-shift — the original element
-                follows the cursor via dnd-kit's default. */}
+            {/* Categories SortableContext at the page level — its items list
+                is the category ids, so SortableCategorySection's useSortable
+                resolves to it. Each CategorySection renders a per-category
+                SortableContext internally for its items. */}
             <SortableContext
               items={categories.map((c) => c.id)}
               strategy={verticalListSortingStrategy}
             >
-              <SortableContext items={flatItemIds} strategy={verticalListSortingStrategy}>
-                {groups.map((group) => {
-                  const commonProps = {
-                    items: group.items,
-                    weightUnit,
-                    collapsed: collapsed.has(group.category?.id ?? '__uncategorised__'),
-                    onToggleCollapse: () =>
-                      toggleCollapse(group.category?.id ?? '__uncategorised__'),
-                    selectMode,
-                    selectedIds,
-                    onToggleSelect: toggleSelect,
-                    onInlineSave: (id: string, patch: Partial<Pick<GearItem, 'name' | 'description'>>) =>
-                      editItem.mutate({ id, patch }),
-                    onEditItem: (item: GearItem) => setDialog({ type: 'edit-item', item }),
-                    onDeleteItem: (item: GearItem) => setDialog({ type: 'delete-item', item }),
-                    onRenameCategory: (id: string, name: string) =>
-                      renameCategory.mutate({ id, name }),
-                    onDeleteCategory: (cat: Category) =>
-                      setDialog({ type: 'delete-category', category: cat }),
-                    onAddItemToCategory: (categoryId: string | null) =>
-                      setDialog({ type: 'create-item', categoryId }),
-                  }
+              {groups.map((group) => {
+                const commonProps = {
+                  items: group.items,
+                  weightUnit,
+                  collapsed: collapsed.has(group.category?.id ?? '__uncategorised__'),
+                  onToggleCollapse: () =>
+                    toggleCollapse(group.category?.id ?? '__uncategorised__'),
+                  selectMode,
+                  selectedIds,
+                  onToggleSelect: toggleSelect,
+                  onInlineSave: (id: string, patch: Partial<Pick<GearItem, 'name' | 'description'>>) =>
+                    editItem.mutate({ id, patch }),
+                  onEditItem: (item: GearItem) => setDialog({ type: 'edit-item', item }),
+                  onDeleteItem: (item: GearItem) => setDialog({ type: 'delete-item', item }),
+                  onRenameCategory: (id: string, name: string) =>
+                    renameCategory.mutate({ id, name }),
+                  onDeleteCategory: (cat: Category) =>
+                    setDialog({ type: 'delete-category', category: cat }),
+                  onAddItemToCategory: (categoryId: string | null) =>
+                    setDialog({ type: 'create-item', categoryId }),
+                }
 
-                  if (group.category === null) {
-                    return (
-                      <StaticCategorySection key="__uncategorised__" category={null} {...commonProps} />
-                    )
-                  }
+                if (group.category === null) {
                   return (
-                    <SortableCategorySection
-                      key={group.category.id}
-                      id={group.category.id}
-                      category={group.category}
-                      {...commonProps}
-                    />
+                    <StaticCategorySection key="__uncategorised__" category={null} {...commonProps} />
                   )
-                })}
-              </SortableContext>
+                }
+                return (
+                  <SortableCategorySection
+                    key={group.category.id}
+                    id={group.category.id}
+                    category={group.category}
+                    {...commonProps}
+                  />
+                )
+              })}
             </SortableContext>
             <DragOverlay>
               {activeItem ? (

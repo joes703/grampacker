@@ -3,18 +3,28 @@ import { supabase } from '../supabase'
 
 // ── Bulk helpers ──────────────────────────────────────────────────────────────
 
-// Single-round-trip sort_order rewrite for any reorder flow. Uses upsert with
-// onConflict: 'id' so every row in `updates` hits the UPDATE path (every id
-// already exists in the table — we never insert here). Empty updates list is a
-// no-op so callers don't have to guard.
-type ReorderableTable = 'lists' | 'list_items' | 'categories' | 'gear_items'
+// Single-round-trip sort_order rewrite. Calls a SECURITY DEFINER RPC that
+// runs UPDATE … SET sort_order against a whitelisted table. Sidesteps the
+// PostgREST upsert path entirely — no INSERT … ON CONFLICT, no RLS WITH
+// CHECK against a partial row, no NOT NULL trap. See migration
+// 20260430000000_bulk_reorder_rpc.sql for the SQL definition and the trust
+// assumption (callers can only know an id by first reading it, and SELECT
+// RLS gates that, so the function doesn't re-verify ownership).
+//
+// The TS-side union matches the SQL function's table whitelist — keeps
+// misuse a compile error rather than a runtime exception.
+type ReorderableTable = 'categories' | 'list_items'
 
-export async function bulkUpdateSortOrder(
+export async function bulkUpdateSortOrder<T extends { id: string; sort_order: number }>(
   table: ReorderableTable,
-  updates: { id: string; sort_order: number }[],
+  updates: T[],
 ): Promise<void> {
   if (updates.length === 0) return
-  const { error } = await supabase.from(table).upsert(updates, { onConflict: 'id' })
+  const { error } = await supabase.rpc('bulk_update_sort_order', {
+    p_table: table,
+    p_ids: updates.map((u) => u.id),
+    p_orders: updates.map((u) => u.sort_order),
+  })
   if (error) throw error
 }
 
