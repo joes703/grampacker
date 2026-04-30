@@ -464,18 +464,22 @@ function ListDetailInner({
           {weightUnit}
         </button>
 
-        {/* Pack-mode toggle (icon) */}
+        {/* Pack-mode toggle. Icon + label on sm+; icon-only below sm where
+            header space is tight. aria-label keeps screen readers covered
+            in the icon-only state. Styled to match the top-nav buttons. */}
         <button
           onClick={() => setMode(mode === 'pack' ? 'edit' : 'pack')}
           title={mode === 'pack' ? 'Pack mode: on' : 'Pack mode: off'}
+          aria-label="Pack mode"
           aria-pressed={mode === 'pack'}
-          className={`inline-flex items-center justify-center rounded-lg border p-1.5 ${
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
             mode === 'pack'
               ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
               : 'border-gray-300 text-gray-500 hover:bg-gray-50'
           }`}
         >
-          <ClipboardList size={16} />
+          <ClipboardList size={14} />
+          <span className="hidden sm:inline">Pack</span>
         </button>
 
         {/* Privacy toggle (icon + popover) */}

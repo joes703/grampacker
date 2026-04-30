@@ -42,6 +42,9 @@ export default function PrivacyButton({ list }: Props) {
 
   return (
     <>
+      {/* Share toggle. Icon + label on sm+; icon-only below sm where header
+          space is tight. aria-label is the screen-reader source of truth in
+          the icon-only state. Styled to match the top-nav buttons. */}
       <button
         ref={triggerRef}
         type="button"
@@ -49,11 +52,12 @@ export default function PrivacyButton({ list }: Props) {
         title={list.is_shared ? 'Public — click to manage' : 'Private — click to manage'}
         aria-label={list.is_shared ? 'Privacy: public — click to manage' : 'Privacy: private — click to manage'}
         aria-pressed={list.is_shared}
-        className={`inline-flex items-center justify-center rounded-lg border border-gray-300 p-1.5 hover:bg-gray-50 ${
-          list.is_shared ? 'text-blue-600' : 'text-gray-400'
+        className={`inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 ${
+          list.is_shared ? 'text-blue-600' : 'text-gray-500'
         }`}
       >
-        <Globe size={16} />
+        <Globe size={14} />
+        <span className="hidden sm:inline">Share</span>
       </button>
 
       {open && pos && createPortal(
