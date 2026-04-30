@@ -18,9 +18,18 @@ export default function InlineText({
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
+  // Sync draft to external value changes via the React-docs "store-previous-prop"
+  // pattern (https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes).
+  // setState during render — React reruns the component immediately on a real
+  // change, so the input never sees a stale draft. Avoids the cascading-render
+  // pitfall flagged by react-hooks/set-state-in-effect.
+  const [prevValue, setPrevValue] = useState(value)
+  if (value !== prevValue) {
+    setPrevValue(value)
+    setDraft(value)
+  }
   const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { setDraft(value) }, [value])
   useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
 
   function save() {
