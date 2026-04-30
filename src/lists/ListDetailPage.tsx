@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useParams } from 'react-router'
+import { useParams, useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   DndContext,
@@ -109,7 +109,25 @@ function ListDetailInner({
   userId: string
   qc: ReturnType<typeof useQueryClient>
 }) {
-  const [mode, setMode] = useState<Mode>('edit')
+  // Pack mode is URL-represented as ?mode=pack so it's bookmarkable,
+  // refresh-stable, and back/forward navigable. Anything other than the
+  // exact string 'pack' (missing, garbage, typo) falls back to edit mode
+  // silently. Toggling writes to the URL; the URL is the single source of
+  // truth — no separate React state. (Public share view at /r/:token is a
+  // different page entirely and can't see this parameter.)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const mode: Mode = searchParams.get('mode') === 'pack' ? 'pack' : 'edit'
+  function setMode(next: Mode) {
+    setSearchParams(
+      (prev) => {
+        const np = new URLSearchParams(prev)
+        if (next === 'pack') np.set('mode', 'pack')
+        else np.delete('mode')
+        return np
+      },
+      { replace: false },
+    )
+  }
   const { weightUnit, toggleWeightUnit } = useWeightUnit()
   // Pack-mode filter: when true, hide already-packed items from each
   // category. Header counts and the "complete" affordance still reflect the

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CopyPlus, Download, MoreVertical, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { ClipboardList, CopyPlus, Download, MoreVertical, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import {
   queryKeys,
@@ -25,6 +25,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
 import ListsEmptyState from './ListsEmptyState'
+import PrivacyButton from './PrivacyButton'
 
 // Single discriminated union for every transient dialog/modal/inline-form on
 // this page. Mirrors the pattern in ListDetailPage / GearLibraryPage — `type`
@@ -405,6 +406,23 @@ function ListCard({
       <div className="relative z-10 pointer-events-none">
         <h3 className="truncate pr-8 text-base font-semibold text-gray-900">{list.name}</h3>
         <CardMeta list={list} />
+      </div>
+
+      {/* Workflow actions: Pack launches into pack mode via the URL state
+          on /lists/:id; Share reuses the in-list PrivacyButton (its popover
+          is anchored to its own trigger, so dropping it into the card just
+          works). The row sits at z-10 with pointer-events-auto, above the
+          card's full-area Link at z-0 — clicks on the buttons hit them
+          directly via z-order, no propagation interception needed. */}
+      <div className="relative z-10 mt-3 flex items-center justify-end gap-2 pointer-events-auto">
+        <Link
+          to={`/lists/${list.id}?mode=pack`}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+        >
+          <ClipboardList size={14} />
+          <span className="hidden sm:inline">Pack</span>
+        </Link>
+        <PrivacyButton list={list} />
       </div>
 
       {/* Kebab — pointer-events-auto so it overrides the parent's
