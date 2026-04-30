@@ -79,7 +79,7 @@ export default function GearItemDialog({
     }
     const listPatch: ListContextPatch | null = listContext
       ? {
-          quantity: Math.max(1, Math.min(99, Math.round(quantity) || 1)),
+          quantity: Math.max(1, Math.min(9999, Math.round(quantity) || 1)),
           is_worn: worn,
           is_consumable: consumable,
         }
@@ -203,17 +203,17 @@ export default function GearItemDialog({
                     type="number"
                     inputMode="numeric"
                     min={1}
-                    max={99}
+                    max={9999}
                     value={quantity}
                     onChange={(e) =>
-                      setQuantity(Math.max(1, Math.min(99, parseInt(e.target.value, 10) || 1)))
+                      setQuantity(Math.max(1, Math.min(9999, parseInt(e.target.value, 10) || 1)))
                     }
                     className="w-16 h-11 rounded-lg border border-gray-300 px-2 text-center text-base tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <button
                     type="button"
-                    onClick={() => setQuantity((q) => Math.min(99, q + 1))}
-                    disabled={quantity >= 99}
+                    onClick={() => setQuantity((q) => Math.min(9999, q + 1))}
+                    disabled={quantity >= 9999}
                     aria-label="Increase quantity"
                     className="inline-flex w-11 h-11 items-center justify-center rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >

@@ -1,7 +1,7 @@
 import { supabase } from '../supabase'
 import type { Category, GearItem } from '../types'
 import type { GearCsvRow } from '../csv'
-import { createCategory } from './categories'
+import { resolveOrCreateCategories, resolveOrCreateGearForImport } from './import-helpers'
 
 export async function fetchGearItems(): Promise<GearItem[]> {
   const { data, error } = await supabase
@@ -58,35 +58,27 @@ export async function bulkMoveToCategoryGearItems(
 
 // ── CSV gear import ───────────────────────────────────────────────────────────
 
-// Bulk-import gear items from CSV rows. Creates any categories that don't
-// exist yet (matched by name, case-insensitive), then inserts every row.
+// Bulk-import gear items from CSV rows. Goes through the shared
+// resolveOrCreateGearForImport helper so dedup is identical to the
+// list-import path: rows whose (category + name + weight) matches an
+// existing gear item are skipped silently — no new gear is inserted, no
+// duplicates created. Within-CSV duplicates DO create separate gear items
+// (typing two rows means two items). Returns import stats so the UI can
+// report "X added, Y already in inventory."
 export async function importGearItems(
   userId: string,
   rows: GearCsvRow[],
   existingCategories: Category[],
+  existingGearItems: GearItem[],
   currentItemCount: number,
-): Promise<void> {
-  const catByName = new Map(existingCategories.map((c) => [c.name.toLowerCase(), c.id]))
-
-  const uniqueNames = [...new Set(rows.map((r) => r.category.trim()).filter(Boolean))]
-  for (const name of uniqueNames) {
-    if (!catByName.has(name.toLowerCase())) {
-      const created = await createCategory(userId, name, existingCategories.length + catByName.size)
-      catByName.set(name.toLowerCase(), created.id)
-    }
-  }
-
-  const items = rows.map((row, i) => ({
-    user_id: userId,
-    name: row.name.trim().slice(0, 256),
-    description: row.description ? row.description.slice(0, 2000) : null,
-    weight_grams: row.weight_grams,
-    category_id: row.category.trim()
-      ? (catByName.get(row.category.trim().toLowerCase()) ?? null)
-      : null,
-    sort_order: currentItemCount + i,
-  }))
-
-  const { error } = await supabase.from('gear_items').insert(items)
-  if (error) throw error
+): Promise<{ newCount: number; matchedCount: number }> {
+  const catByName = await resolveOrCreateCategories(userId, rows, existingCategories)
+  const { newCount, matchedCount } = await resolveOrCreateGearForImport({
+    userId,
+    rows,
+    existingGearItems,
+    catByName,
+    startSortOrder: currentItemCount,
+  })
+  return { newCount, matchedCount }
 }

@@ -15,6 +15,8 @@ Per-user caps enforced by `before insert` triggers in the database. Client UI ch
 - **256 chars** max for gear-item and list names.
 - **128 chars** max for category names.
 - **2,000 chars** max for description fields (gear items and lists).
+- **9999** max `list_items.quantity` (raised from 99 to support water tracked as 1g gear with quantity = grams; see DECISIONS.md ADR 9).
+- **2 MB** max CSV upload, enforced client-side in `useCsvFileInput` before parse.
 
 Length and weight constraints also live in the migrations as `CHECK` constraints — see `supabase/migrations/20260425000001_categories_and_gear.sql` and `20260425000002_lists_and_list_items.sql`.
 
@@ -104,27 +106,46 @@ Used for gear-library and per-list export/import. The format is a small, hand-ro
 
 **Gear-library export** (`gear-library.csv`): `name`, `description`, `weight_grams`, `category`.
 
-**List export** (`<sanitised-list-name>.csv`): `name`, `description`, `weight_grams`, `quantity`, `worn`, `consumable`, `packed`, `category`. Boolean columns are written as the literals `yes` / `no`.
+**List export** (`<sanitised-list-name>.csv`): `name`, `description`, `weight_grams`, `quantity`, `worn`, `consumable`, `category`. Boolean columns are written as the literals `yes` / `no`. Every column is read back by the import parser — `is_packed` is deliberately excluded since it's per-user runtime checklist state with no round-trip use case.
 
 Both:
 - Header row first.
 - Weights always exported in grams as integers.
 - File encoding: UTF-8.
 - Cell quoting only when needed (comma, quote, or newline in the cell).
-- No formula-injection escaping. No BOM. No size cap. List-export filenames are sanitised at the call site (lowercase + non-alphanumerics → `-`).
+- No formula-injection escaping. No BOM. List-export filenames are sanitised at the call site (lowercase + non-alphanumerics → `-`).
 
 ### Import
 
-Importing into a list creates a new list named from the source filename (`nameFromCsvFilename` strips the path and `.csv` extension; falls back to `"Imported list"` when the result is empty). Importing into the gear library adds rows without creating a list.
+Two surfaces, both run through `parseListCsv` / `parseGearCsv` and the shared `resolveOrCreateGearForImport` helper in `src/lib/queries/import-helpers.ts`.
 
-- No file-size cap is enforced. UTF-8 expected.
+**List import** (Import CSV button on `/lists` and the lists empty state) creates a new list named from the source filename (`nameFromCsvFilename` strips the path and `.csv` extension; falls back to `"Imported list"` when blank). The full per-row CSV — name, weight, category, quantity, worn, consumable — is captured into list_items.
+
+**Gear-only import** (Import CSV button on `/gear`) adds gear directly to the inventory without creating a list. An explainer modal appears before the file picker:
+
+> **Import gear inventory**
+>
+> Adds gear directly to your library without creating a list. Useful for importing an existing inventory of gear you own.
+>
+> Quantity, worn, and consumable settings from the CSV are ignored. Those apply to list items, not the inventory itself.
+
+Common rules across both paths:
+
+- **2 MB max file size**, checked in `useCsvFileInput` before parse. Larger files reject with a friendly error.
 - Header row required. Column names matched case-insensitively after trimming. Required columns: a name column (`name` or `item name`) and a weight column (`weight_grams`, `weight (g)`, or `weight`). Optional aliases recognised: `description`/`desc`, `category`, `quantity`/`qty`, `worn`/`is_worn`, `consumable`/`is_consumable`, `unit`.
 - Optional `unit` column converts the weight value: `g` (default), `oz` (× 28.3495), `lb` (× 453.592), `kg` (× 1000). Result rounded to integer grams and clamped to 100,000 g.
 - Rows with empty name are skipped silently.
 - Boolean columns accept `1`, `yes`, or `true` as truthy (case-insensitive); anything else is false.
+- Quantity is parsed as int and clamped to `[1, 9999]`; non-integer or empty values default to 1.
 - **If both `worn` and `consumable` are truthy on the same row, BOTH are cleared.** The DB has a `worn_xor_consumable` CHECK constraint and we'd rather lose the flags than reject the whole import; the user re-applies the right flag in the UI. (Worth revisiting — silent lossy behavior is a known oddity.)
 - Categories are matched case-insensitively against the user's existing categories and created if not found.
-- Gear items are matched by `category_id + lowercase(name)` against existing gear, then against rows queued earlier in the same import. A match is reused (its weight and description are NOT updated); no match means a new gear row is inserted.
+
+### Dedup rule (both import paths)
+
+Gear-item match key: `category_id + lowercase(name) + weight_grams` — exact triple. Match against the existing library only, snapshotted at import start. **Newly-created gear during this import is NOT considered for matching by other rows in the same import** — within-CSV duplicates create separate gear items because typing two rows is intent.
+
+- **List import.** Matched rows link the new list_item to the existing gear (no duplicate). Unmatched rows create new gear AND a list_item linking to it.
+- **Gear-only import.** Matched rows skip silently (already in inventory). Unmatched rows create new gear; no list_items are touched.
 
 ---
 

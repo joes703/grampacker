@@ -1,8 +1,8 @@
 import { supabase } from '../supabase'
 import type { Category, GearItem, ListItem, ListItemWithGear } from '../types'
 import type { ListImportRow } from '../csv'
-import { createCategory } from './categories'
 import { bulkUpdateSortOrder } from './optimistic'
+import { resolveOrCreateCategories, resolveOrCreateGearForImport } from './import-helpers'
 
 export async function fetchListItems(listId: string): Promise<ListItemWithGear[]> {
   const { data, error } = await supabase
@@ -91,6 +91,13 @@ export async function resetPackedForList(listId: string): Promise<void> {
 
 // ── CSV list import ───────────────────────────────────────────────────────────
 
+// Imports CSV rows into a freshly-created list. Gear resolution goes through
+// the shared resolveOrCreateGearForImport helper: rows whose (category +
+// name + weight) matches an existing gear item link the new list_item to
+// that gear without inserting a duplicate. Within-CSV duplicates create
+// separate gear items (typing two rows means two items). Per-row CSV
+// fields (quantity, is_worn, is_consumable) are written through to the
+// list_item insert verbatim.
 export async function importCsvRowsToList(
   listId: string,
   userId: string,
@@ -99,79 +106,18 @@ export async function importCsvRowsToList(
   existingCategories: Category[],
   currentListItemCount: number,
 ): Promise<void> {
-  // 1. Resolve/create categories
-  const catByName = new Map(existingCategories.map((c) => [c.name.toLowerCase(), c.id]))
+  const catByName = await resolveOrCreateCategories(userId, rows, existingCategories)
+  const { gearIdByRow } = await resolveOrCreateGearForImport({
+    userId,
+    rows,
+    existingGearItems,
+    catByName,
+    startSortOrder: existingGearItems.length,
+  })
 
-  const uniqueCatNames = [...new Set(rows.map((r) => r.category.trim()).filter(Boolean))]
-  for (const name of uniqueCatNames) {
-    if (!catByName.has(name.toLowerCase())) {
-      const created = await createCategory(userId, name, existingCategories.length + catByName.size)
-      catByName.set(name.toLowerCase(), created.id)
-    }
-  }
-
-  // 2. Resolve/create gear items. Dedup is keyed by category_id + lowercase
-  // name — same name in different categories means different gear items
-  // (sleeping bag in "Sleeping" vs "Loaner kit" really are different things).
-  // The map is also updated as we go so duplicate (name + category) rows
-  // within ONE CSV collapse to a single insert; the second row finds the
-  // first's queued key and skips. UUIDs can't contain ':', so the composite
-  // key is collision-free.
-  function resolveCategoryId(rawCategory: string): string | null {
-    const trimmed = rawCategory.trim()
-    if (!trimmed) return null
-    return catByName.get(trimmed.toLowerCase()) ?? null
-  }
-  function gearKey(categoryId: string | null, name: string): string {
-    return `${categoryId ?? ''}:${name.toLowerCase()}`
-  }
-
-  const gearIdByKey = new Map<string, string>(
-    existingGearItems.map((g) => [gearKey(g.category_id, g.name), g.id]),
-  )
-  // Tracks keys queued for insert in this CSV but not yet inserted. After
-  // insert, gearIdByKey has the real ids and this set is unused.
-  const queuedKeys = new Set<string>()
-
-  const newGearRows: {
-    user_id: string
-    name: string
-    description: string | null
-    weight_grams: number
-    category_id: string | null
-    sort_order: number
-  }[] = []
-  for (const row of rows) {
-    const categoryId = resolveCategoryId(row.category)
-    const key = gearKey(categoryId, row.name)
-    if (gearIdByKey.has(key) || queuedKeys.has(key)) continue
-    queuedKeys.add(key)
-    newGearRows.push({
-      user_id: userId,
-      name: row.name,
-      description: row.description,
-      weight_grams: row.weight_grams,
-      category_id: categoryId,
-      sort_order: existingGearItems.length + newGearRows.length,
-    })
-  }
-
-  if (newGearRows.length > 0) {
-    const { data: created, error } = await supabase
-      .from('gear_items')
-      .insert(newGearRows)
-      .select('id, name, category_id')
-    if (error) throw error
-    for (const g of created) {
-      gearIdByKey.set(gearKey(g.category_id, g.name), g.id)
-    }
-  }
-
-  // 3. Add all rows to the list (gear_item_id is required; if a row had no name/match, skip it)
   const listItemRows = rows
     .map((row, i) => {
-      const categoryId = resolveCategoryId(row.category)
-      const gearId = gearIdByKey.get(gearKey(categoryId, row.name))
+      const gearId = gearIdByRow[i]
       if (!gearId) return null
       return {
         list_id: listId,
@@ -184,6 +130,7 @@ export async function importCsvRowsToList(
     })
     .filter((r): r is NonNullable<typeof r> => r !== null)
 
-  const { error: liErr } = await supabase.from('list_items').insert(listItemRows)
-  if (liErr) throw liErr
+  if (listItemRows.length === 0) return
+  const { error } = await supabase.from('list_items').insert(listItemRows)
+  if (error) throw error
 }

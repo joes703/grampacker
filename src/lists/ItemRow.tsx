@@ -112,7 +112,7 @@ export default function ItemRow({
 
   function commitQty() {
     const parsed = parseInt(qtyDraft, 10)
-    const clamped = isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, 99)
+    const clamped = isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, 9999)
     if (clamped !== item.quantity && onUpdate) onUpdate({ quantity: clamped })
     setEditingQty(false)
   }
@@ -247,7 +247,7 @@ export default function ItemRow({
             ref={qtyInputRef}
             type="number"
             min={1}
-            max={99}
+            max={9999}
             value={qtyDraft}
             onChange={(e) => setQtyDraft(e.target.value)}
             onBlur={commitQty}
