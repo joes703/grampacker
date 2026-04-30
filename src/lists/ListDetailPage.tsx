@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -47,14 +47,12 @@ import {
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
 import { parseListCsv, listItemsToCsv, downloadCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
-import { getLastListId, setLastListId } from '../lib/preferences'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { assignSortOrderSlots, groupListItemsByCategory } from '../lib/grouping'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
 import ListsBox from './ListsBox'
-import ListsEmptyState from './ListsEmptyState'
 import PackingProgress from './PackingProgress'
 import InlineTitle from './InlineTitle'
 import NotesEditor from './NotesEditor'
@@ -87,48 +85,27 @@ type DialogState =
 
 export default function ListDetailPage() {
   // Default title for the wrapper; ListDetailInner overrides with the list
-  // name once it mounts and the list resolves. Stays as "Lists" during the
-  // brief redirect window, on the empty-state path, and while no routeId
-  // has been resolved.
+  // name once it mounts and the list resolves. Stays as "Lists" briefly while
+  // the lists query is pending.
   useDocumentTitle('Lists')
-  const { id: routeId } = useParams<{ id?: string }>()
+  // Mounted only at /lists/:id, so params.id is guaranteed by the route.
+  // Asserting here narrows routeId to string for ListDetailInner's listId prop.
+  const { id } = useParams<{ id: string }>()
+  const routeId = id!
   const navigate = useNavigate()
   const { session } = useAuth()
   const qc = useQueryClient()
 
-  const { data: lists = [], isLoading: listsLoading } = useQuery({
+  const { data: lists = [] } = useQuery({
     queryKey: queryKeys.lists(),
     queryFn: fetchLists,
   })
 
-  // Lists ordered by most recently updated (for redirect target + post-delete fallback)
+  // Lists ordered by most recently updated — used by the post-delete handler
+  // in ListDetailInner to pick the next list to navigate to.
   const listsByRecent = [...lists].sort(
     (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
   )
-
-  // Pick the redirect target: last list the user viewed (if it still exists), else most-recently-updated
-  const lastViewedId = getLastListId()
-  const lastViewed = lastViewedId ? lists.find((l) => l.id === lastViewedId) : null
-  const fallbackList = lastViewed ?? listsByRecent[0]
-
-  // Redirect /lists → /lists/<target> when no route id is present
-  useEffect(() => {
-    if (listsLoading) return
-    if (!routeId && fallbackList) navigate(`/lists/${fallbackList.id}`, { replace: true })
-  }, [routeId, fallbackList, listsLoading, navigate])
-
-  // Remember the currently viewed list so we can return to it next visit
-  useEffect(() => {
-    if (routeId) setLastListId(routeId)
-  }, [routeId])
-
-  // No id and no lists → empty state
-  if (!routeId && !listsLoading && lists.length === 0) {
-    return <ListsEmptyState />
-  }
-
-  // No id and still resolving → render nothing while redirect runs
-  if (!routeId) return null
 
   // PrivateRoute usually keeps session non-null here, but if it goes null
   // mid-render (logout), bail out cleanly instead of throwing.
