@@ -6,6 +6,7 @@ import { Download, KeyRound, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../lib/supabase'
 import {
+  queryKeys,
   fetchCategories,
   fetchGearItems,
   fetchLists,
@@ -157,9 +158,9 @@ function DownloadAllData() {
     setMsg(null)
     try {
       const [categories, gearItems, lists, allItems] = await Promise.all([
-        qc.fetchQuery({ queryKey: ['categories'], queryFn: fetchCategories }),
-        qc.fetchQuery({ queryKey: ['gear-items'], queryFn: fetchGearItems }),
-        qc.fetchQuery({ queryKey: ['lists'], queryFn: fetchLists }),
+        qc.fetchQuery({ queryKey: queryKeys.categories(), queryFn: fetchCategories }),
+        qc.fetchQuery({ queryKey: queryKeys.gearItems(), queryFn: fetchGearItems }),
+        qc.fetchQuery({ queryKey: queryKeys.lists(), queryFn: fetchLists }),
         fetchAllUserListItems(userId),
       ])
 
