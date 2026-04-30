@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useParams, useNavigate } from 'react-router'
+import { useParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   DndContext,
@@ -32,13 +32,8 @@ import {
   deleteListItem,
   resetPackedForList,
   updateList,
-  deleteList,
-  createList,
-  duplicateList,
   reorderCategories,
-  reorderLists,
   reorderListItems,
-  importCsvRowsToList,
   updateGearItem,
   createGearItem,
   deleteGearItem,
@@ -46,25 +41,20 @@ import {
   type ListItemPatch,
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
-import { parseListCsv, listItemsToCsv, downloadCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
-import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { assignSortOrderSlots, groupListItemsByCategory } from '../lib/grouping'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
-import ListsBox from './ListsBox'
 import PackingProgress from './PackingProgress'
 import InlineTitle from './InlineTitle'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './AddItemRow'
 import PrivacyButton from './PrivacyButton'
-import ListImportPreviewDialog from './ListImportPreviewDialog'
 import CategoryGroup, { SortableCategoryGroup } from './CategoryGroup'
 import PanelCard from './PanelCard'
 import ItemRow from './ItemRow'
 import GearItemDialog from '../gear/GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
-import Modal from '../components/Modal'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
 
@@ -78,10 +68,6 @@ type Mode = 'edit' | 'pack'
 type DialogState =
   | { type: 'edit-gear'; gear: GearItem; listItem: ListItemWithGear | null; saveError: string | null }
   | { type: 'delete-gear'; candidate: GearItem }
-  | { type: 'import-preview'; rows: ListImportRow[]; filename: string }
-  | { type: 'import-error'; message: string }
-  | { type: 'confirm-delete-list'; list: List }
-  | { type: 'creating-list'; draft: string }
 
 export default function ListDetailPage() {
   // Default title for the wrapper; ListDetailInner overrides with the list
@@ -92,7 +78,6 @@ export default function ListDetailPage() {
   // Asserting here narrows routeId to string for ListDetailInner's listId prop.
   const { id } = useParams<{ id: string }>()
   const routeId = id!
-  const navigate = useNavigate()
   const { session } = useAuth()
   const qc = useQueryClient()
 
@@ -101,37 +86,27 @@ export default function ListDetailPage() {
     queryFn: fetchLists,
   })
 
-  // Lists ordered by most recently updated — used by the post-delete handler
-  // in ListDetailInner to pick the next list to navigate to.
-  const listsByRecent = [...lists].sort(
-    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-  )
-
   // PrivateRoute usually keeps session non-null here, but if it goes null
   // mid-render (logout), bail out cleanly instead of throwing.
   if (!session) return null
   const userId = session.user.id
 
   // key={routeId} forces a fresh ListDetailInner instance per list, so local
-  // state (open dialogs, draft inputs, sidebar collapse, etc.) doesn't leak
-  // when the user switches lists.
-  return <ListDetailInner key={routeId} listId={routeId} lists={lists} listsByRecent={listsByRecent} userId={userId} qc={qc} navigate={navigate} />
+  // state (open dialogs, draft inputs, etc.) doesn't leak when the user
+  // switches lists.
+  return <ListDetailInner key={routeId} listId={routeId} lists={lists} userId={userId} qc={qc} />
 }
 
 function ListDetailInner({
   listId,
   lists,
-  listsByRecent,
   userId,
   qc,
-  navigate,
 }: {
   listId: string
   lists: List[]
-  listsByRecent: List[]
   userId: string
   qc: ReturnType<typeof useQueryClient>
-  navigate: ReturnType<typeof useNavigate>
 }) {
   const [mode, setMode] = useState<Mode>('edit')
   const { weightUnit, toggleWeightUnit } = useWeightUnit()
@@ -158,17 +133,6 @@ function ListDetailInner({
   // dialog or switching to a different gear item naturally discards the
   // error: there's no separate state to keep in sync.
   const [dialog, setDialog] = useState<DialogState | null>(null)
-  const {
-    inputRef: importInputRef,
-    onChange: handleImportFile,
-    openPicker: openImportPicker,
-  } = useCsvFileInput<ListImportRow>(
-    parseListCsv,
-    {
-      onParsed: (rows, filename) => setDialog({ type: 'import-preview', rows, filename }),
-      onError: (message) => setDialog({ type: 'import-error', message }),
-    },
-  )
 
   const list = lists.find((l) => l.id === listId)
   // Inner overrides the wrapper's "Lists" default with the list name once
@@ -213,39 +177,6 @@ function ListDetailInner({
   const reorderCatsMut = useMutation({
     mutationFn: reorderCategories,
     ...makeOptimisticReorder<Category>(qc, queryKeys.categories()),
-  })
-
-  // Import-CSV creates a brand new list named after the source filename and
-  // populates it with the CSV rows. Single transaction-shaped flow at the
-  // call-site: createList, then importCsvRowsToList against the new list id.
-  // After success we navigate the user into the new list so they see the
-  // imported items immediately.
-  const importMut = useMutation({
-    mutationFn: async ({ name, rows }: { name: string; rows: ListImportRow[] }) => {
-      const newList = await createList(userId, name, lists.length)
-      await importCsvRowsToList(newList.id, userId, rows, gearItems, categories, 0)
-      return newList
-    },
-    onSuccess: (newList) => {
-      qc.invalidateQueries({ queryKey: queryKeys.lists() })
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      qc.invalidateQueries({ queryKey: queryKeys.categories() })
-      setDialog(null)
-      navigate(`/lists/${newList.id}`)
-    },
-  })
-
-  const duplicateMut = useMutation({
-    mutationFn: (target: List) => duplicateList(target, userId, lists.length),
-    onSuccess: (created) => {
-      qc.invalidateQueries({ queryKey: queryKeys.lists() })
-      navigate(`/lists/${created.id}`)
-    },
-  })
-
-  const reorderListsMut = useMutation({
-    mutationFn: reorderLists,
-    ...makeOptimisticReorder<List>(qc, queryKeys.lists()),
   })
 
   const reorderItemsMut = useMutation({
@@ -306,26 +237,6 @@ function ListDetailInner({
   const renameMut = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => updateList(id, { name }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
-  })
-
-  const deleteListMut = useMutation({
-    mutationFn: (id: string) => deleteList(id),
-    onSuccess: async (_data, deletedId) => {
-      await qc.invalidateQueries({ queryKey: queryKeys.lists() })
-      // Switch to the next list (most recent remaining), or empty state
-      const [next] = listsByRecent.filter((l) => l.id !== deletedId)
-      if (next) navigate(`/lists/${next.id}`, { replace: true })
-      else navigate('/lists', { replace: true })
-    },
-  })
-
-  const createListMut = useMutation({
-    mutationFn: (name: string) => createList(userId, name, lists.length),
-    onSuccess: (created) => {
-      qc.invalidateQueries({ queryKey: queryKeys.lists() })
-      setDialog(null)
-      navigate(`/lists/${created.id}`)
-    },
   })
 
   const sensors = useSensors(
@@ -548,58 +459,16 @@ function ListDetailInner({
         <PrivacyButton list={list} />
       </div>
 
-      {/* Hidden file input — triggered by per-list Import menu action */}
-      <input
-        ref={importInputRef}
-        type="file"
-        accept=".csv,text/csv"
-        className="hidden"
-        onChange={handleImportFile}
-      />
-
       {/* Two-column grid (sidebar collapses in pack mode). The visibility
           condition is `mode !== 'pack'` — derived directly, not stored. */}
       <div className="flex gap-4 items-start">
-        {/* LEFT column — Lists box + Library panel. Hidden in pack mode on
-            desktop so the user can focus on packing. */}
+        {/* LEFT column — gear library picker. Hidden in pack mode on desktop
+            so the user can focus on packing. List management lives on /lists. */}
         {mode !== 'pack' && (
           <aside
-            className="hidden lg:flex w-80 shrink-0 flex-col gap-4 sticky self-start"
+            className="hidden lg:flex w-80 shrink-0 flex-col sticky self-start"
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
           >
-            <ListsBox
-              lists={lists}
-              activeId={list.id}
-              creating={dialog?.type === 'creating-list'}
-              newDraft={dialog?.type === 'creating-list' ? dialog.draft : ''}
-              onNewDraftChange={(v) => setDialog({ type: 'creating-list', draft: v })}
-              onStartNew={() => setDialog({ type: 'creating-list', draft: '' })}
-              onSubmitNew={() => {
-                const draft = dialog?.type === 'creating-list' ? dialog.draft : ''
-                const trimmed = draft.trim()
-                if (trimmed) createListMut.mutate(trimmed)
-                else setDialog(null)
-              }}
-              onCancelNew={() => setDialog(null)}
-              onSelect={(l) => navigate(`/lists/${l.id}`)}
-              onRename={(l, name) => renameMut.mutate({ id: l.id, name })}
-              onStartImport={openImportPicker}
-              onExport={async (l) => {
-                const items = await qc.fetchQuery({
-                  queryKey: queryKeys.listItems(l.id),
-                  queryFn: () => fetchListItems(l.id),
-                })
-                const csv = listItemsToCsv(items, categories)
-                downloadCsv(`${l.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`, csv)
-              }}
-              onDuplicate={(l) => duplicateMut.mutate(l)}
-              onDelete={(l) => setDialog({ type: 'confirm-delete-list', list: l })}
-              onReorder={(orderedIds) => {
-                reorderListsMut.mutate(orderedIds.map((id, i) => ({ id, sort_order: i })))
-              }}
-            />
-
-            {/* Library panel */}
             <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
               <div className="flex items-center px-3 py-2 border-b border-gray-200 bg-gray-50">
                 <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -608,16 +477,16 @@ function ListDetailInner({
               </div>
               <div className="flex-1 overflow-hidden">
                 <LibraryPanel
-                    gearItems={gearItems}
-                    categories={categories}
-                    listItemGearIds={listItemGearIds}
-                    weightUnit={weightUnit}
-                    onAdd={(item) => addMut.mutate(item)}
-                    onRemove={(item) => {
-                      const li = listItems.find((l) => l.gear_item_id === item.id)
-                      if (li) deleteMut.mutate(li.id)
-                    }}
-                  />
+                  gearItems={gearItems}
+                  categories={categories}
+                  listItemGearIds={listItemGearIds}
+                  weightUnit={weightUnit}
+                  onAdd={(item) => addMut.mutate(item)}
+                  onRemove={(item) => {
+                    const li = listItems.find((l) => l.gear_item_id === item.id)
+                    if (li) deleteMut.mutate(li.id)
+                  }}
+                />
               </div>
             </div>
           </aside>
@@ -746,71 +615,31 @@ function ListDetailInner({
         </div>
       </div>
 
-      {/* Mobile sidebar drawer — mirrors the desktop left aside. Slides
-          in from the LEFT, dismissed by overlay tap, the close button,
-          or a left-drag. Stays open across multiple add/remove actions
-          on the gear picker so the user can build up a list quickly;
-          only list selection auto-closes (then immediately navigates).
-          The flex chain inside Drawer.Content uses min-h-0 on each
-          flex-1 wrapper so LibraryPanel's inner overflow-y-auto can
-          engage; otherwise the panel grows to its content height and
-          the bounded drawer never delegates scroll to the inner list. */}
+      {/* Mobile gear-library drawer — mirrors the desktop left aside.
+          Slides in from the LEFT, dismissed by overlay tap, the close
+          button, or a left-drag. Stays open across multiple add/remove
+          actions so the user can build up a list quickly. The flex chain
+          inside Drawer.Content uses min-h-0 on each flex-1 wrapper so
+          LibraryPanel's inner overflow-y-auto can engage; otherwise the
+          panel grows to its content height and the bounded drawer never
+          delegates scroll to the inner list. */}
       <Drawer.Root open={drawerOpen} onOpenChange={setDrawerOpen} direction="left">
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40 lg:hidden" />
           <Drawer.Content className="fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-sm flex-col bg-gray-50 lg:hidden">
             <Drawer.Title className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
-              <span className="text-sm font-semibold text-gray-900">Lists & gear</span>
+              <span className="text-sm font-semibold text-gray-900">Gear library</span>
               <button
                 type="button"
                 onClick={() => setDrawerOpen(false)}
-                aria-label="Close sidebar"
+                aria-label="Close gear library"
                 className="rounded p-1 text-gray-400 hover:text-gray-600"
               >
                 <X size={18} />
               </button>
             </Drawer.Title>
-            <div className="flex-1 min-h-0 flex flex-col gap-4 p-4 overflow-hidden">
-              <ListsBox
-                lists={lists}
-                activeId={list.id}
-                creating={dialog?.type === 'creating-list'}
-                newDraft={dialog?.type === 'creating-list' ? dialog.draft : ''}
-                onNewDraftChange={(v) => setDialog({ type: 'creating-list', draft: v })}
-                onStartNew={() => setDialog({ type: 'creating-list', draft: '' })}
-                onSubmitNew={() => {
-                  const draft = dialog?.type === 'creating-list' ? dialog.draft : ''
-                  const trimmed = draft.trim()
-                  if (trimmed) createListMut.mutate(trimmed)
-                  else setDialog(null)
-                }}
-                onCancelNew={() => setDialog(null)}
-                onSelect={(l) => {
-                  setDrawerOpen(false)
-                  navigate(`/lists/${l.id}`)
-                }}
-                onRename={(l, name) => renameMut.mutate({ id: l.id, name })}
-                onStartImport={openImportPicker}
-                onExport={async (l) => {
-                  const items = await qc.fetchQuery({
-                    queryKey: queryKeys.listItems(l.id),
-                    queryFn: () => fetchListItems(l.id),
-                  })
-                  const csv = listItemsToCsv(items, categories)
-                  downloadCsv(`${l.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`, csv)
-                }}
-                onDuplicate={(l) => duplicateMut.mutate(l)}
-                onDelete={(l) => setDialog({ type: 'confirm-delete-list', list: l })}
-                onReorder={(orderedIds) => {
-                  reorderListsMut.mutate(orderedIds.map((id, i) => ({ id, sort_order: i })))
-                }}
-              />
+            <div className="flex-1 min-h-0 flex flex-col p-4 overflow-hidden">
               <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
-                <div className="flex items-center px-3 py-2 border-b border-gray-200 bg-gray-50">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Gear library
-                  </span>
-                </div>
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <LibraryPanel
                     gearItems={gearItems}
@@ -829,51 +658,6 @@ function ListDetailInner({
           </Drawer.Content>
         </Drawer.Portal>
       </Drawer.Root>
-
-      {/* Import error */}
-      {dialog?.type === 'import-error' && (
-        <Modal open onClose={() => setDialog(null)} title="Import error" className="w-full max-w-sm">
-          <div className="p-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-2">Import error</h2>
-            <p className="text-sm text-red-600 mb-4">{dialog.message}</p>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setDialog(null)}
-                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Import preview */}
-      {dialog?.type === 'import-preview' && (
-        <ListImportPreviewDialog
-          rows={dialog.rows}
-          saving={importMut.isPending}
-          onConfirm={() => importMut.mutate({ name: nameFromCsvFilename(dialog.filename), rows: dialog.rows })}
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {/* Delete confirmation */}
-      {dialog?.type === 'confirm-delete-list' && (
-        <ConfirmDialog
-          title="Delete list"
-          message={`This will permanently delete "${dialog.list.name}" and all of its items. This cannot be undone.`}
-          confirmLabel="Delete list"
-          dangerous
-          onCancel={() => setDialog(null)}
-          onConfirm={() => {
-            const target = dialog.list
-            setDialog(null)
-            deleteListMut.mutate(target.id)
-          }}
-        />
-      )}
 
       {/* Gear-item edit (reached from the row tap on mobile or the kebab →
           Edit on any viewport). Reuses GearItemDialog and, when a list_item
