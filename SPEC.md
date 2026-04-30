@@ -94,7 +94,7 @@ Two patterns:
 
 Public read for shared lists is a separate policy with `using (is_shared = true)` on `lists` and `using (EXISTS (SELECT 1 FROM lists WHERE id = list_items.list_id AND is_shared = true))` on `list_items`.
 
-For bulk partial-column writes that have to bypass RLS WITH CHECK on the INSERT path, see `CLAUDE.md` "Database patterns" and the `bulk_update_sort_order` RPC (migration `20260430000000_bulk_reorder_rpc.sql`).
+For bulk partial-column writes that have to bypass RLS WITH CHECK on the INSERT path, see `CLAUDE.md` "Database patterns" and the `bulk_update_sort_order` RPC (migrations `20260430000000_bulk_reorder_rpc.sql` for the function shape and `20260501000000_bulk_reorder_rpc_ownership_check.sql` for the inline ownership check that defends against IDs leaked through shared-list public read paths).
 
 ---
 
@@ -146,6 +146,21 @@ Gear-item match key: `category_id + lowercase(name) + weight_grams` — exact tr
 
 - **List import.** Matched rows link the new list_item to the existing gear (no duplicate). Unmatched rows create new gear AND a list_item linking to it.
 - **Gear-only import.** Matched rows skip silently (already in inventory). Unmatched rows create new gear; no list_items are touched.
+
+---
+
+## Drag-and-drop reordering rules
+
+Two surfaces support DnD: `/gear` and `/lists/:id`. The public share view at `/r/:token` is read-only and renders no drag affordances.
+
+- **Category reorder is `/gear`-only.** Categories on `/lists/:id` render in their global `sort_order` but cannot be reordered there — no drag handle, no `useSortable` wrapper. Item-level DnD within categories works on both pages. The single-surface rule keeps "manage gear inventory and its order" cleanly on `/gear`; the list page is for working on a specific trip. (See `DECISIONS.md` ADR 11 for the rationale.)
+- **Items reorder within their category only.** Cross-category drops are silently rejected — the item snaps back. Recategorising an item happens via the item edit modal, or — on `/gear` only — via the multi-select toolbar's "Move to category". Each category section renders its own `<SortableContext>` for items, so dnd-kit's auto-shift only operates within-category. (See `DECISIONS.md` ADR 1 for the rationale.)
+- **Uncategorised is not draggable.** The Uncategorised section has no `categories` table row, no drag handle, no rename, no delete. On `/gear` it cannot be a drop target for category drags either — the handler rejects `destCatId === null`. Items inside Uncategorised reorder among themselves like any other category.
+- **Pack mode on `/lists/:id` disables item DnD.** The `useSortable` hook receives `disabled: packMode` so structural changes can't happen while the user is checking off items.
+- **Reorder writes for `categories` and `list_items` go through the `bulk_update_sort_order` RPC.** Single round-trip per drag.
+- **Gear-item reorder on `/gear` is the exception** — it fans out `Promise.all` of single-row `updateGearItem` PATCHes rather than the RPC, since the RPC's whitelist doesn't include `gear_items` (per-drag volume is small — only items in one category — and lists order by `list_items.sort_order`, not `gear_items.sort_order`, so no list-side cache needs invalidating).
+- **Reorder writes are optimistic and silent on failure.** `makeOptimisticReorder` snapshots the cache, applies the new ordering, and rolls back on error with no user-visible toast. Hard-refresh after a write during testing to confirm the server accepted it (see `CLAUDE.md` "Verification").
+- **Custom collision detection during category drag on `/gear`.** When the active drag is a category, the droppable-container set is filtered to category-only ids. Without this, dnd-kit's `closestCenter` resolves `over` to one of the dragged category's own item rows (closer to the active's center than a sibling category) and the drop snaps back. Item drags use unmodified `closestCenter`. The list page only ever drags items, so it uses unmodified `closestCenter` directly.
 
 ---
 

@@ -34,13 +34,13 @@ Short ADRs covering the major shape decisions for grampacker that aren't obvious
 
 ## ADR 3: Bulk DB operations go through Postgres RPCs, not PostgREST upserts
 
-**Date:** 2026-04-30 (migration `20260430000000_bulk_reorder_rpc.sql`)
+**Date:** 2026-04-30 (migration `20260430000000_bulk_reorder_rpc.sql`); ownership check added 2026-05-01 (migration `20260501000000_bulk_reorder_rpc_ownership_check.sql`).
 
 **Context.** Reorder helpers originally called `supabase.from(table).upsert(rows, { onConflict: 'id' })`. PostgREST builds `INSERT … ON CONFLICT DO UPDATE`. PostgreSQL evaluates the INSERT-side RLS WITH CHECK and NOT NULL constraints against the proposed row before resolving the conflict, so partial-column payloads fail repeatedly — first RLS on user_id (42501), then NOT NULL on name (23502), then the next required column. Optimistic UI was masking the failures; the bug had been silently rolling back category reorders for weeks.
 
-**Decision.** Bulk partial-column updates go through `SECURITY DEFINER` Postgres functions called via `supabase.rpc()`. The function bypasses RLS internally; we restrict its callable surface via a fixed table whitelist and revoke `EXECUTE` from anon. `bulk_update_sort_order` is the canonical example.
+**Decision.** Bulk partial-column updates go through `SECURITY DEFINER` Postgres functions called via `supabase.rpc()`. The function bypasses RLS internally; we restrict its callable surface via a fixed table whitelist, revoke `EXECUTE` from anon, AND enforce ownership inline per table. `bulk_update_sort_order` is the canonical example: categories filter on `user_id = auth.uid()`; list_items join `lists` and filter on `lists.user_id = auth.uid()`.
 
-**Consequences.** Single round-trip preserved. SELECT RLS already gates which IDs a user can know — if a caller has an ID to pass in, they were allowed to read it — so the function trusts that and doesn't re-verify ownership. New tables added to the whitelist must continue to satisfy that property.
+**Consequences.** Single round-trip preserved. The inline ownership check is defense-in-depth — the original migration relied on SELECT RLS gating which IDs a caller could know, but that trust assumption broke for tables with public/shared read paths (a signed-in attacker could read another user's `list_item` ids from a shared list and pass them to the RPC). The replacement (`20260501000000_bulk_reorder_rpc_ownership_check.sql`) silently drops rows the caller doesn't own — no error surface to probe, no information leak about which IDs exist. Tables added to the whitelist must specify their ownership predicate inline in the function body.
 
 **Alternatives.** (a) Include every required column in the upsert payload. Rejected — whack-a-mole; every new NOT NULL or RLS clause re-breaks the helper. (b) Switch the bulk helper back to `Promise.all` of single-row PATCHes. Rejected — that's the N-roundtrips bug we'd already fixed once. The RPC sidesteps the upsert problem entirely while keeping the bulk-write performance.
 
@@ -132,3 +132,17 @@ Short ADRs covering the major shape decisions for grampacker that aren't obvious
 - A separate liquid tracker. Rejected — a whole new feature for what's effectively two or three items per trip.
 
 May revisit if more "X grams of substance Y" cases pile up that don't fit the 1g+qty pattern.
+
+---
+
+## ADR 11: Category reorder is `/gear`-only
+
+**Date:** 2026-04-30
+
+**Context.** Earlier, category-level DnD worked on both `/gear` and `/lists/:id`. The list page only renders categories that have at least one item on the current list (plus Uncategorised), but reordering them on that page mutated the same global `categories.sort_order` rows used everywhere. Categories with no items on the current list — invisible from the list view — would have their relative position shift vs. dragged categories, even though the user couldn't see it happen. A Codex DnD architecture review flagged this as cognitively odd: a partial view mutating a global property in ways the user can't observe.
+
+**Decision.** Category reorder happens only on `/gear`. The list page (`/lists/:id`) renders categories in their global `sort_order` but provides no drag affordance for category headers — no handle, no `useSortable` wrapper. Item-level DnD within categories still works on both pages.
+
+**Consequences.** One canonical surface for managing category order, matching the pattern in ADR 5 (one row-action surface) and ADR 6 (`/lists` is the canonical list-management surface). The `SortableCategoryGroup` component, the page-level `<SortableContext>` for categories on the list page, the custom collision-detection workaround for nested-sortable category drag, and the category-reorder branch of `handleDragEnd` are all deleted (~75 lines). Users who want to rearrange categories navigate to `/gear` (one click via the existing "Back to list" affordance). The lists page handler simplifies to within-category item reorder only and can use unmodified `closestCenter`.
+
+**Alternatives.** (a) Accept the global behavior and document it. Rejected — the partial-view-mutates-global-state oddity is exactly the class of UX surprise the app's other "two paths" decisions (ADR 5, ADR 6) avoided. (b) Restrict the list-page reorder to only categories visible on the list, leaving the rest in place. Rejected — adds new "filtered reorder" semantics to learn and a fork in the handler logic; cleaner to make `/gear` canonical and have one rule.

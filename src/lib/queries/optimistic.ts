@@ -6,10 +6,11 @@ import { supabase } from '../supabase'
 // Single-round-trip sort_order rewrite. Calls a SECURITY DEFINER RPC that
 // runs UPDATE … SET sort_order against a whitelisted table. Sidesteps the
 // PostgREST upsert path entirely — no INSERT … ON CONFLICT, no RLS WITH
-// CHECK against a partial row, no NOT NULL trap. See migration
-// 20260430000000_bulk_reorder_rpc.sql for the SQL definition and the trust
-// assumption (callers can only know an id by first reading it, and SELECT
-// RLS gates that, so the function doesn't re-verify ownership).
+// CHECK against a partial row, no NOT NULL trap. The function enforces
+// ownership inline per table — categories filter on user_id = auth.uid();
+// list_items join lists and filter on lists.user_id = auth.uid(). See
+// migrations 20260430000000_bulk_reorder_rpc.sql (function shape) and
+// 20260501000000_bulk_reorder_rpc_ownership_check.sql (ownership check).
 //
 // The TS-side union matches the SQL function's table whitelist — keeps
 // misuse a compile error rather than a runtime exception.

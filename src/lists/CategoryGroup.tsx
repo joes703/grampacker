@@ -1,11 +1,9 @@
-import { useState, type ReactNode } from 'react'
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { Check, ChevronDown, ChevronRight, GripVertical, Plus } from 'lucide-react'
+import { useState } from 'react'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { Check, ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { ListItemPatch } from '../lib/queries'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
-import { asButtonRef } from '../lib/dnd'
 import ItemRow, { SortableItemRow } from './ItemRow'
 import AddItemRow, { type AddItemData } from './AddItemRow'
 
@@ -15,14 +13,13 @@ import AddItemRow, { type AddItemData } from './AddItemRow'
 // Column widths (header / footer / row Qty stubs) are defined here so the
 // header labels, item rows, and footer totals always line up.
 //
-// Drag context: the authed list view uses ONE page-level <DndContext>. The
-// categories <SortableContext> sits at the page level (so SortableCategoryGroup's
-// useSortable resolves against it). Items get a per-category <SortableContext>
-// rendered HERE (around the rows below), so each row's useSortable resolves
-// against its category's items list. CategoryGroup itself doesn't register a
-// drop target — DnD is within-category reorder only; recategorizing happens
-// through the item edit modal. The share view passes neither `sortable` nor
-// `categoryId`, so no drag plumbing engages.
+// Drag context: the authed list view uses ONE page-level <DndContext>.
+// Categories themselves are NOT reorderable on /lists/:id — that's
+// /gear-only — so this component never registers a category-level drop
+// target. Items DO reorder within their category: we render a per-category
+// <SortableContext> around the rows below, so each row's useSortable
+// resolves against its category's items list. The share view passes
+// neither `sortable` nor `categoryId`, so no drag plumbing engages.
 //
 // Editing affordances are gated on which handlers are passed:
 //   - sortable           ⇒ rows render as SortableItemRow inside a per-category
@@ -37,9 +34,7 @@ import AddItemRow, { type AddItemData } from './AddItemRow'
 //   - collapsible        ⇒ header gets a chevron + count badge + toggle.
 //                          Default true (authed); share view passes false.
 //   - packMode           ⇒ pack-mode header (qty-only, no weight column) +
-//                          pack-mode row layout. Authed-only. Also disables
-//                          category drag in SortableCategoryGroup below.
-//   - dragHandle         ⇒ injected by SortableCategoryGroup wrapper.
+//                          pack-mode row layout. Authed-only.
 export type GroupProps = {
   name: string
   items: ListItemWithGear[]
@@ -65,7 +60,6 @@ export type GroupProps = {
   // GearItem from its gearItems query before opening dialogs.
   onEditGearItem?: (gearItemId: string) => void
   onDeleteGearItem?: (gearItemId: string) => void
-  dragHandle?: ReactNode
 }
 
 export default function CategoryGroup({
@@ -85,7 +79,6 @@ export default function CategoryGroup({
   onAddItem,
   onEditGearItem,
   onDeleteGearItem,
-  dragHandle,
 }: GroupProps) {
   const [adding, setAdding] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
@@ -131,7 +124,6 @@ export default function CategoryGroup({
       <div className={`flex items-center rounded-lg py-0.5 bg-gray-100 mb-1 ${
         packMode ? 'gap-0.5 lg:gap-1.5 px-2 lg:px-3' : 'gap-1.5 px-3'
       }`}>
-        {dragHandle}
         {collapsible ? (
           <button
             onClick={() => setCollapsed((v) => !v)}
@@ -250,49 +242,6 @@ export default function CategoryGroup({
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-// Sortable wrapper for the authenticated list view's category-level
-// drag-and-drop. Must be rendered inside a SortableContext. Disabled
-// in pack mode so structural changes are inert (matches how item drag
-// is gated inside SortableItemRow).
-//
-// `id` doubles as both the dnd-kit sortable id AND the inner CategoryGroup's
-// `categoryId` — they're always the category's UUID. Callers pass it once;
-// the wrapper threads it through.
-export function SortableCategoryGroup(props: Omit<GroupProps, 'categoryId'> & { id: string }) {
-  const { id, packMode, ...rest } = props
-  const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id, disabled: packMode })
-
-  const handle = packMode ? undefined : (
-    <button
-      ref={asButtonRef(setActivatorNodeRef)}
-      {...listeners}
-      {...attributes}
-      className="cursor-grab touch-none text-gray-400 hover:text-gray-600 active:cursor-grabbing shrink-0"
-      tabIndex={-1}
-      aria-label="Drag to reorder category"
-    >
-      <GripVertical size={14} />
-    </button>
-  )
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
-    >
-      <CategoryGroup {...rest} categoryId={id} packMode={packMode} dragHandle={handle} />
     </div>
   )
 }

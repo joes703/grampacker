@@ -9,15 +9,12 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
 import {
-  SortableContext,
   arrayMove,
   sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { ClipboardList, X } from 'lucide-react'
 import { Drawer } from 'vaul'
@@ -33,7 +30,6 @@ import {
   deleteListItem,
   resetPackedForList,
   updateList,
-  reorderCategories,
   reorderListItems,
   updateGearItem,
   createGearItem,
@@ -41,7 +37,7 @@ import {
   makeOptimisticReorder,
   type ListItemPatch,
 } from '../lib/queries'
-import type { GearItem, ListItemWithGear, Category, List } from '../lib/types'
+import type { GearItem, ListItemWithGear, List } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { assignSortOrderSlots, groupListItemsByCategory } from '../lib/grouping'
 import WeightTable from './WeightTable'
@@ -51,7 +47,7 @@ import InlineTitle from './InlineTitle'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './AddItemRow'
 import PrivacyButton from './PrivacyButton'
-import CategoryGroup, { SortableCategoryGroup } from './CategoryGroup'
+import CategoryGroup from './CategoryGroup'
 import PanelCard from './PanelCard'
 import ItemRow from './ItemRow'
 import GearItemDialog from '../gear/GearItemDialog'
@@ -193,11 +189,6 @@ function ListDetailInner({
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) }),
   })
 
-  const reorderCatsMut = useMutation({
-    mutationFn: reorderCategories,
-    ...makeOptimisticReorder<Category>(qc, queryKeys.categories()),
-  })
-
   const reorderItemsMut = useMutation({
     mutationFn: reorderListItems,
     ...makeOptimisticReorder<ListItemWithGear>(qc, queryKeys.listItems(listId)),
@@ -263,31 +254,9 @@ function ListDetailInner({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  // When dragging a category, the dragged wrapper carries its items along
-  // (they're DOM children). closestCenter measures from the active's center,
-  // and the dragged category's own item rects are physically closest — so
-  // `over` resolves to one of the dragged category's own items, the handler
-  // resolves dest to the same category, and the drop snaps back. Filter the
-  // collision search to category droppables when the active is a category;
-  // item drags use closestCenter unchanged.
-  const categoryIdSet = useMemo(() => new Set(categories.map((c) => c.id)), [categories])
-  const collisionDetection = useMemo<CollisionDetection>(
-    () => (args) => {
-      if (categoryIdSet.has(String(args.active.id))) {
-        return closestCenter({
-          ...args,
-          droppableContainers: args.droppableContainers.filter((c) => categoryIdSet.has(String(c.id))),
-        })
-      }
-      return closestCenter(args)
-    },
-    [categoryIdSet],
-  )
-
-  // Active drag id (item id OR category id). The DragOverlay below uses it to
-  // render an item-row clone during item drag; for category drag we render
-  // null so dnd-kit's default behaviour (the original element follows the
-  // cursor) applies.
+  // Active drag id (always an item id on this page — categories are not
+  // reorderable here; that's /gear-only). The DragOverlay below uses it to
+  // render an item-row clone during item drag.
   const [activeId, setActiveId] = useState<string | null>(null)
 
   function handleDragStart(e: DragStartEvent) {
@@ -298,14 +267,12 @@ function ListDetailInner({
     setActiveId(null)
   }
 
-  // Single page-level drag handler. Two cases only:
-  //   1. Reorder categories themselves (drag a category up/down).
-  //   2. Reorder items within their existing category.
-  // Cross-category drops are deliberately rejected — moving an item between
-  // categories happens exclusively via the item edit modal. A drop whose
-  // destination differs from the source category is ignored (item snaps
-  // back); the visual auto-shift during drag still works because items live
-  // in a single page-wide SortableContext.
+  // Single page-level drag handler. Within-category item reorder only —
+  // category-level DnD is /gear-only (categories on this page render in
+  // their global order but cannot be reordered here). Cross-category drops
+  // are deliberately rejected: moving an item between categories happens
+  // exclusively via the item edit modal. A drop whose destination differs
+  // from the source category is ignored (item snaps back).
   function handleDragEnd(e: DragEndEvent) {
     setActiveId(null)
     const { active, over } = e
@@ -314,37 +281,9 @@ function ListDetailInner({
 
     const activeIdStr = String(active.id)
     const overIdStr = String(over.id)
-    const categoryIds = new Set(categories.map((c) => c.id))
 
-    // Case 1 — category reorder: active.id is a category id.
-    if (categoryIds.has(activeIdStr)) {
-      const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
-      const oldIndex = sortedCats.findIndex((c) => c.id === activeIdStr)
-      if (oldIndex === -1) return
-
-      // Resolve over.id to a target category id. The collisionDetection
-      // filter restricts to category droppables when active is a category,
-      // so over.id is always a category id here. The else branch (over
-      // resolved to an item) shouldn't be reachable but is kept as a defence.
-      let destCatId: string | null
-      if (categoryIds.has(overIdStr)) {
-        destCatId = overIdStr
-      } else {
-        const overItem = listItems.find((i) => i.id === overIdStr)
-        destCatId = overItem?.gear_item.category_id ?? null
-      }
-      // Uncategorised is not a real category row — no reorder target.
-      if (destCatId === null) return
-      const newIndex = sortedCats.findIndex((c) => c.id === destCatId)
-      if (newIndex === -1 || newIndex === oldIndex) return
-
-      const reordered = arrayMove(sortedCats, oldIndex, newIndex)
-      reorderCatsMut.mutate(reordered.map((c, i) => ({ id: c.id, sort_order: i })))
-      return
-    }
-
-    // Case 2 — within-category item reorder. The drop target must be another
-    // item AND in the same category as the dragged item. Anything else
+    // Within-category item reorder. The drop target must be another item
+    // AND in the same category as the dragged item. Anything else
     // (cross-category drop, drop on empty space) is ignored.
     const activeItem = listItems.find((i) => i.id === activeIdStr)
     if (!activeItem) return
@@ -581,44 +520,39 @@ function ListDetailInner({
               <div className="space-y-4">
                 <DndContext
                   sensors={sensors}
-                  collisionDetection={collisionDetection}
+                  collisionDetection={closestCenter}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
                   onDragCancel={handleDragCancel}
                 >
-                  {/* Categories SortableContext at the page level — its items
-                      list is the category ids, so SortableCategoryGroup's
-                      useSortable resolves to it. Each CategoryGroup renders a
-                      per-category SortableContext internally for its items. */}
-                  <SortableContext
-                    items={displayedGrouped.filter((g) => g.category !== null).map((g) => g.category!.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {displayedGrouped
-                      .filter((g) => g.category !== null)
-                      .map((group) => (
-                        <SortableCategoryGroup
-                          key={group.category!.id}
-                          id={group.category!.id}
-                          name={group.category!.name}
-                          items={group.items}
-                          {...sharedGroupProps}
-                          onAddItem={(data) => addNewItemMut.mutate({ categoryId: group.category!.id, data })}
-                        />
-                      ))}
-                    {displayedGrouped
-                      .filter((g) => g.category === null)
-                      .map((group) => (
-                        <CategoryGroup
-                          key="__uncategorised__"
-                          name="Uncategorised"
-                          categoryId={null}
-                          items={group.items}
-                          {...sharedGroupProps}
-                          onAddItem={(data) => addNewItemMut.mutate({ categoryId: null, data })}
-                        />
-                      ))}
-                  </SortableContext>
+                  {/* Categories render in their global sort_order but are not
+                      reorderable here — category-level DnD is /gear-only. Each
+                      CategoryGroup still renders a per-category SortableContext
+                      internally so items reorder within their category. */}
+                  {displayedGrouped
+                    .filter((g) => g.category !== null)
+                    .map((group) => (
+                      <CategoryGroup
+                        key={group.category!.id}
+                        name={group.category!.name}
+                        categoryId={group.category!.id}
+                        items={group.items}
+                        {...sharedGroupProps}
+                        onAddItem={(data) => addNewItemMut.mutate({ categoryId: group.category!.id, data })}
+                      />
+                    ))}
+                  {displayedGrouped
+                    .filter((g) => g.category === null)
+                    .map((group) => (
+                      <CategoryGroup
+                        key="__uncategorised__"
+                        name="Uncategorised"
+                        categoryId={null}
+                        items={group.items}
+                        {...sharedGroupProps}
+                        onAddItem={(data) => addNewItemMut.mutate({ categoryId: null, data })}
+                      />
+                    ))}
                   <DragOverlay>
                     {activeItem ? (
                       <ItemRow item={activeItem} weightUnit={weightUnit} />
