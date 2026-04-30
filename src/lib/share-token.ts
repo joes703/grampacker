@@ -1,4 +1,4 @@
-const CHARS = 'abcdefghijklmnopqrstuvwxyz'
+const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
 export function generateShareToken(): string {
   const arr = new Uint8Array(8)
