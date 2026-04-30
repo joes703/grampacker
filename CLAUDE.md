@@ -52,3 +52,7 @@
 - Don't write `makeOptimisticCrossCategoryMove`. It was planned, then made unnecessary by removing cross-category DnD entirely.
 - Don't add features inside refactor PRs. New behavior is a new commit.
 - Don't bypass the `usePortalPopover` hook by writing inline event listeners for new popovers.
+
+## Deferred upgrades
+
+- eslint 9 → 10: blocked on eslint-plugin-jsx-a11y publishing a release with ^10 in its peer range. Revisit when they ship.
