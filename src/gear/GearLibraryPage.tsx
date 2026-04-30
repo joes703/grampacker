@@ -35,6 +35,7 @@ import {
   deleteGearItem,
   bulkDeleteGearItems,
   bulkMoveToCategoryGearItems,
+  reorderGearItems,
   createListFromSelection,
   importGearItems,
   makeOptimisticReorder,
@@ -243,17 +244,15 @@ export default function GearLibraryPage() {
   const [activeId, setActiveId] = useState<string | null>(null)
 
   // Within-category sort drag for gear items. Updates gear_items.sort_order
-  // for the affected category. Optimistic via makeOptimisticReorder on
-  // ['gear-items']; the mutationFn fans out per-item updateGearItem calls,
-  // so a partial failure can leave the backend in a partially-applied state.
+  // for the affected category via the bulk_update_sort_order RPC — single
+  // round-trip, atomic on the server, same write path as categories and
+  // list_items. Optimistic via makeOptimisticReorder on ['gear-items'].
   // No ['list-items'] invalidation — list views order by list_items.sort_order
   // and group by categories.sort_order, and the gear_item join projection
   // doesn't include sort_order. A change here is invisible to every list
   // consumer.
   const reorderGearItemsMut = useMutation({
-    mutationFn: async (updates: { id: string; sort_order: number }[]) => {
-      await Promise.all(updates.map((u) => updateGearItem(u.id, { sort_order: u.sort_order })))
-    },
+    mutationFn: reorderGearItems,
     ...makeOptimisticReorder<GearItem>(qc, queryKeys.gearItems()),
   })
 

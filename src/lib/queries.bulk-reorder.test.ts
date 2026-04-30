@@ -1,19 +1,20 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createClient } from '@supabase/supabase-js'
-import { reorderCategories, reorderListItems } from './queries'
+import { reorderCategories, reorderGearItems, reorderListItems } from './queries'
 
-// Integration test for the bulk reorder helpers. Both go through a
+// Integration test for the bulk reorder helpers. All three go through a
 // SECURITY DEFINER RPC (bulk_update_sort_order) that runs UPDATE … SET
 // sort_order against a whitelisted table — no INSERT path, no RLS WITH
-// CHECK on a partial row, no NOT NULL trap. See migration
-// 20260430000000_bulk_reorder_rpc.sql. Hits the real Supabase project from
-// .env; requires TEST_USER_EMAIL + TEST_USER_PASSWORD set. Skips otherwise
-// so the regular `npm run test` invocation stays usable.
+// CHECK on a partial row, no NOT NULL trap. See migrations
+// 20260430000000_bulk_reorder_rpc.sql (function shape),
+// 20260501000000_bulk_reorder_rpc_ownership_check.sql (inline ownership),
+// and 20260502000000_add_gear_items_to_bulk_reorder.sql (gear_items branch).
+// Hits the real Supabase project from .env; requires TEST_USER_EMAIL +
+// TEST_USER_PASSWORD set. Skips otherwise so the regular `npm run test`
+// invocation stays usable.
 //
 // We exercise the wrappers, not bulkUpdateSortOrder directly — those are
-// the code paths production uses. (Gear-item reorder doesn't go through
-// the bulk path; GearLibraryPage uses Promise.all of single-row PATCHes,
-// so there's no gear_items case here.)
+// the code paths production uses for all three reorderable tables.
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -72,6 +73,42 @@ d('bulk reorder helpers preserve untouched columns', () => {
     } finally {
       // Always restore the original sort_order so the test is idempotent.
       await reorderCategories([{ id: before.id, sort_order: before.sort_order }])
+    }
+  })
+
+  it('reorderGearItems: only sort_order changes', async () => {
+    const { data: row, error: pickErr } = await supabase
+      .from('gear_items')
+      .select('*')
+      .order('sort_order', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    if (pickErr) throw pickErr
+    if (!row) return // No gear_items in the test account.
+
+    const before = row
+    const newSort = before.sort_order + 100000
+
+    try {
+      await reorderGearItems([{ id: before.id, sort_order: newSort }])
+
+      const { data: after, error: refetchErr } = await supabase
+        .from('gear_items')
+        .select('*')
+        .eq('id', before.id)
+        .single()
+      if (refetchErr) throw refetchErr
+
+      expect(after.sort_order).toBe(newSort)
+
+      expect(after.name).toBe(before.name)
+      expect(after.description).toBe(before.description)
+      expect(after.weight_grams).toBe(before.weight_grams)
+      expect(after.category_id).toBe(before.category_id)
+      expect(after.user_id).toBe(before.user_id)
+      expect(after.created_at).toBe(before.created_at)
+    } finally {
+      await reorderGearItems([{ id: before.id, sort_order: before.sort_order }])
     }
   })
 
