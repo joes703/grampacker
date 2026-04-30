@@ -44,6 +44,8 @@ Short ADRs covering the major shape decisions for grampacker that aren't obvious
 
 **Alternatives.** (a) Include every required column in the upsert payload. Rejected — whack-a-mole; every new NOT NULL or RLS clause re-breaks the helper. (b) Switch the bulk helper back to `Promise.all` of single-row PATCHes. Rejected — that's the N-roundtrips bug we'd already fixed once. The RPC sidesteps the upsert problem entirely while keeping the bulk-write performance.
 
+**Accepted linter warning.** Supabase's linter raises an `authenticated_security_definer_function_executable` warning for this function. The warning is generic and flags any `SECURITY DEFINER` function callable by signed-in users — it doesn't know whether the function is safe, only that the class of risk exists. We accept the warning deliberately. The function's safety comes from its constraints (table whitelist limited to `categories`, `list_items`, and soon `gear_items`; only ever rewrites `sort_order` and no other columns; inline `auth.uid()` ownership filter per branch; `EXECUTE` revoked from `public`/`anon` and granted only to `authenticated`) rather than from being unreachable. The linter's three suggested remediations would all break the feature without addressing a real risk given the constraints above: revoking `EXECUTE` would disable reorder for everyone; switching to `SECURITY INVOKER` would re-introduce the original PostgREST-upsert failure mode (RLS evaluating against the caller is exactly what we needed to bypass); moving the function out of the `public` schema would make it uncallable via `supabase.rpc()`, since PostgREST only exposes the `public` schema.
+
 ---
 
 ## ADR 4: Email — Resend for outbound, Cloudflare Email Routing for inbound
