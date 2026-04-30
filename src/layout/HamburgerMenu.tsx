@@ -5,11 +5,14 @@ import { HelpCircle, Info, LogOut, Menu, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { usePortalPopover } from '../lib/use-portal-popover'
 
-// Mobile-only kebab-style menu for the secondary destinations that don't fit
-// in the bottom tab bar (Help, About, Settings, Sign out). Modeled on the
-// portal-popover pattern used by RowKebab — overlay + fixed-positioned panel,
-// dismisses on outside click, scroll, or resize. A right-side drawer would
-// be heavier UX for four items; this keeps the codebase to one popover idiom.
+// Kebab-style menu for the < md band's secondary destinations (Help, About,
+// Settings, Sign out) — pairs with the bottom MobileTabBar (Lists, Gear).
+// At md+ the top NavBar shows all six destinations directly (icon-only at
+// md-lg, fully labeled at lg+), so this menu steps aside. Modeled on the
+// portal-popover pattern used by RowKebab — overlay + fixed-positioned
+// panel, dismisses on outside click, scroll, or resize. A right-side drawer
+// would be heavier UX for four items; this keeps the codebase to one
+// popover idiom.
 export default function HamburgerMenu() {
   const navigate = useNavigate()
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null)
@@ -47,7 +50,7 @@ export default function HamburgerMenu() {
         onClick={() => (open ? setMenuPos(null) : openMenu())}
         aria-label="More options"
         aria-expanded={open}
-        className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
+        className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
       >
         <Menu size={20} />
       </button>
