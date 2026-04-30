@@ -108,7 +108,7 @@ Short ADRs covering the major shape decisions for grampacker that aren't obvious
 
 **Context.** Users sometimes want to show a list to a friend or post it for advice ahead of a trip. They never want their *whole* gear inventory or all of their other lists exposed. A single "make my account public" switch would over-share; no sharing at all would close off the use case the app exists for.
 
-**Decision.** Sharing is per-list, opt-in, off by default. Each list has an 8-character `share_token` generated at creation; the token is only active when `is_shared = true`. Shared lists are read-only at `/r/:token`; viewers don't need an account. Toggling sharing off on a list disables the link without changing the token. A separate "regenerate token" action exists for the rare "I shared this with the wrong person" case — it replaces the token and breaks any old links.
+**Decision.** Sharing is per-list, opt-in, off by default. Each list has an 8-character `share_token` generated at creation; the token is only active when `is_shared = true`. Shared lists are read-only at `/r/:token`; viewers don't need an account. Toggling sharing off on a list disables the link without changing the token. There is no "regenerate token" action — to break a leaked link, the user duplicates the list (which gets a fresh token) and stops sharing the original.
 
 **Consequences.** Two RLS policies on `lists` and `list_items` — owner gets full access, public anon gets SELECT when the parent list has `is_shared = true`. The public share view at `/r/:token` is its own page (`SharePage.tsx`) with no auth and no edit controls. Per-trip granularity matches how users actually share (one list at a time, with a specific person).
 
