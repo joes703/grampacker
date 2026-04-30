@@ -1,5 +1,5 @@
 import { Link, NavLink, useNavigate } from 'react-router'
-import { Backpack, HelpCircle, Info, LogOut, PanelLeftOpen, Settings } from 'lucide-react'
+import { Backpack, HelpCircle, Info, List, LogOut, PanelLeftOpen, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import HamburgerMenu from './HamburgerMenu'
 import { useSidebarDrawer } from './sidebar-drawer-context'
@@ -37,6 +37,17 @@ export default function NavBar() {
         {/* Desktop link cluster — hidden on mobile, where the bottom tab bar
             covers Lists/Gear and the hamburger covers everything else. */}
         <div className="ml-auto hidden lg:flex items-center gap-1">
+          <NavLink
+            to="/lists"
+            // Highlight on /lists itself AND any /lists/:id detail route, so
+            // the nav doesn't go dim once the user clicks into a card.
+            className={({ isActive }) =>
+              `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
+            }
+          >
+            <List size={14} />
+            Lists
+          </NavLink>
           <NavLink
             to="/gear"
             className={({ isActive }) =>
