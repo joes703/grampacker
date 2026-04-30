@@ -1,7 +1,6 @@
 import { supabase } from '../supabase'
 import type { List, ListItem } from '../types'
 import { generateShareToken } from '../share-token'
-import { bulkUpdateSortOrder } from './optimistic'
 
 export async function fetchLists(): Promise<List[]> {
   const { data, error } = await supabase
@@ -57,10 +56,6 @@ export async function updateList(
 export async function deleteList(id: string): Promise<void> {
   const { error } = await supabase.from('lists').delete().eq('id', id)
   if (error) throw error
-}
-
-export async function reorderLists(updates: { id: string; sort_order: number }[]): Promise<void> {
-  await bulkUpdateSortOrder('lists', updates)
 }
 
 // Create a new list and immediately populate it with the given gear items.

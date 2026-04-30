@@ -25,7 +25,7 @@ export default function NavBar() {
           <button
             type="button"
             onClick={() => setOpen(true)}
-            aria-label="Open sidebar"
+            aria-label="Open gear library"
             className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
           >
             <PanelLeftOpen size={20} />
