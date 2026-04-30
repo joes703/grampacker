@@ -76,14 +76,26 @@ export default function ItemRow({
   const itemWeight = item.gear_item.weight_grams
   const [editingWeight, setEditingWeight] = useState(false)
   const [weightDraftGrams, setWeightDraftGrams] = useState(itemWeight)
+  // Sync drafts to external prop changes via the React-docs "store-previous-prop"
+  // pattern (https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes).
+  // Drafts follow optimistic updates / cross-tab edits without remounting
+  // the row mid-edit, and without the cascading-render pitfall flagged by
+  // react-hooks/set-state-in-effect.
+  const [prevItemWeight, setPrevItemWeight] = useState(itemWeight)
+  if (itemWeight !== prevItemWeight) {
+    setPrevItemWeight(itemWeight)
+    setWeightDraftGrams(itemWeight)
+  }
   const weightInputRef = useRef<HTMLInputElement>(null)
 
   const [editingQty, setEditingQty] = useState(false)
   const [qtyDraft, setQtyDraft] = useState(String(item.quantity))
+  const [prevQty, setPrevQty] = useState(item.quantity)
+  if (item.quantity !== prevQty) {
+    setPrevQty(item.quantity)
+    setQtyDraft(String(item.quantity))
+  }
   const qtyInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => { setWeightDraftGrams(itemWeight) }, [itemWeight])
-  useEffect(() => { setQtyDraft(String(item.quantity)) }, [item.quantity])
 
   useEffect(() => {
     if (editingWeight) weightInputRef.current?.focus()

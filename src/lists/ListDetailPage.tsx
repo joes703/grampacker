@@ -673,6 +673,7 @@ function ListDetailInner({
           other lists pick up the change. */}
       {dialog?.type === 'edit-gear' && (
         <GearItemDialog
+          key={dialog.gear.id}
           categories={categories}
           item={dialog.gear}
           listContext={

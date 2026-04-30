@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
 import Modal from '../components/Modal'
@@ -64,16 +64,10 @@ export default function GearItemDialog({
   const [worn, setWorn] = useState(listContext?.is_worn ?? false)
   const [consumable, setConsumable] = useState(listContext?.is_consumable ?? false)
 
-  useEffect(() => {
-    // Reset form when item or list context changes (e.g. switching edit targets)
-    setName(item?.name ?? '')
-    setDescription(item?.description ?? '')
-    setWeightGrams(item?.weight_grams ?? 0)
-    setCategoryId(item?.category_id ?? defaultCategoryId)
-    setQuantity(listContext?.quantity ?? 1)
-    setWorn(listContext?.is_worn ?? false)
-    setConsumable(listContext?.is_consumable ?? false)
-  }, [item, defaultCategoryId, listContext])
+  // Form state is initialized from props by the useState initializers above;
+  // there is no reset effect because the dialog is keyed on the target's id
+  // at every call site (ListDetailPage, GearLibraryPage), so switching to a
+  // different target remounts the component with fresh state by construction.
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()

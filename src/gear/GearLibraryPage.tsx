@@ -549,6 +549,7 @@ export default function GearLibraryPage() {
       {/* Dialogs */}
       {(dialog?.type === 'create-item' || dialog?.type === 'edit-item') && (
         <GearItemDialog
+          key={dialog.type === 'edit-item' ? dialog.item.id : 'new'}
           categories={categories}
           item={dialog.type === 'edit-item' ? dialog.item : undefined}
           defaultCategoryId={dialog.type === 'create-item' ? dialog.categoryId : undefined}
