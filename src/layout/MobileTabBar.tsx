@@ -1,9 +1,11 @@
 import { Link, useLocation } from 'react-router'
 import { Backpack, List } from 'lucide-react'
 
-// Mobile-only bottom tab bar. Mounted by AppShell so it only renders inside
-// the authenticated shell — /login, /register, and /r/:token never see it.
-// Active state is computed manually rather than via NavLink's `end` because
+// Bottom tab bar for the < md band. Mounted by AppShell so it only renders
+// inside the authenticated shell — /login, /register, and /r/:token never
+// see it. At md+ the top NavBar shows an icon-only (or full labeled at lg+)
+// cluster covering all destinations, so the tab bar steps aside. Active
+// state is computed manually rather than via NavLink's `end` because
 // "Lists" needs to highlight across "/", "/lists", and "/lists/:id".
 export default function MobileTabBar() {
   const { pathname } = useLocation()
@@ -13,7 +15,7 @@ export default function MobileTabBar() {
   return (
     <nav
       aria-label="Primary"
-      className="lg:hidden fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)]"
+      className="md:hidden fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)]"
     >
       <div className="flex h-14">
         <Tab to="/lists" label="Lists" active={onLists} icon={<List size={20} />} />
