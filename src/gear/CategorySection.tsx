@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useSortable } from '@dnd-kit/sortable'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Plus, Check, X } from 'lucide-react'
@@ -188,19 +188,23 @@ function CategorySectionInner(
           {items.length === 0 ? (
             <p className="py-2 px-3 text-sm text-gray-400 italic">No items</p>
           ) : (
-            items.map((item) => (
-              <SortableGearItemRow
-                key={item.id}
-                item={item}
-                weightUnit={weightUnit}
-                selectMode={selectMode}
-                selected={selectedIds.has(item.id)}
-                onToggleSelect={() => onToggleSelect(item.id)}
-                onInlineSave={(patch) => onInlineSave(item.id, patch)}
-                onEdit={() => onEditItem(item)}
-                onDelete={() => onDeleteItem(item)}
-              />
-            ))
+            // Per-category SortableContext — items reorder within their own
+            // category only. Each row's useSortable resolves to this list.
+            <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+              {items.map((item) => (
+                <SortableGearItemRow
+                  key={item.id}
+                  item={item}
+                  weightUnit={weightUnit}
+                  selectMode={selectMode}
+                  selected={selectedIds.has(item.id)}
+                  onToggleSelect={() => onToggleSelect(item.id)}
+                  onInlineSave={(patch) => onInlineSave(item.id, patch)}
+                  onEdit={() => onEditItem(item)}
+                  onDelete={() => onDeleteItem(item)}
+                />
+              ))}
+            </SortableContext>
           )}
         </div>
       )}

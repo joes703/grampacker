@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { useSortable } from '@dnd-kit/sortable'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Check, ChevronDown, ChevronRight, GripVertical, Plus } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
@@ -15,17 +15,19 @@ import AddItemRow, { type AddItemData } from './AddItemRow'
 // Column widths (header / footer / row Qty stubs) are defined here so the
 // header labels, item rows, and footer totals always line up.
 //
-// Drag context: the authed list view uses ONE page-level <DndContext> with
-// two nested <SortableContext>s — categories outer, items inner — and a
-// single branched onDragEnd that dispatches by id type. CategoryGroup itself
-// doesn't register a drop target — DnD is within-category reorder only;
-// recategorizing happens through the item edit modal. The share view passes
-// neither `sortable` nor `categoryId`, so no drag plumbing engages.
+// Drag context: the authed list view uses ONE page-level <DndContext>. The
+// categories <SortableContext> sits at the page level (so SortableCategoryGroup's
+// useSortable resolves against it). Items get a per-category <SortableContext>
+// rendered HERE (around the rows below), so each row's useSortable resolves
+// against its category's items list. CategoryGroup itself doesn't register a
+// drop target — DnD is within-category reorder only; recategorizing happens
+// through the item edit modal. The share view passes neither `sortable` nor
+// `categoryId`, so no drag plumbing engages.
 //
 // Editing affordances are gated on which handlers are passed:
-//   - sortable           ⇒ rows render as SortableItemRow. Must be inside a
-//                          page-level <SortableContext> covering all items.
-//                          Without it, rows are plain ItemRow (no drag).
+//   - sortable           ⇒ rows render as SortableItemRow inside a per-category
+//                          <SortableContext> wired up here. Without it, rows
+//                          are plain ItemRow (no drag).
 //   - categoryId         ⇒ used for stable region ids (aria-controls) and
 //                          surfacing the category context to add-item flows.
 //                          null ⇒ uncategorised. undefined ⇒ share view.
@@ -194,9 +196,16 @@ export default function CategoryGroup({
       {/* Items + footer (footer is the row's "total" line, lined up under Weight) */}
       {!collapsed && (
         <div id={regionId} className="pl-2">
-          {sortable
-            ? visibleItems.map((item) => <SortableItemRow key={item.id} {...rowPropsFor(item)} />)
-            : visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}
+          {sortable ? (
+            // Per-category SortableContext — items reorder within their own
+            // category only. Item ids registered here so each row's useSortable
+            // resolves to the right items list and the strategy auto-shift works.
+            <SortableContext items={visibleItems.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+              {visibleItems.map((item) => <SortableItemRow key={item.id} {...rowPropsFor(item)} />)}
+            </SortableContext>
+          ) : (
+            visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)
+          )}
 
           {/* Draft row when adding — full editable item row */}
           {!packMode && onAddItem && adding && (

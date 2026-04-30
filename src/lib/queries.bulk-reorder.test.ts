@@ -1,12 +1,19 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createClient } from '@supabase/supabase-js'
-import { bulkUpdateSortOrder } from './queries'
+import { reorderCategories, reorderListItems } from './queries'
 
-// Integration test for bulkUpdateSortOrder. Verifies that an upsert with only
-// {id, sort_order} touches sort_order and nothing else. Hits the real Supabase
-// project from .env. Requires TEST_USER_EMAIL + TEST_USER_PASSWORD to be set
-// (a user account whose seeded data we can poke). Skips otherwise so the
-// regular `npm run test` invocation stays usable.
+// Integration test for the bulk reorder helpers. Both go through a
+// SECURITY DEFINER RPC (bulk_update_sort_order) that runs UPDATE … SET
+// sort_order against a whitelisted table — no INSERT path, no RLS WITH
+// CHECK on a partial row, no NOT NULL trap. See migration
+// 20260430000000_bulk_reorder_rpc.sql. Hits the real Supabase project from
+// .env; requires TEST_USER_EMAIL + TEST_USER_PASSWORD set. Skips otherwise
+// so the regular `npm run test` invocation stays usable.
+//
+// We exercise the wrappers, not bulkUpdateSortOrder directly — those are
+// the code paths production uses. (Gear-item reorder doesn't go through
+// the bulk path; GearLibraryPage uses Promise.all of single-row PATCHes,
+// so there's no gear_items case here.)
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -16,11 +23,14 @@ const password = import.meta.env.TEST_USER_PASSWORD as string | undefined
 const canRun = Boolean(url && key && email && password)
 const d = canRun ? describe : describe.skip
 
-d('bulkUpdateSortOrder preserves untouched columns', () => {
+d('bulk reorder helpers preserve untouched columns', () => {
   const supabase = createClient(url!, key!)
 
   beforeAll(async () => {
-    const { error } = await supabase.auth.signInWithPassword({ email: email!, password: password! })
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email!,
+      password: password!,
+    })
     if (error) throw error
   })
 
@@ -28,45 +38,44 @@ d('bulkUpdateSortOrder preserves untouched columns', () => {
     await supabase.auth.signOut()
   })
 
-  it('only sort_order changes for gear_items', async () => {
+  it('reorderCategories: only sort_order changes', async () => {
     const { data: row, error: pickErr } = await supabase
-      .from('gear_items')
+      .from('categories')
       .select('*')
       .order('sort_order', { ascending: true })
       .limit(1)
-      .single()
+      .maybeSingle()
     if (pickErr) throw pickErr
+    if (!row) return // No categories in the test account.
 
     const before = row
     const newSort = before.sort_order + 100000
 
     try {
-      await bulkUpdateSortOrder('gear_items', [{ id: before.id, sort_order: newSort }])
+      await reorderCategories([{ id: before.id, sort_order: newSort }])
 
       const { data: after, error: refetchErr } = await supabase
-        .from('gear_items')
+        .from('categories')
         .select('*')
         .eq('id', before.id)
         .single()
       if (refetchErr) throw refetchErr
 
-      // sort_order should have changed:
       expect(after.sort_order).toBe(newSort)
 
-      // every other user-facing column should be untouched:
+      // Every other column should be untouched — this is the regression we
+      // were chasing: a partial upsert that violated RLS or blanked columns.
       expect(after.name).toBe(before.name)
-      expect(after.description).toBe(before.description)
-      expect(after.weight_grams).toBe(before.weight_grams)
-      expect(after.category_id).toBe(before.category_id)
+      expect(after.is_default).toBe(before.is_default)
       expect(after.user_id).toBe(before.user_id)
       expect(after.created_at).toBe(before.created_at)
     } finally {
       // Always restore the original sort_order so the test is idempotent.
-      await bulkUpdateSortOrder('gear_items', [{ id: before.id, sort_order: before.sort_order }])
+      await reorderCategories([{ id: before.id, sort_order: before.sort_order }])
     }
   })
 
-  it('only sort_order changes for list_items', async () => {
+  it('reorderListItems: only sort_order changes', async () => {
     const { data: row, error: pickErr } = await supabase
       .from('list_items')
       .select('*')
@@ -74,16 +83,13 @@ d('bulkUpdateSortOrder preserves untouched columns', () => {
       .limit(1)
       .maybeSingle()
     if (pickErr) throw pickErr
-    if (!row) {
-      // No list_items in the test account — nothing to verify here.
-      return
-    }
+    if (!row) return // No list_items in the test account.
 
     const before = row
     const newSort = before.sort_order + 100000
 
     try {
-      await bulkUpdateSortOrder('list_items', [{ id: before.id, sort_order: newSort }])
+      await reorderListItems([{ id: before.id, sort_order: newSort }])
 
       const { data: after, error: refetchErr } = await supabase
         .from('list_items')
@@ -102,7 +108,7 @@ d('bulkUpdateSortOrder preserves untouched columns', () => {
       expect(after.list_id).toBe(before.list_id)
       expect(after.created_at).toBe(before.created_at)
     } finally {
-      await bulkUpdateSortOrder('list_items', [{ id: before.id, sort_order: before.sort_order }])
+      await reorderListItems([{ id: before.id, sort_order: before.sort_order }])
     }
   })
 })
