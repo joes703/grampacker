@@ -3,6 +3,7 @@ import NavBar from './NavBar'
 import MobileTabBar from './MobileTabBar'
 import { SidebarDrawerProvider } from './sidebar-drawer-context'
 import GearLibraryPage from '../gear/GearLibraryPage'
+import ListsPage from '../lists/ListsPage'
 import ListDetailPage from '../lists/ListDetailPage'
 import SettingsPage from '../settings/SettingsPage'
 import HelpPage from '../help/HelpPage'
@@ -27,7 +28,7 @@ export default function AppShell() {
           <Routes>
             <Route path="/" element={<Navigate to="/lists" replace />} />
             <Route path="/gear" element={<GearLibraryPage />} />
-            <Route path="/lists" element={<ListDetailPage />} />
+            <Route path="/lists" element={<ListsPage />} />
             <Route path="/lists/:id" element={<ListDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/help" element={<HelpPage />} />
