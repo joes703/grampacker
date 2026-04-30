@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { DraggableAttributes } from '@dnd-kit/core'
-import type { SyntheticListenerMap } from '@dnd-kit/core/dist/hooks/utilities'
+import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Plus, Check, X } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
 import type { WeightUnit } from '../lib/weight'
@@ -30,7 +29,7 @@ type CategorySectionProps = {
 function CategorySectionInner(
   props: CategorySectionProps & {
     dragHandleRef?: (node: HTMLButtonElement | null) => void
-    dragHandleListeners?: SyntheticListenerMap
+    dragHandleListeners?: DraggableSyntheticListeners
     dragHandleAttributes?: DraggableAttributes
   },
 ) {
