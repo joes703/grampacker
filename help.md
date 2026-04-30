@@ -26,7 +26,7 @@ There are 3 ways to create a gear list.
 
 The library panel on the left of a list shows your full inventory. Click an item to add it to the list. Click again to remove it.
 
-You can also type a new name into the list itself. That creates the item in both the list and your inventory at the same time. The same trick works for categories: type a name that doesn't exist and you've made one.
+You can also type a new name into the list itself. That creates the item in both the list and your inventory at the same time.
 
 ## Edit and reorder
 
@@ -74,7 +74,7 @@ When you actually want a one-off, you can create a new item instead. The couplin
 
 ### Why can't I drag from the picker?
 
-Drag-and-drop is good for moving things you've already placed. It's slower than a click when you're picking from a long list. Inside a list, drag sorts and re-categorizes. From the picker, click adds and click again removes.
+Drag-and-drop is good for moving things you've already placed. It's slower than a click when you're picking from a long list. Inside a list, drag sorts items within their category — to move an item to a different category, open the edit modal and pick from the Category dropdown. From the picker, click adds and click again removes.
 
 ### Why no images?
 
