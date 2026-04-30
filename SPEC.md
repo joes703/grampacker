@@ -15,7 +15,6 @@ Per-user caps enforced by `before insert` triggers in the database. Client UI ch
 - **256 chars** max for gear-item and list names.
 - **128 chars** max for category names.
 - **2,000 chars** max for description fields (gear items and lists).
-- **2 MB** max CSV upload (UTF-8).
 
 Length and weight constraints also live in the migrations as `CHECK` constraints — see `supabase/migrations/20260425000001_categories_and_gear.sql` and `20260425000002_lists_and_list_items.sql`.
 
@@ -63,11 +62,11 @@ Weight inputs in the UI are always in grams regardless of display mode — displ
 
 See `DECISIONS.md` ADR 8 for the per-list opt-in rationale.
 
-- Each list gets an **8-character URL-safe alphanumeric `share_token`** generated at creation; never null.
+- Each list gets an **8-character alphanumeric `share_token`** (mixed case + digits, 62-char alphabet) generated at creation; never null.
 - `is_shared` (boolean, default false) toggles whether the token is active.
 - The share URL pattern is `/r/:token`.
 - When `is_shared = false`, the public anon can't read the list — RLS blocks it. The token stays in the database; toggling back on reactivates the same link.
-- A "regenerate token" action replaces the token (breaking any existing links). Retries up to 5 times on the rare collision.
+- The token is fixed for the life of the list — there is no "regenerate" action. To break a leaked link the user duplicates the list (which gets a fresh token) and stops sharing the original.
 - Public anon receives 404 for both unknown tokens and inactive shared lists (deliberately indistinguishable to prevent enumeration).
 
 ### Public share view (`/r/:token`)
@@ -99,47 +98,33 @@ For bulk partial-column writes that have to bypass RLS WITH CHECK on the INSERT 
 
 ## CSV format
 
-LighterPack-compatible. Used both for gear-library export/import and per-list export/import.
+Used for gear-library and per-list export/import. The format is a small, hand-rolled RFC-4180-style CSV (`src/lib/csv.ts`) — no external CSV library. The format is *not* drop-in compatible with LighterPack; importing LighterPack files happens to work because the parser tolerates extra columns and aliases (see "Import" below).
 
-### Column layout (0-indexed)
+### Export columns
 
-| Index | Column name | Notes |
-|-------|-------------|-------|
-| 0 | Item Name | required |
-| 1 | Category | category name string |
-| 2 | desc | description / notes |
-| 3 | qty | integer; defaults to 1 if missing or non-integer |
-| 4 | weight | numeric |
-| 5 | unit | `g`, `oz`, or `lb` |
-| 6 | worn | `1` or `0` |
-| 7 | consumable | `1` or `0` |
-| 8 | Image URL | exported as empty string; ignored on import |
+**Gear-library export** (`gear-library.csv`): `name`, `description`, `weight_grams`, `category`.
 
-### Export
+**List export** (`<sanitised-list-name>.csv`): `name`, `description`, `weight_grams`, `quantity`, `worn`, `consumable`, `packed`, `category`. Boolean columns are written as the literals `yes` / `no`.
 
-- Header row written first.
-- Weights always exported in grams (unit column = `"g"`).
-- Per-item quantity from the list is exported in the qty column.
-- worn / consumable reflect the list-item flags.
-- Gear-library export uses qty=1, worn=0, consumable=0 for every row.
-- Filenames sanitized: alphanumeric, space, hyphen, underscore pass through; everything else becomes `_`.
-- Cell values starting with `=`, `+`, `-`, or `@` are prefixed with a single quote to prevent spreadsheet formula injection.
+Both:
+- Header row first.
+- Weights always exported in grams as integers.
 - File encoding: UTF-8.
+- Cell quoting only when needed (comma, quote, or newline in the cell).
+- No formula-injection escaping. No BOM. No size cap. List-export filenames are sanitised at the call site (lowercase + non-alphanumerics → `-`).
 
-### Import into a list
+### Import
 
-Creates a new list named after the source filename (or "Imported List" if blank).
+Importing into a list creates a new list named from the source filename (`nameFromCsvFilename` strips the path and `.csv` extension; falls back to `"Imported list"` when the result is empty). Importing into the gear library adds rows without creating a list.
 
-- Max 2 MB; UTF-8 (BOM-stripped).
-- Header detection: if the first cell of row 0 (lowercased) is `"item name"` or `"name"`, the row is skipped as a header.
-- Rows with empty name are skipped.
-- Any row that fails to parse is skipped; the import continues.
-- Weight conversion: `oz × 28.3495` → grams; `lb × 453.592` → grams; rounded, clamped to 100,000 g.
-- If both worn and consumable are `1` on the same row, **worn wins** (consumable is silently cleared).
-- Categories are looked up case-insensitively and created if not found.
-- Gear items are looked up by name + category (case-insensitive). An existing match is reused — the existing item's weight and description are NOT updated. A new gear item is created on no match.
-
-CSV parsing is hand-rolled in `src/lib/csv.ts` (a "minimal RFC-4180-compliant CSV parser, no external dependency") — there is no external CSV library dependency.
+- No file-size cap is enforced. UTF-8 expected.
+- Header row required. Column names matched case-insensitively after trimming. Required columns: a name column (`name` or `item name`) and a weight column (`weight_grams`, `weight (g)`, or `weight`). Optional aliases recognised: `description`/`desc`, `category`, `quantity`/`qty`, `worn`/`is_worn`, `consumable`/`is_consumable`, `unit`.
+- Optional `unit` column converts the weight value: `g` (default), `oz` (× 28.3495), `lb` (× 453.592), `kg` (× 1000). Result rounded to integer grams and clamped to 100,000 g.
+- Rows with empty name are skipped silently.
+- Boolean columns accept `1`, `yes`, or `true` as truthy (case-insensitive); anything else is false.
+- **If both `worn` and `consumable` are truthy on the same row, BOTH are cleared.** The DB has a `worn_xor_consumable` CHECK constraint and we'd rather lose the flags than reject the whole import; the user re-applies the right flag in the UI. (Worth revisiting — silent lossy behavior is a known oddity.)
+- Categories are matched case-insensitively against the user's existing categories and created if not found.
+- Gear items are matched by `category_id + lowercase(name)` against existing gear, then against rows queued earlier in the same import. A match is reused (its weight and description are NOT updated); no match means a new gear row is inserted.
 
 ---
 
