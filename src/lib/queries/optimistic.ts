@@ -55,13 +55,36 @@ export async function bulkUpdateSortOrder<T extends { id: string; sort_order: nu
 // positions, and the optimistic state diverges from the eventual server
 // truth until the next refetch. `assignSortOrderSlots` (in grouping.ts) is
 // the canonical way to build a safe `updates` array.
+//
+// Why onMutate is sync (NOT `async` + `await qc.cancelQueries`):
+//   The TanStack Query canonical optimistic pattern awaits cancelQueries
+//   before setQueryData so an in-flight refetch can't clobber the
+//   optimistic state. We diverge: this hook fires reorder mutations from
+//   dnd-kit's onDragEnd, and dnd-kit starts a CSS drop transition on the
+//   sortable rows in the SAME synchronous tick that onDragEnd returns.
+//   That transition animates each row's transform back to identity. If
+//   the cache update happens one microtask later (which an `await` forces),
+//   the transition animates against the still-original DOM order — the
+//   dropped row visibly snaps to its starting position before a later
+//   re-render jumps it to the correct new position.
+//
+//   Fix: fire cancelQueries without awaiting and call setQueryData in the
+//   same tick. The drop transition then animates against the correct final
+//   order from the start.
+//
+//   The cancel still happens — it's just fire-and-forget. The theoretical
+//   race (an in-flight refetch resolves between our setQueryData and the
+//   cancel taking effect, overwriting the optimistic state with stale
+//   server truth) is rare in practice (the app uses staleTime: 30s, so
+//   most reorders have no in-flight fetch) and self-healing (onSettled
+//   below invalidates the key and triggers a fresh fetch regardless).
 export function makeOptimisticReorder<T extends { id: string; sort_order: number }>(
   qc: QueryClient,
   queryKey: QueryKey,
 ) {
   return {
-    onMutate: async (updates: { id: string; sort_order: number }[]) => {
-      await qc.cancelQueries({ queryKey })
+    onMutate: (updates: { id: string; sort_order: number }[]) => {
+      qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<T[]>(queryKey)
       const byId = new Map(updates.map((u) => [u.id, u.sort_order]))
       qc.setQueryData<T[]>(queryKey, (curr) => {
