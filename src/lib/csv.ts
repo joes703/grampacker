@@ -136,11 +136,23 @@ export type GearCsvRow = {
 
 export function gearItemsToCsv(items: GearItem[], categories: Category[]): string {
   const catMap = new Map(categories.map((c) => [c.id, c.name]))
+  // Lighterpack-compatible 10-column header so users can re-import a
+  // grampacker gear-library export into Lighterpack without manual header
+  // massaging. The gear library has no list-item context (no quantity /
+  // worn / consumable), so those columns get Lighterpack defaults: qty=1,
+  // worn/consumable empty. url is empty since grampacker doesn't store
+  // URLs; price is 0 (Lighterpack's default for unset prices, not empty).
   const rows = items.map((item) => ({
-    name: item.name,
-    description: item.description ?? '',
-    weight_grams: item.weight_grams,
-    category: item.category_id ? (catMap.get(item.category_id) ?? '') : '',
+    'Item Name': item.name,
+    Category: item.category_id ? (catMap.get(item.category_id) ?? '') : '',
+    desc: item.description ?? '',
+    qty: 1,
+    weight: item.weight_grams,
+    unit: 'gram',
+    url: '',
+    price: 0,
+    worn: '',
+    consumable: '',
   }))
   return toCsv(rows)
 }
@@ -265,19 +277,29 @@ export function nameFromCsvFilename(filename: string): string {
   return base || 'Imported list'
 }
 
-// Every column written here is read back by parseListCsv. is_packed is
-// deliberately excluded — it's per-user runtime checklist state and there's
-// no use case for round-tripping it through CSV.
+// Lighterpack-compatible 10-column header (Item Name, Category, desc, qty,
+// weight, unit, url, price, worn, consumable) so users can re-import a
+// grampacker list export into Lighterpack and so users coming from
+// Lighterpack see a familiar shape. is_packed is excluded — Lighterpack
+// has no equivalent and it's per-user runtime checklist state. url and
+// price are emitted as Lighterpack defaults ('' and 0) since grampacker
+// doesn't store them. Boolean values use Lighterpack's "Worn" /
+// "Consumable" literals (capitalized when true, empty when false) — the
+// import-side toBool will need a follow-up to recognize those literals;
+// tracked separately.
 export function listItemsToCsv(items: ListItemWithGear[], categories: Category[]): string {
   const catMap = new Map(categories.map((c) => [c.id, c.name]))
   const rows = items.map((item) => ({
-    name: item.gear_item.name,
-    description: item.gear_item.description ?? '',
-    weight_grams: item.gear_item.weight_grams,
-    quantity: item.quantity,
-    worn: item.is_worn ? 'yes' : 'no',
-    consumable: item.is_consumable ? 'yes' : 'no',
-    category: item.gear_item.category_id ? (catMap.get(item.gear_item.category_id) ?? '') : '',
+    'Item Name': item.gear_item.name,
+    Category: item.gear_item.category_id ? (catMap.get(item.gear_item.category_id) ?? '') : '',
+    desc: item.gear_item.description ?? '',
+    qty: item.quantity,
+    weight: item.gear_item.weight_grams,
+    unit: 'gram',
+    url: '',
+    price: 0,
+    worn: item.is_worn ? 'Worn' : '',
+    consumable: item.is_consumable ? 'Consumable' : '',
   }))
   return toCsv(rows)
 }
