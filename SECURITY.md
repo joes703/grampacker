@@ -1,6 +1,6 @@
 # Security model
 
-This document describes how authorisation works in grampacker, where the security boundary lives, and how to extend it safely. Audience: any engineer (human or AI) opening the codebase for the first time. The goal is that you finish this doc in ten minutes knowing what enforces what, and what to do — and not do — when adding a new table or function.
+This document describes how authorization works in grampacker, where the security boundary lives, and how to extend it safely. Audience: any engineer (human or AI) opening the codebase for the first time. The goal is that you finish this doc in ten minutes knowing what enforces what, and what to do — and not do — when adding a new table or function.
 
 For the *why* behind specific decisions, this doc cross-references `DECISIONS.md` (ADRs) and the migration files rather than duplicating their content.
 
@@ -14,9 +14,9 @@ grampacker is a Backend-as-a-Service app. The browser talks directly to **PostgR
 browser → PostgREST → Postgres
 ```
 
-The implication is load-bearing: **the database is the security boundary**. Every authorisation decision — who can read which row, who can write it, who can call which function — is enforced inside Postgres. If a policy is wrong, no upstream component will catch the mistake; the auto-generated REST endpoints will dutifully serve whatever the database is willing to return.
+The implication is load-bearing: **the database is the security boundary**. Every authorization decision — who can read which row, who can write it, who can call which function — is enforced inside Postgres. If a policy is wrong, no upstream component will catch the mistake; the auto-generated REST endpoints will dutifully serve whatever the database is willing to return.
 
-This is also what makes the model auditable: there is one place to look (the migrations) for the entire authorisation story.
+This is also what makes the model auditable: there is one place to look (the migrations) for the entire authorization story.
 
 ---
 
@@ -42,6 +42,21 @@ Owner policies are defined `FOR ALL` with both `USING` (read filter) and `WITH C
 A defense-in-depth net guards against forgetting RLS on a new table. The `rls_auto_enable` event trigger (migration `20260429000000`) fires on every `CREATE TABLE` in `public` and runs `alter table … enable row level security` automatically. **This does not write the policies for you** — an RLS-enabled table without policies fails closed: nobody (including the owner) can read or write. Defense-in-depth, not autopilot.
 
 For the precise SQL, see migrations `20260425000000`, `20260425000001`, `20260425000002`, and `20260427000000`.
+
+### Cross-owner FK enforcement
+
+Owner-keyed RLS validates that a user can write a given *row*, but doesn't by itself check that the rows that row *references* share the same owner. An authenticated attacker with a leaked id (e.g. from a public shared list before the read-path sanitization) could otherwise craft inserts threading cross-owner FK references — corrupting the data model without exposing any other user's data.
+
+Two foreign keys in this codebase needed explicit lockdown. The mechanism differs per FK based on whether the child table has its own `user_id` column:
+
+- **`gear_items.category_id → categories.id`** — both tables have `user_id` directly, so a **composite foreign key** ties them together: `gear_items(category_id, user_id) references categories(id, user_id) on delete set null`. The composite FK requires `UNIQUE(id, user_id)` on `categories` — the PK on `id` alone isn't sufficient as a composite-FK target. ON DELETE SET NULL only nulls `category_id` (the referenced column on the parent); `user_id` stays intact, which is the correct behavior for an uncategorized item after its category is deleted. Migration `20260506000000`.
+- **`list_items.gear_item_id → gear_items.id`** — `list_items` has no `user_id` column (ownership traces through `lists`), so composite FK is unavailable without a schema addition. Instead, the `list_items_owner_all` RLS policy's `WITH CHECK` clause was extended to require `EXISTS (SELECT 1 FROM gear_items WHERE gear_items.id = list_items.gear_item_id AND gear_items.user_id = auth.uid())` in addition to the existing list-ownership check. One extra EXISTS lookup per insert/update on an indexed PK — cheaper than restructuring the schema. Same migration.
+
+Both mechanisms reject forged cross-owner references at insert time. The difference is composite-FK-as-constraint vs RLS-WITH-CHECK-as-policy; either is declarative DB-level enforcement.
+
+When adding a new FK from one user-owned table to another:
+- If both tables have `user_id` directly, prefer a composite FK. Add `UNIQUE(id, user_id)` on the parent if not already present.
+- If the child traces ownership through a parent (no direct `user_id`), extend the child's RLS `WITH CHECK` clause with a same-owner subquery against the FK target.
 
 ---
 
@@ -93,7 +108,7 @@ Every `SECURITY DEFINER` function we own MUST have all four of:
 
 1. **`search_path` pinned** — `set search_path = public, pg_temp` (or similar). Prevents schema-shadowing attacks where a malicious temp-schema object intercepts unqualified references inside the function.
 2. **`EXECUTE` revoked from `public` and `anon`**, granted to `authenticated` only (or revoked entirely for trigger-only functions).
-3. **Inline ownership check** in the function body. Because RLS is bypassed, the function itself must re-assert that the caller owns the row(s) it's touching. The check is what preserves the security boundary; the `SECURITY DEFINER` flag is purely a PostgREST workaround, not a privilege grant. Forgetting this turns the function into an authorisation oracle.
+3. **Inline ownership check** in the function body. Because RLS is bypassed, the function itself must re-assert that the caller owns the row(s) it's touching. The check is what preserves the security boundary; the `SECURITY DEFINER` flag is purely a PostgREST workaround, not a privilege grant. Forgetting this turns the function into an authorization oracle.
 4. **Trust assumption documented** in a header comment so a future reviewer can audit the model without re-deriving it.
 
 ### Inventory
@@ -159,7 +174,7 @@ These don't carry the primary security load — RLS does — but they catch mist
 
 ## Adding a SECURITY DEFINER function safely
 
-1. **Decide whether you actually need DEFINER.** Default to `SECURITY INVOKER` (the default if you don't specify) — RLS handles the authorisation. `DEFINER` is for the narrow case where the auto-generated PostgREST path can't express what you need (the bulk-partial-column case is the canonical example).
+1. **Decide whether you actually need DEFINER.** Default to `SECURITY INVOKER` (the default if you don't specify) — RLS handles the authorization. `DEFINER` is for the narrow case where the auto-generated PostgREST path can't express what you need (the bulk-partial-column case is the canonical example).
 2. **Pin `search_path`:** `set search_path = public, pg_temp` (or whatever schemas the function actually references; pin them all explicitly).
 3. **Lock down EXECUTE:**
    ```sql
