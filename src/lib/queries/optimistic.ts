@@ -1,5 +1,6 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
 import { supabase } from '../supabase'
+import { showToast } from '../toast'
 
 // ── Bulk helpers ──────────────────────────────────────────────────────────────
 
@@ -102,6 +103,10 @@ export function makeOptimisticReorder<T extends { id: string; sort_order: number
       ctx: { previous: T[] | undefined } | undefined,
     ) => {
       if (ctx?.previous) qc.setQueryData(queryKey, ctx.previous)
+      // The rollback is otherwise silent — items just snap back to their
+      // original positions. Without a toast, users on a flaky connection
+      // can't distinguish "save failed" from "I dragged it back myself".
+      showToast("Couldn't save the new order. Please try again.", { type: 'error' })
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey })
