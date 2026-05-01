@@ -39,6 +39,7 @@ import {
 } from '../lib/queries'
 import { assignSortOrderSlots } from '../lib/grouping'
 import { asButtonRef } from '../lib/dnd'
+import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
 import type { List } from '../lib/types'
 import { parseListCsv, listItemsToCsv, downloadCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
@@ -156,10 +157,12 @@ export default function ListsPage() {
     const { active, over } = e
     if (!over) return
     if (active.id === over.id) return
-    const activeIdStr = String(active.id)
-    const overIdStr = String(over.id)
-    const oldIndex = lists.findIndex((l) => l.id === activeIdStr)
-    const newIndex = lists.findIndex((l) => l.id === overIdStr)
+    const activeParsed = parseDnDId(String(active.id))
+    const overParsed = parseDnDId(String(over.id))
+    if (!activeParsed || !overParsed) return
+    if (activeParsed.kind !== 'list-card' || overParsed.kind !== 'list-card') return
+    const oldIndex = lists.findIndex((l) => l.id === activeParsed.id)
+    const newIndex = lists.findIndex((l) => l.id === overParsed.id)
     if (oldIndex === -1 || newIndex === -1) return
     const reordered = arrayMove(lists, oldIndex, newIndex)
     reorderListsMut.mutate(assignSortOrderSlots(reordered))
@@ -256,7 +259,9 @@ export default function ListsPage() {
       {listsLoading ? (
         <p className="text-sm text-gray-400">Loading…</p>
       ) : (() => {
-        const activeList = activeId ? lists.find((l) => l.id === activeId) : null
+        const activeParsed = activeId ? parseDnDId(activeId) : null
+        const activeList =
+          activeParsed?.kind === 'list-card' ? lists.find((l) => l.id === activeParsed.id) : null
         return (
           <DndContext
             sensors={sensors}
@@ -265,7 +270,7 @@ export default function ListsPage() {
             onDragEnd={handleDragEnd}
             onDragCancel={handleDragCancel}
           >
-            <SortableContext items={lists.map((l) => l.id)} strategy={rectSortingStrategy}>
+            <SortableContext items={lists.map((l) => makeDnDId('list-card', l.id))} strategy={rectSortingStrategy}>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {lists.map((list) => (
                   <SortableListCard
@@ -436,7 +441,7 @@ function SortableListCard(props: Omit<ListCardProps, 'outerRef' | 'outerStyle' |
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: props.list.id, disabled: props.renaming })
+  } = useSortable({ id: makeDnDId('list-card', props.list.id), disabled: props.renaming })
 
   const sortableStyle: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),

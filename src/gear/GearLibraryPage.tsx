@@ -46,6 +46,7 @@ import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useToggleSet } from '../lib/use-toggle-set'
 import { groupGearItemsByCategory, assignSortOrderSlots } from '../lib/grouping'
+import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
 import GearItemRow from './GearItemRow'
 import GearItemDialog from './GearItemDialog'
@@ -222,19 +223,22 @@ export default function GearLibraryPage() {
   // `over` resolves to one of the dragged category's own items, the handler
   // resolves dest to the same category, and the drop snaps back. Filter the
   // collision search to category droppables when the active is a category;
-  // item drags use closestCenter unchanged.
-  const categoryIdSet = useMemo(() => new Set(categories.map((c) => c.id)), [categories])
+  // item drags use closestCenter unchanged. The kind tag in the typed id
+  // (see src/lib/dnd-ids.ts) is what tells us which case we're in.
   const collisionDetection = useMemo<CollisionDetection>(
     () => (args) => {
-      if (categoryIdSet.has(String(args.active.id))) {
+      const activeKind = parseDnDId(String(args.active.id))?.kind
+      if (activeKind === 'category') {
         return closestCenter({
           ...args,
-          droppableContainers: args.droppableContainers.filter((c) => categoryIdSet.has(String(c.id))),
+          droppableContainers: args.droppableContainers.filter(
+            (c) => parseDnDId(String(c.id))?.kind === 'category',
+          ),
         })
       }
       return closestCenter(args)
     },
-    [categoryIdSet],
+    [],
   )
 
   // Active drag id (item id OR category id). The DragOverlay renders an
@@ -279,24 +283,28 @@ export default function GearLibraryPage() {
     if (!over) return
     if (active.id === over.id) return
 
-    const activeIdStr = String(active.id)
-    const overIdStr = String(over.id)
-    const categoryIds = new Set(categories.map((c) => c.id))
+    const activeParsed = parseDnDId(String(active.id))
+    const overParsed = parseDnDId(String(over.id))
+    if (!activeParsed || !overParsed) return
 
     // Case 1 — category reorder.
-    if (categoryIds.has(activeIdStr)) {
-      const oldIndex = categories.findIndex((c) => c.id === activeIdStr)
+    if (activeParsed.kind === 'category') {
+      const oldIndex = categories.findIndex((c) => c.id === activeParsed.id)
       if (oldIndex === -1) return
 
-      // Resolve over.id to a target category id. closestCenter picks the
-      // closest droppable, which is often an item row rather than the
-      // category outer-wrapper id, so handle both shapes.
+      // Resolve over to a target category id. The collisionDetection above
+      // restricts droppables to category-only when active is a category, so
+      // overParsed.kind is always 'category' here. The else branch (over
+      // resolved to a gear-item) is kept as a defence; if it ever fires,
+      // map back to the parent category via category_id.
       let destCatId: string | null
-      if (categoryIds.has(overIdStr)) {
-        destCatId = overIdStr
-      } else {
-        const overItem = allItems.find((i) => i.id === overIdStr)
+      if (overParsed.kind === 'category') {
+        destCatId = overParsed.id
+      } else if (overParsed.kind === 'gear-item') {
+        const overItem = allItems.find((i) => i.id === overParsed.id)
         destCatId = overItem?.category_id ?? null
+      } else {
+        return
       }
       // Uncategorized is not a real category row — no reorder target.
       if (destCatId === null) return
@@ -308,19 +316,20 @@ export default function GearLibraryPage() {
       return
     }
 
-    // Case 2 — within-category item reorder. The drop target must be another
-    // item AND in the same category as the dragged item.
-    const activeItem = allItems.find((i) => i.id === activeIdStr)
+    // Case 2 — within-category gear-item reorder. The drop target must be
+    // another gear-item AND in the same category as the dragged item.
+    if (activeParsed.kind !== 'gear-item' || overParsed.kind !== 'gear-item') return
+    const activeItem = allItems.find((i) => i.id === activeParsed.id)
     if (!activeItem) return
-    const overItem = allItems.find((i) => i.id === overIdStr)
+    const overItem = allItems.find((i) => i.id === overParsed.id)
     if (!overItem) return
     const activeCat = activeItem.category_id ?? null
     const overCat = overItem.category_id ?? null
     if (overCat !== activeCat) return
 
     const itemsInCat = allItems.filter((i) => (i.category_id ?? null) === activeCat)
-    const oldIndex = itemsInCat.findIndex((i) => i.id === activeIdStr)
-    const newIndex = itemsInCat.findIndex((i) => i.id === overIdStr)
+    const oldIndex = itemsInCat.findIndex((i) => i.id === activeParsed.id)
+    const newIndex = itemsInCat.findIndex((i) => i.id === overParsed.id)
     if (oldIndex === -1 || newIndex === -1) return
     const reordered = arrayMove(itemsInCat, oldIndex, newIndex)
     reorderGearItemsMut.mutate(assignSortOrderSlots(reordered))
@@ -475,9 +484,9 @@ export default function GearLibraryPage() {
       {isLoading ? (
         <p className="text-sm text-gray-400">Loading…</p>
       ) : (() => {
-        const activeItem = activeId
-          ? allItems.find((i) => i.id === activeId)
-          : null
+        const activeParsed = activeId ? parseDnDId(activeId) : null
+        const activeItem =
+          activeParsed?.kind === 'gear-item' ? allItems.find((i) => i.id === activeParsed.id) : null
         return (
           <DndContext
             sensors={sensors}
@@ -491,7 +500,7 @@ export default function GearLibraryPage() {
                 resolves to it. Each CategorySection renders a per-category
                 SortableContext internally for its items. */}
             <SortableContext
-              items={categories.map((c) => c.id)}
+              items={categories.map((c) => makeDnDId('category', c.id))}
               strategy={verticalListSortingStrategy}
             >
               {groups.map((group) => {

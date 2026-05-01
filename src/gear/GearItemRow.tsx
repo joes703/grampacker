@@ -6,6 +6,7 @@ import { GripVertical, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import type { GearItem } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
+import { makeDnDId } from '../lib/dnd-ids'
 import { usePortalPopover } from '../lib/use-portal-popover'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
@@ -212,7 +213,7 @@ export function SortableGearItemRow(props: Omit<Props, 'dragHandle' | 'outerRef'
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: props.item.id, disabled: props.selectMode })
+  } = useSortable({ id: makeDnDId('gear-item', props.item.id), disabled: props.selectMode })
 
   const sortableStyle: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
