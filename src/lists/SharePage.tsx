@@ -65,6 +65,7 @@ export default function SharePage() {
   // (pack mode, owner-only affordances) doesn't render here.
   const itemsForRender: ListItemWithGear[] = items.map((i: PublicListItem) => ({
     ...i,
+    user_id: '',
     list_id: list.id,
     is_packed: false,
     created_at: '',

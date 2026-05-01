@@ -31,6 +31,7 @@ describe('csv round-trip', () => {
     {
       id: 'li-1',
       list_id: 'l-1',
+      user_id: 'u',
       gear_item_id: 'g-1',
       quantity: 1,
       is_worn: false,
@@ -50,6 +51,7 @@ describe('csv round-trip', () => {
     {
       id: 'li-2',
       list_id: 'l-1',
+      user_id: 'u',
       gear_item_id: 'g-2',
       quantity: 2,
       is_worn: false,
@@ -69,6 +71,7 @@ describe('csv round-trip', () => {
     {
       id: 'li-3',
       list_id: 'l-1',
+      user_id: 'u',
       gear_item_id: 'g-3',
       quantity: 1,
       is_worn: true,

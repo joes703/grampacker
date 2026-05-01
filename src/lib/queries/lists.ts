@@ -99,6 +99,7 @@ export async function createListFromSelection(
 
   if (gearItemIds.length > 0) {
     const rows = gearItemIds.map((id, i) => ({
+      user_id: userId,
       list_id: newList.id,
       gear_item_id: id,
       sort_order: i,
@@ -146,6 +147,7 @@ export async function duplicateList(source: List, userId: string, sortOrder: num
         is_packed,
         sort_order,
       }: ListItem) => ({
+        user_id: userId,
         list_id: newList.id,
         gear_item_id,
         quantity,

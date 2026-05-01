@@ -175,7 +175,7 @@ function ListDetailInner({
 
   const addMut = useMutation({
     mutationFn: (item: GearItem) =>
-      addGearItemToList(listId, item.id, listItems.length),
+      addGearItemToList(listId, userId, item.id, listItems.length),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) }),
   })
 
@@ -233,7 +233,7 @@ function ListDetailInner({
         { name: data.name, description: data.description, weight_grams: data.weight_grams, category_id: categoryId },
         gearItems.length,
       )
-      await addGearItemToList(listId, newGear.id, listItems.length, {
+      await addGearItemToList(listId, userId, newGear.id, listItems.length, {
         quantity: data.quantity,
         is_worn: data.is_worn,
         is_consumable: data.is_consumable,
