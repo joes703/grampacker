@@ -24,7 +24,8 @@
 - `list_items` are per-trip references with their own per-list properties (quantity, is_packed, is_worn, is_consumable). They embed `gear_item` via Supabase join — when reading from the join, the gear_item is the source of truth for name/weight; list_item only stores trip-specific fields.
 - After migration `20260427000001`, `list_items.gear_item_id` is NOT NULL with ON DELETE CASCADE. The gear_item join is non-nullable. Do not write code that handles a null gear_item.
 - DnD reorders items WITHIN a category only. Cross-category DnD was deliberately removed. Moving an item between categories happens through the edit modal.
-- Categories themselves are draggable to reorder.
+- Categories are draggable to reorder on `/gear` only — not on `/lists/:id`. (See DECISIONS.md ADR 11 for the rationale.)
+- List cards on `/lists` are draggable to reorder. Card-level DnD shares the same `bulk_update_sort_order` RPC and `makeOptimisticReorder` helper as the other surfaces.
 - Bulk "Move to category" via multi-select toolbar uses `bulkMoveToCategoryGearItems`. That path is intentional and separate from DnD.
 
 ## Cache invalidation rules
@@ -40,7 +41,7 @@
 - Bulk actions: multi-select toolbar on gear page only. Includes Select all / Select none.
 - Edit happens in modals. Delete confirmations use the standardized "Delete from inventory" copy on both pages.
 - Category moves happen in the edit modal, NOT in the kebab. This is deliberate — moves are rare enough that the modal friction is acceptable, and we avoid having two paths for the same operation.
-- All four popovers (HamburgerMenu, PrivacyButton, ListsBox, ItemRow's RowKebab, GearItemRow's GearRowKebab) use the `usePortalPopover` hook for dismiss behavior. Do not reimplement mousedown/scroll/resize/escape listeners inline.
+- All five popovers (HamburgerMenu, PrivacyButton, ItemRow's RowKebab, GearItemRow's GearRowKebab, ListsPage's per-card RowKebab) use the `usePortalPopover` hook for dismiss behavior. Do not reimplement mousedown/scroll/resize/escape listeners inline.
 
 ## Working style
 
@@ -52,7 +53,7 @@
 
 ## What NOT to do
 
-- Don't recreate the "(deleted item)" placeholder rendering. The cascade migration made that case unreachable. The dead UI was removed in commit `c... ` (cascade cleanup batch).
+- Don't recreate the "(deleted item)" placeholder rendering. The cascade migration made that case unreachable. The dead UI was removed in commit `5fac55f`.
 - Don't add cross-category DnD back. It was deliberately removed.
 - Don't add a second path to move items between categories. Edit modal only.
 - Don't write `makeOptimisticCrossCategoryMove`. It was planned, then made unnecessary by removing cross-category DnD entirely.

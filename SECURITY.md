@@ -20,14 +20,13 @@ This is also what makes the model auditable: there is one place to look (the mig
 
 ---
 
-## Authorisation lives in Row Level Security
+## Authorization lives in Row Level Security
 
 Every table in the `public` schema has **Row Level Security** enabled. RLS is a Postgres feature that filters every query (SELECT/INSERT/UPDATE/DELETE) through a per-table policy expressed as a SQL predicate. Without a matching policy, queries return zero rows and writes are rejected.
 
-Two policy shapes appear in this codebase:
+Every user-owned table currently uses the **owner-keyed** pattern: `auth.uid() = user_id`. The row carries the owner's id directly. Used on `profiles`, `categories`, `gear_items`, `lists`, and `list_items` (the latter gained a direct `user_id` column in migration `20260506000002`, replacing its previous joined-via-parent policy).
 
-- **Owner-keyed:** `auth.uid() = user_id`. The row carries the owner's id directly. Used on `profiles`, `categories`, `gear_items`, `lists`.
-- **Joined-via-parent:** `EXISTS (SELECT 1 FROM <parent> WHERE <parent>.id = <child>.<fk> AND <parent>.user_id = auth.uid())`. The row's owner is reachable through a foreign key. Used on `list_items` (joins `lists`).
+A second pattern — **joined-via-parent** (`EXISTS (SELECT 1 FROM <parent> WHERE <parent>.id = <child>.<fk> AND <parent>.user_id = auth.uid())`) — is the option for future child tables that don't carry their own `user_id`. Not currently used by any table after the `list_items` migration. The template lives in "Adding a new table safely" below.
 
 Owner policies are defined `FOR ALL` with both `USING` (read filter) and `WITH CHECK` (write filter); the `WITH CHECK` is what stops a user from updating one of their rows to belong to someone else.
 
@@ -37,7 +36,7 @@ Owner policies are defined `FOR ALL` with both `USING` (read filter) and `WITH C
 | `categories` | `auth.uid() = user_id` (`categories_owner_all`) | `categories_public_select_via_shared_list` (transitive: only when a shared list references one of this category's gear items) |
 | `gear_items` | `auth.uid() = user_id` (`gear_items_owner_all`) | `gear_items_public_select_via_shared_list` (transitive: only when a shared list references this gear item) |
 | `lists` | `auth.uid() = user_id` (`lists_owner_all`) | `lists_public_select_shared` (`is_shared = true`) |
-| `list_items` | join through `lists` (`list_items_owner_all`) | `list_items_public_select_shared` (join, `is_shared = true`) |
+| `list_items` | `auth.uid() = user_id` (`list_items_owner_all`; direct since migration `20260506000002`) | `list_items_public_select_shared` (joins `lists` and checks `is_shared = true`) |
 
 A defense-in-depth net guards against forgetting RLS on a new table. The `rls_auto_enable` event trigger (migration `20260429000000`) fires on every `CREATE TABLE` in `public` and runs `alter table … enable row level security` automatically. **This does not write the policies for you** — an RLS-enabled table without policies fails closed: nobody (including the owner) can read or write. Defense-in-depth, not autopilot.
 
@@ -69,7 +68,7 @@ When adding a new FK from one user-owned table to another:
 
 PostgREST authenticates incoming requests against one of three Postgres roles:
 
-- **`anon`** — unauthenticated. Used by the public share view (`/r/:token`). Reads only via the `*_public_select_via_shared_list` and `*_public_select_shared` policies. Has no write capability anywhere.
+- **`anon`** — unauthenticated. Used by the public share view (`/r/:slug`). Reads only via the `*_public_select_via_shared_list` and `*_public_select_shared` policies. Has no write capability anywhere.
 - **`authenticated`** — signed-in users. Reads / writes via the owner policies. Has `EXECUTE` on the SECURITY DEFINER RPCs we expose (`delete_account`, `bulk_update_sort_order`).
 - **`public`** (Postgres pseudo-role) — every grant defaults to this unless explicitly revoked. We **explicitly revoke `EXECUTE` from `public`** on every SECURITY DEFINER function we own, so a misconfigured grant elsewhere can't accidentally expose them.
 
@@ -201,7 +200,7 @@ These don't carry the primary security load — RLS does — but they catch mist
 | Situation | Required change |
 |---|---|
 | New user-owned table | Standard owner-keyed policies (or joined-via-parent if there's no direct `user_id`). No security review needed beyond the checklist above. |
-| New public read path | Add a `*_public_select_*` policy. Document the trust assumption (what gates it — share token, `is_shared` flag, public-by-design data, etc.). |
+| New public read path | Add a `*_public_select_*` policy. Document the trust assumption (what gates it — slug + `is_shared` flag, public-by-design data, etc.). |
 | Collaboration / multi-owner | Owner-keyed policies broaden to membership-keyed (e.g. `EXISTS (SELECT 1 FROM list_members WHERE list_id = … AND user_id = auth.uid())`). Every table that participates in collaboration needs a new policy shape; this is a real review, not a checklist item. |
 | Admin role | Define a Postgres role, write admin-specific policies. Prefer narrow `for select to admin using (<predicate>)` over `for all using (true)` — least privilege still applies. |
 | New SECURITY DEFINER function | Full review per the section above. Inline ownership check is non-negotiable. |
@@ -214,12 +213,18 @@ These don't carry the primary security load — RLS does — but they catch mist
 **Migrations** (all in `supabase/migrations/`):
 - `20260425000000_initial_schema.sql` — `profiles`, `set_updated_at`, `handle_new_user`, RLS on profiles.
 - `20260425000001_categories_and_gear.sql` — `categories`, `gear_items`, owner-keyed RLS, count cap.
-- `20260425000002_lists_and_list_items.sql` — `lists`, `list_items`, owner-keyed RLS, shared-list RLS (gated on `is_shared`), joined-via-parent RLS, count caps.
+- `20260425000002_lists_and_list_items.sql` — `lists`, `list_items`, owner-keyed RLS, shared-list RLS (gated on `is_shared`), joined-via-parent RLS on `list_items` (later replaced — see `20260506000002`), count caps.
 - `20260426000000_delete_account_rpc.sql` — `delete_account()`.
 - `20260427000000_public_select_via_shared_list.sql` — transitive read for the share view.
 - `20260427000001_cascade_gear_item_deletion.sql` — referential cleanup (NOT NULL + CASCADE on `list_items.gear_item_id`).
 - `20260429000000_function_hardening.sql` — `search_path` pinning, `handle_new_user` lockdown, `rls_auto_enable` backfill.
 - `20260430000000_bulk_reorder_rpc.sql` + `20260501000000_bulk_reorder_rpc_ownership_check.sql` + `20260502000000_add_gear_items_to_bulk_reorder.sql` + `20260503000000_add_lists_to_bulk_reorder.sql` — `bulk_update_sort_order` RPC, ownership check, table whitelist extensions.
+- `20260504000000_rename_share_token_to_slug.sql` — share-token → slug rename + length 8 → 6.
+- `20260505000000_fix_delete_account_search_path.sql` — `search_path` pin on `delete_account()` (drift fix from the function-hardening sweep).
+- `20260505000001_profiles_self_update_with_check.sql` — adds the missing `WITH CHECK` clause to the profiles update policy.
+- `20260506000000_composite_fks_for_same_owner.sql` + `20260506000001_revert_composite_fks_for_same_owner.sql` — first cross-owner-FK lockdown attempt (RLS WITH CHECK subquery), reverted after triggering policy recursion (Postgres 42P17). Kept in history for the lesson; see "Cross-owner FK enforcement" above.
+- `20260506000002_add_user_id_to_list_items_composite_fks.sql` — composite FKs for cross-owner enforcement; adds `list_items.user_id`; simplifies `list_items_owner_all` to direct `auth.uid() = user_id`.
+- `20260506000003_fix_category_delete_set_null_columns.sql` — fixes the composite FK on `gear_items.category_id` to use the PG 15+ `ON DELETE SET NULL (category_id)` column-list form so `user_id` (NOT NULL) doesn't get nulled on category deletion.
 
 **ADRs** (in `DECISIONS.md`):
 - ADR 3 — Bulk DB operations through Postgres RPCs (rationale + accepted linter warning).
@@ -227,7 +232,7 @@ These don't carry the primary security load — RLS does — but they catch mist
 
 **Behavior reference** (in `SPEC.md`):
 - "Row-level security" — short summary of the two policy shapes and the RPC pointer.
-- "Sharing mechanics" — share token + RLS user-facing behavior.
+- "Sharing mechanics" — slug + RLS user-facing behavior.
 
 **Codebase conventions** (in `CLAUDE.md`):
 - "Database patterns" — when to use the RPC vs. single-row PATCH; the upsert trap.
