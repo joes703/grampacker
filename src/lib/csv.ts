@@ -162,10 +162,31 @@ function toGrams(value: string, unit: string): number {
   if (isNaN(n) || n < 0) return 0
   let grams: number
   switch (unit.trim().toLowerCase()) {
-    case 'oz':  grams = n * 28.3495; break
-    case 'lb':  grams = n * 453.592; break
-    case 'kg':  grams = n * 1000;    break
-    default:    grams = n            // g or unknown — treat as grams
+    case 'oz':
+    case 'ounce':
+    case 'ounces':
+      grams = n * 28.3495
+      break
+    case 'lb':
+    case 'pound':
+    case 'pounds':
+      grams = n * 453.592
+      break
+    case 'kg':
+    case 'kilogram':
+    case 'kilograms':
+      grams = n * 1000
+      break
+    case '':
+    case 'g':
+    case 'gram':
+    case 'grams':
+    default:
+      // Empty + g/gram/grams take the default; unknown units (typos
+      // etc.) also default to grams as the most-tolerant fallback —
+      // matches the previous behavior, just with the happy path now
+      // explicit instead of hidden under `default`.
+      grams = n
   }
   return Math.min(Math.round(grams), 100000)
 }
@@ -184,7 +205,7 @@ export function parseGearCsv(text: string): GearCsvRow[] | string {
   const nameKey   = keys.find((k) => k === 'name' || k === 'item name')
   const weightKey = keys.find((k) => k === 'weight_grams' || k === 'weight (g)' || k === 'weight')
   const unitKey   = keys.find((k) => k === 'unit')
-  const descKey   = keys.find((k) => k === 'description' || k === 'desc')
+  const descKey   = keys.find((k) => k === 'description' || k === 'desc' || k === 'notes')
   const catKey    = keys.find((k) => k === 'category')
 
   if (!nameKey)   return 'Missing required column: "name" or "Item Name"'
@@ -216,8 +237,14 @@ export type ListImportRow = {
 }
 
 function toBool(v: string | undefined): boolean {
-  const s = (v ?? '').trim()
-  return s === '1' || s.toLowerCase() === 'yes' || s.toLowerCase() === 'true'
+  const s = (v ?? '').trim().toLowerCase()
+  // 1/yes/true: traditional CSV boolean conventions.
+  // worn/consumable: Lighterpack's literal column-value style — a
+  // worn-flag column carries the string "Worn" when true and empty
+  // when false; same for consumable. Recognising both literals here
+  // (rather than column-aware parsing) keeps toBool a single function
+  // and is harmless since no tool emits cross-column values.
+  return s === '1' || s === 'yes' || s === 'true' || s === 'worn' || s === 'consumable'
 }
 
 // Parses a Lighterpack-style CSV into list import rows.
@@ -233,7 +260,7 @@ export function parseListCsv(text: string): ListImportRow[] | string {
   const nameKey     = keys.find((k) => k === 'name' || k === 'item name')
   const weightKey   = keys.find((k) => k === 'weight_grams' || k === 'weight (g)' || k === 'weight')
   const unitKey     = keys.find((k) => k === 'unit')
-  const descKey     = keys.find((k) => k === 'description' || k === 'desc')
+  const descKey     = keys.find((k) => k === 'description' || k === 'desc' || k === 'notes')
   const catKey      = keys.find((k) => k === 'category')
   const qtyKey      = keys.find((k) => k === 'quantity' || k === 'qty')
   const wornKey     = keys.find((k) => k === 'worn' || k === 'is_worn')

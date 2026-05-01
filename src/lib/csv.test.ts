@@ -117,16 +117,92 @@ describe('csv round-trip', () => {
       expect(row.description).toBe(src.gear_item.description)
       expect(row.weight_grams).toBe(src.gear_item.weight_grams)
       expect(row.quantity).toBe(src.quantity)
+      expect(row.is_worn).toBe(src.is_worn)
+      expect(row.is_consumable).toBe(src.is_consumable)
       const expectedCat = src.gear_item.category_id
         ? categories.find((c) => c.id === src.gear_item.category_id)?.name ?? ''
         : ''
       expect(row.category).toBe(expectedCat)
     })
-    // is_worn / is_consumable do NOT round-trip yet: export writes the
-    // Lighterpack literals 'Worn' / 'Consumable' (capitalized), but
-    // parseListCsv's toBool only accepts '1' / 'yes' / 'true'. The parse-side
-    // tolerance for the Lighterpack literals is a separately-tracked
-    // follow-up; once it lands, re-add the assertions below.
+  })
+
+  it('parses Lighterpack-format CSV (Worn/Consumable literals, gram unit)', () => {
+    const csv = [
+      'Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable',
+      'Tarp,Shelter,cuben fiber,1,240,gram,,0,,',
+      'Stove fuel canister,Kitchen,,2,100,gram,,0,,Consumable',
+      'Rain jacket,Clothing,,1,320,gram,,0,Worn,',
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed).toHaveLength(3)
+    expect(parsed[0]).toMatchObject({
+      name: 'Tarp', description: 'cuben fiber', weight_grams: 240,
+      quantity: 1, category: 'Shelter', is_worn: false, is_consumable: false,
+    })
+    expect(parsed[1]).toMatchObject({
+      name: 'Stove fuel canister', weight_grams: 100, quantity: 2,
+      is_worn: false, is_consumable: true,
+    })
+    expect(parsed[2]).toMatchObject({
+      name: 'Rain jacket', weight_grams: 320, quantity: 1,
+      is_worn: true, is_consumable: false,
+    })
+  })
+
+  it('parses HikerHerd-style headers (notes for description, mixed case)', () => {
+    const csv = [
+      'Name,Category,Notes,Quantity,Weight,Unit,Worn,Consumable',
+      'Tarp,Shelter,cuben fiber,1,240,g,,',
+      'Trail mix,Food,nut and dried fruit blend,3,50,g,,yes',
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]).toMatchObject({
+      name: 'Tarp', description: 'cuben fiber', weight_grams: 240, quantity: 1,
+    })
+    expect(parsed[1]).toMatchObject({
+      name: 'Trail mix', description: 'nut and dried fruit blend',
+      weight_grams: 50, quantity: 3, is_consumable: true,
+    })
+  })
+
+  it('parses spelled-out unit aliases (ounce, pound, kilogram)', () => {
+    const csv = [
+      'name,weight,unit',
+      'Item A,3,ounce',     // 3 oz → 85 g
+      'Item B,2.5,ounces',  // 2.5 oz → 71 g
+      'Item C,1,pound',     // 1 lb → 454 g
+      'Item D,2,pounds',    // 2 lb → 907 g
+      'Item E,1.5,kilogram',// 1.5 kg → 1500 g
+      'Item F,0.5,kilograms',// 0.5 kg → 500 g
+      'Item G,100,gram',    // 100 g → 100 g
+      'Item H,200,grams',   // 200 g → 200 g
+      'Item I,50,',         // empty unit → 50 g
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed.map((r) => r.weight_grams)).toEqual([
+      85, 71, 454, 907, 1500, 500, 100, 200, 50,
+    ])
+  })
+
+  it('parses CSV missing optional columns with sensible defaults', () => {
+    const csv = [
+      'name,weight',
+      'Bare item,150',
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]).toMatchObject({
+      name: 'Bare item',
+      description: null,
+      weight_grams: 150,
+      quantity: 1,           // default when qty column absent
+      category: '',           // empty when category column absent
+      is_worn: false,         // empty when worn column absent
+      is_consumable: false,
+    })
   })
 
   it('emits Lighterpack-compatible export format', () => {
