@@ -143,6 +143,7 @@ These don't carry the primary security load — RLS does — but they catch mist
 - **`rls_auto_enable` event trigger.** Already covered above. Stops a forgotten `enable row level security` from silently exposing a new table.
 - **`ON DELETE CASCADE` chains.** `auth.users` → `profiles` → `categories` / `gear_items` / `lists`; `gear_items` → `list_items`; `lists` → `list_items`. Account deletion is comprehensive — `delete_account()` only needs to remove the `auth.users` row, the cascade does the rest.
 - **Per-user resource caps via `BEFORE INSERT` triggers:** 100 lists per user, 500 gear items per user, 300 list items per list. Stops a runaway client from filling the database. Each cap is enforced both client-side (for friendly errors) and database-side (the source of truth).
+- **In-app password change requires current-password re-authentication.** The change-password form in Settings calls `supabase.auth.signInWithPassword({ email, password: currentPassword })` before `supabase.auth.updateUser({ password: newPassword })`. An attacker with a leaked session token can't change the password without also knowing the current one. The verification call surfaces a generic "Current password is incorrect" rather than Supabase's verbatim error so rate-limit / account-state details don't leak. Supabase Auth's own throttling on `signInWithPassword` covers brute-force attempts.
 
 ---
 

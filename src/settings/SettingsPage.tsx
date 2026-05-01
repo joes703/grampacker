@@ -77,6 +77,8 @@ function Section({
 // ── Change password ───────────────────────────────────────────────────────────
 
 function ChangePasswordForm() {
+  const { session } = useAuth()
+  const [currentPassword, setCurrentPassword] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [busy, setBusy] = useState(false)
@@ -85,6 +87,10 @@ function ChangePasswordForm() {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setMsg(null)
+    if (!currentPassword) {
+      setMsg({ kind: 'err', text: 'Enter your current password.' })
+      return
+    }
     if (password.length < 8) {
       setMsg({ kind: 'err', text: 'Password must be at least 8 characters.' })
       return
@@ -93,13 +99,34 @@ function ChangePasswordForm() {
       setMsg({ kind: 'err', text: 'Passwords do not match.' })
       return
     }
+    if (password === currentPassword) {
+      setMsg({ kind: 'err', text: 'Choose a password different from your current one.' })
+      return
+    }
+    const email = session?.user.email
+    if (!email) {
+      setMsg({ kind: 'err', text: 'No active session. Please sign in again.' })
+      return
+    }
     setBusy(true)
+    // Re-auth: verify the current password before allowing the change.
+    // signInWithPassword's side effect is a fresh session token for the
+    // same user — equivalent access, just refreshed. Surface a generic
+    // "incorrect" message rather than Supabase's verbatim error so we
+    // don't leak rate-limit details or account-state probing surface.
+    const { error: verifyError } = await supabase.auth.signInWithPassword({ email, password: currentPassword })
+    if (verifyError) {
+      setBusy(false)
+      setMsg({ kind: 'err', text: 'Current password is incorrect.' })
+      return
+    }
     const { error } = await supabase.auth.updateUser({ password })
     setBusy(false)
     if (error) {
       setMsg({ kind: 'err', text: error.message })
       return
     }
+    setCurrentPassword('')
     setPassword('')
     setConfirm('')
     setMsg({ kind: 'ok', text: 'Password updated.' })
@@ -107,6 +134,17 @@ function ChangePasswordForm() {
 
   return (
     <form onSubmit={submit} className="space-y-3 max-w-md">
+      <div>
+        <label htmlFor="cp-current" className="block text-sm font-medium text-gray-700 mb-1">Current password</label>
+        <input
+          id="cp-current"
+          type="password"
+          autoComplete="current-password"
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
       <div>
         <label htmlFor="cp-new" className="block text-sm font-medium text-gray-700 mb-1">New password</label>
         <input
@@ -134,7 +172,7 @@ function ChangePasswordForm() {
       )}
       <button
         type="submit"
-        disabled={busy || !password || !confirm}
+        disabled={busy || !currentPassword || !password || !confirm}
         className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
         {busy ? 'Updating…' : 'Change password'}
