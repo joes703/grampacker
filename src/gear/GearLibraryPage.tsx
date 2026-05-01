@@ -267,7 +267,7 @@ export default function GearLibraryPage() {
   // Single page-level drag handler. Two cases only:
   //   1. Reorder categories themselves (drag a category up/down).
   //   2. Reorder items within their existing category.
-  // Cross-category drops are deliberately rejected — recategorizing a gear
+  // Cross-category drops are deliberately rejected — recategorising a gear
   // item happens exclusively via the item edit modal (or the multi-select
   // bulk-move toolbar). A drop whose destination differs from the source
   // category is ignored (item snaps back); the visual auto-shift during
