@@ -1,8 +1,25 @@
 // ── Stringify ─────────────────────────────────────────────────────────────────
 
 function escapeCell(v: string | number | boolean | null | undefined): string {
-  const s = v === null || v === undefined ? '' : String(v)
-  // Wrap in quotes if the value contains a comma, quote, or newline
+  let s = v === null || v === undefined ? '' : String(v)
+  // Formula-injection neutralization. Excel, Google Sheets, and Numbers
+  // evaluate cells whose first character is =, +, -, @, tab, or CR as a
+  // formula. A leading single apostrophe is the standard "treat as text"
+  // escape — strips on display in those tools, not interpreted as part of
+  // the cell value. Applied uniformly at the cell-writer layer so every
+  // export path inherits it.
+  //
+  // We deliberately don't strip leading apostrophes on the import side
+  // (parseCsv): third-party tools like Lighterpack may emit them
+  // legitimately, and stripping would mangle those imports. The user's
+  // own export → import round-trip preserves the apostrophe; that's
+  // acceptable since names starting with =/+/-/@ are exotic enough that
+  // round-trip purity isn't worth the data-mangling risk on third-party
+  // CSVs.
+  if (s.length > 0 && /^[=+\-@\t\r]/.test(s)) {
+    s = `'${s}`
+  }
+  // Wrap in quotes if the value contains a comma, quote, or newline.
   if (s.includes(',') || s.includes('"') || s.includes('\n')) {
     return `"${s.replace(/"/g, '""')}"`
   }
