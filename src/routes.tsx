@@ -2,6 +2,8 @@ import { Routes, Route, Navigate } from 'react-router'
 import { useAuth } from './auth/AuthProvider'
 import LoginPage from './auth/LoginPage'
 import SignupPage from './auth/SignupPage'
+import ForgotPasswordPage from './auth/ForgotPasswordPage'
+import ResetPasswordPage from './auth/ResetPasswordPage'
 import AppShell from './layout/AppShell'
 import AboutPage from './about/AboutPage'
 import SharePage from './lists/SharePage'
@@ -17,6 +19,8 @@ export default function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<SignupPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/r/:slug" element={<SharePage />} />
       {/* Public — readable without a session. AboutPage owns its own
           chrome (auth-aware mini-header) since it sits outside AppShell. */}
