@@ -30,7 +30,7 @@ Every list item has one of three weight classifications based on its flags:
 - **Worn** — `is_worn = true`.
 - **Consumable** — `is_worn = false` and `is_consumable = true`.
 
-The flags are mutually exclusive at the database level (`worn_xor_consumable` CHECK constraint) and at the UI level (toggling one clears the other). When CSV import sees both flags set on a row, worn wins and consumable is silently cleared.
+The flags are mutually exclusive at the database level (`worn_xor_consumable` CHECK constraint) and at the UI level (toggling one clears the other). When CSV import sees both flags set on a row, BOTH are cleared — we'd rather lose the flags than reject the whole import; the user re-applies the right flag in the UI. (See the "Import" section below for full CSV-tolerance rules.)
 
 ### Rollups
 
@@ -71,7 +71,7 @@ See `DECISIONS.md` ADR 8 for the per-list opt-in rationale.
 - The slug is fixed for the life of the list — there is no "regenerate" action. To break a leaked link the user duplicates the list (which gets a fresh slug) and stops sharing the original.
 - Public anon receives 404 for both unknown slugs and inactive shared lists (deliberately indistinguishable to prevent enumeration).
 
-### Public share view (`/r/:token`)
+### Public share view (`/r/:slug`)
 
 Read-only, no auth. Field exclusions vs. the authenticated view:
 
@@ -88,14 +88,11 @@ Categories shown in the public view are filtered to only those that have at leas
 
 The database itself prevents cross-user data access. Even if the frontend has a bug, RLS refuses to serve user A's data to user B. Every table has RLS enabled; policies live in `supabase/migrations/20260425000001_categories_and_gear.sql` and `20260425000002_lists_and_list_items.sql`.
 
-Two patterns:
+Every user-owned table currently uses the **owner-keyed** pattern: `auth.uid() = user_id`. Applies to `categories`, `gear_items`, `lists`, and `list_items` (the latter gained a direct `user_id` column in migration `20260506000002`, replacing its previous joined-via-parent policy). The joined-via-parent pattern (`EXISTS (SELECT 1 FROM <parent> WHERE <parent>.id = <child>.<fk> AND <parent>.user_id = auth.uid())`) is a documented option for future child tables that don't carry their own `user_id` — see `SECURITY.md` "Adding a new table safely" for the template.
 
-- **Owner-keyed tables** (`categories`, `gear_items`, `lists`): `auth.uid() = user_id`.
-- **Joined-via-parent tables** (`list_items`): `EXISTS (SELECT 1 FROM lists WHERE id = list_items.list_id AND user_id = auth.uid())`.
+Public read for shared lists is a separate policy with `using (is_shared = true)` on `lists` and `using (EXISTS (SELECT 1 FROM lists WHERE id = list_items.list_id AND is_shared = true))` on `list_items`. The transitive read on `gear_items` and `categories` (so the share view can render names and groupings) lives in `20260427000000_public_select_via_shared_list.sql`.
 
-Public read for shared lists is a separate policy with `using (is_shared = true)` on `lists` and `using (EXISTS (SELECT 1 FROM lists WHERE id = list_items.list_id AND is_shared = true))` on `list_items`.
-
-For bulk partial-column writes that have to bypass RLS WITH CHECK on the INSERT path, see `CLAUDE.md` "Database patterns" and the `bulk_update_sort_order` RPC (migrations `20260430000000_bulk_reorder_rpc.sql` for the function shape and `20260501000000_bulk_reorder_rpc_ownership_check.sql` for the inline ownership check that defends against IDs leaked through shared-list public read paths).
+For bulk partial-column writes that have to bypass RLS WITH CHECK on the INSERT path, see `CLAUDE.md` "Database patterns" and the `bulk_update_sort_order` RPC. Migration chain: `20260430000000_bulk_reorder_rpc.sql` (function shape), `20260501000000_bulk_reorder_rpc_ownership_check.sql` (inline ownership check), `20260502000000_add_gear_items_to_bulk_reorder.sql` (gear_items branch), `20260503000000_add_lists_to_bulk_reorder.sql` (lists branch).
 
 ---
 
@@ -159,7 +156,7 @@ Gear-item match key: `category_id + lowercase(name) + weight_grams` — exact tr
 
 ## Drag-and-drop reordering rules
 
-Two surfaces support DnD: `/gear` and `/lists/:id`. The public share view at `/r/:token` is read-only and renders no drag affordances.
+Three surfaces support DnD: `/gear`, `/lists/:id`, and `/lists` (card-level reorder). The public share view at `/r/:slug` is read-only and renders no drag affordances.
 
 - **Category reorder is `/gear`-only.** Categories on `/lists/:id` render in their global `sort_order` but cannot be reordered there — no drag handle, no `useSortable` wrapper. Item-level DnD within categories works on both pages. The single-surface rule keeps "manage gear inventory and its order" cleanly on `/gear`; the list page is for working on a specific trip. (See `DECISIONS.md` ADR 11 for the rationale.)
 - **Items reorder within their category only.** Cross-category drops are silently rejected — the item snaps back. Recategorizing an item happens via the item edit modal, or — on `/gear` only — via the multi-select toolbar's "Move to category". Each category section renders its own `<SortableContext>` for items, so dnd-kit's auto-shift only operates within-category. (See `DECISIONS.md` ADR 1 for the rationale.)
@@ -167,17 +164,17 @@ Two surfaces support DnD: `/gear` and `/lists/:id`. The public share view at `/r
 - **Pack mode on `/lists/:id` disables item DnD.** The `useSortable` hook receives `disabled: packMode` so structural changes can't happen while the user is checking off items.
 - **List cards on `/lists` reorder via DnD.** Drag a card by its grip handle (top-left); release on another card to insert. Multi-column grid uses `rectSortingStrategy` for collision detection (calculates target by bounding-rect intersection across column wraps). Drag is disabled while a card's rename input is open. `lists.sort_order` is rewritten globally per user. The other surfaces (`/lists/:id` for items, `/gear` for gear-items and categories) are unchanged.
 - **All four reorderable tables go through the `bulk_update_sort_order` RPC** — `categories`, `list_items`, `gear_items`, and `lists`. Single round-trip per drag, atomic on the server, inline ownership filter per branch. Gear-item reorder still doesn't invalidate `['list-items']` (lists order by `list_items.sort_order`, not `gear_items.sort_order`, and the gear_item join projection doesn't include sort_order — a change is invisible to every list consumer).
-- **Reorder writes are optimistic and silent on failure.** `makeOptimisticReorder` snapshots the cache, applies the new ordering, and rolls back on error with no user-visible toast. Hard-refresh after a write during testing to confirm the server accepted it (see `CLAUDE.md` "Verification").
+- **Reorder writes are optimistic; failures surface a toast.** `makeOptimisticReorder` snapshots the cache, applies the new ordering, and on error rolls back AND triggers a toast via the shared toast system (`src/lib/toast.ts`). The toast says "Couldn't save the new order. Please try again." Other mutation failures (non-reorder) are still silent on rollback — see `CLAUDE.md` "Verification" for the hard-refresh discipline that catches them.
 - **Custom collision detection during category drag on `/gear`.** When the active drag is a category, the droppable-container set is filtered to category-only ids. Without this, dnd-kit's `closestCenter` resolves `over` to one of the dragged category's own item rows (closer to the active's center than a sibling category) and the drop snaps back. Item drags use unmodified `closestCenter`. The list page only ever drags items, so it uses unmodified `closestCenter` directly.
 
 ---
 
 ## Optimistic update lifecycle
 
-Reorder mutations (`reorderCategories`, `reorderListItems`, gear-item reorder on `/gear`) all use the same optimistic lifecycle, defined by `makeOptimisticReorder` in `src/lib/queries/optimistic.ts`:
+All four reorder mutations (`reorderCategories`, `reorderGearItems`, `reorderListItems`, `reorderLists`) use the same optimistic lifecycle, defined by `makeOptimisticReorder` in `src/lib/queries/optimistic.ts`:
 
-1. **onMutate**: cancel in-flight queries for the affected key, snapshot the current cache as `previous`, write the new ordering to the cache.
-2. **onError**: restore `previous`.
+1. **onMutate**: cancel in-flight queries for the affected key, snapshot the current cache as `previous`, write the new ordering to the cache. Synchronous (no `await` on `cancelQueries`) so dnd-kit's drop transition animates against the new DOM order rather than the old one.
+2. **onError**: restore `previous`, surface a toast via `showToast` from `src/lib/toast.ts`.
 3. **onSettled**: invalidate the affected key so a fresh fetch settles state.
 
 Important: the cache rewrite assumes `updates` is a permutation of an existing subset of cached rows. Passing arbitrary values silently corrupts the cache. Use `assignSortOrderSlots` (in `lib/grouping.ts`) to build safe `updates` arrays.
