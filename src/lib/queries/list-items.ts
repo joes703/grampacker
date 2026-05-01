@@ -51,6 +51,7 @@ export async function fetchSharedListItems(listId: string): Promise<PublicListIt
 
 export async function addGearItemToList(
   listId: string,
+  userId: string,
   gearItemId: string,
   sortOrder: number,
   fields: Partial<Pick<ListItem, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed'>> = {},
@@ -58,6 +59,7 @@ export async function addGearItemToList(
   const { data, error } = await supabase
     .from('list_items')
     .insert({
+      user_id: userId,
       list_id: listId,
       gear_item_id: gearItemId,
       sort_order: sortOrder,
@@ -129,6 +131,7 @@ export async function importCsvRowsToList(
       const gearId = gearIdByRow[i]
       if (!gearId) return null
       return {
+        user_id: userId,
         list_id: listId,
         gear_item_id: gearId,
         quantity: row.quantity,

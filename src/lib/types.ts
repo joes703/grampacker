@@ -13,6 +13,7 @@ export type List = {
 export type ListItem = {
   id: string
   list_id: string
+  user_id: string
   gear_item_id: string
   quantity: number
   is_worn: boolean

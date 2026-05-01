@@ -43,7 +43,25 @@ A defense-in-depth net guards against forgetting RLS on a new table. The `rls_au
 
 For the precise SQL, see migrations `20260425000000`, `20260425000001`, `20260425000002`, and `20260427000000`.
 
-> **Known gap (Codex audit finding 3, deferred):** owner-keyed RLS validates that a user can write a given *row* but doesn't by itself check that the rows it *references* share the same owner. Specifically, `gear_items.category_id → categories.id` and `list_items.gear_item_id → gear_items.id` allow forged cross-owner references from an authenticated attacker with leaked ids. A first attempt at lockdown via composite FK + RLS WITH CHECK subquery (migrations `20260506000000` / `20260506000001` — applied and reverted) introduced infinite-recursion in the WITH CHECK evaluation. The right path forward is likely adding `user_id` to `list_items` and using composite FKs throughout, matching the `categories` pattern — deferred for a fresh planning session.
+### Cross-owner FK enforcement
+
+Owner-keyed RLS validates that a user can write a given *row*, but doesn't by itself check that the rows it *references* share the same owner. An authenticated attacker with leaked ids could otherwise craft inserts threading cross-owner FK references — corrupting the data model without exposing any other user's data. Three foreign keys in this codebase are now locked down via composite foreign keys, all anchored on `user_id`:
+
+- **`gear_items.category_id → categories.id`** — composite FK `(category_id, user_id) → (id, user_id)`. ON DELETE SET NULL preserved (the parent column nulls; `user_id` stays intact, which is correct for an uncategorized item after its category is deleted).
+- **`list_items.list_id → lists.id`** — composite FK `(list_id, user_id) → (id, user_id)`. ON DELETE CASCADE preserved.
+- **`list_items.gear_item_id → gear_items.id`** — composite FK `(gear_item_id, user_id) → (id, user_id)`. ON DELETE CASCADE preserved.
+
+Each composite FK requires a `UNIQUE(id, user_id)` on its parent table. Postgres requires the FK target to match a UNIQUE/PK on the exact column tuple referenced; the PK on `id` alone isn't sufficient.
+
+`list_items` previously had no `user_id` column — ownership traced through `list_items.list_id → lists.user_id`. Migration `20260506000002` adds `list_items.user_id` (NOT NULL, backfilled from the parent list's `user_id`) and replaces the `list_items_owner_all` RLS policy's `EXISTS (SELECT 1 FROM lists ...)` with a direct `auth.uid() = user_id` check. The composite FK on `(list_id, user_id) → lists(id, user_id)` enforces that `list_items.user_id` always equals the parent list's `user_id`, so the simplified policy is equivalent to the prior subquery-based one.
+
+**Migration history.** A first attempt at this lockdown (migration `20260506000000`) used an RLS WITH CHECK subquery on `gear_items` to enforce same-owner references on `list_items.gear_item_id`. That triggered policy recursion (Postgres error 42P17) — the subquery against `gear_items` invoked `gear_items`' own RLS policy, looping. Symptom: every `list_items` insert from the app failed silently. Reverted in `20260506000001`. The retry (`20260506000002`) uses composite FKs throughout instead, since they're declarative database constraints that don't trigger RLS evaluation. Schema change > policy gymnastics when the goal is same-owner enforcement on a child table.
+
+When adding a new FK from one user-owned table to another:
+- Both tables must have `user_id` directly. If the child doesn't, add it and backfill before the FK.
+- Add `UNIQUE(id, user_id)` on the parent if not already present.
+- Use `FOREIGN KEY (child_fk_col, user_id) REFERENCES parent (id, user_id)`.
+- Don't use RLS WITH CHECK subqueries against another RLS-enabled table — they recurse.
 
 ---
 
