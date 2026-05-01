@@ -100,13 +100,19 @@ For bulk partial-column writes that have to bypass RLS WITH CHECK on the INSERT 
 
 ## CSV format
 
-Used for gear-library and per-list export/import. The format is a small, hand-rolled RFC-4180-style CSV (`src/lib/csv.ts`) — no external CSV library. The format is *not* drop-in compatible with LighterPack; importing LighterPack files happens to work because the parser tolerates extra columns and aliases (see "Import" below).
+Used for gear-library and per-list export/import. The format is a small, hand-rolled RFC-4180-style CSV (`src/lib/csv.ts`) — no external CSV library. The export format is **drop-in compatible with Lighterpack**: same 10-column header and same value conventions, so a grampacker CSV can be re-imported into Lighterpack without manual header massaging. Importing Lighterpack CSVs into grampacker also works thanks to the parser's case-insensitive column-alias lookup; one known gap is that Lighterpack's literal `Worn` / `Consumable` boolean values aren't recognized as truthy yet (parser's `toBool` accepts `1` / `yes` / `true`).
 
 ### Export columns
 
-**Gear-library export** (`gear-library.csv`): `name`, `description`, `weight_grams`, `category`.
+Both export paths emit the same 10-column header in this exact order:
 
-**List export** (`<sanitized-list-name>.csv`): `name`, `description`, `weight_grams`, `quantity`, `worn`, `consumable`, `category`. Boolean columns are written as the literals `yes` / `no`. Every column is read back by the import parser — `is_packed` is deliberately excluded since it's per-user runtime checklist state with no round-trip use case.
+    Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable
+
+**Gear-library export** (`gear-library.csv`): no list-item context, so per-row `qty=1`, `worn=""`, `consumable=""`.
+
+**List export** (`<sanitized-list-name>.csv`): full per-row data. `qty` is the list_item quantity. `worn` is the literal `Worn` when true, empty when false. `consumable` is the literal `Consumable` when true, empty when false. `is_packed` is excluded — Lighterpack has no equivalent and it's per-user runtime checklist state.
+
+**Both paths**, every row: `weight` is the gear-item weight in grams as an integer (no unit suffix in the value). `unit` is the literal string `gram` (lowercase, full word — Lighterpack's convention). `url` is empty (grampacker doesn't store URLs). `price` is `0` (Lighterpack's default for unset prices; emitted numerically, not as empty).
 
 Both:
 - Header row first.
