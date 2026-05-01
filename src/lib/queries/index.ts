@@ -31,6 +31,7 @@ export {
   createList,
   updateList,
   deleteList,
+  reorderLists,
   createListFromSelection,
   duplicateList,
 } from './lists'

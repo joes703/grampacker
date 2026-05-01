@@ -2,7 +2,26 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ClipboardList, CopyPlus, Download, MoreVertical, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { ClipboardList, CopyPlus, Download, GripVertical, MoreVertical, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import {
   queryKeys,
@@ -14,8 +33,12 @@ import {
   updateList,
   deleteList,
   duplicateList,
+  reorderLists,
   importCsvRowsToList,
+  makeOptimisticReorder,
 } from '../lib/queries'
+import { assignSortOrderSlots } from '../lib/grouping'
+import { asButtonRef } from '../lib/dnd'
 import type { List } from '../lib/types'
 import { parseListCsv, listItemsToCsv, downloadCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
@@ -103,6 +126,44 @@ export default function ListsPage() {
     mutationFn: (id: string) => deleteList(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
   })
+
+  const reorderListsMut = useMutation({
+    mutationFn: reorderLists,
+    ...makeOptimisticReorder<List>(qc, queryKeys.lists()),
+  })
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  const [activeId, setActiveId] = useState<string | null>(null)
+
+  function handleDragStart(e: DragStartEvent) {
+    setActiveId(String(e.active.id))
+  }
+
+  function handleDragCancel() {
+    setActiveId(null)
+  }
+
+  // Card-level reorder. The grid is multi-column at sm+/lg+, so we use
+  // rectSortingStrategy (calculates target by bounding-rect intersection
+  // across wraps) instead of verticalListSortingStrategy. Single case —
+  // no category-level concern on this page.
+  function handleDragEnd(e: DragEndEvent) {
+    setActiveId(null)
+    const { active, over } = e
+    if (!over) return
+    if (active.id === over.id) return
+    const activeIdStr = String(active.id)
+    const overIdStr = String(over.id)
+    const oldIndex = lists.findIndex((l) => l.id === activeIdStr)
+    const newIndex = lists.findIndex((l) => l.id === overIdStr)
+    if (oldIndex === -1 || newIndex === -1) return
+    const reordered = arrayMove(lists, oldIndex, newIndex)
+    reorderListsMut.mutate(assignSortOrderSlots(reordered))
+  }
 
   // Same shape as ListDetailInner's importMut: createList then populate, then
   // navigate into the new list so imported items are immediately visible.
@@ -194,30 +255,59 @@ export default function ListsPage() {
       {/* Card grid */}
       {listsLoading ? (
         <p className="text-sm text-gray-400">Loading…</p>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {lists.map((list) => (
-            <ListCard
-              key={list.id}
-              list={list}
-              renaming={dialog?.type === 'renaming' && dialog.list.id === list.id}
-              renameDraft={dialog?.type === 'renaming' && dialog.list.id === list.id ? dialog.draft : ''}
-              onRenameDraftChange={(v) => setDialog({ type: 'renaming', list, draft: v })}
-              onStartRename={() => setDialog({ type: 'renaming', list, draft: list.name })}
-              onSubmitRename={() => {
-                if (dialog?.type !== 'renaming') return
-                const trimmed = dialog.draft.trim()
-                if (trimmed && trimmed !== list.name) renameMut.mutate({ id: list.id, name: trimmed })
-                setDialog(null)
-              }}
-              onCancelRename={() => setDialog(null)}
-              onExport={() => handleExport(list)}
-              onDuplicate={() => duplicateMut.mutate(list)}
-              onDelete={() => setDialog({ type: 'confirm-delete', list })}
-            />
-          ))}
-        </div>
-      )}
+      ) : (() => {
+        const activeList = activeId ? lists.find((l) => l.id === activeId) : null
+        return (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
+            <SortableContext items={lists.map((l) => l.id)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {lists.map((list) => (
+                  <SortableListCard
+                    key={list.id}
+                    list={list}
+                    renaming={dialog?.type === 'renaming' && dialog.list.id === list.id}
+                    renameDraft={dialog?.type === 'renaming' && dialog.list.id === list.id ? dialog.draft : ''}
+                    onRenameDraftChange={(v) => setDialog({ type: 'renaming', list, draft: v })}
+                    onStartRename={() => setDialog({ type: 'renaming', list, draft: list.name })}
+                    onSubmitRename={() => {
+                      if (dialog?.type !== 'renaming') return
+                      const trimmed = dialog.draft.trim()
+                      if (trimmed && trimmed !== list.name) renameMut.mutate({ id: list.id, name: trimmed })
+                      setDialog(null)
+                    }}
+                    onCancelRename={() => setDialog(null)}
+                    onExport={() => handleExport(list)}
+                    onDuplicate={() => duplicateMut.mutate(list)}
+                    onDelete={() => setDialog({ type: 'confirm-delete', list })}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+            <DragOverlay>
+              {activeList ? (
+                <ListCard
+                  list={activeList}
+                  renaming={false}
+                  renameDraft=""
+                  onRenameDraftChange={() => {}}
+                  onStartRename={() => {}}
+                  onSubmitRename={() => {}}
+                  onCancelRename={() => {}}
+                  onExport={() => {}}
+                  onDuplicate={() => {}}
+                  onDelete={() => {}}
+                />
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        )
+      })()}
 
       {/* Delete confirmation */}
       {dialog?.type === 'confirm-delete' && (
@@ -314,6 +404,70 @@ function NewListInline({
   )
 }
 
+type ListCardProps = {
+  list: List
+  renaming: boolean
+  renameDraft: string
+  onRenameDraftChange: (v: string) => void
+  onStartRename: () => void
+  onSubmitRename: () => void
+  onCancelRename: () => void
+  onExport: () => void
+  onDuplicate: () => void
+  onDelete: () => void
+  // Sortable wrapper threads its dnd-kit ref + transform style + drag-
+  // handle button through these. Omitted by the DragOverlay clone (no
+  // useSortable in flight there).
+  outerRef?: (el: HTMLElement | null) => void
+  outerStyle?: React.CSSProperties
+  dragHandle?: React.ReactNode
+}
+
+// Sortable wrapper for the cards grid. Calls useSortable, wires the card
+// outer ref + transform style + drag-handle button, and forwards everything
+// else to ListCard. Disabled while the card's rename input is open so the
+// user can type without accidental drags.
+function SortableListCard(props: Omit<ListCardProps, 'outerRef' | 'outerStyle' | 'dragHandle'>) {
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: props.list.id, disabled: props.renaming })
+
+  const sortableStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+
+  const handle = (
+    <button
+      ref={asButtonRef(setActivatorNodeRef)}
+      type="button"
+      {...listeners}
+      {...attributes}
+      tabIndex={-1}
+      aria-label="Drag to reorder list"
+      className="absolute left-2 top-2 z-20 inline-flex h-7 w-7 items-center justify-center rounded text-gray-400 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
+    >
+      <GripVertical size={16} />
+    </button>
+  )
+
+  return (
+    <ListCard
+      {...props}
+      outerRef={setNodeRef}
+      outerStyle={sortableStyle}
+      dragHandle={handle}
+    />
+  )
+}
+
 function ListCard({
   list,
   renaming,
@@ -325,18 +479,10 @@ function ListCard({
   onExport,
   onDuplicate,
   onDelete,
-}: {
-  list: List
-  renaming: boolean
-  renameDraft: string
-  onRenameDraftChange: (v: string) => void
-  onStartRename: () => void
-  onSubmitRename: () => void
-  onCancelRename: () => void
-  onExport: () => void
-  onDuplicate: () => void
-  onDelete: () => void
-}) {
+  outerRef,
+  outerStyle,
+  dragHandle,
+}: ListCardProps) {
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -371,10 +517,13 @@ function ListCard({
 
   // Renaming swaps the title for an input and disables card navigation. Keeps
   // the kebab visible so the user can cancel by reopening the menu, but the
-  // common path is Enter / Escape / blur on the input itself.
+  // common path is Enter / Escape / blur on the input itself. The drag handle
+  // is also rendered (the SortableListCard wrapper passes `disabled: renaming`
+  // to useSortable, so the handle is inert during rename — keeps layout stable).
   if (renaming) {
     return (
-      <div className={cardClass}>
+      <div ref={outerRef} style={outerStyle} className={cardClass}>
+        {dragHandle}
         <input
           ref={renameInputRef}
           autoFocus
@@ -386,7 +535,7 @@ function ListCard({
             if (e.key === 'Escape') onCancelRename()
           }}
           onBlur={onSubmitRename}
-          className="w-full rounded border border-blue-400 px-2 py-1 text-base font-semibold text-gray-900 focus:outline-none"
+          className="ml-8 w-[calc(100%-2rem)] rounded border border-blue-400 px-2 py-1 text-base font-semibold text-gray-900 focus:outline-none"
         />
         <CardMeta list={list} />
       </div>
@@ -394,9 +543,12 @@ function ListCard({
   }
 
   return (
-    <div className={cardClass}>
-      {/* Whole-card link covers the card area. The kebab button above sits in
-          a higher stacking context so its clicks aren't intercepted. */}
+    <div ref={outerRef} style={outerStyle} className={cardClass}>
+      {dragHandle}
+      {/* Whole-card link covers the card area. The drag handle and kebab
+          buttons above sit in a higher stacking context so their clicks
+          aren't intercepted. PointerSensor activation distance of 5px keeps
+          accidental click-vs-drag misreads off the table. */}
       <Link
         to={`/lists/${list.id}`}
         className="absolute inset-0 z-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -404,7 +556,7 @@ function ListCard({
       />
 
       <div className="relative z-10 pointer-events-none">
-        <h3 className="truncate pr-8 text-base font-semibold text-gray-900">{list.name}</h3>
+        <h3 className="truncate px-8 text-base font-semibold text-gray-900">{list.name}</h3>
         <CardMeta list={list} />
       </div>
 
