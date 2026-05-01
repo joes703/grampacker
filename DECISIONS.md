@@ -8,9 +8,9 @@ Short ADRs covering the major shape decisions for grampacker that aren't obvious
 
 **Date:** 2026-04-27 (commit `84e7efe`)
 
-**Context.** An earlier iteration supported dragging items between categories via DnD on both `/gear` and `/lists/:id`. This required a planned `makeOptimisticCrossCategoryMove` helper, cross-category visual auto-shift on item drag, and ambiguous drop targets — was the user reordering within or recategorising?
+**Context.** An earlier iteration supported dragging items between categories via DnD on both `/gear` and `/lists/:id`. This required a planned `makeOptimisticCrossCategoryMove` helper, cross-category visual auto-shift on item drag, and ambiguous drop targets — was the user reordering within or recategorizing?
 
-**Decision.** Items reorder WITHIN their category only via DnD. Recategorising happens through the item edit modal. Bulk multi-select "Move to category" on `/gear` covers the "move many at once" path.
+**Decision.** Items reorder WITHIN their category only via DnD. Recategorizing happens through the item edit modal. Bulk multi-select "Move to category" on `/gear` covers the "move many at once" path.
 
 **Consequences.** DnD code is much simpler. Page-level handler has two clean cases (category reorder, within-category item reorder) and rejects cross-category drops explicitly. Each `<CategoryGroup>` / `<CategorySection>` renders its own per-category `<SortableContext>` for items, so no page-wide flat items context is needed.
 
@@ -26,7 +26,7 @@ Short ADRs covering the major shape decisions for grampacker that aren't obvious
 
 **Decision.** New users land on an empty gear library and create their own categories.
 
-**Consequences.** First-run requires the user to add at least one category before adding gear with categories. Signup is faster (no DB seed). The user's mental model isn't pre-shaped by an opinion the app has about how to categorise gear.
+**Consequences.** First-run requires the user to add at least one category before adding gear with categories. Signup is faster (no DB seed). The user's mental model isn't pre-shaped by an opinion the app has about how to categorize gear.
 
 **Alternatives.** Keep defaults. Rejected because every backpacker's category mental model differs (long-trail vs. car-camp vs. winter), and forcing them to rename or delete starter categories felt worse than starting blank. Hidden upside: the empty-gear-library state was already worth special-casing in the UI for users who delete everything; the same affordance ("Add category") covers both the new-user and the deletes-everything case.
 

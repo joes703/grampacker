@@ -22,7 +22,7 @@ Length and weight constraints also live in the migrations as `CHECK` constraints
 
 ---
 
-## Weight categorisation
+## Weight categorization
 
 Every list item has one of three weight classifications based on its flags:
 
