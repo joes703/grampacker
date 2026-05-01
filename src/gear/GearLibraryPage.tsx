@@ -154,7 +154,7 @@ export default function GearLibraryPage() {
     mutationFn: (id: string) => deleteCategory(id),
     // Deleting a category cascades to gear_items.category_id (SET NULL),
     // which is embedded in list_items via the gear join — invalidate
-    // list-items too so open list views reflect the new uncategorised state.
+    // list-items too so open list views reflect the new uncategorized state.
     onSuccess: () => { invalidateBoth(); invalidateListItems() },
   })
 
@@ -298,7 +298,7 @@ export default function GearLibraryPage() {
         const overItem = allItems.find((i) => i.id === overIdStr)
         destCatId = overItem?.category_id ?? null
       }
-      // Uncategorised is not a real category row — no reorder target.
+      // Uncategorized is not a real category row — no reorder target.
       if (destCatId === null) return
       const newIndex = categories.findIndex((c) => c.id === destCatId)
       if (newIndex === -1 || newIndex === oldIndex) return
@@ -498,9 +498,9 @@ export default function GearLibraryPage() {
                 const commonProps = {
                   items: group.items,
                   weightUnit,
-                  collapsed: collapsed.has(group.category?.id ?? '__uncategorised__'),
+                  collapsed: collapsed.has(group.category?.id ?? '__uncategorized__'),
                   onToggleCollapse: () =>
-                    toggleCollapse(group.category?.id ?? '__uncategorised__'),
+                    toggleCollapse(group.category?.id ?? '__uncategorized__'),
                   selectMode,
                   selectedIds,
                   onToggleSelect: toggleSelect,
@@ -518,7 +518,7 @@ export default function GearLibraryPage() {
 
                 if (group.category === null) {
                   return (
-                    <StaticCategorySection key="__uncategorised__" category={null} {...commonProps} />
+                    <StaticCategorySection key="__uncategorized__" category={null} {...commonProps} />
                   )
                 }
                 return (
@@ -609,7 +609,7 @@ export default function GearLibraryPage() {
       {dialog?.type === 'delete-category' && (
         <ConfirmDialog
           title="Delete category"
-          message={`Delete "${dialog.category.name}"? Items in this category will become uncategorised.`}
+          message={`Delete "${dialog.category.name}"? Items in this category will become uncategorized.`}
           confirmLabel="Delete"
           dangerous
           onCancel={() => setDialog(null)}

@@ -40,7 +40,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
     .map((cat) => ({ category: cat, items: filtered.filter((g) => g.category_id === cat.id) }))
     .filter((g) => g.items.length > 0)
 
-  const uncategorised = filtered.filter((g) => g.category_id === null)
+  const uncategorized = filtered.filter((g) => g.category_id === null)
 
   return (
     <div className="flex h-full flex-col">
@@ -60,7 +60,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
 
       {/* Category groups */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {groups.length === 0 && uncategorised.length === 0 ? (
+        {groups.length === 0 && uncategorized.length === 0 ? (
           <p className="p-4 text-center text-sm text-gray-400 italic">
             {q ? 'No items found' : 'No gear items yet'}
           </p>
@@ -80,17 +80,17 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
                 regionId={`library-cat-${category.id}`}
               />
             ))}
-            {uncategorised.length > 0 && (
+            {uncategorized.length > 0 && (
               <CategoryGroup
-                name="Uncategorised"
-                items={uncategorised}
-                collapsed={collapsed.has('__uncategorised__')}
-                onToggle={() => toggleCollapse('__uncategorised__')}
+                name="Uncategorized"
+                items={uncategorized}
+                collapsed={collapsed.has('__uncategorized__')}
+                onToggle={() => toggleCollapse('__uncategorized__')}
                 listItemGearIds={listItemGearIds}
                 weightUnit={weightUnit}
                 onAdd={onAdd}
                 onRemove={onRemove}
-                regionId="library-cat-uncategorised"
+                regionId="library-cat-uncategorized"
               />
             )}
           </>

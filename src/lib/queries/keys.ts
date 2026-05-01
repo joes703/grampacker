@@ -1,4 +1,4 @@
-// Canonical TanStack Query keys for every cache slice the app reads. Centralised
+// Canonical TanStack Query keys for every cache slice the app reads. Centralized
 // here so a typo in a string literal can't silently fork the cache. Every other
 // module in src/lib/queries/ imports from this file rather than re-deriving the
 // shapes inline.

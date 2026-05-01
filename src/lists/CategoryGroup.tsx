@@ -27,7 +27,7 @@ import AddItemRow, { type AddItemData } from './AddItemRow'
 //                          are plain ItemRow (no drag).
 //   - categoryId         ⇒ used for stable region ids (aria-controls) and
 //                          surfacing the category context to add-item flows.
-//                          null ⇒ uncategorised. undefined ⇒ share view.
+//                          null ⇒ uncategorized. undefined ⇒ share view.
 //   - onAddItem          ⇒ "+ Add new item" footer button + AddItemRow draft.
 //   - onDelete + onUpdate + onSaveGear* + onEditGearItem + onDeleteGearItem
 //                        ⇒ forwarded per-row to ItemRow's editing affordances.
@@ -41,7 +41,7 @@ export type GroupProps = {
   weightUnit: WeightUnit
   packMode?: boolean
   collapsible?: boolean
-  /** Stable region id derivation + add-item context. null = uncategorised.
+  /** Stable region id derivation + add-item context. null = uncategorized.
    *  undefined disables the chevron/region-id behavior (share view). */
   categoryId?: string | null
   /** Render rows as SortableItemRow (must be inside a page-level SortableContext). */
@@ -85,7 +85,7 @@ export default function CategoryGroup({
   // Stable id for the collapsible region so the header button can announce
   // aria-controls. categoryId is always set when collapsible=true (share view
   // passes collapsible=false and the button isn't rendered there).
-  const regionId = `cat-region-${categoryId ?? 'uncategorised'}`
+  const regionId = `cat-region-${categoryId ?? 'uncategorized'}`
   const packedCount = items.filter((i) => i.is_packed).length
   const totalGrams = items.reduce((s, i) => s + i.gear_item.weight_grams * i.quantity, 0)
   const showKebabSlot = !packMode && Boolean(onDelete)

@@ -55,7 +55,7 @@ export default function SharePage() {
     )
   }
 
-  // Group items by category, ordered by category.sort_order; uncategorised last.
+  // Group items by category, ordered by category.sort_order; uncategorized last.
   const catMap = new Map(categories.map((c) => [c.id, c]))
   const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
 
@@ -67,10 +67,10 @@ export default function SharePage() {
     }))
     .filter((g) => g.items.length > 0)
 
-  const uncategorisedItems = items.filter(
+  const uncategorizedItems = items.filter(
     (i) => i.gear_item.category_id === null || !catMap.has(i.gear_item.category_id),
   )
-  if (uncategorisedItems.length > 0) grouped.push({ category: null, items: uncategorisedItems })
+  if (uncategorizedItems.length > 0) grouped.push({ category: null, items: uncategorizedItems })
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -109,8 +109,8 @@ export default function SharePage() {
         <div className="space-y-4">
           {grouped.map((group) => (
             <CategoryGroup
-              key={group.category?.id ?? '__uncategorised__'}
-              name={group.category?.name ?? 'Uncategorised'}
+              key={group.category?.id ?? '__uncategorized__'}
+              name={group.category?.name ?? 'Uncategorized'}
               items={group.items}
               weightUnit={weightUnit}
               collapsible={false}

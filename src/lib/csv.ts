@@ -220,7 +220,7 @@ export function parseListCsv(text: string): ListImportRow[] | string {
       const isWorn = wornKey ? toBool(row[wornKey]) : false
       const isConsumable = consumKey ? toBool(row[consumKey]) : false
       // worn_xor_consumable is a DB CHECK constraint; if both are truthy in
-      // the CSV the insert fails with a generic error. Silently normalise
+      // the CSV the insert fails with a generic error. Silently normalize
       // by clearing both — the user can re-flag the right one in the UI.
       const bothSet = isWorn && isConsumable
       return {
