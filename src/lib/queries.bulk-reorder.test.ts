@@ -140,7 +140,7 @@ d('bulk reorder helpers preserve untouched columns', () => {
 
       expect(after.name).toBe(before.name)
       expect(after.description).toBe(before.description)
-      expect(after.share_token).toBe(before.share_token)
+      expect(after.slug).toBe(before.slug)
       expect(after.is_shared).toBe(before.is_shared)
       expect(after.user_id).toBe(before.user_id)
       expect(after.created_at).toBe(before.created_at)

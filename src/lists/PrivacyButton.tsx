@@ -38,7 +38,7 @@ export default function PrivacyButton({ list }: Props) {
     contentRef: popoverRef,
   })
 
-  const shareUrl = `${window.location.origin}/r/${list.share_token}`
+  const shareUrl = `${window.location.origin}/r/${list.slug}`
 
   return (
     <>

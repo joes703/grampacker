@@ -59,14 +59,14 @@ There is no admin role today. The owner of every row is the user; there is no se
 
 ## Public read paths (sharing)
 
-Sharing is per-list and opt-in (see `DECISIONS.md` ADR 8 for the rationale). Each list has an 8-character `share_token` generated at creation, and an `is_shared` boolean (default false). Public read access is granted to **`anon`** through four policies:
+Sharing is per-list and opt-in (see `DECISIONS.md` ADR 8 for the rationale). Each list has a 6-character `slug` generated at creation, and an `is_shared` boolean (default false). Public read access is granted to **`anon`** through four policies:
 
 - `lists_public_select_shared` — `using (is_shared = true)`.
 - `list_items_public_select_shared` — joins `lists` and checks `is_shared = true`.
 - `gear_items_public_select_via_shared_list` — transitive: any gear item referenced by a `list_items` row in a shared list is readable.
 - `categories_public_select_via_shared_list` — transitive: any category whose gear items are referenced by a shared list is readable.
 
-**Trust model:** the `share_token` is a bearer credential. Anyone with the token can read the list. Toggling `is_shared` off disables the link without changing the token; to break a leaked link, the user duplicates the list (which gets a fresh token) and stops sharing the original. Public anon receives a 404 for both unknown tokens and inactive shared lists, deliberately indistinguishable to prevent enumeration. See `SPEC.md` "Sharing mechanics" for the user-facing behavior.
+**Trust model:** the `slug` is a short, unguessable, public URL handle — anyone with the URL can read the list while `is_shared = true`. We don't authenticate share-view requests (the slug IS the access mechanism), but we deliberately don't call it a credential because it isn't user-issued or password-like; it's a URL identifier in the same shape as a YouTube video ID or a Reddit post ID. Toggling `is_shared` off disables access without changing the slug; to break a leaked link, the user duplicates the list (which gets a fresh slug) and stops sharing the original. Public anon receives a 404 for both unknown slugs and inactive shared lists, deliberately indistinguishable to prevent enumeration. See `SPEC.md` "Sharing mechanics" for the user-facing behavior.
 
 ---
 
@@ -183,7 +183,7 @@ These don't carry the primary security load — RLS does — but they catch mist
 **Migrations** (all in `supabase/migrations/`):
 - `20260425000000_initial_schema.sql` — `profiles`, `set_updated_at`, `handle_new_user`, RLS on profiles.
 - `20260425000001_categories_and_gear.sql` — `categories`, `gear_items`, owner-keyed RLS, count cap.
-- `20260425000002_lists_and_list_items.sql` — `lists`, `list_items`, owner-keyed RLS, share-token RLS, joined-via-parent RLS, count caps.
+- `20260425000002_lists_and_list_items.sql` — `lists`, `list_items`, owner-keyed RLS, shared-list RLS (gated on `is_shared`), joined-via-parent RLS, count caps.
 - `20260426000000_delete_account_rpc.sql` — `delete_account()`.
 - `20260427000000_public_select_via_shared_list.sql` — transitive read for the share view.
 - `20260427000001_cascade_gear_item_deletion.sql` — referential cleanup (NOT NULL + CASCADE on `list_items.gear_item_id`).

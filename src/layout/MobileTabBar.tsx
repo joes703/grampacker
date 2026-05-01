@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router'
 import { Backpack, List } from 'lucide-react'
 
 // Bottom tab bar for the < md band. Mounted by AppShell so it only renders
-// inside the authenticated shell — /login, /register, and /r/:token never
+// inside the authenticated shell — /login, /register, and /r/:slug never
 // see it. At md+ the top NavBar shows an icon-only (or full labeled at lg+)
 // cluster covering all destinations, so the tab bar steps aside. Active
 // state is computed manually rather than via NavLink's `end` because

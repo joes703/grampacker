@@ -1,7 +1,26 @@
 import { supabase } from '../supabase'
 import type { List, ListItem } from '../types'
-import { generateShareToken } from '../share-token'
+import { generateSlug } from '../slug'
 import { bulkUpdateSortOrder } from './optimistic'
+
+// Insert helper that retries on a unique-violation against lists.slug.
+// Slug collisions are astronomically rare (6 chars × base62 = ~57B values
+// vs. ≤100 lists per user), but the UNIQUE constraint demands the retry
+// exist for correctness. After 5 attempts something is genuinely wrong;
+// surface it loudly rather than silently failing the insert.
+async function withSlugRetry<T>(insert: (slug: string) => Promise<T>, max = 5): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 0; attempt < max; attempt++) {
+    try {
+      return await insert(generateSlug())
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code
+      if (code !== '23505') throw err
+      lastErr = err
+    }
+  }
+  throw lastErr ?? new Error('slug generation: exhausted retries')
+}
 
 export async function fetchLists(): Promise<List[]> {
   const { data, error } = await supabase
@@ -14,11 +33,11 @@ export async function fetchLists(): Promise<List[]> {
 }
 
 // Public read (shared list, no auth)
-export async function fetchSharedList(token: string): Promise<List | null> {
+export async function fetchSharedList(slug: string): Promise<List | null> {
   const { data, error } = await supabase
     .from('lists')
     .select('*')
-    .eq('share_token', token)
+    .eq('slug', slug)
     .eq('is_shared', true)
     .single()
   if (error) return null
@@ -31,19 +50,21 @@ export async function createList(
   sortOrder: number,
   description: string | null = null,
 ): Promise<List> {
-  const { data, error } = await supabase
-    .from('lists')
-    .insert({
-      user_id: userId,
-      name,
-      description,
-      sort_order: sortOrder,
-      share_token: generateShareToken(),
-    })
-    .select()
-    .single()
-  if (error) throw error
-  return data
+  return withSlugRetry(async (slug) => {
+    const { data, error } = await supabase
+      .from('lists')
+      .insert({
+        user_id: userId,
+        name,
+        description,
+        sort_order: sortOrder,
+        slug,
+      })
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  })
 }
 
 export async function updateList(
@@ -87,18 +108,21 @@ export async function createListFromSelection(
 }
 
 export async function duplicateList(source: List, userId: string, sortOrder: number): Promise<List> {
-  const { data: newList, error: listErr } = await supabase
-    .from('lists')
-    .insert({
-      user_id: userId,
-      name: `${source.name} (copy)`,
-      description: source.description,
-      sort_order: sortOrder,
-      share_token: generateShareToken(),
-    })
-    .select()
-    .single()
-  if (listErr) throw listErr
+  const newList = await withSlugRetry(async (slug) => {
+    const { data, error } = await supabase
+      .from('lists')
+      .insert({
+        user_id: userId,
+        name: `${source.name} (copy)`,
+        description: source.description,
+        sort_order: sortOrder,
+        slug,
+      })
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  })
 
   const { data: items, error: itemsErr } = await supabase
     .from('list_items')
