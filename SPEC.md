@@ -113,7 +113,8 @@ Both:
 - Weights always exported in grams as integers.
 - File encoding: UTF-8.
 - Cell quoting only when needed (comma, quote, or newline in the cell).
-- No formula-injection escaping. No BOM. List-export filenames are sanitized at the call site (lowercase + non-alphanumerics → `-`).
+- **Formula-injection handling.** On export: any cell starting with `=`, `+`, `-`, `@`, tab, or CR is prefixed with a single apostrophe to prevent formula evaluation in Excel/Sheets/Numbers. On import: leading apostrophes are preserved as-is — third-party CSV tools may emit them legitimately, and stripping would mangle those imports.
+- No BOM. List-export filenames are sanitized at the call site (lowercase + non-alphanumerics → `-`).
 
 ### Import
 
