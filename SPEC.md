@@ -100,7 +100,7 @@ For bulk partial-column writes that have to bypass RLS WITH CHECK on the INSERT 
 
 ## CSV format
 
-Used for gear-library and per-list export/import. The format is a small, hand-rolled RFC-4180-style CSV (`src/lib/csv.ts`) — no external CSV library. The export format is **drop-in compatible with Lighterpack**: same 10-column header and same value conventions, so a grampacker CSV can be re-imported into Lighterpack without manual header massaging. Importing Lighterpack CSVs into grampacker also works thanks to the parser's case-insensitive column-alias lookup; one known gap is that Lighterpack's literal `Worn` / `Consumable` boolean values aren't recognized as truthy yet (parser's `toBool` accepts `1` / `yes` / `true`).
+Used for gear-library and per-list export/import. The format is a small, hand-rolled RFC-4180-style CSV (`src/lib/csv.ts`) — no external CSV library. The export format is **drop-in compatible with Lighterpack**: same 10-column header and same value conventions, so a grampacker CSV can be re-imported into Lighterpack without manual header massaging. Importing Lighterpack, HikerHerd, Packstack, or hand-edited CSVs into grampacker works thanks to the parser's case-insensitive column-alias lookup, the spelled-out unit recognition, and the boolean-value tolerance described under "Import" below.
 
 ### Export columns
 
@@ -139,10 +139,10 @@ Two surfaces, both run through `parseListCsv` / `parseGearCsv` and the shared `r
 Common rules across both paths:
 
 - **2 MB max file size**, checked in `useCsvFileInput` before parse. Larger files reject with a friendly error.
-- Header row required. Column names matched case-insensitively after trimming. Required columns: a name column (`name` or `item name`) and a weight column (`weight_grams`, `weight (g)`, or `weight`). Optional aliases recognized: `description`/`desc`, `category`, `quantity`/`qty`, `worn`/`is_worn`, `consumable`/`is_consumable`, `unit`.
-- Optional `unit` column converts the weight value: `g` (default), `oz` (× 28.3495), `lb` (× 453.592), `kg` (× 1000). Result rounded to integer grams and clamped to 100,000 g.
+- Header row required. Column names matched case-insensitively after trimming. Required columns: a name column (`name` or `item name`) and a weight column (`weight_grams`, `weight (g)`, or `weight`). Optional aliases recognized: `description`/`desc`/`notes`, `category`, `quantity`/`qty`, `worn`/`is_worn`, `consumable`/`is_consumable`, `unit`. Unknown columns (including `is_packed`, `url`, `price` from a Lighterpack export) are silently dropped — the parser only reads the columns it has a use for.
+- Optional `unit` column converts the weight value. Recognized: `g` / `gram` / `grams` / empty (treat as grams), `oz` / `ounce` / `ounces` (× 28.3495), `lb` / `pound` / `pounds` (× 453.592), `kg` / `kilogram` / `kilograms` (× 1000). Unknown unit strings fall through to grams as the most-tolerant default. Result rounded to integer grams and clamped to 100,000 g.
 - Rows with empty name are skipped silently.
-- Boolean columns accept `1`, `yes`, or `true` as truthy (case-insensitive); anything else is false.
+- Boolean columns accept `1`, `yes`, `true`, `worn`, or `consumable` as truthy (case-insensitive); anything else is false. The `worn` / `consumable` literals are Lighterpack's column-value convention (a worn-flag column carries the literal `Worn` when true, empty when false).
 - Quantity is parsed as int and clamped to `[1, 9999]`; non-integer or empty values default to 1.
 - **If both `worn` and `consumable` are truthy on the same row, BOTH are cleared.** The DB has a `worn_xor_consumable` CHECK constraint and we'd rather lose the flags than reject the whole import; the user re-applies the right flag in the UI. (Worth revisiting — silent lossy behavior is a known oddity.)
 - Categories are matched case-insensitively against the user's existing categories and created if not found.
