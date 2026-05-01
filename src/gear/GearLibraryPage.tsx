@@ -523,6 +523,7 @@ export default function GearLibraryPage() {
                     setDialog({ type: 'delete-category', category: cat }),
                   onAddItemToCategory: (categoryId: string | null) =>
                     setDialog({ type: 'create-item', categoryId }),
+                  itemReorderPending: reorderGearItemsMut.isPending,
                 }
 
                 if (group.category === null) {
@@ -535,6 +536,7 @@ export default function GearLibraryPage() {
                     key={group.category.id}
                     id={group.category.id}
                     category={group.category}
+                    reorderPending={reorderCats.isPending}
                     {...commonProps}
                   />
                 )

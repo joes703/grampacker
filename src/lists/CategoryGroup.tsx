@@ -47,6 +47,10 @@ export type GroupProps = {
   categoryId?: string | null
   /** Render rows as SortableItemRow (must be inside a page-level SortableContext). */
   sortable?: boolean
+  /** When true, the page-level reorder mutation is in flight; passed through
+   *  to each SortableItemRow as `disabled` to prevent overlapping reorders
+   *  from racing. Sortable-only; share view doesn't set this. */
+  reorderPending?: boolean
   /** Pack mode filter: when true, hide already-packed items from the rendered
    *  list. Header counts and the "complete" affordance still reflect the full
    *  items array. Authed pack-mode only; share view never sets this. */
@@ -71,6 +75,7 @@ export default function CategoryGroup({
   collapsible = true,
   categoryId,
   sortable = false,
+  reorderPending = false,
   showUnpackedOnly = false,
   onUpdate,
   onDelete,
@@ -101,12 +106,15 @@ export default function CategoryGroup({
     : items
 
   // Per-row props builder — same shape for SortableItemRow and ItemRow.
+  // reorderPending is read by SortableItemRow's useSortable (`disabled`);
+  // ItemRow ignores it since plain rows aren't draggable to begin with.
   function rowPropsFor(item: ListItemWithGear) {
     const gearId = item.gear_item.id
     return {
       item,
       weightUnit,
       packMode,
+      reorderPending,
       onUpdate: onUpdate ? (patch: ListItemPatch) => onUpdate(item.id, patch) : undefined,
       onSaveName: onSaveGearName ? (n: string) => onSaveGearName(gearId, n) : undefined,
       onSaveDescription: onSaveGearDescription ? (d: string) => onSaveGearDescription(gearId, d) : undefined,
