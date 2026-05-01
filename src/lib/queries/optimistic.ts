@@ -7,16 +7,17 @@ import { supabase } from '../supabase'
 // runs UPDATE … SET sort_order against a whitelisted table. Sidesteps the
 // PostgREST upsert path entirely — no INSERT … ON CONFLICT, no RLS WITH
 // CHECK against a partial row, no NOT NULL trap. The function enforces
-// ownership inline per table — categories and gear_items filter on
-// user_id = auth.uid(); list_items join lists and filter on
+// ownership inline per table — categories, gear_items, and lists filter
+// on user_id = auth.uid(); list_items join lists and filter on
 // lists.user_id = auth.uid(). See migrations
 // 20260430000000_bulk_reorder_rpc.sql (function shape),
 // 20260501000000_bulk_reorder_rpc_ownership_check.sql (ownership check),
-// and 20260502000000_add_gear_items_to_bulk_reorder.sql (gear_items branch).
+// 20260502000000_add_gear_items_to_bulk_reorder.sql (gear_items branch),
+// and 20260503000000_add_lists_to_bulk_reorder.sql (lists branch).
 //
 // The TS-side union matches the SQL function's table whitelist — keeps
 // misuse a compile error rather than a runtime exception.
-type ReorderableTable = 'categories' | 'list_items' | 'gear_items'
+type ReorderableTable = 'categories' | 'list_items' | 'gear_items' | 'lists'
 
 export async function bulkUpdateSortOrder<T extends { id: string; sort_order: number }>(
   table: ReorderableTable,
