@@ -47,7 +47,7 @@ For the precise SQL, see migrations `20260425000000`, `20260425000001`, `2026042
 
 Owner-keyed RLS validates that a user can write a given *row*, but doesn't by itself check that the rows it *references* share the same owner. An authenticated attacker with leaked ids could otherwise craft inserts threading cross-owner FK references — corrupting the data model without exposing any other user's data. Three foreign keys in this codebase are now locked down via composite foreign keys, all anchored on `user_id`:
 
-- **`gear_items.category_id → categories.id`** — composite FK `(category_id, user_id) → (id, user_id)`. ON DELETE SET NULL preserved (the parent column nulls; `user_id` stays intact, which is correct for an uncategorized item after its category is deleted).
+- **`gear_items.category_id → categories.id`** — composite FK `(category_id, user_id) → (id, user_id)`. Uses the PG 15+ column-list form `ON DELETE SET NULL (category_id)` so only `category_id` is nulled when the parent category is deleted; `user_id` stays intact (it's NOT NULL on `gear_items`, and the bare `ON DELETE SET NULL` would null all FK columns and fail). Future composite FKs with SET NULL semantics need this same column-list form whenever any other FK column is NOT NULL on the child.
 - **`list_items.list_id → lists.id`** — composite FK `(list_id, user_id) → (id, user_id)`. ON DELETE CASCADE preserved.
 - **`list_items.gear_item_id → gear_items.id`** — composite FK `(gear_item_id, user_id) → (id, user_id)`. ON DELETE CASCADE preserved.
 
