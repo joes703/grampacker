@@ -25,6 +25,11 @@ type CategorySectionProps = {
   onRenameCategory: (id: string, name: string) => void
   onDeleteCategory: (category: Category) => void
   onAddItemToCategory: (categoryId: string | null) => void
+  /** Threaded to each SortableGearItemRow as `reorderPending` so the gear-
+   *  item drag handles disable while the gear-item reorder mutation is in
+   *  flight. Distinct from the category-level reorderPending on
+   *  SortableCategorySection (which gates the section's own drag). */
+  itemReorderPending?: boolean
 }
 
 function CategorySectionInner(
@@ -49,6 +54,7 @@ function CategorySectionInner(
     onRenameCategory,
     onDeleteCategory,
     onAddItemToCategory,
+    itemReorderPending,
     dragHandleRef,
     dragHandleListeners,
     dragHandleAttributes,
@@ -198,6 +204,7 @@ function CategorySectionInner(
                   item={item}
                   weightUnit={weightUnit}
                   selectMode={selectMode}
+                  reorderPending={itemReorderPending}
                   selected={selectedIds.has(item.id)}
                   onToggleSelect={() => onToggleSelect(item.id)}
                   onInlineSave={(patch) => onInlineSave(item.id, patch)}
@@ -215,9 +222,13 @@ function CategorySectionInner(
 
 // Sortable wrapper used for real categories (not Uncategorized). The `id`
 // prop is the bare category uuid; we wrap it with makeDnDId here so callers
-// don't have to know about the typed-id convention.
-export function SortableCategorySection(props: CategorySectionProps & { id: string }) {
-  const { id, ...rest } = props
+// don't have to know about the typed-id convention. `reorderPending`
+// disables the handle while a previous reorder mutation is still in flight,
+// preventing the rollback-clobber race when two reorders overlap.
+export function SortableCategorySection(
+  props: CategorySectionProps & { id: string; reorderPending?: boolean },
+) {
+  const { id, reorderPending, ...rest } = props
   const {
     attributes,
     listeners,
@@ -226,7 +237,7 @@ export function SortableCategorySection(props: CategorySectionProps & { id: stri
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: makeDnDId('category', id) })
+  } = useSortable({ id: makeDnDId('category', id), disabled: reorderPending })
 
   return (
     <div

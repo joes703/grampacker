@@ -276,6 +276,7 @@ export default function ListsPage() {
                   <SortableListCard
                     key={list.id}
                     list={list}
+                    reorderPending={reorderListsMut.isPending}
                     renaming={dialog?.type === 'renaming' && dialog.list.id === list.id}
                     renameDraft={dialog?.type === 'renaming' && dialog.list.id === list.id ? dialog.draft : ''}
                     onRenameDraftChange={(v) => setDialog({ type: 'renaming', list, draft: v })}
@@ -431,8 +432,12 @@ type ListCardProps = {
 // Sortable wrapper for the cards grid. Calls useSortable, wires the card
 // outer ref + transform style + drag-handle button, and forwards everything
 // else to ListCard. Disabled while the card's rename input is open so the
-// user can type without accidental drags.
-function SortableListCard(props: Omit<ListCardProps, 'outerRef' | 'outerStyle' | 'dragHandle'>) {
+// user can type without accidental drags, and while a previous reorder
+// mutation is in flight to prevent the rollback-clobber race when two
+// reorders overlap.
+function SortableListCard(
+  props: Omit<ListCardProps, 'outerRef' | 'outerStyle' | 'dragHandle'> & { reorderPending?: boolean },
+) {
   const {
     attributes,
     listeners,
@@ -441,7 +446,10 @@ function SortableListCard(props: Omit<ListCardProps, 'outerRef' | 'outerStyle' |
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: makeDnDId('list-card', props.list.id), disabled: props.renaming })
+  } = useSortable({
+    id: makeDnDId('list-card', props.list.id),
+    disabled: props.renaming || props.reorderPending,
+  })
 
   const sortableStyle: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),

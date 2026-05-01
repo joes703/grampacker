@@ -203,8 +203,11 @@ function MenuItem({
 // row's outer ref + transform style + a hover-revealed drag handle, then
 // forwards everything to GearItemRow. Must be inside a SortableContext.
 // Drag is disabled in select mode so the row's checkbox doesn't compete with
-// the drag activator.
-export function SortableGearItemRow(props: Omit<Props, 'dragHandle' | 'outerRef' | 'outerStyle'>) {
+// the drag activator, and while a previous reorder mutation is in flight to
+// prevent the rollback-clobber race when two reorders overlap.
+export function SortableGearItemRow(
+  props: Omit<Props, 'dragHandle' | 'outerRef' | 'outerStyle'> & { reorderPending?: boolean },
+) {
   const {
     attributes,
     listeners,
@@ -213,7 +216,10 @@ export function SortableGearItemRow(props: Omit<Props, 'dragHandle' | 'outerRef'
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: makeDnDId('gear-item', props.item.id), disabled: props.selectMode })
+  } = useSortable({
+    id: makeDnDId('gear-item', props.item.id),
+    disabled: props.selectMode || props.reorderPending,
+  })
 
   const sortableStyle: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),

@@ -47,6 +47,10 @@ type Props = {
   item: ListItemWithGear
   weightUnit: WeightUnit
   packMode?: boolean
+  // Read by the SortableItemRow wrapper only; plain ItemRow ignores it. Lives
+  // on the base Props so CategoryGroup's rowPropsFor() builder can spread the
+  // same object into either renderer.
+  reorderPending?: boolean
   onUpdate?: (patch: Partial<Pick<ListItemWithGear, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed'>>) => void
   onSaveName?: (name: string) => void
   onSaveDescription?: (description: string) => void
@@ -388,6 +392,9 @@ function MobileRowBody({
 // Sortable wrapper for the authenticated list view. Calls useSortable, wires
 // the row's outer ref + transform style + drag-handle button, and forwards
 // everything else to ItemRow. Must be rendered inside a SortableContext.
+// Drag is disabled in pack mode (structural changes inert while checking
+// off items) and while a previous reorder mutation is in flight (prevents
+// the rollback-clobber race when two reorders overlap).
 export function SortableItemRow(props: Omit<Props, 'dragHandle' | 'outerRef' | 'outerStyle'>) {
   const {
     attributes,
@@ -397,7 +404,10 @@ export function SortableItemRow(props: Omit<Props, 'dragHandle' | 'outerRef' | '
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: makeDnDId('item', props.item.id), disabled: props.packMode })
+  } = useSortable({
+    id: makeDnDId('item', props.item.id),
+    disabled: props.packMode || props.reorderPending,
+  })
 
   const sortableStyle: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),

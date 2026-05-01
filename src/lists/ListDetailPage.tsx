@@ -541,6 +541,7 @@ function ListDetailInner({
                         categoryId={group.category!.id}
                         items={group.items}
                         {...sharedGroupProps}
+                        reorderPending={reorderItemsMut.isPending}
                         onAddItem={(data) => addNewItemMut.mutate({ categoryId: group.category!.id, data })}
                       />
                     ))}
@@ -553,6 +554,7 @@ function ListDetailInner({
                         categoryId={null}
                         items={group.items}
                         {...sharedGroupProps}
+                        reorderPending={reorderItemsMut.isPending}
                         onAddItem={(data) => addNewItemMut.mutate({ categoryId: null, data })}
                       />
                     ))}
