@@ -43,20 +43,7 @@ A defense-in-depth net guards against forgetting RLS on a new table. The `rls_au
 
 For the precise SQL, see migrations `20260425000000`, `20260425000001`, `20260425000002`, and `20260427000000`.
 
-### Cross-owner FK enforcement
-
-Owner-keyed RLS validates that a user can write a given *row*, but doesn't by itself check that the rows that row *references* share the same owner. An authenticated attacker with a leaked id (e.g. from a public shared list before the read-path sanitization) could otherwise craft inserts threading cross-owner FK references — corrupting the data model without exposing any other user's data.
-
-Two foreign keys in this codebase needed explicit lockdown. The mechanism differs per FK based on whether the child table has its own `user_id` column:
-
-- **`gear_items.category_id → categories.id`** — both tables have `user_id` directly, so a **composite foreign key** ties them together: `gear_items(category_id, user_id) references categories(id, user_id) on delete set null`. The composite FK requires `UNIQUE(id, user_id)` on `categories` — the PK on `id` alone isn't sufficient as a composite-FK target. ON DELETE SET NULL only nulls `category_id` (the referenced column on the parent); `user_id` stays intact, which is the correct behavior for an uncategorized item after its category is deleted. Migration `20260506000000`.
-- **`list_items.gear_item_id → gear_items.id`** — `list_items` has no `user_id` column (ownership traces through `lists`), so composite FK is unavailable without a schema addition. Instead, the `list_items_owner_all` RLS policy's `WITH CHECK` clause was extended to require `EXISTS (SELECT 1 FROM gear_items WHERE gear_items.id = list_items.gear_item_id AND gear_items.user_id = auth.uid())` in addition to the existing list-ownership check. One extra EXISTS lookup per insert/update on an indexed PK — cheaper than restructuring the schema. Same migration.
-
-Both mechanisms reject forged cross-owner references at insert time. The difference is composite-FK-as-constraint vs RLS-WITH-CHECK-as-policy; either is declarative DB-level enforcement.
-
-When adding a new FK from one user-owned table to another:
-- If both tables have `user_id` directly, prefer a composite FK. Add `UNIQUE(id, user_id)` on the parent if not already present.
-- If the child traces ownership through a parent (no direct `user_id`), extend the child's RLS `WITH CHECK` clause with a same-owner subquery against the FK target.
+> **Known gap (Codex audit finding 3, deferred):** owner-keyed RLS validates that a user can write a given *row* but doesn't by itself check that the rows it *references* share the same owner. Specifically, `gear_items.category_id → categories.id` and `list_items.gear_item_id → gear_items.id` allow forged cross-owner references from an authenticated attacker with leaked ids. A first attempt at lockdown via composite FK + RLS WITH CHECK subquery (migrations `20260506000000` / `20260506000001` — applied and reverted) introduced infinite-recursion in the WITH CHECK evaluation. The right path forward is likely adding `user_id` to `list_items` and using composite FKs throughout, matching the `categories` pattern — deferred for a fresh planning session.
 
 ---
 
