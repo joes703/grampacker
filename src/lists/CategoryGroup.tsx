@@ -4,6 +4,7 @@ import { Check, ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { ListItemPatch } from '../lib/queries'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
+import { makeDnDId } from '../lib/dnd-ids'
 import ItemRow, { SortableItemRow } from './ItemRow'
 import AddItemRow, { type AddItemData } from './AddItemRow'
 
@@ -192,7 +193,7 @@ export default function CategoryGroup({
             // Per-category SortableContext — items reorder within their own
             // category only. Item ids registered here so each row's useSortable
             // resolves to the right items list and the strategy auto-shift works.
-            <SortableContext items={visibleItems.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+            <SortableContext items={visibleItems.map((i) => makeDnDId('item', i.id))} strategy={verticalListSortingStrategy}>
               {visibleItems.map((item) => <SortableItemRow key={item.id} {...rowPropsFor(item)} />)}
             </SortableContext>
           ) : (

@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Plus, Check, X
 import type { Category, GearItem } from '../lib/types'
 import type { WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
+import { makeDnDId } from '../lib/dnd-ids'
 import { SortableGearItemRow } from './GearItemRow'
 import RowIconButton from '../components/RowIconButton'
 
@@ -190,7 +191,7 @@ function CategorySectionInner(
           ) : (
             // Per-category SortableContext — items reorder within their own
             // category only. Each row's useSortable resolves to this list.
-            <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+            <SortableContext items={items.map((i) => makeDnDId('gear-item', i.id))} strategy={verticalListSortingStrategy}>
               {items.map((item) => (
                 <SortableGearItemRow
                   key={item.id}
@@ -212,7 +213,9 @@ function CategorySectionInner(
   )
 }
 
-// Sortable wrapper used for real categories (not Uncategorized)
+// Sortable wrapper used for real categories (not Uncategorized). The `id`
+// prop is the bare category uuid; we wrap it with makeDnDId here so callers
+// don't have to know about the typed-id convention.
 export function SortableCategorySection(props: CategorySectionProps & { id: string }) {
   const { id, ...rest } = props
   const {
@@ -223,7 +226,7 @@ export function SortableCategorySection(props: CategorySectionProps & { id: stri
     transform,
     transition,
     isDragging,
-  } = useSortable({ id })
+  } = useSortable({ id: makeDnDId('category', id) })
 
   return (
     <div

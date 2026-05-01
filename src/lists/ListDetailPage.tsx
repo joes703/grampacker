@@ -39,6 +39,7 @@ import {
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, List } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
+import { parseDnDId } from '../lib/dnd-ids'
 import { assignSortOrderSlots, groupListItemsByCategory } from '../lib/grouping'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
@@ -279,22 +280,24 @@ function ListDetailInner({
     if (!over) return
     if (active.id === over.id) return
 
-    const activeIdStr = String(active.id)
-    const overIdStr = String(over.id)
+    const activeParsed = parseDnDId(String(active.id))
+    const overParsed = parseDnDId(String(over.id))
+    if (!activeParsed || !overParsed) return
+    if (activeParsed.kind !== 'item' || overParsed.kind !== 'item') return
 
     // Within-category item reorder. The drop target must be another item
     // AND in the same category as the dragged item. Anything else
     // (cross-category drop, drop on empty space) is ignored.
-    const activeItem = listItems.find((i) => i.id === activeIdStr)
+    const activeItem = listItems.find((i) => i.id === activeParsed.id)
     if (!activeItem) return
-    const overItem = listItems.find((i) => i.id === overIdStr)
+    const overItem = listItems.find((i) => i.id === overParsed.id)
     if (!overItem) return
     const activeCat = activeItem.gear_item.category_id
     if (overItem.gear_item.category_id !== activeCat) return
 
     const itemsInCat = listItems.filter((i) => i.gear_item.category_id === activeCat)
-    const oldIndex = itemsInCat.findIndex((i) => i.id === activeIdStr)
-    const newIndex = itemsInCat.findIndex((i) => i.id === overIdStr)
+    const oldIndex = itemsInCat.findIndex((i) => i.id === activeParsed.id)
+    const newIndex = itemsInCat.findIndex((i) => i.id === overParsed.id)
     if (oldIndex === -1 || newIndex === -1) return
     const reordered = arrayMove(itemsInCat, oldIndex, newIndex)
     reorderItemsMut.mutate(assignSortOrderSlots(reordered))
@@ -513,9 +516,9 @@ function ListDetailInner({
               <p className="text-sm text-gray-400 italic">No items — add from your gear library</p>
             </div>
           ) : (() => {
-            const activeItem = activeId
-              ? listItems.find((i) => i.id === activeId)
-              : null
+            const activeParsed = activeId ? parseDnDId(activeId) : null
+            const activeItem =
+              activeParsed?.kind === 'item' ? listItems.find((i) => i.id === activeParsed.id) : null
             return (
               <div className="space-y-4">
                 <DndContext

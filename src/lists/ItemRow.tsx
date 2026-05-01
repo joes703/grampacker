@@ -6,6 +6,7 @@ import { CircleMinus, GripVertical, MoreVertical, Pencil, Shirt, Trash2, Utensil
 import type { ListItemWithGear } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
+import { makeDnDId } from '../lib/dnd-ids'
 import { usePortalPopover } from '../lib/use-portal-popover'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
@@ -396,7 +397,7 @@ export function SortableItemRow(props: Omit<Props, 'dragHandle' | 'outerRef' | '
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: props.item.id, disabled: props.packMode })
+  } = useSortable({ id: makeDnDId('item', props.item.id), disabled: props.packMode })
 
   const sortableStyle: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
