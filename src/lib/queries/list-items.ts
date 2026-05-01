@@ -1,5 +1,5 @@
 import { supabase } from '../supabase'
-import type { Category, GearItem, ListItem, ListItemWithGear } from '../types'
+import type { Category, GearItem, ListItem, ListItemWithGear, PublicListItem } from '../types'
 import type { ListImportRow } from '../csv'
 import { bulkUpdateSortOrder } from './optimistic'
 import { resolveOrCreateCategories, resolveOrCreateGearForImport } from './import-helpers'
@@ -30,14 +30,23 @@ export async function fetchAllUserListItems(userId: string): Promise<ListItemWit
   return data as ListItemWithGear[]
 }
 
-export async function fetchSharedListItems(listId: string): Promise<ListItemWithGear[]> {
+// Public read (shared list, no auth). Returns only the columns the share
+// view renders — no list_id (viewer already has it), no is_packed (owner's
+// packing state), no created_at/updated_at. See SECURITY.md "Public read
+// paths" for the allowlist.
+export async function fetchSharedListItems(listId: string): Promise<PublicListItem[]> {
   const { data, error } = await supabase
     .from('list_items')
-    .select('*, gear_item:gear_items(id, name, description, weight_grams, category_id)')
+    .select('id, gear_item_id, quantity, is_worn, is_consumable, sort_order, gear_item:gear_items(id, name, description, weight_grams, category_id)')
     .eq('list_id', listId)
     .order('sort_order', { ascending: true })
   if (error) throw error
-  return data as ListItemWithGear[]
+  // PostgREST returns the gear_item join as a single object (one-to-one
+  // via the gear_item_id FK), but TypeScript infers it as an array from
+  // the explicit-column SELECT. The `as unknown as` two-step matches the
+  // pattern used by the authed fetchListItems below — the runtime shape
+  // is correct; only the inferred TS shape needs the override.
+  return data as unknown as PublicListItem[]
 }
 
 export async function addGearItemToList(

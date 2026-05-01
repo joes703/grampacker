@@ -76,8 +76,9 @@ See `DECISIONS.md` ADR 8 for the per-list opt-in rationale.
 Read-only, no auth. Field exclusions vs. the authenticated view:
 
 - **Visible:** list name, description, items grouped by category, weight table, weight unit toggle.
-- **Per-item visible:** name, description, weight, quantity, `is_worn`, `is_consumable`, `sort_order`, category name.
-- **Excluded:** `is_packed` (personal packing state), `list_item.id`, `gear_item.id`, `slug`, user identity.
+- **Per-item visible** (in the wire response): `id` (used as React key), `gear_item_id`, `quantity`, `is_worn`, `is_consumable`, `sort_order`, plus the joined `gear_item.{id, name, description, weight_grams, category_id}`.
+- **Per-category visible**: `id`, `name`, `sort_order`.
+- **Excluded** (not in the wire response): `is_packed` (personal packing state), `list_id` (viewer already has it), owner `user_id` on every table, `slug` echo on the list, `is_shared` on the list, `is_default` on categories, `created_at` / `updated_at` on every table. Enforced via explicit `select(...)` column lists in the public query helpers, not just RLS — see `SECURITY.md` "Public read column allowlist".
 
 Categories shown in the public view are filtered to only those that have at least one item in this list, ordered by their `sort_order`.
 

@@ -1,5 +1,5 @@
 import { supabase } from '../supabase'
-import type { List, ListItem } from '../types'
+import type { List, ListItem, PublicList } from '../types'
 import { generateSlug } from '../slug'
 import { bulkUpdateSortOrder } from './optimistic'
 
@@ -32,11 +32,13 @@ export async function fetchLists(): Promise<List[]> {
   return data
 }
 
-// Public read (shared list, no auth)
-export async function fetchSharedList(slug: string): Promise<List | null> {
+// Public read (shared list, no auth). Returns only the columns the share
+// view renders — no user_id, no slug echo, no is_shared / sort_order /
+// timestamps. See SECURITY.md "Public read paths" for the allowlist.
+export async function fetchSharedList(slug: string): Promise<PublicList | null> {
   const { data, error } = await supabase
     .from('lists')
-    .select('*')
+    .select('id, name, description')
     .eq('slug', slug)
     .eq('is_shared', true)
     .single()

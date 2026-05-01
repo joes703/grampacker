@@ -68,6 +68,15 @@ Sharing is per-list and opt-in (see `DECISIONS.md` ADR 8 for the rationale). Eac
 
 **Trust model:** the `slug` is a short, unguessable, public URL handle — anyone with the URL can read the list while `is_shared = true`. We don't authenticate share-view requests (the slug IS the access mechanism), but we deliberately don't call it a credential because it isn't user-issued or password-like; it's a URL identifier in the same shape as a YouTube video ID or a Reddit post ID. Toggling `is_shared` off disables access without changing the slug; to break a leaked link, the user duplicates the list (which gets a fresh slug) and stops sharing the original. Public anon receives a 404 for both unknown slugs and inactive shared lists, deliberately indistinguishable to prevent enumeration. See `SPEC.md` "Sharing mechanics" for the user-facing behavior.
 
+**Public read column allowlist.** Even though RLS gates which *rows* the public can see, the queries themselves use explicit column lists rather than `select('*')` so the wire response never contains owner-only metadata. The allowlist by table:
+
+- **`lists`** (via `fetchSharedList`): `id`, `name`, `description`. Excluded: `user_id`, `slug` (the viewer already has it via the URL), `is_shared` (always true given RLS gating), `sort_order` (per-user list ordering, irrelevant to viewer), `created_at`, `updated_at`.
+- **`list_items`** (via `fetchSharedListItems`): `id`, `gear_item_id`, `quantity`, `is_worn`, `is_consumable`, `sort_order`. Excluded: `list_id` (viewer already has the parent list's id), `is_packed` (owner's packing state — personal workflow data), `created_at`, `updated_at`.
+- **`gear_items`** (via the `list_items` join): `id`, `name`, `description`, `weight_grams`, `category_id`. Excluded: `user_id`, `sort_order`, `created_at`, `updated_at`.
+- **`categories`** (via `fetchSharedListCategories`): `id`, `name`, `sort_order`. Excluded: `user_id`, `is_default`, `created_at`.
+
+The `Public*` types in `src/lib/types.ts` (PublicList, PublicListItem, PublicGearItem, PublicCategory) make the wire shape explicit at the type level. SharePage maps these narrow types to the full types at one boundary point so the shared rendering components (CategoryGroup, WeightTable, ItemRow) can keep their unified type signatures across authed and share-view contexts.
+
 ---
 
 ## SECURITY DEFINER functions

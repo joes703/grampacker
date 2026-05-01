@@ -1,7 +1,7 @@
 import { useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { fetchSharedList, fetchSharedListItems, fetchSharedListCategories } from '../lib/queries'
-import type { Category, ListItemWithGear } from '../lib/types'
+import type { Category, ListItemWithGear, PublicCategory, PublicListItem } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useDocumentTitle } from '../lib/use-document-title'
 import WeightTable from './WeightTable'
@@ -55,19 +55,41 @@ export default function SharePage() {
     )
   }
 
+  // Public response is intentionally narrower than the authenticated
+  // response (see SECURITY.md "Public read paths"). Map narrow → wide here
+  // so downstream components (shared with authed views) keep their full
+  // type signatures. The defaults below are placeholders that never reach
+  // the wire — the actual wire response only contains the public-allowlist
+  // columns. Reading these fields downstream would yield the placeholder
+  // values, which is fine for share view because the corresponding UI
+  // (pack mode, owner-only affordances) doesn't render here.
+  const itemsForRender: ListItemWithGear[] = items.map((i: PublicListItem) => ({
+    ...i,
+    list_id: list.id,
+    is_packed: false,
+    created_at: '',
+    updated_at: '',
+  }))
+  const categoriesForRender: Category[] = categories.map((c: PublicCategory) => ({
+    ...c,
+    user_id: '',
+    is_default: false,
+    created_at: '',
+  }))
+
   // Group items by category, ordered by category.sort_order; uncategorized last.
-  const catMap = new Map(categories.map((c) => [c.id, c]))
-  const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
+  const catMap = new Map(categoriesForRender.map((c) => [c.id, c]))
+  const sortedCats = [...categoriesForRender].sort((a, b) => a.sort_order - b.sort_order)
 
   type Group = { category: Category | null; items: ListItemWithGear[] }
   const grouped: Group[] = sortedCats
     .map((cat) => ({
       category: cat,
-      items: items.filter((i) => i.gear_item.category_id === cat.id),
+      items: itemsForRender.filter((i) => i.gear_item.category_id === cat.id),
     }))
     .filter((g) => g.items.length > 0)
 
-  const uncategorizedItems = items.filter(
+  const uncategorizedItems = itemsForRender.filter(
     (i) => i.gear_item.category_id === null || !catMap.has(i.gear_item.category_id),
   )
   if (uncategorizedItems.length > 0) grouped.push({ category: null, items: uncategorizedItems })
@@ -100,7 +122,7 @@ export default function SharePage() {
           </PanelCard>
           {items.length > 0 && (
             <PanelCard title="Weight summary">
-              <WeightTable items={items} categories={categories} />
+              <WeightTable items={itemsForRender} categories={categoriesForRender} />
             </PanelCard>
           )}
         </div>
