@@ -92,7 +92,10 @@ export default function CategoryGroup({
   // aria-controls. categoryId is always set when collapsible=true (share view
   // passes collapsible=false and the button isn't rendered there).
   const regionId = `cat-region-${categoryId ?? 'uncategorized'}`
-  const packedCount = items.filter((i) => i.is_packed).length
+  // Only displayed in pack-mode header. Gating the read on packMode means
+  // the share view (which never enters pack mode) doesn't pull is_packed
+  // off each item; that field is excluded from the public read path.
+  const packedCount = packMode ? items.filter((i) => i.is_packed).length : 0
   const totalGrams = items.reduce((s, i) => s + i.gear_item.weight_grams * i.quantity, 0)
   const showKebabSlot = !packMode && Boolean(onDelete)
   // "Complete" = pack mode, has items, every item packed. The header still

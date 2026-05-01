@@ -49,3 +49,24 @@ export type GearItem = {
   created_at: string
   updated_at: string
 }
+
+// Narrower response shapes for public read paths (/r/<slug>). Fewer columns
+// than the authenticated equivalents — see SECURITY.md "Public read paths"
+// for the allowlist rationale. SharePage maps these to the full types at the
+// boundary before passing items/categories to shared components.
+
+export type PublicList = Pick<List, 'id' | 'name' | 'description'>
+
+export type PublicGearItem = Pick<
+  GearItem,
+  'id' | 'name' | 'description' | 'weight_grams' | 'category_id'
+>
+
+export type PublicListItem = Pick<
+  ListItem,
+  'id' | 'gear_item_id' | 'quantity' | 'is_worn' | 'is_consumable' | 'sort_order'
+> & {
+  gear_item: PublicGearItem
+}
+
+export type PublicCategory = Pick<Category, 'id' | 'name' | 'sort_order'>
