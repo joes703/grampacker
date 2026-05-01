@@ -106,14 +106,14 @@ Used for gear-library and per-list export/import. The format is a small, hand-ro
 
 **Gear-library export** (`gear-library.csv`): `name`, `description`, `weight_grams`, `category`.
 
-**List export** (`<sanitised-list-name>.csv`): `name`, `description`, `weight_grams`, `quantity`, `worn`, `consumable`, `category`. Boolean columns are written as the literals `yes` / `no`. Every column is read back by the import parser — `is_packed` is deliberately excluded since it's per-user runtime checklist state with no round-trip use case.
+**List export** (`<sanitized-list-name>.csv`): `name`, `description`, `weight_grams`, `quantity`, `worn`, `consumable`, `category`. Boolean columns are written as the literals `yes` / `no`. Every column is read back by the import parser — `is_packed` is deliberately excluded since it's per-user runtime checklist state with no round-trip use case.
 
 Both:
 - Header row first.
 - Weights always exported in grams as integers.
 - File encoding: UTF-8.
 - Cell quoting only when needed (comma, quote, or newline in the cell).
-- No formula-injection escaping. No BOM. List-export filenames are sanitised at the call site (lowercase + non-alphanumerics → `-`).
+- No formula-injection escaping. No BOM. List-export filenames are sanitized at the call site (lowercase + non-alphanumerics → `-`).
 
 ### Import
 
@@ -132,7 +132,7 @@ Two surfaces, both run through `parseListCsv` / `parseGearCsv` and the shared `r
 Common rules across both paths:
 
 - **2 MB max file size**, checked in `useCsvFileInput` before parse. Larger files reject with a friendly error.
-- Header row required. Column names matched case-insensitively after trimming. Required columns: a name column (`name` or `item name`) and a weight column (`weight_grams`, `weight (g)`, or `weight`). Optional aliases recognised: `description`/`desc`, `category`, `quantity`/`qty`, `worn`/`is_worn`, `consumable`/`is_consumable`, `unit`.
+- Header row required. Column names matched case-insensitively after trimming. Required columns: a name column (`name` or `item name`) and a weight column (`weight_grams`, `weight (g)`, or `weight`). Optional aliases recognized: `description`/`desc`, `category`, `quantity`/`qty`, `worn`/`is_worn`, `consumable`/`is_consumable`, `unit`.
 - Optional `unit` column converts the weight value: `g` (default), `oz` (× 28.3495), `lb` (× 453.592), `kg` (× 1000). Result rounded to integer grams and clamped to 100,000 g.
 - Rows with empty name are skipped silently.
 - Boolean columns accept `1`, `yes`, or `true` as truthy (case-insensitive); anything else is false.
@@ -154,8 +154,8 @@ Gear-item match key: `category_id + lowercase(name) + weight_grams` — exact tr
 Two surfaces support DnD: `/gear` and `/lists/:id`. The public share view at `/r/:token` is read-only and renders no drag affordances.
 
 - **Category reorder is `/gear`-only.** Categories on `/lists/:id` render in their global `sort_order` but cannot be reordered there — no drag handle, no `useSortable` wrapper. Item-level DnD within categories works on both pages. The single-surface rule keeps "manage gear inventory and its order" cleanly on `/gear`; the list page is for working on a specific trip. (See `DECISIONS.md` ADR 11 for the rationale.)
-- **Items reorder within their category only.** Cross-category drops are silently rejected — the item snaps back. Recategorising an item happens via the item edit modal, or — on `/gear` only — via the multi-select toolbar's "Move to category". Each category section renders its own `<SortableContext>` for items, so dnd-kit's auto-shift only operates within-category. (See `DECISIONS.md` ADR 1 for the rationale.)
-- **Uncategorised is not draggable.** The Uncategorised section has no `categories` table row, no drag handle, no rename, no delete. On `/gear` it cannot be a drop target for category drags either — the handler rejects `destCatId === null`. Items inside Uncategorised reorder among themselves like any other category.
+- **Items reorder within their category only.** Cross-category drops are silently rejected — the item snaps back. Recategorizing an item happens via the item edit modal, or — on `/gear` only — via the multi-select toolbar's "Move to category". Each category section renders its own `<SortableContext>` for items, so dnd-kit's auto-shift only operates within-category. (See `DECISIONS.md` ADR 1 for the rationale.)
+- **Uncategorized is not draggable.** The Uncategorized section has no `categories` table row, no drag handle, no rename, no delete. On `/gear` it cannot be a drop target for category drags either — the handler rejects `destCatId === null`. Items inside Uncategorized reorder among themselves like any other category.
 - **Pack mode on `/lists/:id` disables item DnD.** The `useSortable` hook receives `disabled: packMode` so structural changes can't happen while the user is checking off items.
 - **List cards on `/lists` reorder via DnD.** Drag a card by its grip handle (top-left); release on another card to insert. Multi-column grid uses `rectSortingStrategy` for collision detection (calculates target by bounding-rect intersection across column wraps). Drag is disabled while a card's rename input is open. `lists.sort_order` is rewritten globally per user. The other surfaces (`/lists/:id` for items, `/gear` for gear-items and categories) are unchanged.
 - **All four reorderable tables go through the `bulk_update_sort_order` RPC** — `categories`, `list_items`, `gear_items`, and `lists`. Single round-trip per drag, atomic on the server, inline ownership filter per branch. Gear-item reorder still doesn't invalidate `['list-items']` (lists order by `list_items.sort_order`, not `gear_items.sort_order`, and the gear_item join projection doesn't include sort_order — a change is invisible to every list consumer).

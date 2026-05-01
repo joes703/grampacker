@@ -10,7 +10,7 @@ import { SortableGearItemRow } from './GearItemRow'
 import RowIconButton from '../components/RowIconButton'
 
 type CategorySectionProps = {
-  category: Category | null // null = Uncategorised
+  category: Category | null // null = Uncategorized
   items: GearItem[]
   weightUnit: WeightUnit
   collapsed: boolean
@@ -69,18 +69,18 @@ function CategorySectionInner(
     setRenaming(false)
   }
 
-  const isUncategorised = category === null
-  const name = category?.name ?? 'Uncategorised'
+  const isUncategorized = category === null
+  const name = category?.name ?? 'Uncategorized'
   // Stable id for the collapsible items region so the chevron button can
   // announce aria-controls.
-  const regionId = `gear-cat-region-${category?.id ?? 'uncategorised'}`
+  const regionId = `gear-cat-region-${category?.id ?? 'uncategorized'}`
 
   return (
     <div className="mb-2">
       {/* Category header */}
       <div className="flex items-center gap-1 rounded-lg px-2 py-0.5 bg-gray-100">
         {/* Drag handle — only for real categories */}
-        {!isUncategorised && dragHandleRef ? (
+        {!isUncategorized && dragHandleRef ? (
           <RowIconButton
             ref={dragHandleRef}
             {...dragHandleListeners}
@@ -137,7 +137,7 @@ function CategorySectionInner(
               ariaLabel="Add item to this category"
               icon={<Plus size={14} />}
             />
-            {!isUncategorised && (
+            {!isUncategorized && (
               <>
                 <RowIconButton
                   onClick={() => {
@@ -212,7 +212,7 @@ function CategorySectionInner(
   )
 }
 
-// Sortable wrapper used for real categories (not Uncategorised)
+// Sortable wrapper used for real categories (not Uncategorized)
 export function SortableCategorySection(props: CategorySectionProps & { id: string }) {
   const { id, ...rest } = props
   const {
@@ -244,7 +244,7 @@ export function SortableCategorySection(props: CategorySectionProps & { id: stri
   )
 }
 
-// Non-sortable version for Uncategorised
+// Non-sortable version for Uncategorized
 export function StaticCategorySection(props: CategorySectionProps) {
   return <CategorySectionInner {...props} />
 }

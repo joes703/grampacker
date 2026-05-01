@@ -5,7 +5,7 @@ export type CategoryGroup<T> = { category: Category | null; items: T[] }
 /**
  * Group list items by their gear item's category. Categories are emitted in
  * `Category.sort_order` order; items with no resolvable category fall into a
- * trailing `category: null` group ("Uncategorised").
+ * trailing `category: null` group ("Uncategorized").
  *
  * Empty categories are filtered OUT — the list view shouldn't show category
  * sections that contain none of this list's items. (This is the deliberate
@@ -25,10 +25,10 @@ export function groupListItemsByCategory(
     }))
     .filter((g) => g.items.length > 0)
 
-  const uncategorised = items.filter(
+  const uncategorized = items.filter(
     (i) => i.gear_item.category_id === null || !catMap.has(i.gear_item.category_id),
   )
-  if (uncategorised.length > 0) groups.push({ category: null, items: uncategorised })
+  if (uncategorized.length > 0) groups.push({ category: null, items: uncategorized })
 
   return groups
 }
@@ -52,8 +52,8 @@ export function groupGearItemsByCategory(
     category: cat as Category | null,
     items: items.filter((i) => i.category_id === cat.id),
   }))
-  const uncategorised = items.filter((i) => i.category_id === null)
-  if (uncategorised.length > 0) groups.push({ category: null, items: uncategorised })
+  const uncategorized = items.filter((i) => i.category_id === null)
+  if (uncategorized.length > 0) groups.push({ category: null, items: uncategorized })
   return groups
 }
 

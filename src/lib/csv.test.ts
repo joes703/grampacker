@@ -6,7 +6,7 @@ import type { Category, ListItemWithGear } from './types'
 // listItemsToCsv → parseListCsv with the user-visible columns intact.
 // The DB-only fields (ids, list_id, sort_order, packed) aren't in the parse
 // output by design — parseListCsv targets imports from third-party tools too
-// (Lighterpack), so it normalises to ListImportRow's shape.
+// (Lighterpack), so it normalizes to ListImportRow's shape.
 describe('csv round-trip', () => {
   const categories: Category[] = [
     {

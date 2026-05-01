@@ -141,7 +141,7 @@ May revisit if more "X grams of substance Y" cases pile up that don't fit the 1g
 
 **Date:** 2026-04-30
 
-**Context.** Earlier, category-level DnD worked on both `/gear` and `/lists/:id`. The list page only renders categories that have at least one item on the current list (plus Uncategorised), but reordering them on that page mutated the same global `categories.sort_order` rows used everywhere. Categories with no items on the current list — invisible from the list view — would have their relative position shift vs. dragged categories, even though the user couldn't see it happen. A Codex DnD architecture review flagged this as cognitively odd: a partial view mutating a global property in ways the user can't observe.
+**Context.** Earlier, category-level DnD worked on both `/gear` and `/lists/:id`. The list page only renders categories that have at least one item on the current list (plus Uncategorized), but reordering them on that page mutated the same global `categories.sort_order` rows used everywhere. Categories with no items on the current list — invisible from the list view — would have their relative position shift vs. dragged categories, even though the user couldn't see it happen. A Codex DnD architecture review flagged this as cognitively odd: a partial view mutating a global property in ways the user can't observe.
 
 **Decision.** Category reorder happens only on `/gear`. The list page (`/lists/:id`) renders categories in their global `sort_order` but provides no drag affordance for category headers — no handle, no `useSortable` wrapper. Item-level DnD within categories still works on both pages.
 

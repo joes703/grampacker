@@ -545,8 +545,8 @@ function ListDetailInner({
                     .filter((g) => g.category === null)
                     .map((group) => (
                       <CategoryGroup
-                        key="__uncategorised__"
-                        name="Uncategorised"
+                        key="__uncategorized__"
+                        name="Uncategorized"
                         categoryId={null}
                         items={group.items}
                         {...sharedGroupProps}

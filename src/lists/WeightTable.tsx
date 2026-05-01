@@ -34,14 +34,14 @@ export default function WeightTable({ items, categories }: Props) {
     }
   }
 
-  // Order categories by sort_order, uncategorised last
+  // Order categories by sort_order, uncategorized last
   const sortedCats = [...categories]
     .filter((c) => basePerCat.has(c.id))
     .sort((a, b) => a.sort_order - b.sort_order)
 
   const catRows = sortedCats.map((c) => ({ name: c.name, grams: basePerCat.get(c.id)! }))
   if (basePerCat.has(null)) {
-    catRows.push({ name: 'Uncategorised', grams: basePerCat.get(null)! })
+    catRows.push({ name: 'Uncategorized', grams: basePerCat.get(null)! })
   }
 
   const baseGrams = catRows.reduce((s, r) => s + r.grams, 0)
