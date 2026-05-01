@@ -3,7 +3,7 @@ export type List = {
   user_id: string
   name: string
   description: string | null
-  share_token: string
+  slug: string
   is_shared: boolean
   sort_order: number
   created_at: string

@@ -17,7 +17,7 @@ export default function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<SignupPage />} />
-      <Route path="/r/:token" element={<SharePage />} />
+      <Route path="/r/:slug" element={<SharePage />} />
       {/* Public — readable without a session. AboutPage owns its own
           chrome (auth-aware mini-header) since it sits outside AppShell. */}
       <Route path="/about" element={<AboutPage />} />

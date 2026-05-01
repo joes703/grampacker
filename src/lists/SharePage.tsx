@@ -9,13 +9,13 @@ import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
 
 export default function SharePage() {
-  const { token } = useParams<{ token: string }>()
+  const { slug } = useParams<{ slug: string }>()
   const { weightUnit, toggleWeightUnit } = useWeightUnit()
 
   const { data: list, isLoading: listLoading } = useQuery({
-    queryKey: ['shared-list', token],
-    queryFn: () => fetchSharedList(token!),
-    enabled: Boolean(token),
+    queryKey: ['shared-list', slug],
+    queryFn: () => fetchSharedList(slug!),
+    enabled: Boolean(slug),
   })
   useDocumentTitle(list?.name ?? null)
 

@@ -110,7 +110,7 @@ function ListDetailInner({
   // refresh-stable, and back/forward navigable. Anything other than the
   // exact string 'pack' (missing, garbage, typo) falls back to edit mode
   // silently. Toggling writes to the URL; the URL is the single source of
-  // truth — no separate React state. (Public share view at /r/:token is a
+  // truth — no separate React state. (Public share view at /r/:slug is a
   // different page entirely and can't see this parameter.)
   const [searchParams, setSearchParams] = useSearchParams()
   const mode: Mode = searchParams.get('mode') === 'pack' ? 'pack' : 'edit'

@@ -64,12 +64,12 @@ Weight inputs in the UI are always in grams regardless of display mode — displ
 
 See `DECISIONS.md` ADR 8 for the per-list opt-in rationale.
 
-- Each list gets an **8-character alphanumeric `share_token`** (mixed case + digits, 62-char alphabet) generated at creation; never null.
-- `is_shared` (boolean, default false) toggles whether the token is active.
-- The share URL pattern is `/r/:token`.
-- When `is_shared = false`, the public anon can't read the list — RLS blocks it. The token stays in the database; toggling back on reactivates the same link.
-- The token is fixed for the life of the list — there is no "regenerate" action. To break a leaked link the user duplicates the list (which gets a fresh token) and stops sharing the original.
-- Public anon receives 404 for both unknown tokens and inactive shared lists (deliberately indistinguishable to prevent enumeration).
+- Each list gets a **6-character alphanumeric `slug`** (mixed case + digits, 62-char alphabet) generated at creation; never null. UNIQUE-constrained at the DB level; the inserter retries on the (effectively impossible) collision.
+- `is_shared` (boolean, default false) toggles whether the slug is active.
+- The share URL pattern is `/r/:slug`.
+- When `is_shared = false`, the public anon can't read the list — RLS blocks it. The slug stays in the database; toggling back on reactivates the same link.
+- The slug is fixed for the life of the list — there is no "regenerate" action. To break a leaked link the user duplicates the list (which gets a fresh slug) and stops sharing the original.
+- Public anon receives 404 for both unknown slugs and inactive shared lists (deliberately indistinguishable to prevent enumeration).
 
 ### Public share view (`/r/:token`)
 
@@ -77,7 +77,7 @@ Read-only, no auth. Field exclusions vs. the authenticated view:
 
 - **Visible:** list name, description, items grouped by category, weight table, weight unit toggle.
 - **Per-item visible:** name, description, weight, quantity, `is_worn`, `is_consumable`, `sort_order`, category name.
-- **Excluded:** `is_packed` (personal packing state), `list_item.id`, `gear_item.id`, `share_token`, user identity.
+- **Excluded:** `is_packed` (personal packing state), `list_item.id`, `gear_item.id`, `slug`, user identity.
 
 Categories shown in the public view are filtered to only those that have at least one item in this list, ordered by their `sort_order`.
 
