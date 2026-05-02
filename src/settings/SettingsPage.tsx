@@ -196,9 +196,9 @@ function DownloadAllData() {
     setMsg(null)
     try {
       const [categories, gearItems, lists, allItems] = await Promise.all([
-        qc.fetchQuery({ queryKey: queryKeys.categories(), queryFn: fetchCategories }),
-        qc.fetchQuery({ queryKey: queryKeys.gearItems(), queryFn: fetchGearItems }),
-        qc.fetchQuery({ queryKey: queryKeys.lists(), queryFn: fetchLists }),
+        qc.fetchQuery({ queryKey: queryKeys.categories(), queryFn: () => fetchCategories(userId) }),
+        qc.fetchQuery({ queryKey: queryKeys.gearItems(), queryFn: () => fetchGearItems(userId) }),
+        qc.fetchQuery({ queryKey: queryKeys.lists(), queryFn: () => fetchLists(userId) }),
         fetchAllUserListItems(userId),
       ])
 

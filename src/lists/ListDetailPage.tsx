@@ -79,9 +79,16 @@ export default function ListDetailPage() {
   const { session } = useAuth()
   const qc = useQueryClient()
 
+  // userId pre-declared before the query so the owner-scoped fetchLists has
+  // it. Empty-string fallback covers the brief in-flight-signout window
+  // (PrivateRoute redirects the moment session is null; the early-return
+  // below handles the same case post-render). The owner-scoped query passes
+  // userId as the user_id filter — empty string returns empty results
+  // rather than the unfiltered union.
+  const userIdForQuery = session?.user.id ?? ''
   const { data: lists = [] } = useQuery({
     queryKey: queryKeys.lists(),
-    queryFn: fetchLists,
+    queryFn: () => fetchLists(userIdForQuery),
   })
 
   // PrivateRoute usually keeps session non-null here, but if it goes null
@@ -158,17 +165,17 @@ function ListDetailInner({
 
   const { data: listItems = [] } = useQuery({
     queryKey: queryKeys.listItems(listId),
-    queryFn: () => fetchListItems(listId),
+    queryFn: () => fetchListItems(listId, userId),
   })
 
   const { data: gearItems = [] } = useQuery({
     queryKey: queryKeys.gearItems(),
-    queryFn: fetchGearItems,
+    queryFn: () => fetchGearItems(userId),
   })
 
   const { data: categories = [] } = useQuery({
     queryKey: queryKeys.categories(),
-    queryFn: fetchCategories,
+    queryFn: () => fetchCategories(userId),
   })
 
   // ── Mutations ──────────────────────────────────────────────────────────────

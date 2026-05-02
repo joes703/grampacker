@@ -22,10 +22,16 @@ async function withSlugRetry<T>(insert: (slug: string) => Promise<T>, max = 5): 
   throw lastErr ?? new Error('slug generation: exhausted retries')
 }
 
-export async function fetchLists(): Promise<List[]> {
+// Owner-scoped private read. Explicit user_id filter is defense in depth
+// against the cross-channel leak from public *_select_shared policies — see
+// SECURITY.md "Query-level owner scoping". userId is required (not optional)
+// so a missing-session caller fails loudly rather than silently returning
+// the union of own + shared rows.
+export async function fetchLists(userId: string): Promise<List[]> {
   const { data, error } = await supabase
     .from('lists')
     .select('*')
+    .eq('user_id', userId)
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true })
   if (error) throw error
@@ -130,6 +136,7 @@ export async function duplicateList(source: List, userId: string, sortOrder: num
   const { data: items, error: itemsErr } = await supabase
     .from('list_items')
     .select('*')
+    .eq('user_id', userId)
     .eq('list_id', source.id)
   if (itemsErr) throw itemsErr
 
