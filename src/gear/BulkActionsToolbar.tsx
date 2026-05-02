@@ -96,19 +96,19 @@ export default function BulkActionsToolbar({
             space-y-2. */}
         <div className="flex items-center gap-2 md:ml-auto">
           <button
+            onClick={onMoveToCategory}
+            disabled={noneSelected}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
+          >
+            Move to category
+          </button>
+          <button
             onClick={onCreateList}
             disabled={noneSelected || overListCap}
             title={overListCap ? `Lists can hold at most 300 items (you've selected ${selectedCount})` : undefined}
             className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
           >
             <ListPlus size={14} /> Create list
-          </button>
-          <button
-            onClick={onMoveToCategory}
-            disabled={noneSelected}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
-          >
-            Move to category
           </button>
           <button
             onClick={onDelete}
