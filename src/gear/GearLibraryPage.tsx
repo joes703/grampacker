@@ -428,6 +428,22 @@ export default function GearLibraryPage() {
         </button>
       </div>
 
+      {/* Sticky bulk-action bar — shown only in selection mode. Sits between
+          the page header and "Add category" so it sticks to the top of the
+          gear list area as the user scrolls. */}
+      {selectMode && (
+        <BulkActionsToolbar
+          selectedCount={selectedIds.size}
+          selectableTotal={filteredItems.length}
+          onClose={exitSelectMode}
+          onSelectAll={() => resetSelected(filteredItems.map((i) => i.id))}
+          onDeselectAll={clearSelected}
+          onCreateList={() => setDialog({ type: 'create-list-from-selection' })}
+          onMoveToCategory={() => setDialog({ type: 'bulk-move' })}
+          onDelete={() => bulkDelete.mutate(Array.from(selectedIds))}
+        />
+      )}
+
       {/* Add category row */}
       {dialog?.type === 'add-category' ? (
         <div className="flex items-center gap-2 mb-4">
@@ -559,19 +575,6 @@ export default function GearLibraryPage() {
           </DndContext>
         )
       })()}
-
-      {/* Bulk actions toolbar */}
-      {selectMode && (
-        <BulkActionsToolbar
-          selectedCount={selectedIds.size}
-          selectableTotal={filteredItems.length}
-          onSelectAll={() => resetSelected(filteredItems.map((i) => i.id))}
-          onDeselectAll={clearSelected}
-          onCreateList={() => setDialog({ type: 'create-list-from-selection' })}
-          onMoveToCategory={() => setDialog({ type: 'bulk-move' })}
-          onDelete={() => bulkDelete.mutate(Array.from(selectedIds))}
-        />
-      )}
 
       {/* Dialogs */}
       {(dialog?.type === 'create-item' || dialog?.type === 'edit-item') && (
