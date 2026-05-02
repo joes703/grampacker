@@ -18,7 +18,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   if (authLoading) return null
-  if (session) return <Navigate to="/lists" replace />
+  if (session) return <Navigate to="/" replace />
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -33,7 +33,7 @@ export default function LoginPage() {
         setError('Invalid email or password.')
       }
     } else {
-      navigate('/lists')
+      navigate('/')
     }
   }
 

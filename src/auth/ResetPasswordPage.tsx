@@ -83,7 +83,7 @@ export default function ResetPasswordPage() {
   // confirmation message before navigation.
   useEffect(() => {
     if (state.kind !== 'success') return
-    const handle = setTimeout(() => navigate('/lists', { replace: true }), 1500)
+    const handle = setTimeout(() => navigate('/', { replace: true }), 1500)
     return () => clearTimeout(handle)
   }, [state, navigate])
 

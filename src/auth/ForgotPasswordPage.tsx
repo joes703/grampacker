@@ -20,7 +20,7 @@ export default function ForgotPasswordPage() {
   // change-password flow, not the recovery flow. Matches LoginPage's
   // pattern.
   if (authLoading) return null
-  if (session) return <Navigate to="/lists" replace />
+  if (session) return <Navigate to="/" replace />
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
