@@ -94,7 +94,7 @@ export default function BulkActionsToolbar({
         {/* Action cluster. On md+, ml-auto pushes it to the right of the
             shared row. On mobile it falls onto its own row via the parent's
             space-y-2. */}
-        <div className="flex items-center gap-2 md:ml-auto">
+        <div className="flex flex-wrap items-center gap-2 md:ml-auto">
           <button
             onClick={onMoveToCategory}
             disabled={noneSelected}

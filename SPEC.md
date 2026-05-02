@@ -69,7 +69,7 @@ See `DECISIONS.md` ADR 8 for the per-list opt-in rationale.
 - The share URL pattern is `/r/:slug`.
 - When `is_shared = false`, the public anon can't read the list — RLS blocks it. The slug stays in the database; toggling back on reactivates the same link.
 - The slug is fixed for the life of the list — there is no "regenerate" action. To break a leaked link the user duplicates the list (which gets a fresh slug) and stops sharing the original.
-- Public anon receives 404 for both unknown slugs and inactive shared lists (deliberately indistinguishable to prevent enumeration).
+- Public anon receives 404 for both unknown slugs and inactive shared lists. Slug guessing is impractical at 6 base62 chars, but currently-shared lists are technically enumerable through PostgREST's generic query interface — see `SECURITY.md` "Public read paths" for the trust model.
 
 ### Public share view (`/r/:slug`)
 

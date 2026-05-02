@@ -60,7 +60,7 @@ When adding a new FK from one user-owned table to another:
 - Both tables must have `user_id` directly. If the child doesn't, add it and backfill before the FK.
 - Add `UNIQUE(id, user_id)` on the parent if not already present.
 - Use `FOREIGN KEY (child_fk_col, user_id) REFERENCES parent (id, user_id)`.
-- Don't use RLS WITH CHECK subqueries against another RLS-enabled table — they recurse.
+- Avoid WITH CHECK subqueries that reference another RLS-protected table when same-owner enforcement is the goal — the cross-policy evaluation can recurse, particularly when both policies use `auth.uid()`. Composite FKs (when both tables have `user_id`) or BEFORE-INSERT triggers move enforcement to the schema/trigger layer where recursion isn't a concern.
 
 ---
 
@@ -85,7 +85,7 @@ Sharing is per-list and opt-in (see `DECISIONS.md` ADR 8 for the rationale). Eac
 - `gear_items_public_select_via_shared_list` — transitive: any gear item referenced by a `list_items` row in a shared list is readable.
 - `categories_public_select_via_shared_list` — transitive: any category whose gear items are referenced by a shared list is readable.
 
-**Trust model:** the `slug` is a short, unguessable, public URL handle — anyone with the URL can read the list while `is_shared = true`. We don't authenticate share-view requests (the slug IS the access mechanism), but we deliberately don't call it a credential because it isn't user-issued or password-like; it's a URL identifier in the same shape as a YouTube video ID or a Reddit post ID. Toggling `is_shared` off disables access without changing the slug; to break a leaked link, the user duplicates the list (which gets a fresh slug) and stops sharing the original. Public anon receives a 404 for both unknown slugs and inactive shared lists, deliberately indistinguishable to prevent enumeration. See `SPEC.md` "Sharing mechanics" for the user-facing behavior.
+**Trust model:** the `slug` is a short, unguessable, public URL handle — anyone with the URL can read the list while `is_shared = true`. We don't authenticate share-view requests (the slug IS the access mechanism), but we deliberately don't call it a credential because it isn't user-issued or password-like; it's a URL identifier in the same shape as a YouTube video ID or a Reddit post ID. Toggling `is_shared` off disables access without changing the slug; to break a leaked link, the user duplicates the list (which gets a fresh slug) and stops sharing the original. Slugs are 6 base62 characters (~57 billion combinations), so random guessing is impractical — but the `lists_public_select_shared` policy doesn't restrict by slug, so an anon caller could enumerate currently-shared lists via PostgREST's generic query interface (e.g. `?is_shared=eq.true&select=slug`). We accept this: a shared list is by definition opt-in public-readable, and any user who doesn't want their list enumerable from the public surface leaves `is_shared` off. Unknown-slug requests at `/r/<slug>` 404 because of the route handler's not-found check, not because of any enumeration-defense logic in the policy layer. See `SPEC.md` "Sharing mechanics" for the user-facing behavior.
 
 **Public read column allowlist.** Even though RLS gates which *rows* the public can see, the queries themselves use explicit column lists rather than `select('*')` so the wire response never contains owner-only metadata. The allowlist by table:
 

@@ -311,9 +311,9 @@ export function nameFromCsvFilename(filename: string): string {
 // has no equivalent and it's per-user runtime checklist state. url and
 // price are emitted as Lighterpack defaults ('' and 0) since grampacker
 // doesn't store them. Boolean values use Lighterpack's "Worn" /
-// "Consumable" literals (capitalized when true, empty when false) — the
-// import-side toBool will need a follow-up to recognize those literals;
-// tracked separately.
+// "Consumable" literals (capitalized when true, empty when false). The
+// import-side toBool recognizes both literals (case-insensitive) for
+// round-trip parity.
 export function listItemsToCsv(items: ListItemWithGear[], categories: Category[]): string {
   const catMap = new Map(categories.map((c) => [c.id, c.name]))
   const rows = items.map((item) => ({
