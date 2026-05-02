@@ -5,23 +5,18 @@ import { useDocumentTitle } from '../lib/use-document-title'
 
 // Landing page for password recovery email links. The user clicks the link
 // in their inbox, Supabase verifies the recovery token, and redirects here
-// with one of two URL shapes depending on the project's auth flow type:
+// with `?code=<recovery-code>` (PKCE flow, the project's default). The
+// page exchanges the code for a session, then renders the new-password
+// form. Errors append `?error_description=` for expired / used / invalid
+// tokens.
 //
-//   PKCE (default in recent supabase-js):
-//     /reset-password?code=<recovery-code>
-//     → exchange via supabase.auth.exchangeCodeForSession(code)
-//
-//   Implicit (older):
-//     /reset-password#access_token=...&refresh_token=...&type=recovery
-//     → supabase-js auto-processes via detectSessionInUrl: true (default);
-//       getSession() then returns the recovery session.
-//
-// Errors append ?error_description= for expired / used / invalid tokens.
-//
-// We deliberately do NOT bounce already-authenticated users from this page
-// (unlike LoginPage / ForgotPasswordPage) — a recovery-flow user IS
-// authenticated by the time the password form renders, and bouncing them
-// would force them through /forgot-password again.
+// Recovery-only: a successful PKCE code exchange is the ONLY way to reach
+// the password form. An existing authenticated session without a recovery
+// code redirects to /settings (where the in-app change-password flow
+// lives, with its own current-password challenge). Without this guard, a
+// signed-in user could navigate directly to /reset-password and change
+// their password without re-auth, bypassing the in-app flow's
+// current-password proof. Codex audit finding 4.
 
 type State =
   | { kind: 'verifying' }
@@ -41,11 +36,12 @@ export default function ResetPasswordPage() {
   const [confirm, setConfirm] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
 
-  // Verify the recovery token (or session) on mount. Three branches:
+  // Verify the recovery context on mount. Three branches:
   //   1. ?error_description= → Supabase rejected the token before redirect.
   //   2. ?code= → PKCE flow; exchange for a session.
-  //   3. Else → implicit flow may have already established a session via
-  //      detectSessionInUrl; check getSession().
+  //   3. Neither → no recovery context. Signed-in users redirect to
+  //      /settings (in-app change flow); signed-out users see the invalid-
+  //      link state with a path back to /forgot-password.
   useEffect(() => {
     let cancelled = false
     async function verify() {
@@ -68,16 +64,20 @@ export default function ResetPasswordPage() {
         return
       }
 
+      // No recovery code in the URL. The page is recovery-only: a normal
+      // existing session doesn't qualify as proof. Redirect signed-in users
+      // to /settings (in-app change-password flow with current-password
+      // proof); show the invalid-link state to signed-out users.
       const { data } = await supabase.auth.getSession()
       if (cancelled) return
-      if (data.session) setState({ kind: 'ready' })
+      if (data.session) navigate('/settings', { replace: true })
       else setState({ kind: 'error', message: INVALID_LINK_MESSAGE })
     }
     void verify()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [navigate])
 
   // Auto-redirect after success — short delay so the user sees the
   // confirmation message before navigation.
