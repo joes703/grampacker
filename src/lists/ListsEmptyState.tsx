@@ -33,11 +33,11 @@ export default function ListsEmptyState() {
   // For a brand-new user both queries will return empty arrays; that's fine.
   const { data: gearItems = [] } = useQuery({
     queryKey: queryKeys.gearItems(),
-    queryFn: fetchGearItems,
+    queryFn: () => fetchGearItems(userId),
   })
   const { data: categories = [] } = useQuery({
     queryKey: queryKeys.categories(),
-    queryFn: fetchCategories,
+    queryFn: () => fetchCategories(userId),
   })
 
   const {

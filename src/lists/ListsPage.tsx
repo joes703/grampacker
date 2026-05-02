@@ -67,20 +67,30 @@ export default function ListsPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
 
+  // PrivateRoute keeps session non-null in the steady state, but it can flip
+  // to null mid-render during sign-out. Resolve a userId once at the top of
+  // the component, falling back to '' — every mutation is gated on `session`
+  // being present at render time before being invoked, so the empty string
+  // is never sent to the server through a mutation. The owner-scoped private
+  // queries below pass userId as the user_id filter; an empty string returns
+  // empty results rather than the unfiltered union, which is the safer
+  // race-window behavior.
+  const userId = session?.user.id ?? ''
+
   const { data: lists = [], isLoading: listsLoading } = useQuery({
     queryKey: queryKeys.lists(),
-    queryFn: fetchLists,
+    queryFn: () => fetchLists(userId),
   })
   // Gear/categories needed by importCsvRowsToList. They're already cached when
   // the user navigates here from elsewhere; otherwise the query runs in the
   // background and resolves before the user can confirm an import.
   const { data: gearItems = [] } = useQuery({
     queryKey: queryKeys.gearItems(),
-    queryFn: fetchGearItems,
+    queryFn: () => fetchGearItems(userId),
   })
   const { data: categories = [] } = useQuery({
     queryKey: queryKeys.categories(),
-    queryFn: fetchCategories,
+    queryFn: () => fetchCategories(userId),
   })
 
   const [dialog, setDialog] = useState<DialogState | null>(null)
@@ -93,13 +103,6 @@ export default function ListsPage() {
     onParsed: (rows, filename) => setDialog({ type: 'import-preview', rows, filename }),
     onError: (message) => setDialog({ type: 'import-error', message }),
   })
-
-  // PrivateRoute keeps session non-null in the steady state, but it can flip
-  // to null mid-render during sign-out. Resolve a userId for the mutations
-  // below by falling back to '' — every mutation is gated on `session` being
-  // present at render time before being invoked, so the empty string is never
-  // sent to the server. Hooks must run unconditionally to satisfy rules-of-hooks.
-  const userId = session?.user.id ?? ''
 
   const createListMut = useMutation({
     mutationFn: (name: string) => createList(userId, name, lists.length),
@@ -188,7 +191,7 @@ export default function ListsPage() {
   async function handleExport(list: List) {
     const items = await qc.fetchQuery({
       queryKey: queryKeys.listItems(list.id),
-      queryFn: () => fetchListItems(list.id),
+      queryFn: () => fetchListItems(list.id, userId),
     })
     const csv = listItemsToCsv(items, categories)
     downloadCsv(`${list.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`, csv)

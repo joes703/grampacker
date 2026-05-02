@@ -84,15 +84,15 @@ export default function GearLibraryPage() {
   // ── Queries ──────────────────────────────────────────────────────────────────
   const { data: categories = [] } = useQuery({
     queryKey: queryKeys.categories(),
-    queryFn: fetchCategories,
+    queryFn: () => fetchCategories(userId),
   })
   const { data: allItems = [], isLoading } = useQuery({
     queryKey: queryKeys.gearItems(),
-    queryFn: fetchGearItems,
+    queryFn: () => fetchGearItems(userId),
   })
   const { data: lists = [] } = useQuery({
     queryKey: queryKeys.lists(),
-    queryFn: fetchLists,
+    queryFn: () => fetchLists(userId),
   })
 
   // ── Local state ───────────────────────────────────────────────────────────────
