@@ -1,6 +1,7 @@
-import { Routes, Route, Navigate } from 'react-router'
+import { Routes, Route } from 'react-router'
 import NavBar from './NavBar'
 import MobileTabBar from './MobileTabBar'
+import RootRedirect from './RootRedirect'
 import { SidebarDrawerProvider } from './sidebar-drawer-context'
 import GearLibraryPage from '../gear/GearLibraryPage'
 import ListsPage from '../lists/ListsPage'
@@ -26,7 +27,7 @@ export default function AppShell() {
             (the top nav covers every destination), so revert to py-8. */}
         <main className="mx-auto max-w-7xl px-4 pt-4 lg:pt-8 pb-[calc(3.5rem+env(safe-area-inset-bottom)+1rem)] md:pb-8">
           <Routes>
-            <Route path="/" element={<Navigate to="/lists" replace />} />
+            <Route path="/" element={<RootRedirect />} />
             <Route path="/gear" element={<GearLibraryPage />} />
             <Route path="/lists" element={<ListsPage />} />
             <Route path="/lists/:id" element={<ListDetailPage />} />

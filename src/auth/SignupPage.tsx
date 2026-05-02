@@ -16,7 +16,7 @@ export default function SignupPage() {
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null)
 
   if (authLoading) return null
-  if (session) return <Navigate to="/lists" replace />
+  if (session) return <Navigate to="/" replace />
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
