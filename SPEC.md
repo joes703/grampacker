@@ -84,6 +84,39 @@ Categories shown in the public view are filtered to only those that have at leas
 
 ---
 
+## Authentication flows
+
+User-visible steps for the four auth flows. Security mechanism (re-auth, anti-enumeration, recovery-token equivalence, etc.) lives in `SECURITY.md` "Defense-in-depth extras" — this section is the user-facing reference.
+
+### Sign up (`/register`)
+
+- Fields: email, password (8-128 characters).
+- On submit, the page swaps to a "Check your email" state showing the address used.
+- The user clicks the confirmation link in their inbox; the account becomes active.
+- Subsequent sign-in via `/login` lands on `/lists`. (The confirmation link redirects to the Supabase project's "Site URL" by default — `signUp` doesn't pass `emailRedirectTo`.)
+
+### Sign in (`/login`)
+
+- Fields: email, password.
+- Below the form: "Create one" link to `/register`, "Forgot password?" link to `/forgot-password`.
+- Failure messages are deliberately broad ("Invalid email or password.") to limit account-state probing. Unconfirmed accounts get a distinct "Please confirm your email address before signing in" message — a small known account-state leak we accept until a future cleanup.
+
+### In-app password change (`/settings` → Change password)
+
+- Fields: current password, new password (8+ characters), confirm new password.
+- Validation order, all client-side before any network call: current non-empty, new ≥ 8, confirm matches new, new ≠ current. Then verify current via re-auth, then call `updateUser`.
+- The current-password requirement is the auth proof — see `SECURITY.md` "Defense-in-depth extras" for why it's required and why the verification error is genericized.
+- The user stays signed in after a successful change; the re-auth step refreshes the session token transparently.
+
+### Forgot password (`/login` → "Forgot password?")
+
+- **`/forgot-password`** — fields: email. On submit, calls `resetPasswordForEmail` with `redirectTo: ${origin}/reset-password`. The success message is generic — same text whether the email exists or not (anti-enumeration; `SECURITY.md`).
+- **Email** — Supabase's default recovery template (no custom branding yet). Delivery via the Resend SMTP setup (DECISIONS.md ADR 4).
+- **`/reset-password`** — landing page from the email link. Verifies the recovery token (PKCE `?code=` exchanged via `exchangeCodeForSession`, or implicit-flow hash fragment auto-detected by `detectSessionInUrl`). On success, shows new-password + confirm fields. On submit, calls `updateUser` and auto-redirects to `/lists` signed in. Expired/used/invalid recovery tokens render an error state with a "request a new link" path back to `/forgot-password`.
+- The `redirectTo` URL must be allowlisted in the Supabase dashboard's Auth → URL Configuration → Redirect URLs. Production, Cloudflare Pages preview, and local dev origins each need their own `/reset-password` entry.
+
+---
+
 ## Row-level security
 
 The database itself prevents cross-user data access. Even if the frontend has a bug, RLS refuses to serve user A's data to user B. Every table has RLS enabled; policies live in `supabase/migrations/20260425000001_categories_and_gear.sql` and `20260425000002_lists_and_list_items.sql`.
@@ -180,6 +213,20 @@ All four reorder mutations (`reorderCategories`, `reorderGearItems`, `reorderLis
 Important: the cache rewrite assumes `updates` is a permutation of an existing subset of cached rows. Passing arbitrary values silently corrupts the cache. Use `assignSortOrderSlots` (in `lib/grouping.ts`) to build safe `updates` arrays.
 
 See `CLAUDE.md` "Verification" — optimistic UI hides server rejections in milliseconds, so always hard-refresh after writes during testing.
+
+---
+
+## Toast notifications
+
+The app uses a custom toast system for non-blocking notifications. Implementation in `src/lib/toast.ts` (module-level pub/sub store) and `src/components/Toast.tsx` (the `<ToastViewport>` component, mounted once at the app root).
+
+- **Position.** Fixed bottom-right on md+ (`md:right-4 md:bottom-4 md:w-80`); fixed bottom-stretched on mobile (`inset-x-4`), lifted above the `MobileTabBar` plus its safe-area inset (`bottom-[calc(3.5rem+env(safe-area-inset-bottom)+0.5rem)]`) so toasts don't sit under the fixed tab bar.
+- **Auto-dismiss.** 4 seconds default. The store records an absolute `expiresAt` timestamp rather than a relative duration, so cards that mount mid-toast (HMR reload, late subscribe) compute the right remaining delay.
+- **Manual dismiss.** Each toast renders an X close button (`aria-label="Dismiss notification"`). Tapping it removes the toast immediately.
+- **Type variants.** `info` (white background, `Info` icon, neutral), `error` (red-50 background, `TriangleAlert` icon, red accent), `success` (green-50 background, `CheckCircle2` icon, green accent). Selected via the `type` field on `showToast`'s options.
+- **Accessibility.** The viewport carries `role="status"` and `aria-live="polite"` so additive new toasts announce to screen readers without interrupting the current SR output.
+- **Current usage.** Only `makeOptimisticReorder.onError` (reorder failures across all four reorderable surfaces). Most mutation failures continue to surface inline at their call sites or via silent optimistic rollback — the global `MutationCache.onError` in `App.tsx` documents the policy on what gets a toast.
+- **API.** `showToast(message, options?)` exported from `src/lib/toast.ts`. Options: `{ duration?: number; type?: 'info' | 'error' | 'success' }`. Plus `dismissToast(id)` for manual removal and `subscribe(listener)` for the viewport's `useSyncExternalStore` integration.
 
 ---
 
