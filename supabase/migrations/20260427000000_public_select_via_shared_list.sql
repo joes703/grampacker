@@ -1,5 +1,5 @@
 -- Public read access for gear_items and categories that are referenced by a shared list,
--- so the /r/:token public share page can render real item names, descriptions, and category groupings.
+-- so the /r/:slug public share page can render real item names, descriptions, and category groupings.
 
 create policy "gear_items_public_select_via_shared_list" on gear_items
   for select using (
