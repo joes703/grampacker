@@ -20,7 +20,7 @@ type Props = {
 // bottom-left (Select all) and bottom-right (actions) for one logical task.
 //
 // Layout:
-//   Desktop (≥md): single row. [✕] count [Select all/none] ··· [Create list] [Move to category] [Delete]
+//   Desktop (≥md): single row. [✕] count [Select all/none] ··· [Move to category] [Create list] [Delete]
 //   Mobile (<md): two rows. Top: [✕] count [Select all/none]. Bottom: action buttons.
 //
 // With zero items selected the action buttons render disabled rather than
