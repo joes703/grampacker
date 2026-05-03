@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -12,6 +12,16 @@ type Props = {
   lists: List[]
   currentListId: string | null
   userId: string
+  // Controlled open state — lifted to the parent (NavBar's ListHeading) so
+  // the surrounding list-switcher container can also toggle the selector
+  // via its own click handler.
+  open: boolean
+  onOpenChange: (next: boolean) => void
+  // Element the desktop popover anchors to (and that usePortalPopover
+  // treats as the trigger for outside-click). Typically the list-switcher
+  // container, so the dropdown opens flush with the heading row's left
+  // edge rather than from the chevron's corner.
+  anchorRef: RefObject<HTMLElement | null>
 }
 
 // Inline media-query hook, kept private to this file. The selector is the
@@ -32,46 +42,52 @@ function useIsMobile(): boolean {
 // Trigger + dual-surface dropdown: portal popover at md+, Vaul bottom sheet
 // at <md. Same content body for both. Used by the top bar to switch between
 // lists, create a new one inline, or jump to /lists for full management.
-export default function ListSelector({ lists, currentListId, userId }: Props) {
+export default function ListSelector({ lists, currentListId, userId, open, onOpenChange, anchorRef }: Props) {
   const isMobile = useIsMobile()
-  const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
 
   // Desktop popover dismissal. The hook noops when isOpen is false, so this
-  // does no work on mobile (where Vaul handles its own dismissal).
+  // does no work on mobile (where Vaul handles its own dismissal). The
+  // anchor doubles as the trigger for outside-click — clicking anywhere
+  // inside the list-switcher container while open is treated as an inside
+  // click and doesn't dismiss.
   usePortalPopover({
     isOpen: open && !isMobile,
-    onClose: () => setOpen(false),
-    triggerRef,
+    onClose: () => onOpenChange(false),
+    triggerRef: anchorRef,
     contentRef: popoverRef,
   })
 
-  function handleTriggerClick() {
-    if (open) {
-      setOpen(false)
-      return
-    }
-    if (!isMobile && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect()
-      // Align dropdown's left edge with the trigger; clamped to keep ~16px off
-      // the right edge of the viewport for narrow tablets.
-      const dropdownWidth = 280
-      setPos({
-        top: rect.bottom + 4,
-        left: Math.min(rect.left, window.innerWidth - dropdownWidth - 16),
-      })
-    }
-    setOpen(true)
-  }
+  // Compute popover position from the anchor's rect when the desktop
+  // popover is about to render. Clamped on both sides — left to keep
+  // ≥16 px off the viewport edge (tiny windows where the heading row is
+  // itself near the left edge), right via the dropdown-width subtraction
+  // (narrow tablets where the heading row sits close to the right edge).
+  // Stale pos when closed is harmless — the desktop popover only renders
+  // under `open && pos`, so we never read it in the closed state.
+  useEffect(() => {
+    if (!open || isMobile) return
+    const el = anchorRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const dropdownWidth = 280
+    setPos({
+      top: rect.bottom + 4,
+      left: Math.max(16, Math.min(rect.left, window.innerWidth - dropdownWidth - 16)),
+    })
+  }, [open, isMobile, anchorRef])
 
   return (
     <>
       <button
-        ref={triggerRef}
         type="button"
-        onClick={handleTriggerClick}
+        onClick={(e) => {
+          // Stop propagation so the outer container's onClick (which also
+          // toggles the selector) doesn't fire and immediately re-toggle.
+          e.stopPropagation()
+          onOpenChange(!open)
+        }}
         aria-label="Switch list"
         aria-expanded={open}
         className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-500 hover:text-gray-700"
@@ -90,7 +106,7 @@ export default function ListSelector({ lists, currentListId, userId }: Props) {
             lists={lists}
             currentListId={currentListId}
             userId={userId}
-            onClose={() => setOpen(false)}
+            onClose={() => onOpenChange(false)}
           />
         </div>,
         document.body,
@@ -98,7 +114,7 @@ export default function ListSelector({ lists, currentListId, userId }: Props) {
 
       {/* Mobile bottom sheet */}
       {isMobile && (
-        <Drawer.Root open={open} onOpenChange={setOpen} direction="bottom">
+        <Drawer.Root open={open} onOpenChange={onOpenChange} direction="bottom">
           <Drawer.Portal>
             <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40" />
             <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85vh] flex-col rounded-t-xl bg-white pb-[env(safe-area-inset-bottom)]">
@@ -106,7 +122,7 @@ export default function ListSelector({ lists, currentListId, userId }: Props) {
                 <span className="text-sm font-semibold text-gray-900">Switch list</span>
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
+                  onClick={() => onOpenChange(false)}
                   aria-label="Close"
                   className="rounded p-1 text-gray-400 hover:text-gray-600"
                 >
@@ -117,7 +133,7 @@ export default function ListSelector({ lists, currentListId, userId }: Props) {
                 lists={lists}
                 currentListId={currentListId}
                 userId={userId}
-                onClose={() => setOpen(false)}
+                onClose={() => onOpenChange(false)}
               />
             </Drawer.Content>
           </Drawer.Portal>
