@@ -36,6 +36,9 @@ import {
   reorderLists,
   importCsvRowsToList,
   makeOptimisticReorder,
+  makeOptimisticInsert,
+  makeOptimisticUpdate,
+  makeOptimisticDelete,
 } from '../lib/queries'
 import { assignSortOrderSlots } from '../lib/grouping'
 import { asButtonRef } from '../lib/dnd'
@@ -106,8 +109,32 @@ export default function ListsPage() {
 
   const createListMut = useMutation({
     mutationFn: (name: string) => createList(userId, name, lists.length),
+    ...makeOptimisticInsert<List, string>({
+      qc,
+      queryKey: queryKeys.lists(),
+      // Temp slug is fine — no UI reads slug mid-creation. The settled
+      // refetch replaces the placeholder with the server row carrying
+      // the real generated slug. Other defaults match what the server
+      // assigns: description null, is_shared false, sort_order at the
+      // current array end.
+      optimistic: (name) => {
+        const now = new Date().toISOString()
+        return {
+          id: `temp-${crypto.randomUUID()}`,
+          user_id: userId,
+          name,
+          description: null,
+          slug: `temp-${crypto.randomUUID()}`,
+          is_shared: false,
+          sort_order: lists.length,
+          created_at: now,
+          updated_at: now,
+        }
+      },
+    }),
+    // Helper provides onSettled (invalidate); onSuccess runs first to
+    // close the create dialog and navigate to the new list.
     onSuccess: (created) => {
-      qc.invalidateQueries({ queryKey: queryKeys.lists() })
       setDialog(null)
       navigate(`/lists/${created.id}`)
     },
@@ -115,7 +142,12 @@ export default function ListsPage() {
 
   const renameMut = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => updateList(id, { name }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
+    ...makeOptimisticUpdate<List, { id: string; name: string }>({
+      qc,
+      queryKey: queryKeys.lists(),
+      id: ({ id }) => id,
+      apply: (item, { name }) => ({ ...item, name }),
+    }),
   })
 
   const duplicateMut = useMutation({
@@ -128,7 +160,11 @@ export default function ListsPage() {
 
   const deleteListMut = useMutation({
     mutationFn: (id: string) => deleteList(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
+    ...makeOptimisticDelete<List, string>({
+      qc,
+      queryKey: queryKeys.lists(),
+      id: (id) => id,
+    }),
   })
 
   const reorderListsMut = useMutation({
