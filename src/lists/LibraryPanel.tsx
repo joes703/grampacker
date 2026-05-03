@@ -169,16 +169,18 @@ function CategoryGroup({
                   onClick={() => (inList ? onRemove(item) : onAdd(item))}
                   title={inList ? 'Click to remove from list' : 'Click to add to list'}
                   aria-label={inList ? `Remove ${item.name} from list` : `Add ${item.name} to list`}
-                  // In-list rows pick up a soft-blue rest tint plus a
-                  // slightly tighter hover; the existing dim on the name
-                  // and weight text remains the primary cue. The check
-                  // icon was previously here but read as redundant noise
-                  // alongside the dim — removed.
-                  className={`flex w-full items-center gap-2 px-3 py-0.5 text-left focus:outline-none ${
-                    inList
-                      ? 'bg-blue-50 hover:bg-blue-100 focus:bg-blue-100'
-                      : 'hover:bg-gray-50 focus:bg-gray-100'
-                  }`}
+                  // Hover/focus background is uniform across in-list and
+                  // available rows; the in-list signal is carried entirely
+                  // by the dimmed name and weight text below. An earlier
+                  // pass added a soft-blue rest tint to in-list rows, but
+                  // toggling that bg class on click triggered a Chrome
+                  // compositor paint deferral (data flow correct, DOM
+                  // correct, but the parent rounded-xl + overflow-hidden
+                  // ancestor chain on the sidebar aside didn't invalidate
+                  // its layer until another event repainted). Dropping
+                  // the tint avoids the bug without browser-specific
+                  // paint hints; dimming alone is sufficient visual cue.
+                  className="flex w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
                 >
                   <span
                     className={`flex-1 min-w-0 truncate text-sm font-normal ${
