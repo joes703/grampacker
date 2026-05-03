@@ -151,13 +151,30 @@ export default function ItemRow({
             onChange={(e) => onUpdate?.({ is_packed: e.target.checked })}
             className="h-4 w-4 rounded border-gray-300 text-blue-600 shrink-0"
           />
-          <span
-            className={`flex-1 min-w-0 truncate font-normal ${
-              item.is_packed ? 'text-gray-400 line-through' : 'text-gray-900'
-            }`}
-          >
-            {name}
-          </span>
+          {/* Name + description at lg+ in the same 2:3 proportion as edit
+              mode. <lg keeps the single-column name-only layout (mirrors
+              MobileRowBody's edit-mode treatment of dropping description
+              on small viewports). */}
+          <div className="flex flex-1 min-w-0 items-center gap-3">
+            <div className="flex-[2] min-w-0">
+              <span
+                className={`block w-full truncate font-normal ${
+                  item.is_packed ? 'text-gray-400 line-through' : 'text-gray-900'
+                }`}
+              >
+                {name}
+              </span>
+            </div>
+            <div className="hidden lg:block lg:flex-[3] min-w-0">
+              <span
+                className={`block w-full truncate text-sm font-normal ${
+                  item.is_packed ? 'text-gray-300 line-through' : 'text-gray-500'
+                }`}
+              >
+                {description}
+              </span>
+            </div>
+          </div>
         </label>
         <span className="shrink-0 w-6 lg:w-7 inline-flex items-center justify-center">
           {item.is_worn && <Shirt size={14} className="text-purple-600" aria-label="Worn" />}
