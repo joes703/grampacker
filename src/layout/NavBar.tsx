@@ -1,11 +1,50 @@
-import { Link, NavLink, useNavigate } from 'react-router'
-import { Backpack, HelpCircle, Info, List, LogOut, PanelLeftOpen, Settings } from 'lucide-react'
+import { useState } from 'react'
+import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router'
+import { useQuery } from '@tanstack/react-query'
+import { ClipboardList, HelpCircle, Info, LogOut, PanelLeftOpen, Settings } from 'lucide-react'
+import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../lib/supabase'
+import { queryKeys, fetchLists } from '../lib/queries'
+import { useWeightUnit } from '../lib/use-weight-unit'
 import HamburgerMenu from './HamburgerMenu'
+import ListSelector from './ListSelector'
+import ListActionsKebab from './ListActionsKebab'
 import { useSidebarDrawer } from './sidebar-drawer-context'
+import InlineTitle from '../lists/InlineTitle'
+import PrivacyButton from '../lists/PrivacyButton'
+import PrivacyPanel from '../lists/PrivacyPanel'
+import Modal from '../components/Modal'
+import { updateList } from '../lib/queries'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+
+// Per-route slot resolution. Mounted only inside AppShell, which is gated by
+// PrivateRoute — so this component is never rendered on /login, /register,
+// /forgot-password, /reset-password, /about, or /r/:slug. The path-match
+// logic only needs to handle authenticated routes plus the AppShell catch-
+// all. AppShell can't pass routeId via props (NavBar sits outside the inner
+// <Routes>), so the current list id is parsed from pathname here.
+type RouteContext =
+  | { kind: 'list-detail'; listId: string }
+  | { kind: 'manage-lists' }
+  | { kind: 'gear' }
+  | { kind: 'settings' }
+  | { kind: 'help' }
+  | { kind: 'other' }
+
+function resolveRoute(pathname: string): RouteContext {
+  const listMatch = pathname.match(/^\/lists\/([^/]+)$/)
+  if (listMatch?.[1]) return { kind: 'list-detail', listId: listMatch[1] }
+  if (pathname === '/lists') return { kind: 'manage-lists' }
+  if (pathname === '/gear') return { kind: 'gear' }
+  if (pathname === '/settings') return { kind: 'settings' }
+  if (pathname === '/help') return { kind: 'help' }
+  return { kind: 'other' }
+}
 
 export default function NavBar() {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const route = resolveRoute(pathname)
   const { available, setOpen } = useSidebarDrawer()
 
   async function handleSignOut() {
@@ -15,101 +54,266 @@ export default function NavBar() {
 
   return (
     <header className="border-b border-gray-200 bg-white">
-      <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 lg:gap-6 px-4">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 sm:gap-3 lg:gap-6 px-4">
         {/* Mobile sidebar trigger — only renders when the active page has
             registered sidebar content (today: ListDetailPage). On pages
-            without a drawer, this slot collapses and the brand sits at
-            the left edge. Hidden on desktop, where the page renders the
-            equivalent left aside inline. */}
+            without a drawer, this slot collapses and the brand sits at the
+            left edge. Hidden on lg+ where the page renders the equivalent
+            left aside inline. */}
         {available && (
           <button
             type="button"
             onClick={() => setOpen(true)}
             aria-label="Open gear library"
-            className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
+            className="lg:hidden inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
           >
             <PanelLeftOpen size={20} />
           </button>
         )}
-        <Link to="/" className="text-lg font-bold text-gray-900 hover:text-gray-700">
+
+        {/* Brand. Hidden on <md to free space for the route heading +
+            controls (the route's own heading carries the identity). On md+
+            it's the home link. */}
+        <Link
+          to="/"
+          className="hidden md:inline-block text-lg font-bold text-gray-900 hover:text-gray-700"
+        >
           grampacker
         </Link>
-        {/* Top link cluster. Three responsive bands:
-            - lg+ (≥1024): icons + visible text labels.
-            - md to lg (768-1023): icon-only — labels collapse via
-              sr-only lg:not-sr-only so screen readers still read them
-              and the link's accessible name stays correct without a
-              separate aria-label. `title` provides a hover hint.
-            - < md (<768): hidden entirely; the bottom MobileTabBar
-              covers Lists/Gear and the HamburgerMenu covers the rest. */}
-        <div className="ml-auto hidden md:flex items-center gap-1">
-          <NavLink
-            to="/lists"
-            title="Lists"
-            // Highlight on /lists itself AND any /lists/:id detail route, so
-            // the nav doesn't go dim once the user clicks into a card.
-            className={({ isActive }) =>
-              `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
-            }
-          >
-            <List size={14} />
-            <span className="sr-only lg:not-sr-only">Lists</span>
-          </NavLink>
-          <NavLink
-            to="/gear"
-            title="Gear"
-            className={({ isActive }) =>
-              `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
-            }
-          >
-            <Backpack size={14} />
-            <span className="sr-only lg:not-sr-only">Gear</span>
-          </NavLink>
-          <NavLink
-            to="/help"
-            title="Help"
-            className={({ isActive }) =>
-              `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
-            }
-          >
-            <HelpCircle size={14} />
-            <span className="sr-only lg:not-sr-only">Help</span>
-          </NavLink>
-          <NavLink
-            to="/about"
-            title="About"
-            className={({ isActive }) =>
-              `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
-            }
-          >
-            <Info size={14} />
-            <span className="sr-only lg:not-sr-only">About</span>
-          </NavLink>
-          <NavLink
-            to="/settings"
-            title="Settings"
-            className={({ isActive }) =>
-              `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
-            }
-          >
-            <Settings size={14} />
-            <span className="sr-only lg:not-sr-only">Settings</span>
-          </NavLink>
-          <button
-            onClick={handleSignOut}
-            title="Sign out"
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
-          >
-            <LogOut size={14} />
-            <span className="sr-only lg:not-sr-only">Sign out</span>
-          </button>
-        </div>
-        {/* < md trigger for the secondary-destination popover. md-lg uses the
-            icon-only top cluster above; lg+ shows full labels. */}
-        <div className="ml-auto md:hidden">
-          <HamburgerMenu />
+
+        {/* Heading slot — varies by route. */}
+        <RouteHeading route={route} />
+
+        {/* Right cluster — list-context controls (only on /lists/:id) and
+            the persistent secondary destinations (Help/About/Settings/Sign
+            out at md+, HamburgerMenu at <md). */}
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          {route.kind === 'list-detail' && <ListContextControls listId={route.listId} />}
+
+          {/* Persistent links on md+. Lists/Gear NavLinks removed — list
+              switching is the chevron selector, gear access moves to the
+              sidebar in Phase 3. */}
+          <div className="hidden md:flex items-center gap-1">
+            <NavLink
+              to="/help"
+              title="Help"
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
+              }
+            >
+              <HelpCircle size={14} />
+              <span className="sr-only lg:not-sr-only">Help</span>
+            </NavLink>
+            <NavLink
+              to="/about"
+              title="About"
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
+              }
+            >
+              <Info size={14} />
+              <span className="sr-only lg:not-sr-only">About</span>
+            </NavLink>
+            <NavLink
+              to="/settings"
+              title="Settings"
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
+              }
+            >
+              <Settings size={14} />
+              <span className="sr-only lg:not-sr-only">Settings</span>
+            </NavLink>
+            <button
+              onClick={handleSignOut}
+              title="Sign out"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+            >
+              <LogOut size={14} />
+              <span className="sr-only lg:not-sr-only">Sign out</span>
+            </button>
+          </div>
+
+          {/* < md trigger for the secondary-destination popover. */}
+          <div className="md:hidden">
+            <HamburgerMenu />
+          </div>
         </div>
       </div>
     </header>
+  )
+}
+
+// Route-specific heading slot. /lists/:id loads the lists query and renders
+// InlineTitle + ListSelector once the current list resolves. Other routes
+// render a static text heading. Loading state on /lists/:id shows just the
+// chevron-less placeholder so the bar's height stays stable.
+function RouteHeading({ route }: { route: RouteContext }) {
+  const { session } = useAuth()
+  const userId = session?.user.id ?? ''
+
+  // Lists are fetched here for both the heading text and the selector body.
+  // The query is also used by ListDetailPage / RootRedirect — same key, so
+  // there's a single source of truth in the cache.
+  const { data: lists = [] } = useQuery({
+    queryKey: queryKeys.lists(),
+    queryFn: () => fetchLists(userId),
+    // Don't fetch when there's no list-context — the static-heading routes
+    // don't need lists, but we keep the query enabled there too so the
+    // cache is warm when the user switches into a list. Cheap.
+  })
+
+  if (route.kind === 'list-detail') {
+    const list = lists.find((l) => l.id === route.listId)
+    if (!list) {
+      // Either the lists query is still loading, or the URL points at a
+      // list the current user can't see / that no longer exists. Either
+      // way, render no heading content rather than thrash.
+      return <div className="flex-1 min-w-0" />
+    }
+    return <ListHeading list={list} lists={lists} userId={userId} />
+  }
+
+  if (route.kind === 'manage-lists') return <StaticHeading>Manage Lists</StaticHeading>
+  if (route.kind === 'gear') return <StaticHeading>Gear Library</StaticHeading>
+  if (route.kind === 'settings') return <StaticHeading>Settings</StaticHeading>
+  if (route.kind === 'help') return <StaticHeading>Help</StaticHeading>
+  return <div className="flex-1 min-w-0" />
+}
+
+function StaticHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h1 className="flex-1 min-w-0 truncate text-base sm:text-lg font-semibold text-gray-900">
+      {children}
+    </h1>
+  )
+}
+
+function ListHeading({
+  list,
+  lists,
+  userId,
+}: {
+  list: import('../lib/types').List
+  lists: import('../lib/types').List[]
+  userId: string
+}) {
+  const qc = useQueryClient()
+  const renameMut = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => updateList(id, { name }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
+  })
+  return (
+    // Visual container: name + chevron read as one "list switcher". Subtle
+    // bg at rest, lifts to the existing InlineTitle hover bg on hover over
+    // either child. Cursor-text comes only from the name button so the
+    // chevron's default cursor still differentiates the two click targets.
+    <div className="flex flex-1 min-w-0 items-center rounded-lg bg-gray-50 transition-colors hover:bg-gray-100">
+      <InlineTitle
+        key={list.id}
+        name={list.name}
+        onSave={(v) => renameMut.mutate({ id: list.id, name: v })}
+      />
+      <ListSelector lists={lists} currentListId={list.id} userId={userId} />
+    </div>
+  )
+}
+
+// /lists/:id-only controls. Renders inline g/oz, Pack, Share at md+; renders
+// inline g/oz + a kebab containing Pack and Share at <md. Share-from-kebab
+// opens a Modal hosting PrivacyPanel — same content as PrivacyButton's
+// popover, just in a centered dialog instead of an anchored popover.
+function ListContextControls({ listId }: { listId: string }) {
+  const { session } = useAuth()
+  const userId = session?.user.id ?? ''
+  const { data: lists = [] } = useQuery({
+    queryKey: queryKeys.lists(),
+    queryFn: () => fetchLists(userId),
+  })
+  const list = lists.find((l) => l.id === listId)
+  const { weightUnit, toggleWeightUnit } = useWeightUnit()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const isPackMode = searchParams.get('mode') === 'pack'
+  const [shareOpen, setShareOpen] = useState(false)
+
+  function togglePackMode() {
+    setSearchParams(
+      (prev) => {
+        const np = new URLSearchParams(prev)
+        if (isPackMode) np.delete('mode')
+        else np.set('mode', 'pack')
+        return np
+      },
+      { replace: false },
+    )
+  }
+
+  // Renders nothing list-specific until the list resolves — otherwise we'd
+  // briefly render Pack/Share against a stale or absent list. g/oz is
+  // global and could render eagerly, but keeping the cluster atomic
+  // simplifies the layout.
+  if (!list) return null
+
+  return (
+    <>
+      {/* g/oz toggle — same on every viewport. The text label is short
+          enough to render even at 375px without crowding. */}
+      <button
+        onClick={toggleWeightUnit}
+        title={`Switch to ${weightUnit === 'g' ? 'oz' : 'g'}`}
+        aria-label={`Toggle weight unit (currently ${weightUnit})`}
+        className="rounded-lg border border-gray-300 px-2 sm:px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+      >
+        {weightUnit}
+      </button>
+
+      {/* md+ inline controls */}
+      <button
+        onClick={togglePackMode}
+        title={isPackMode ? 'Pack mode: on' : 'Pack mode: off'}
+        aria-label="Pack mode"
+        aria-pressed={isPackMode}
+        className={`hidden md:inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
+          isPackMode
+            ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+            : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+        }`}
+      >
+        <ClipboardList size={14} />
+        <span>Pack</span>
+      </button>
+      <div className="hidden md:flex">
+        <PrivacyButton list={list} />
+      </div>
+
+      {/* <md kebab containing Pack + Share */}
+      <div className="md:hidden">
+        <ListActionsKebab list={list} onShareClick={() => setShareOpen(true)} />
+      </div>
+
+      {/* Mobile share modal — only opens via the kebab. PrivacyPanel handles
+          the toggle, URL, and copy interactions; identical body to
+          PrivacyButton's desktop popover. */}
+      <Modal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        title="Share list"
+        className="w-full max-w-sm"
+      >
+        <div className="p-4">
+          <h2 className="mb-3 text-base font-semibold text-gray-900">Share list</h2>
+          <PrivacyPanel list={list} />
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShareOpen(false)}
+              className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </>
   )
 }

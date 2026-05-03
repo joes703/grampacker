@@ -1,6 +1,5 @@
 import { Routes, Route } from 'react-router'
 import NavBar from './NavBar'
-import MobileTabBar from './MobileTabBar'
 import RootRedirect from './RootRedirect'
 import { SidebarDrawerProvider } from './sidebar-drawer-context'
 import GearLibraryPage from '../gear/GearLibraryPage'
@@ -22,10 +21,7 @@ export default function AppShell() {
     <SidebarDrawerProvider>
       <div className="min-h-screen bg-gray-50">
         <NavBar />
-        {/* Bottom padding under md clears the fixed MobileTabBar (h-14 = 56 px)
-            plus its safe-area-inset-bottom. At md+ the tab bar is hidden
-            (the top nav covers every destination), so revert to py-8. */}
-        <main className="mx-auto max-w-7xl px-4 pt-4 lg:pt-8 pb-[calc(3.5rem+env(safe-area-inset-bottom)+1rem)] md:pb-8">
+        <main className="mx-auto max-w-7xl px-4 pt-4 lg:pt-8 pb-8">
           <Routes>
             <Route path="/" element={<RootRedirect />} />
             <Route path="/gear" element={<GearLibraryPage />} />
@@ -36,7 +32,6 @@ export default function AppShell() {
             <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
-        <MobileTabBar />
       </div>
     </SidebarDrawerProvider>
   )
