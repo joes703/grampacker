@@ -3,29 +3,36 @@ import { useState, useRef, useEffect } from 'react'
 type Props = {
   name: string
   onSave: (next: string) => void
+  // Increment to enter edit mode externally. The display-mode click-to-edit
+  // moved to the parent's pencil button, so this is the only entry point
+  // into edit mode. Mirrors the focusSearchTrigger counter idiom from
+  // LibraryPanel — skipInitialEdit guards the mount-time effect run.
+  editTrigger?: number
+  // Notifies the parent when edit mode starts/ends so the parent can
+  // suppress its own click handlers (e.g. the list-switcher container's
+  // open-selector click) and hide the pencil affordance during edit.
+  onEditingChange?: (editing: boolean) => void
 }
 
-// Click-to-rename, used by the top bar on /lists/:id. The visible element
-// is a <button> styled as a heading; click puts it into edit mode. The
-// surrounding container (in NavBar's ListHeading) provides the hover/rest
-// background; this component contributes only the cursor-text affordance
-// over the name area, distinguishing it from the adjacent chevron (the
-// list-switch affordance).
+// Inline rename for the top bar's list name on /lists/:id. The display
+// element is now a plain <h1>; the rename trigger lives outside this
+// component (a pencil button in NavBar's ListHeading) so the surrounding
+// list-switcher container can claim mouse clicks for the more frequent
+// switch-list action.
 //
 // Validation: empty trimmed name on explicit save (Enter) renders an inline
 // red error below the input and keeps the input in edit mode so the user
 // can fix or Escape to revert. The error clears on the next keystroke or on
 // Escape. Empty on blur is treated as an implicit cancel — the input exits
 // edit mode silently rather than stranding an unfocused error.
-export default function InlineTitle({ name, onSave }: Props) {
+export default function InlineTitle({ name, onSave, editTrigger, onEditingChange }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(name)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (editing) inputRef.current?.select()
-  }, [editing])
+  // Skip the mount-time effect run so a fresh InlineTitle instance (each
+  // list switch via key=list.id in the parent) doesn't auto-enter edit.
+  const skipInitialEdit = useRef(true)
 
   function startEdit() {
     setDraft(name)
@@ -38,6 +45,23 @@ export default function InlineTitle({ name, onSave }: Props) {
     setError(null)
     setEditing(false)
   }
+
+  useEffect(() => {
+    if (editing) inputRef.current?.select()
+  }, [editing])
+
+  useEffect(() => {
+    if (skipInitialEdit.current) {
+      skipInitialEdit.current = false
+      return
+    }
+    startEdit()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- startEdit is stable; only editTrigger changes drive entry
+  }, [editTrigger])
+
+  useEffect(() => {
+    onEditingChange?.(editing)
+  }, [editing, onEditingChange])
 
   function commit({ explicit }: { explicit: boolean }) {
     const trimmed = draft.trim()
@@ -87,21 +111,12 @@ export default function InlineTitle({ name, onSave }: Props) {
     )
   }
 
-  // Visual is still an <h1> for document outline; the inner element is a
-  // transparent <button> so the rename trigger is keyboard-reachable
-  // (Tab + Enter/Space). The container's hover bg comes from the wrapping
-  // ListHeading div; this button only contributes cursor-text to signal
-  // editability over the name area specifically.
+  // Plain heading — no inner button, no click-to-edit. The list-switcher
+  // container in NavBar owns the click target (opens the selector); rename
+  // entry comes from the sibling pencil affordance.
   return (
-    <h1 className="flex-1 min-w-0">
-      <button
-        type="button"
-        onClick={startEdit}
-        title="Click to rename"
-        className="block w-full cursor-text truncate bg-transparent px-2 py-0.5 text-left text-xl font-semibold text-gray-900"
-      >
-        {name}
-      </button>
+    <h1 className="flex-1 min-w-0 truncate px-2 py-0.5 text-xl font-semibold text-gray-900">
+      {name}
     </h1>
   )
 }
