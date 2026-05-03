@@ -97,10 +97,24 @@ export default function ListSelector({ lists, currentListId, userId, open, onOpe
 
       {/* Desktop popover */}
       {open && !isMobile && pos && createPortal(
+        // Stop event propagation so clicks and keystrokes don't bubble
+        // through the React tree to NavBar's ListHeading container,
+        // which also has onClick (toggles the selector) and onKeyDown
+        // (Space/Enter activate). Without this, clicking "+ New list"
+        // inside the popover would trigger the container's toggle and
+        // close the popover before the form could render. The keystroke
+        // guard mirrors the click guard — defense in depth alongside
+        // NavBar's target check on its keyboard handler. The div is
+        // strictly a propagation barrier; its interactive children own
+        // their own a11y semantics, so the static-element-interactions
+        // rule is misfiring here.
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- propagation barrier; interactive children handle their own semantics
         <div
           ref={popoverRef}
           className="fixed z-50 w-[280px] rounded-lg border border-gray-200 bg-white shadow-lg"
           style={{ top: pos.top, left: pos.left }}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
         >
           <SelectorBody
             lists={lists}
@@ -117,7 +131,13 @@ export default function ListSelector({ lists, currentListId, userId, open, onOpe
         <Drawer.Root open={open} onOpenChange={onOpenChange} direction="bottom">
           <Drawer.Portal>
             <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40" />
-            <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85vh] flex-col rounded-t-xl bg-white pb-[env(safe-area-inset-bottom)]">
+            <Drawer.Content
+              className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85vh] flex-col rounded-t-xl bg-white pb-[env(safe-area-inset-bottom)]"
+              // Same propagation guard as the desktop popover — events
+              // inside the bottom sheet must not bubble to the container.
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
               <Drawer.Title className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
                 <span className="text-sm font-semibold text-gray-900">Switch list</span>
                 <button
