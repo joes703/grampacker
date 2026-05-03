@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query'
 import { ClipboardList, HelpCircle, Info, LogOut, PanelLeftOpen, Pencil, Settings } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../lib/supabase'
-import { queryKeys, fetchLists } from '../lib/queries'
+import { queryKeys, fetchLists, updateList, makeOptimisticUpdate } from '../lib/queries'
+import type { List } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import HamburgerMenu from './HamburgerMenu'
 import ListSelector from './ListSelector'
@@ -14,7 +15,6 @@ import InlineTitle from '../lists/InlineTitle'
 import PrivacyButton from '../lists/PrivacyButton'
 import PrivacyPanel from '../lists/PrivacyPanel'
 import Modal from '../components/Modal'
-import { updateList } from '../lib/queries'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 // Per-route slot resolution. Mounted only inside AppShell, which is gated by
@@ -201,7 +201,12 @@ function ListHeading({
   const qc = useQueryClient()
   const renameMut = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => updateList(id, { name }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
+    ...makeOptimisticUpdate<List, { id: string; name: string }>({
+      qc,
+      queryKey: queryKeys.lists(),
+      id: ({ id }) => id,
+      apply: (item, { name }) => ({ ...item, name }),
+    }),
   })
   const containerRef = useRef<HTMLDivElement>(null)
   const [selectorOpen, setSelectorOpen] = useState(false)

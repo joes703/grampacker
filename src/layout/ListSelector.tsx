@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Drawer } from 'vaul'
 import { Check, ChevronDown, Plus, X } from 'lucide-react'
-import { queryKeys, createList } from '../lib/queries'
+import { queryKeys, createList, makeOptimisticInsert } from '../lib/queries'
 import type { List } from '../lib/types'
 import { usePortalPopover } from '../lib/use-portal-popover'
 
@@ -181,8 +181,25 @@ function SelectorBody({
 
   const createMut = useMutation({
     mutationFn: (name: string) => createList(userId, name, lists.length),
+    ...makeOptimisticInsert<List, string>({
+      qc,
+      queryKey: queryKeys.lists(),
+      optimistic: (name) => {
+        const now = new Date().toISOString()
+        return {
+          id: `temp-${crypto.randomUUID()}`,
+          user_id: userId,
+          name,
+          description: null,
+          slug: `temp-${crypto.randomUUID()}`,
+          is_shared: false,
+          sort_order: lists.length,
+          created_at: now,
+          updated_at: now,
+        }
+      },
+    }),
     onSuccess: (created) => {
-      qc.invalidateQueries({ queryKey: queryKeys.lists() })
       setCreating(false)
       setDraft('')
       onClose()
