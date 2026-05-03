@@ -36,6 +36,9 @@ import {
   deleteGearItem,
   importCsvRowsToList,
   makeOptimisticReorder,
+  makeOptimisticInsert,
+  makeOptimisticUpdate,
+  makeOptimisticDelete,
   type ListItemPatch,
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, List } from '../lib/types'
@@ -185,18 +188,55 @@ function ListDetailInner({
   const addMut = useMutation({
     mutationFn: (item: GearItem) =>
       addGearItemToList(listId, userId, item.id, listItems.length),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) }),
+    ...makeOptimisticInsert<ListItemWithGear, GearItem>({
+      qc,
+      queryKey: queryKeys.listItems(listId),
+      optimistic: (item) => {
+        const now = new Date().toISOString()
+        return {
+          // Temp id replaced by the server row on settled refetch. The
+          // crypto.randomUUID() prefix avoids any collision with real ids.
+          id: `temp-${crypto.randomUUID()}`,
+          list_id: listId,
+          user_id: userId,
+          gear_item_id: item.id,
+          gear_item: {
+            id: item.id,
+            name: item.name,
+            description: item.description,
+            weight_grams: item.weight_grams,
+            category_id: item.category_id,
+          },
+          quantity: 1,
+          is_worn: false,
+          is_consumable: false,
+          is_packed: false,
+          sort_order: listItems.length,
+          created_at: now,
+          updated_at: now,
+        }
+      },
+    }),
   })
 
   const updateMut = useMutation({
     mutationFn: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) =>
       updateListItem(itemId, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) }),
+    ...makeOptimisticUpdate<ListItemWithGear, { itemId: string; patch: ListItemPatch }>({
+      qc,
+      queryKey: queryKeys.listItems(listId),
+      id: ({ itemId }) => itemId,
+      apply: (item, { patch }) => ({ ...item, ...patch }),
+    }),
   })
 
   const deleteMut = useMutation({
     mutationFn: (itemId: string) => deleteListItem(itemId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) }),
+    ...makeOptimisticDelete<ListItemWithGear, string>({
+      qc,
+      queryKey: queryKeys.listItems(listId),
+      id: (itemId) => itemId,
+    }),
   })
 
   // CSV import targeting the CURRENT list (not a new one — that path lives
@@ -243,7 +283,12 @@ function ListDetailInner({
 
   const notesMut = useMutation({
     mutationFn: (description: string) => updateList(listId, { description: description || null }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
+    ...makeOptimisticUpdate<List, string>({
+      qc,
+      queryKey: queryKeys.lists(),
+      id: () => listId,
+      apply: (item, description) => ({ ...item, description: description || null }),
+    }),
   })
 
   // Editing an item's name/description from the list view writes to gear_items so
