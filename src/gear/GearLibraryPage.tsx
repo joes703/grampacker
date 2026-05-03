@@ -39,6 +39,9 @@ import {
   createListFromSelection,
   importGearItems,
   makeOptimisticReorder,
+  makeOptimisticInsert,
+  makeOptimisticUpdate,
+  makeOptimisticDelete,
 } from '../lib/queries'
 import type { Category, GearItem } from '../lib/types'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
@@ -132,7 +135,6 @@ export default function GearLibraryPage() {
     qc.invalidateQueries({ queryKey: queryKeys.categories() })
     qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
   }
-  const invalidateCats = () => qc.invalidateQueries({ queryKey: queryKeys.categories() })
   const invalidateItems = () => qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
   // Broad ['list-items'] — every list view embeds gear_item via a Supabase
   // join, so any write that touches gear_items (or cascades into list_items)
@@ -143,20 +145,44 @@ export default function GearLibraryPage() {
   const addCategory = useMutation({
     mutationFn: (name: string) =>
       createCategory(userId, name, categories.length),
-    onSuccess: invalidateCats,
+    ...makeOptimisticInsert<Category, string>({
+      qc,
+      queryKey: queryKeys.categories(),
+      // Server assigns is_default=false for user-created categories
+      // (defaults are seeded). Placeholder mirrors that.
+      optimistic: (name) => ({
+        id: `temp-${crypto.randomUUID()}`,
+        user_id: userId,
+        name,
+        sort_order: categories.length,
+        is_default: false,
+        created_at: new Date().toISOString(),
+      }),
+    }),
   })
 
   const renameCategory = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => updateCategory(id, { name }),
-    onSuccess: invalidateCats,
+    ...makeOptimisticUpdate<Category, { id: string; name: string }>({
+      qc,
+      queryKey: queryKeys.categories(),
+      id: ({ id }) => id,
+      apply: (item, { name }) => ({ ...item, name }),
+    }),
   })
 
   const removeCategory = useMutation({
     mutationFn: (id: string) => deleteCategory(id),
     // Deleting a category cascades to gear_items.category_id (SET NULL),
-    // which is embedded in list_items via the gear join — invalidate
-    // list-items too so open list views reflect the new uncategorized state.
-    onSuccess: () => { invalidateBoth(); invalidateListItems() },
+    // which is embedded in list_items via the gear join — invalidate both
+    // side caches so open gear / list views reflect the new uncategorized
+    // state once the round-trip settles.
+    ...makeOptimisticDelete<Category, string>({
+      qc,
+      queryKey: queryKeys.categories(),
+      invalidateKeys: [queryKeys.gearItems(), ['list-items']],
+      id: (id) => id,
+    }),
   })
 
   const reorderCats = useMutation({
@@ -167,20 +193,52 @@ export default function GearLibraryPage() {
   const addItem = useMutation({
     mutationFn: (data: Parameters<typeof createGearItem>[1]) =>
       createGearItem(userId, data, allItems.length),
-    onSuccess: invalidateItems,
+    ...makeOptimisticInsert<GearItem, Parameters<typeof createGearItem>[1]>({
+      qc,
+      queryKey: queryKeys.gearItems(),
+      optimistic: (data) => {
+        const now = new Date().toISOString()
+        return {
+          id: `temp-${crypto.randomUUID()}`,
+          user_id: userId,
+          category_id: data.category_id,
+          name: data.name,
+          description: data.description,
+          weight_grams: data.weight_grams,
+          sort_order: allItems.length,
+          created_at: now,
+          updated_at: now,
+        }
+      },
+    }),
   })
 
   const editItem = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateGearItem>[1] }) =>
       updateGearItem(id, patch),
-    onSuccess: () => { invalidateItems(); invalidateListItems() },
+    // Side cache: ['list-items'] (broad). Lists embed gear via join, so
+    // any name/description/weight/category change must refetch list views
+    // for them to pick up the embedded data. The cache write here is
+    // primary-only — list-items just refetches on settled.
+    ...makeOptimisticUpdate<GearItem, { id: string; patch: Parameters<typeof updateGearItem>[1] }>({
+      qc,
+      queryKey: queryKeys.gearItems(),
+      invalidateKeys: [['list-items']],
+      id: ({ id }) => id,
+      apply: (item, { patch }) => ({ ...item, ...patch }),
+    }),
   })
 
   const removeItem = useMutation({
     mutationFn: deleteGearItem,
     // CASCADE removes the matching list_items rows in the DB; invalidate
     // ['list-items'] so any open list view refetches and drops them.
-    onSuccess: () => { invalidateItems(); invalidateListItems() },
+    ...makeOptimisticDelete<GearItem, string>({
+      qc,
+      queryKey: queryKeys.gearItems(),
+      invalidateKeys: [['list-items']],
+      id: (id) => id,
+    }),
   })
 
   const bulkDelete = useMutation({
