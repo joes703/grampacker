@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router'
+import { Link, useParams, useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   DndContext,
@@ -16,7 +16,7 @@ import {
   arrayMove,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable'
-import { X } from 'lucide-react'
+import { ChevronRight, X } from 'lucide-react'
 import { Drawer } from 'vaul'
 import { useAuth } from '../auth/AuthProvider'
 import {
@@ -415,10 +415,19 @@ function ListDetailInner({
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
           >
             <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
-              <div className="flex items-center px-3 py-2 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2">
                 <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Gear library
+                  Gear Library
                 </span>
+                {/* Forward affordance to the gear management page. ?from=
+                    plumbs the originating list id so /gear's Back link
+                    round-trips here rather than to the manage-lists view. */}
+                <Link
+                  to={`/gear?from=${listId}`}
+                  className="inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                >
+                  Manage <ChevronRight size={12} />
+                </Link>
               </div>
               <div className="flex-1 overflow-hidden">
                 <LibraryPanel
@@ -559,13 +568,23 @@ function ListDetailInner({
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40 lg:hidden" />
           <Drawer.Content className="fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-sm flex-col bg-gray-50 lg:hidden">
-            <Drawer.Title className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
-              <span className="text-sm font-semibold text-gray-900">Gear library</span>
+            <Drawer.Title className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-3">
+              <span className="text-sm font-semibold text-gray-900">Gear Library</span>
+              {/* Same forward affordance as the desktop aside; tapping
+                  closes the drawer first so the user sees its exit
+                  animation rather than an abrupt unmount on route change. */}
+              <Link
+                to={`/gear?from=${listId}`}
+                onClick={() => setDrawerOpen(false)}
+                className="inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
+              >
+                Manage <ChevronRight size={12} />
+              </Link>
               <button
                 type="button"
                 onClick={() => setDrawerOpen(false)}
                 aria-label="Close gear library"
-                className="rounded p-1 text-gray-400 hover:text-gray-600"
+                className="ml-auto rounded p-1 text-gray-400 hover:text-gray-600"
               >
                 <X size={18} />
               </button>
