@@ -22,12 +22,14 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState(new Set<string>())
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const skipInitialFocus = useRef(true)
+  // Capture the focusSearchTrigger value at mount and compare on every
+  // effect run. A previous "skip flag mutated inside the effect" pattern
+  // broke under StrictMode's dev-only double-effect (first run mutates
+  // the flag, second run falls through). Read-only ref + value compare
+  // sidesteps it — both runs see initial===current and skip.
+  const initialFocusSearchTrigger = useRef(focusSearchTrigger)
   useEffect(() => {
-    if (skipInitialFocus.current) {
-      skipInitialFocus.current = false
-      return
-    }
+    if (focusSearchTrigger === initialFocusSearchTrigger.current) return
     searchInputRef.current?.focus()
   }, [focusSearchTrigger])
 
