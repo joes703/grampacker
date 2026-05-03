@@ -495,8 +495,12 @@ function ListDetailInner({
           </aside>
         )}
 
-        {/* RIGHT column — weight table + items (always visible; packing checkbox column appears in pack mode) */}
-        <div className="flex-1 min-w-0 space-y-4">
+        {/* RIGHT column — weight table + items (always visible; packing
+            checkbox column appears in pack mode). Pack mode narrows from
+            7xl (AppShell main) to 3xl + mx-auto so the sparser layout
+            reads as focused rather than stretched across the full width
+            the missing sidebar leaves behind. */}
+        <div className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'max-w-3xl mx-auto' : ''}`}>
           {/* Pack-mode progress bar */}
           {mode === 'pack' && listItems.length > 0 && (
             <PackingProgress
@@ -510,21 +514,26 @@ function ListDetailInner({
             />
           )}
 
-          {/* Notes + Weight summary — side by side, equal halves */}
-          <div className={`grid gap-4 ${listItems.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
-            <PanelCard title="Notes">
-              <NotesEditor
-                key={list.id}
-                initial={list.description ?? ''}
-                onSave={(v) => notesMut.mutate(v)}
-              />
-            </PanelCard>
-            {listItems.length > 0 && (
-              <PanelCard title="Weight summary">
-                <WeightTable items={listItems} categories={categories} />
+          {/* Notes + Weight summary — side by side, equal halves. Both
+              hidden in pack mode: neither is active-use information while
+              packing (PackingProgress above is the only summary the
+              packer needs). The entire grid renders nothing in pack mode. */}
+          {mode !== 'pack' && (
+            <div className={`grid gap-4 ${listItems.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
+              <PanelCard title="Notes">
+                <NotesEditor
+                  key={list.id}
+                  initial={list.description ?? ''}
+                  onSave={(v) => notesMut.mutate(v)}
+                />
               </PanelCard>
-            )}
-          </div>
+              {listItems.length > 0 && (
+                <PanelCard title="Weight summary">
+                  <WeightTable items={listItems} categories={categories} />
+                </PanelCard>
+              )}
+            </div>
+          )}
 
           {/* Items grouped by category */}
           {listItems.length === 0 ? (
