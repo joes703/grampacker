@@ -212,7 +212,7 @@ export default function ListsPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold text-gray-900">
-          Lists
+          Manage Lists
           <span className="ml-2 text-sm font-normal text-gray-500">{lists.length}</span>
         </h1>
 
@@ -234,7 +234,7 @@ export default function ListsPage() {
               <button
                 onClick={openImportPicker}
                 title="Import a CSV as a new list"
-                className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
               >
                 <Upload size={14} /> Import CSV
               </button>
