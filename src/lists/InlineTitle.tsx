@@ -30,9 +30,14 @@ export default function InlineTitle({ name, onSave, editTrigger, onEditingChange
   const [draft, setDraft] = useState(name)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  // Skip the mount-time effect run so a fresh InlineTitle instance (each
-  // list switch via key=list.id in the parent) doesn't auto-enter edit.
-  const skipInitialEdit = useRef(true)
+  // Capture the editTrigger value at mount, then compare on every effect
+  // run. The earlier "skip flag mutated inside the effect" pattern broke
+  // under StrictMode's dev-only double-effect: first run mutates the
+  // flag, second run sees the mutated value and falls through to
+  // startEdit(). Reading the initial value into a ref and never mutating
+  // it sidesteps the issue — both StrictMode runs see initial===current
+  // and skip.
+  const initialEditTrigger = useRef(editTrigger)
 
   function startEdit() {
     setDraft(name)
@@ -51,10 +56,7 @@ export default function InlineTitle({ name, onSave, editTrigger, onEditingChange
   }, [editing])
 
   useEffect(() => {
-    if (skipInitialEdit.current) {
-      skipInitialEdit.current = false
-      return
-    }
+    if (editTrigger === initialEditTrigger.current) return
     startEdit()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- startEdit is stable; only editTrigger changes drive entry
   }, [editTrigger])
