@@ -19,7 +19,7 @@ import {
 } from '@dnd-kit/sortable'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router'
-import { ArrowLeft, Download, Plus, Search, Upload, X } from 'lucide-react'
+import { ArrowLeft, ChevronsDownUp, ChevronsUpDown, Download, Plus, Search, Upload, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import {
   queryKeys,
@@ -100,7 +100,7 @@ export default function GearLibraryPage() {
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [selectMode, setSelectMode] = useState(false)
   const { set: selectedIds, toggle: toggleSelect, clear: clearSelected, reset: resetSelected } = useToggleSet<string>()
-  const { set: collapsed, toggle: toggleCollapse } = useToggleSet<string>()
+  const { set: collapsed, toggle: toggleCollapse, clear: expandAll, reset: resetCollapsed } = useToggleSet<string>()
   const { weightUnit, toggleWeightUnit } = useWeightUnit()
   const [newCategoryName, setNewCategoryName] = useState('')
 
@@ -347,6 +347,15 @@ export default function GearLibraryPage() {
     [filteredItems, categories],
   )
 
+  // Stable list of every collapsible key currently rendered — real category
+  // ids plus '__uncategorized__' when that bucket is non-empty. Mirrors the
+  // key derivation the per-category collapse trigger uses, so the bulk
+  // collapse/expand affordances target exactly what's on screen.
+  const collapsibleKeys = useMemo(
+    () => groups.map((g) => g.category?.id ?? '__uncategorized__'),
+    [groups],
+  )
+
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div>
@@ -487,13 +496,41 @@ export default function GearLibraryPage() {
           </button>
         </div>
       ) : (
-        <button
-          onClick={() => setDialog({ type: 'add-category' })}
-          className="mb-4 flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
-        >
-          <Plus size={14} />
-          Add category
-        </button>
+        // "Add category" + bulk collapse/expand share one row — both are
+        // category-list-scoped affordances. flex-wrap covers narrow
+        // viewports; the bulk-collapse pair shifts under "Add category"
+        // when there's no horizontal room.
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <button
+            onClick={() => setDialog({ type: 'add-category' })}
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+          >
+            <Plus size={14} />
+            Add category
+          </button>
+          <div className="ml-auto flex items-center gap-3 text-sm text-gray-500">
+            <button
+              type="button"
+              onClick={() => resetCollapsed(collapsibleKeys)}
+              disabled={collapsibleKeys.length === 0}
+              title="Collapse all categories"
+              className="flex items-center gap-1 hover:text-gray-700 disabled:opacity-40"
+            >
+              <ChevronsDownUp size={14} />
+              Collapse all
+            </button>
+            <button
+              type="button"
+              onClick={expandAll}
+              disabled={collapsibleKeys.length === 0}
+              title="Expand all categories"
+              className="flex items-center gap-1 hover:text-gray-700 disabled:opacity-40"
+            >
+              <ChevronsUpDown size={14} />
+              Expand all
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Category list */}
