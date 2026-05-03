@@ -6,7 +6,13 @@
 // source module (./categories, ./optimistic, etc.) — never through this
 // barrel — to avoid circular module resolution.
 export { queryKeys } from './keys'
-export { bulkUpdateSortOrder, makeOptimisticReorder } from './optimistic'
+export {
+  bulkUpdateSortOrder,
+  makeOptimisticReorder,
+  makeOptimisticInsert,
+  makeOptimisticUpdate,
+  makeOptimisticDelete,
+} from './optimistic'
 export {
   fetchCategories,
   fetchSharedListCategories,
