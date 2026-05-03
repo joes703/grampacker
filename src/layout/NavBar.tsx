@@ -238,6 +238,13 @@ function ListHeading({
       aria-label="Switch list (click) — use the chevron to keyboard-activate"
       onClick={handleContainerClick}
       onKeyDown={(e) => {
+        // Only act on keys focused on the container itself. Descendants
+        // (the rename input, the chevron button, the pencil button) own
+        // their own key handling — without this guard, keystrokes bubble
+        // up through the React tree and Space/Enter get preventDefault'd
+        // before the descendant can read them. Most visible failure:
+        // spacebar didn't insert spaces while renaming a list inline.
+        if (e.target !== e.currentTarget) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           handleContainerClick()
