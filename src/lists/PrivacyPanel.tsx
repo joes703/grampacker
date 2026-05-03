@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, Copy } from 'lucide-react'
 import type { List } from '../lib/types'
-import { queryKeys, updateList } from '../lib/queries'
+import { queryKeys, updateList, makeOptimisticUpdate } from '../lib/queries'
 
 type Props = { list: List }
 
@@ -16,7 +16,15 @@ export default function PrivacyPanel({ list }: Props) {
 
   const toggleMut = useMutation({
     mutationFn: () => updateList(list.id, { is_shared: !list.is_shared }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
+    // apply ignores the void input and toggles based on the cache row's
+    // current is_shared — the cache is the source of truth at apply time,
+    // so rapid double-toggles still track correctly.
+    ...makeOptimisticUpdate<List, void>({
+      qc,
+      queryKey: queryKeys.lists(),
+      id: () => list.id,
+      apply: (item) => ({ ...item, is_shared: !item.is_shared }),
+    }),
   })
 
   const shareUrl = `${window.location.origin}/r/${list.slug}`

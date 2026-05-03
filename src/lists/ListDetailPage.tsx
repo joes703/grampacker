@@ -291,16 +291,23 @@ function ListDetailInner({
     }),
   })
 
-  // Editing an item's name/description from the list view writes to gear_items so
-  // it propagates to the gear library and any other list that uses the same item.
+  // Editing an item's name/description from the list view writes to
+  // gear_items so it propagates to the gear library and any other list
+  // that uses the same item. Optimistic write goes to ['gear-items'];
+  // ['list-items'] (broad) refetches on settled to refresh embedded gear
+  // data in any open list view. The current list's embedded gear shows
+  // stale values briefly until that refetch — same compromise as
+  // GearLibraryPage's editItem.
   const updateGearItemMut = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateGearItem>[1] }) =>
       updateGearItem(id, patch),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      // Invalidate every list-items cache (any list that embeds this gear item)
-      qc.invalidateQueries({ queryKey: ['list-items'] })
-    },
+    ...makeOptimisticUpdate<GearItem, { id: string; patch: Parameters<typeof updateGearItem>[1] }>({
+      qc,
+      queryKey: queryKeys.gearItems(),
+      invalidateKeys: [['list-items']],
+      id: ({ id }) => id,
+      apply: (item, { patch }) => ({ ...item, ...patch }),
+    }),
   })
 
   // Delete a gear item entirely (from the gear library and every list that uses it).

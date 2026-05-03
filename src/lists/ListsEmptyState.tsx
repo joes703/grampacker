@@ -9,7 +9,9 @@ import {
   fetchGearItems,
   fetchCategories,
   importCsvRowsToList,
+  makeOptimisticInsert,
 } from '../lib/queries'
+import type { List } from '../lib/types'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { parseListCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
@@ -54,13 +56,31 @@ export default function ListsEmptyState() {
 
   const createMut = useMutation({
     mutationFn: (n: string) => createList(userId, n, 0),
+    ...makeOptimisticInsert<List, string>({
+      qc,
+      queryKey: queryKeys.lists(),
+      optimistic: (n) => {
+        const now = new Date().toISOString()
+        return {
+          id: `temp-${crypto.randomUUID()}`,
+          user_id: userId,
+          name: n,
+          description: null,
+          slug: `temp-${crypto.randomUUID()}`,
+          is_shared: false,
+          sort_order: 0,
+          created_at: now,
+          updated_at: now,
+        }
+      },
+    }),
     onSuccess: (list) => {
-      qc.invalidateQueries({ queryKey: queryKeys.lists() })
       navigate(`/lists/${list.id}`)
     },
-    onError: (err) => {
-      setError(err instanceof Error ? err.message : 'Could not create list. Try again.')
-    },
+    // Local error state is set at the call site (submit) so it doesn't
+    // override the helper's rollback onError. Both fire — useMutation's
+    // helper-level onError first (rolls back cache), then the mutate()
+    // call-site onError (sets the user-facing error message).
   })
 
   // Same shape as ListDetailInner's importMut: createList then populate,
@@ -88,7 +108,11 @@ export default function ListsEmptyState() {
     const trimmed = name.trim()
     if (!trimmed || createMut.isPending) return
     setError(null)
-    createMut.mutate(trimmed)
+    createMut.mutate(trimmed, {
+      onError: (err) => {
+        setError(err instanceof Error ? err.message : 'Could not create list. Try again.')
+      },
+    })
   }
 
   return (
