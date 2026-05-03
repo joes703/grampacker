@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, ChevronRight, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
@@ -10,11 +10,26 @@ type Props = {
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
   onRemove: (item: GearItem) => void
+  // Increment from a parent to programmatically focus the search input.
+  // Used by the empty-list onboarding affordance on /lists/:id at lg+.
+  // The skipInitialFocus ref guards the mount-time effect run so that
+  // navigating between lists (each list-detail is a fresh ListDetailInner
+  // instance, so a fresh LibraryPanel) doesn't auto-focus the search.
+  focusSearchTrigger?: number
 }
 
-export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove }: Props) {
+export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove, focusSearchTrigger }: Props) {
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState(new Set<string>())
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const skipInitialFocus = useRef(true)
+  useEffect(() => {
+    if (skipInitialFocus.current) {
+      skipInitialFocus.current = false
+      return
+    }
+    searchInputRef.current?.focus()
+  }, [focusSearchTrigger])
 
   function toggleCollapse(key: string) {
     setCollapsed((prev) => {
@@ -49,6 +64,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
+            ref={searchInputRef}
             type="search"
             placeholder="Search gear…"
             value={search}
