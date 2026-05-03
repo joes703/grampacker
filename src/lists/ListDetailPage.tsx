@@ -16,7 +16,7 @@ import {
   arrayMove,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable'
-import { ClipboardList, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { Drawer } from 'vaul'
 import { useAuth } from '../auth/AuthProvider'
 import {
@@ -44,10 +44,8 @@ import { assignSortOrderSlots, groupListItemsByCategory } from '../lib/grouping'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
 import PackingProgress from './PackingProgress'
-import InlineTitle from './InlineTitle'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './AddItemRow'
-import PrivacyButton from './PrivacyButton'
 import CategoryGroup from './CategoryGroup'
 import PanelCard from './PanelCard'
 import ItemRow from './ItemRow'
@@ -119,20 +117,13 @@ function ListDetailInner({
   // silently. Toggling writes to the URL; the URL is the single source of
   // truth — no separate React state. (Public share view at /r/:slug is a
   // different page entirely and can't see this parameter.)
-  const [searchParams, setSearchParams] = useSearchParams()
+  // Pack mode is URL-represented as ?mode=pack so it's bookmarkable,
+  // refresh-stable, and back/forward navigable. The toggle UI lives in the
+  // top bar (NavBar's ListContextControls / ListActionsKebab); this page
+  // reads the URL only.
+  const [searchParams] = useSearchParams()
   const mode: Mode = searchParams.get('mode') === 'pack' ? 'pack' : 'edit'
-  function setMode(next: Mode) {
-    setSearchParams(
-      (prev) => {
-        const np = new URLSearchParams(prev)
-        if (next === 'pack') np.set('mode', 'pack')
-        else np.delete('mode')
-        return np
-      },
-      { replace: false },
-    )
-  }
-  const { weightUnit, toggleWeightUnit } = useWeightUnit()
+  const { weightUnit } = useWeightUnit()
   // Pack-mode filter: when true, hide already-packed items from each
   // category. Header counts and the "complete" affordance still reflect the
   // full items array. Lifted here because both PackingProgress (the toggle)
@@ -250,11 +241,6 @@ function ListDetailInner({
       qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
       qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
     },
-  })
-
-  const renameMut = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => updateList(id, { name }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
   })
 
   const sensors = useSensors(
@@ -414,44 +400,9 @@ function ListDetailInner({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <InlineTitle
-          key={list.id}
-          name={list.name}
-          onSave={(v) => renameMut.mutate({ id: list.id, name: v })}
-        />
-
-        {/* g/oz toggle */}
-        <button
-          onClick={toggleWeightUnit}
-          title={`Switch to ${weightUnit === 'g' ? 'oz' : 'g'}`}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
-        >
-          {weightUnit}
-        </button>
-
-        {/* Pack-mode toggle. Icon + label on sm+; icon-only below sm where
-            header space is tight. aria-label keeps screen readers covered
-            in the icon-only state. Styled to match the top-nav buttons. */}
-        <button
-          onClick={() => setMode(mode === 'pack' ? 'edit' : 'pack')}
-          title={mode === 'pack' ? 'Pack mode: on' : 'Pack mode: off'}
-          aria-label="Pack mode"
-          aria-pressed={mode === 'pack'}
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
-            mode === 'pack'
-              ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-              : 'border-gray-300 text-gray-500 hover:bg-gray-50'
-          }`}
-        >
-          <ClipboardList size={14} />
-          <span className="hidden sm:inline">Pack</span>
-        </button>
-
-        {/* Privacy toggle (icon + popover) */}
-        <PrivacyButton list={list} />
-      </div>
+      {/* List name, g/oz, Pack toggle, and Share live in the top bar
+          (NavBar's RouteHeading + ListContextControls); the page body owns
+          the two-column layout below. */}
 
       {/* Two-column grid (sidebar collapses in pack mode). The visibility
           condition is `mode !== 'pack'` — derived directly, not stored. */}
