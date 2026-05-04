@@ -46,6 +46,13 @@ export type GearItem = {
   name: string
   description: string | null
   weight_grams: number
+  // Display-only inventory metadata. Nullable because many items have
+  // unknown values (gifts, old gear). Not part of any pack-weight or
+  // trip calculation, and not surfaced in list views or public shares —
+  // see PublicGearItem and ListItemWithGear.gear_item, both of which
+  // intentionally omit these. cost is USD; purchase_date is ISO YYYY-MM-DD.
+  cost: number | null
+  purchase_date: string | null
   sort_order: number
   created_at: string
   updated_at: string

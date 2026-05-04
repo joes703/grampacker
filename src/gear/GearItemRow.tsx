@@ -83,6 +83,12 @@ export default function GearItemRow({
             </div>
           )}
         </div>
+        <span className="shrink-0 w-20 text-right tabular-nums text-gray-500">
+          {formatCost(item.cost)}
+        </span>
+        <span className="shrink-0 w-24 text-right tabular-nums text-gray-500">
+          {formatPurchaseDate(item.purchase_date)}
+        </span>
         <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
           {formatItemWeight(item.weight_grams, weightUnit)}
         </span>
@@ -110,6 +116,29 @@ export default function GearItemRow({
       </div>
     </div>
   )
+}
+
+// Cost is currency, formatted with commas + two decimals. Null renders
+// as an em dash, never $0.00 — unknown is unknown. en-US locale matches
+// our USD-only treatment (see GearItem.cost docstring).
+const COST_FORMATTER = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+})
+function formatCost(cost: number | null): string {
+  if (cost === null) return '—'
+  return COST_FORMATTER.format(cost)
+}
+
+// purchase_date arrives as ISO YYYY-MM-DD. Parsing as 'YYYY-MM-DDT00:00:00'
+// keeps it in local-time so a 2024-04-15 entry doesn't render as Apr 14
+// for users west of UTC. Output uses the user's locale via toLocaleDateString
+// for readability ("Apr 15, 2024" in en-US).
+function formatPurchaseDate(date: string | null): string {
+  if (date === null) return '—'
+  const d = new Date(`${date}T00:00:00`)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
 // Kebab popover — three-dot button + portal-rendered menu. Mirrors

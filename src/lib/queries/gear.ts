@@ -22,7 +22,7 @@ export async function fetchGearItems(userId: string): Promise<GearItem[]> {
 
 export async function createGearItem(
   userId: string,
-  data: Pick<GearItem, 'name' | 'description' | 'weight_grams' | 'category_id'>,
+  data: Pick<GearItem, 'name' | 'description' | 'weight_grams' | 'category_id' | 'cost' | 'purchase_date'>,
   sortOrder: number,
 ): Promise<GearItem> {
   const { data: row, error } = await supabase
@@ -36,7 +36,7 @@ export async function createGearItem(
 
 export async function updateGearItem(
   id: string,
-  patch: Partial<Pick<GearItem, 'name' | 'description' | 'weight_grams' | 'category_id' | 'sort_order'>>,
+  patch: Partial<Pick<GearItem, 'name' | 'description' | 'weight_grams' | 'category_id' | 'cost' | 'purchase_date' | 'sort_order'>>,
 ): Promise<void> {
   const { error } = await supabase.from('gear_items').update(patch).eq('id', id)
   if (error) throw error
