@@ -55,6 +55,8 @@ export async function resolveOrCreateGearForImport({
     description: string | null
     weight_grams: number
     category: string
+    cost?: number | null
+    purchase_date?: string | null
   }[]
   existingGearItems: GearItem[]
   catByName: Map<string, string>
@@ -75,6 +77,8 @@ export async function resolveOrCreateGearForImport({
     description: string | null
     weight_grams: number
     category_id: string | null
+    cost: number | null
+    purchase_date: string | null
     sort_order: number
   }[] = []
   let matchedCount = 0
@@ -87,6 +91,10 @@ export async function resolveOrCreateGearForImport({
       continue
     }
     const categoryId = resolveCategoryId(row.category, catByName)
+    // Dedup key intentionally excludes cost/purchase_date — they're
+    // display-only metadata and can change over time without making an
+    // item "different". Matching on (category, name, weight) keeps a
+    // re-import from duplicating the same physical item.
     const key = gearKey(categoryId, trimmedName, row.weight_grams)
     const existing = gearIdByExistingKey.get(key)
     if (existing) {
@@ -102,6 +110,8 @@ export async function resolveOrCreateGearForImport({
         description: row.description ? row.description.slice(0, 2000) : null,
         weight_grams: row.weight_grams,
         category_id: categoryId,
+        cost: row.cost ?? null,
+        purchase_date: row.purchase_date ?? null,
         sort_order: startSortOrder + newGearRows.length,
       })
     }

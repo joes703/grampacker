@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { listItemsToCsv, parseListCsv } from './csv'
-import type { Category, ListItemWithGear } from './types'
+import { gearItemsToCsv, listItemsToCsv, parseGearCsv, parseListCsv } from './csv'
+import type { Category, GearItem, ListItemWithGear } from './types'
 
 // Smoke test: representative gear-list rows should round-trip through
 // listItemsToCsv → parseListCsv with the user-visible columns intact.
@@ -228,5 +228,112 @@ describe('csv round-trip', () => {
     expect(lines[3]).toBe(
       '"Rain jacket, ""shell""",,with comma + quotes for escapeCell,1,320,gram,,0,Worn,',
     )
+  })
+})
+
+// Gear-library CSV — cost and purchase_date are inventory-only metadata,
+// nullable. Empty CSV cells must round-trip as null (never 0 or epoch);
+// populated cells must round-trip as the same number/ISO date.
+describe('gear csv with cost and purchase_date', () => {
+  const categories: Category[] = [
+    {
+      id: 'cat-shelter', user_id: 'u', name: 'Shelter',
+      sort_order: 0, is_default: true, created_at: '2024-01-01',
+    },
+  ]
+
+  function makeGear(overrides: Partial<GearItem>): GearItem {
+    return {
+      id: 'g-x', user_id: 'u', category_id: 'cat-shelter',
+      name: 'Item', description: null, weight_grams: 100,
+      cost: null, purchase_date: null,
+      sort_order: 0,
+      created_at: '2024-01-01', updated_at: '2024-01-01',
+      ...overrides,
+    }
+  }
+
+  it('parses a CSV row with both fields populated', () => {
+    const csv = [
+      'Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable,cost,purchase_date',
+      'Tarp,Shelter,,1,240,gram,,0,,,89.99,2024-04-15',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]).toMatchObject({
+      name: 'Tarp',
+      weight_grams: 240,
+      cost: 89.99,
+      purchase_date: '2024-04-15',
+    })
+  })
+
+  it('parses a CSV row with both fields blank as null (not 0 / not epoch)', () => {
+    const csv = [
+      'Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable,cost,purchase_date',
+      'Mystery item,Shelter,,1,150,gram,,,,,,',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]).toMatchObject({
+      name: 'Mystery item',
+      weight_grams: 150,
+      cost: null,
+      purchase_date: null,
+    })
+  })
+
+  it('prefers the "cost" column over "price" when both are present', () => {
+    // The export emits price=0 alongside the real cost column. Re-importing
+    // a grampacker export must not pick up the Lighterpack-default 0.
+    const csv = [
+      'Item Name,Category,weight,price,cost',
+      'Tarp,Shelter,240,0,89.99',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBe(89.99)
+  })
+
+  it('round-trips a mix of populated and empty cost/purchase_date values', () => {
+    const items: GearItem[] = [
+      makeGear({ id: 'g-1', name: 'Tarp', cost: 89.99, purchase_date: '2024-04-15' }),
+      makeGear({ id: 'g-2', name: 'Old stove', cost: null, purchase_date: null }),
+      makeGear({ id: 'g-3', name: 'Sleeping bag', cost: 250, purchase_date: null }),
+      makeGear({ id: 'g-4', name: 'Headlamp', cost: null, purchase_date: '2020-12-01' }),
+    ]
+    const csv = gearItemsToCsv(items, categories)
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed).toHaveLength(items.length)
+    parsed.forEach((row, i) => {
+      const src = items[i]!
+      expect(row.name).toBe(src.name)
+      expect(row.cost).toBe(src.cost)
+      expect(row.purchase_date).toBe(src.purchase_date)
+    })
+  })
+
+  it('falls back to the "price" column on import (Lighterpack compatibility)', () => {
+    const csv = [
+      'Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable',
+      'Tarp,Shelter,,1,240,gram,,42.50,,',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBe(42.50)
+  })
+
+  it('rejects unparseable cost or non-ISO date as null', () => {
+    const csv = [
+      'Item Name,Category,weight,cost,purchase_date',
+      'A,Shelter,100,not-a-number,not-a-date',
+      'B,Shelter,100,-5,04/15/2024',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]).toMatchObject({ cost: null, purchase_date: null })
+    // Negative cost dropped to null; locale date format also rejected.
+    expect(parsed[1]).toMatchObject({ cost: null, purchase_date: null })
   })
 })

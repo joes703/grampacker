@@ -328,7 +328,18 @@ function ListDetailInner({
     mutationFn: async ({ categoryId, data }: { categoryId: string | null; data: AddItemData }) => {
       const newGear = await createGearItem(
         userId,
-        { name: data.name, description: data.description, weight_grams: data.weight_grams, category_id: categoryId },
+        {
+          name: data.name,
+          description: data.description,
+          weight_grams: data.weight_grams,
+          category_id: categoryId,
+          // The list-page "Add new item" affordance is intentionally
+          // minimal (name/description/weight/category only). Cost and
+          // purchase_date are inventory-page concerns — leave them null
+          // here; the user can fill them in later via the gear library.
+          cost: null,
+          purchase_date: null,
+        },
         gearItems.length,
       )
       await addGearItemToList(listId, userId, newGear.id, listItems.length, {

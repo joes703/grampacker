@@ -9,6 +9,8 @@ export type GearPatch = {
   description: string | null
   weight_grams: number
   category_id: string | null
+  cost: number | null
+  purchase_date: string | null
 }
 
 export type ListContextPatch = {
@@ -60,6 +62,16 @@ export default function GearItemDialog({
   const [categoryId, setCategoryId] = useState<string | null>(
     item?.category_id ?? defaultCategoryId,
   )
+  // Cost is held as a string so the user can type freely (e.g. "89.",
+  // "89.9") without React fighting the cursor; parsed to number on
+  // submit. Empty string → null. Initial value is the existing cost
+  // formatted to two decimals so editing doesn't drift the display.
+  const [cost, setCost] = useState(
+    item?.cost != null ? item.cost.toFixed(2) : '',
+  )
+  // purchase_date is already an ISO YYYY-MM-DD string in the model and
+  // the <input type="date"> contract — no parsing needed.
+  const [purchaseDate, setPurchaseDate] = useState(item?.purchase_date ?? '')
   const [quantity, setQuantity] = useState(listContext?.quantity ?? 1)
   const [worn, setWorn] = useState(listContext?.is_worn ?? false)
   const [consumable, setConsumable] = useState(listContext?.is_consumable ?? false)
@@ -71,11 +83,22 @@ export default function GearItemDialog({
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    const trimmedCost = cost.trim()
+    const parsedCost = trimmedCost === '' ? NaN : parseFloat(trimmedCost)
+    const trimmedDate = purchaseDate.trim()
     const gearPatch: GearPatch = {
       name: name.trim(),
       description: description.trim() || null,
       weight_grams: Math.max(0, Math.min(weightGrams, 100000)),
       category_id: categoryId,
+      // Blank / NaN / negative → null, never 0. Same rule as parseCost
+      // in csv.ts so manual entry and CSV import agree.
+      cost: !isFinite(parsedCost) || parsedCost < 0
+        ? null
+        : Math.round(parsedCost * 100) / 100,
+      // <input type="date"> emits ISO YYYY-MM-DD already; trust the
+      // shape and only collapse blanks to null.
+      purchase_date: trimmedDate === '' ? null : trimmedDate,
     }
     const listPatch: ListContextPatch | null = listContext
       ? {
@@ -172,6 +195,41 @@ export default function GearItemDialog({
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+          <div className="flex gap-4">
+            <div className="w-40">
+              <label htmlFor="gi-cost" className="block text-sm font-medium text-gray-700 mb-1">
+                Cost (USD)
+              </label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+                  $
+                </span>
+                <input
+                  id="gi-cost"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.01"
+                  placeholder=""
+                  value={cost}
+                  onChange={(e) => setCost(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 pl-6 pr-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="flex-1">
+              <label htmlFor="gi-pdate" className="block text-sm font-medium text-gray-700 mb-1">
+                Purchase date
+              </label>
+              <input
+                id="gi-pdate"
+                type="date"
+                value={purchaseDate}
+                onChange={(e) => setPurchaseDate(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
           </div>
 
