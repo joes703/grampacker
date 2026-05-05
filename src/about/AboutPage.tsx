@@ -1,8 +1,10 @@
+import { Suspense, lazy } from 'react'
 import { Link } from 'react-router'
 import aboutContent from '../../about.md?raw'
-import MarkdownPage from '../components/MarkdownPage'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useAuth } from '../auth/AuthProvider'
+
+const MarkdownPage = lazy(() => import('../components/MarkdownPage'))
 
 export default function AboutPage() {
   useDocumentTitle('About')
@@ -44,7 +46,9 @@ export default function AboutPage() {
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 pt-4 lg:pt-8 pb-8">
-        <MarkdownPage content={aboutContent} />
+        <Suspense fallback={null}>
+          <MarkdownPage content={aboutContent} />
+        </Suspense>
       </main>
     </div>
   )
