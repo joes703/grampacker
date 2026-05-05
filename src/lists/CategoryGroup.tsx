@@ -123,25 +123,29 @@ function CategoryGroup({
   // aria-controls. categoryId is always set when collapsible=true (share view
   // passes collapsible=false and the button isn't rendered there).
   const regionId = `cat-region-${categoryId ?? 'uncategorized'}`
+  // sectionItems = the items that BELONG to this category section. When
+  // hideWorn is on (pack mode + Group Worn), worn items belong to the
+  // trailing Worn section instead, so they're excluded here for header
+  // counts AND the visible row list. Without this split, a category would
+  // show "2 / 5" while only 3 non-worn rows render, and an all-worn
+  // category would show counts even though every row moved away.
+  const sectionItems = hideWorn ? items.filter((i) => !i.is_worn) : items
   // Only displayed in pack-mode header. Gating the read on packMode means
   // the share view (which never enters pack mode) doesn't pull is_packed
   // off each item; that field is excluded from the public read path.
-  const packedCount = packMode ? items.filter((i) => i.is_packed).length : 0
+  const packedCount = packMode ? sectionItems.filter((i) => i.is_packed).length : 0
+  // totalGrams is shown only in the !packMode footer (and hideWorn is
+  // packMode-only), so the full items array is the right input here.
   const totalGrams = items.reduce((s, i) => s + i.gear_item.weight_grams * i.quantity, 0)
   const showKebabSlot = !packMode && Boolean(onDelete)
-  // "Complete" = pack mode, has items, every item packed. The header still
-  // renders so the user can orient even when items are filtered out.
-  const complete = packMode && items.length > 0 && packedCount === items.length
-  // When the unpacked-only filter is on, hide packed items from the rendered
-  // list. When hideWorn is on (pack mode + Group Worn), hide worn items so
-  // they appear only in the trailing Worn section. Header counts and the
-  // complete affordance still use the full items array so orientation is
-  // preserved. Single fold so we don't iterate the array twice when both
-  // filters are active.
-  const filterUnpacked = packMode && showUnpackedOnly
-  const visibleItems = (filterUnpacked || hideWorn)
-    ? items.filter((i) => (!filterUnpacked || !i.is_packed) && (!hideWorn || !i.is_worn))
-    : items
+  // "Complete" = pack mode, has section items, every section item packed.
+  const complete = packMode && sectionItems.length > 0 && packedCount === sectionItems.length
+  // When the unpacked-only filter is on, hide packed items from the
+  // rendered rows. Applied AFTER the section split so packed-but-worn
+  // items don't sneak through.
+  const visibleItems = packMode && showUnpackedOnly
+    ? sectionItems.filter((i) => !i.is_packed)
+    : sectionItems
 
   // Per-row props builder — same shape for SortableItemRow and ItemRow.
   // reorderPending is read by SortableItemRow's useSortable (`disabled`);
@@ -186,7 +190,7 @@ function CategoryGroup({
             )}
             <span className={`truncate text-sm font-medium ${complete ? 'text-gray-400' : 'text-gray-700'}`}>{name}</span>
             <span className="shrink-0 text-xs tabular-nums text-gray-400">
-              {packMode ? `${packedCount} / ${items.length}` : `(${items.length})`}
+              {packMode ? `${packedCount} / ${sectionItems.length}` : `(${items.length})`}
             </span>
             {complete && (
               <Check size={14} className="shrink-0 text-green-600" aria-label="All packed" />
