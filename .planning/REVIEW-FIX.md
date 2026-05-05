@@ -8,6 +8,7 @@
 - **B-3** — `3667904` — `ListDetailPage.deleteGearItemMut` switched to `makeOptimisticDelete`. Both entry points for "Delete from inventory" (gear page kebab and list page kebab) now behave identically.
 - **F6** — `2f356a2` — `MarkdownPage` header comment pins the safe configuration (no rehype-raw, build-time content only).
 - **F3** — `d196bf7` — Delete-account flow now requires current-password re-auth in addition to the typed-confirmation dialog. Mirrors the `ChangePasswordForm` pattern. RPC unchanged.
+- **B-3 follow-up — `<hash-pending>`** — Codex (2026-05-05) flagged that the original Commit 4 was only optimistic against `['gear-items']`, but the list-page row is rendered from `['list-items', listId]` — so the user's row stayed visible until the settled invalidation/refetch round-trip. Extended `deleteGearItemMut` in `src/lists/ListDetailPage.tsx` to compose with the helper: snapshot every affected `['list-items', _]` cache, optimistically filter rows whose `gear_item_id` matches, restore on error, invalidate per-key on settled. Also added an error toast (`"Couldn't delete that item. Please try again."`) since the helper alone has no toast hook. The gear-page entry point in `src/gear/GearLibraryPage.tsx` was NOT touched — its `removeItem` has the same helper-only shape, but the user is not on a list page when deleting from gear, so the lag is invisible there. Symmetrical fix deferred unless flagged.
 
 ## Verification results
 
@@ -20,7 +21,8 @@
 
 - **B-1 small refactor.** The project has no jsdom or `@testing-library` dependency. To write the regression test without adding a new test environment, the calculation in `WeightTable` was extracted into a pure `computeWeightBreakdown()` helper exported from the same file. Component still renders identically. This was the smallest scope expansion that produced a real regression test.
 - **F3 UI shape.** The audit specified the verifyError block but didn't prescribe UI placement. The current-password input renders inside the `DeleteAccount` component immediately after the typed-confirm dialog closes — kept inside the same component, no new file. Cancel button resets state.
-- **Out-of-scope held.** B-2, B-4, H1, H2, H3, M1, M6–M12, H4–H6, W-1, F2, F4, F5, F7 — none touched. As REVIEW-PHASE1.md required, no drive-by fixes.
+- **B-3 was a scope expansion.** REVIEW-PHASE1.md listed B-3 as out of scope, but the four-item batch instruction included it ("for B-3, follow the pattern from GearLibraryPage.removeItem"). The Commit 4 mirroring fix was correct relative to the gear-page entry point, but the original `makeOptimisticDelete` only filters `['gear-items']` — the list-page row stayed visible until the settled `['list-items']` invalidation/refetch completed (the user's perspective). Codex flagged this on 2026-05-05; corrected in the follow-up entry below.
+- **Out-of-scope held.** B-2, B-4, H1, H2, H3, M1, M6–M12, H4–H6, W-1, F2, F4, F5, F7 — none touched.
 
 ## Next phase
 
