@@ -94,6 +94,16 @@ export async function reorderLists(updates: { id: string; sort_order: number }[]
 
 // Create a new list and immediately populate it with the given gear items.
 // Used by the "Create list from selection" flow in the gear library.
+//
+// Phase 8 (M3a): one SECURITY DEFINER RPC replaces the previous
+// createList + bulk list_items insert pair. Two RTT -> one. Slug retry
+// stays client-side via withSlugRetry — the RPC takes p_slug and the
+// 23505 propagates through supabase.rpc()'s PostgrestError.
+//
+// Atomicity is now visible: previously the parent list could persist
+// even if the bulk list_items insert failed (cap trigger, FK on a stale
+// gear_item_id). The RPC wraps both inserts in one transaction, so any
+// failure rolls back the whole gesture — no orphan list rows.
 export async function createListFromSelection(
   userId: string,
   name: string,
@@ -101,19 +111,18 @@ export async function createListFromSelection(
   gearItemIds: string[],
   sortOrder: number,
 ): Promise<List> {
-  const newList = await createList(userId, name, sortOrder, description)
-
-  if (gearItemIds.length > 0) {
-    const rows = gearItemIds.map((id, i) => ({
-      user_id: userId,
-      list_id: newList.id,
-      gear_item_id: id,
-      sort_order: i,
-    }))
-    const { error } = await supabase.from('list_items').insert(rows)
+  return withSlugRetry(async (slug) => {
+    const { data, error } = await supabase.rpc('create_list_from_selection', {
+      p_user_id: userId,
+      p_name: name,
+      p_description: description,
+      p_slug: slug,
+      p_sort_order: sortOrder,
+      p_gear_item_ids: gearItemIds,
+    })
     if (error) throw error
-  }
-  return newList
+    return data as List
+  })
 }
 
 export async function duplicateList(source: List, userId: string, sortOrder: number): Promise<List> {
