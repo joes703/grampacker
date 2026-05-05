@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Check, ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
@@ -65,14 +65,32 @@ export type GroupProps = {
   onSaveGearName?: (gearItemId: string, name: string) => void
   onSaveGearDescription?: (gearItemId: string, description: string) => void
   onSaveGearWeight?: (gearItemId: string, weight_grams: number) => void
-  onAddItem?: (data: AddItemData) => void
+  // categoryId flows in from the component's own `categoryId` prop so the
+  // parent can pass a single stable useCallback'd handler for both the
+  // categorized and uncategorized call sites. Previously this was
+  // `(data) => void` and required per-call-site inline arrows that
+  // currying the categoryId — those fresh closures defeated React.memo's
+  // shallow compare every render. null = uncategorized.
+  onAddItem?: (categoryId: string | null, data: AddItemData) => void
   // Kebab handlers receive the gear item's id; the parent resolves to a full
   // GearItem from its gearItems query before opening dialogs.
   onEditGearItem?: (gearItemId: string) => void
   onDeleteGearItem?: (gearItemId: string) => void
 }
 
-export default function CategoryGroup({
+// Wrapped in React.memo (default shallow compare) at the export below.
+// Phase 5 Commit 1 introduced structural per-group stability in
+// groupListItemsByCategory — the `items` prop reference is now reused
+// across mutations whose render-affecting fields didn't change. Without
+// the stability layer this memo would be defeated; with it, unchanged
+// categories skip their re-render entirely on pack-mode toggles.
+//
+// Prop stability requirements at the call site (see ListDetailPage.tsx):
+// - onAddItem widened to (categoryId, data) so the parent passes a single
+//   useCallback'd handler instead of per-call-site curried arrows.
+// - All other props are stable from prior phases (sharedGroupProps memo,
+//   useGroupedListItems hook, primitives).
+function CategoryGroup({
   name,
   items,
   weightUnit,
@@ -221,7 +239,7 @@ export default function CategoryGroup({
           {/* Draft row when adding — full editable item row */}
           {!packMode && onAddItem && adding && (
             <AddItemRow
-              onSubmit={(data) => { onAddItem(data); setAdding(false) }}
+              onSubmit={(data) => { onAddItem(categoryId ?? null, data); setAdding(false) }}
               onCancel={() => setAdding(false)}
             />
           )}
@@ -264,3 +282,5 @@ export default function CategoryGroup({
     </div>
   )
 }
+
+export default memo(CategoryGroup)

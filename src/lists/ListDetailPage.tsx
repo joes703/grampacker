@@ -565,6 +565,20 @@ function ListDetailInner({
     [],
   )
 
+  // Stable callback for CategoryGroup's "+ Add new item" affordance.
+  // Phase 5 widened CategoryGroup's onAddItem signature from
+  // (data) => void to (categoryId, data) => void so we can pass ONE
+  // memoized handler to both the categorized and uncategorized call
+  // sites instead of two fresh inline arrows. addNewItemMut see prior
+  // mutation-ref convention.
+  const onAddNewItem = useCallback(
+    (categoryId: string | null, data: AddItemData) => {
+      addNewItemMut.mutate({ categoryId, data })
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- addNewItemMut: see addMut note
+    [],
+  )
+
   const sharedGroupProps = useMemo(
     () => ({
       packMode: mode === 'pack',
@@ -771,7 +785,7 @@ function ListDetailInner({
                         items={group.items}
                         {...sharedGroupProps}
                         reorderPending={reorderItemsMut.isPending}
-                        onAddItem={(data) => addNewItemMut.mutate({ categoryId: group.category!.id, data })}
+                        onAddItem={onAddNewItem}
                       />
                     ))}
                   {displayedGrouped
@@ -784,7 +798,7 @@ function ListDetailInner({
                         items={group.items}
                         {...sharedGroupProps}
                         reorderPending={reorderItemsMut.isPending}
-                        onAddItem={(data) => addNewItemMut.mutate({ categoryId: null, data })}
+                        onAddItem={onAddNewItem}
                       />
                     ))}
                   <DragOverlay>
