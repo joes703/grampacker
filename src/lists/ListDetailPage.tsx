@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import {
   DndContext,
   DragOverlay,
@@ -291,23 +291,57 @@ function ListDetailInner({
     }),
   })
 
-  // Editing an item's name/description from the list view writes to
-  // gear_items so it propagates to the gear library and any other list
-  // that uses the same item. Optimistic write goes to ['gear-items'];
-  // ['list-items'] (broad) refetches on settled to refresh embedded gear
-  // data in any open list view. The current list's embedded gear shows
-  // stale values briefly until that refetch — same compromise as
-  // GearLibraryPage's editItem.
+  // Editing an item's name/description/category from the list view writes
+  // to gear_items so it propagates to the gear library and every list that
+  // uses the same item. The list-items cache fan-out below is what closes
+  // B-2: without it, an immediate reorder after a category change reads
+  // stale embedded category_id and writes corrupted sort_order. Mirrors
+  // GearLibraryPage.editItem; helper extraction is a future commit.
   const updateGearItemMut = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateGearItem>[1] }) =>
       updateGearItem(id, patch),
-    ...makeOptimisticUpdate<GearItem, { id: string; patch: Parameters<typeof updateGearItem>[1] }>({
-      qc,
-      queryKey: queryKeys.gearItems(),
-      invalidateKeys: [['list-items']],
-      id: ({ id }) => id,
-      apply: (item, { patch }) => ({ ...item, ...patch }),
-    }),
+    onMutate: ({ id, patch }) => {
+      qc.cancelQueries({ queryKey: queryKeys.gearItems() })
+      const previousGear = qc.getQueryData<GearItem[]>(queryKeys.gearItems())
+      qc.setQueryData<GearItem[]>(queryKeys.gearItems(), (curr) =>
+        curr ? curr.map((g) => (g.id === id ? { ...g, ...patch } : g)) : curr,
+      )
+
+      const affected = qc.getQueryCache()
+        .findAll({ queryKey: ['list-items'] })
+        .filter((q) => (q.state.data as ListItemWithGear[] | undefined)?.some((i) => i.gear_item_id === id))
+      const listSnapshots: { key: QueryKey; data: ListItemWithGear[] | undefined }[] = []
+      for (const q of affected) {
+        const key = q.queryKey
+        qc.cancelQueries({ queryKey: key })
+        listSnapshots.push({ key, data: qc.getQueryData<ListItemWithGear[]>(key) })
+        qc.setQueryData<ListItemWithGear[]>(key, (curr) =>
+          curr?.map((item) =>
+            item.gear_item_id === id
+              ? { ...item, gear_item: { ...item.gear_item, ...patch } }
+              : item,
+          ),
+        )
+      }
+
+      return { previousGear, listSnapshots }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previousGear) qc.setQueryData(queryKeys.gearItems(), ctx.previousGear)
+      if (ctx?.listSnapshots) {
+        for (const { key, data } of ctx.listSnapshots) {
+          qc.setQueryData(key, data)
+        }
+      }
+    },
+    onSettled: (_data, _err, _vars, ctx) => {
+      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
+      if (ctx?.listSnapshots) {
+        for (const { key } of ctx.listSnapshots) {
+          qc.invalidateQueries({ queryKey: key })
+        }
+      }
+    },
   })
 
   // Delete a gear item entirely (from the gear library and every list that uses it).

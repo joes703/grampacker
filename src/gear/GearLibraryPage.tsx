@@ -17,7 +17,7 @@ import {
   verticalListSortingStrategy,
   arrayMove,
 } from '@dnd-kit/sortable'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router'
 import { ArrowLeft, ChevronsDownUp, ChevronsUpDown, Download, Plus, Search, Upload, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
@@ -43,7 +43,7 @@ import {
   makeOptimisticUpdate,
   makeOptimisticDelete,
 } from '../lib/queries'
-import type { Category, GearItem } from '../lib/types'
+import type { Category, GearItem, ListItemWithGear } from '../lib/types'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useWeightUnit } from '../lib/use-weight-unit'
@@ -215,20 +215,56 @@ export default function GearLibraryPage() {
     }),
   })
 
+  // Hand-rolled because we need optimistic fan-out into every list-items
+  // cache that references this gear (lists embed gear via join — without
+  // the fan-out, an immediate reorder after a category change reads stale
+  // embedded category_id and writes corrupted sort_order). Helper extraction
+  // is a future commit once the shape proves stable.
   const editItem = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateGearItem>[1] }) =>
       updateGearItem(id, patch),
-    // Side cache: ['list-items'] (broad). Lists embed gear via join, so
-    // any name/description/weight/category change must refetch list views
-    // for them to pick up the embedded data. The cache write here is
-    // primary-only — list-items just refetches on settled.
-    ...makeOptimisticUpdate<GearItem, { id: string; patch: Parameters<typeof updateGearItem>[1] }>({
-      qc,
-      queryKey: queryKeys.gearItems(),
-      invalidateKeys: [['list-items']],
-      id: ({ id }) => id,
-      apply: (item, { patch }) => ({ ...item, ...patch }),
-    }),
+    onMutate: ({ id, patch }) => {
+      qc.cancelQueries({ queryKey: queryKeys.gearItems() })
+      const previousGear = qc.getQueryData<GearItem[]>(queryKeys.gearItems())
+      qc.setQueryData<GearItem[]>(queryKeys.gearItems(), (curr) =>
+        curr ? curr.map((g) => (g.id === id ? { ...g, ...patch } : g)) : curr,
+      )
+
+      const affected = qc.getQueryCache()
+        .findAll({ queryKey: ['list-items'] })
+        .filter((q) => (q.state.data as ListItemWithGear[] | undefined)?.some((i) => i.gear_item_id === id))
+      const listSnapshots: { key: QueryKey; data: ListItemWithGear[] | undefined }[] = []
+      for (const q of affected) {
+        const key = q.queryKey
+        qc.cancelQueries({ queryKey: key })
+        listSnapshots.push({ key, data: qc.getQueryData<ListItemWithGear[]>(key) })
+        qc.setQueryData<ListItemWithGear[]>(key, (curr) =>
+          curr?.map((item) =>
+            item.gear_item_id === id
+              ? { ...item, gear_item: { ...item.gear_item, ...patch } }
+              : item,
+          ),
+        )
+      }
+
+      return { previousGear, listSnapshots }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previousGear) qc.setQueryData(queryKeys.gearItems(), ctx.previousGear)
+      if (ctx?.listSnapshots) {
+        for (const { key, data } of ctx.listSnapshots) {
+          qc.setQueryData(key, data)
+        }
+      }
+    },
+    onSettled: (_data, _err, _vars, ctx) => {
+      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
+      if (ctx?.listSnapshots) {
+        for (const { key } of ctx.listSnapshots) {
+          qc.invalidateQueries({ queryKey: key })
+        }
+      }
+    },
   })
 
   const removeItem = useMutation({
