@@ -265,3 +265,44 @@ Phase 8 candidates:
 - **Test-coverage cluster** — T-3…T-9; needs jsdom + @testing-library install.
 
 Recommend Phase 8 as the RPC consolidation pass — it's the last remaining backend-perf cluster and closes the high/medium audit items in `Network / TanStack Query`.
+
+---
+
+# grampacker — Phase 8 fix summary (2026-05-05)
+
+## Shipped
+
+- **Commit 1 (RPCs) — `36ac831`** — three SECURITY DEFINER functions added in `supabase/migrations/20260510000000_add_consolidated_mutation_rpcs.sql`: `add_gear_item_with_list_item`, `create_list_from_selection`, `duplicate_list`. Pattern matches the existing `bulk_update_sort_order` (auth.uid() guard + `set search_path = public, pg_temp` + hardened `revoke from public, anon` + `grant to authenticated`). RLS is bypassed inside SECURITY DEFINER, so each function explicitly verifies ownership of any user-controlled id (`p_list_id`, `p_gear_item_ids`, `p_source_list_id`) and raises `P0002` on miss before any write. Slug retry stays client-side via the existing `withSlugRetry` wrapper.
+- **Commit 2 (M2) — `ab98d7f`** — `addNewItemMut` in `ListDetailPage.tsx` now does one `supabase.rpc('add_gear_item_with_list_item', …)` call instead of `createGearItem` + `addGearItemToList` chain. Two RTT → one. Removed the now-unused `createGearItem` import (the helper is still used by `GearLibraryPage.tsx`'s separate add-to-inventory flow).
+- **Commit 3 (M3a) — `c95c3d5`** — `createListFromSelection` in `lib/queries/lists.ts` now wraps a single `supabase.rpc('create_list_from_selection', …)` call in `withSlugRetry`. Two RTT → one.
+- **Commit 4 (M3b) — `dfb8fac`** — `duplicateList` similarly. Three RTT → one. The `' (copy)'` name suffix and source-row field copy now happen server-side inside the RPC. Removed the now-unused `ListItem` type import.
+
+## Visible behavior changes (intentional improvements)
+
+All three RPCs run in single transactions, so a failed second insert now rolls back the parent list/gear row. Previously:
+- `addNewItemMut` could leave an orphan `gear_items` row if the `list_items` insert failed.
+- `createListFromSelection` could leave an empty list if the bulk `list_items` insert failed (cap trigger, stale gear_item_id).
+- `duplicateList` could leave an empty copy if the bulk `list_items` insert failed.
+
+After Phase 8, every gesture is atomic.
+
+## Verification results
+
+- `npm run build`: pass; bundle gzip 187.26 KB → 187.24 KB (−0.02 KB; client code shrank slightly).
+- `npm run lint`: pass.
+- `npm test --run`: 31/31 pass (4 skipped, unchanged).
+- Migration applied to production: **pending user-side `supabase db push`** — local agent can't run it.
+- Manual smoke (single network call per gesture, hard-refresh persistence, pre-write ownership rejection via DevTools console with bogus uuid → expect `P0002`): **pending user-side**.
+
+## Blockers / surprises
+
+None during execution. Two `tsc` follow-ups needed pruning unused imports (`createGearItem` in `ListDetailPage.tsx`, `ListItem` type in `lib/queries/lists.ts`) — both caught by the build and resolved in their respective commits.
+
+## Next phase
+
+Phase 9 candidates (no clear winner — user picks):
+- **Quality refactors** — W-1 (`useAnchoredMenu` extraction), W-7 (CategoryGroup name-shadow rename), W-2…W-13 (type/clarity nits). Several small commits, low risk, no perf payoff.
+- **Security hardening** — F4 (anon enumeration), F5 (ESLint rule), F8 (SW cache auth-keying decision).
+- **Test-coverage cluster** — T-3…T-9; needs jsdom + `@testing-library` install.
+
+After Phase 8, `REVIEW-performance.md` is substantially closed: H1–H6 done, M1–M13 done (M2 + M3 closed by this phase), L1–L9 done or audit-stale dropped. Remaining perf items would be backend/infrastructure (Cloudflare cache headers, etc.) or speculative (sub-millisecond memo wins) — neither warrants a dedicated phase.
