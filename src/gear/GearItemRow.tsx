@@ -139,13 +139,24 @@ function formatCost(cost: number | null): string {
 
 // purchase_date arrives as ISO YYYY-MM-DD. Parsing as 'YYYY-MM-DDT00:00:00'
 // keeps it in local-time so a 2024-04-15 entry doesn't render as Apr 14
-// for users west of UTC. Output uses the user's locale via toLocaleDateString
+// for users west of UTC. Output uses the user's locale via undefined-locale
 // for readability ("Apr 15, 2024" in en-US).
+//
+// Hoisted because GearLibraryPage renders one cell per gear row;
+// constructing a fresh Intl.DateTimeFormat per row was the audit-caught
+// L9 cost. Locale is read once at module load — virtually no SPA
+// respects mid-session locale changes anyway and we're not localizing
+// anything else.
+const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+})
 function formatPurchaseDate(date: string | null): string {
   if (date === null) return '—'
   const d = new Date(`${date}T00:00:00`)
   if (isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+  return DATE_FORMATTER.format(d)
 }
 
 // Kebab popover — three-dot button + portal-rendered menu. Mirrors
