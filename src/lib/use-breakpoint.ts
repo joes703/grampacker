@@ -9,9 +9,14 @@ const QUERIES = {
   mobile: '(max-width: 767px)',
 } as const
 
-// useSyncExternalStore lets every consumer of the same query share one
-// matchMedia listener. Without this, a list with 300 rows would register
-// 300 separate listeners that all fire on every breakpoint cross.
+// useSyncExternalStore + a single subscribe factory per query keep React
+// updates batched and the call site simple. Note: each subscriber still
+// registers its own matchMedia 'change' listener on the underlying
+// MediaQueryList — this does NOT dedupe listeners at the DOM level. The
+// real protection against listener-per-row blowup is page-level prop
+// drilling: ListDetailPage / GearLibraryPage call useIsBelowLg() once and
+// pass `isBelowLg` down to rows, so a 300-item list registers ~3
+// listeners total, not 300.
 function makeSubscribe(query: string) {
   return (onChange: () => void) => {
     if (typeof window === 'undefined') return () => {}
