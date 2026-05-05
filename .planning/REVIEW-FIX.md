@@ -276,11 +276,12 @@ Recommend Phase 8 as the RPC consolidation pass — it's the last remaining back
 - **Commit 2 (M2) — `ab98d7f`** — `addNewItemMut` in `ListDetailPage.tsx` now does one `supabase.rpc('add_gear_item_with_list_item', …)` call instead of `createGearItem` + `addGearItemToList` chain. Two RTT → one. Removed the now-unused `createGearItem` import (the helper is still used by `GearLibraryPage.tsx`'s separate add-to-inventory flow).
 - **Commit 3 (M3a) — `c95c3d5`** — `createListFromSelection` in `lib/queries/lists.ts` now wraps a single `supabase.rpc('create_list_from_selection', …)` call in `withSlugRetry`. Two RTT → one.
 - **Commit 4 (M3b) — `dfb8fac`** — `duplicateList` similarly. Three RTT → one. The `' (copy)'` name suffix and source-row field copy now happen server-side inside the RPC. Removed the now-unused `ListItem` type import.
+- **Follow-up — `<hash>`** — `20260510000001_fix_add_gear_item_category_ownership.sql` adds an explicit `p_category_id` ownership check to `add_gear_item_with_list_item` (was missing in the original migration; relied solely on the composite FK to reject another user's category). RLS is bypassed inside SECURITY DEFINER, so the explicit check matches the spec's "verify any user-controlled id before writing" rule and produces a clear `P0002 category not found` instead of a deferred FK failure. CREATE OR REPLACE — applies on top of the already-deployed function.
 
 ## Visible behavior changes (intentional improvements)
 
 All three RPCs run in single transactions, so a failed second insert now rolls back the parent list/gear row. Previously:
-- `addNewItemMut` could leave an orphan `gear_items` row if the `list_items` insert failed.
+- `addNewItemMut` could leave an orphan `gear_items` row if the `list_items` insert failed. With the follow-up category-ownership check, a stale or invalid `category_id` now also rejects up-front (`P0002 category not found`) instead of producing a deferred FK error after the gear row was queued for insert.
 - `createListFromSelection` could leave an empty list if the bulk `list_items` insert failed (cap trigger, stale gear_item_id).
 - `duplicateList` could leave an empty copy if the bulk `list_items` insert failed.
 
