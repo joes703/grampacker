@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchSharedList, fetchSharedListItems, fetchSharedListCategories } from '../lib/queries'
 import type { Category, ListItemWithGear, PublicCategory, PublicListItem } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
+import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useDocumentTitle } from '../lib/use-document-title'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
@@ -11,6 +12,7 @@ import CategoryGroup from './CategoryGroup'
 export default function SharePage() {
   const { slug } = useParams<{ slug: string }>()
   const { weightUnit, toggleWeightUnit } = useWeightUnit()
+  const isBelowLg = useIsBelowLg()
 
   const { data: list, isLoading: listLoading } = useQuery({
     queryKey: ['shared-list', slug],
@@ -136,6 +138,7 @@ export default function SharePage() {
               name={group.category?.name ?? 'Uncategorized'}
               items={group.items}
               weightUnit={weightUnit}
+              isBelowLg={isBelowLg}
               collapsible={false}
             />
           ))}

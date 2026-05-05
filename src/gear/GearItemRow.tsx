@@ -14,6 +14,10 @@ import RowIconButton from '../components/RowIconButton'
 type Props = {
   item: GearItem
   weightUnit: WeightUnit
+  // Page-level breakpoint: true at <1024 px (Tailwind `lg:` boundary). Drilled
+  // from the page so a 500-row library registers one matchMedia subscription,
+  // not 500.
+  isBelowLg: boolean
   selectMode: boolean
   selected: boolean
   onToggleSelect: () => void
@@ -29,6 +33,7 @@ type Props = {
 export default function GearItemRow({
   item,
   weightUnit,
+  isBelowLg,
   selectMode,
   selected,
   onToggleSelect,
@@ -58,62 +63,64 @@ export default function GearItemRow({
         />
       )}
 
-      {/* Desktop branch (≥ lg) — name + description (2:3 cols), weight,
-          and a kebab menu for Edit / Delete actions. The kebab pattern
-          mirrors the list page's RowKebab so both pages share one row-
-          action affordance. Hidden in select mode (selection itself
-          replaces per-row actions). */}
-      <div className="hidden lg:contents">
-        <div className="flex-1 min-w-0 flex items-center gap-3">
-          <div className="flex-[2] min-w-0">
-            <InlineText
-              value={item.name}
-              onSave={(v) => onInlineSave({ name: v })}
-              className="block w-full truncate font-normal text-gray-900"
-            />
-          </div>
-          {(item.description !== null || !selectMode) && (
-            <div className="flex-[3] min-w-0">
+      {isBelowLg ? (
+        /* Mobile branch (< lg) — name + weight only, no description, no
+           inline icon buttons. The whole row body is one tappable button:
+           tap toggles selection in select mode, otherwise opens the edit
+           dialog. The leading checkbox (rendered above when selectMode is
+           on) is a sibling of the button, so a checkbox tap only fires
+           its own onChange — no double-toggle. */
+        <div className="flex flex-1 items-center gap-2">
+          <button
+            type="button"
+            onClick={selectMode ? onToggleSelect : onEdit}
+            aria-label={selectMode ? (selected ? 'Deselect item' : 'Select item') : 'Edit item'}
+            className="flex flex-1 min-w-0 items-center gap-2 text-left"
+          >
+            <span className="flex-1 min-w-0 truncate font-normal text-gray-900">{item.name}</span>
+            <span className="shrink-0 w-20 text-right tabular-nums text-gray-600">
+              {formatItemWeight(item.weight_grams, weightUnit)}
+            </span>
+          </button>
+        </div>
+      ) : (
+        /* Desktop branch (≥ lg) — name + description (2:3 cols), weight,
+           and a kebab menu for Edit / Delete actions. The kebab pattern
+           mirrors the list page's RowKebab so both pages share one row-
+           action affordance. Hidden in select mode (selection itself
+           replaces per-row actions). */
+        <>
+          <div className="flex-1 min-w-0 flex items-center gap-3">
+            <div className="flex-[2] min-w-0">
               <InlineText
-                value={item.description ?? ''}
-                placeholder="Add description"
-                onSave={(v) => onInlineSave({ description: v })}
-                className="block w-full truncate text-sm font-normal text-gray-500"
+                value={item.name}
+                onSave={(v) => onInlineSave({ name: v })}
+                className="block w-full truncate font-normal text-gray-900"
               />
             </div>
-          )}
-        </div>
-        <span className="shrink-0 w-20 text-right tabular-nums text-gray-500">
-          {formatCost(item.cost)}
-        </span>
-        <span className="shrink-0 w-24 text-right tabular-nums text-gray-500">
-          {formatPurchaseDate(item.purchase_date)}
-        </span>
-        <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
-          {formatItemWeight(item.weight_grams, weightUnit)}
-        </span>
-        {!selectMode && <GearRowKebab onEdit={onEdit} onDelete={onDelete} />}
-      </div>
-
-      {/* Mobile branch (< lg) — name + weight only, no description, no
-          inline icon buttons. The whole row body is one tappable button:
-          tap toggles selection in select mode, otherwise opens the edit
-          dialog. The leading checkbox (rendered above when selectMode is
-          on) is a sibling of the button, so a checkbox tap only fires
-          its own onChange — no double-toggle. */}
-      <div className="lg:hidden flex flex-1 items-center gap-2">
-        <button
-          type="button"
-          onClick={selectMode ? onToggleSelect : onEdit}
-          aria-label={selectMode ? (selected ? 'Deselect item' : 'Select item') : 'Edit item'}
-          className="flex flex-1 min-w-0 items-center gap-2 text-left"
-        >
-          <span className="flex-1 min-w-0 truncate font-normal text-gray-900">{item.name}</span>
-          <span className="shrink-0 w-20 text-right tabular-nums text-gray-600">
+            {(item.description !== null || !selectMode) && (
+              <div className="flex-[3] min-w-0">
+                <InlineText
+                  value={item.description ?? ''}
+                  placeholder="Add description"
+                  onSave={(v) => onInlineSave({ description: v })}
+                  className="block w-full truncate text-sm font-normal text-gray-500"
+                />
+              </div>
+            )}
+          </div>
+          <span className="shrink-0 w-20 text-right tabular-nums text-gray-500">
+            {formatCost(item.cost)}
+          </span>
+          <span className="shrink-0 w-24 text-right tabular-nums text-gray-500">
+            {formatPurchaseDate(item.purchase_date)}
+          </span>
+          <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
             {formatItemWeight(item.weight_grams, weightUnit)}
           </span>
-        </button>
-      </div>
+          {!selectMode && <GearRowKebab onEdit={onEdit} onDelete={onDelete} />}
+        </>
+      )}
     </div>
   )
 }

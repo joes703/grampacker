@@ -7,6 +7,7 @@ import { Check, ChevronDown, Plus, X } from 'lucide-react'
 import { queryKeys, createList, makeOptimisticInsert } from '../lib/queries'
 import type { List } from '../lib/types'
 import { usePortalPopover } from '../lib/use-portal-popover'
+import { useIsMobile } from '../lib/use-breakpoint'
 
 type Props = {
   lists: List[]
@@ -22,21 +23,6 @@ type Props = {
   // container, so the dropdown opens flush with the heading row's left
   // edge rather than from the chevron's corner.
   anchorRef: RefObject<HTMLElement | null>
-}
-
-// Inline media-query hook, kept private to this file. The selector is the
-// only consumer today; if a second one appears, hoist to src/lib/.
-function useIsMobile(): boolean {
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 767px)')
-    const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-  return isMobile
 }
 
 // Trigger + dual-surface dropdown: portal popover at md+, Vaul bottom sheet

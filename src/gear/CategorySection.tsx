@@ -14,6 +14,7 @@ type CategorySectionProps = {
   category: Category | null // null = Uncategorized
   items: GearItem[]
   weightUnit: WeightUnit
+  isBelowLg: boolean
   collapsed: boolean
   onToggleCollapse: () => void
   selectMode: boolean
@@ -43,6 +44,7 @@ function CategorySectionInner(
     category,
     items,
     weightUnit,
+    isBelowLg,
     collapsed,
     onToggleCollapse,
     selectMode,
@@ -203,6 +205,7 @@ function CategorySectionInner(
                   key={item.id}
                   item={item}
                   weightUnit={weightUnit}
+                  isBelowLg={isBelowLg}
                   selectMode={selectMode}
                   reorderPending={itemReorderPending}
                   selected={selectedIds.has(item.id)}
