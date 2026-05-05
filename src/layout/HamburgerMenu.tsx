@@ -1,9 +1,8 @@
-import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
 import { HelpCircle, Info, LogOut, Menu, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { usePortalPopover } from '../lib/use-portal-popover'
+import { useAnchoredMenu } from '../lib/use-anchored-menu'
 
 // Kebab-style menu for the < md band's secondary destinations (Help, About,
 // Settings, Sign out) — pairs with the bottom MobileTabBar (Lists, Gear).
@@ -15,29 +14,11 @@ import { usePortalPopover } from '../lib/use-portal-popover'
 // popover idiom.
 export default function HamburgerMenu() {
   const navigate = useNavigate()
-  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const open = menuPos !== null
-
-  usePortalPopover({
-    isOpen: open,
-    onClose: () => setMenuPos(null),
-    triggerRef,
-    contentRef: menuRef,
-  })
-
-  function openMenu() {
-    if (!triggerRef.current) return
-    const rect = triggerRef.current.getBoundingClientRect()
-    setMenuPos({
-      top: rect.bottom + 4,
-      right: Math.max(8, window.innerWidth - rect.right),
-    })
-  }
+  const { open, openMenu, close, triggerRef, menuRef, menuPos } =
+    useAnchoredMenu({ variant: 'right-anchored' })
 
   async function handleSignOut() {
-    setMenuPos(null)
+    close()
     await supabase.auth.signOut()
     navigate('/login')
   }
@@ -47,7 +28,7 @@ export default function HamburgerMenu() {
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => (open ? setMenuPos(null) : openMenu())}
+        onClick={() => (open ? close() : openMenu())}
         aria-label="More options"
         aria-expanded={open}
         className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
@@ -55,7 +36,7 @@ export default function HamburgerMenu() {
         <Menu size={20} />
       </button>
 
-      {open && menuPos && createPortal(
+      {open && menuPos && 'right' in menuPos && createPortal(
         // Plain <div> with semantic <button>/<a> children — dropping role="menu"
         // because we don't implement arrow-key navigation (WAI-ARIA's menu
         // pattern requires it). Tab order is sufficient for four items.
@@ -64,13 +45,13 @@ export default function HamburgerMenu() {
           className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
           style={{ top: menuPos.top, right: menuPos.right }}
         >
-          <MenuLink to="/help" icon={<HelpCircle size={14} />} onClick={() => setMenuPos(null)}>
+          <MenuLink to="/help" icon={<HelpCircle size={14} />} onClick={close}>
             Help
           </MenuLink>
-          <MenuLink to="/about" icon={<Info size={14} />} onClick={() => setMenuPos(null)}>
+          <MenuLink to="/about" icon={<Info size={14} />} onClick={close}>
             About
           </MenuLink>
-          <MenuLink to="/settings" icon={<Settings size={14} />} onClick={() => setMenuPos(null)}>
+          <MenuLink to="/settings" icon={<Settings size={14} />} onClick={close}>
             Settings
           </MenuLink>
           <div className="my-1 border-t border-gray-100" />

@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -7,7 +7,7 @@ import type { GearItem } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
 import { makeDnDId } from '../lib/dnd-ids'
-import { usePortalPopover } from '../lib/use-portal-popover'
+import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
 
@@ -166,50 +166,31 @@ function formatPurchaseDate(date: string | null): string {
 // state so multiple kebabs can't open at once and the dismiss listeners
 // only target the relevant menu.
 function GearRowKebab({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const menuOpen = menuPos !== null
-
-  usePortalPopover({
-    isOpen: menuOpen,
-    onClose: () => setMenuPos(null),
-    triggerRef,
-    contentRef: menuRef,
-  })
-
-  function openMenu() {
-    if (!triggerRef.current) return
-    const rect = triggerRef.current.getBoundingClientRect()
-    const menuWidth = 192 // matches w-48
-    setMenuPos({
-      top: rect.bottom + 4,
-      left: Math.max(8, rect.right - menuWidth),
-    })
-  }
+  const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
+    useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
 
   return (
     <>
       <RowIconButton
         ref={triggerRef}
-        onClick={(e) => { e.stopPropagation(); if (menuOpen) setMenuPos(null); else openMenu() }}
+        onClick={(e) => { e.stopPropagation(); if (menuOpen) close(); else openMenu() }}
         ariaLabel="Item options"
         icon={<MoreVertical size={14} />}
       />
 
-      {menuOpen && menuPos && createPortal(
+      {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
           ref={menuRef}
           className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
           style={{ top: menuPos.top, left: menuPos.left }}
         >
-          <MenuItem icon={<Pencil size={13} />} onClick={() => { setMenuPos(null); onEdit() }}>
+          <MenuItem icon={<Pencil size={13} />} onClick={() => { close(); onEdit() }}>
             Edit
           </MenuItem>
           <div className="my-1 border-t border-gray-100" />
           <MenuItem
             icon={<Trash2 size={13} />}
-            onClick={() => { setMenuPos(null); onDelete() }}
+            onClick={() => { close(); onDelete() }}
             danger
           >
             Delete from inventory
