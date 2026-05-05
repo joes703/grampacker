@@ -46,6 +46,7 @@ import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useLatestRef } from '../lib/use-latest-ref'
 import { parseDnDId } from '../lib/dnd-ids'
+import { showToast } from '../lib/toast'
 import { assignSortOrderSlots } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { parseListCsv, type ListImportRow } from '../lib/csv'
@@ -353,15 +354,55 @@ function ListDetailInner({
   // Delete a gear item entirely (from the gear library and every list that uses it).
   // gear_items.id is referenced by list_items with ON DELETE CASCADE on gear_item_id,
   // so deleting a gear item also removes every list_item that references it.
-  // Mirrors GearLibraryPage.removeItem so both entry points behave the same.
+  //
+  // The list-page entry point needs cross-cache fan-out beyond the helper:
+  // makeOptimisticDelete only filters ['gear-items'], but the row the user is
+  // looking at on /lists/:id is rendered from ['list-items', listId]. Without
+  // a fan-out, the row stays visible on screen until the settled invalidation/
+  // refetch round-trip completes — undermining the whole point of an
+  // optimistic delete. Mirror updateGearItemMut's fan-out shape: snapshot
+  // every affected ['list-items', _] cache, optimistically filter rows whose
+  // gear_item_id matches, restore on error, invalidate per-key on settled.
+  const deleteHelper = makeOptimisticDelete<GearItem, string>({
+    qc,
+    queryKey: queryKeys.gearItems(),
+    id: (id) => id,
+  })
   const deleteGearItemMut = useMutation({
     mutationFn: deleteGearItem,
-    ...makeOptimisticDelete<GearItem, string>({
-      qc,
-      queryKey: queryKeys.gearItems(),
-      invalidateKeys: [['list-items']],
-      id: (id) => id,
-    }),
+    onMutate: (id: string) => {
+      const helperCtx = deleteHelper.onMutate(id)
+      const affected = qc.getQueryCache()
+        .findAll({ queryKey: ['list-items'] })
+        .filter((q) => (q.state.data as ListItemWithGear[] | undefined)?.some((i) => i.gear_item_id === id))
+      const listSnapshots: { key: QueryKey; data: ListItemWithGear[] | undefined }[] = []
+      for (const q of affected) {
+        const key = q.queryKey
+        qc.cancelQueries({ queryKey: key })
+        listSnapshots.push({ key, data: qc.getQueryData<ListItemWithGear[]>(key) })
+        qc.setQueryData<ListItemWithGear[]>(key, (curr) =>
+          curr?.filter((item) => item.gear_item_id !== id),
+        )
+      }
+      return { ...helperCtx, listSnapshots }
+    },
+    onError: (err, vars, ctx) => {
+      deleteHelper.onError(err, vars, ctx)
+      if (ctx?.listSnapshots) {
+        for (const { key, data } of ctx.listSnapshots) {
+          qc.setQueryData(key, data)
+        }
+      }
+      showToast("Couldn't delete that item. Please try again.", { type: 'error' })
+    },
+    onSettled: (_data, _err, _vars, ctx) => {
+      deleteHelper.onSettled()
+      if (ctx?.listSnapshots) {
+        for (const { key } of ctx.listSnapshots) {
+          qc.invalidateQueries({ queryKey: key })
+        }
+      }
+    },
   })
 
   // "+ Add new item" inside a category — creates a gear_item (so it lives in the
