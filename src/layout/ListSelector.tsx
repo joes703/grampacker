@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Drawer } from 'vaul'
 import { Check, ChevronDown, Plus, X } from 'lucide-react'
+
+const ListSelectorDrawer = lazy(() => import('./ListSelectorDrawer'))
 import { queryKeys, createList, makeOptimisticInsert } from '../lib/queries'
 import type { List } from '../lib/types'
 import { usePortalPopover } from '../lib/use-portal-popover'
@@ -112,38 +113,19 @@ export default function ListSelector({ lists, currentListId, userId, open, onOpe
         document.body,
       )}
 
-      {/* Mobile bottom sheet */}
+      {/* Mobile bottom sheet — vaul lazy-loaded; desktop never fetches the
+          chunk because `isMobile` is false at ≥md. */}
       {isMobile && (
-        <Drawer.Root open={open} onOpenChange={onOpenChange} direction="bottom">
-          <Drawer.Portal>
-            <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40" />
-            <Drawer.Content
-              className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85vh] flex-col rounded-t-xl bg-white pb-[env(safe-area-inset-bottom)]"
-              // Same propagation guard as the desktop popover — events
-              // inside the bottom sheet must not bubble to the container.
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => e.stopPropagation()}
-            >
-              <Drawer.Title className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-                <span className="text-sm font-semibold text-gray-900">Switch list</span>
-                <button
-                  type="button"
-                  onClick={() => onOpenChange(false)}
-                  aria-label="Close"
-                  className="rounded p-1 text-gray-400 hover:text-gray-600"
-                >
-                  <X size={18} />
-                </button>
-              </Drawer.Title>
-              <SelectorBody
-                lists={lists}
-                currentListId={currentListId}
-                userId={userId}
-                onClose={() => onOpenChange(false)}
-              />
-            </Drawer.Content>
-          </Drawer.Portal>
-        </Drawer.Root>
+        <Suspense fallback={null}>
+          <ListSelectorDrawer open={open} onOpenChange={onOpenChange}>
+            <SelectorBody
+              lists={lists}
+              currentListId={currentListId}
+              userId={userId}
+              onClose={() => onOpenChange(false)}
+            />
+          </ListSelectorDrawer>
+        </Suspense>
       )}
     </>
   )

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Suspense, lazy, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import {
@@ -16,8 +16,8 @@ import {
   arrayMove,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable'
-import { Backpack, ChevronRight, Plus, Upload, X } from 'lucide-react'
-import { Drawer } from 'vaul'
+import { Backpack, ChevronRight, Plus, Upload } from 'lucide-react'
+const ListSidebarDrawer = lazy(() => import('./ListSidebarDrawer'))
 import { useAuth } from '../auth/AuthProvider'
 import {
   queryKeys,
@@ -768,61 +768,32 @@ function ListDetailInner({
       {/* Mobile gear-library drawer — mirrors the desktop left aside.
           Slides in from the LEFT, dismissed by overlay tap, the close
           button, or a left-drag. Stays open across multiple add/remove
-          actions so the user can build up a list quickly. The flex chain
-          inside Drawer.Content uses min-h-0 on each flex-1 wrapper so
-          LibraryPanel's inner overflow-y-auto can engage; otherwise the
-          panel grows to its content height and the bounded drawer never
-          delegates scroll to the inner list.
+          actions so the user can build up a list quickly.
 
           JS-gated by isBelowLg so desktop genuinely doesn't mount the
-          drawer (vaul + LibraryPanel subtree). Replaces a previous
-          `lg:hidden` CSS-only hide that still mounted the whole tree. */}
+          drawer; React.lazy on the wrapper means desktop also never
+          fetches the vaul chunk. Combined with the H5 Phase-3 carry-over,
+          this is what actually moves vaul out of the main bundle. */}
       {isBelowLg && (
-        <Drawer.Root open={drawerOpen} onOpenChange={setDrawerOpen} direction="left">
-          <Drawer.Portal>
-            <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40" />
-            <Drawer.Content className="fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-sm flex-col bg-gray-50">
-              <Drawer.Title className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-3">
-                <span className="text-sm font-semibold text-gray-900">Gear Library</span>
-                {/* Same forward affordance as the desktop aside; tapping
-                    closes the drawer first so the user sees its exit
-                    animation rather than an abrupt unmount on route change. */}
-                <Link
-                  to={`/gear?from=${listId}`}
-                  onClick={() => setDrawerOpen(false)}
-                  className="inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
-                >
-                  Manage <ChevronRight size={12} />
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => setDrawerOpen(false)}
-                  aria-label="Close gear library"
-                  className="ml-auto rounded p-1 text-gray-400 hover:text-gray-600"
-                >
-                  <X size={18} />
-                </button>
-              </Drawer.Title>
-              <div className="flex-1 min-h-0 flex flex-col p-4 overflow-hidden">
-                <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    <LibraryPanel
-                      gearItems={gearItems}
-                      categories={categories}
-                      listItemGearIds={listItemGearIds}
-                      weightUnit={weightUnit}
-                      onAdd={(item) => addMut.mutate(item)}
-                      onRemove={(item) => {
-                        const li = listItems.find((l) => l.gear_item_id === item.id)
-                        if (li) deleteMut.mutate(li.id)
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </Drawer.Content>
-          </Drawer.Portal>
-        </Drawer.Root>
+        <Suspense fallback={null}>
+          <ListSidebarDrawer
+            open={drawerOpen}
+            onOpenChange={setDrawerOpen}
+            manageHref={`/gear?from=${listId}`}
+          >
+            <LibraryPanel
+              gearItems={gearItems}
+              categories={categories}
+              listItemGearIds={listItemGearIds}
+              weightUnit={weightUnit}
+              onAdd={(item) => addMut.mutate(item)}
+              onRemove={(item) => {
+                const li = listItems.find((l) => l.gear_item_id === item.id)
+                if (li) deleteMut.mutate(li.id)
+              }}
+            />
+          </ListSidebarDrawer>
+        </Suspense>
       )}
 
       {/* Gear-item edit (reached from the row tap on mobile or the kebab →
