@@ -317,13 +317,13 @@ After Phase 8, `REVIEW-performance.md` is substantially closed: H1–H6 done, M1
 - **Commit 1 (W-1) — `f0f340d`** — `useAnchoredMenu` extracted in `src/lib/use-anchored-menu.ts`. Four sites converted: `ItemRow` (w-48 / 192px), `GearItemRow` (w-48 / 192px), `ListsPage` per-card kebab (w-44 / 176px), `HamburgerMenu` (right-anchored, w-48 / 192px). Two anchor variants (`right-flush`, `right-anchored`). `usePortalPopover` remains the dismiss-listener layer underneath. Out-of-scope sites (PrivacyButton, ListActionsKebab, ListSelector) intentionally left alone — bespoke positioning, separate cleanup.
 - **Commit 2 (W-4) — `b12cab6`** — `useRequireSession` added in `src/auth/use-require-session.ts`. Six sites converted to a single safe shape (`const auth = useRequireSession()`, `const userId = auth?.userId ?? ''`, all hooks unchanged, `if (!auth) return null` after the last hook where applicable). Hook order preserved at every site. Sites with no prior early return (NavBar sub-components, RootRedirect) keep their pass-through behavior; bang-pattern sites (GearLibraryPage, ListsEmptyState) now have a defensive early return that the parent guard makes unreachable in practice.
 - **Commit 3 (W-7) — `5870941`** — `LibraryPanel`'s inline `CategoryGroup` renamed to `LibraryCategoryGroup` (4 occurrences in one file). Removes the shadow against the public `lists/CategoryGroup`.
-- **Commit 4 (W-13) — `de77b9e`** — `parseCost` in `src/lib/csv.ts` now caps at 99,999,999.99 (matches the `numeric(10,2)` column max). Prior behavior: an over-cap row aborted the entire bulk INSERT with Postgres 22003 `numeric_value_out_of_range`. Now: the row imports with cost clamped to the column max. Regression test added; suite is 32/31 (was 31/31).
+- **Commit 4 (W-13) — `de77b9e`** — `parseCost` in `src/lib/csv.ts` now caps at 99,999,999.99 (matches the `numeric(10,2)` column max). Prior behavior: an over-cap row aborted the entire bulk INSERT with Postgres 22003 `numeric_value_out_of_range`. Now: the row imports with cost clamped to the column max. Regression test added; suite is now 32 passed | 4 skipped (was 31 passed | 4 skipped).
 
 ## Verification results
 
-- `npm run build`: pass; bundle gzip 187.24 KB → 187.32 KB (+0.08 KB; new test bytes outweigh the W-1 dedup, both negligible).
+- `npm run build`: pass; bundle gzip 187.24 KB → 187.32 KB (+0.08 KB; runtime code-shape variance, not the added test — test files aren't in the production bundle. The W-1 dedup and the W-13 one-line cap are both small enough that minifier/chunking variance dominates).
 - `npm run lint`: pass.
-- `npm test --run`: 32/31 pass (1 new csv-cost-cap regression test in W-13).
+- `npm test --run`: 32 passed | 4 skipped (1 new csv-cost-cap regression test in W-13; previously 31 passed | 4 skipped).
 - Manual smoke: pending user-side. Recommended:
   - All four kebabs (list-item, gear-item, list-card, NavBar hamburger) open/close cleanly, dismiss on outside-click / scroll / resize / escape, position correctly near viewport edges.
   - Sign out / sign in cycle on `/lists`, `/gear`, `/`, `/lists/<id>` without console errors or render flashes.
