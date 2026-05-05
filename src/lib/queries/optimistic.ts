@@ -226,6 +226,57 @@ export function makeOptimisticDelete<TList extends { id: string }, TInput>(opts:
   }
 }
 
+// Remove every row whose id matches `ids(input)` from the cached array.
+// Mirrors makeOptimisticDelete but for a set of ids in one mutation. Used
+// for multi-select bulk delete (e.g. "Delete (12)" on the gear page).
+export function makeOptimisticBulkDelete<TList extends { id: string }, TInput>(opts: CommonOpts & {
+  ids: (input: TInput) => string[]
+}) {
+  const { qc, queryKey, ids } = opts
+  return {
+    onMutate: (input: TInput): OptimisticContext<TList> => {
+      qc.cancelQueries({ queryKey })
+      const previous = qc.getQueryData<TList[]>(queryKey)
+      const targetIds = new Set(ids(input))
+      if (targetIds.size === 0) return { previous }
+      qc.setQueryData<TList[]>(queryKey, (curr) => {
+        if (!curr) return curr
+        return curr.filter((item) => !targetIds.has(item.id))
+      })
+      return { previous }
+    },
+    onError: makeRollback<TList>(opts),
+    onSettled: makeSettled(opts),
+  }
+}
+
+// Apply a patch to every row whose id matches `ids(input)`. Used for
+// multi-select bulk moves (e.g. "Move 12 items to Kitchen" on the gear
+// page). Mirrors makeOptimisticBulkDelete but writes via apply() instead
+// of filter — caller controls how the patch composes with each row, which
+// matters for nested fields like an embedded gear_item.category_id.
+export function makeOptimisticBulkMove<TList extends { id: string }, TInput>(opts: CommonOpts & {
+  ids: (input: TInput) => string[]
+  apply: (item: TList, input: TInput) => TList
+}) {
+  const { qc, queryKey, ids, apply } = opts
+  return {
+    onMutate: (input: TInput): OptimisticContext<TList> => {
+      qc.cancelQueries({ queryKey })
+      const previous = qc.getQueryData<TList[]>(queryKey)
+      const targetIds = new Set(ids(input))
+      if (targetIds.size === 0) return { previous }
+      qc.setQueryData<TList[]>(queryKey, (curr) => {
+        if (!curr) return curr
+        return curr.map((item) => (targetIds.has(item.id) ? apply(item, input) : item))
+      })
+      return { previous }
+    },
+    onError: makeRollback<TList>(opts),
+    onSettled: makeSettled(opts),
+  }
+}
+
 // ── Reorder mutation lifecycle ────────────────────────────────────────────────
 
 export function makeOptimisticReorder<T extends { id: string; sort_order: number }>(
