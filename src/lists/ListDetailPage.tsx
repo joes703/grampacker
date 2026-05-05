@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useState } from 'react'
+import { Suspense, lazy, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import {
@@ -498,6 +498,19 @@ function ListDetailInner({
     [grouped, showWornGroup],
   )
 
+  // gearItems / listItems are read by handlers in sharedGroupProps but only
+  // at call time (never synchronously during memo computation). Stashing
+  // them in refs lets the closures see the latest data without forcing the
+  // memo to invalidate on every list-items mutation. Pre-fix, every
+  // mutation invalidated `['list-items']` → busted the memo → minted fresh
+  // prop references → re-rendered every CategoryGroup + dnd-kit's
+  // useSortable per row. Pack-mode checkbox ticks were the dominant
+  // render cost.
+  const gearItemsRef = useRef(gearItems)
+  gearItemsRef.current = gearItems
+  const listItemsRef = useRef(listItems)
+  listItemsRef.current = listItems
+
   // Per-row handler bag passed to every CategoryGroup. Memoized so each
   // category section doesn't re-render on every parent state change.
   //
@@ -526,17 +539,17 @@ function ListDetailInner({
       onSaveGearWeight: (gearId: string, w: number) =>
         updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } }),
       onEditGearItem: (gearId: string) => {
-        const g = gearItems.find((x) => x.id === gearId)
-        const li = listItems.find((l) => l.gear_item.id === gearId)
+        const g = gearItemsRef.current.find((x) => x.id === gearId)
+        const li = listItemsRef.current.find((l) => l.gear_item.id === gearId)
         if (g) setDialog({ type: 'edit-gear', gear: g, listItem: li ?? null, saveError: null })
       },
       onDeleteGearItem: (gearId: string) => {
-        const g = gearItems.find((x) => x.id === gearId)
+        const g = gearItemsRef.current.find((x) => x.id === gearId)
         if (g) setDialog({ type: 'delete-gear', candidate: g })
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above re: mutation refs
-    [mode, weightUnit, isBelowLg, showUnpackedOnly, gearItems, listItems],
+    [mode, weightUnit, isBelowLg, showUnpackedOnly],
   )
 
   // ── Not found ──────────────────────────────────────────────────────────────
