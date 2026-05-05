@@ -46,7 +46,8 @@ import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useLatestRef } from '../lib/use-latest-ref'
 import { parseDnDId } from '../lib/dnd-ids'
-import { assignSortOrderSlots, groupListItemsByCategory } from '../lib/grouping'
+import { assignSortOrderSlots } from '../lib/grouping'
+import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { parseListCsv, type ListImportRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import WeightTable from './WeightTable'
@@ -496,10 +497,7 @@ function ListDetailInner({
     [gearIdsKey],
   )
 
-  const grouped = useMemo(
-    () => groupListItemsByCategory(listItems, categories),
-    [listItems, categories],
-  )
+  const grouped = useGroupedListItems(listItems, categories)
 
   // Pack-mode + Group Worn: split the grouped items into "regular" (rendered
   // in their categories with worn items hidden) and "worn" (flattened in
