@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable'
 import { Backpack, ChevronRight, Plus, Upload } from 'lucide-react'
 const ListSidebarDrawer = lazy(() => import('./ListSidebarDrawer'))
-import { useAuth } from '../auth/AuthProvider'
+import { useRequireSession } from '../auth/use-require-session'
 import {
   queryKeys,
   fetchLists,
@@ -90,7 +90,7 @@ export default function ListDetailPage() {
   // Asserting here narrows routeId to string for ListDetailInner's listId prop.
   const { id } = useParams<{ id: string }>()
   const routeId = id!
-  const { session } = useAuth()
+  const auth = useRequireSession()
   const qc = useQueryClient()
 
   // userId pre-declared before the query so the owner-scoped fetchLists has
@@ -99,7 +99,7 @@ export default function ListDetailPage() {
   // below handles the same case post-render). The owner-scoped query passes
   // userId as the user_id filter — empty string returns empty results
   // rather than the unfiltered union.
-  const userIdForQuery = session?.user.id ?? ''
+  const userIdForQuery = auth?.userId ?? ''
   const { data: lists = [] } = useQuery({
     queryKey: queryKeys.lists(),
     queryFn: () => fetchLists(userIdForQuery),
@@ -107,8 +107,8 @@ export default function ListDetailPage() {
 
   // PrivateRoute usually keeps session non-null here, but if it goes null
   // mid-render (logout), bail out cleanly instead of throwing.
-  if (!session) return null
-  const userId = session.user.id
+  if (!auth) return null
+  const userId = auth.userId
 
   // key={routeId} forces a fresh ListDetailInner instance per list, so local
   // state (open dialogs, draft inputs, etc.) doesn't leak when the user
