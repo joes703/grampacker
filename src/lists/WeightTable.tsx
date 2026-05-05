@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import type { ListItemWithGear, Category } from '../lib/types'
 import { gramsToLbOzParts } from '../lib/weight'
 
@@ -68,10 +69,20 @@ export function computeWeightBreakdown(
 }
 
 export default function WeightTable({ items, categories }: Props) {
+  // Hook must be called unconditionally; the empty-list early return moved
+  // below the memo. The memo guards against unrelated parent re-renders
+  // (notes editor keystroke, dialog open/close) recomputing the breakdown
+  // — pack-mode toggles still rebuild because `items` reference changes
+  // there, but those are the renders where the breakdown legitimately
+  // changes anyway.
+  const breakdown = useMemo(
+    () => computeWeightBreakdown(items, categories),
+    [items, categories],
+  )
+
   if (items.length === 0) return null
 
-  const { catRows, baseGrams, consumableGrams, wornGrams, totalPackGrams } =
-    computeWeightBreakdown(items, categories)
+  const { catRows, baseGrams, consumableGrams, wornGrams, totalPackGrams } = breakdown
 
   return (
     <table className="w-full text-sm text-gray-700">
