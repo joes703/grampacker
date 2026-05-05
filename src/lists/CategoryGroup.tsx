@@ -60,6 +60,12 @@ export type GroupProps = {
    *  list. Header counts and the "complete" affordance still reflect the full
    *  items array. Authed pack-mode only; share view never sets this. */
   showUnpackedOnly?: boolean
+  /** Pack mode + Group Worn: hide is_worn items from this category's render
+   *  (they appear in the trailing Worn section instead). Same shape as
+   *  showUnpackedOnly — filter at the leaf so the parent doesn't have to
+   *  produce a fresh items array per group every time the toggle flips,
+   *  which would defeat React.memo's shallow compare. */
+  hideWorn?: boolean
   onUpdate?: (itemId: string, patch: ListItemPatch) => void
   onDelete?: (itemId: string) => void
   onSaveGearName?: (gearItemId: string, name: string) => void
@@ -101,6 +107,7 @@ function CategoryGroup({
   sortable = false,
   reorderPending = false,
   showUnpackedOnly = false,
+  hideWorn = false,
   onUpdate,
   onDelete,
   onSaveGearName,
@@ -126,10 +133,14 @@ function CategoryGroup({
   // renders so the user can orient even when items are filtered out.
   const complete = packMode && items.length > 0 && packedCount === items.length
   // When the unpacked-only filter is on, hide packed items from the rendered
-  // list. Header counts and the complete affordance still use the full items
-  // array so orientation is preserved.
-  const visibleItems = packMode && showUnpackedOnly
-    ? items.filter((i) => !i.is_packed)
+  // list. When hideWorn is on (pack mode + Group Worn), hide worn items so
+  // they appear only in the trailing Worn section. Header counts and the
+  // complete affordance still use the full items array so orientation is
+  // preserved. Single fold so we don't iterate the array twice when both
+  // filters are active.
+  const filterUnpacked = packMode && showUnpackedOnly
+  const visibleItems = (filterUnpacked || hideWorn)
+    ? items.filter((i) => (!filterUnpacked || !i.is_packed) && (!hideWorn || !i.is_worn))
     : items
 
   // Per-row props builder — same shape for SortableItemRow and ItemRow.

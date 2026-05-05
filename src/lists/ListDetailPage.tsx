@@ -49,6 +49,7 @@ import { parseDnDId } from '../lib/dnd-ids'
 import { showToast } from '../lib/toast'
 import { assignSortOrderSlots } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
+import { useStableWornItems } from '../lib/use-stable-worn-items'
 import { parseListCsv, type ListImportRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import WeightTable from './WeightTable'
@@ -540,24 +541,19 @@ function ListDetailInner({
 
   const grouped = useGroupedListItems(listItems, categories)
 
-  // Pack-mode + Group Worn: split the grouped items into "regular" (rendered
-  // in their categories with worn items hidden) and "worn" (flattened in
-  // walk-categories order — categories in display order, items in
-  // sort_order within each — and rendered in the trailing Worn section).
-  // When the toggle is off, displayedGrouped === grouped and wornItems is
-  // empty so the existing render path is preserved exactly.
+  // Pack-mode + Group Worn: hide is_worn items inside each category and
+  // render them in a trailing Worn section. Phase 5 follow-up: previously
+  // we mapped+filtered to a `displayedGrouped` array up here, which minted
+  // fresh group objects AND fresh items arrays for EVERY category whenever
+  // any single item changed — defeating React.memo(CategoryGroup). The
+  // worn-hiding is now done at the leaf via CategoryGroup's `hideWorn`
+  // prop (same shape as the existing `showUnpackedOnly`), so unchanged
+  // categories keep their stable items reference from useGroupedListItems.
+  // The trailing Worn section gets its items from useStableWornItems,
+  // which holds the prior result and reuses it when worn membership +
+  // worn-item references are unchanged.
   const showWornGroup = mode === 'pack' && groupWorn
-  const displayedGrouped = useMemo(
-    () =>
-      showWornGroup
-        ? grouped.map((g) => ({ ...g, items: g.items.filter((i) => !i.is_worn) }))
-        : grouped,
-    [grouped, showWornGroup],
-  )
-  const wornItems = useMemo(
-    () => (showWornGroup ? grouped.flatMap((g) => g.items.filter((i) => i.is_worn)) : []),
-    [grouped, showWornGroup],
-  )
+  const wornItems = useStableWornItems(grouped, showWornGroup)
 
   // gearItems / listItems are read by handlers in sharedGroupProps and the
   // LibraryPanel onAdd / onRemove callbacks, but only at call time (never
@@ -816,7 +812,7 @@ function ListDetailInner({
                       reorderable here — category-level DnD is /gear-only. Each
                       CategoryGroup still renders a per-category SortableContext
                       internally so items reorder within their category. */}
-                  {displayedGrouped
+                  {grouped
                     .filter((g) => g.category !== null)
                     .map((group) => (
                       <CategoryGroup
@@ -826,10 +822,11 @@ function ListDetailInner({
                         items={group.items}
                         {...sharedGroupProps}
                         reorderPending={reorderItemsMut.isPending}
+                        hideWorn={showWornGroup}
                         onAddItem={onAddNewItem}
                       />
                     ))}
-                  {displayedGrouped
+                  {grouped
                     .filter((g) => g.category === null)
                     .map((group) => (
                       <CategoryGroup
@@ -839,6 +836,7 @@ function ListDetailInner({
                         items={group.items}
                         {...sharedGroupProps}
                         reorderPending={reorderItemsMut.isPending}
+                        hideWorn={showWornGroup}
                         onAddItem={onAddNewItem}
                       />
                     ))}
