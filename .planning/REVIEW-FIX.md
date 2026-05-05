@@ -91,7 +91,7 @@ Phase 4 candidates: render-perf cluster (M6, M7, M8, M11, M12) — closing M11 t
 
 ## Shipped
 
-- **Commit 1 (M11) — `d8c1032`** — Two breakpoint hooks (`useIsBelowLg` at 1023px, `useIsMobile` at 767px) hoisted to `src/lib/use-breakpoint.ts`, both backed by a shared `useSyncExternalStore` subscription. Three `<lg` branches JS-gated via prop-drilled `isBelowLg` from page-level: `ItemRow.tsx` (mobile/desktop bodies), `GearItemRow.tsx` (same), `ListDetailPage.tsx` (sidebar drawer mount). Main bundle gzip: **204.91 → 205.09 KB (+0.18, expected — vaul still statically imported here, structural prep only).**
+- **Commit 1 (M11) — `d8c1032`** — Two breakpoint hooks (`useIsBelowLg` at 1023px, `useIsMobile` at 767px) hoisted to `src/lib/use-breakpoint.ts`, implemented with `useSyncExternalStore`; row-level listener blowup is avoided by page-level prop drilling (one hook call per page rather than per row). Three `<lg` branches JS-gated via prop-drilled `isBelowLg` from page-level: `ItemRow.tsx` (mobile/desktop bodies), `GearItemRow.tsx` (same), `ListDetailPage.tsx` (sidebar drawer mount). Main bundle gzip: **204.91 → 205.09 KB (+0.18, expected — vaul still statically imported here, structural prep only).**
 - **Commit 2 (H5 retry) — `88041c0`** — Both vaul drawers now `React.lazy`-loaded behind their `isMobile` / `isBelowLg` JS gates. Re-created `ListSelectorDrawer.tsx` (reverted in Phase 3) and added new `ListSidebarDrawer.tsx`. Main bundle gzip: **205.09 → 186.40 KB (-18.69 KB).** Vaul moved to two async chunks (`ListSelectorDrawer-*.js` 0.54 KB gzip, `ListSidebarDrawer-*.js` 0.64 KB gzip) plus the shared vaul runtime in the existing dist chunk. Phase 3's H5 carry-over closed.
 - **Commit 3 (M8) — `560a5a8`** — `sharedGroupProps` deps in `ListDetailPage.tsx` no longer churn on every list-items / gear-items mutation. `gearItems` and `listItems` arrays now read through refs; both removed from the memo dep array. Closures inside the memo see the freshest data via the ref bindings; the memo itself only rebuilds when the truly-stable inputs (mutation handles, modal setters, primitives) change.
 - **Commit 4 (M7, M12) — `db98e75`** — `LibraryPanel.tsx`: `filtered`, `sortedCats`, `groups`, `uncategorized` wrapped in `useMemo`; inner `CategoryGroup` wrapped in `React.memo` after API change to `(toggleKey: string, onToggle: (key: string) => void)` so the parent can pass a stable `useCallback`'d toggleCollapse instead of fresh inline arrow closures (which would have defeated the shallow-compare). **Initial pass missed two upstream prop-stability holes** — corrected in the follow-up commits below. Build flat (186.40 → 186.49 KB, +0.09 — render-perf fix, no bundle motion expected).
@@ -101,8 +101,8 @@ Phase 4 candidates: render-perf cluster (M6, M7, M8, M11, M12) — closing M11 t
   3. **`listItemGearIds` Set churned on pack-mode toggles.** The naive `useMemo([listItems])` minted a fresh Set on every is_packed toggle even though gear-id membership was unchanged. Switched to a derived primitive key (`gearIdsKey = sorted gear_item_ids joined`) computed during render and used as the memo dep. The Set keeps its prior reference until membership actually changes.
   4. **Inaccurate listener-sharing comment in `use-breakpoint.ts`.** Reworded to clarify that `useSyncExternalStore` does NOT dedupe `matchMedia` 'change' listeners at the DOM level — the protection against listener-per-row blowup comes from page-level prop-drilling (one hook call per page, ~3 listeners total app-wide).
 
-**Cumulative bundle delta from Phase 3 baseline: 204.91 → 186.49 KB = -18.42 KB (−9.0%).**
-**Cumulative bundle delta from Phase 0 baseline: 261.02 → 186.49 KB = -74.53 KB (−28.6%).**
+**Cumulative bundle delta from Phase 3 baseline: 204.91 → 186.51 KB = -18.40 KB (−9.0%).**
+**Cumulative bundle delta from Phase 0 baseline: 261.02 → 186.51 KB = -74.51 KB (−28.5%).**
 
 ## Verification results
 
@@ -111,7 +111,7 @@ Phase 4 candidates: render-perf cluster (M6, M7, M8, M11, M12) — closing M11 t
 - Manual smoke: **pending user verification.** Specifically:
   - Mobile / tablet (<1024 px): hamburger drawer mounts, ListSelector bottom sheet works, all row interactions preserved.
   - Desktop (≥1024 px): React DevTools shows no `Drawer` component in the tree on `/lists/:id`; Network panel shows no vaul chunk fetched on initial load.
-  - Pack-mode rapid toggle: code-level reasoning says CategoryGroup re-renders should be scoped to the affected row (sharedGroupProps memo holds; LibraryPanel onAdd/onRemove are stable callbacks; listItemGearIds Set is stable across pack toggles). **Profiler-confirmed measurement is pending** — the implementation is consistent with the goal but no DevTools profile capture has been run.
+  - Pack-mode rapid toggle: LibraryPanel prop churn has been reduced (`sharedGroupProps` memo holds; `onLibraryAdd`/`onLibraryRemove` are stable callbacks; `listItemGearIds` Set is stable across pack toggles). The list-page `CategoryGroup` (`src/lists/CategoryGroup.tsx`) is NOT yet `React.memo`-wrapped, and `groupListItemsByCategory()` still produces fresh group/item array references whenever `listItems` changes, so a pack-checkbox mutation can still re-render category sections on the right column. **Scoped-render behavior on the list page still needs profiler verification** and likely a follow-up phase to memoize the list-page CategoryGroup + stabilize the grouping output.
 
 ## Blockers / surprises
 
