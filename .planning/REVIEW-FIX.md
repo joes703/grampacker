@@ -180,3 +180,50 @@ Phase 6 candidates:
 - **Locale-aware weight formatting** — if thousands-separator grouping is desired, propose as user-visible UX commit with before/after screenshots.
 
 Recommend W-1 + W-7 as a small quality refactor pass next, OR jump to DB indexes if backend perf is the higher priority.
+
+---
+
+# grampacker — Phase 6 fix summary (2026-05-05)
+
+## Shipped
+
+- **Commit 1 (H1 + M1) — `9482882`** — four covering indexes added in `supabase/migrations/20260509000000_list_items_and_lists_indexes.sql`:
+  - `list_items_user_list_sort_idx (user_id, list_id, sort_order)` — covers AUTHED `fetchListItems` end-to-end. Index range scan on the predicate, no extra sort step.
+  - `list_items_list_sort_idx (list_id, sort_order)` — covers ANON `fetchSharedListItems` (no user_id predicate; the composite above's leftmost prefix is unusable here), the `lists.id → list_items.list_id` cascade, `resetPackedForList`, and the per-list-item cap trigger. The trailing `sort_order` column gives the share-view an index-ordered scan.
+  - `list_items_gear_item_id_idx (gear_item_id)` — covers the `gear_items.id → list_items.gear_item_id` cascade. Pre-fix, deleting a gear_item degraded to a seq scan to find matching rows.
+  - `lists_user_sort_idx (user_id, sort_order, name)` — covers `fetchLists`. Mirrors `categories_user_sort_idx` and `gear_items_user_idx`.
+
+  Codex pre-flight catch: the original spec used `(list_id)` alone for index #2, which would not have helped `fetchSharedListItems` skip a sort step and would have left the share-view query plan partially optimized. Rewrote to `(list_id, sort_order)` before execution.
+
+  Pre/post `EXPLAIN ANALYZE`: **pending user-side measurement** (the migration must be applied via `supabase db push` or Supabase Studio first; the local agent can't apply migrations).
+
+## Verification results
+
+- `npm run build`: pass; bundle gzip unchanged at 186.86 KB (DB-only change).
+- `npm run lint`: pass; no source files changed.
+- `npm test --run`: 31/31 pass.
+- Migration apply: **pending user action.** Apply via `supabase db push` (or paste the SQL into Supabase Studio's SQL editor). Then verify the four new indexes exist:
+  ```sql
+  select indexname from pg_indexes
+  where tablename in ('list_items', 'lists')
+  order by tablename, indexname;
+  ```
+  Expect to see `list_items_gear_item_id_idx`, `list_items_list_sort_idx`, `list_items_user_list_sort_idx`, and `lists_user_sort_idx` in addition to the pre-existing pkey / slug / etc indexes.
+- Manual smoke (after apply): load `/lists`, load `/lists/<id>`, load `/r/<slug>` for a shared list, mutate (add/delete/reorder a list_item) — confirm no query failures. Optional `EXPLAIN ANALYZE` check on the canonical predicates to confirm Index Scan replaces Seq Scan.
+
+## Blockers / surprises
+
+- **Codex pre-flight catch (medium).** Spec's index #2 was `(list_id)` only — would not have covered `fetchSharedListItems` (which sorts by `sort_order`). Rewrote to `(list_id, sort_order)` before execution; the spec patch is in `.planning/REVIEW-PHASE6.md`.
+- **Codex pre-flight catch (low).** Spec's lock-mode note was inaccurate: plain `CREATE INDEX` takes a `SHARE` lock (blocks writes, permits reads), not `ACCESS EXCLUSIVE`. Corrected.
+- **Migration not applied locally.** The local agent can't run `supabase db push` interactively, so the schema change is committed but not yet applied. User-side step required before any of the planner improvements take effect.
+
+## Next phase
+
+Phase 7 candidates:
+- **Small perf nits cluster** — actual L9 (`formatPurchaseDate` Intl per call), M9 (`formatRelativeDate`), M4 (`RootRedirect` cold-load block), L3-L4 (DnD memo), M13 (`lucide-react` tree-shaking audit). Cheap wins that ride together.
+- **RPC consolidation** — M2 (`addNewItemMut` two round-trips) and M3 (`duplicateList` / `createListFromSelection` 2-3 round-trips). Higher-value backend perf, requires migration with new RPCs.
+- **Quality refactors** — W-1 (`useAnchoredMenu` extraction), W-7 (CategoryGroup name shadow rename), W-2…W-13 (type/clarity nits).
+- **Security hardening** — F4 (anon enumeration), F5 (ESLint rule), F8 (SW cache auth-keying decision).
+- **Test-coverage cluster** — T-3…T-9; needs jsdom + @testing-library install.
+
+Recommend Phase 7 as the small-perf-nits cluster (cheapest commit shape, several stale audit items to close), OR M2/M3 RPC consolidation if the user-creation flow latency is the bigger user-visible pain.
