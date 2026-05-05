@@ -48,7 +48,7 @@ import { parseListCsv, listItemsToCsv, downloadCsv, nameFromCsvFilename, type Li
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useNow } from '../lib/use-now'
-import { usePortalPopover } from '../lib/use-portal-popover'
+import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
@@ -547,32 +547,13 @@ function ListCard({
   outerStyle,
   dragHandle,
 }: ListCardProps) {
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
+  const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
+    useAnchoredMenu({ variant: 'right-flush', menuWidth: 176 })
   const renameInputRef = useRef<HTMLInputElement>(null)
-  const menuOpen = menuPos !== null
-
-  usePortalPopover({
-    isOpen: menuOpen,
-    onClose: () => setMenuPos(null),
-    triggerRef,
-    contentRef: menuRef,
-  })
 
   useEffect(() => {
     if (renaming) renameInputRef.current?.select()
   }, [renaming])
-
-  function openMenu() {
-    if (!triggerRef.current) return
-    const rect = triggerRef.current.getBoundingClientRect()
-    const menuWidth = 176 // matches w-44
-    setMenuPos({
-      top: rect.bottom + 4,
-      left: Math.max(8, rect.right - menuWidth),
-    })
-  }
 
   // Card chrome: same border/radius/bg the gear page uses for category sections.
   // Hover lift kept subtle so the grid doesn't feel busy.
@@ -649,7 +630,7 @@ function ListCard({
         onClick={(e) => {
           e.stopPropagation()
           e.preventDefault()
-          if (menuOpen) setMenuPos(null)
+          if (menuOpen) close()
           else openMenu()
         }}
         aria-label="List options"
@@ -658,7 +639,7 @@ function ListCard({
         <MoreVertical size={16} />
       </button>
 
-      {menuOpen && menuPos && createPortal(
+      {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
           ref={menuRef}
           className="fixed z-50 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
@@ -666,18 +647,18 @@ function ListCard({
         >
           <MenuItem
             icon={<Pencil size={13} />}
-            onClick={() => { setMenuPos(null); onStartRename() }}
+            onClick={() => { close(); onStartRename() }}
           >
             Rename
           </MenuItem>
-          <MenuItem icon={<Download size={13} />} onClick={() => { setMenuPos(null); onExport() }}>
+          <MenuItem icon={<Download size={13} />} onClick={() => { close(); onExport() }}>
             Export CSV
           </MenuItem>
-          <MenuItem icon={<CopyPlus size={13} />} onClick={() => { setMenuPos(null); onDuplicate() }}>
+          <MenuItem icon={<CopyPlus size={13} />} onClick={() => { close(); onDuplicate() }}>
             Duplicate
           </MenuItem>
           <div className="my-1 border-t border-gray-100" />
-          <MenuItem icon={<Trash2 size={13} />} onClick={() => { setMenuPos(null); onDelete() }} danger>
+          <MenuItem icon={<Trash2 size={13} />} onClick={() => { close(); onDelete() }} danger>
             Delete
           </MenuItem>
         </div>,

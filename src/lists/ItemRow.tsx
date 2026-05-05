@@ -7,7 +7,7 @@ import type { ListItemWithGear } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
 import { makeDnDId } from '../lib/dnd-ids'
-import { usePortalPopover } from '../lib/use-portal-popover'
+import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
 import WeightInput from '../components/WeightInput'
@@ -476,38 +476,19 @@ function RowKebab({
   onEdit?: () => void
   onDeleteFromInventory?: () => void
 }) {
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const menuOpen = menuPos !== null
-
-  usePortalPopover({
-    isOpen: menuOpen,
-    onClose: () => setMenuPos(null),
-    triggerRef,
-    contentRef: menuRef,
-  })
-
-  function openMenu() {
-    if (!triggerRef.current) return
-    const rect = triggerRef.current.getBoundingClientRect()
-    const menuWidth = 192 // matches w-48
-    setMenuPos({
-      top: rect.bottom + 4,
-      left: Math.max(8, rect.right - menuWidth),
-    })
-  }
+  const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
+    useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
 
   return (
     <>
       <RowIconButton
         ref={triggerRef}
-        onClick={(e) => { e.stopPropagation(); if (menuOpen) setMenuPos(null); else openMenu() }}
+        onClick={(e) => { e.stopPropagation(); if (menuOpen) close(); else openMenu() }}
         ariaLabel="Item options"
         icon={<MoreVertical size={14} />}
       />
 
-      {menuOpen && menuPos && createPortal(
+      {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
           ref={menuRef}
           className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
@@ -515,12 +496,12 @@ function RowKebab({
         >
           <MenuItem
             icon={<CircleMinus size={13} />}
-            onClick={() => { setMenuPos(null); onRemoveFromList() }}
+            onClick={() => { close(); onRemoveFromList() }}
           >
             Remove from list
           </MenuItem>
           {onEdit && (
-            <MenuItem icon={<Pencil size={13} />} onClick={() => { setMenuPos(null); onEdit() }}>
+            <MenuItem icon={<Pencil size={13} />} onClick={() => { close(); onEdit() }}>
               Edit
             </MenuItem>
           )}
@@ -529,7 +510,7 @@ function RowKebab({
               <div className="my-1 border-t border-gray-100" />
               <MenuItem
                 icon={<Trash2 size={13} />}
-                onClick={() => { setMenuPos(null); onDeleteFromInventory() }}
+                onClick={() => { close(); onDeleteFromInventory() }}
                 danger
               >
                 Delete from inventory
