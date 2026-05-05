@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
@@ -33,31 +33,50 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
     searchInputRef.current?.focus()
   }, [focusSearchTrigger])
 
-  function toggleCollapse(key: string) {
+  // Stable across renders: setCollapsed from useState is referentially
+  // stable, and the closure captures only that. Stability matters because
+  // we pass toggleCollapse straight through as `onToggle` to the memoized
+  // inner CategoryGroup — a fresh closure every render would defeat the
+  // shallow-prop compare that React.memo relies on.
+  const toggleCollapse = useCallback((key: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
       else next.add(key)
       return next
     })
-  }
+  }, [])
 
   const q = search.trim().toLowerCase()
-  const filtered = q
-    ? gearItems.filter(
-        (g) =>
-          g.name.toLowerCase().includes(q) ||
-          (g.description?.toLowerCase().includes(q) ?? false),
-      )
-    : gearItems
+  const filtered = useMemo(
+    () =>
+      q
+        ? gearItems.filter(
+            (g) =>
+              g.name.toLowerCase().includes(q) ||
+              (g.description?.toLowerCase().includes(q) ?? false),
+          )
+        : gearItems,
+    [gearItems, q],
+  )
 
   // Build groups ordered by category sort_order
-  const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
-  const groups = sortedCats
-    .map((cat) => ({ category: cat, items: filtered.filter((g) => g.category_id === cat.id) }))
-    .filter((g) => g.items.length > 0)
+  const sortedCats = useMemo(
+    () => [...categories].sort((a, b) => a.sort_order - b.sort_order),
+    [categories],
+  )
+  const groups = useMemo(
+    () =>
+      sortedCats
+        .map((cat) => ({ category: cat, items: filtered.filter((g) => g.category_id === cat.id) }))
+        .filter((g) => g.items.length > 0),
+    [sortedCats, filtered],
+  )
 
-  const uncategorized = filtered.filter((g) => g.category_id === null)
+  const uncategorized = useMemo(
+    () => filtered.filter((g) => g.category_id === null),
+    [filtered],
+  )
 
   return (
     <div className="flex h-full flex-col">
@@ -90,7 +109,8 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
                 name={category.name}
                 items={items}
                 collapsed={collapsed.has(category.id)}
-                onToggle={() => toggleCollapse(category.id)}
+                toggleKey={category.id}
+                onToggle={toggleCollapse}
                 listItemGearIds={listItemGearIds}
                 weightUnit={weightUnit}
                 onAdd={onAdd}
@@ -103,7 +123,8 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
                 name="Uncategorized"
                 items={uncategorized}
                 collapsed={collapsed.has('__uncategorized__')}
-                onToggle={() => toggleCollapse('__uncategorized__')}
+                toggleKey="__uncategorized__"
+                onToggle={toggleCollapse}
                 listItemGearIds={listItemGearIds}
                 weightUnit={weightUnit}
                 onAdd={onAdd}
@@ -118,10 +139,19 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
   )
 }
 
-function CategoryGroup({
+// Wrapped in React.memo so re-renders of LibraryPanel (driven by parent
+// churn — drag ticks, NotesEditor keystrokes, list-items mutations) don't
+// cascade into every gear-picker category. Memo's shallow compare works
+// here because all props are reference-stable: `onToggle` is the parent's
+// useCallback'd toggleCollapse, `toggleKey` is a primitive string, and
+// listItemGearIds / onAdd / onRemove come from the page-level memoized
+// sharedGroupProps. The earlier inline `onToggle={() => toggleCollapse(id)}`
+// shape would have defeated the memo by minting a fresh closure every render.
+const CategoryGroup = memo(function CategoryGroup({
   name,
   items,
   collapsed,
+  toggleKey,
   onToggle,
   listItemGearIds,
   weightUnit,
@@ -132,7 +162,8 @@ function CategoryGroup({
   name: string
   items: GearItem[]
   collapsed: boolean
-  onToggle: () => void
+  toggleKey: string
+  onToggle: (key: string) => void
   listItemGearIds: Set<string>
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
@@ -143,7 +174,7 @@ function CategoryGroup({
     <div>
       {/* Category header */}
       <button
-        onClick={onToggle}
+        onClick={() => onToggle(toggleKey)}
         aria-expanded={!collapsed}
         aria-controls={regionId}
         className="flex w-full items-center gap-1.5 px-3 py-0.5 bg-gray-50 hover:bg-gray-100 text-left border-b border-gray-100"
@@ -206,4 +237,4 @@ function CategoryGroup({
       )}
     </div>
   )
-}
+})
