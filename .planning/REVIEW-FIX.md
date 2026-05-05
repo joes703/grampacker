@@ -225,3 +225,43 @@ Phase 7 candidates:
 - **Test-coverage cluster** — T-3…T-9; needs jsdom + @testing-library install.
 
 Recommend Phase 7 as the small-perf-nits cluster (cheapest commit shape, several stale audit items to close), OR M2/M3 RPC consolidation if the user-creation flow latency is the bigger user-visible pain.
+
+---
+
+# grampacker — Phase 7 fix summary (2026-05-05)
+
+## Shipped
+
+- **Commit 1 (L9 — actual) — `10fed9a`** — `formatPurchaseDate` in `src/gear/GearItemRow.tsx` now uses a hoisted `DATE_FORMATTER` (`Intl.DateTimeFormat(undefined, {...})`) alongside the existing `COST_FORMATTER`. Phase 5 mistakenly thought L9 referred to `formatItemWeight`; the actual L9 was always about purchase-date formatting. Output identical character-for-character (V8's `toLocaleDateString` is implemented via `Intl.DateTimeFormat.format` under the hood).
+- **Commit 2 (M9) — `3068e91`** — relative dates on `/lists` cards now retick once a minute via a new `useNow(intervalMs)` hook (`src/lib/use-now.ts`). Pre-fix, "1 min ago" stayed "1 min ago" forever once the card mounted. ListsPage calls `useNow(60_000)` once at the page level and threads `now` through `SortableListCard` / `ListCard` / `CardMeta` props — one setInterval for the grid, not one per card. `formatRelativeDate` signature widened from `(iso)` to `(iso, now)`.
+- **Commit 3 (M4) — `6c2da5a`** — `RootRedirect` redirects to the cached last-visited list_id immediately when warm, without waiting for `fetchLists`. New `src/lib/last-list-id.ts` helper (read/write/clear with UUID-shape validation, swallows localStorage exceptions). Cold path (no cached id) preserves prior behavior via `useQuery({ enabled: !cachedId })` — load-bearing hook order. Cache write in `ListDetailPage` is gated on `list?.id` resolving truthy so a stale cache doesn't get re-written on a not-found visit. Cache self-heal effect clears the cache when `!list && readLastListId() === listId` so a poisoned cache fixes itself on the next visit.
+- **L3-L4 — DROPPED.** Audit classified these as "Cold path; runs once per drop; bounded." `collisionDetection` is already memoized at `src/gear/GearLibraryPage.tsx:398`; drag handlers aren't props to memoized children, so memoizing them buys nothing. Closed: no action.
+- **M13 — PROBABLE PASS, full verification deferred.** Bundle size is consistent with `lucide-react` tree-shaking working: 36 distinct icons across 26 import sites, main chunk 187.26 KB gzip (everything — React, Supabase, dnd-kit, etc.), with multiple async chunks. With the multi-chunk topology a single number isn't a complete proof; a direct bundle search (`rg "createLucideIcon\|lucide-react" dist/assets/*.js`) or `vite-bundle-visualizer` run is the rigorous check, deferred unless symptoms appear.
+
+## Verification results
+
+- `npm run build`: pass; bundle gzip 187.02 → 187.26 KB across all three commits (+0.24 KB; useNow hook + last-list-id helper).
+- `npm run lint`: pass.
+- `npm test --run`: 31/31 pass.
+- Manual smoke: pending user verification. Specifically:
+  - **L9:** Open `/gear` with at least one item that has a purchase_date set; confirm the date renders unchanged.
+  - **M9:** Open `/lists` with a card showing "X mins ago". Wait 60+ seconds. Confirm the text increments.
+  - **M4 happy path:** Sign in, navigate to `/lists/<id>`, reload `/`. Expect immediate redirect with no "Loading..." flash. Confirm `localStorage.lastListId === <id>` (DevTools → Application).
+  - **M4 cold path:** Clear localStorage, reload `/`. Expect brief "Loading..." then redirect to most-recently-updated list.
+  - **M4 stale-cache regression:** Manually set `localStorage.lastListId = '00000000-0000-0000-0000-000000000000'`, reload `/`. Expect redirect to `/lists/00000...`, "List not found" renders, AND `localStorage.lastListId` is now removed. Reload `/` again — expect cold path. If cache wasn't cleared, the page would loop forever.
+
+## Blockers / surprises
+
+- Codex pre-flight catch on M4 (medium): first-pass spec wrote the cache on mount unconditionally, which would have made a stale cache sticky. Patched to write only after `list?.id` resolves truthy + clear on not-found when the cached id matches the failing route. Spec patched before execution.
+- Codex pre-flight catch on M13 (low): first-pass closure overclaimed "verified empirically" based on main-bundle size alone, but with the multi-chunk topology that's not a complete proof. Reworded to "probable pass, full verification deferred."
+- Did NOT wire `clearLastListId` into the signout handler. The cache self-heal effect on the not-found branch is the safety net; explicit signout-clear is a one-line follow-up if the not-found flicker on user-switch becomes annoying.
+
+## Next phase
+
+Phase 8 candidates:
+- **RPC consolidation (M2, M3)** — `addNewItemMut` two-round-trip collapse and `duplicateList` / `createListFromSelection` 2-3 round-trip collapse. Higher-value backend perf, requires a migration with new RPCs.
+- **Quality refactors** — W-1 (`useAnchoredMenu` extraction), W-7 (CategoryGroup name-shadow rename), W-2…W-13 (type/clarity nits).
+- **Security hardening** — F4 (anon enumeration), F5 (ESLint rule), F8 (SW cache auth-keying decision).
+- **Test-coverage cluster** — T-3…T-9; needs jsdom + @testing-library install.
+
+Recommend Phase 8 as the RPC consolidation pass — it's the last remaining backend-perf cluster and closes the high/medium audit items in `Network / TanStack Query`.
