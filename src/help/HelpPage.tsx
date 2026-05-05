@@ -1,8 +1,14 @@
+import { Suspense, lazy } from 'react'
 import helpContent from '../../help.md?raw'
-import MarkdownPage from '../components/MarkdownPage'
 import { useDocumentTitle } from '../lib/use-document-title'
+
+const MarkdownPage = lazy(() => import('../components/MarkdownPage'))
 
 export default function HelpPage() {
   useDocumentTitle('Help')
-  return <MarkdownPage content={helpContent} />
+  return (
+    <Suspense fallback={null}>
+      <MarkdownPage content={helpContent} />
+    </Suspense>
+  )
 }
