@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useMemo, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import {
@@ -45,6 +45,7 @@ import type { GearItem, ListItemWithGear, List } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useLatestRef } from '../lib/use-latest-ref'
+import { writeLastListId, readLastListId, clearLastListId } from '../lib/last-list-id'
 import { parseDnDId } from '../lib/dnd-ids'
 import { showToast } from '../lib/toast'
 import { assignSortOrderSlots } from '../lib/grouping'
@@ -175,6 +176,29 @@ function ListDetailInner({
   // it resolves; falls back to "Lists" while the lists query is pending so
   // the title doesn't briefly drop to the bare app name.
   useDocumentTitle(list?.name ?? 'Lists')
+
+  // M4 cache write: stash the list_id only AFTER the list resolves to a
+  // real, RLS-permitted row. Writing on mount unconditionally would make
+  // a stale cache sticky — RootRedirect would send user B to user A's
+  // list and the unconditional write would refresh the bad id, locking
+  // the loop in. The reactive dep `list?.id` is undefined while the
+  // lists query is in-flight or the route is invalid, so no write fires
+  // on those paths.
+  useEffect(() => {
+    if (list?.id) writeLastListId(list.id)
+  }, [list?.id])
+
+  // M4 cache self-heal: if the route's listId is the cached one but the
+  // list isn't in the user's `lists` collection (deleted, different user
+  // under stale cache), clear the cache so the next `/` visit takes the
+  // slow path instead of looping back here. Scoped to readLastListId() ===
+  // listId so a direct deep-link to an unrelated missing list doesn't
+  // wipe an otherwise-valid cache.
+  useEffect(() => {
+    if (!list && listId && readLastListId() === listId) {
+      clearLastListId()
+    }
+  }, [list, listId])
 
   const { data: listItems = [] } = useQuery({
     queryKey: queryKeys.listItems(listId),
