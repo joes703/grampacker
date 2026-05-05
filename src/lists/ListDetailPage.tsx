@@ -313,12 +313,15 @@ function ListDetailInner({
   // Delete a gear item entirely (from the gear library and every list that uses it).
   // gear_items.id is referenced by list_items with ON DELETE CASCADE on gear_item_id,
   // so deleting a gear item also removes every list_item that references it.
+  // Mirrors GearLibraryPage.removeItem so both entry points behave the same.
   const deleteGearItemMut = useMutation({
-    mutationFn: (id: string) => deleteGearItem(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      qc.invalidateQueries({ queryKey: ['list-items'] })
-    },
+    mutationFn: deleteGearItem,
+    ...makeOptimisticDelete<GearItem, string>({
+      qc,
+      queryKey: queryKeys.gearItems(),
+      invalidateKeys: [['list-items']],
+      id: (id) => id,
+    }),
   })
 
   // "+ Add new item" inside a category — creates a gear_item (so it lives in the
