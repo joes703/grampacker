@@ -307,3 +307,43 @@ Phase 9 candidates (no clear winner — user picks):
 - **Test-coverage cluster** — T-3…T-9; needs jsdom + `@testing-library` install.
 
 After Phase 8, `REVIEW-performance.md` is substantially closed: H1–H6 done, M1–M13 done (M2 + M3 closed by this phase), L1–L9 done or audit-stale dropped. Remaining perf items would be backend/infrastructure (Cloudflare cache headers, etc.) or speculative (sub-millisecond memo wins) — neither warrants a dedicated phase.
+
+---
+
+# grampacker — Phase 9 fix summary (2026-05-05)
+
+## Shipped
+
+- **Commit 1 (W-1) — `f0f340d`** — `useAnchoredMenu` extracted in `src/lib/use-anchored-menu.ts`. Four sites converted: `ItemRow` (w-48 / 192px), `GearItemRow` (w-48 / 192px), `ListsPage` per-card kebab (w-44 / 176px), `HamburgerMenu` (right-anchored, w-48 / 192px). Two anchor variants (`right-flush`, `right-anchored`). `usePortalPopover` remains the dismiss-listener layer underneath. Out-of-scope sites (PrivacyButton, ListActionsKebab, ListSelector) intentionally left alone — bespoke positioning, separate cleanup.
+- **Commit 2 (W-4) — `b12cab6`** — `useRequireSession` added in `src/auth/use-require-session.ts`. Six sites converted to a single safe shape (`const auth = useRequireSession()`, `const userId = auth?.userId ?? ''`, all hooks unchanged, `if (!auth) return null` after the last hook where applicable). Hook order preserved at every site. Sites with no prior early return (NavBar sub-components, RootRedirect) keep their pass-through behavior; bang-pattern sites (GearLibraryPage, ListsEmptyState) now have a defensive early return that the parent guard makes unreachable in practice.
+- **Commit 3 (W-7) — `5870941`** — `LibraryPanel`'s inline `CategoryGroup` renamed to `LibraryCategoryGroup` (4 occurrences in one file). Removes the shadow against the public `lists/CategoryGroup`.
+- **Commit 4 (W-13) — `de77b9e`** — `parseCost` in `src/lib/csv.ts` now caps at 99,999,999.99 (matches the `numeric(10,2)` column max). Prior behavior: an over-cap row aborted the entire bulk INSERT with Postgres 22003 `numeric_value_out_of_range`. Now: the row imports with cost clamped to the column max. Regression test added; suite is 32/31 (was 31/31).
+
+## Verification results
+
+- `npm run build`: pass; bundle gzip 187.24 KB → 187.32 KB (+0.08 KB; new test bytes outweigh the W-1 dedup, both negligible).
+- `npm run lint`: pass.
+- `npm test --run`: 32/31 pass (1 new csv-cost-cap regression test in W-13).
+- Manual smoke: pending user-side. Recommended:
+  - All four kebabs (list-item, gear-item, list-card, NavBar hamburger) open/close cleanly, dismiss on outside-click / scroll / resize / escape, position correctly near viewport edges.
+  - Sign out / sign in cycle on `/lists`, `/gear`, `/`, `/lists/<id>` without console errors or render flashes.
+  - LibraryPanel's category groupings render unchanged.
+  - CSV import with a row containing an over-cap cost succeeds with the value clamped.
+
+## Blockers / surprises
+
+None during execution. Two follow-ups that fell out naturally:
+
+- `useAnchoredMenu`'s `MenuPos` is a discriminated union (`{top, left} | {top, right}`) — call sites narrow with `'left' in menuPos` / `'right' in menuPos` before reading the coordinate. Slightly more verbose at the JSX site but eliminates the union-narrow ambiguity.
+- W-4: NavBar's two sub-components and RootRedirect didn't have prior early returns; preserved that behavior rather than introducing a new one. Documented in the commit message so the asymmetry isn't surprising to a future reader.
+
+## Next phase
+
+Phase 10 candidates (no clear winner — user picks):
+- **More quality refactors** — W-2 (assignSortOrderSlots redundant slice), W-3 (withSlugRetry typeguard), W-5 (sort_order out of patch types), W-6 (groupByCategory consolidation — careful, touches Phase 5 stability layer), W-8 (`category!` non-null assertions), W-9 (docstring hoist), W-10 (placeholder slug helper), W-11 (sorted cache key), W-12 (parseDnDId tighten). Many small commits; no perf or correctness payoff individually.
+- **Medium quality** — M-1 (production observability for failed mutations), M-2 (optimistic `updated_at` bump), M-3 (ListSelector mid-flip), M-5 (CSV reader error/abort), M-7 (RootRedirect re-sort → reduce), M-8 (gearById Map), M-10 (consumable-vs-worn precedence assert).
+- **Security hardening** — F4 (anon enumeration of shared slugs), F5 (`react/jsx-no-target-blank` ESLint rule), F8 (SW cache auth-keying decision).
+- **Test-coverage cluster** — T-3…T-9; needs jsdom + `@testing-library` install.
+- **Bug cluster** — B-1 (WeightTable orphan-category drop), B-2 (stale embedded category_id), B-4 (silent bulk action failures).
+
+After Phase 9, `REVIEW-quality.md` is partially closed: W-1 (biggest extraction win), W-4 (auth boilerplate), W-7 (namespace fix), W-13 (real bug). Remaining W- items are mostly micro-cleanups; M- items have observable behavior changes that warrant a separate review pass.
