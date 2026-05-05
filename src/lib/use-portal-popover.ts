@@ -48,7 +48,7 @@ export function usePortalPopover(opts: {
   const onCloseRef = useRef(onClose)
   useEffect(() => {
     onCloseRef.current = onClose
-  })
+  }, [onClose])
 
   useEffect(() => {
     if (!isOpen) return
