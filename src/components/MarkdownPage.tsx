@@ -1,3 +1,5 @@
+// SAFETY: Do not enable rehype-raw or accept user-controlled content here.
+// This component must continue to receive only build-time bundled markdown.
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
