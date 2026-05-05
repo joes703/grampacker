@@ -1,5 +1,5 @@
 import { supabase } from '../supabase'
-import type { List, ListItem, PublicList } from '../types'
+import type { List, PublicList } from '../types'
 import { generateSlug } from '../slug'
 import { bulkUpdateSortOrder } from './optimistic'
 
@@ -125,57 +125,22 @@ export async function createListFromSelection(
   })
 }
 
+// Phase 8 (M3b): one SECURITY DEFINER RPC replaces the previous
+// 3-call chain (lists insert + list_items SELECT + bulk list_items
+// insert). Three RTT -> one. The "(copy)" name suffix and per-row
+// field copying happen inside the RPC; this function passes only the
+// source id, slug, and sort_order. The `source: List` parameter shape
+// is preserved for caller compatibility — passing the whole row is
+// harmless even though only `source.id` is read here.
 export async function duplicateList(source: List, userId: string, sortOrder: number): Promise<List> {
-  const newList = await withSlugRetry(async (slug) => {
-    const { data, error } = await supabase
-      .from('lists')
-      .insert({
-        user_id: userId,
-        name: `${source.name} (copy)`,
-        description: source.description,
-        sort_order: sortOrder,
-        slug,
-      })
-      .select()
-      .single()
+  return withSlugRetry(async (slug) => {
+    const { data, error } = await supabase.rpc('duplicate_list', {
+      p_user_id: userId,
+      p_source_list_id: source.id,
+      p_slug: slug,
+      p_sort_order: sortOrder,
+    })
     if (error) throw error
-    return data
+    return data as List
   })
-
-  const { data: items, error: itemsErr } = await supabase
-    .from('list_items')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('list_id', source.id)
-  if (itemsErr) throw itemsErr
-
-  if (items.length > 0) {
-    // Copy only the user-editable fields onto the new list. id / list_id /
-    // created_at / updated_at are owned by the database. Destructure with
-    // an inline ListItem annotation so the supabase row type lines up
-    // without a whole-array cast.
-    const copies = items.map(
-      ({
-        gear_item_id,
-        quantity,
-        is_worn,
-        is_consumable,
-        is_packed,
-        sort_order,
-      }: ListItem) => ({
-        user_id: userId,
-        list_id: newList.id,
-        gear_item_id,
-        quantity,
-        is_worn,
-        is_consumable,
-        is_packed,
-        sort_order,
-      }),
-    )
-    const { error: insertErr } = await supabase.from('list_items').insert(copies)
-    if (insertErr) throw insertErr
-  }
-
-  return newList
 }
