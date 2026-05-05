@@ -256,14 +256,43 @@ function DownloadAllData() {
 // ── Delete account ────────────────────────────────────────────────────────────
 
 function DeleteAccount() {
+  const { session } = useAuth()
   const [confirming, setConfirming] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const navigate = useNavigate()
 
-  async function handleDelete() {
+  function reset() {
+    setVerifying(false)
+    setCurrentPassword('')
+    setErr(null)
+  }
+
+  async function handleDelete(e: React.FormEvent) {
+    e.preventDefault()
     setBusy(true)
     setErr(null)
+    const email = session?.user.email
+    if (!email) {
+      setBusy(false)
+      setErr('No active session. Please sign in again.')
+      return
+    }
+    // Re-auth the same way ChangePasswordForm does — verify the current
+    // password before invoking the destructive RPC. Generic "incorrect"
+    // copy mirrors the password-change flow so we don't leak rate-limit
+    // detail or account-state probing surface.
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email,
+      password: currentPassword,
+    })
+    if (verifyError) {
+      setBusy(false)
+      setErr('Current password is incorrect.')
+      return
+    }
     const { error } = await supabase.rpc('delete_account')
     if (error) {
       setBusy(false)
@@ -286,19 +315,58 @@ function DeleteAccount() {
       >
         Delete my account
       </button>
-      {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
+      {err && !verifying && <p className="mt-2 text-sm text-red-600">{err}</p>}
       {confirming && (
         <TypedConfirmDialog
           title="Delete account"
           message="This will permanently delete your account and everything in it. There is no recovery."
           confirmPhrase="delete"
-          confirmLabel={busy ? 'Deleting…' : 'Delete account'}
+          confirmLabel="Continue"
           onCancel={() => setConfirming(false)}
           onConfirm={() => {
             setConfirming(false)
-            handleDelete()
+            setVerifying(true)
           }}
         />
+      )}
+      {verifying && (
+        <form
+          onSubmit={handleDelete}
+          className="mt-4 space-y-3 max-w-md rounded-lg border border-red-200 bg-red-50 p-4"
+        >
+          <div>
+            <label htmlFor="da-current" className="block text-sm font-medium text-gray-700 mb-1">
+              Confirm with your current password
+            </label>
+            <input
+              id="da-current"
+              type="password"
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoFocus
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            />
+          </div>
+          {err && <p className="text-sm text-red-600">{err}</p>}
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={busy || !currentPassword}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              {busy ? 'Deleting…' : 'Delete account'}
+            </button>
+            <button
+              type="button"
+              onClick={reset}
+              disabled={busy}
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
       )}
     </div>
   )
