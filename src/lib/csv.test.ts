@@ -336,4 +336,18 @@ describe('gear csv with cost and purchase_date', () => {
     // Negative cost dropped to null; locale date format also rejected.
     expect(parsed[1]).toMatchObject({ cost: null, purchase_date: null })
   })
+
+  it('caps cost at 99,999,999.99 to avoid Postgres 22003 on bulk insert', () => {
+    // The DB column is numeric(10,2). An over-cap row would otherwise
+    // fail the bulk INSERT with numeric_value_out_of_range, taking
+    // every row in the same INSERT down with it. Cap client-side so
+    // the import succeeds with the value clamped to the column max.
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'Way too expensive widget,Shelter,100,99999999999.99',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBe(99_999_999.99)
+  })
 })

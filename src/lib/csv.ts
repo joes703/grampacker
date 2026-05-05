@@ -250,7 +250,10 @@ function parseCost(raw: string | undefined): number | null {
   const n = parseFloat(s)
   if (!isFinite(n) || n < 0) return null
   // Round to cents — numeric(10,2) in the DB rejects extra precision.
-  return Math.round(n * 100) / 100
+  // Cap at the column's max (99,999,999.99); without this, an over-cap
+  // row would abort the entire bulk INSERT with Postgres 22003
+  // numeric_value_out_of_range, taking the whole batch with it.
+  return Math.min(Math.round(n * 100) / 100, 99_999_999.99)
 }
 
 // Strict ISO YYYY-MM-DD; anything else (or empty) is null. We deliberately
