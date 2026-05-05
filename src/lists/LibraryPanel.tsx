@@ -36,7 +36,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
   // Stable across renders: setCollapsed from useState is referentially
   // stable, and the closure captures only that. Stability matters because
   // we pass toggleCollapse straight through as `onToggle` to the memoized
-  // inner CategoryGroup — a fresh closure every render would defeat the
+  // inner LibraryCategoryGroup — a fresh closure every render would defeat the
   // shallow-prop compare that React.memo relies on.
   const toggleCollapse = useCallback((key: string) => {
     setCollapsed((prev) => {
@@ -104,7 +104,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
         ) : (
           <>
             {groups.map(({ category, items }) => (
-              <CategoryGroup
+              <LibraryCategoryGroup
                 key={category.id}
                 name={category.name}
                 items={items}
@@ -119,7 +119,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
               />
             ))}
             {uncategorized.length > 0 && (
-              <CategoryGroup
+              <LibraryCategoryGroup
                 name="Uncategorized"
                 items={uncategorized}
                 collapsed={collapsed.has('__uncategorized__')}
@@ -147,7 +147,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
 // listItemGearIds / onAdd / onRemove come from the page-level memoized
 // sharedGroupProps. The earlier inline `onToggle={() => toggleCollapse(id)}`
 // shape would have defeated the memo by minting a fresh closure every render.
-const CategoryGroup = memo(function CategoryGroup({
+const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
   name,
   items,
   collapsed,
