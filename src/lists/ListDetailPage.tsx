@@ -32,7 +32,6 @@ import {
   updateList,
   reorderListItems,
   updateGearItem,
-  createGearItem,
   deleteGearItem,
   importCsvRowsToList,
   makeOptimisticReorder,
@@ -41,6 +40,7 @@ import {
   makeOptimisticDelete,
   type ListItemPatch,
 } from '../lib/queries'
+import { supabase } from '../lib/supabase'
 import type { GearItem, ListItemWithGear, List } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
@@ -433,29 +433,30 @@ function ListDetailInner({
   // "+ Add new item" inside a category — creates a gear_item (so it lives in the
   // gear library too), then adds it to this list under the same category. The
   // draft row in CategoryGroup collects all the fields up front.
+  //
+  // Phase 8 (M2): collapsed two PostgREST round-trips (createGearItem +
+  // addGearItemToList) into one SECURITY DEFINER RPC. Pure cache-invalidate
+  // on success; the RPC return value (gear_item_id, list_item_id) is unused
+  // because the invalidate refetches both queries. The list-page "Add new
+  // item" affordance is intentionally minimal (name/description/weight/
+  // category only) — cost and purchase_date are inventory-page concerns and
+  // stay null inside the RPC.
   const addNewItemMut = useMutation({
     mutationFn: async ({ categoryId, data }: { categoryId: string | null; data: AddItemData }) => {
-      const newGear = await createGearItem(
-        userId,
-        {
-          name: data.name,
-          description: data.description,
-          weight_grams: data.weight_grams,
-          category_id: categoryId,
-          // The list-page "Add new item" affordance is intentionally
-          // minimal (name/description/weight/category only). Cost and
-          // purchase_date are inventory-page concerns — leave them null
-          // here; the user can fill them in later via the gear library.
-          cost: null,
-          purchase_date: null,
-        },
-        gearItems.length,
-      )
-      await addGearItemToList(listId, userId, newGear.id, listItems.length, {
-        quantity: data.quantity,
-        is_worn: data.is_worn,
-        is_consumable: data.is_consumable,
+      const { error } = await supabase.rpc('add_gear_item_with_list_item', {
+        p_user_id: userId,
+        p_name: data.name,
+        p_description: data.description,
+        p_weight_grams: data.weight_grams,
+        p_category_id: categoryId,
+        p_gear_sort_order: gearItems.length,
+        p_list_id: listId,
+        p_list_item_sort_order: listItems.length,
+        p_quantity: data.quantity,
+        p_is_worn: data.is_worn,
+        p_is_consumable: data.is_consumable,
       })
+      if (error) throw error
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
