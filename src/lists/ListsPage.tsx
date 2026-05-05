@@ -47,6 +47,7 @@ import type { List } from '../lib/types'
 import { parseListCsv, listItemsToCsv, downloadCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useDocumentTitle } from '../lib/use-document-title'
+import { useNow } from '../lib/use-now'
 import { usePortalPopover } from '../lib/use-portal-popover'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
@@ -69,6 +70,9 @@ export default function ListsPage() {
   const { session } = useAuth()
   const navigate = useNavigate()
   const qc = useQueryClient()
+  // Page-level clock for the per-card "X min ago" displays. One interval
+  // for the whole grid; cards consume it via a `now` prop. M9 fix.
+  const now = useNow(60_000)
 
   // PrivateRoute keeps session non-null in the steady state, but it can flip
   // to null mid-render during sign-out. Resolve a userId once at the top of
@@ -315,6 +319,7 @@ export default function ListsPage() {
                   <SortableListCard
                     key={list.id}
                     list={list}
+                    now={now}
                     reorderPending={reorderListsMut.isPending}
                     renaming={dialog?.type === 'renaming' && dialog.list.id === list.id}
                     renameDraft={dialog?.type === 'renaming' && dialog.list.id === list.id ? dialog.draft : ''}
@@ -338,6 +343,7 @@ export default function ListsPage() {
               {activeList ? (
                 <ListCard
                   list={activeList}
+                  now={now}
                   renaming={false}
                   renameDraft=""
                   onRenameDraftChange={() => {}}
@@ -451,6 +457,11 @@ function NewListInline({
 
 type ListCardProps = {
   list: List
+  // Page-level clock for relative-date display. Drilled down to CardMeta so
+  // ListsPage owns one setInterval rather than one per card. M9 fix: pre-
+  // fix, formatRelativeDate read Date.now() at render time only, so a card
+  // that mounted saying "1 min ago" stayed "1 min ago" forever.
+  now: number
   renaming: boolean
   renameDraft: string
   onRenameDraftChange: (v: string) => void
@@ -522,6 +533,7 @@ function SortableListCard(
 
 function ListCard({
   list,
+  now,
   renaming,
   renameDraft,
   onRenameDraftChange,
@@ -589,7 +601,7 @@ function ListCard({
           onBlur={onSubmitRename}
           className="ml-8 w-[calc(100%-2rem)] rounded border border-blue-400 px-2 py-1 text-base font-semibold text-gray-900 focus:outline-none"
         />
-        <CardMeta list={list} />
+        <CardMeta list={list} now={now} />
       </div>
     )
   }
@@ -609,7 +621,7 @@ function ListCard({
 
       <div className="relative z-10 pointer-events-none">
         <h3 className="truncate px-8 text-base font-semibold text-gray-900">{list.name}</h3>
-        <CardMeta list={list} />
+        <CardMeta list={list} now={now} />
       </div>
 
       {/* Workflow actions: Pack launches into pack mode via the URL state
@@ -675,8 +687,8 @@ function ListCard({
   )
 }
 
-function CardMeta({ list }: { list: List }) {
-  const updated = formatRelativeDate(list.updated_at)
+function CardMeta({ list, now }: { list: List; now: number }) {
+  const updated = formatRelativeDate(list.updated_at, now)
   return (
     <div className="mt-2 space-y-1 text-sm text-gray-500">
       {list.description && (
@@ -688,10 +700,11 @@ function CardMeta({ list }: { list: List }) {
 }
 
 // Friendly relative date for the card metadata. Falls back to an absolute
-// short date once the value is more than a week old.
-function formatRelativeDate(iso: string): string {
+// short date once the value is more than a week old. `now` is supplied by
+// the caller's useNow hook so the displayed "X min ago" reticks once a
+// minute while the page stays open.
+function formatRelativeDate(iso: string, now: number): string {
   const then = new Date(iso).getTime()
-  const now = Date.now()
   const diffMs = now - then
   const minute = 60 * 1000
   const hour = 60 * minute
