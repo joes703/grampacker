@@ -22,7 +22,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ClipboardList, CopyPlus, Download, GripVertical, MoreVertical, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
-import { useAuth } from '../auth/AuthProvider'
+import { useRequireSession } from '../auth/use-require-session'
 import {
   queryKeys,
   fetchLists,
@@ -67,7 +67,7 @@ type DialogState =
 
 export default function ListsPage() {
   useDocumentTitle('Lists')
-  const { session } = useAuth()
+  const auth = useRequireSession()
   const navigate = useNavigate()
   const qc = useQueryClient()
   // Page-level clock for the per-card "X min ago" displays. One interval
@@ -82,7 +82,7 @@ export default function ListsPage() {
   // queries below pass userId as the user_id filter; an empty string returns
   // empty results rather than the unfiltered union, which is the safer
   // race-window behavior.
-  const userId = session?.user.id ?? ''
+  const userId = auth?.userId ?? ''
 
   const { data: lists = [], isLoading: listsLoading } = useQuery({
     queryKey: queryKeys.lists(),
@@ -239,7 +239,7 @@ export default function ListsPage() {
 
   // Bail out cleanly if the session went null mid-render (logout). Hooks
   // above already ran, so this is safe.
-  if (!session) return null
+  if (!auth) return null
 
   // Brand-new user with zero lists → friendly "create your first list" view.
   // ListsEmptyState owns its own import flow, so the cards page's import

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { ClipboardList, HelpCircle, Info, LogOut, PanelLeftOpen, Pencil, Settings } from 'lucide-react'
-import { useAuth } from '../auth/AuthProvider'
+import { useRequireSession } from '../auth/use-require-session'
 import { supabase } from '../lib/supabase'
 import { queryKeys, fetchLists, updateList, makeOptimisticUpdate } from '../lib/queries'
 import type { List } from '../lib/types'
@@ -149,8 +149,8 @@ export default function NavBar() {
 // render a static text heading. Loading state on /lists/:id shows just the
 // chevron-less placeholder so the bar's height stays stable.
 function RouteHeading({ route }: { route: RouteContext }) {
-  const { session } = useAuth()
-  const userId = session?.user.id ?? ''
+  const auth = useRequireSession()
+  const userId = auth?.userId ?? ''
 
   // Lists are fetched here for both the heading text and the selector body.
   // The query is also used by ListDetailPage / RootRedirect — same key, so
@@ -303,8 +303,8 @@ function ListHeading({
 // opens a Modal hosting PrivacyPanel — same content as PrivacyButton's
 // popover, just in a centered dialog instead of an anchored popover.
 function ListContextControls({ listId }: { listId: string }) {
-  const { session } = useAuth()
-  const userId = session?.user.id ?? ''
+  const auth = useRequireSession()
+  const userId = auth?.userId ?? ''
   const { data: lists = [] } = useQuery({
     queryKey: queryKeys.lists(),
     queryFn: () => fetchLists(userId),

@@ -20,7 +20,7 @@ import {
 import { useQuery, useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router'
 import { ArrowLeft, ChevronsDownUp, ChevronsUpDown, Download, Plus, Search, Upload, X } from 'lucide-react'
-import { useAuth } from '../auth/AuthProvider'
+import { useRequireSession } from '../auth/use-require-session'
 import {
   queryKeys,
   fetchCategories,
@@ -80,8 +80,8 @@ type DialogState =
 
 export default function GearLibraryPage() {
   useDocumentTitle('Gear')
-  const { session } = useAuth()
-  const userId = session!.user.id
+  const auth = useRequireSession()
+  const userId = auth?.userId ?? ''
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -527,6 +527,11 @@ export default function GearLibraryPage() {
   )
 
   // ── Render ────────────────────────────────────────────────────────────────────
+  // Bail out cleanly if the session went null mid-render. PrivateRoute
+  // normally keeps it non-null here; this is defensive in the brief
+  // sign-out window. Hooks above already ran, so this is safe.
+  if (!auth) return null
+
   return (
     <div>
       {/* Back to list */}

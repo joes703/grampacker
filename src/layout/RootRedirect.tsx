@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { useAuth } from '../auth/AuthProvider'
+import { useRequireSession } from '../auth/use-require-session'
 import { queryKeys, fetchLists } from '../lib/queries'
 import { readLastListId } from '../lib/last-list-id'
 
@@ -27,8 +27,8 @@ import { readLastListId } from '../lib/last-list-id'
 // hook order stays consistent under React's rules-of-hooks. Returning
 // before useQuery would have flipped hook count between renders.
 export default function RootRedirect() {
-  const { session } = useAuth()
-  const userId = session?.user.id ?? ''
+  const auth = useRequireSession()
+  const userId = auth?.userId ?? ''
 
   const cachedId = readLastListId()
 

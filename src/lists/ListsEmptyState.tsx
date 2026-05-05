@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { Plus, Upload } from 'lucide-react'
-import { useAuth } from '../auth/AuthProvider'
+import { useRequireSession } from '../auth/use-require-session'
 import {
   queryKeys,
   createList,
@@ -22,8 +22,8 @@ import Modal from '../components/Modal'
 // a list and populates it in one go (mirrors the import button on the
 // lists box for users who already have lists).
 export default function ListsEmptyState() {
-  const { session } = useAuth()
-  const userId = session!.user.id
+  const auth = useRequireSession()
+  const userId = auth?.userId ?? ''
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [name, setName] = useState('')
@@ -114,6 +114,11 @@ export default function ListsEmptyState() {
       },
     })
   }
+
+  // Bail out cleanly if the session went null mid-render. Hooks above
+  // already ran, so this is safe; PrivateRoute keeps it non-null in
+  // the steady state.
+  if (!auth) return null
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center">
