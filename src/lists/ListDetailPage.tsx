@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import {
@@ -44,6 +44,7 @@ import {
 import type { GearItem, ListItemWithGear, List } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
+import { useLatestRef } from '../lib/use-latest-ref'
 import { parseDnDId } from '../lib/dnd-ids'
 import { assignSortOrderSlots, groupListItemsByCategory } from '../lib/grouping'
 import { parseListCsv, type ListImportRow } from '../lib/csv'
@@ -469,9 +470,30 @@ function ListDetailInner({
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
+  // Stable across pack-mode toggles. The naive `useMemo([listItems])` shape
+  // mints a fresh Set on every list-items mutation — including is_packed
+  // toggles where membership did not change — which busts LibraryPanel's
+  // React.memo barrier on the inner CategoryGroup.
+  //
+  // Fix: derive a primitive membership signature during render (a sorted
+  // join of gear_item_ids) and key the Set's useMemo on that signature, not
+  // on the listItems array reference. When pack-mode flips an item's
+  // is_packed but membership is unchanged, gearIdsKey is identical and the
+  // Set keeps its prior reference. When the user adds or removes gear,
+  // gearIdsKey changes and the Set rebuilds — same behavior as before, but
+  // only when it actually matters.
+  //
+  // The sort is order-independent intentionally: list-item reorder
+  // shouldn't invalidate the membership Set. Cost is O(n log n) on the
+  // id strings per render, negligible at our row counts.
+  const gearIdsKey = listItems
+    .map((i) => i.gear_item_id)
+    .sort()
+    .join('|')
   const listItemGearIds = useMemo(
     () => new Set(listItems.map((i) => i.gear_item_id)),
-    [listItems],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- gearIdsKey is the membership signature; depending on listItems would defeat the stability we're after
+    [gearIdsKey],
   )
 
   const grouped = useMemo(
@@ -498,18 +520,22 @@ function ListDetailInner({
     [grouped, showWornGroup],
   )
 
-  // gearItems / listItems are read by handlers in sharedGroupProps but only
-  // at call time (never synchronously during memo computation). Stashing
-  // them in refs lets the closures see the latest data without forcing the
-  // memo to invalidate on every list-items mutation. Pre-fix, every
-  // mutation invalidated `['list-items']` → busted the memo → minted fresh
-  // prop references → re-rendered every CategoryGroup + dnd-kit's
-  // useSortable per row. Pack-mode checkbox ticks were the dominant
-  // render cost.
-  const gearItemsRef = useRef(gearItems)
-  gearItemsRef.current = gearItems
-  const listItemsRef = useRef(listItems)
-  listItemsRef.current = listItems
+  // gearItems / listItems are read by handlers in sharedGroupProps and the
+  // LibraryPanel onAdd / onRemove callbacks, but only at call time (never
+  // synchronously during memo computation). Stashing them in refs lets the
+  // closures see the latest data without forcing the memo to invalidate on
+  // every list-items mutation. Pre-fix, every mutation invalidated
+  // `['list-items']` → busted the memo → minted fresh prop references →
+  // re-rendered every CategoryGroup + dnd-kit's useSortable per row.
+  // Pack-mode checkbox ticks were the dominant render cost.
+  //
+  // useLatestRef updates the ref in useEffect, not synchronously during
+  // render. The handlers below all run after commit (user gestures), so
+  // they observe the freshest committed value. Render-time ref writes were
+  // banned by react-hooks/refs in React 19 because they tear under
+  // concurrent rendering.
+  const gearItemsRef = useLatestRef(gearItems)
+  const listItemsRef = useLatestRef(listItems)
 
   // Per-row handler bag passed to every CategoryGroup. Memoized so each
   // category section doesn't re-render on every parent state change.
@@ -522,6 +548,25 @@ function ListDetailInner({
   // `updateMut.mutate` at call time, which is always the current stable ref.
   // setDialog (the React useState setter) is React-guaranteed stable and
   // included for completeness.
+  // Stable callbacks for LibraryPanel. Inline arrows would mint fresh
+  // references on every parent render and defeat LibraryPanel's React.memo
+  // on the inner CategoryGroup. addMut / deleteMut follow the same
+  // mutation-ref convention as sharedGroupProps below — `.mutate` is read
+  // through the live binding at call time, never depended on directly.
+  const onLibraryAdd = useCallback(
+    (item: GearItem) => addMut.mutate(item),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- addMut is a TanStack mutation result; .mutate is stable, the wrapper is not
+    [],
+  )
+  const onLibraryRemove = useCallback(
+    (item: GearItem) => {
+      const li = listItemsRef.current.find((l) => l.gear_item_id === item.id)
+      if (li) deleteMut.mutate(li.id)
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deleteMut see addMut note; listItemsRef is a ref (always-stable)
+    [],
+  )
+
   const sharedGroupProps = useMemo(
     () => ({
       packMode: mode === 'pack',
@@ -601,11 +646,8 @@ function ListDetailInner({
                   categories={categories}
                   listItemGearIds={listItemGearIds}
                   weightUnit={weightUnit}
-                  onAdd={(item) => addMut.mutate(item)}
-                  onRemove={(item) => {
-                    const li = listItems.find((l) => l.gear_item_id === item.id)
-                    if (li) deleteMut.mutate(li.id)
-                  }}
+                  onAdd={onLibraryAdd}
+                  onRemove={onLibraryRemove}
                   focusSearchTrigger={focusSearchTrigger}
                 />
               </div>
@@ -799,11 +841,8 @@ function ListDetailInner({
               categories={categories}
               listItemGearIds={listItemGearIds}
               weightUnit={weightUnit}
-              onAdd={(item) => addMut.mutate(item)}
-              onRemove={(item) => {
-                const li = listItems.find((l) => l.gear_item_id === item.id)
-                if (li) deleteMut.mutate(li.id)
-              }}
+              onAdd={onLibraryAdd}
+              onRemove={onLibraryRemove}
             />
           </ListSidebarDrawer>
         </Suspense>
