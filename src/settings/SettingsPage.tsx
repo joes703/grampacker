@@ -197,13 +197,18 @@ function DownloadAllData() {
       // Dynamic import: fflate (~20 KB gzipped) is needed only for this
       // handler. Top-level static import would charge every authed user
       // for it on initial load even though most never click download.
-      const { zipSync, strToU8 } = await import('fflate')
-      const [categories, gearItems, lists, allItems] = await Promise.all([
+      // Kick off the chunk fetch in parallel with the data fetches rather
+      // than awaiting it serially — both are network-bound, no reason for
+      // one to gate the other.
+      const fflatePromise = import('fflate')
+      const [fflate, categories, gearItems, lists, allItems] = await Promise.all([
+        fflatePromise,
         qc.fetchQuery({ queryKey: queryKeys.categories(), queryFn: () => fetchCategories(userId) }),
         qc.fetchQuery({ queryKey: queryKeys.gearItems(), queryFn: () => fetchGearItems(userId) }),
         qc.fetchQuery({ queryKey: queryKeys.lists(), queryFn: () => fetchLists(userId) }),
         fetchAllUserListItems(userId),
       ])
+      const { zipSync, strToU8 } = fflate
 
       const files: Record<string, Uint8Array> = {}
       files['gear-library.csv'] = strToU8(gearItemsToCsv(gearItems, categories))
