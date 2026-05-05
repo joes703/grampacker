@@ -195,27 +195,25 @@ Recommend W-1 + W-7 as a small quality refactor pass next, OR jump to DB indexes
 
   Codex pre-flight catch: the original spec used `(list_id)` alone for index #2, which would not have helped `fetchSharedListItems` skip a sort step and would have left the share-view query plan partially optimized. Rewrote to `(list_id, sort_order)` before execution.
 
-  Pre/post `EXPLAIN ANALYZE`: **pending user-side measurement** (the migration must be applied via `supabase db push` or Supabase Studio first; the local agent can't apply migrations).
+  Pre/post `EXPLAIN ANALYZE`: not captured. Optional follow-up if planner traces are wanted in the audit ledger.
 
 ## Verification results
 
-- `npm run build`: pass; bundle gzip unchanged at 186.86 KB (DB-only change).
+- `npm run build`: pass; bundle gzip 187.02 KB (DB-only change; no source delta — the small drift from Phase 5's 186.86 is from interim follow-up commits, not this migration).
 - `npm run lint`: pass; no source files changed.
 - `npm test --run`: 31/31 pass.
-- Migration apply: **pending user action.** Apply via `supabase db push` (or paste the SQL into Supabase Studio's SQL editor). Then verify the four new indexes exist:
-  ```sql
-  select indexname from pg_indexes
-  where tablename in ('list_items', 'lists')
-  order by tablename, indexname;
-  ```
-  Expect to see `list_items_gear_item_id_idx`, `list_items_list_sort_idx`, `list_items_user_list_sort_idx`, and `lists_user_sort_idx` in addition to the pre-existing pkey / slug / etc indexes.
-- Manual smoke (after apply): load `/lists`, load `/lists/<id>`, load `/r/<slug>` for a shared list, mutate (add/delete/reorder a list_item) — confirm no query failures. Optional `EXPLAIN ANALYZE` check on the canonical predicates to confirm Index Scan replaces Seq Scan.
+- **Migration applied to production and verified** (2026-05-05). User ran `supabase db push` and `select indexname from pg_indexes where tablename in ('list_items', 'lists')`; output confirmed all four new indexes live alongside the pre-existing pkey / unique-slug / composite-FK indexes:
+  - `list_items_gear_item_id_idx` ✓
+  - `list_items_list_sort_idx` ✓
+  - `list_items_user_list_sort_idx` ✓
+  - `lists_user_sort_idx` ✓
+- Manual smoke (post-apply): pending. Load `/lists`, `/lists/<id>`, `/r/<slug>`, mutate a list_item — confirm no regressions. Optional `EXPLAIN ANALYZE` on the canonical predicates to confirm Index Scan replaces Seq Scan.
 
 ## Blockers / surprises
 
 - **Codex pre-flight catch (medium).** Spec's index #2 was `(list_id)` only — would not have covered `fetchSharedListItems` (which sorts by `sort_order`). Rewrote to `(list_id, sort_order)` before execution; the spec patch is in `.planning/REVIEW-PHASE6.md`.
 - **Codex pre-flight catch (low).** Spec's lock-mode note was inaccurate: plain `CREATE INDEX` takes a `SHARE` lock (blocks writes, permits reads), not `ACCESS EXCLUSIVE`. Corrected.
-- **Migration not applied locally.** The local agent can't run `supabase db push` interactively, so the schema change is committed but not yet applied. User-side step required before any of the planner improvements take effect.
+- **Migration apply is a user-side step.** The local agent committed the migration but couldn't run `supabase db push` interactively. User applied it on 2026-05-05 and confirmed via `pg_indexes`; the four new indexes are live in production. (Resolved.)
 
 ## Next phase
 
