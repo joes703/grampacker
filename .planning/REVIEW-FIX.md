@@ -131,3 +131,49 @@ Phase 5 candidates:
 - **Test-coverage cluster T-2…T-9** — Phase 7 territory; would benefit from adding jsdom + @testing-library first.
 
 Recommend Phase 5 as the small-perf cleanup pass plus W-1 (mechanically distinct from render perf, but the same surface area). DB indexes are a clean separable phase whenever convenient.
+
+---
+
+# grampacker — Phase 5 fix summary (2026-05-05)
+
+## Shipped
+
+- **Commit 1 (M6 + Codex Phase 4 follow-up) — `6491c7c`** — `groupListItemsByCategory` rewritten as single-pass bucket map (O(N+C) instead of O(N×C)) with structural per-group stability merge AND top-level identity invariant (returns `prior` itself when no group changed). The new `src/lib/use-grouped-list-items.ts` calls `setState` during render under the loop guard provided by the top-level identity invariant — `react-hooks/refs` rejects render-time ref writes (Phase 4 follow-up fixed this in ListDetailPage), but React explicitly allows setState-during-render for the "store information from previous renders" pattern when guarded against loops. 8 new grouping tests cover the structural-stability invariants, including a description-edit regression case (Codex finding 1 from the Phase 5 spec review).
+- **Commit 2 (CategoryGroup memo + stable onAddItem) — `5c18013`** — `src/lists/CategoryGroup.tsx` exported via `React.memo` (default shallow compare). `onAddItem` API widened from `(data) => void` to `(categoryId, data) => void` so the parent passes a single `useCallback`'d handler instead of two fresh per-call-site curried arrows that defeated memo on every render (Codex finding 3 from the Phase 5 spec review). The `categoryId` flows in from `CategoryGroup`'s own `categoryId` prop at the `AddItemRow.onSubmit` site.
+- **Commit 3 (L1) — `bf59093`** — `WeightTable` breakdown wrapped in `useMemo([items, categories])`. Empty-list early return moved below the memo so the hook is called unconditionally. Signature corrected: `computeWeightBreakdown(items, categories)` takes only two args; `weightUnit` formatting happens at the JSX layer (Codex finding 5 from the Phase 5 spec review).
+- **Commit 4 (L2) — `545327b`** — `SharePage.categoryIds` Set-spread wrapped in `useMemo([items])`.
+- **Commit 5 (L9) — DROPPED** — audit claim was stale. `formatItemWeight` does not use `Intl.NumberFormat`; current implementation uses `toFixed(1)` for ounces and string interpolation for grams. Hoisting an `Intl.NumberFormat` would change displayed grams from `1250 g` to `1,250 g` (added thousands separator) and ounce precision — that's a UX-visible policy decision, not a perf fix. Filed as audit-stale here; if locale-aware grouping is desired, propose it as a separate user-visible commit with explicit before/after screenshots in a future phase. (Codex finding 4 from the Phase 5 spec review.)
+
+**Bundle gzip:** 186.51 → 186.86 KB (+0.35 KB). Tiny regression from the new hook + memo wrapper + extra refs; offset is render-perf, not bundle.
+
+## Verification results
+
+- `npm run build`: pass after each commit.
+- `npm run lint`: pass — react-hooks/refs and react-hooks/set-state-in-effect both clean.
+- `npm test --run`: 31/31 pass (was 23/23; +8 grouping tests).
+- Manual smoke: **pending user verification.** Specifically:
+  - Pack-mode rapid toggle on a list with 3+ categories of 3+ items: React DevTools profiler should show only the affected `CategoryGroup` + `ItemRow` re-rendering on each tick; other categories should appear gray (skipped). **This is the verification step Phase 4 skipped — running it is what closes the pack-mode render-scope claim.**
+  - Add new item via "+ Add new item" footer in any category (categorized AND uncategorized): item adds to the correct category. The widened `onAddItem` signature is a wire-protocol change, so this confirms the categoryId flows correctly.
+  - Share-view (L2): open `/r/<slug>` for any shared list; categories render unchanged.
+  - Description edit on a list-item's gear (regression for Codex finding 1): edit description, save, confirm new text appears immediately (the comparator now includes `gear_item.description`).
+
+## Blockers / surprises
+
+- **Codex pre-flight catch — comparator missing `description` field.** First-pass comparator excluded `gear_item.description` on the assumption that timestamps and metadata could be skipped. Desktop ItemRow renders and edits description, so excluding it would have produced stale UI after a description edit. Patched into the spec before execution.
+- **Codex pre-flight catch — render-time ref writes were going to repeat the Phase 4 lint failure.** Initial spec used `useRef` + render-time write for the prior-result cache. React 19's `react-hooks/refs` rule rejects this. Switched to `useState`-during-render under the React-blessed "store info from previous renders" pattern. The loop guard required adding a top-level identity invariant to `groupListItemsByCategory` so `next === cached` short-circuits when nothing changed.
+- **Codex pre-flight catch — `onAddItem` was missing from the prop-stability audit.** First-pass audit table listed all CategoryGroup props but missed `onAddItem`. Fix shape required widening the component API rather than just memoizing the closure (the per-call-site categoryId currying made closure-memoization awkward). Widened to `(categoryId, data) => void`.
+- **Codex pre-flight catch — L9 premise was stale.** The audit claimed `Intl.NumberFormat` was constructed per call; the file actually uses `toFixed`. Dropped L9 entirely with a documentation entry for the audit ledger.
+- **Codex pre-flight catch — WeightTable signature wrong in spec.** Spec showed `computeWeightBreakdown(items, categories, weightUnit)`; actual signature is `(items, categories)`. Fixed before execution.
+- **Hooks ordering.** WeightTable's empty-list early return was BEFORE any hook calls; adding `useMemo` required moving the early return below the memo so the hook is called unconditionally on every render. Caught by the linter.
+- **Profiler verification still pending.** All five Codex findings on the spec were patched before execution, and the structural design is consistent with the goal, but a user-side React DevTools profiler trace is the only thing that confirms `React.memo(CategoryGroup)` actually skips unchanged categories on pack-mode toggles.
+
+## Next phase
+
+Phase 6 candidates:
+- **W-1** — `useAnchoredMenu` refactor (extract the recurring popover-position calculation across HamburgerMenu, PrivacyButton, RowKebab variants).
+- **W-7** — rename inner `CategoryGroup` in `LibraryPanel.tsx` to break the name shadow with `src/lists/CategoryGroup.tsx`.
+- **DB indexes (H1, M1)** — backend perf, requires migration. Separable phase.
+- **Test-coverage cluster T-2…T-9** — Phase 7 territory; would benefit from adding jsdom + @testing-library first.
+- **Locale-aware weight formatting** — if thousands-separator grouping is desired, propose as user-visible UX commit with before/after screenshots.
+
+Recommend W-1 + W-7 as a small quality refactor pass next, OR jump to DB indexes if backend perf is the higher priority.
