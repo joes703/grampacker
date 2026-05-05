@@ -84,3 +84,45 @@ H5 was attempted and reverted. Lazy-loading the mobile drawer in `ListSelector` 
 ### Next phase
 
 Phase 4 candidates: render-perf cluster (M6, M7, M8, M11, M12) — closing M11 then re-attempting H5 would land vaul in async. Or DB indexes (H1, M1) for backend perf. Recommend render-perf next so H5 can complete.
+
+---
+
+# grampacker — Phase 4 fix summary (2026-05-05)
+
+## Shipped
+
+- **Commit 1 (M11) — `d8c1032`** — Two breakpoint hooks (`useIsBelowLg` at 1023px, `useIsMobile` at 767px) hoisted to `src/lib/use-breakpoint.ts`, both backed by a shared `useSyncExternalStore` subscription. Three `<lg` branches JS-gated via prop-drilled `isBelowLg` from page-level: `ItemRow.tsx` (mobile/desktop bodies), `GearItemRow.tsx` (same), `ListDetailPage.tsx` (sidebar drawer mount). Main bundle gzip: **204.91 → 205.09 KB (+0.18, expected — vaul still statically imported here, structural prep only).**
+- **Commit 2 (H5 retry) — `88041c0`** — Both vaul drawers now `React.lazy`-loaded behind their `isMobile` / `isBelowLg` JS gates. Re-created `ListSelectorDrawer.tsx` (reverted in Phase 3) and added new `ListSidebarDrawer.tsx`. Main bundle gzip: **205.09 → 186.40 KB (-18.69 KB).** Vaul moved to two async chunks (`ListSelectorDrawer-*.js` 0.54 KB gzip, `ListSidebarDrawer-*.js` 0.64 KB gzip) plus the shared vaul runtime in the existing dist chunk. Phase 3's H5 carry-over closed.
+- **Commit 3 (M8) — `560a5a8`** — `sharedGroupProps` deps in `ListDetailPage.tsx` no longer churn on every list-items / gear-items mutation. `gearItems` and `listItems` arrays now read through `useRef`s (`.current`); both removed from the memo dep array. Closures inside the memo see the freshest data via the ref bindings; the memo itself only rebuilds when the truly-stable inputs (mutation handles, modal setters, primitives) change. CategoryGroup re-render scope on pack-mode checkbox toggle goes from full-list to single-row.
+- **Commit 4 (M7, M12) — `db98e75`** — `LibraryPanel.tsx`: `filtered`, `sortedCats`, `groups`, `uncategorized` wrapped in `useMemo`; inner `CategoryGroup` wrapped in `React.memo` after API change to `(toggleKey: string, onToggle: (key: string) => void)` so the parent can pass a stable `useCallback`'d toggleCollapse instead of fresh inline arrow closures (which would have defeated the shallow-compare). Other props (`onAdd`, `onRemove`, `listItemGearIds`, `weightUnit`) confirmed already stable from upstream memoized `sharedGroupProps` / primitives. Build flat (186.40 → 186.49 KB, +0.09 — render-perf fix, no bundle motion expected).
+
+**Cumulative bundle delta from Phase 3 baseline: 204.91 → 186.49 KB = -18.42 KB (−9.0%).**
+**Cumulative bundle delta from Phase 0 baseline: 261.02 → 186.49 KB = -74.53 KB (−28.6%).**
+
+## Verification results
+
+- `npm run build`: pass after each commit. Two new vaul chunks visible after Commit 2.
+- `npm test --run`: 23/23 pass after each commit (4 skipped pre-existing).
+- Manual smoke: **pending user verification.** Specifically:
+  - Mobile / tablet (<1024 px): hamburger drawer mounts, ListSelector bottom sheet works, all row interactions preserved.
+  - Desktop (≥1024 px): React DevTools shows no `Drawer` component in the tree on `/lists/:id`; Network panel shows no vaul chunk fetched on initial load.
+  - Pack-mode rapid toggle: React DevTools profiler shows scoped re-render to the affected `ItemRow`, not the whole CategoryGroup.
+
+## Blockers / surprises
+
+- **Codex pre-flight catch — breakpoint mismatch.** Initial Phase 4 spec used `useIsMobile()` (767 px) for all three M11 sites, but Tailwind's `lg:hidden` switches at 1024 px. Without the fix, tablets (768–1023 px) would have rendered desktop bodies the CSS layer expected to hide. Patched the spec to introduce a separate `useIsBelowLg()` hook (1023 px) for `<lg` sites, kept `useIsMobile()` for the genuinely-md-only ListSelector bottom sheet. Both hooks share one `useSyncExternalStore` subscription factory.
+- **Codex pre-flight catch — listener proliferation.** Naive `useIsBelowLg()` per row would have meant ~300 matchMedia listeners on a long list. Two defenses landed: (1) `useSyncExternalStore` dedupes inside React, (2) hook is called once at the page level and prop-drilled to rows. Belt-and-braces.
+- **Codex pre-flight catch — React.memo defeated by inline closures.** First-pass M12 plan was `React.memo(CategoryGroup)` alone; would not have helped because `onToggle={() => toggleCollapse(id)}` mints a fresh arrow per render and breaks shallow-compare. Actual fix changed the component API to accept `toggleKey` + `onToggle(key)` so the parent can pass a stable callback. Documented as Parts A/B/C in the patched spec.
+- **Phase 3 H5 closure.** Once M11 landed, H5's vaul-lazy retry produced the expected double-digit win (-18.69 KB) instead of Phase 3's +0.55 KB regression. Confirms the diagnosis that vaul couldn't be moved off the main graph until both consumer sites were JS-gated.
+- **No bundle motion in Commits 1, 3, 4.** Expected: M11 is structural prep, M8 + M7 + M12 are render-time fixes that don't change what code ships. The whole Phase 4 bundle delta lives in Commit 2.
+
+## Next phase
+
+Phase 5 candidates:
+- **Lower-leverage perf cleanups** — M6 (single-pass bucket map in grouping helpers), L1 (WeightTable memo), L2 (SharePage categoryIds memo), L9 (hoisted Intl formatter).
+- **W-1** — `useAnchoredMenu` refactor (extract the recurring popover-position calculation across HamburgerMenu, PrivacyButton, RowKebab variants).
+- **W-7** — rename inner `CategoryGroup` in `LibraryPanel.tsx` to break the name shadow with `src/lists/CategoryGroup.tsx`.
+- **DB indexes (H1, M1)** — backend perf, requires migration. Separable phase.
+- **Test-coverage cluster T-2…T-9** — Phase 7 territory; would benefit from adding jsdom + @testing-library first.
+
+Recommend Phase 5 as the small-perf cleanup pass plus W-1 (mechanically distinct from render perf, but the same surface area). DB indexes are a clean separable phase whenever convenient.
