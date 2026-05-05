@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { zipSync, strToU8 } from 'fflate'
 import { Download, KeyRound, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../lib/supabase'
@@ -195,6 +194,10 @@ function DownloadAllData() {
     setBusy(true)
     setMsg(null)
     try {
+      // Dynamic import: fflate (~20 KB gzipped) is needed only for this
+      // handler. Top-level static import would charge every authed user
+      // for it on initial load even though most never click download.
+      const { zipSync, strToU8 } = await import('fflate')
       const [categories, gearItems, lists, allItems] = await Promise.all([
         qc.fetchQuery({ queryKey: queryKeys.categories(), queryFn: () => fetchCategories(userId) }),
         qc.fetchQuery({ queryKey: queryKeys.gearItems(), queryFn: () => fetchGearItems(userId) }),
