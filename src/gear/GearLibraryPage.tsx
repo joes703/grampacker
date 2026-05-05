@@ -49,6 +49,7 @@ import type { Category, GearItem, ListItemWithGear } from '../lib/types'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useWeightUnit } from '../lib/use-weight-unit'
+import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useToggleSet } from '../lib/use-toggle-set'
 import { groupGearItemsByCategory, assignSortOrderSlots } from '../lib/grouping'
 import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
@@ -108,6 +109,7 @@ export default function GearLibraryPage() {
   const { set: selectedIds, toggle: toggleSelect, clear: clearSelected, reset: resetSelected } = useToggleSet<string>()
   const { set: collapsed, toggle: toggleCollapse, clear: expandAll, reset: resetCollapsed } = useToggleSet<string>()
   const { weightUnit, toggleWeightUnit } = useWeightUnit()
+  const isBelowLg = useIsBelowLg()
   const [newCategoryName, setNewCategoryName] = useState('')
 
   function exitSelectMode() {
@@ -728,6 +730,7 @@ export default function GearLibraryPage() {
                 const commonProps = {
                   items: group.items,
                   weightUnit,
+                  isBelowLg,
                   collapsed: collapsed.has(group.category?.id ?? '__uncategorized__'),
                   onToggleCollapse: () =>
                     toggleCollapse(group.category?.id ?? '__uncategorized__'),
@@ -768,6 +771,7 @@ export default function GearLibraryPage() {
                 <GearItemRow
                   item={activeItem}
                   weightUnit={weightUnit}
+                  isBelowLg={isBelowLg}
                   selectMode={false}
                   selected={false}
                   onToggleSelect={() => {}}

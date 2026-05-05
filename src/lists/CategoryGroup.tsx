@@ -40,6 +40,11 @@ export type GroupProps = {
   name: string
   items: ListItemWithGear[]
   weightUnit: WeightUnit
+  // Page-level breakpoint: <1024 px (Tailwind `lg:` boundary). Drilled down
+  // to ItemRow so a long list registers one matchMedia subscription instead
+  // of one per row. Optional for callers (e.g. SharePage) that don't yet
+  // pass it; defaults to false (desktop layout) until they're wired.
+  isBelowLg?: boolean
   packMode?: boolean
   collapsible?: boolean
   /** Stable region id derivation + add-item context. null = uncategorized.
@@ -71,6 +76,7 @@ export default function CategoryGroup({
   name,
   items,
   weightUnit,
+  isBelowLg = false,
   packMode = false,
   collapsible = true,
   categoryId,
@@ -116,6 +122,7 @@ export default function CategoryGroup({
     return {
       item,
       weightUnit,
+      isBelowLg,
       packMode,
       reorderPending,
       onUpdate: onUpdate ? (patch: ListItemPatch) => onUpdate(item.id, patch) : undefined,

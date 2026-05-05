@@ -16,14 +16,14 @@ import WeightInput from '../components/WeightInput'
 // list detail view and the public share view.
 //
 // Responsive pattern (mobile vs. desktop split):
-//   The non-pack-mode body renders BOTH a `hidden lg:contents` desktop
-//   subtree (full inline-edit row: name + description, worn, consumable,
-//   qty, weight, kebab) AND a `lg:hidden` mobile subtree (compact row that
-//   opens the edit dialog on tap). At any viewport only one is visible.
-//   This is intentional — the two layouts diverge enough (column counts,
-//   icon-button affordances vs. modal-on-tap) that branching JSX is
-//   clearer than trying to converge them with CSS alone. Don't take a
-//   pass to delete one branch as "dead code"; both are load-bearing.
+//   The non-pack-mode body renders ONE branch — the desktop subtree (full
+//   inline-edit row: name + description, worn, consumable, qty, weight,
+//   kebab) when `!isBelowLg`, or the mobile subtree (compact row that opens
+//   the edit dialog on tap) when `isBelowLg`. The two layouts diverge
+//   enough (column counts, icon-button affordances vs. modal-on-tap) that
+//   branching is clearer than converging them with CSS alone. The JS gate
+//   replaces a previous `hidden lg:contents` / `lg:hidden` CSS-only split,
+//   which mounted both subtrees on every render even when invisible.
 //
 // Editing affordances are gated on whether the corresponding handler is passed:
 //   - `onUpdate` enables Worn / Consumable toggle buttons (and the qty edit
@@ -46,6 +46,10 @@ import WeightInput from '../components/WeightInput'
 type Props = {
   item: ListItemWithGear
   weightUnit: WeightUnit
+  // Page-level breakpoint: true at <1024 px (Tailwind `lg:` boundary). Drilled
+  // from the page (not via per-row hook) so a 300-row list registers one
+  // matchMedia subscription, not 300. Set in sharedGroupProps.
+  isBelowLg: boolean
   packMode?: boolean
   // Read by the SortableItemRow wrapper only; plain ItemRow ignores it. Lives
   // on the base Props so CategoryGroup's rowPropsFor() builder can spread the
@@ -66,6 +70,7 @@ type Props = {
 export default function ItemRow({
   item,
   weightUnit,
+  isBelowLg,
   packMode = false,
   onUpdate,
   onSaveName,
@@ -198,10 +203,25 @@ export default function ItemRow({
     >
       {dragHandle}
 
-      {/* Desktop branch (≥ lg) — display:contents so children flow into the
-          outer flex layout. Internal structure preserved verbatim from the
-          interactive single-row layout that has shipped to date. */}
-      <div className="hidden lg:contents">
+      {isBelowLg ? (
+        /* Mobile branch (< lg) — name + single worn/consumable slot + qty +
+           weight, rendered as static spans. Description and kebab are
+           intentionally dropped: editing happens in the modal that opens on
+           row tap. Read-only rows (share view) render as a non-interactive
+           div instead of a button. */
+        <div className="flex flex-1 items-center gap-1">
+          <MobileRowBody
+            item={item}
+            name={name}
+            weightUnit={weightUnit}
+            onTap={onEditGearItem}
+          />
+        </div>
+      ) : (
+        /* Desktop branch (≥ lg) — display:contents so children flow into the
+           outer flex layout. Internal structure preserved verbatim from the
+           interactive single-row layout that has shipped to date. */
+        <>
         {/* Name + description as proportional columns — name : description = 2 : 3 */}
         <div className="flex-1 min-w-0 flex items-center gap-3">
           <div className="flex-[2] min-w-0">
@@ -333,21 +353,8 @@ export default function ItemRow({
             onDeleteFromInventory={onDeleteGearItem}
           />
         )}
-      </div>
-
-      {/* Mobile branch (< lg) — name + single worn/consumable slot + qty +
-          weight, rendered as static spans. Description and kebab are
-          intentionally dropped: editing happens in the modal that opens on
-          row tap. Read-only rows (share view) render as a non-interactive
-          div instead of a button. */}
-      <div className="lg:hidden flex flex-1 items-center gap-1">
-        <MobileRowBody
-          item={item}
-          name={name}
-          weightUnit={weightUnit}
-          onTap={onEditGearItem}
-        />
-      </div>
+        </>
+      )}
     </div>
   )
 }

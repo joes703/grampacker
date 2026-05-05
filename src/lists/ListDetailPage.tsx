@@ -43,6 +43,7 @@ import {
 } from '../lib/queries'
 import type { GearItem, ListItemWithGear, List } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
+import { useIsBelowLg } from '../lib/use-breakpoint'
 import { parseDnDId } from '../lib/dnd-ids'
 import { assignSortOrderSlots, groupListItemsByCategory } from '../lib/grouping'
 import { parseListCsv, type ListImportRow } from '../lib/csv'
@@ -131,6 +132,9 @@ function ListDetailInner({
   const [searchParams] = useSearchParams()
   const mode: Mode = searchParams.get('mode') === 'pack' ? 'pack' : 'edit'
   const { weightUnit } = useWeightUnit()
+  // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
+  // long list registers ONE matchMedia subscription instead of one per row.
+  const isBelowLg = useIsBelowLg()
   // Pack-mode filter: when true, hide already-packed items from each
   // category. Header counts and the "complete" affordance still reflect the
   // full items array. Lifted here because both PackingProgress (the toggle)
@@ -509,6 +513,7 @@ function ListDetailInner({
     () => ({
       packMode: mode === 'pack',
       weightUnit,
+      isBelowLg,
       sortable: true,
       showUnpackedOnly,
       onUpdate: (itemId: string, patch: ListItemPatch) =>
@@ -531,7 +536,7 @@ function ListDetailInner({
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above re: mutation refs
-    [mode, weightUnit, showUnpackedOnly, gearItems, listItems],
+    [mode, weightUnit, isBelowLg, showUnpackedOnly, gearItems, listItems],
   )
 
   // ── Not found ──────────────────────────────────────────────────────────────
@@ -731,7 +736,7 @@ function ListDetailInner({
                     ))}
                   <DragOverlay>
                     {activeItem ? (
-                      <ItemRow item={activeItem} weightUnit={weightUnit} />
+                      <ItemRow item={activeItem} weightUnit={weightUnit} isBelowLg={isBelowLg} />
                     ) : null}
                   </DragOverlay>
                 </DndContext>
@@ -767,52 +772,58 @@ function ListDetailInner({
           inside Drawer.Content uses min-h-0 on each flex-1 wrapper so
           LibraryPanel's inner overflow-y-auto can engage; otherwise the
           panel grows to its content height and the bounded drawer never
-          delegates scroll to the inner list. */}
-      <Drawer.Root open={drawerOpen} onOpenChange={setDrawerOpen} direction="left">
-        <Drawer.Portal>
-          <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40 lg:hidden" />
-          <Drawer.Content className="fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-sm flex-col bg-gray-50 lg:hidden">
-            <Drawer.Title className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-3">
-              <span className="text-sm font-semibold text-gray-900">Gear Library</span>
-              {/* Same forward affordance as the desktop aside; tapping
-                  closes the drawer first so the user sees its exit
-                  animation rather than an abrupt unmount on route change. */}
-              <Link
-                to={`/gear?from=${listId}`}
-                onClick={() => setDrawerOpen(false)}
-                className="inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
-              >
-                Manage <ChevronRight size={12} />
-              </Link>
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(false)}
-                aria-label="Close gear library"
-                className="ml-auto rounded p-1 text-gray-400 hover:text-gray-600"
-              >
-                <X size={18} />
-              </button>
-            </Drawer.Title>
-            <div className="flex-1 min-h-0 flex flex-col p-4 overflow-hidden">
-              <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <LibraryPanel
-                    gearItems={gearItems}
-                    categories={categories}
-                    listItemGearIds={listItemGearIds}
-                    weightUnit={weightUnit}
-                    onAdd={(item) => addMut.mutate(item)}
-                    onRemove={(item) => {
-                      const li = listItems.find((l) => l.gear_item_id === item.id)
-                      if (li) deleteMut.mutate(li.id)
-                    }}
-                  />
+          delegates scroll to the inner list.
+
+          JS-gated by isBelowLg so desktop genuinely doesn't mount the
+          drawer (vaul + LibraryPanel subtree). Replaces a previous
+          `lg:hidden` CSS-only hide that still mounted the whole tree. */}
+      {isBelowLg && (
+        <Drawer.Root open={drawerOpen} onOpenChange={setDrawerOpen} direction="left">
+          <Drawer.Portal>
+            <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40" />
+            <Drawer.Content className="fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-sm flex-col bg-gray-50">
+              <Drawer.Title className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-3">
+                <span className="text-sm font-semibold text-gray-900">Gear Library</span>
+                {/* Same forward affordance as the desktop aside; tapping
+                    closes the drawer first so the user sees its exit
+                    animation rather than an abrupt unmount on route change. */}
+                <Link
+                  to={`/gear?from=${listId}`}
+                  onClick={() => setDrawerOpen(false)}
+                  className="inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                >
+                  Manage <ChevronRight size={12} />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  aria-label="Close gear library"
+                  className="ml-auto rounded p-1 text-gray-400 hover:text-gray-600"
+                >
+                  <X size={18} />
+                </button>
+              </Drawer.Title>
+              <div className="flex-1 min-h-0 flex flex-col p-4 overflow-hidden">
+                <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <LibraryPanel
+                      gearItems={gearItems}
+                      categories={categories}
+                      listItemGearIds={listItemGearIds}
+                      weightUnit={weightUnit}
+                      onAdd={(item) => addMut.mutate(item)}
+                      onRemove={(item) => {
+                        const li = listItems.find((l) => l.gear_item_id === item.id)
+                        if (li) deleteMut.mutate(li.id)
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          </Drawer.Content>
-        </Drawer.Portal>
-      </Drawer.Root>
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
+      )}
 
       {/* Gear-item edit (reached from the row tap on mobile or the kebab →
           Edit on any viewport). Reuses GearItemDialog and, when a list_item
