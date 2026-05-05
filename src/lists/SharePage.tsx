@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { fetchSharedList, fetchSharedListItems, fetchSharedListCategories } from '../lib/queries'
@@ -28,9 +29,14 @@ export default function SharePage() {
   })
 
   // Fetch only the categories actually referenced by this list's items.
-  const categoryIds = [...new Set(
-    items.map((i) => i.gear_item.category_id).filter((c): c is string => c !== null),
-  )]
+  // Memoized so unrelated parent re-renders don't recompute the dedupe.
+  const categoryIds = useMemo(
+    () =>
+      [...new Set(
+        items.map((i) => i.gear_item.category_id).filter((c): c is string => c !== null),
+      )],
+    [items],
+  )
 
   const { data: categories = [] } = useQuery({
     queryKey: ['shared-list-categories', list?.id, categoryIds.join(',')],
