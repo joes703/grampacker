@@ -52,3 +52,35 @@ Phase 2: cache invalidation cluster (B-2, B-4, H2, H3) — optimistic-helper ext
 ### Next phase
 
 Phase 3: bundle splitting (H4 react-markdown lazy, H5 vaul lazy, H6 fflate dynamic, L7 route code-split). Independent fixes verifiable with build size before/after.
+
+---
+
+## Phase 3 — bundle splitting (2026-05-04)
+
+### Shipped
+
+- **Commit 1 (H6) — `8dcdcbb`** — fflate dynamic-import in SettingsPage download handler. Main bundle gzip: **261.02 → 256.48 KB (-4.54 KB)**. New `browser-*.js` chunk (4.44 KB gzip) holds the fflate browser entry. Smaller delta than the audit's ~20 KB estimate because only `zipSync` + `strToU8` are imported and fflate tree-shakes aggressively.
+- **Commit 2 (H4) — `b33b144`** — react-markdown lazy-load on About + Help routes. Main bundle gzip: **256.48 → 209.95 KB (-46.53 KB)**. New `MarkdownPage-*.js` chunk (46.08 KB gzip) holds the entire markdown stack. **Largest single bundle win in Phase 3.**
+- **Commit 3 (L7) — `4e77846`** — auth pages + SharePage code-split. Main bundle gzip: **209.95 → 204.91 KB (-5.04 KB)**. Five new auth/share chunks (1.0–1.3 KB gzip each) plus a shared jsx-runtime chunk (3.26 KB).
+
+**Cumulative gzip delta: 261.02 → 204.91 KB = -56.11 KB (−21.5% off baseline).**
+
+### Held — H5 (vaul)
+
+H5 was attempted and reverted. Lazy-loading the mobile drawer in `ListSelector` alone yielded **+0.55 KB** to the main bundle (Suspense/lazy machinery cost slightly more than the drawer wrapper saved) because vaul stays eagerly required by `ListDetailPage.tsx`'s sidebar drawer, which renders unconditionally on every list view (only hidden by `lg:hidden` CSS, no JS render gate). Adding a JS viewport gate to ListDetailPage's drawer is M11 scope. Per the Phase 3 spec's "stop and surface rather than expand scope" rule, H5 is deferred until M11 lands; structural prerequisite is unchanged (extract the drawer wrapper) and can be re-attempted then.
+
+### Verification results
+
+- `npm run build`: pass after each commit; new async chunks visible in `dist/assets/`.
+- `npm test --run`: 23/23 pass (4 skipped pre-existing).
+- Manual smoke (download zip, /about + /help render, auth routes, /r/:slug): **pending user verification** — the build can't catch chunk-fetch errors or Suspense-fallback flash.
+
+### Blockers / surprises
+
+- **H5 doesn't deliver in isolation.** The audit's expected ~15-20 KB win for vaul-lazy is gated on M11's JS viewport gate; without it, lazy-loading just one of the two vaul consumers leaves vaul in main and adds Suspense overhead. Reverted cleanly. Keeping the same H5 entry in the next phase that includes M11.
+- **fflate delta smaller than expected.** Audit estimated ~20 KB; actual ~4.5 KB. Tree-shaking is more aggressive than the audit assumed. Pattern still valid for future cold-path deps.
+- **Vite chunks default-export deduplication works as expected** — both `AboutPage` and `HelpPage` reference `lazy(() => import('../components/MarkdownPage'))` and end up sharing one chunk.
+
+### Next phase
+
+Phase 4 candidates: render-perf cluster (M6, M7, M8, M11, M12) — closing M11 then re-attempting H5 would land vaul in async. Or DB indexes (H1, M1) for backend perf. Recommend render-perf next so H5 can complete.
