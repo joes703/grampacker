@@ -3,6 +3,18 @@ import type { List, PublicList } from '../types'
 import { generateSlug } from '../slug'
 import { bulkUpdateSortOrder } from './optimistic'
 
+// Typeguard for Postgres unique-violation errors propagated through
+// supabase.from(...) and supabase.rpc(...). PostgrestError carries the
+// pg error code on .code; checking explicitly avoids a soft cast.
+function isPgUniqueViolation(err: unknown): err is { code: string } {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code: unknown }).code === '23505'
+  )
+}
+
 // Insert helper that retries on a unique-violation against lists.slug.
 // Slug collisions are astronomically rare (6 chars × base62 = ~57B values
 // vs. ≤100 lists per user), but the UNIQUE constraint demands the retry
@@ -10,15 +22,19 @@ import { bulkUpdateSortOrder } from './optimistic'
 // surface it loudly rather than silently failing the insert.
 async function withSlugRetry<T>(insert: (slug: string) => Promise<T>, max = 5): Promise<T> {
   let lastErr: unknown
-  for (let attempt = 0; attempt < max; attempt++) {
+  for (let attempt = 1; attempt <= max; attempt++) {
     try {
       return await insert(generateSlug())
     } catch (err: unknown) {
-      const code = (err as { code?: string })?.code
-      if (code !== '23505') throw err
+      if (!isPgUniqueViolation(err)) throw err
       lastErr = err
     }
   }
+  // Reachable when (a) `max` 23505 collisions in a row — astronomically
+  // unlikely; or (b) caller passes `max <= 0` so the loop body never
+  // runs and `lastErr` stays undefined. The explicit Error fallback
+  // covers (b) so toast/error-handling that expects a real Error
+  // doesn't see a thrown undefined.
   throw lastErr ?? new Error('slug generation: exhausted retries')
 }
 
