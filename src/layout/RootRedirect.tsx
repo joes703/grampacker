@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useRequireSession } from '../auth/use-require-session'
 import { queryKeys, fetchLists } from '../lib/queries'
 import { readLastListId } from '../lib/last-list-id'
+import type { List } from '../lib/types'
 
 // Authenticated landing for `/`. Picks the most-recently-touched list and
 // redirects there.
@@ -42,10 +43,15 @@ export default function RootRedirect() {
 
   if (isLoading || !lists) return null
 
-  // fetchLists orders by sort_order then name; resort here by updated_at
-  // descending so the most-recently-touched list wins. localeCompare on
-  // the ISO-8601 timestamps is lexicographic-equivalent to chronological.
-  const [mostRecent] = [...lists].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+  // fetchLists orders by sort_order then name; pick the most-recently-
+  // touched list by max-by-updated_at. localeCompare on the ISO-8601
+  // timestamps is lexicographic-equivalent to chronological.
+  // Single-pass reduce avoids the spread+sort allocation; intent reads
+  // as "find max" rather than "sort everything and take first."
+  const mostRecent = lists.reduce<List | null>(
+    (best, l) => (best === null || l.updated_at.localeCompare(best.updated_at) > 0 ? l : best),
+    null,
+  )
   if (!mostRecent) return <Navigate to="/lists" replace />
   return <Navigate to={`/lists/${mostRecent.id}`} replace />
 }
