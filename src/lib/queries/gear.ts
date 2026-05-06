@@ -4,11 +4,7 @@ import type { GearCsvRow } from '../csv'
 import { resolveOrCreateCategories, resolveOrCreateGearForImport } from './import-helpers'
 import { bulkUpdateSortOrder } from './optimistic'
 
-// Owner-scoped private read. Explicit user_id filter is defense in depth
-// against the cross-channel leak from gear_items_public_select_via_shared_list
-// — see SECURITY.md "Query-level owner scoping". userId is required so a
-// missing-session caller fails loudly rather than returning own + transitively-
-// readable shared rows.
+// Owner-scoped private read — see queries/index.ts for the convention.
 export async function fetchGearItems(userId: string): Promise<GearItem[]> {
   const { data, error } = await supabase
     .from('gear_items')

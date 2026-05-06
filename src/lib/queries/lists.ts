@@ -38,11 +38,7 @@ async function withSlugRetry<T>(insert: (slug: string) => Promise<T>, max = 5): 
   throw lastErr ?? new Error('slug generation: exhausted retries')
 }
 
-// Owner-scoped private read. Explicit user_id filter is defense in depth
-// against the cross-channel leak from public *_select_shared policies — see
-// SECURITY.md "Query-level owner scoping". userId is required (not optional)
-// so a missing-session caller fails loudly rather than silently returning
-// the union of own + shared rows.
+// Owner-scoped private read — see queries/index.ts for the convention.
 export async function fetchLists(userId: string): Promise<List[]> {
   const { data, error } = await supabase
     .from('lists')
