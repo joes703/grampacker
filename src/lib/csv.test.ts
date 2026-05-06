@@ -365,8 +365,8 @@ describe('csv parser edge cases (T-6)', () => {
   it('strips BOM (U+FEFF) from a Windows-saved CSV header', () => {
     // The BOM lives at the start of the header line, before "Item Name".
     // If unstripped, every column-resolution find would fail because
-    // 'item name' (lowercased) wouldn't match '﻿item name'.
-    const csv = '﻿Item Name,weight\nFoo,100'
+    // 'item name' (lowercased) wouldn't match '\uFEFFitem name'.
+    const csv = '\uFEFFItem Name,weight\nFoo,100'
     const parsed = parseGearCsv(csv)
     if (typeof parsed === 'string') throw new Error(parsed)
     expect(parsed).toHaveLength(1)
