@@ -591,3 +591,43 @@ Phase 16 candidates:
 - **F4 full path — security work.** Only if the threat model changes. SECURITY DEFINER `fetch_shared_list(p_slug)` RPC + revoke anon SELECT + four-policy reshape.
 
 After Phase 15, the active M-cluster is closed (M-1, M-2, M-3, M-5, M-7, M-8, M-10 all shipped). The four remaining M-items (M-4, M-6, M-9, M-11) are the triage round; depending on outcome, they ship as a tail-cluster phase or close as audit-stale.
+
+---
+
+# grampacker — Phase 16 fix summary (2026-05-06)
+
+## Shipped
+
+- **Commit 1 (M-4) — `1a3827c`** — New `randomTempId()` helper in `src/lib/random-temp-id.ts`. Native `crypto.randomUUID` happy path; manual uuid v4 fallback via `crypto.getRandomValues` for non-secure contexts (`vite preview` over plain HTTP for LAN testing; older Safari <16.4). Explicit throw if neither API is present rather than letting a later `ReferenceError` surface — every browser the codebase otherwise supports has `getRandomValues`, so the throw branch is unreachable in practice but diagnosable if it ever fires. No `Math.random` fallback (signals tolerance for weak randomness on a uuid v4 helper, wrong message). Four call sites converted: `ListDetailPage.tsx:245` (addGearItemToList optimistic), `GearLibraryPage.tsx:160` (addCategory optimistic), `GearLibraryPage.tsx:208` (addItem optimistic), `optimistic-list-placeholder.ts:34`. The doc-only comment reference at `optimistic.ts:157` is unchanged (it documents the contract, not a call site).
+- **Commit 2 (M-6) — `cd8e196`** — `Modal.handleClick` reduced from `target===currentTarget` + `getBoundingClientRect`-based outside-coords arithmetic to just `target===currentTarget`. The rect check was redundant: with the dialog's `p-0` styling and all visible content wrapped in inner divs, a `target===currentTarget` click can only land on the `::backdrop` area (margins don't generate click targets, and the dialog has no padding region clickable on itself). Code comment flags the assumption for future readers: if a modal child ever reintroduces padding on the dialog element itself, this needs revisiting.
+
+## Audit closures
+
+- **M-4 — closed.** Optimistic-update sites no longer throw in non-secure contexts. The polyfill failure mode is loud and diagnosable (explicit throw with a named error message) rather than silent or surfaced via `ReferenceError`.
+- **M-6 — closed.** Backdrop click handler reduced to its load-bearing check; the redundant rect arithmetic is gone.
+- **M-9 — closed audit-stale.** `sharedGroupProps` `useMemo` deps at `ListDetailPage.tsx:688` are `[mode, weightUnit, isBelowLg, showUnpackedOnly]` — explicitly excludes `gearItems` and `listItems`. The `useLatestRef`-backed `gearItemsRef` / `listItemsRef` (introduced before this audit was written, but missed by it) is the load-bearing mechanism keeping the memo stable across data churn. The `eslint-disable-next-line react-hooks/exhaustive-deps` at line 687 documents this convention. No code change needed — the audit finding describes a problem already solved.
+- **M-11 — closed audit-stale.** Comment at `dnd-ids.ts:23-25` is factually accurate. UUIDs per RFC 4122 are formatted with hyphens (`xxxxxxxx-xxxx-Mxxx-Nxxx-xxxxxxxxxxxx`), no colons. The audit may have been written before the format clarification landed earlier in the campaign, or against a different codebase. No code change needed.
+
+## Verification results
+
+- `npm run build`: pass at every commit.
+- `npm run lint`: pass at every commit.
+- `npm test --run`: 45 → 45 passed | 4 skipped. No new tests in Phase 16 — M-4 needs jsdom (touches optimistic-update factories that React drives) and M-6 needs `@testing-library` event simulation (dialog `.showModal()` + click events). Backfill deferred to T-cluster, same as Phases 14/15.
+- **Bundle gzip 187.74 KB (Phase 15 baseline) → 187.84 KB after C2 — net +0.10 KB.** Reframed expectation per pre-execution Codex review: the manual uuid v4 formatter (`Uint8Array` + `getRandomValues` + bit-twiddle + `Array.from` + `padStart` + `slice` + `join`) is more runtime code than the four `crypto.randomUUID()` call sites it replaced, so a small positive delta was the realistic prediction. M-6's ~5-line removal partially offset (C1 alone was +0.14 KB, C2 brought it back to +0.10 KB). The change ships for the secure-context correctness win regardless of byte cost.
+- Manual smoke (deferred to user). Recommended:
+  - **C1**: run `npm run preview` and load the app from a phone or another LAN device using the LAN IP (not localhost). Try creating a list, gear item, and category. Each used to throw "crypto.randomUUID is not a function"; should now succeed. Hard refresh after each create to confirm server accepted (the optimistic-snap-back warning).
+  - **C2**: open any modal (e.g., gear item edit on `/gear`). Click outside the dialog box → should close. Click inside the dialog content → should not close. Click the close button → should close. Behavior identical to before; this is dead-code removal.
+
+## Blockers / surprises
+
+- **None.** The bundle delta matched the reframed Codex prediction; no findings during execution; no scope expansion.
+
+## Next phase
+
+With Phase 16 closed, the M-cluster is fully accounted for (M-1 through M-11, all shipped or audit-closed). What remains in `REVIEW-quality.md`:
+
+- **N-5 standalone — `csv.ts` per-format split.** Mechanical refactor of a 374-line module into three logical groupings (generic CSV utilities, gear-format adapters, list-format adapters). Multiple consumers across `GearLibraryPage`, `ListDetailPage`, and the pure tests. Substantial enough to warrant its own phase; this is Phase 17.
+- **T-cluster — T-3…T-9 test coverage backfill.** Needs the one-time jsdom + `@testing-library/react` install. Once the tooling lands, Phases 14/15/16's seven deferred test surfaces become testable. This is Phase 18.
+- **F4 full path — security.** Only if the threat model changes. SECURITY DEFINER `fetch_shared_list(p_slug)` RPC + revoke anon SELECT + four-policy reshape. Stays in the deck for whenever the threat model justifies it.
+
+After Phases 17 and 18, `REVIEW-quality.md` is fully closed and the campaign moves to `REVIEW-security.md` (then `REVIEW-performance.md`) per the user's ordering decision.
