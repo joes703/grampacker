@@ -148,7 +148,7 @@ export function groupGearItemsByCategory(
 export function assignSortOrderSlots<T extends { id: string; sort_order: number }>(
   reorderedItems: T[],
 ): { id: string; sort_order: number }[] {
-  const slots = reorderedItems.map((i) => i.sort_order).slice().sort((a, b) => a - b)
+  const slots = reorderedItems.map((i) => i.sort_order).sort((a, b) => a - b)
   // Non-null assertion: `slots` and `reorderedItems` have identical length by
   // construction, so slots[idx] is always defined for every idx in the map.
   return reorderedItems.map((i, idx) => ({ id: i.id, sort_order: slots[idx]! }))
