@@ -43,17 +43,15 @@ export default function Modal({
 
   function handleClick(e: React.MouseEvent<HTMLDialogElement>) {
     if (!closeOnBackdropClick) return
-    if (e.target !== e.currentTarget) return
-    // Click registered on the dialog element itself (not a child). Compare
-    // coords against the dialog's box; if outside, the user clicked the
-    // backdrop.
-    const rect = e.currentTarget.getBoundingClientRect()
-    if (
-      e.clientX < rect.left || e.clientX > rect.right ||
-      e.clientY < rect.top || e.clientY > rect.bottom
-    ) {
-      e.currentTarget.close()
-    }
+    // With the current `p-0` dialog + inner-wrapper structure, a
+    // target===currentTarget click represents a click on the ::backdrop
+    // area: child elements own their own click targets, and the dialog
+    // element has no padding region a click could land on without hitting
+    // a child. If a future modal child leaves the dialog content area
+    // exposed (e.g., reintroducing padding on the dialog itself), revisit
+    // this — target===currentTarget would no longer be exclusively
+    // backdrop. Today it is.
+    if (e.target === e.currentTarget) e.currentTarget.close()
   }
 
   return (
