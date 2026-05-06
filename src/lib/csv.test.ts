@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { gearItemsToCsv, listItemsToCsv, parseGearCsv, parseListCsv } from './csv'
+import { gearItemsToCsv, listItemsToCsv, parseCsv, parseGearCsv, parseListCsv } from './csv'
 import type { Category, GearItem, ListItemWithGear } from './types'
 
 // Smoke test: representative gear-list rows should round-trip through
@@ -349,5 +349,49 @@ describe('gear csv with cost and purchase_date', () => {
     const parsed = parseGearCsv(csv)
     if (typeof parsed === 'string') throw new Error(parsed)
     expect(parsed[0]?.cost).toBe(99_999_999.99)
+  })
+})
+
+// Edge cases the audit (T-6) called out: BOM-prefixed CSVs from
+// Excel/Windows, embedded CRLF inside a quoted field (descriptions with
+// line breaks), and header-only CSVs with no data rows. The current
+// parser handles all three correctly today (BOM is a Unicode whitespace
+// character that .trim() strips on the header row; parseRow tracks
+// inQuote so embedded \r\n stays a single cell; parseCsv early-returns
+// [] when there are no data lines and parseGearCsv surfaces that as a
+// user-facing error string). These tests lock the contracts so a future
+// parser refactor can't silently break Lighterpack/Excel imports.
+describe('csv parser edge cases (T-6)', () => {
+  it('strips BOM (U+FEFF) from a Windows-saved CSV header', () => {
+    // The BOM lives at the start of the header line, before "Item Name".
+    // If unstripped, every column-resolution find would fail because
+    // 'item name' (lowercased) wouldn't match '﻿item name'.
+    const csv = '﻿Item Name,weight\nFoo,100'
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0]?.name).toBe('Foo')
+    expect(parsed[0]?.weight_grams).toBe(100)
+  })
+
+  it('preserves embedded \\r\\n inside a quoted field as a single cell', () => {
+    // A description column with a literal CRLF in it must round-trip as
+    // one cell, not split across two rows. Lighterpack and similar tools
+    // emit multi-line notes this way for description/desc columns.
+    const csv = 'Item Name,desc,weight\r\n"Foo","line one\r\nline two",100\r\n'
+    const parsed = parseCsv(csv)
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0]?.['item name']).toBe('Foo')
+    expect(parsed[0]?.['desc']).toBe('line one\r\nline two')
+    expect(parsed[0]?.['weight']).toBe('100')
+  })
+
+  it('returns the user-facing error string for header-only CSVs (no data rows)', () => {
+    // parseCsv returns [] when only a header line is present; parseGearCsv
+    // surfaces that as the audit-known error message rather than a silent
+    // empty import.
+    const csv = 'Item Name,weight\n'
+    const parsed = parseGearCsv(csv)
+    expect(parsed).toBe('File appears empty or has no data rows.')
   })
 })
