@@ -547,3 +547,47 @@ Phase 15 candidates (M-cluster defensive half):
 After Phase 15 the entire M-cluster will be closed except the four already-out-of-scope items (M-4 polyfill, M-6 Modal simplify, M-9 sharedGroupProps, M-11 parseDnDId comment) — most of those are likely audit-stale or N-tier and can be triaged in Phase 15 prep.
 
 Then Phase 16 = N-5 standalone (csv.ts split), Phase 17 = T-cluster (jsdom + testing-library install + backfill), Phase 18 = F4 security path (only if threat model changes).
+
+---
+
+# grampacker — Phase 15 fix summary (2026-05-06)
+
+## Shipped
+
+- **Commit 1 (M-1) — `e0dddf7`** — `App.tsx` `MutationCache.onError` drops the `import.meta.env.DEV` gate; mutation failures now log in every environment via `console.warn(`[${key}] failed`, { error: message, code, mutationKey })`. `console.warn` (not `console.error`) because most failures are recoverable (optimistic snap-back, user retry). Local extractions for `message` and `code` keep the payload readable — the `code` typeguard plus the cast (Postgres errors carry it; fetch errors don't) is enough complexity to warrant its own line. Structured payload is the shape a future Sentry/PostHog wrapper would already want; wrapping is a one-line change later.
+- **Commit 2 (M-5) — `61ad743`** — `useCsvFileInput` adds `reader.onerror` and `reader.onabort`, both routing through the existing `handlers.onError(string)` surface that the >2 MB-size and parser-rejection paths already use. `onerror` emits user-facing copy ("Couldn't read this file. It may be corrupt or your browser may have blocked file access. Try a different file."); `onabort` emits "File read was canceled." Logging the underlying `FileReader.error` is M-1's job. User-cancel from the OS picker is already handled by the existing `if (!file) return` guard — `onabort` covers programmatic `.abort()` and browser-internal cancellations.
+- **Commit 3 (M-8) — `6ae9b07`** — Two `useMemo`'d Maps (`listItemsById` in `ListDetailPage`, `allItemsById` in `GearLibraryPage`) replace seven `find((i) => i.id === id)` sites. ListDetailPage: 2 in `onDragEnd` within-category reorder + 1 in DragOverlay rendering. GearLibraryPage: 1 in over-cat resolution for category reorder + 2 in within-cat gear-item reorder + 1 in DragOverlay rendering. Five sites explicitly preserved: 4 ref-based callback finds (would require ref-based Maps; click-cadence linear scans imperceptible at N≤500), 1 render-time `lists.find` for current-list lookup (different array, single consumer, not a hot path). `Map.get` returns `T | undefined`; the DragOverlay sites previously returned `null` from a ternary's else branch, so wrapped each `.get(...)` in `?? null` to preserve return shape without downstream type churn.
+- **Commit 4 (M-10) — `863522b`** — `WeightTable.computeWeightBreakdown` warns when an impossible `is_consumable && is_worn` row appears at runtime, preserving consumable precedence (the historical behavior of the existing `if/else if` chain). DB CHECK makes this state unreachable today; the warn is belt-and-suspenders for future migration regressions, fixture skips, or momentarily-inconsistent optimistic updates. Throwing would crash the list view on a defensive guard for an unreachable case — the wrong trade. The structured payload (`listItemId`, `gearItemId`) gives a debugger enough to track the row down without page-load loss.
+
+## Audit closures
+
+- **M-1 — closed.** Production observability for failed mutations now exists via structured `console.warn`. External-reporter integration (Sentry/PostHog/etc.) is a one-line wrapper change away; deliberately not adding the SDK at this project scale.
+- **M-5 — closed.** All three `FileReader` async outcomes (`onload`, `onerror`, `onabort`) call into the consumer's handler. No silent dead-end on failed reads.
+- **M-8 — closed.** 7 of 12 `find` sites converted to `Map.get`. 5 deferred: 4 ref-based callback finds (would require ref-based Maps for marginal benefit at click cadence), 1 render-time `lists.find` (over-engineering for one consumer at N≈20). Audit's "five sites" was a count; the cleanup spirit is well-served.
+- **M-10 — closed.** Impossible state is now loud (structured `console.warn`); visible behavior unchanged when the state doesn't appear (which is always, today).
+
+## Verification results
+
+- `npm run build`: pass at every commit.
+- `npm run lint`: pass at every commit.
+- `npm test --run`: 45 → 45 passed | 4 skipped. No new tests in Phase 15 — same reasoning as Phase 14 (these touch error paths, async file IO, and assertion-style guards that need jsdom + `@testing-library`). Backfill deferred to the T-cluster phase.
+- **Bundle gzip 187.47 KB (Phase 14 baseline) → 187.74 KB after C4 — net +0.27 KB, well over the +0.05 soft target.** Attributable mostly to the user-facing copy strings in M-5 (~130 chars × 2 strings) and the structured warn payloads in M-1 and M-10 (~80 chars each). C3 is roughly neutral (Map construction added; find body bytes removed). The overage buys real defensive observability — making it visible was the whole point of these fixes — and the soft target wasn't a hard gate. Worth noting that the M-cluster's defensive half is fundamentally string-heavy (error copy + structured logging) in a way the W-cluster wasn't.
+- Manual smoke (deferred to user). Recommended:
+  - **C1**: in DevTools, block all network requests (Network → Throttling: Offline, then trigger a save). Should see the structured warn payload in the console with mutation key, error message, error code (if Postgres-shaped), and the mutation key array.
+  - **C2**: hard to test deliberately without a corrupt file. Low-value smoke; the new branches plug into the existing onError surface that the >2 MB and parser-rejection paths already use.
+  - **C3**: drag items on `/lists/:id` (within-category reorder) and `/gear` (within-category reorder + cross-category category reorder). Behavior should be byte-identical to before.
+  - **C4**: cannot reasonably reproduce; the DB CHECK constraint makes the state unreachable. Verifying the warn fires would require manually editing a list_item row in the cache to set both flags true (DevTools React profiler / TanStack devtools).
+
+## Blockers / surprises
+
+- **Bundle +0.27 KB vs +0.05 target.** The defensive half of the M-cluster is fundamentally string-heavy: user-facing error copy (M-5 alone is ~260 chars across two strings), structured warn payload keys (M-1's `error/code/mutationKey` plus M-10's `listItemId/gearItemId`), and the warn message templates. Compressing further would mean either dropping the user-facing copy (worse UX on read failures) or dropping the structured payload (defeats M-1's whole point). The overage is the cost of making observability real, and the +0.27 KB is small in absolute terms. Soft target is a guideline, not a hard gate — flagging because two of three M-clusters now exceed it (Phase 14 was +0.06).
+
+## Next phase
+
+Phase 16 candidates:
+- **N-5 standalone — `csv.ts` per-format split.** Mechanical refactor that doesn't fit in a nit cluster. Single-PR change.
+- **M-cluster cleanup — M-4 (crypto.randomUUID polyfill), M-6 (Modal backdrop simplify), M-9 (sharedGroupProps recompute), M-11 (parseDnDId comment).** Triage round: most are likely audit-stale or trivial.
+- **T-cluster — T-3…T-9 test coverage.** Needs jsdom + `@testing-library` install (one-time tooling change). Once the tooling lands, Phase 14's three deferred surfaces and Phase 15's four deferred surfaces become testable too — the cluster doubles as a backfill phase.
+- **F4 full path — security work.** Only if the threat model changes. SECURITY DEFINER `fetch_shared_list(p_slug)` RPC + revoke anon SELECT + four-policy reshape.
+
+After Phase 15, the active M-cluster is closed (M-1, M-2, M-3, M-5, M-7, M-8, M-10 all shipped). The four remaining M-items (M-4, M-6, M-9, M-11) are the triage round; depending on outcome, they ship as a tail-cluster phase or close as audit-stale.
