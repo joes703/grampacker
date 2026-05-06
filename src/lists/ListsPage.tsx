@@ -150,7 +150,7 @@ export default function ListsPage() {
   })
 
   const deleteListMut = useMutation({
-    mutationFn: (id: string) => deleteList(id),
+    mutationFn: deleteList,
     ...makeOptimisticDelete<List, string>({
       qc,
       queryKey: queryKeys.lists(),
