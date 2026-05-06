@@ -9,6 +9,7 @@ import { queryKeys, createList, makeOptimisticInsert } from '../lib/queries'
 import type { List } from '../lib/types'
 import { usePortalPopover } from '../lib/use-portal-popover'
 import { useIsMobile } from '../lib/use-breakpoint'
+import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 
 type Props = {
   lists: List[]
@@ -152,20 +153,7 @@ function SelectorBody({
     ...makeOptimisticInsert<List, string>({
       qc,
       queryKey: queryKeys.lists(),
-      optimistic: (name) => {
-        const now = new Date().toISOString()
-        return {
-          id: `temp-${crypto.randomUUID()}`,
-          user_id: userId,
-          name,
-          description: null,
-          slug: `temp-${crypto.randomUUID()}`,
-          is_shared: false,
-          sort_order: lists.length,
-          created_at: now,
-          updated_at: now,
-        }
-      },
+      optimistic: (name) => optimisticListPlaceholder({ name, userId, sortOrder: lists.length }),
     }),
     onSuccess: (created) => {
       setCreating(false)
