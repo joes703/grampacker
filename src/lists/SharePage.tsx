@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { fetchSharedList, fetchSharedListItems, fetchSharedListCategories } from '../lib/queries'
+import { groupListItemsByCategory } from '../lib/grouping'
 import type { Category, ListItemWithGear, PublicCategory, PublicListItem } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
@@ -87,21 +88,8 @@ export default function SharePage() {
   }))
 
   // Group items by category, ordered by category.sort_order; uncategorized last.
-  const catMap = new Map(categoriesForRender.map((c) => [c.id, c]))
-  const sortedCats = [...categoriesForRender].sort((a, b) => a.sort_order - b.sort_order)
-
-  type Group = { category: Category | null; items: ListItemWithGear[] }
-  const grouped: Group[] = sortedCats
-    .map((cat) => ({
-      category: cat,
-      items: itemsForRender.filter((i) => i.gear_item.category_id === cat.id),
-    }))
-    .filter((g) => g.items.length > 0)
-
-  const uncategorizedItems = itemsForRender.filter(
-    (i) => i.gear_item.category_id === null || !catMap.has(i.gear_item.category_id),
-  )
-  if (uncategorizedItems.length > 0) grouped.push({ category: null, items: uncategorizedItems })
+  // Read-only view — no `prior` stability arg (renders once per slug-fetch).
+  const grouped = groupListItemsByCategory(itemsForRender, categoriesForRender)
 
   return (
     <div className="min-h-screen bg-gray-50">
