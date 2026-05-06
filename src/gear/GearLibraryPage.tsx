@@ -47,6 +47,7 @@ import {
 } from '../lib/queries'
 import type { Category, GearItem, ListItemWithGear } from '../lib/types'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
+import { randomTempId } from '../lib/random-temp-id'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
@@ -156,7 +157,7 @@ export default function GearLibraryPage() {
       // Server assigns is_default=false for user-created categories
       // (defaults are seeded). Placeholder mirrors that.
       optimistic: (name) => ({
-        id: `temp-${crypto.randomUUID()}`,
+        id: `temp-${randomTempId()}`,
         user_id: userId,
         name,
         sort_order: categories.length,
@@ -204,7 +205,7 @@ export default function GearLibraryPage() {
       optimistic: (data) => {
         const now = new Date().toISOString()
         return {
-          id: `temp-${crypto.randomUUID()}`,
+          id: `temp-${randomTempId()}`,
           user_id: userId,
           category_id: data.category_id,
           name: data.name,

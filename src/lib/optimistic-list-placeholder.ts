@@ -1,5 +1,6 @@
 import type { List } from './types'
 import { generateSlug } from './slug'
+import { randomTempId } from './random-temp-id'
 
 // Build an optimistic List row for CACHE-ONLY use during list creation.
 // **NEVER call .insert() with this row.** The contract is: TanStack
@@ -30,7 +31,7 @@ export function optimisticListPlaceholder(args: {
 }): List {
   const now = new Date().toISOString()
   return {
-    id: crypto.randomUUID(),
+    id: randomTempId(),
     user_id: args.userId,
     name: args.name,
     description: args.description ?? null,
