@@ -54,7 +54,7 @@ export default function RowIconButton({
   ref,
   ...rest
 }: Props) {
-  const stateClass = active && ACTIVE_CLASSES[variant] ? ACTIVE_CLASSES[variant]! : VARIANT_CLASSES[variant]
+  const stateClass = (active ? ACTIVE_CLASSES[variant] : undefined) ?? VARIANT_CLASSES[variant]
   return (
     <button
       ref={ref}
