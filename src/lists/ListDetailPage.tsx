@@ -52,6 +52,7 @@ import { assignSortOrderSlots } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
 import { parseListCsv, type ListImportRow } from '../lib/csv'
+import { randomTempId } from '../lib/random-temp-id'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
@@ -240,8 +241,8 @@ function ListDetailInner({
         const now = new Date().toISOString()
         return {
           // Temp id replaced by the server row on settled refetch. The
-          // crypto.randomUUID() prefix avoids any collision with real ids.
-          id: `temp-${crypto.randomUUID()}`,
+          // randomTempId() suffix avoids any collision with real ids.
+          id: `temp-${randomTempId()}`,
           list_id: listId,
           user_id: userId,
           gear_item_id: item.id,
