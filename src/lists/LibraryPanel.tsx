@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
+import { groupByCategory } from '../lib/grouping'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 
 type Props = {
@@ -60,22 +61,28 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
     [gearItems, q],
   )
 
-  // Build groups ordered by category sort_order
+  // Build groups ordered by category sort_order. sortedCats stays in its
+  // own memo so the sort only reruns when `categories` changes — not on
+  // every search keystroke (which churns `filtered`).
   const sortedCats = useMemo(
     () => [...categories].sort((a, b) => a.sort_order - b.sort_order),
     [categories],
   )
+
+  // Empty categories filtered out (the panel hides cats with no matches
+  // when the user is searching). Orphan-keyed items — a gear_item.category_id
+  // pointing at a deleted category — are silently dropped, preserving the
+  // previous inline behavior. In practice the gear_items.category_id ON
+  // DELETE SET NULL FK makes this unreachable, but the helper documents
+  // the policy explicitly. Result includes the uncategorized tail (if any
+  // null-keyed items are present) appended after real-cat groups.
   const groups = useMemo(
     () =>
-      sortedCats
-        .map((cat) => ({ category: cat, items: filtered.filter((g) => g.category_id === cat.id) }))
-        .filter((g) => g.items.length > 0),
-    [sortedCats, filtered],
-  )
-
-  const uncategorized = useMemo(
-    () => filtered.filter((g) => g.category_id === null),
-    [filtered],
+      groupByCategory(filtered, sortedCats, (g) => g.category_id, {
+        keepEmpty: false,
+        orphanPolicy: 'drop',
+      }),
+    [filtered, sortedCats],
   )
 
   return (
@@ -97,41 +104,34 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
 
       {/* Category groups */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {groups.length === 0 && uncategorized.length === 0 ? (
+        {groups.length === 0 ? (
           <p className="p-4 text-center text-sm text-gray-400 italic">
             {q ? 'No items found' : 'No gear items yet'}
           </p>
         ) : (
           <>
-            {groups.map(({ category, items }) => (
-              <LibraryCategoryGroup
-                key={category.id}
-                name={category.name}
-                items={items}
-                collapsed={collapsed.has(category.id)}
-                toggleKey={category.id}
-                onToggle={toggleCollapse}
-                listItemGearIds={listItemGearIds}
-                weightUnit={weightUnit}
-                onAdd={onAdd}
-                onRemove={onRemove}
-                regionId={`library-cat-${category.id}`}
-              />
-            ))}
-            {uncategorized.length > 0 && (
-              <LibraryCategoryGroup
-                name="Uncategorized"
-                items={uncategorized}
-                collapsed={collapsed.has('__uncategorized__')}
-                toggleKey="__uncategorized__"
-                onToggle={toggleCollapse}
-                listItemGearIds={listItemGearIds}
-                weightUnit={weightUnit}
-                onAdd={onAdd}
-                onRemove={onRemove}
-                regionId="library-cat-uncategorized"
-              />
-            )}
+            {groups.map(({ category, items }) => {
+              // Synthetic uncategorized row uses the '__uncategorized__'
+              // sentinel for the collapsed-state key and toggleKey, and
+              // 'uncategorized' as the regionId tail — matches the
+              // pre-refactor literals exactly.
+              const key = category?.id ?? '__uncategorized__'
+              return (
+                <LibraryCategoryGroup
+                  key={key}
+                  name={category?.name ?? 'Uncategorized'}
+                  items={items}
+                  collapsed={collapsed.has(key)}
+                  toggleKey={key}
+                  onToggle={toggleCollapse}
+                  listItemGearIds={listItemGearIds}
+                  weightUnit={weightUnit}
+                  onAdd={onAdd}
+                  onRemove={onRemove}
+                  regionId={`library-cat-${category?.id ?? 'uncategorized'}`}
+                />
+              )
+            })}
           </>
         )}
       </div>
