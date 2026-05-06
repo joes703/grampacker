@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { groupListItemsByCategory } from './grouping'
-import type { Category, ListItemWithGear } from './types'
+import { groupListItemsByCategory, groupGearItemsByCategory } from './grouping'
+import type { Category, GearItem, ListItemWithGear } from './types'
 
 function listItem(overrides: {
   id: string
@@ -149,5 +149,85 @@ describe('groupListItemsByCategory', () => {
 
     expect(second).not.toBe(first)
     expect(second[0]!.items).not.toBe(first[0]!.items)
+  })
+})
+
+function gearItem(overrides: {
+  id: string
+  category_id: string | null
+  weight_grams?: number
+  name?: string
+}): GearItem {
+  return {
+    id: overrides.id,
+    user_id: 'u',
+    name: overrides.name ?? `gear-${overrides.id}`,
+    description: null,
+    weight_grams: overrides.weight_grams ?? 100,
+    category_id: overrides.category_id,
+    cost: null,
+    purchase_date: null,
+    sort_order: 0,
+    created_at: '2024-01-01',
+    updated_at: '2024-01-01',
+  }
+}
+
+describe('groupGearItemsByCategory', () => {
+  it('groups items by category in input order; uncategorized last', () => {
+    const items = [
+      gearItem({ id: 'a', category_id: 'cat-sleep' }),
+      gearItem({ id: 'b', category_id: 'cat-shelter' }),
+      gearItem({ id: 'c', category_id: null }),
+    ]
+    // Caller pre-sorts categories — the helper iterates in INPUT order,
+    // not sort_order. Pass cats in REVERSE sort_order so this test would
+    // fail if the wrapper ever started sorting internally. (sleep has
+    // sort_order: 1, shelter has sort_order: 0; passing [sleep, shelter]
+    // means input-order output is [sleep, shelter, uncategorized] —
+    // explicitly NOT sort_order order.)
+    const result = groupGearItemsByCategory(items, [sleep, shelter])
+    expect(result).toHaveLength(3)
+    expect(result[0]!.category?.id).toBe('cat-sleep')
+    expect(result[1]!.category?.id).toBe('cat-shelter')
+    expect(result[2]!.category).toBeNull()
+  })
+
+  // The deliberate divergence from groupListItemsByCategory: the gear
+  // library renders empty cat sections so the user can drag items in.
+  // Passes cats in reverse sort_order to keep this test honest about
+  // input-order iteration too.
+  it('retains empty categories', () => {
+    const items = [gearItem({ id: 'a', category_id: 'cat-shelter' })]
+    const result = groupGearItemsByCategory(items, [sleep, shelter])
+    expect(result).toHaveLength(2)
+    expect(result[0]!.category?.id).toBe('cat-sleep')
+    expect(result[0]!.items).toHaveLength(0)
+    expect(result[1]!.category?.id).toBe('cat-shelter')
+    expect(result[1]!.items).toHaveLength(1)
+  })
+
+  it('only emits the uncategorized group when at least one item lacks a category', () => {
+    const items = [gearItem({ id: 'a', category_id: 'cat-shelter' })]
+    const result = groupGearItemsByCategory(items, [shelter])
+    expect(result).toHaveLength(1)
+    expect(result[0]!.category?.id).toBe('cat-shelter')
+  })
+
+  // Locked behavior — schema's ON DELETE SET NULL makes orphans
+  // unreachable in practice, but the helper's documented contract is
+  // "drop silently" and the parameterized refactor must preserve it.
+  // Switching to "route to uncategorized" would be a behavior change.
+  it('drops items whose category_id points at a missing category (locked divergence)', () => {
+    const items = [
+      gearItem({ id: 'a', category_id: 'cat-shelter' }),
+      gearItem({ id: 'b', category_id: 'cat-deleted' }),
+    ]
+    const result = groupGearItemsByCategory(items, [shelter])
+    expect(result).toHaveLength(1)
+    expect(result[0]!.category?.id).toBe('cat-shelter')
+    expect(result[0]!.items).toHaveLength(1)
+    expect(result[0]!.items[0]!.id).toBe('a')
+    // Item 'b' is gone from the output.
   })
 })
