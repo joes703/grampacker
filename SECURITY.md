@@ -148,6 +148,20 @@ These don't carry the primary security load — RLS does — but they catch mist
 
 ---
 
+## Operational checklist (Supabase dashboard)
+
+These are configuration knobs in the Supabase project dashboard. Code can't enforce them; engineers should verify them periodically (and during onboarding) since drift is silent.
+
+- [ ] **Access token TTL ≤ 1 hour.** Project → Authentication → Sessions.
+- [ ] **Refresh token rotation enabled.** Same panel.
+- [ ] **Refresh token "reuse interval" short** (10–30 seconds is typical). Same panel.
+- [ ] **Redirect URL allowlist** contains only known origins (production domain + `localhost` ports used in dev). Project → Authentication → URL Configuration. The forgot-password flow at `ForgotPasswordPage.tsx` uses `redirectTo: ${origin}/reset-password`, so every origin you sign in from must be allowlisted.
+- [ ] **"Confirm email" enabled.** Project → Authentication → Providers → Email. The login flow at `LoginPage.tsx` already handles the "email not confirmed" error path; if this gets disabled, the dead branch becomes a security gap (unverified emails would bypass the implicit ownership proof).
+
+Last verified: _<YYYY-MM-DD by name>_. Re-verify after any Supabase plan/project migration, when adding a new redirect URL, or at least quarterly.
+
+---
+
 ## Adding a new table safely
 
 1. **Reference `auth.users(id)`** on user-owned data, either directly via a `user_id` column or transitively through a parent that has one. `ON DELETE CASCADE` so account deletion cleans up.
