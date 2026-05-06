@@ -24,9 +24,28 @@
 // colons so `indexOf(':')` is unambiguous. Numeric ids would need a different
 // delimiter, but every id in this codebase is a uuid.
 
-export type DnDIdKind = 'category' | 'gear-item' | 'item' | 'list-card'
+// Single source of truth for DnD kinds. The `as const` tuple gives us both
+// a runtime list (used by `parseDnDId`'s validation) and a derived type
+// union (`DnDIdKind`), so adding a new kind requires one edit instead of
+// two. Deliberately NOT exported — only the type is — to keep the surface
+// minimal and prevent callers from importing the runtime tuple directly.
+const DND_KINDS = ['category', 'gear-item', 'item', 'list-card'] as const
+
+export type DnDIdKind = (typeof DND_KINDS)[number]
 
 export type DnDId = `${DnDIdKind}:${string}`
+
+// Real typeguard: a cast inside `.includes(kind as DnDIdKind)` would NOT
+// narrow `kind` for the subsequent `return { kind, id }` — it would only
+// satisfy `.includes`'s argument type. With a `kind is DnDIdKind` predicate,
+// TS narrows `kind` along the success branch and the return shape continues
+// to type-check. The `(DND_KINDS as readonly string[])` cast inside widens
+// the tuple's element type so `.includes(kind)` accepts an arbitrary
+// `string` (without it, `.includes` requires a `DnDIdKind` argument and
+// rejects the wider input).
+function isDnDIdKind(kind: string): kind is DnDIdKind {
+  return (DND_KINDS as readonly string[]).includes(kind)
+}
 
 export function makeDnDId(kind: DnDIdKind, id: string): DnDId {
   return `${kind}:${id}`
@@ -37,9 +56,7 @@ export function parseDnDId(raw: string): { kind: DnDIdKind; id: string } | null 
   if (idx < 0) return null
   const kind = raw.slice(0, idx)
   const id = raw.slice(idx + 1)
-  if (kind !== 'category' && kind !== 'gear-item' && kind !== 'item' && kind !== 'list-card') {
-    return null
-  }
+  if (!isDnDIdKind(kind)) return null
   if (id.length === 0) return null
   return { kind, id }
 }
