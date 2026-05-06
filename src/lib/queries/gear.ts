@@ -36,7 +36,7 @@ export async function createGearItem(
 
 export async function updateGearItem(
   id: string,
-  patch: Partial<Pick<GearItem, 'name' | 'description' | 'weight_grams' | 'category_id' | 'cost' | 'purchase_date' | 'sort_order'>>,
+  patch: Partial<Pick<GearItem, 'name' | 'description' | 'weight_grams' | 'category_id' | 'cost' | 'purchase_date'>>,
 ): Promise<void> {
   const { error } = await supabase.from('gear_items').update(patch).eq('id', id)
   if (error) throw error

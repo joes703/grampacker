@@ -48,7 +48,7 @@ export async function createCategory(
   return data
 }
 
-export async function updateCategory(id: string, patch: Partial<Pick<Category, 'name' | 'sort_order'>>): Promise<void> {
+export async function updateCategory(id: string, patch: Partial<Pick<Category, 'name'>>): Promise<void> {
   const { error } = await supabase.from('categories').update(patch).eq('id', id)
   if (error) throw error
 }

@@ -78,7 +78,7 @@ export async function addGearItemToList(
 }
 
 export type ListItemPatch = Partial<
-  Pick<ListItem, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed' | 'sort_order'>
+  Pick<ListItem, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed'>
 >
 
 export async function updateListItem(id: string, patch: ListItemPatch): Promise<void> {
