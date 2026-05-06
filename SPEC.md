@@ -131,7 +131,7 @@ For bulk partial-column writes that have to bypass RLS WITH CHECK on the INSERT 
 
 ## CSV format
 
-Used for gear-library and per-list export/import. The format is a small, hand-rolled RFC-4180-style CSV (`src/lib/csv.ts`) — no external CSV library. The export format is **drop-in compatible with Lighterpack**: same 10-column header and same value conventions, so a grampacker CSV can be re-imported into Lighterpack without manual header massaging. Importing Lighterpack, HikerHerd, Packstack, or hand-edited CSVs into grampacker works thanks to the parser's case-insensitive column-alias lookup, the spelled-out unit recognition, and the boolean-value tolerance described under "Import" below.
+Used for gear-library and per-list export/import. The format is a small, hand-rolled RFC-4180-style CSV (`src/lib/csv/`) — no external CSV library. The export format is **drop-in compatible with Lighterpack**: same 10-column header and same value conventions, so a grampacker CSV can be re-imported into Lighterpack without manual header massaging. Importing Lighterpack, HikerHerd, Packstack, or hand-edited CSVs into grampacker works thanks to the parser's case-insensitive column-alias lookup, the spelled-out unit recognition, and the boolean-value tolerance described under "Import" below.
 
 ### Export columns
 
