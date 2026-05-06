@@ -1,9 +1,17 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  test: {
+    // Default environment is `node`. Per-file `// @vitest-environment jsdom`
+    // directives opt individual test files into jsdom. This keeps the
+    // pure-function suite (csv, grouping, optimistic, queries-bulk-reorder,
+    // WeightTable) running on node — fast and minimal — while only the
+    // tests that actually touch the DOM pay the jsdom load tax.
+    setupFiles: ['./vitest.setup.ts'],
+  },
   plugins: [
     react(),
     tailwindcss(),
