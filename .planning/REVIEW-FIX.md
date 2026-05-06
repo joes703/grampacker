@@ -381,3 +381,43 @@ Phase 11 candidates (no clear winner — user picks):
 - **Test-coverage cluster** — T-3…T-9; needs jsdom + `@testing-library` install (a one-time tooling change).
 
 After Phase 10, `REVIEW-security.md` is substantially closed: F1, F3, F6, F11 done in earlier phases; F4 closed via cheap path here; F5, F7, F8 closed as docs/guardrails; F2 is accepted-risk for the BaaS architecture; F9, F10, F12, F13 were already info-only confirmations.
+
+---
+
+# grampacker — Phase 11 fix summary (2026-05-05)
+
+## Shipped
+
+- **Commit 1 (W-3) — `75c6b77`** — `withSlugRetry` in `src/lib/queries/lists.ts` now uses an `isPgUniqueViolation(err)` typeguard instead of an `(err as { code?: string })` soft-cast. Loop counter switched to `1..=max` form (closes audit's N-6 nit). Defensive `throw lastErr ?? new Error('exhausted retries')` retained — reachable when a caller passes `max <= 0` (loop body skipped, `lastErr` undefined); without the fallback, that path would throw undefined.
+- **Commit 2 (W-5) — `d124c13`** — `sort_order` removed from all four single-row update patch surfaces: `updateGearItem` (`gear.ts`), `ListItemPatch` (`list-items.ts`), `updateList` (`lists.ts`), `updateCategory` (`categories.ts`). `bulk_update_sort_order` is now the only sanctioned path; `tsc -b` confirmed no caller currently passes `sort_order` through any of the four. The audit's W-5 wording named only gear/list-item; broadened here for a complete invariant.
+- **Commit 3 (W-8) — `33744a1`** — Five `category!` non-null assertions replaced with branch narrowing (3 in `src/lists/ListDetailPage.tsx` via destructure-and-narrow inside the `.map()` callback, 2 in `src/gear/CategorySection.tsx` via swap of `{!isUncategorized && (...)}` to `{category && (...)}`). No behavior change.
+- **Commit 4 (W-10) — `90ffb70`** — `optimisticListPlaceholder` helper added in `src/lib/optimistic-list-placeholder.ts`. Three sites converted (`ListsPage.tsx`, `ListsEmptyState.tsx`, `ListSelector.tsx`). The helper emits **DB-valid** placeholders — `crypto.randomUUID()` for the uuid `id` column and `generateSlug()` for the 6-char-CHECK `slug` column — so a future leak fails soft (silent no-op) instead of hitting a 23514 CHECK violation or a 22P02 invalid-uuid error. Pre-flight grep confirmed no `id.startsWith('temp-')` consumer; safe to switch to real uuids. The id-only optimistic placeholders in `ListDetailPage.tsx` (list-items) and `GearLibraryPage.tsx` (gear items / categories) are intentionally NOT migrated — different shapes, different constraint profiles.
+- **Commit 5 (W-11) — `5a16325`** — `fetchSharedListCategories` cache key in `src/lists/SharePage.tsx:42` now sorts ids before joining: `[...categoryIds].sort().join(',')`. Renders that produce the same set of category ids in different orders now share a cache entry instead of forcing a refetch.
+- **Commit 6 (W-12) — `bc80201`** — `parseDnDId` parameter tightened from `string | number` to `string` in `src/lib/dnd-ids.ts`. Dead `if (typeof raw !== 'string') return null` body line removed. All call sites kept their `String(...)` wrappers (Pattern A). The `KINDS` const-tuple suggestion from the audit is explicitly deferred to a future stylistic-nits phase (with W-2 and W-9).
+
+## Verification results
+
+- `npm run build`: pass; bundle gzip 187.32 KB → 187.36 KB (+0.04 KB; runtime code-shape variance — the type-only commits add no runtime, the W-10 helper extraction is a wash).
+- `npm run lint`: pass at every commit.
+- `npm test --run`: 32 passed | 4 skipped (unchanged from Phase 10).
+- Manual smoke: pending user-side. Recommended:
+  - DnD reorder still works on `/lists` (cards), `/lists/<id>` (items within category), `/gear` (items and categories).
+  - List create flow on `/lists`, zero-state `/lists` (`ListsEmptyState`), and the NavBar `ListSelector` "+ New list" — optimistic card → real card transition cleanly. Hard-refresh confirms the persisted row has the server-generated 6-char slug.
+  - Shared list at `/r/<slug>` renders categories correctly.
+  - Pack-mode and inline-edit on category groups (`/lists/<id>`) and category rename/delete (`/gear`) still work after the bang-removal.
+
+## Blockers / surprises
+
+- W-5 ended up broader than the audit's wording. The audit named only the gear and list-item patch surfaces, but `updateList` and `updateCategory` had the same loose shape. Bundling all four in one commit kept the audit ledger entry coherent and made the "no single-row sort_order writes" rule a complete invariant rather than a partial one.
+- W-10 originally proposed centralizing the existing (DB-invalid) `temp-${uuid}` placeholders. After a Codex review pass, the helper now emits DB-valid uuids and 6-char slugs — so a future leak fails soft instead of fails hard. This required a pre-flight grep for `id.startsWith('temp-')` consumers (none exist) before the switch was safe.
+
+## Next phase
+
+Phase 12 candidates (no clear winner — user picks):
+- **Pure-stylistic micro-refactors** — W-2 (`assignSortOrderSlots` redundant `.slice()`), W-9 (docstring hoist), parseDnDId `KINDS` const tuple. Two-three trivial commits, zero correctness payoff.
+- **W-6 standalone** — groupByCategory consolidation. Touches the Phase 5 stability layer; deserves its own phase with explicit per-site behavior verification.
+- **Medium quality** — M-1 (production observability for failed mutations), M-2 (optimistic `updated_at` bump), M-3 (ListSelector mid-flip), M-5 (CSV reader error/abort), M-7 (RootRedirect re-sort → reduce), M-8 (gearById Map), M-10 (consumable-vs-worn precedence assert).
+- **F4 full path** — only if the threat model changes. SECURITY DEFINER `fetch_shared_list(p_slug)` RPC + revoke anon SELECT + four-policy reshape.
+- **Test-coverage cluster** — T-3…T-9; needs jsdom + `@testing-library` install (one-time tooling change).
+
+After Phase 11, `REVIEW-quality.md` is substantially closed on the W- side: W-1, W-3, W-4, W-5, W-7, W-8, W-10, W-11, W-12, W-13 done. Remaining W- items: W-2 (pure nit), W-6 (Phase-5-coupled), W-9 (pure nit). M- and B- items are either accepted (B-1..3 shipped) or pending separate phases.
