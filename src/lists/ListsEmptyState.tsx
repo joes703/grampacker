@@ -13,6 +13,7 @@ import {
 } from '../lib/queries'
 import type { List } from '../lib/types'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
+import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { parseListCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
 import Modal from '../components/Modal'
@@ -59,20 +60,7 @@ export default function ListsEmptyState() {
     ...makeOptimisticInsert<List, string>({
       qc,
       queryKey: queryKeys.lists(),
-      optimistic: (n) => {
-        const now = new Date().toISOString()
-        return {
-          id: `temp-${crypto.randomUUID()}`,
-          user_id: userId,
-          name: n,
-          description: null,
-          slug: `temp-${crypto.randomUUID()}`,
-          is_shared: false,
-          sort_order: 0,
-          created_at: now,
-          updated_at: now,
-        }
-      },
+      optimistic: (n) => optimisticListPlaceholder({ name: n, userId, sortOrder: 0 }),
     }),
     onSuccess: (list) => {
       navigate(`/lists/${list.id}`)

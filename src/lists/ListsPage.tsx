@@ -48,6 +48,7 @@ import { parseListCsv, listItemsToCsv, downloadCsv, nameFromCsvFilename, type Li
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useNow } from '../lib/use-now'
+import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
@@ -116,25 +117,11 @@ export default function ListsPage() {
     ...makeOptimisticInsert<List, string>({
       qc,
       queryKey: queryKeys.lists(),
-      // Temp slug is fine — no UI reads slug mid-creation. The settled
-      // refetch replaces the placeholder with the server row carrying
-      // the real generated slug. Other defaults match what the server
-      // assigns: description null, is_shared false, sort_order at the
-      // current array end.
-      optimistic: (name) => {
-        const now = new Date().toISOString()
-        return {
-          id: `temp-${crypto.randomUUID()}`,
-          user_id: userId,
-          name,
-          description: null,
-          slug: `temp-${crypto.randomUUID()}`,
-          is_shared: false,
-          sort_order: lists.length,
-          created_at: now,
-          updated_at: now,
-        }
-      },
+      // The settled refetch replaces the placeholder with the server
+      // row carrying its own generated slug. Helper emits DB-valid
+      // uuid + 6-char slug so an accidental persist would fail soft
+      // (silent no-op) instead of hitting a 23514 / 22P02.
+      optimistic: (name) => optimisticListPlaceholder({ name, userId, sortOrder: lists.length }),
     }),
     // Helper provides onSettled (invalidate); onSuccess runs first to
     // close the create dialog and navigate to the new list.
