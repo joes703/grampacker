@@ -69,7 +69,7 @@ When adding a new FK from one user-owned table to another:
 PostgREST authenticates incoming requests against one of three Postgres roles:
 
 - **`anon`** — unauthenticated. Used by the public share view (`/r/:slug`). Reads only via the `*_public_select_via_shared_list` and `*_public_select_shared` policies. Has no write capability anywhere.
-- **`authenticated`** — signed-in users. Reads / writes via the owner policies. Has `EXECUTE` on the SECURITY DEFINER RPCs we expose (`delete_account`, `bulk_update_sort_order`).
+- **`authenticated`** — signed-in users. Reads / writes via the owner policies. Has `EXECUTE` on the five user-callable SECURITY DEFINER RPCs we expose: `delete_account`, `bulk_update_sort_order`, `add_gear_item_with_list_item`, `create_list_from_selection`, `duplicate_list`. (The two trigger-only definers — `handle_new_user`, `rls_auto_enable` — have EXECUTE revoked from all roles; triggers fire regardless of EXECUTE privileges.)
 - **`public`** (Postgres pseudo-role) — every grant defaults to this unless explicitly revoked. We **explicitly revoke `EXECUTE` from `public`** on every SECURITY DEFINER function we own, so a misconfigured grant elsewhere can't accidentally expose them.
 
 There is no admin role today. The owner of every row is the user; there is no separate operator path.
@@ -100,7 +100,7 @@ The `Public*` types in `src/lib/types.ts` (PublicList, PublicListItem, PublicGea
 
 ## SECURITY DEFINER functions
 
-`SECURITY DEFINER` makes a Postgres function execute with the privileges of its owner (effectively a superuser, in Supabase's setup) instead of the calling user. This **bypasses RLS** for the duration of the function. We use it sparingly — four functions total — and every one of them is structured to preserve the security boundary despite the bypass.
+`SECURITY DEFINER` makes a Postgres function execute with the privileges of its owner (effectively a superuser, in Supabase's setup) instead of the calling user. This **bypasses RLS** for the duration of the function. We use it sparingly — seven functions total — and every one of them is structured to preserve the security boundary despite the bypass.
 
 ### Why we use it
 
@@ -122,6 +122,9 @@ Every `SECURITY DEFINER` function we own MUST have all four of:
 | `handle_new_user()` | Trigger on `auth.users` insert; creates the `profiles` row. | Revoked from all (trigger fires regardless of EXECUTE privileges). | N/A — runs in trigger context with the new user's id from `NEW`. | `20260425000000`, hardened in `20260429000000` |
 | `delete_account()` | User-callable RPC; deletes `auth.users` row for `auth.uid()`. ON DELETE CASCADE wipes all owned data. | `authenticated` only. | `if auth.uid() is null then raise exception 'not authenticated'` then `delete from auth.users where id = auth.uid()`. | `20260426000000` |
 | `bulk_update_sort_order(p_table, p_ids, p_orders)` | Bulk `sort_order` rewrite for whitelisted tables. | `authenticated` only. | Per-table branch enforces ownership inline (`user_id = auth.uid()` for direct-owned tables; join filter on `lists` for `list_items`). | `20260430000000` (function shape), `20260501000000` (ownership check), `20260502000000` (gear_items), `20260503000000` (lists) |
+| `add_gear_item_with_list_item(...)` | User-callable RPC for the /lists/:id "+ Add new item" flow. Inserts a `gear_items` row and a `list_items` row referencing it in one transaction. | `authenticated` only. | `auth.uid() <> p_user_id` raises `42501`; defense-in-depth `EXISTS` checks raise `P0002` before any insert — that `p_list_id` is owned by `p_user_id`, and (when non-null) that `p_category_id` is owned by `p_user_id`. The category check is added by the patch migration; without it, RLS bypass inside `DEFINER` would let a forged `p_category_id` through to the composite-FK rollback path with a less clear error. | `20260510000000` (function shape), patched in `20260510000001` (category ownership check) |
+| `create_list_from_selection(...)` | User-callable RPC for the /gear "Create list from selection" multi-select flow. Inserts a `lists` row and bulk-inserts `list_items` referencing the supplied `gear_item_ids`. | `authenticated` only. | `auth.uid() <> p_user_id` raises `42501`; per-id ownership check on every supplied `p_gear_item_ids` element (count of owned ids must equal input count) raises `P0002` before the parent insert. | `20260510000000` |
+| `duplicate_list(...)` | User-callable RPC for the /lists "Duplicate" kebab. Copies a `lists` row (name suffixed " (copy)") and every owned `list_items` row from source to new in one transaction. | `authenticated` only. | `auth.uid() <> p_user_id` raises `42501`; explicit `select … where id = p_source_list_id and user_id = p_user_id` raises `P0002` if the source list isn't owned by the caller. | `20260510000000` |
 | `rls_auto_enable()` | Event trigger on `CREATE TABLE` in `public`; auto-enables RLS. | Revoked from all (event trigger fires regardless). | N/A — defense-in-depth net, not user-callable. | `20260429000000` |
 
 ---
@@ -130,7 +133,7 @@ Every `SECURITY DEFINER` function we own MUST have all four of:
 
 Supabase's database linter raises `authenticated_security_definer_function_executable` on every SECURITY DEFINER function granted to `authenticated`. The linter is generic and flags the *class* of risk; it doesn't know whether the function is constrained.
 
-We accept the warning deliberately on `delete_account()` and `bulk_update_sort_order()`. The full reasoning — including why each of the linter's three suggested remediations (revoke EXECUTE, switch to `SECURITY INVOKER`, move out of the `public` schema) breaks the feature without addressing a real risk — lives in `DECISIONS.md` ADR 3 under "Accepted linter warning". When the linter raises this warning on a new function, decide between accepting (and document the rationale alongside ADR 3's pattern) or refactoring away from `DEFINER`. Don't silently leave it.
+We accept the warning deliberately on the five user-callable definers: `delete_account()`, `bulk_update_sort_order()`, `add_gear_item_with_list_item()`, `create_list_from_selection()`, and `duplicate_list()`. The full reasoning — including why each of the linter's three suggested remediations (revoke EXECUTE, switch to `SECURITY INVOKER`, move out of the `public` schema) breaks the feature without addressing a real risk — lives in `DECISIONS.md` ADR 3 under "Accepted linter warning". The same pattern (search_path pinned, EXECUTE granted to `authenticated` only, inline `auth.uid()` ownership check + per-row ownership re-verification, trust assumption documented in the migration header) applies uniformly across all five. When the linter raises this warning on a new function, decide between accepting (and document the rationale alongside ADR 3's pattern) or refactoring away from `DEFINER`. Don't silently leave it.
 
 ---
 
