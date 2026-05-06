@@ -34,6 +34,24 @@ d('bulk reorder helpers preserve untouched columns', () => {
       password: password!,
     })
     if (error) throw error
+
+    // Seed precondition: every table this describe touches must have at
+    // least one row in the test account. Without this, a per-test
+    // .maybeSingle() returning null silently turned a missing-seed into
+    // a passing no-op — exactly the failure mode CLAUDE.md flags ("a
+    // passing test on table A tells you nothing about table B"). The
+    // bulk-reorder helper was historically broken for categories for
+    // weeks because its existing test exercised an unused gear_items
+    // path and the categories path's row was missing — silent no-op
+    // masked the bug. Asserting seed up front makes "missing seed" a
+    // loud, named failure rather than a silently-green test.
+    for (const table of ['categories', 'gear_items', 'lists', 'list_items'] as const) {
+      const { count, error: countErr } = await supabase
+        .from(table)
+        .select('*', { count: 'exact', head: true })
+      if (countErr) throw countErr
+      expect(count ?? 0, `Test account missing seed for ${table}`).toBeGreaterThanOrEqual(1)
+    }
   })
 
   afterAll(async () => {
@@ -48,9 +66,9 @@ d('bulk reorder helpers preserve untouched columns', () => {
       .limit(1)
       .maybeSingle()
     if (pickErr) throw pickErr
-    if (!row) return // No categories in the test account.
+    expect(row, 'Test account missing seed for categories').toBeTruthy()
 
-    const before = row
+    const before = row!
     const newSort = before.sort_order + 100000
 
     try {
@@ -85,9 +103,9 @@ d('bulk reorder helpers preserve untouched columns', () => {
       .limit(1)
       .maybeSingle()
     if (pickErr) throw pickErr
-    if (!row) return // No gear_items in the test account.
+    expect(row, 'Test account missing seed for gear_items').toBeTruthy()
 
-    const before = row
+    const before = row!
     const newSort = before.sort_order + 100000
 
     try {
@@ -121,9 +139,9 @@ d('bulk reorder helpers preserve untouched columns', () => {
       .limit(1)
       .maybeSingle()
     if (pickErr) throw pickErr
-    if (!row) return // No lists in the test account.
+    expect(row, 'Test account missing seed for lists').toBeTruthy()
 
-    const before = row
+    const before = row!
     const newSort = before.sort_order + 100000
 
     try {
@@ -157,9 +175,9 @@ d('bulk reorder helpers preserve untouched columns', () => {
       .limit(1)
       .maybeSingle()
     if (pickErr) throw pickErr
-    if (!row) return // No list_items in the test account.
+    expect(row, 'Test account missing seed for list_items').toBeTruthy()
 
-    const before = row
+    const before = row!
     const newSort = before.sort_order + 100000
 
     try {
