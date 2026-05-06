@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef, useState, type RefObject } from 'react'
+import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -46,6 +46,35 @@ export default function ListSelector({ lists, currentListId, userId, open, onOpe
     triggerRef: anchorRef,
     contentRef: popoverRef,
   })
+
+  // When the device class flips while the selector is open, force-close.
+  // The desktop popover (line 87, gated `!isMobile`) and the Vaul drawer
+  // (line 119, gated `isMobile`) are mutually exclusive — they can't both
+  // render — but they DO swap surfaces against the same `open` state.
+  // Without this guard, the user opens the drawer on mobile, rotates to
+  // landscape past `md`, and the popover suddenly appears on the same
+  // `open: true` (worse: with stale `pos` from a previous desktop opening).
+  // Force-closing on flip means the user must explicitly re-open after
+  // the device class settles.
+  //
+  // useLayoutEffect (not useEffect) so the close lands BEFORE paint.
+  // useEffect runs after commit, leaving a one-frame window where the
+  // swapped surface is visible before the close-induced re-render fires.
+  // useLayoutEffect runs synchronously after DOM mutations but before the
+  // browser paints, so the swap is invisible.
+  //
+  // Implementation: track previous isMobile in a ref; close on transition.
+  // Mount-time run is skipped because prev === current on first call.
+  // Comparing prev to current also makes the effect resilient to
+  // onOpenChange identity changes (parent re-renders) — when only the
+  // function ref changes, prev still equals current and the body returns
+  // early without spuriously force-closing.
+  const prevIsMobile = useRef(isMobile)
+  useLayoutEffect(() => {
+    if (prevIsMobile.current === isMobile) return
+    prevIsMobile.current = isMobile
+    onOpenChange(false)
+  }, [isMobile, onOpenChange])
 
   // Compute popover position from the anchor's rect when the desktop
   // popover is about to render. Clamped on both sides — left to keep
