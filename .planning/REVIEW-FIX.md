@@ -631,3 +631,45 @@ With Phase 16 closed, the M-cluster is fully accounted for (M-1 through M-11, al
 - **F4 full path — security.** Only if the threat model changes. SECURITY DEFINER `fetch_shared_list(p_slug)` RPC + revoke anon SELECT + four-policy reshape. Stays in the deck for whenever the threat model justifies it.
 
 After Phases 17 and 18, `REVIEW-quality.md` is fully closed and the campaign moves to `REVIEW-security.md` (then `REVIEW-performance.md`) per the user's ordering decision.
+
+---
+
+# grampacker — Phase 17 fix summary (2026-05-06)
+
+## Shipped
+
+- **Commit 1 (N-5) — `5dd415c`** — `src/lib/csv.ts` (374 lines) split into a `src/lib/csv/` subdirectory with five files mirroring the existing `src/lib/queries/` pattern: `core.ts` (format primitives — `escapeCell`, `toCsv`, `downloadCsv`, `parseCsv`, `splitLines`, `parseRow`), `units.ts` (the cross-parser `toGrams` weight helper), `gear.ts` (`GearCsvRow`, `gearItemsToCsv`, `parseGearCsv`, private `parseCost` / `parseIsoDate`), `list.ts` (`ListImportRow`, `listItemsToCsv`, `parseListCsv`, `nameFromCsvFilename`, private `toBool`), and `index.ts` (public barrel). Public API surface is byte-identical pre/post. All 8 consumer files (GearLibraryPage, GearImportPreviewDialog, ListsPage, ListsEmptyState, ListDetailPage, ListImportPreviewDialog, SettingsPage, `csv.test.ts`) import from `'../lib/csv'` (or `'./csv'` for the test) — every one of those paths now resolves to `csv/index.ts` automatically, with zero source change. The existing pure-function round-trip test suite at `src/lib/csv.test.ts` (14/14) continues to verify the public surface. Doc references at `SPEC.md:134` and `.planning/REVIEW-security.md:117/130` updated to point at the new `csv/` path; the SPEC.md edit is in the commit, the REVIEW-security.md edits are local (it's an untracked working doc per this repo's `.planning/` convention).
+
+## Audit closures
+
+- **N-5 — closed.** Format primitives, the shared weight parser, gear adapters, and list adapters now live in dedicated modules with sharp responsibility boundaries. Internal cross-module wiring (`gear.ts` → `./core`, `./units`; `list.ts` → `./core`, `./units`) goes directly to source modules per the queries-module convention. The barrel preserves the existing public API and the existing import paths used by every consumer.
+
+## Verification results
+
+- `npm run build`: pass.
+- `npm run lint`: pass.
+- `npm test -- --run src/lib/csv.test.ts`: 14/14 passed (targeted gate from the spec — this is the round-trip suite that catches any byte-drift in the lifted code).
+- `npm test -- --run`: 45 → 45 passed | 4 skipped. No new tests in Phase 17 — the existing pure-function round-trip suite already covers the public CSV surface (gear export → parse, list export → parse) and continues to do so unchanged through the barrel. The split is module plumbing, not new behavior, so the existing tests are exactly the right verification.
+- **Bundle gzip 187.84 KB (Phase 16 baseline) → 187.84 KB after C1 — flat to the byte.** Same code, same exports, same imports; the bundler tree-shakes per export and the file split is invisible to the output. Within the spec's flat ±0.05 KB target.
+- Manual smoke (deferred to user, low-value — this is module plumbing, not user-facing behavior). Recommended:
+  - **C1**: import / export a CSV on `/lists/:id` and on `/gear`. Round-trip should be unchanged. The Lighterpack-format checkbox-style worn/consumable handling, the cost+price two-pass column resolution, and the formula-injection apostrophe escape are all unchanged code paths now in different files.
+
+## Blockers / surprises
+
+- **None.** Bundle was flat exactly as predicted. No findings during execution. No scope expansion. The pre-commit verification gate (`git diff -- src/lib/csv.ts src/lib/csv/` + targeted test + full suite + lint + build) caught no copy errors — the lift was clean.
+
+## Next phase
+
+With Phase 17 closed, `REVIEW-quality.md` is **fully closed** as a campaign artifact:
+
+- W-cluster (writing/style nits): closed in Phases 12-13.
+- M-cluster (medium defensive/UX issues): closed in Phases 14-16.
+- N-cluster (nit-grade refactors): closed in Phase 17.
+- T-cluster (test coverage): deferred to Phase 18.
+
+Remaining campaign deck:
+
+- **Phase 18 — T-cluster (T-3…T-9 + the seven deferred test surfaces from Phases 14/15/16).** Requires a one-time `jsdom` + `@testing-library/react` install. Once tooling lands, every defensive surface that's been deferred over the past five phases (mutation error logging, FileReader handlers, optimistic-update factories, Modal backdrop event simulation, etc.) becomes testable in the same phase as the explicit T-cluster items.
+- **`REVIEW-security.md` review** — next up per the user's stated ordering (quality → security → performance). The recent dependency commits (`3853399` security bump for `serialize-javascript >=7.0.5`; `d28af3e` Node 20+ runtime pin) addressed the most acute supply-chain risk; the remaining audit work is the unread security review.
+- **`REVIEW-performance.md` review** — last in the campaign queue.
+- **F4 full path — security.** Only if the threat model changes. Stays in the deck for whenever the threat model justifies it.
