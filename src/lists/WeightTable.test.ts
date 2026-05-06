@@ -54,7 +54,7 @@ describe('computeWeightBreakdown', () => {
     const result = computeWeightBreakdown(items, [shelter])
 
     expect(result.baseGrams).toBe(250)
-    expect(result.catRows).toEqual([{ name: 'Uncategorized', grams: 250 }])
+    expect(result.catRows).toEqual([{ id: '__uncategorized__', name: 'Uncategorized', grams: 250 }])
   })
 
   it('multiplies weight_grams by quantity when accumulating base', () => {
@@ -64,7 +64,7 @@ describe('computeWeightBreakdown', () => {
     const result = computeWeightBreakdown(items, [shelter])
 
     expect(result.baseGrams).toBe(300)
-    expect(result.catRows).toEqual([{ name: 'Shelter', grams: 300 }])
+    expect(result.catRows).toEqual([{ id: shelter.id, name: 'Shelter', grams: 300 }])
   })
 
   // Component returns null on items.length === 0, so this just confirms the

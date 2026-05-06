@@ -17,8 +17,11 @@ function fmtLbOz(grams: number): string {
   return `${oz.toFixed(1)} oz`
 }
 
+// Stable row identity for React keys. Real categories use their uuid;
+// the synthetic Uncategorized row uses the same '__uncategorized__'
+// sentinel as GearLibraryPage to avoid colliding with any real id.
 export type WeightBreakdown = {
-  catRows: { name: string; grams: number }[]
+  catRows: { id: string; name: string; grams: number }[]
   baseGrams: number
   consumableGrams: number
   wornGrams: number
@@ -55,11 +58,11 @@ export function computeWeightBreakdown(
   const catRows = sortedCats.map((c) => {
     const grams = basePerCat.get(c.id)
     if (grams === undefined) throw new Error('computeWeightBreakdown: filtered key missing — unreachable')
-    return { name: c.name, grams }
+    return { id: c.id, name: c.name, grams }
   })
   const uncatGrams = basePerCat.get(null)
   if (uncatGrams !== undefined) {
-    catRows.push({ name: 'Uncategorized', grams: uncatGrams })
+    catRows.push({ id: '__uncategorized__', name: 'Uncategorized', grams: uncatGrams })
   }
 
   const baseGrams = catRows.reduce((s, r) => s + r.grams, 0)
@@ -88,7 +91,7 @@ export default function WeightTable({ items, categories }: Props) {
     <table className="w-full text-sm text-gray-700">
         <tbody className="divide-y divide-gray-50">
           {catRows.map((row) => (
-            <tr key={row.name}>
+            <tr key={row.id}>
               <td className="py-0.5 pl-4 pr-3">{row.name}</td>
               <td className="py-0.5 px-3 text-right tabular-nums">{fmtG(row.grams)}</td>
               <td className="py-0.5 px-3 text-right tabular-nums">{fmtLbOz(row.grams)}</td>
