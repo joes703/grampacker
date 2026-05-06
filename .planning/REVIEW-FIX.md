@@ -347,3 +347,37 @@ Phase 10 candidates (no clear winner — user picks):
 - **Bug cluster** — B-1 (WeightTable orphan-category drop), B-2 (stale embedded category_id), B-4 (silent bulk action failures).
 
 After Phase 9, `REVIEW-quality.md` is partially closed: W-1 (biggest extraction win), W-4 (auth boilerplate), W-7 (namespace fix), W-13 (real bug). Remaining W- items are mostly micro-cleanups; M- items have observable behavior changes that warrant a separate review pass.
+
+---
+
+# grampacker — Phase 10 fix summary (2026-05-05)
+
+## Shipped
+
+- **Commit 1 (F4 cheap path) — `8eee620`** — `src/lists/PrivacyPanel.tsx` copy tightened from "Anyone with this link can view the list" to "Public — anyone can view this list, and public lists may be discoverable without the link." The "may be discoverable" wording is deliberately precise: there's no visible public directory in the app, but slugs can be enumerated via `GET /rest/v1/lists?is_shared=eq.true&select=slug`. The new copy correctly conveys "link is not the gate" without claiming a directory UI that doesn't exist. The full SECURITY DEFINER reshape (revoke anon SELECT, route public reads through `fetch_shared_list` RPC, reshape three other policies) remains out of scope per the audit's recommendation.
+- **Commit 2 (F5) — `7016f39`** — `CLAUDE.md` "What NOT to do" gained a guardrail bullet for `target="_blank"` + `rel="noopener noreferrer"`. Did NOT install `eslint-plugin-react`: the codebase has exactly one current `target="_blank"` site (`src/components/MarkdownPage.tsx:39`, JSX spread form, already correctly paired), and modern browsers default `_blank` to `noopener`. Linting one already-compliant site doesn't earn the dependency.
+- **Commit 3 (F7) — `aa42fd0`** — `SECURITY.md` gained an "Operational checklist" capturing the five Supabase dashboard verifications (access token TTL, refresh token rotation, reuse interval, redirect URL allowlist, "Confirm email"). Doc-only; the actual dashboard verification remains a user-side task tracked via the literal `Last verified: <YYYY-MM-DD by name>` line.
+- **Commit 4 (F8) — closed by prior change.** Verified `vite.config.ts:27-31` already contains an SW-cache URL-keyed guardrail comment that matches the **substance** of the F8 recommendation (single-user-per-browser assumption + the two remediation paths if it changes). The wording differs slightly from the audit's literal example ("clear caches on logout" vs. `caches.delete('supabase-rest')`), but the intent is the same. No new commit; closure documented here.
+
+## Verification results
+
+- `npm run build`: pass; bundle gzip 187.32 KB → 187.32 KB (one user-facing string changed; everything else is markdown).
+- `npm run lint`: pass.
+- `npm test --run`: 32 passed | 4 skipped (unchanged from Phase 9).
+- Manual smoke: privacy panel copy renders without layout shift — pending user-side. Dashboard verification (F7): pending user-side per the new SECURITY.md checklist.
+
+## Blockers / surprises
+
+- F5's premise was line-stale, not zero-sites stale: `MarkdownPage.tsx` still has the safe site, just at line 39 now (and via JSX spread, so a literal `target="_blank"` grep misses it). Net call-site count: one, already correctly paired with `rel="noopener noreferrer"`. Still chose the CLAUDE.md guardrail over the plugin install — linting one already-compliant site doesn't earn the dependency.
+- F8 turned out to be already-resolved by an earlier edit to `vite.config.ts` (the comment block matches the substance of the audit recommendation). Closed without a commit, documented here.
+
+## Next phase
+
+Phase 11 candidates (no clear winner — user picks):
+- **Quality micro-refactors** — W-2 (`assignSortOrderSlots` redundant slice), W-3 (`withSlugRetry` typeguard + unused counter), W-5 (sort_order out of patch types), W-8 (`category!` non-null assertions), W-9 (docstring hoist), W-10 (placeholder slug helper), W-11 (sorted cache key), W-12 (parseDnDId tighten). Bundle of small commits, low risk.
+- **W-6 standalone** — groupByCategory consolidation. Touches the Phase 5 stability layer; deserves its own phase with explicit per-site behavior verification.
+- **Medium quality** — M-1 (production observability for failed mutations), M-2 (optimistic `updated_at` bump), M-3 (ListSelector mid-flip), M-5 (CSV reader error/abort), M-7 (RootRedirect re-sort → reduce), M-8 (gearById Map), M-10 (consumable-vs-worn precedence assert).
+- **F4 full path** — only if the threat model changes. SECURITY DEFINER `fetch_shared_list(p_slug)` RPC, revoke anon SELECT on `lists`, reshape `list_items_public_select_shared` / `gear_items_public_select_via_shared_list` / `categories_public_select_via_shared_list`. Significant migration + RPC + four-policy reshape; warrants a dedicated phase.
+- **Test-coverage cluster** — T-3…T-9; needs jsdom + `@testing-library` install (a one-time tooling change).
+
+After Phase 10, `REVIEW-security.md` is substantially closed: F1, F3, F6, F11 done in earlier phases; F4 closed via cheap path here; F5, F7, F8 closed as docs/guardrails; F2 is accepted-risk for the BaaS architecture; F9, F10, F12, F13 were already info-only confirmations.
