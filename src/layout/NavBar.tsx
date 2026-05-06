@@ -205,7 +205,11 @@ function ListHeading({
       qc,
       queryKey: queryKeys.lists(),
       id: ({ id }) => id,
-      apply: (item, { name }) => ({ ...item, name }),
+      apply: (item, { name }) => ({
+        ...item,
+        name,
+        updated_at: new Date().toISOString(),
+      }),
     }),
   })
   const containerRef = useRef<HTMLDivElement>(null)
