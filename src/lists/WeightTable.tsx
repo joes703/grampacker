@@ -38,6 +38,19 @@ export function computeWeightBreakdown(
 
   for (const item of items) {
     const w = item.gear_item.weight_grams * item.quantity
+    // Defensive: the DB CHECK constraint forbids is_consumable +
+    // is_worn both being true on the same list_item, but if a future
+    // migration relaxes the constraint or an optimistic-update path
+    // produces this impossible state, log it and pick consumable (the
+    // historical precedence) so the page doesn't silently mis-bucket
+    // the weight. Throwing instead would crash the list view on a
+    // defensive guard for an unreachable case — the wrong trade.
+    if (item.is_consumable && item.is_worn) {
+      console.warn('[weight-table] list_item has both is_consumable and is_worn; bucketing as consumable', {
+        listItemId: item.id,
+        gearItemId: item.gear_item.id,
+      })
+    }
     if (item.is_consumable) {
       consumableGrams += w
     } else if (item.is_worn) {
