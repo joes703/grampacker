@@ -93,7 +93,7 @@ export async function createList(
 
 export async function updateList(
   id: string,
-  patch: Partial<Pick<List, 'name' | 'description' | 'is_shared' | 'sort_order'>>,
+  patch: Partial<Pick<List, 'name' | 'description' | 'is_shared'>>,
 ): Promise<void> {
   const { error } = await supabase.from('lists').update(patch).eq('id', id)
   if (error) throw error
