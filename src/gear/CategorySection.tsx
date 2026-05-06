@@ -146,11 +146,11 @@ function CategorySectionInner(
               ariaLabel="Add item to this category"
               icon={<Plus size={14} />}
             />
-            {!isUncategorized && (
+            {category && (
               <>
                 <RowIconButton
                   onClick={() => {
-                    setRenameDraft(category!.name)
+                    setRenameDraft(category.name)
                     setRenaming(true)
                   }}
                   title="Rename category"
@@ -159,7 +159,7 @@ function CategorySectionInner(
                 />
                 <RowIconButton
                   variant="danger"
-                  onClick={() => onDeleteCategory(category!)}
+                  onClick={() => onDeleteCategory(category)}
                   title="Delete category"
                   ariaLabel="Delete category"
                   icon={<Trash2 size={14} />}

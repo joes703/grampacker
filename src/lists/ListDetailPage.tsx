@@ -839,18 +839,27 @@ function ListDetailInner({
                       internally so items reorder within their category. */}
                   {grouped
                     .filter((g) => g.category !== null)
-                    .map((group) => (
-                      <CategoryGroup
-                        key={group.category!.id}
-                        name={group.category!.name}
-                        categoryId={group.category!.id}
-                        items={group.items}
-                        {...sharedGroupProps}
-                        reorderPending={reorderItemsMut.isPending}
-                        hideWorn={showWornGroup}
-                        onAddItem={onAddNewItem}
-                      />
-                    ))}
+                    .map((group) => {
+                      // group.category is narrowed by the filter above; destructure
+                      // to capture it as a non-null local so JSX below doesn't need
+                      // a non-null assertion. The `if (!category) return null` is
+                      // unreachable in practice — filter already excluded nulls —
+                      // but keeps TS happy without resorting to a typeguard.
+                      const { category } = group
+                      if (!category) return null
+                      return (
+                        <CategoryGroup
+                          key={category.id}
+                          name={category.name}
+                          categoryId={category.id}
+                          items={group.items}
+                          {...sharedGroupProps}
+                          reorderPending={reorderItemsMut.isPending}
+                          hideWorn={showWornGroup}
+                          onAddItem={onAddNewItem}
+                        />
+                      )
+                    })}
                   {grouped
                     .filter((g) => g.category === null)
                     .map((group) => (
