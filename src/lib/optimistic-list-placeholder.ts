@@ -1,21 +1,21 @@
 import type { List } from './types'
 import { generateSlug } from './slug'
 
-// Build an optimistic List row for cache-write purposes during list creation.
+// Build an optimistic List row for CACHE-ONLY use during list creation.
+// **NEVER call .insert() with this row.** The contract is: TanStack
+// Query writes it into the local cache, the real createList mutation
+// resolves with the server-authoritative row, and the optimistic row
+// is replaced on settle.
 //
 // The placeholder uses DB-VALID values for `id` (random uuid v4) and
-// `slug` (6-char generator matching the server's slug). The intent is
-// still that the server response replaces this row before the cache
-// settles — but if that contract is ever broken (e.g. a future refactor
-// that accidentally persists the optimistic state), a leak fails soft:
-// the row just doesn't replace anything, no 23514 CHECK violation, no
-// 22P02 invalid_text_representation. UUID-vs-real-id collision is
-// astronomically unlikely; slug collision is handled by withSlugRetry on
-// the real insert.
-//
-// Pre-Phase-11 sites used `temp-${crypto.randomUUID()}` for both `id`
-// and `slug`, which were both DB-invalid (uuid column rejects the
-// "temp-" prefix; slug CHECK requires char_length = 6).
+// `slug` (6-char generator matching the server's slug). DB-validity is
+// a guardrail against constraint failures if the row ever leaks to a
+// persist call by mistake — the previous shape (`temp-${uuid}` for
+// both) would have hit 22P02 (invalid uuid) or 23514 (slug CHECK).
+// DB-valid does NOT mean "safe to persist": a stray .insert() would
+// create a real, orphan list row that the server didn't authorize.
+// The optimistic-state-must-not-persist invariant still belongs to
+// every caller of this helper.
 //
 // Usage:
 //   qc.setQueryData<List[]>(['lists'], (prev) => [
