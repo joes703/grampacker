@@ -102,6 +102,13 @@ export default function GearLibraryPage() {
     queryFn: () => fetchLists(userId),
   })
 
+  // O(1) id lookups for DnD callbacks and DragOverlay rendering. See
+  // ListDetailPage's listItemsById comment for the rationale.
+  const allItemsById = useMemo(
+    () => new Map(allItems.map((i) => [i.id, i])),
+    [allItems],
+  )
+
   // ── Local state ───────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('')
   const [dialog, setDialog] = useState<DialogState | null>(null)
@@ -471,7 +478,7 @@ export default function GearLibraryPage() {
       if (overParsed.kind === 'category') {
         destCatId = overParsed.id
       } else if (overParsed.kind === 'gear-item') {
-        const overItem = allItems.find((i) => i.id === overParsed.id)
+        const overItem = allItemsById.get(overParsed.id)
         destCatId = overItem?.category_id ?? null
       } else {
         return
@@ -489,9 +496,9 @@ export default function GearLibraryPage() {
     // Case 2 — within-category gear-item reorder. The drop target must be
     // another gear-item AND in the same category as the dragged item.
     if (activeParsed.kind !== 'gear-item' || overParsed.kind !== 'gear-item') return
-    const activeItem = allItems.find((i) => i.id === activeParsed.id)
+    const activeItem = allItemsById.get(activeParsed.id)
     if (!activeItem) return
-    const overItem = allItems.find((i) => i.id === overParsed.id)
+    const overItem = allItemsById.get(overParsed.id)
     if (!overItem) return
     const activeCat = activeItem.category_id ?? null
     const overCat = overItem.category_id ?? null
@@ -714,7 +721,7 @@ export default function GearLibraryPage() {
       ) : (() => {
         const activeParsed = activeId ? parseDnDId(activeId) : null
         const activeItem =
-          activeParsed?.kind === 'gear-item' ? allItems.find((i) => i.id === activeParsed.id) : null
+          activeParsed?.kind === 'gear-item' ? (allItemsById.get(activeParsed.id) ?? null) : null
         return (
           <DndContext
             sensors={sensors}
