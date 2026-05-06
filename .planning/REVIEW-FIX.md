@@ -462,3 +462,45 @@ Phase 13 candidates (no clear winner — user picks):
 - **F4 full path** — only if the threat model changes. SECURITY DEFINER `fetch_shared_list(p_slug)` RPC + revoke anon SELECT + four-policy reshape.
 
 After Phase 12, `REVIEW-quality.md` is substantively closed on the W- side: W-1, W-2, W-3, W-4, W-5, W-7, W-8, W-9, W-10, W-11, W-12, W-13 all shipped. Remaining W- items: W-6 (Phase-5-coupled, deserves its own phase). On the N- side: N-1, N-3, N-4 shipped; N-2 audit-stale; N-5 deferred; N-6 closed by Phase 11. The remaining surface is M-cluster, T-cluster, W-6, N-5, and any further security work that depends on threat-model changes.
+
+---
+
+# grampacker — Phase 13 fix summary (2026-05-06)
+
+## Shipped
+
+- **Commit 1 (T-2 prep) — `6dcb621`** — Four new tests for `groupGearItemsByCategory` in `src/lib/grouping.test.ts`. Locks pre-refactor behavior on three axes: cat ordering (input order — exercised by passing cats in REVERSE sort_order so the test would fail if the wrapper ever started sorting internally), `keepEmpty: true` (empty cats retained), and orphan-policy=drop (an item whose `category_id` points at a missing category is silently discarded). All four pass against the unchanged helper, locking the contract before the C2 refactor lands underneath.
+- **Commit 2 (W-6) — `0499d0e`** — Generic `groupByCategory<T>(items, categories, getCategoryId, options)` exported from `src/lib/grouping.ts`. Iterates categories in INPUT order — sorting is the caller's responsibility. Options: `keepEmpty: boolean`, `orphanPolicy: 'route-to-uncategorized' | 'drop'`, opt-in `stability: { prior, itemsEqual }` sub-object (both fields required together so a caller can't pass `prior` without a comparator and silently never reuse anything). Empty cat groups go through the same stability-reuse path as non-empty ones via `itemsEqual([], [])` so a future caller combining `keepEmpty: true` + `stability` doesn't see fresh `{ items: [] }` references on every call. Both named wrappers preserve their signatures and JSDocs verbatim: `groupListItemsByCategory` sorts cats internally before delegating; `groupGearItemsByCategory` passes cats through untouched (preserves "caller pre-sorts" contract). `listItemsArrayEqual` stays private to grouping.ts, only consumed by the listItems wrapper.
+- **Commit 3 (T-2) — `273f04f`** — Nine direct tests on `groupByCategory` covering each axis: `keepEmpty: true/false`, `orphanPolicy: route/drop`, input-order preservation (REVERSE sort_order in → REVERSE order out — locks the caller-sorts contract), uncategorized-emission both halves (negative: no null-keyed item → no uncategorized group emitted even with `keepEmpty: true`; positive: one null-keyed item → uncategorized emitted last with the right item, locking the `raw === null` bucketing branch under `orphanPolicy: 'drop'` so a regression there would fail this test), stability top-level reuse, stability per-group reuse with one group changed, and the `keepEmpty: true + stability` empty-cat reuse matrix corner.
+- **Commit 4 (W-6) — `98e7441`** — `SharePage.tsx` inline grouping (~16 lines: `catMap` build + `sortedCats` sort + `grouped` map/filter + uncategorized collection branch) replaced with one helper call: `groupListItemsByCategory(itemsForRender, categoriesForRender)`. No `prior` arg — read-only view, renders once per slug-fetch. Downstream `grouped.map(...)` JSX is byte-identical because the wrapper's return shape matches the local `type Group` it replaces.
+- **Commit 5 (W-6) — `e20ed50`** — `LibraryPanel.tsx` three `useMemo`s (sortedCats / groups / uncategorized) collapsed to two: `sortedCats` stays separate so the sort only reruns when `categories` changes (not on every search keystroke that churns `filtered`); `groups` calls `groupByCategory(filtered, sortedCats, g => g.category_id, { keepEmpty: false, orphanPolicy: 'drop' })` and returns one `CategoryGroup<GearItem>[]` with the uncategorized tail folded in. JSX unified from two branches (`groups.map` + separate uncategorized conditional) to one `.map`. The synthetic uncategorized row preserves all four pre-refactor literals: collapsed-state key `'__uncategorized__'`, displayed name `'Uncategorized'`, regionId `library-cat-uncategorized`, and toggleKey `'__uncategorized__'`. Empty-state predicate collapsed from `groups.length === 0 && uncategorized.length === 0` to `groups.length === 0` — equivalent because `groups` now includes the tail.
+
+## Audit closures
+
+- **W-6 — closed.** All four sites (`groupListItemsByCategory`, `groupGearItemsByCategory`, `SharePage`, `LibraryPanel`) now route through one parameterized helper. The orphan-policy and `keepEmpty` divergences across sites were preserved, not converged: gear/library drop orphans, list/share route them; gear-library keeps empty cats, the other three filter them. The audit's W-6 wording ("parameterize") explicitly didn't say "converge behavior."
+- **T-2 — closed.** `groupGearItemsByCategory` (4 tests) and `groupByCategory` (9 tests) now have direct test coverage. The previous comment at `grouping.ts:42` ("the deliberate divergence from `groupGearItemsByCategory`") is now backed by regression tests, not just prose.
+
+## Verification results
+
+- `npm run build`: pass at every commit. Bundle gzip 187.36 KB (Phase 12 baseline) → 187.43 KB (after C2) → 187.43 KB (C3) → 187.44 KB (C4) → **187.41 KB** (after C5) — net **+0.05 KB**, exactly the soft target. C2's parameterized helper carries some unavoidable indirection; C5's three-memo collapse + JSX unification clawed it back.
+- `npm run lint`: pass at every commit.
+- `npm test --run`: 32 → 36 (C1) → 36 (C2, behavior preserved) → **45** (C3) → 45 (C4) → 45 (C5). Net **+13 tests**, all on the grouping helpers.
+- Manual smoke (deferred to user). Recommended:
+  - `/r/<slug>` (SharePage): categories render in `sort_order`, an item whose `category_id` points at a missing category routes to "Uncategorized" rather than disappearing.
+  - `/lists/<id>` at lg+ (LibraryPanel): gear items grouped by category, search narrows to just cats with matches, "Uncategorized" appears only when a gear item has `category_id: null`, collapse/expand state on the Uncategorized group persists across re-renders (same collapsed-state key).
+
+## Blockers / surprises
+
+- **C3 ES target.** The spec used `.at(-1)!` in test #6's positive branch. `tsc -b` rejected it (`Property 'at' does not exist on type ... lib option needs es2022 or later`). Swapped to `arr[arr.length - 1]!` — same meaning, same `noUncheckedIndexedAccess` non-null assertion. No other call sites affected.
+- **C5 memoization shape.** Spec originally proposed collapsing all three `useMemo`s into one. Codex flagged that inlining `sortedCats` would cause the sort to rerun on every search keystroke (which churns `filtered`). Adjusted to two memos: `sortedCats` stays its own memo, only `groups` + `uncategorized` collapse. Sort cost is microseconds at this scale, but the regression in memoization shape was a real (small) perf concession that wasn't worth taking in a refactor PR.
+- **Bundle path through W-6.** C2 alone shipped at +0.07 KB gzip — slightly above the +0.05 soft target. The acceptance gate held because C4 (+0.01) and C5 (-0.03) clawed it back to +0.05 net by phase end. Worth flagging that "parameterized helper + n call-site collapses" is a multi-commit accounting exercise, not a per-commit one.
+
+## Next phase
+
+Phase 14 candidates (no clear winner — user picks):
+- **M-cluster split** — UX-visible items (M-2 optimistic `updated_at` bump, M-3 ListSelector mid-flip, M-7 RootRedirect re-sort → reduce) and defensive items (M-1 production observability for failed mutations, M-5 CSV reader error/abort, M-8 gearById Map, M-10 consumable-vs-worn precedence assert). User noted the cluster splits naturally; pick one half.
+- **N-5 standalone** — `csv.ts` file split into per-format modules. Mechanically larger than fits in a nit cluster.
+- **Test-coverage cluster** — T-3…T-9; needs jsdom + `@testing-library` install (one-time tooling change).
+- **F4 full path** — only if the threat model changes. SECURITY DEFINER `fetch_shared_list(p_slug)` RPC + revoke anon SELECT + four-policy reshape.
+
+After Phase 13, `REVIEW-quality.md`'s W-side is fully closed: W-1 through W-13 all shipped or audit-stale. N-side: N-1, N-3, N-4 shipped; N-2 audit-stale; N-5 deferred; N-6 closed by Phase 11. The remaining surface is the M-cluster (split into UX-visible vs defensive halves), T-cluster (needs tooling install), N-5 standalone, and any further security work that depends on threat-model changes.
