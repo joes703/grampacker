@@ -30,10 +30,7 @@ export function makeDnDId(kind: DnDIdKind, id: string): DnDId {
   return `${kind}:${id}`
 }
 
-export function parseDnDId(
-  raw: string | number,
-): { kind: DnDIdKind; id: string } | null {
-  if (typeof raw !== 'string') return null
+export function parseDnDId(raw: string): { kind: DnDIdKind; id: string } | null {
   const idx = raw.indexOf(':')
   if (idx < 0) return null
   const kind = raw.slice(0, idx)
