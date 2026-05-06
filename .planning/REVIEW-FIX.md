@@ -798,3 +798,105 @@ Two campaigns done, one to go: `REVIEW-quality.md` closed at Phase 17, `REVIEW-s
 **`REVIEW-performance.md` review.** Last in the campaign queue. Pre-flight will start with the same shape this phase used: read the audit, verify each finding against the current codebase (post-Phase-18 the test infrastructure and several refactors may have closed items audit-stale), produce a tight spec.
 
 The two security-side deferrals (F4 full path, server-enforced recent-auth on `delete_account()`) stay in the deck independent of the performance phase; either can be picked up if the threat model changes.
+
+---
+
+# grampacker — Phase 20 fix summary (2026-05-06)
+
+## Shipped
+
+- **C1 (M13 verification) — no commit (verification path).** Phase 7 closed M13 (`lucide-react` tree-shaking) as "probable pass, full verification deferred" because a single bundle-size number isn't a complete proof under a multi-chunk topology. Phase 20 finishes the verification rigorously enough to close the audit.
+  - **Check A — per-import audit.** All 26 `lucide-react` import sites in `src/` use named imports of specific icon components (e.g. `import { Search, X, Plus } from 'lucide-react'`); zero wildcard or default imports. Verified via `grep -rE "(import \* as|import [A-Za-z]+ from) ['\"]lucide-react['\"]" src/` returning 0 matches. Named-imports form is the precondition for tree-shaking; without this, Check B's math would be moot.
+  - **Check B — total-JS-gzip budget math across all chunks.** After a clean `npm run build`, total JS gzip across every `dist/assets/*.js` chunk sums to **275.15 KB** across 13 chunks. Per-chunk breakdown:
+    - `tslib.es6-*.js` 0.52 KB
+    - `ListSelectorDrawer-*.js` 0.54 KB
+    - `ListSidebarDrawer-*.js` 0.64 KB
+    - `ForgotPasswordPage-*.js` 1.02 KB
+    - `LoginPage-*.js` 1.04 KB
+    - `SharePage-*.js` 1.15 KB
+    - `SignupPage-*.js` 1.17 KB
+    - `ResetPasswordPage-*.js` 1.32 KB
+    - `jsx-runtime-*.js` 3.26 KB
+    - `browser-*.js` 12.06 KB
+    - `dist-*.js` 18.52 KB
+    - `MarkdownPage-*.js` 46.08 KB
+    - `index-*.js` 187.83 KB
+  - **Result: definitive pass.** 275.15 KB is well below the 350 KB pass threshold and far from the 450 KB fail floor. `lucide-react` ships 1952 distinct icons; the full set would add ~200–300 KB gzip on top of everything else, which is mathematically incompatible with a 275 KB total payload that already includes React, Supabase, dnd-kit, TanStack Query, Tailwind runtime, the entire app code, and 36 tree-shaken lucide icons. Multi-chunk concern from Phase 7 addressed: lucide can't have landed in a lazy chunk either, because the sum across all chunks is the constraining number. Check C (`vite-bundle-visualizer`) skipped — Check B's verdict is unambiguous.
+- **C2 (Phase 20 summary) — this commit.** Records C1's verification numbers and closes `REVIEW-performance.md` as a campaign artifact.
+
+## Audit closures
+
+`REVIEW-performance.md` is fully closed. Per-finding status across the campaign:
+
+### High severity
+- **H1** (missing indexes on `list_items`) — Phase 6, `9482882` (migration `20260509000000_list_items_and_lists_indexes.sql`). Three indexes shipped: `list_items_user_list_sort_idx` (composite over `user_id, list_id, sort_order` — covers authed `fetchListItems` with no extra sort step), `list_items_list_sort_idx` (composite over `list_id, sort_order` — covers anon share-view, the `lists.id → list_items.list_id` cascade, and `resetPackedForList`), `list_items_gear_item_id_idx` (covers the `gear_items.id → list_items.gear_item_id` cascade). The audit's separate `list_items_user_id_idx` was deliberately not created — it would have been a strict prefix of `list_items_user_list_sort_idx` and added no planner options the composite doesn't already provide.
+- **H2** (gear edits broadcast `['list-items']` invalidation) — Phase 2, `4ebcc07`.
+- **H3** (`bulkDelete` / `bulkMove` non-optimistic) — Phase 2, `00c41d7` (helpers) + `935ed1b` (rewire).
+- **H4** (`react-markdown` in main bundle) — Phase 3, `b33b144` (-46.53 KB gzip).
+- **H5** (`vaul` in main bundle) — Phase 4, `88041c0` (-18.69 KB gzip; required M11's JS viewport gate to land first).
+- **H6** (`fflate` in main bundle) — Phase 3, `8dcdcbb` (-4.54 KB gzip).
+
+### Medium severity
+- **M1** (missing index on `lists.user_id`) — Phase 6, `9482882` (`lists_user_sort_idx` covering `user_id, sort_order, name`).
+- **M2** (`addNewItemMut` two RTT) — Phase 8, `ab98d7f`.
+- **M3** (`duplicateList` / `createListFromSelection` 2-3 RTT) — Phase 8, `c95c3d5` (createListFromSelection) + `dfb8fac` (duplicateList).
+- **M4** (`RootRedirect` cold-load block) — Phase 7, `6c2da5a`.
+- **M6** (grouping helpers O(C×I)) — Phase 5, `6491c7c`.
+- **M7** (`LibraryPanel` filter+group memo) — Phase 4, `db98e75`.
+- **M8** (`sharedGroupProps` deps churn) — Phase 4, `560a5a8`.
+- **M9** (`formatRelativeDate` ticks) — Phase 7, `3068e91` (`useNow(60_000)` page-level hook).
+- **M10** (`usePortalPopover` deps) — Phase 1, `5cafad7`.
+- **M11** (ItemRow / GearItemRow mount both branches) — Phase 4, `d8c1032`.
+- **M12** (`CategoryGroup` not memoized) — Phase 4, `db98e75`.
+- **M13** (`lucide-react` tree-shaking) — **Phase 20 (this phase)** by verification. Phase 7 had closed it as "probable pass, deferred verification" pending a multi-chunk-aware check; Phase 20 ran that check and confirmed pass.
+
+### Low severity
+- **L1** (`WeightTable` recomputed each render) — Phase 5, `bf59093`.
+- **L2** (`SharePage.categoryIds` not memoized) — Phase 5, `545327b`.
+- **L3-L4** (drag handler / collision-detection memo) — Phase 7, DROPPED audit-stale (`collisionDetection` already memoized at `GearLibraryPage.tsx:398`; drag handlers aren't props to memoized children).
+- **L7** (routes not code-split) — Phase 3, `4e77846` (-5.04 KB gzip).
+- **L9** (`formatPurchaseDate` Intl per call) — Phase 7, `10fed9a`.
+
+The audit numbering skips L5, L6, L8 — those don't exist.
+
+## Deferred (stays in the campaign deck)
+
+- **`vite-bundle-visualizer`-grade verification** of every dependency. Treemap-precise inspection is overkill for the audit's "is tree-shaking working?" question; total-JS-gzip budget math is the right level of rigor for a single-finding closure. Stays available if a future regression triggers a deeper investigation.
+- **Cloudflare cache-header tuning** — out of `REVIEW-performance.md` scope (audit's "Confirmed strengths" already noted the SW cache strategy is correct).
+- **Speculative memo wins** — sub-millisecond render-perf cleanups beyond what M6/M7/M8/M11/M12 already shipped. Not in the audit; not in scope.
+
+## Verification results
+
+- `npm run build`: pass; per-chunk gzip sizes recorded above.
+- `npm run lint`: pass.
+- `npm test --run`: 101 passed | 4 skipped (105). Full suite green.
+- `grep -rE "from ['\"]lucide-react['\"]" src/`: 26 sites, all named-imports form.
+- `grep -rE "(import \* as|import [A-Za-z]+ from) ['\"]lucide-react['\"]" src/`: 0 matches.
+- Total JS gzip across `dist/assets/*.js`: **275.15 KB** (13 chunks). Pass threshold < 350 KB; fail floor ≥ 450 KB. Definitive pass.
+
+## Blockers / surprises
+
+- **None during execution.** Both Codex review rounds caught real issues in the spec before execution (Check B was main-bundle-only; H1 closure named a nonexistent index; C1 acceptance still cited the old criterion). All three were patched into the spec; execution itself was clean and required zero source code changes.
+- **Phase 7's deferral was correct caution, not a hidden bug.** Phase 20's rigorous check confirms what Phase 7 suspected: the bundle is well-behaved. The "probable pass" framing was honest about what a single number can prove; the multi-chunk-aware check upgrades the verdict without finding anything new.
+
+## Campaign milestone
+
+**`REVIEW-performance.md` is fully closed.** All 24 audit findings (H1–H6, M1–M13, L1, L2, L3-L4 dropped, L7, L9) are accounted for: H1, M1 in Phase 6; H2, H3 in Phase 2; H4, H6, L7 in Phase 3; H5, M7, M8, M11, M12 in Phase 4; M6, L1, L2 in Phase 5; M4, M9, L9 in Phase 7; L3-L4 dropped in Phase 7; M2, M3 in Phase 8; M10 in Phase 1; M13 in Phase 20. The audit numbering skips L5, L6, L8.
+
+**The full review campaign is complete:**
+- `REVIEW-quality.md`     → closed at Phase 17
+- `REVIEW-security.md`    → closed at Phase 19
+- `REVIEW-performance.md` → closed at Phase 20
+
+**Standing deferrals across the closed campaign:**
+- **F4 full path** (security; SECURITY DEFINER `fetch_shared_list` + four-policy reshape). Only if the threat model changes.
+- **Server-enforced recent-auth on `delete_account()`** (security; documented in `SECURITY.md`'s "Accepted residual risks"). Only if the F2 acceptance changes.
+- **`vite-bundle-visualizer`-grade verification** (performance; available if a future bundle regression appears).
+- **Cloudflare cache-header tuning** (performance; out of audit scope).
+
+## Next phase
+
+**No queued review work.** The campaign deck is empty. Open question for the user: what's next? Candidates if you want to pick from existing artifacts —
+- The four post-Phase-2 cleanups noted in user memory (category edit icon, empty-cat confirm, inline category create, kebab clipping).
+- Either of the two standing security deferrals if the threat model warrants.
+- New feature work, infrastructure, or whatever's surfaced since the audits ran.
