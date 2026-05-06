@@ -263,7 +263,7 @@ function ListDetailInner({
   })
 
   const deleteMut = useMutation({
-    mutationFn: (itemId: string) => deleteListItem(itemId),
+    mutationFn: deleteListItem,
     ...makeOptimisticDelete<ListItemWithGear, string>({
       qc,
       queryKey: queryKeys.listItems(listId),

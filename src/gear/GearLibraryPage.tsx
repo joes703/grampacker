@@ -170,7 +170,7 @@ export default function GearLibraryPage() {
   })
 
   const removeCategory = useMutation({
-    mutationFn: (id: string) => deleteCategory(id),
+    mutationFn: deleteCategory,
     // Deleting a category cascades to gear_items.category_id (SET NULL),
     // which is embedded in list_items via the gear join — invalidate both
     // side caches so open gear / list views reflect the new uncategorized
