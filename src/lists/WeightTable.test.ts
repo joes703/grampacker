@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { computeWeightBreakdown } from './WeightTable'
 import type { Category, ListItemWithGear } from '../lib/types'
 
@@ -77,5 +77,36 @@ describe('computeWeightBreakdown', () => {
     expect(result.wornGrams).toBe(0)
     expect(result.totalPackGrams).toBe(0)
     expect(result.catRows).toEqual([])
+  })
+
+  // M-10: a list_item with both is_consumable and is_worn true is impossible
+  // per the worn_xor_consumable DB CHECK constraint, but if a future migration
+  // relaxes the constraint or an optimistic-update path produces this state,
+  // the helper warns and buckets the row's weight as consumable (the
+  // historical precedence). Throwing would crash the list view on a
+  // defensive guard for an unreachable case — wrong trade.
+  it('warns and buckets as consumable when an impossible is_consumable+is_worn row appears', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const items = [
+      listItem({
+        id: 'impossible',
+        category_id: shelter.id,
+        weight_grams: 100,
+        is_consumable: true,
+        is_worn: true,
+      }),
+    ]
+
+    const result = computeWeightBreakdown(items, [shelter])
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[weight-table] list_item has both is_consumable and is_worn; bucketing as consumable',
+      { listItemId: 'impossible', gearItemId: 'g-impossible' },
+    )
+    expect(result.consumableGrams).toBe(100)
+    expect(result.wornGrams).toBe(0)
+    expect(result.baseGrams).toBe(0)
+
+    warnSpy.mockRestore()
   })
 })
