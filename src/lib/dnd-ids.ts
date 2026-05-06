@@ -10,7 +10,9 @@
 //
 //   useSortable({ id: makeDnDId('category', cat.id) })
 //   ...
-//   const active = parseDnDId(event.active.id)
+//   // dnd-kit's UniqueIdentifier is `string | number`; parseDnDId
+//   // requires `string`, so wrap the active id at the call site.
+//   const active = parseDnDId(String(event.active.id))
 //   if (active?.kind === 'category') { ... }
 //
 // The kind tag does the work the inference used to: handlers branch on it
