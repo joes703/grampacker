@@ -59,6 +59,7 @@
 - Don't write `makeOptimisticCrossCategoryMove`. It was planned, then made unnecessary by removing cross-category DnD entirely.
 - Don't add features inside refactor PRs. New behavior is a new commit.
 - Don't bypass the `usePortalPopover` hook by writing inline event listeners for new popovers.
+- Don't add `target="_blank"` without `rel="noopener noreferrer"` on the same anchor. Modern browsers default to `noopener` for `_blank`, but explicit `rel` is the codebase convention and removes the silent dependency on the browser default. The only current site is `src/components/MarkdownPage.tsx`'s external-link branch (already correctly paired); this rule keeps any future site honest.
 
 ## Deferred upgrades
 
