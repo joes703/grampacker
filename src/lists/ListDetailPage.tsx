@@ -319,7 +319,11 @@ function ListDetailInner({
       qc,
       queryKey: queryKeys.lists(),
       id: () => listId,
-      apply: (item, description) => ({ ...item, description: description || null }),
+      apply: (item, description) => ({
+        ...item,
+        description: description || null,
+        updated_at: new Date().toISOString(),
+      }),
     }),
   })
 

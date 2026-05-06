@@ -137,7 +137,11 @@ export default function ListsPage() {
       qc,
       queryKey: queryKeys.lists(),
       id: ({ id }) => id,
-      apply: (item, { name }) => ({ ...item, name }),
+      apply: (item, { name }) => ({
+        ...item,
+        name,
+        updated_at: new Date().toISOString(),
+      }),
     }),
   })
 
