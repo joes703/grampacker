@@ -504,3 +504,46 @@ Phase 14 candidates (no clear winner — user picks):
 - **F4 full path** — only if the threat model changes. SECURITY DEFINER `fetch_shared_list(p_slug)` RPC + revoke anon SELECT + four-policy reshape.
 
 After Phase 13, `REVIEW-quality.md`'s W-side is fully closed: W-1 through W-13 all shipped or audit-stale. N-side: N-1, N-3, N-4 shipped; N-2 audit-stale; N-5 deferred; N-6 closed by Phase 11. The remaining surface is the M-cluster (split into UX-visible vs defensive halves), T-cluster (needs tooling install), N-5 standalone, and any further security work that depends on threat-model changes.
+
+---
+
+# grampacker — Phase 14 fix summary (2026-05-06)
+
+## Shipped
+
+- **Commit 1 (M-2) — `4717747`** — Three optimistic-apply sites bump `updated_at` so the lists card grid display reflects the fresh edit immediately, not after the server round-trip. Sites: `ListDetailPage.tsx:322` (notesMut), `ListsPage.tsx:140` (renameMut), `NavBar.tsx:208` (renameMut). The optimistic value is overlaid by the server's authoritative `updated_at` on settle (standard `makeOptimisticUpdate` invalidation), so brief client-vs-server timestamp drift in the optimistic window self-corrects. `listItemsArrayEqual` ignores `updated_at` (verified) so bumping doesn't churn memo references downstream. Other `updated_at: now` sites in the codebase (insert factories at `ListDetailPage.tsx:248` for `addGearItemToList` and `GearLibraryPage.tsx:210` for `createGearItem`) are correctly out of scope — those are full new-row creation, not patch overlay.
+- **Commit 2 (M-3) — `d35a790`** — `ListSelector` adds a `useLayoutEffect` that force-closes when `isMobile` transitions, via a `prevIsMobile` ref pattern. Prevents the open surface from auto-swapping device classes when the breakpoint flips mid-interaction (e.g., user opens the drawer on mobile, rotates to landscape past `md`, popover would otherwise appear with the same `open: true` and stale `pos`). `useLayoutEffect` (not `useEffect`) because `useEffect` runs after commit and would let the swapped surface render briefly before the close-induced re-render fires; `useLayoutEffect` commits the close in the same paint frame as the device-class flip so the swap is invisible. Audit's "opens both" framing was inaccurate (surfaces are mutually exclusive at lines 87/119 via `!isMobile`/`isMobile`); the fix preserves the spirit of the recommendation as a UX polish.
+- **Commit 3 (M-7) — `7c384ad`** — `RootRedirect`'s most-recent-list picker uses `lists.reduce<List | null>(...)` instead of `[...lists].sort(...)[0]`. Code-clarity fix, not a perf fix: this branch runs only on the cold path (no localStorage `last-list-id`), N is typically 5–20, so wall-clock delta is microseconds. The `[...arr].sort(cmp)[0]` idiom signals "pick max" but reads as "sort everything"; `.reduce` makes the intent explicit. Behavior preserved exactly for empty/single/multi/tie cases. Added `import type { List }` for the accumulator type.
+
+## Audit closures
+
+- **M-2 — closed.** Three apply functions bump `updated_at` at mutate-click time. Surface (lists card grid display freshness) verified: `ListsPage.tsx:659` consumes `updated_at` via `formatRelativeDate`; `RootRedirect.tsx` reads from server fetch result, not optimistic cache, so its tiebreaker is unaffected.
+- **M-3 — closed (with audit-stale framing note).** Audit's "opens both" claim was inaccurate against current code (surfaces are mutually exclusive at lines 87/119). Underlying UX wart — surface auto-swap on device-class flip — is real and now fixed. Worth flagging so future readers don't audit-trail back to a non-bug; the audit was wrong about the *symptom*, right about the *fix*.
+- **M-7 — closed.** Reduce-max-by-updated_at pattern preserves cold-path behavior for empty / single / multi / tie cases.
+
+## Verification results
+
+- `npm run build`: pass at every commit. Bundle gzip 187.41 KB (Phase 13 baseline) → 187.47 KB after C3 — net **+0.06 KB**, slightly above the +0.05 soft target. Attributable mostly to C2's effect addition (the `useLayoutEffect` body, ref, and predicate add ~100–150 minified bytes after gzip with surrounding context). C1 adds ~30 chars across three files; C3 is roughly neutral. Non-blocking — the soft target was a guideline, not a hard gate, and the overage buys the swap-invisible UX behavior described in C2.
+- `npm run lint`: pass at every commit.
+- `npm test --run`: 45 → 45 passed | 4 skipped. No new tests in Phase 14 — these touch render paths and mutation/cache fan-out that need jsdom + `@testing-library`. Backfill deferred to the T-cluster phase.
+- Manual smoke (deferred to user). Recommended:
+  - **C1**: on `/lists`, edit a list name (renameMut) — card's "Updated Xm ago" should flip to "just now" immediately, not after the round-trip. Same on the navbar list-heading rename. On `/lists/:id`, edit notes — return to `/lists` and the card should show fresh timestamp.
+  - **C2**: open the navbar list-switcher popover at `≥md`, resize browser below `md` — popover unmounts AND the drawer should NOT auto-mount; selector should be closed. Same in reverse.
+  - **C3**: clear localStorage `last-list-id` (DevTools → Application → Local Storage), refresh `/`. Should redirect to the most-recently-edited list.
+
+## Blockers / surprises
+
+- **Bundle +0.06 vs +0.05 target.** The C2 force-close effect is the bulk of the addition. Tried no minimization workarounds — the prevIsMobile-ref pattern is the right shape, the `useLayoutEffect` choice is load-bearing for the "swap-invisible" guarantee, and the comment block (which doesn't ship) is genuinely useful for future readers. Soft target overage is acceptable.
+- **M-3 audit-stale framing.** First time in the phased campaign that an audit finding's *symptom* description was wrong while the *fix* was still useful. Documented in the spec verification table at `.planning/REVIEW-PHASE14.md` so future reviewers know the audit-vs-code shift was deliberate, not missed.
+
+## Next phase
+
+Phase 15 candidates (M-cluster defensive half):
+- **M-1 — production observability for failed mutations.** `App.tsx` `MutationCache.onError` is currently dev-only `console.error`; production has zero observability for silent mutation failures. Wire to a real reporter (Sentry-style) or even a structured `console.warn` + queryCache error metadata so failures surface in production.
+- **M-5 — `useCsvFileInput` doesn't handle `FileReader.error` / `.onabort`.** Add `reader.onerror` and `reader.onabort` calling `handlers.onError(...)`.
+- **M-8 — Five sites repeat `gearItems.find(...)` / `listItems.find(...)`.** Build a `gearById` Map once and share it via context or a hook. Defensive perf — N small enough today that linear scan is fine, but the Map is cleaner.
+- **M-10 — `is_consumable` + `is_worn` mutual exclusion is enforced at the DB but the `WeightTable` branch order silently picks consumable first.** Add a runtime assert (or at least a typed comment) so the precedence is explicit and the impossible state is loud.
+
+After Phase 15 the entire M-cluster will be closed except the four already-out-of-scope items (M-4 polyfill, M-6 Modal simplify, M-9 sharedGroupProps, M-11 parseDnDId comment) — most of those are likely audit-stale or N-tier and can be triaged in Phase 15 prep.
+
+Then Phase 16 = N-5 standalone (csv.ts split), Phase 17 = T-cluster (jsdom + testing-library install + backfill), Phase 18 = F4 security path (only if threat model changes).
