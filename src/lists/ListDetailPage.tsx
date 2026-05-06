@@ -210,6 +210,19 @@ function ListDetailInner({
     queryFn: () => fetchGearItems(userId),
   })
 
+  // O(1) id lookups for DnD callbacks and DragOverlay rendering. Linear
+  // scan would be fine at typical N (~50 list_items per list); the Map
+  // signals intent more clearly and keeps drag-tick cost flat rather
+  // than scaling with N. Ref-based callback finds (in onLibraryRemove
+  // and sharedGroupProps's onEditGearItem/onDeleteGearItem) are NOT
+  // converted — those read *Ref.current at click-time, and a
+  // *ByIdRef would require an additional ref + useEffect to keep in
+  // sync, which is more code than the linear scan saves at click cadence.
+  const listItemsById = useMemo(
+    () => new Map(listItems.map((i) => [i.id, i])),
+    [listItems],
+  )
+
   const { data: categories = [] } = useQuery({
     queryKey: queryKeys.categories(),
     queryFn: () => fetchCategories(userId),
@@ -506,9 +519,9 @@ function ListDetailInner({
     // Within-category item reorder. The drop target must be another item
     // AND in the same category as the dragged item. Anything else
     // (cross-category drop, drop on empty space) is ignored.
-    const activeItem = listItems.find((i) => i.id === activeParsed.id)
+    const activeItem = listItemsById.get(activeParsed.id)
     if (!activeItem) return
-    const overItem = listItems.find((i) => i.id === overParsed.id)
+    const overItem = listItemsById.get(overParsed.id)
     if (!overItem) return
     const activeCat = activeItem.gear_item.category_id
     if (overItem.gear_item.category_id !== activeCat) return
@@ -827,7 +840,7 @@ function ListDetailInner({
           ) : (() => {
             const activeParsed = activeId ? parseDnDId(activeId) : null
             const activeItem =
-              activeParsed?.kind === 'item' ? listItems.find((i) => i.id === activeParsed.id) : null
+              activeParsed?.kind === 'item' ? (listItemsById.get(activeParsed.id) ?? null) : null
             return (
               <div className="space-y-4">
                 <DndContext
