@@ -2,6 +2,15 @@ import type { Category, GearItem, ListItemWithGear } from './types'
 
 export type CategoryGroup<T> = { category: Category | null; items: T[] }
 
+type GroupByCategoryOptions<T> = {
+  keepEmpty: boolean
+  orphanPolicy: 'route-to-uncategorized' | 'drop'
+  stability?: {
+    prior: CategoryGroup<T>[]
+    itemsEqual: (a: T[], b: T[]) => boolean
+  }
+}
+
 // What "structurally identical" means for stability: same length AND for
 // each index i, items[i] is referentially identical OR has identical render-
 // affecting field values. Render-affecting fields for ListItemWithGear are
@@ -32,6 +41,79 @@ function listItemsArrayEqual(a: ListItemWithGear[], b: ListItemWithGear[]): bool
   return true
 }
 
+export function groupByCategory<T>(
+  items: T[],
+  categories: Category[],
+  getCategoryId: (item: T) => string | null,
+  options: GroupByCategoryOptions<T>,
+): CategoryGroup<T>[] {
+  const { keepEmpty, orphanPolicy, stability } = options
+
+  const buckets = new Map<string | null, T[]>()
+  const catMap = new Map(categories.map((c) => [c.id, c]))
+  for (const item of items) {
+    const raw = getCategoryId(item)
+    let key: string | null
+    if (raw === null) {
+      key = null
+    } else if (catMap.has(raw)) {
+      key = raw
+    } else if (orphanPolicy === 'route-to-uncategorized') {
+      key = null
+    } else {
+      continue
+    }
+
+    let bucket = buckets.get(key)
+    if (!bucket) {
+      bucket = []
+      buckets.set(key, bucket)
+    }
+    bucket.push(item)
+  }
+
+  const priorByKey = stability
+    ? new Map(stability.prior.map((group) => [group.category?.id ?? null, group] as const))
+    : null
+  const result: CategoryGroup<T>[] = []
+
+  function pushGroup(category: Category | null, items: T[]) {
+    if (stability && priorByKey) {
+      const priorGroup = priorByKey.get(category?.id ?? null)
+      if (
+        priorGroup &&
+        priorGroup.category === category &&
+        stability.itemsEqual(priorGroup.items, items)
+      ) {
+        result.push(priorGroup)
+        return
+      }
+    }
+    result.push({ category, items })
+  }
+
+  for (const category of categories) {
+    // Use [] as the canonical empty-bucket value so every category goes
+    // through the same stability check, including keepEmpty:true groups.
+    const groupItems = buckets.get(category.id) ?? []
+    if (groupItems.length === 0 && !keepEmpty) continue
+    pushGroup(category, groupItems)
+  }
+
+  const uncategorized = buckets.get(null)
+  if (uncategorized && uncategorized.length > 0) pushGroup(null, uncategorized)
+
+  if (
+    stability &&
+    stability.prior.length === result.length &&
+    result.every((group, index) => group === stability.prior[index])
+  ) {
+    return stability.prior
+  }
+
+  return result
+}
+
 /**
  * Group list items by their gear item's category. Categories are emitted in
  * `Category.sort_order` order; items with no resolvable category fall into a
@@ -56,65 +138,12 @@ export function groupListItemsByCategory(
   categories: Category[],
   prior?: CategoryGroup<ListItemWithGear>[],
 ): CategoryGroup<ListItemWithGear>[] {
-  const buckets = new Map<string | null, ListItemWithGear[]>()
-  const catMap = new Map(categories.map((c) => [c.id, c]))
-  for (const item of items) {
-    const raw = item.gear_item.category_id
-    const key = raw !== null && catMap.has(raw) ? raw : null
-    let arr = buckets.get(key)
-    if (!arr) {
-      arr = []
-      buckets.set(key, arr)
-    }
-    arr.push(item)
-  }
-
-  const priorByKey = new Map<string | null, CategoryGroup<ListItemWithGear>>()
-  if (prior) {
-    for (const g of prior) {
-      priorByKey.set(g.category?.id ?? null, g)
-    }
-  }
-
   const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
-  const result: CategoryGroup<ListItemWithGear>[] = []
-  for (const cat of sortedCats) {
-    const groupItems = buckets.get(cat.id)
-    if (!groupItems || groupItems.length === 0) continue
-    const priorGroup = priorByKey.get(cat.id)
-    if (priorGroup && priorGroup.category === cat && listItemsArrayEqual(priorGroup.items, groupItems)) {
-      result.push(priorGroup)
-    } else {
-      result.push({ category: cat, items: groupItems })
-    }
-  }
-
-  const uncategorized = buckets.get(null)
-  if (uncategorized && uncategorized.length > 0) {
-    const priorGroup = priorByKey.get(null)
-    if (priorGroup && priorGroup.category === null && listItemsArrayEqual(priorGroup.items, uncategorized)) {
-      result.push(priorGroup)
-    } else {
-      result.push({ category: null, items: uncategorized })
-    }
-  }
-
-  // Top-level identity invariant: when every group is reused, return the
-  // prior top-level array itself (not a structurally-equal copy). The hook
-  // depends on `next === prior` to skip its setState call and avoid an
-  // infinite render loop.
-  if (prior && prior.length === result.length) {
-    let allSame = true
-    for (let i = 0; i < result.length; i++) {
-      if (result[i] !== prior[i]) {
-        allSame = false
-        break
-      }
-    }
-    if (allSame) return prior
-  }
-
-  return result
+  return groupByCategory(items, sortedCats, (item) => item.gear_item.category_id, {
+    keepEmpty: false,
+    orphanPolicy: 'route-to-uncategorized',
+    stability: prior ? { prior, itemsEqual: listItemsArrayEqual } : undefined,
+  })
 }
 
 /**
@@ -132,13 +161,10 @@ export function groupGearItemsByCategory(
   items: GearItem[],
   categories: Category[],
 ): CategoryGroup<GearItem>[] {
-  const groups: CategoryGroup<GearItem>[] = categories.map((cat) => ({
-    category: cat as Category | null,
-    items: items.filter((i) => i.category_id === cat.id),
-  }))
-  const uncategorized = items.filter((i) => i.category_id === null)
-  if (uncategorized.length > 0) groups.push({ category: null, items: uncategorized })
-  return groups
+  return groupByCategory(items, categories, (item) => item.category_id, {
+    keepEmpty: true,
+    orphanPolicy: 'drop',
+  })
 }
 
 // Drag-reorder helper: given a re-ordered subset of items, redistribute the
