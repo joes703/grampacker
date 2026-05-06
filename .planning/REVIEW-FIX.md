@@ -421,3 +421,44 @@ Phase 12 candidates (no clear winner — user picks):
 - **Test-coverage cluster** — T-3…T-9; needs jsdom + `@testing-library` install (one-time tooling change).
 
 After Phase 11, `REVIEW-quality.md` is substantially closed on the W- side: W-1, W-3, W-4, W-5, W-7, W-8, W-10, W-11, W-12, W-13 done. Remaining W- items: W-2 (pure nit), W-6 (Phase-5-coupled), W-9 (pure nit). M- and B- items are either accepted (B-1..3 shipped) or pending separate phases.
+
+---
+
+# grampacker — Phase 12 fix summary (2026-05-05)
+
+## Shipped
+
+- **Commit 1 (W-2) — `8898a44`** — `assignSortOrderSlots` in `src/lib/grouping.ts:151` dropped its redundant `.slice()` between `.map()` and `.sort()`. `Array.prototype.map` already returns a fresh array, so the in-between clone was a no-op allocation. The `slots[idx]!` non-null assertion remains correct (slots and reorderedItems still have identical length by construction).
+- **Commit 2 (W-9) — `c1e518c`** — Four duplicated "Owner-scoped private read" docstring blocks (categories.ts, gear.ts, lists.ts, list-items.ts) collapsed to one-line pointers (`// Owner-scoped private read — see queries/index.ts for the convention.`). The hoisted authoritative block lives at the top of `src/lib/queries/index.ts`. The list-items pointer keeps a one-line mention of the 20260506000002 user_id column since that detail is local to that file. Net diff: -20 lines of duplicated comment, +26 lines of one consolidated comment in the barrel.
+- **Commit 3 (W-12 follow-up) — `8c0204a`** — `parseDnDId` runtime check uses a `const DND_KINDS = [...] as const` tuple as the single source of truth; `DnDIdKind` derives from `(typeof DND_KINDS)[number]`. Validation goes through an `isDnDIdKind(kind: string): kind is DnDIdKind` typeguard so the success-branch return continues to type-check (a bare `.includes(kind as DnDIdKind)` would not narrow `kind` for the subsequent `return { kind, id }`). `DND_KINDS` deliberately not exported — only the type is. Adding a new DnD kind now requires one edit instead of two coordinated edits. Verified with `grep -rn "DND_KINDS" src/`: only the definition site appears.
+- **Commit 4 (N-1) — `5413e5c`** — Three pointless `mutationFn: (id: string) => fn(id)` wrappers replaced with bare references: `ListsPage.tsx:153` (deleteList), `GearLibraryPage.tsx:173` (deleteCategory), `ListDetailPage.tsx:266` (deleteListItem). The other `mutationFn: (...) => ...` wrappers in the codebase are NOT in scope — they capture closure values (userId, lists.length, list.id, etc.) that aren't passed in via mutation arguments.
+- **Commit 5 (N-3) — `65cac36`** — `WeightTable` rendered each catRow with `<tr key={row.name}>`. Names are not guaranteed unique and React's diff loses identity if a row is renamed mid-render. Switched to `key={row.id}`. `WeightBreakdown.catRows` shape extended with `id: string`: real categories carry their uuid; the synthetic Uncategorized row uses the `'__uncategorized__'` sentinel that GearLibraryPage already uses for the same purpose. `WeightTable.test.ts` got two row-shape expectation updates for the new `id` field.
+- **Commit 6 (N-4) — `3a3d2e6`** — `RowIconButton.tsx:57` replaced `active && ACTIVE_CLASSES[variant] ? ACTIVE_CLASSES[variant]! : VARIANT_CLASSES[variant]` with `(active ? ACTIVE_CLASSES[variant] : undefined) ?? VARIANT_CLASSES[variant]`. The bang was correct but redundant — `??` expresses the same intent without the assertion or the double `ACTIVE_CLASSES[variant]` lookup.
+
+## Audit closures (no commits)
+
+- **N-2 — already correct.** `WeightTable` already calls `useMemo` BEFORE the empty-list early return at `src/lists/WeightTable.tsx:78-83`, with an inline comment explaining the hooks-order rationale. No code change required; the audit finding was retroactively stale.
+- **N-5 — deferred.** Splitting `csv.ts` into per-format modules is a non-trivial restructure; deferred to its own phase with an explicit before/after structure proposal.
+- **N-6 — closed by Phase 11.** The audit's "1..=max" loop-counter recommendation was implemented as part of Phase 11 W-3 (`75c6b77`).
+
+## Verification results
+
+- `npm run build`: pass at every commit; bundle gzip held at **187.36 KB** (no change — type-only and comment-only edits don't affect runtime).
+- `npm run lint`: pass at every commit.
+- `npm test --run`: 32 passed | 4 skipped (unchanged from Phase 11; the two updated WeightTable assertions still pass).
+- Manual smoke: low value — none of these commits touch behavior. Recommended sanity check: open `/lists` (verify list cards render and DnD still works → exercises C1's grouping helper), open a list with categories (verify the weight summary table renders → C5's row keys), and toggle worn/consumable on an item (verify the chip styling still flips → C6's RowIconButton).
+
+## Blockers / surprises
+
+- C3 (W-12 follow-up) — Codex flagged the original `if (!DND_KINDS.includes(kind as DnDIdKind)) return null` form during spec review. The cast inside `.includes` doesn't narrow `kind` for the subsequent `return { kind, id }` — it only satisfies the argument type of `.includes`. A real `kind is DnDIdKind` typeguard was required. Spec was patched before execution; the typeguard form ships in the commit.
+
+## Next phase
+
+Phase 13 candidates (no clear winner — user picks):
+- **W-6 standalone** — groupByCategory consolidation. Touches the Phase 5 stability layer; deserves its own phase with explicit per-site behavior verification. Probably the next-most-substantial quality-side item.
+- **Medium quality** — M-1 (production observability for failed mutations), M-2 (optimistic `updated_at` bump), M-3 (ListSelector mid-flip), M-5 (CSV reader error/abort), M-7 (RootRedirect re-sort → reduce), M-8 (gearById Map), M-10 (consumable-vs-worn precedence assert). User noted these would split into "UX-visible vs defensive" sub-clusters.
+- **N-5 standalone** — csv.ts file split. Mechanically larger than fits in a nit cluster.
+- **Test-coverage cluster** — T-3…T-9; needs jsdom + `@testing-library` install (one-time tooling change).
+- **F4 full path** — only if the threat model changes. SECURITY DEFINER `fetch_shared_list(p_slug)` RPC + revoke anon SELECT + four-policy reshape.
+
+After Phase 12, `REVIEW-quality.md` is substantively closed on the W- side: W-1, W-2, W-3, W-4, W-5, W-7, W-8, W-9, W-10, W-11, W-12, W-13 all shipped. Remaining W- items: W-6 (Phase-5-coupled, deserves its own phase). On the N- side: N-1, N-3, N-4 shipped; N-2 audit-stale; N-5 deferred; N-6 closed by Phase 11. The remaining surface is M-cluster, T-cluster, W-6, N-5, and any further security work that depends on threat-model changes.
