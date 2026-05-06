@@ -734,3 +734,67 @@ Remaining campaign deck:
 - **`REVIEW-security.md` review** — next up per the user's stated ordering (quality → security → performance). The recent dependency commits (`3853399` security bump for `serialize-javascript >=7.0.5`; `d28af3e` Node 20+ runtime pin) addressed the most acute supply-chain risk; the remaining audit work is the unread security review.
 - **`REVIEW-performance.md` review** — last in the campaign queue.
 - **F4 full path — security.** Only if the threat model changes. Stays in the deck for whenever the threat model justifies it.
+
+---
+
+# grampacker — Phase 19 fix summary (2026-05-06)
+
+## Shipped
+
+- **C1 (F2 + cascade-cleanup softening) — `a7ba8b5`** — `SECURITY.md` gains a new "Accepted residual risks" section between "Defense-in-depth extras" and "Operational checklist". Documents the localStorage-token residual risk that the audit explicitly said to write up "once F1 is shipped" — F1 shipped in Phase 1, the doc was never written. Names what we rely on instead (CSP + no XSS surfaces in the source tree + in-app password re-auth + short access-token TTL), where the localStorage assumption *leaks beyond* what the UI controls (the Delete-account UI re-auth is client-side friction only; `delete_account()` checks just `auth.uid() is null`, so a stolen authenticated JWT can call the RPC directly via PostgREST), why cookie-based session storage isn't pursued under the BaaS architecture, and what would change the acceptance. Commit also softens the cascade-cleanup bullet at SECURITY.md:143 — replaces "delete_account() only needs to remove the auth.users row" with "delete_account() performs cleanup by removing the auth.users row, and the cascade does the rest" plus a parenthetical pointing at the new section, so the cascade-scope point and the auth-side caveat read consistently in the same doc.
+- **C2 (SECURITY DEFINER inventory refresh) — `ffa9efc`** — `SECURITY.md` updated to reflect Phase 8's three consolidated-mutation RPCs (`add_gear_item_with_list_item`, `create_list_from_selection`, `duplicate_list`, migrations `20260510000000` + the `add_gear_item_with_list_item` category-ownership patch in `20260510000001`). Four edits: (1) function count "four → seven" at line 103; (2) three new inventory-table rows with each function's exact inline checks (`auth.uid() <> p_user_id` raises `42501`; per-id ownership re-verification raises `P0002`); (3) accepted-linter-warning section extended from naming two functions to naming all five user-callable definers; (4) Roles section's `authenticated`-EXECUTE bullet updated to list the same five definers (with the trigger-only `handle_new_user` and `rls_auto_enable` carved out as having EXECUTE revoked from all roles). The drift was surfaced by Codex review of the Phase 19 spec, not by the original 2026-05-04 audit.
+
+## Audit closures
+
+`REVIEW-security.md` is fully closed as a campaign artifact (modulo F4 full-path, which stays deferred). Per-finding status across the campaign:
+
+- **F1 (High, security headers)** — Phase 1, `dc0b924`. `public/_headers` ships CSP + X-Frame-Options + X-Content-Type-Options + Referrer-Policy + HSTS + Permissions-Policy + COOP. Verified this session by reading the file.
+- **F2 (Medium, localStorage tokens)** — Phase 19, `a7ba8b5` (this phase). Storage default unchanged (accepted under BaaS); residual risk documented in SECURITY.md per the audit's explicit recommendation.
+- **F3 (Medium, account-deletion re-auth)** — Phase 1, `d196bf7`. `DeleteAccount` component carries the full `signInWithPassword` re-auth + generic-error two-stage flow. **Closure scope is UI-only**: the `delete_account()` RPC itself only checks `auth.uid()`, so a stolen authenticated JWT can bypass the UI gate by calling the RPC directly. That residual risk lives under F2 (now documented in SECURITY.md's "Where the localStorage assumption leaks beyond what the UI controls" paragraph). Server-enforced recent-auth on `delete_account()` is deferred — see "Deferred" below.
+- **F4 (Low, anon enumeration of shared slugs)** — cheap path closed in Phase 10 (`8eee620`, PrivacyPanel copy clarification). Full path (SECURITY DEFINER `fetch_shared_list` + four-policy reshape) deferred — see below.
+- **F5 (Low, jsx-no-target-blank)** — Phase 10, `7016f39`. `CLAUDE.md` "What NOT to do" carries the `target="_blank"` + `rel="noopener noreferrer"` rule. Plugin install deliberately skipped — one already-compliant site doesn't earn the dependency.
+- **F6 (Info, MarkdownPage guard comment)** — Phase 1, `2f356a2`. The header comment at `src/components/MarkdownPage.tsx:1-2` pins the safe configuration.
+- **F7 (Info, Supabase dashboard config)** — Phase 10, `aa42fd0`. SECURITY.md "Operational checklist (Supabase dashboard)" enumerates the five verifications. The literal `Last verified: <YYYY-MM-DD by name>` line stays as a placeholder; actual dashboard verification remains a user-side task.
+- **F8 (Info, SW URL-keyed cache)** — Phase 10, no commit. The guardrail comment in `vite.config.ts:27-31` matches the substance of the audit recommendation; documented closed.
+- **F9 (Info, no-dynamic-SQL in `bulk_update_sort_order`)** — confirmation only. Migration `20260501000000` uses IF/ELSIF with hardcoded identifiers.
+- **F10 (Info, no service-role keys in repo/bundle)** — confirmation only. `.env` gitignored; bundle contains only the publishable anon prefix.
+- **F11 (Info, `delete_account` `search_path` correction)** — confirmation only. Migration `20260505000000_fix_delete_account_search_path.sql` corrected `public` → `public, pg_temp`.
+- **F12 (Info, console-log audit)** — confirmation only. Citation refreshed during Phase 19: post-Phase-18 the production log site is `src/lib/mutation-error-handler.ts:32-49` (`console.warn` in every environment by design), not the audit's stale `src/App.tsx:27-29` reference. The structured payload contains only mutation key + error message + optional code — no tokens or PII. Substance unchanged.
+- **F13 (Info, CSV import cap + formula-injection neutralization)** — confirmation only. `src/lib/use-csv-file-input.ts:3` (size cap) and `src/lib/csv/core.ts` (export-side prefix neutralization).
+
+Phase 19 commits (`a7ba8b5`, `ffa9efc`) plus Phase 1 (`dc0b924`, `d196bf7`, `2f356a2`) and Phase 10 (`8eee620`, `7016f39`, `aa42fd0`, plus the no-commit F8 closure) cover every actionable finding from the 2026-05-04 audit.
+
+## Deferred (low value vs. setup cost)
+
+- **F4 full path — security work.** SECURITY DEFINER `fetch_shared_list(p_slug)` RPC + revoke `anon` SELECT on `lists` + reshape `list_items_public_select_shared` / `gear_items_public_select_via_shared_list` / `categories_public_select_via_shared_list`. Significant migration + RPC + four-policy reshape for an already-accepted risk per the audit. Stays in the deck for whenever the threat model changes (e.g. shared-list slugs need to be unguessable as a credential rather than a URL handle, or a public directory becomes a competitive concern).
+- **Server-enforced recent-auth on `delete_account()`** — surfaced during Phase 19's residual-risk write-up. Would close the gap where a stolen authenticated JWT can call `delete_account()` directly through PostgREST and skip the UI re-auth. Deferred because the BaaS architecture has no server-side place to verify a freshness claim other than another RPC roundtrip the attacker would also be holding the token for; the practical control remains "make XSS not happen" via CSP. Documented in SECURITY.md's new "Accepted residual risks" section so a future reader sees the gap and the reasoning.
+
+## Verification results
+
+- `npm run build` — pass after each commit.
+- `npm run lint` — pass after each commit.
+- `npm test --run` — 101 passed | 4 skipped (105) after each commit. Markdown-only changes; the test gate ran as a no-op cross-check.
+- `grep -c "only needs to remove" SECURITY.md` after C1 → `0` (replacement landed cleanly; no stragglers).
+- `grep -c "Accepted residual risks" SECURITY.md` after C1 → `2` (heading + the cross-reference in the cascade-cleanup bullet).
+- `grep -c "four functions total" SECURITY.md` after C2 → `0`.
+- `grep -E "^\| \`(add_gear_item_with_list_item|create_list_from_selection|duplicate_list)" SECURITY.md | wc -l` after C2 → `3` (one new inventory row per RPC).
+- `grep -c "add_gear_item_with_list_item" SECURITY.md` after C2 → `3` (Roles bullet + inventory row + linter-warning sentence).
+- `grep -c "seven functions total" SECURITY.md` after C2 → `1`.
+
+## Blockers / surprises
+
+- **None during execution.** The Codex review of the spec surfaced three real corrections before C2 went out (Roles section also needed updating, `add_gear_item_with_list_item` has a patch migration adding category-ownership, the cascade-cleanup line read stronger than intended after C1). All three were patched into the spec; execution itself was clean.
+- **F2 was the only audit-recommended commit that hadn't shipped earlier.** Phase 10's wrap-up declared F2 "accepted-risk for the BaaS architecture" but never did the audit's literal recommended action (write up the residual risk in SECURITY.md). C1 closes that gap.
+- **C2 wasn't in the audit.** Phase 19's brief was to close `REVIEW-security.md`. Closing while SECURITY.md still claimed "four functions total" — when there are seven — would have been the wrong shape of closure. Surfaced during spec verification, not during the original 2026-05-04 audit.
+
+## Campaign milestone
+
+**`REVIEW-security.md` is fully closed.** All 13 audit findings are accounted for: F1, F3 (UI scope), F4 (cheap path), F5, F6, F7 closed in earlier phases; F2 closed in Phase 19; F8 closed via prior change; F9, F10, F11, F12, F13 are info-only confirmations. F4 full path is the only deferred item; server-enforced recent-auth on `delete_account()` is the deeper deferral surfaced during this phase's write-up.
+
+Two campaigns done, one to go: `REVIEW-quality.md` closed at Phase 17, `REVIEW-security.md` closed at Phase 19, `REVIEW-performance.md` is next.
+
+## Next phase
+
+**`REVIEW-performance.md` review.** Last in the campaign queue. Pre-flight will start with the same shape this phase used: read the audit, verify each finding against the current codebase (post-Phase-18 the test infrastructure and several refactors may have closed items audit-stale), produce a tight spec.
+
+The two security-side deferrals (F4 full path, server-enforced recent-auth on `delete_account()`) stay in the deck independent of the performance phase; either can be picked up if the threat model changes.
