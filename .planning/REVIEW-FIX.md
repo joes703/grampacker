@@ -634,6 +634,67 @@ After Phases 17 and 18, `REVIEW-quality.md` is fully closed and the campaign mov
 
 ---
 
+# grampacker — Phase 18 fix summary (2026-05-06)
+
+## Shipped
+
+- **Commit 1 (tooling) — `dbbd53b`** — installed `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`. Switched `vite.config.ts` from `vite`'s `defineConfig` to `vitest/config`'s, added a `test: { setupFiles: ['./vitest.setup.ts'] }` block, created `vitest.setup.ts` importing `@testing-library/jest-dom/vitest`. Pure-function tests stay on the node environment by default; jsdom-using tests opt in per-file via `// @vitest-environment jsdom`. Existing 45 tests still pass.
+- **Commit 2 (T-3, T-4, M-4) — `a45dbb6`** — three new pure-function test files. `assignSortOrderSlots` (6 tests, slot-redistribution semantics: reversed input → ascending slots, identity, non-contiguous slot preservation, empty, single, return-shape strips fields beyond `{id, sort_order}`). `parseDnDId` (5 tests covering all four valid kinds — `category`, `gear-item`, `item`, `list-card` — round-tripped through `makeDnDId`, plus three failure paths and the multi-colon contract). `randomTempId` (3 tests, one per branch: native happy path, `getRandomValues` fallback regex-checked for RFC 4122 v4 shape, throw branch when both APIs missing).
+- **Commit 3 (T-6) — `da62b06`** — three CSV edge-case tests added to `csv.test.ts`. The current parser handles BOM (Unicode whitespace, stripped by `.trim()` on header tokens), embedded `\r\n` inside quoted fields (parseRow tracks `inQuote`), and header-only CSVs (parseCsv early-returns `[]`, parseGearCsv surfaces the user-facing error). Tests lock the contracts so a future parser refactor can't silently break Lighterpack/Excel/Windows imports. The fourth audit item (cost above numeric(10,2) cap) was already covered in a prior phase; closed audit-stale.
+- **Commit 4 (T-7, M-1, M-2) — `8f67625`** — extracted `App.tsx`'s inline `MutationCache.onError` arrow to a named export at `src/lib/mutation-error-handler.ts`; both production and the test consume the same function. Added 18 tests in `optimistic.test.ts`: `makeOptimisticInsert` (4 tests: default-append, rollback, caller-supplied merge, undefined-cache seeding), `makeOptimisticUpdate` (4: apply-by-id, rollback, caller-supplied `updated_at` preserved through apply — M-2 contract — and undefined-cache no-op), `makeOptimisticDelete` (3: filter-by-id, rollback, unknown-id no-op), `makeOptimisticReorder` (3: patch + re-sort, rollback, untouched rows stay in slot), `mutationErrorHandler` (5: Error instance + structured warn, plain-object code extraction with `'[object Object]'` stringification, Error subclass with code property — the realistic Supabase PostgrestError shape — string error stringification, `[mutation] failed` fallback when `mutationKey` is unset). Existing 8 BulkDelete + BulkMove tests untouched.
+- **Commit 5 (T-9) — `b68f773`** — six tests for `resolveOrCreateGearForImport` covering the dedup matrix. Mocked Supabase via `vi.hoisted` (required because `vi.mock` is hoisted above imports — a plain top-level `let`/`const` would hit TDZ at hoist time). Captures insert payloads in `mockState` for assertion. Coverage: existing-library exact match (no insert), case-insensitive name match, whitespace-trimmed name match, **within-CSV duplicates create separate gear rows** (the actual contract per `import-helpers.ts:36-40`; an earlier draft of the spec had this backwards), no-match insert payload shape, and empty-name → null without insert.
+- **Commit 6 (M-10) — `af390e8`** — one test extending `WeightTable.test.ts` to cover the runtime guard added in Phase 15. A list_item with both `is_consumable` and `is_worn` true (impossible per the DB CHECK) triggers `console.warn` with the production message and structured payload, and the row's weight buckets as consumable (the historical precedence).
+- **Commit 7 (T-5) — `2ad04f2`** — replaced four `if (!row) return // No <table> in the test account.` silent no-ops with `expect(row, 'Test account missing seed for ...').toBeTruthy()`. Added a `beforeAll` seed-precondition that asserts `count >= 1` for each of the four reorderable tables. The describe.skip behavior when env vars aren't configured is preserved; what's gone is the *per-test silent no-op* when env vars ARE set but the test account is missing seed for a specific table. CLAUDE.md flags this exact failure mode ("a passing test on table A tells you nothing about table B"); the historical broken-categories-bulk-reorder bug was masked by it for weeks.
+- **Commit 8 (T-8) — `f3c8cfc`** — first jsdom test in the codebase. Nine tests for `usePortalPopover` covering the four-listener matrix: outside-mousedown closes; inside-trigger and inside-content mousedowns don't; Escape closes when `closeOnEscape` is true (default) and doesn't when false; window scroll closes when `closeOnScroll` is true and doesn't when false; window resize closes when `closeOnResize` is true and doesn't when false. Uses a small `Harness` component to mount real DOM trigger and content elements so `contains()` checks work against real Node identity.
+- **Commit 9 (M-6) — `a478936`** — four jsdom tests for `Modal` locking the Phase 16 simplification's contract: backdrop click closes; click inside content doesn't; `closeOnBackdropClick={false}` suppresses; children render inside the dialog. jsdom 29 doesn't implement `HTMLDialogElement.showModal()` / `close()` natively — file-level shims add minimal versions, with `close()` dispatching the native `'close'` event so React's `onClose` prop fires through the same delegation path production uses. `afterEach(cleanup)` ensures test isolation.
+
+## Audit closures
+
+- **T-1 — closed audit-stale.** `WeightTable.test.ts` already covers exactly what T-1 asked for (orphan-cat path, `quantity * weight_grams` math, empty input). The audit was stale at writing. Phase 18 extends WeightTable.test.ts with M-10's consumable+worn warning test in C6 — the file is now at 4 tests.
+- **T-2 — closed audit-stale.** `grouping.test.ts` (25 tests) covers `groupListItemsByCategory`, `groupGearItemsByCategory`, and the generic `groupByCategory` including the deliberate-divergence cases around empty-categories handling. Audit was stale.
+- **T-3, T-4, T-5, T-6, T-7, T-8, T-9 — closed shipped** (per per-commit summaries above).
+- **T-7 partial audit-stale.** `BulkDelete` and `BulkMove` were already tested in prior phases (8 tests). Phase 18 covered the remaining four helpers (Insert, Update, Delete, Reorder) plus the MutationCache observability handler.
+- **M-1, M-2, M-4, M-6, M-10 — closed shipped** (rolled into Phase 18 commits per the spec's deferred-from-prior-phases mapping).
+
+## Deferred (low value vs. setup cost)
+
+- **M-3 (ListSelector force-close on viewport change).** `useLayoutEffect` viewport-change simulation needs a heavy harness (`window.matchMedia` mock + layout flush) for a UX-only behavior whose visible effect is "drawer closes on rotate." Manual smoke covers it.
+- **M-5 (FileReader error/abort handlers).** FileReader is in jsdom but realistic error/abort flows require either spying on the constructor or wrapping the helper in a seam — neither is cheap. The error path is rare enough that manual smoke is sufficient.
+- **M-7 (RootRedirect reduce).** The reducer is inline inside the component and isn't extractable as a pure function without a deliberate refactor. Manual smoke verified the algorithm change in Phase 14.
+- **M-8 (DnD lookup Map).** The Map's correctness is verified by dnd-kit's own tests indirectly; a regression here would manifest as broken drag rather than silent miscalculation.
+
+## Verification results
+
+- `npm run build`: pass at every commit. C9 surfaced a `toBeInTheDocument` matcher type-augmentation gap (the `@testing-library/jest-dom/vitest` import does runtime extension of the matcher set but the type augmentation isn't picked up by the project's `tsc -b` includes); switched the affected assertion to a plainer `.textContent` check rather than chase tsconfig changes for one test.
+- `npm run lint`: pass at every commit.
+- `npm test -- --run`: progression 45 → 59 → 62 → 81 → 87 → 88 (C6 added 1) → 88 (C7 was a fix, no count change on local-run skips) → 97 → 101. Final state: **101 passing | 4 skipped (105 total)**. The 4 skipped is the env-gated bulk-reorder integration `describe.skip` block when `VITE_SUPABASE_URL` etc. aren't set. When those env vars ARE set, the per-test silent no-ops are gone — missing seed now fails loud with `Test account missing seed for X`.
+- **Bundle gzip 187.84 KB (Phase 17 baseline) → 187.84 KB (unchanged)** — test code never enters the production bundle; the only production-side touch was the App.tsx handler extraction in C4 (zero behavior change).
+
+## Blockers / surprises
+
+- **C4 test expectation correction.** The first iteration of the MutationCache observability tests assumed plain non-Error objects would have their `message` property surface as the `error` payload. Actual handler behavior (line 37 of mutation-error-handler.ts): `error instanceof Error ? error.message : String(error)` — non-Error objects stringify to `'[object Object]'`. Fixed the test to match production. The realistic Supabase shape (PostgrestError, an Error subclass with `code`) is covered by a separate test that exercises that exact path.
+- **C9 Modal test required jsdom dialog shim.** jsdom 29 doesn't implement `HTMLDialogElement.showModal()` / `.close()`. Without shims, the test render either threw or left `dialog.open === false` regardless of the `open` prop. The shim's `close()` must dispatch the native `'close'` event so React's `onClose` prop fires through the production code path; without that the backdrop-click test silently failed because the dispatched event tree never reached React's delegation.
+- **C9 `toBeInTheDocument` type gap.** Runtime works (matchers loaded via `vitest.setup.ts`), but TypeScript's `tsc -b` doesn't see the `@testing-library/jest-dom` declaration merging because `vitest.setup.ts` lives outside the `tsconfig.app.json` include set. Sidestepped by using a plainer `.textContent` assertion in the one place it came up. Future jsdom tests that want richer matchers can either include the setup in tsconfig or import the matcher types directly in the test file. Not blocking; documented for next time.
+
+## Campaign milestone
+
+**`REVIEW-quality.md` is fully closed.** All four clusters are accounted for:
+
+- **W-cluster** (writing/style nits) — Phases 12-13.
+- **M-cluster** (medium defensive/UX issues) — Phases 14-16, with the test-side closures for M-1, M-2, M-4, M-6, M-10 rolled into Phase 18.
+- **N-cluster** (nit-grade refactors) — Phase 17.
+- **T-cluster** (test coverage) — Phase 18, with T-1 + T-2 closed audit-stale and T-3 through T-9 shipped or audit-closed.
+
+Test count: 45 → 101 passing (+56 new tests across 9 commits). 4 explicit deferrals (M-3, M-5, M-7, M-8) with documented reasoning.
+
+## Next phase
+
+**`REVIEW-security.md` review** — next up per the user's stated quality → security → performance ordering. The recent dependency commits (`3853399` security bump for `serialize-javascript >=7.0.5`; `d28af3e` Node 20+ runtime pin) addressed acute supply-chain risk; the remaining audit work is the unread security findings.
+
+After `REVIEW-security.md` closes, the campaign moves to `REVIEW-performance.md` (the unread performance findings). The F4 SECURITY DEFINER `fetch_shared_list` work stays in the deck for whenever the threat model justifies it.
+
+---
+
 # grampacker — Phase 17 fix summary (2026-05-06)
 
 ## Shipped
