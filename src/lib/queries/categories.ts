@@ -2,11 +2,7 @@ import { supabase } from '../supabase'
 import type { Category, PublicCategory } from '../types'
 import { bulkUpdateSortOrder } from './optimistic'
 
-// Owner-scoped private read. Explicit user_id filter is defense in depth
-// against the cross-channel leak from categories_public_select_via_shared_list
-// — see SECURITY.md "Query-level owner scoping". userId is required so a
-// missing-session caller fails loudly rather than returning own +
-// transitively-readable shared rows.
+// Owner-scoped private read — see queries/index.ts for the convention.
 export async function fetchCategories(userId: string): Promise<Category[]> {
   const { data, error } = await supabase
     .from('categories')

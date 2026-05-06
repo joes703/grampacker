@@ -4,11 +4,8 @@ import type { ListImportRow } from '../csv'
 import { bulkUpdateSortOrder } from './optimistic'
 import { resolveOrCreateCategories, resolveOrCreateGearForImport } from './import-helpers'
 
-// Owner-scoped private read. Explicit user_id filter is defense in depth
-// against the cross-channel leak from list_items_public_select_shared —
-// see SECURITY.md "Query-level owner scoping". userId is required so a
-// missing-session caller fails loudly rather than returning own + shared
-// rows. Uses the list_items.user_id column added in 20260506000002.
+// Owner-scoped private read — see queries/index.ts for the convention.
+// Uses the list_items.user_id column added in 20260506000002.
 export async function fetchListItems(listId: string, userId: string): Promise<ListItemWithGear[]> {
   const { data, error } = await supabase
     .from('list_items')
