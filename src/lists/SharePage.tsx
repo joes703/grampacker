@@ -39,7 +39,7 @@ export default function SharePage() {
   )
 
   const { data: categories = [] } = useQuery({
-    queryKey: ['shared-list-categories', list?.id, categoryIds.join(',')],
+    queryKey: ['shared-list-categories', list?.id, [...categoryIds].sort().join(',')],
     queryFn: () => fetchSharedListCategories(categoryIds),
     enabled: Boolean(list?.id) && categoryIds.length > 0,
   })
