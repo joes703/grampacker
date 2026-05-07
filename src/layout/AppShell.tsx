@@ -7,6 +7,7 @@ import ListsPage from '../lists/ListsPage'
 import ListDetailPage from '../lists/ListDetailPage'
 import SettingsPage from '../settings/SettingsPage'
 import HelpPage from '../help/HelpPage'
+import OfflineBanner from '../components/OfflineBanner'
 
 function NotFound() {
   return (
@@ -20,6 +21,7 @@ export default function AppShell() {
   return (
     <SidebarDrawerProvider>
       <div className="min-h-screen bg-gray-50">
+        <OfflineBanner />
         <NavBar />
         <main className="mx-auto max-w-7xl px-4 pt-4 lg:pt-8 pb-8">
           <Routes>

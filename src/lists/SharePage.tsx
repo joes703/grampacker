@@ -11,6 +11,7 @@ import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
 import AboutLink from '../components/AboutLink'
+import OfflineBanner from '../components/OfflineBanner'
 
 // Notes are rendered as Markdown on the public share view (typing markdown
 // in the authed NotesEditor textarea is the only authoring path). Lazy so
@@ -109,6 +110,7 @@ export default function SharePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <OfflineBanner />
       <div className="mx-auto max-w-5xl px-4 py-10">
         {/* Header */}
         <div className="mb-6 flex items-center gap-3">
