@@ -124,19 +124,26 @@ function CategoryGroup({
   // passes collapsible=false and the button isn't rendered there).
   const regionId = `cat-region-${categoryId ?? 'uncategorized'}`
   // sectionItems = the items that BELONG to this category section. When
-  // hideWorn is on (pack mode + Group Worn), worn items belong to the
-  // trailing Worn section instead, so they're excluded here for header
-  // counts AND the visible row list. Without this split, a category would
-  // show "2 / 5" while only 3 non-worn rows render, and an all-worn
-  // category would show counts even though every row moved away.
+  // hideWorn is on (list.group_worn enabled, in any mode including the
+  // share view), worn items belong to the trailing Worn section instead,
+  // so they're excluded here for header counts, footer totals, AND the
+  // visible row list. Without this split, the category header would show
+  // "(5)" while only 3 non-worn rows render, and the footer total would
+  // include weight the user can't see in this section — double-counted
+  // against the same rows showing in the trailing Worn section.
   const sectionItems = hideWorn ? items.filter((i) => !i.is_worn) : items
   // Only displayed in pack-mode header. Gating the read on packMode means
   // the share view (which never enters pack mode) doesn't pull is_packed
   // off each item; that field is excluded from the public read path.
   const packedCount = packMode ? sectionItems.filter((i) => i.is_packed).length : 0
-  // totalGrams is shown only in the !packMode footer (and hideWorn is
-  // packMode-only), so the full items array is the right input here.
-  const totalGrams = items.reduce((s, i) => s + i.gear_item.weight_grams * i.quantity, 0)
+  // Footer total (non-pack mode). Sums sectionItems so the displayed total
+  // matches the visible rows when hideWorn is on. The list-level
+  // WeightTable is unaffected and still reports worn weight as
+  // "Worn (not added)" for the overall pack-weight summary.
+  const totalGrams = sectionItems.reduce(
+    (s, i) => s + i.gear_item.weight_grams * i.quantity,
+    0,
+  )
   const showKebabSlot = !packMode && Boolean(onDelete)
   // "Complete" = pack mode, has section items, every section item packed.
   const complete = packMode && sectionItems.length > 0 && packedCount === sectionItems.length
@@ -190,7 +197,7 @@ function CategoryGroup({
             )}
             <span className={`truncate text-sm font-medium ${complete ? 'text-gray-400' : 'text-gray-700'}`}>{name}</span>
             <span className="shrink-0 text-xs tabular-nums text-gray-400">
-              {packMode ? `${packedCount} / ${sectionItems.length}` : `(${items.length})`}
+              {packMode ? `${packedCount} / ${sectionItems.length}` : `(${sectionItems.length})`}
             </span>
             {complete && (
               <Check size={14} className="shrink-0 text-green-600" aria-label="All packed" />
