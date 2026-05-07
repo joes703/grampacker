@@ -100,41 +100,44 @@ export default function WeightTable({ items, categories }: Props) {
 
   const { catRows, baseGrams, consumableGrams, wornGrams, totalPackGrams } = breakdown
 
+  const labelCell = 'py-px pl-3 pr-2'
+  const valueCell = 'py-px px-2 text-right tabular-nums'
+
   return (
-    <table className="w-full text-sm text-gray-700">
+    <table className="w-full text-xs text-gray-700">
         <tbody className="divide-y divide-gray-50">
           {catRows.map((row) => (
             <tr key={row.id}>
-              <td className="py-0.5 pl-4 pr-3">{row.name}</td>
-              <td className="py-0.5 px-3 text-right tabular-nums">{fmtG(row.grams)}</td>
-              <td className="py-0.5 px-3 text-right tabular-nums">{fmtLbOz(row.grams)}</td>
+              <td className={labelCell}>{row.name}</td>
+              <td className={valueCell}>{fmtG(row.grams)}</td>
+              <td className={valueCell}>{fmtLbOz(row.grams)}</td>
             </tr>
           ))}
         </tbody>
         <tfoot className="divide-y divide-gray-100 border-t-2 border-gray-200">
           <tr className="font-semibold">
-            <td className="py-0.5 pl-4 pr-3">Base weight</td>
-            <td className="py-0.5 px-3 text-right tabular-nums">{fmtG(baseGrams)}</td>
-            <td className="py-0.5 px-3 text-right tabular-nums">{fmtLbOz(baseGrams)}</td>
+            <td className={labelCell}>Base weight</td>
+            <td className={valueCell}>{fmtG(baseGrams)}</td>
+            <td className={valueCell}>{fmtLbOz(baseGrams)}</td>
           </tr>
           {consumableGrams > 0 && (
             <tr>
-              <td className="py-0.5 pl-4 pr-3">Consumables</td>
-              <td className="py-0.5 px-3 text-right tabular-nums">{fmtG(consumableGrams)}</td>
-              <td className="py-0.5 px-3 text-right tabular-nums">{fmtLbOz(consumableGrams)}</td>
+              <td className={labelCell}>Consumables</td>
+              <td className={valueCell}>{fmtG(consumableGrams)}</td>
+              <td className={valueCell}>{fmtLbOz(consumableGrams)}</td>
             </tr>
           )}
           {wornGrams > 0 && (
             <tr className="text-gray-400">
-              <td className="py-0.5 pl-4 pr-3">Worn (not added)</td>
-              <td className="py-0.5 px-3 text-right tabular-nums">{fmtG(wornGrams)}</td>
-              <td className="py-0.5 px-3 text-right tabular-nums">{fmtLbOz(wornGrams)}</td>
+              <td className={labelCell}>Worn (not added)</td>
+              <td className={valueCell}>{fmtG(wornGrams)}</td>
+              <td className={valueCell}>{fmtLbOz(wornGrams)}</td>
             </tr>
           )}
           <tr className="font-semibold border-t-2 border-gray-200">
-            <td className="py-0.5 pl-4 pr-3">Total pack weight</td>
-            <td className="py-0.5 px-3 text-right tabular-nums">{fmtG(totalPackGrams)}</td>
-            <td className="py-0.5 px-3 text-right tabular-nums">{fmtLbOz(totalPackGrams)}</td>
+            <td className={labelCell}>Total pack weight</td>
+            <td className={valueCell}>{fmtG(totalPackGrams)}</td>
+            <td className={valueCell}>{fmtLbOz(totalPackGrams)}</td>
           </tr>
         </tfoot>
     </table>

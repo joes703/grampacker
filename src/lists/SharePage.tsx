@@ -107,8 +107,9 @@ export default function SharePage() {
           </button>
         </div>
 
-        {/* Notes + Weight summary — side by side, equal halves (read-only) */}
-        <div className={`mb-6 grid gap-4 ${items.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
+        {/* Notes + Weight summary — side by side on desktop, with Notes
+            getting the wider read-only column. */}
+        <div className={`mb-6 grid gap-4 ${items.length > 0 ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
           <PanelCard title="Notes">
             {list.description ? (
               <p className="px-3 py-2 text-sm text-gray-700 whitespace-pre-line min-h-[8rem]">
@@ -146,4 +147,3 @@ export default function SharePage() {
     </div>
   )
 }
-

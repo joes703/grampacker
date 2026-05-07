@@ -783,12 +783,13 @@ function ListDetailInner({
             />
           )}
 
-          {/* Notes + Weight summary — side by side, equal halves. Both
+          {/* Notes + Weight summary — side by side on desktop, with Notes
+              getting the wider column. Both
               hidden in pack mode: neither is active-use information while
               packing (PackingProgress above is the only summary the
               packer needs). The entire grid renders nothing in pack mode. */}
           {mode !== 'pack' && (
-            <div className={`grid gap-4 ${listItems.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
+            <div className={`grid gap-4 ${listItems.length > 0 ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
               <PanelCard title="Notes">
                 <NotesEditor
                   key={list.id}
