@@ -20,7 +20,7 @@ export default function NotesEditor({ initial, onSave }: Props) {
     <textarea
       value={draft}
       maxLength={2000}
-      placeholder="Add notes about this packing list…"
+      placeholder="Add notes about this packing list… (Markdown supported on shared views)"
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       className="flex-1 min-h-[8rem] w-full resize-none px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none"
