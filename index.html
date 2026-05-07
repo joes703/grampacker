@@ -8,6 +8,10 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#059669" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <!-- iOS Safari pre-16 honors the apple-prefixed name; modern iOS reads
+         either, but keeping both is the canonical Apple guidance and costs
+         nothing. Without this, iOS may decline to launch in standalone. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="grampacker" />
     <title>grampacker</title>
