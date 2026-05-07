@@ -175,6 +175,11 @@ function CategorySectionInner(
                 <span className="shrink-0 w-20 text-right">Price</span>
                 <span className="shrink-0 w-24 text-right">Purchased</span>
                 <span className="shrink-0 w-24 text-right">Weight</span>
+                {/* Uncategorized has no category-level kebab in the header,
+                   but item rows still render a per-row kebab in non-select
+                   mode. Without this spacer, the labels above would slide
+                   2.125rem (w-7 + gap-1.5) right of the row column edges. */}
+                {!category && <span className="shrink-0 w-7" />}
               </div>
             )}
             {category && (
