@@ -55,6 +55,11 @@ type Props = {
   // on the base Props so CategoryGroup's rowPropsFor() builder can spread the
   // same object into either renderer.
   reorderPending?: boolean
+  // Pack-mode write-block: when true, the is_packed checkbox is disabled and
+  // its onChange is a no-op. Set by ListDetailPage when navigator.onLine is
+  // false — offline pack-mode is read-only by deliberate product choice (no
+  // mutation outbox; honest capability boundary). Ignored outside pack mode.
+  packActionsDisabled?: boolean
   onUpdate?: (patch: Partial<Pick<ListItemWithGear, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed'>>) => void
   onSaveName?: (name: string) => void
   onSaveDescription?: (description: string) => void
@@ -72,6 +77,7 @@ export default function ItemRow({
   weightUnit,
   isBelowLg,
   packMode = false,
+  packActionsDisabled = false,
   onUpdate,
   onSaveName,
   onSaveDescription,
@@ -148,13 +154,25 @@ export default function ItemRow({
       >
         {/* Wrapping label means clicking/tapping the name toggles packed,
             and screen readers announce the item name as the checkbox's
-            accessible name (no separate aria-label needed). */}
-        <label className="flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 cursor-pointer">
+            accessible name (no separate aria-label needed).
+
+            When packActionsDisabled (offline), the input is `disabled` so
+            click + keyboard activation are blocked at the platform level,
+            and the onChange is also a no-op as defense in depth. The label
+            drops cursor-pointer to match. The native disabled state is the
+            right semantic — assistive tech announces "disabled checkbox,"
+            which composes with the offline banner above to explain why. */}
+        <label className={`flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 ${packActionsDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
           <input
             type="checkbox"
             checked={item.is_packed}
-            onChange={(e) => onUpdate?.({ is_packed: e.target.checked })}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 shrink-0"
+            disabled={packActionsDisabled}
+            onChange={(e) => {
+              if (packActionsDisabled) return
+              onUpdate?.({ is_packed: e.target.checked })
+            }}
+            title={packActionsDisabled ? 'Offline — reconnect to mark items as packed' : undefined}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
           />
           {/* Name + description at lg+ in the same 2:3 proportion as edit
               mode. <lg keeps the single-column name-only layout (mirrors

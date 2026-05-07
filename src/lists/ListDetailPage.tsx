@@ -45,6 +45,7 @@ import { supabase } from '../lib/supabase'
 import type { Category, GearItem, ListItemWithGear, List } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
+import { useOnline } from '../lib/use-online'
 import { useLatestRef } from '../lib/use-latest-ref'
 import { writeLastListId, readLastListId, clearLastListId } from '../lib/last-list-id'
 import { parseDnDId } from '../lib/dnd-ids'
@@ -142,6 +143,13 @@ function ListDetailInner({
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
   // long list registers ONE matchMedia subscription instead of one per row.
   const isBelowLg = useIsBelowLg()
+  // Page-level online state. Pack-mode write actions (is_packed checkbox,
+  // Reset packed) are disabled while offline by deliberate product choice
+  // (no offline mutation outbox; honest capability boundary). Read-only
+  // viewing of cached lists still works. Drilled through sharedGroupProps
+  // so each row gets the same flag as a stable boolean rather than each
+  // row subscribing to online events itself.
+  const online = useOnline()
   // Pack-mode filter: when true, hide already-packed items from each
   // category. Header counts and the "complete" affordance still reflect the
   // full items array. Lifted here because both PackingProgress (the toggle)
@@ -550,6 +558,11 @@ function ListDetailInner({
   }
 
   async function resetPacked() {
+    // Defense-in-depth offline guard. The PackingProgress button is also
+    // disabled when offline so this path shouldn't be reachable, but a
+    // bypassed UI state (e.g. a stale render between offline event and
+    // re-render) shouldn't fire a doomed mutation.
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return
     // Optimistic clear — flip is_packed=false on every cached item so the UI
     // updates immediately, then issue a single PATCH and invalidate to settle.
     await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
@@ -678,8 +691,18 @@ function ListDetailInner({
       isBelowLg,
       sortable: true,
       showUnpackedOnly,
-      onUpdate: (itemId: string, patch: ListItemPatch) =>
-        updateMut.mutate({ itemId, patch }),
+      // Pack-mode checkbox write-block when offline. Forwarded through
+      // CategoryGroup → ItemRow. Only consulted when packMode is true (the
+      // checkbox is the only pack-mode write affordance).
+      packActionsDisabled: !online,
+      onUpdate: (itemId: string, patch: ListItemPatch) => {
+        // Defense-in-depth: ItemRow already disables the checkbox when
+        // packActionsDisabled, but if any other code path tries to fire an
+        // is_packed update offline, suppress it rather than letting the
+        // mutation fail-and-rollback.
+        if (typeof navigator !== 'undefined' && !navigator.onLine && 'is_packed' in patch) return
+        updateMut.mutate({ itemId, patch })
+      },
       onDelete: (itemId: string) => deleteMut.mutate(itemId),
       onSaveGearName: (gearId: string, n: string) =>
         updateGearItemMut.mutate({ id: gearId, patch: { name: n } }),
@@ -698,7 +721,7 @@ function ListDetailInner({
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above re: mutation refs
-    [mode, weightUnit, isBelowLg, showUnpackedOnly],
+    [mode, weightUnit, isBelowLg, showUnpackedOnly, online],
   )
 
   // ── Not found ──────────────────────────────────────────────────────────────
@@ -773,6 +796,7 @@ function ListDetailInner({
               onReset={resetPacked}
               showUnpackedOnly={showUnpackedOnly}
               onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
+              offline={!online}
             />
           )}
 
