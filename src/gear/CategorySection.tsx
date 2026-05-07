@@ -198,6 +198,21 @@ function CategorySectionInner(
             // Per-category SortableContext — items reorder within their own
             // category only. Each row's useSortable resolves to this list.
             <SortableContext items={items.map((i) => makeDnDId('gear-item', i.id))} strategy={verticalListSortingStrategy}>
+              {/* Desktop column labels — width/gap/padding mirror GearItemRow's
+                 right-side columns (w-20 cost, w-24 purchase date, w-24
+                 weight, w-7 kebab) so text aligns over the values below.
+                 Hidden on mobile and when the category is collapsed; only
+                 rendered when there's at least one row to label. */}
+              <div
+                aria-hidden="true"
+                className="hidden lg:flex items-center gap-1.5 px-3 pb-0.5 text-xs text-gray-400"
+              >
+                <div className="flex-1 min-w-0" />
+                <span className="shrink-0 w-20 text-right">Price</span>
+                <span className="shrink-0 w-24 text-right">Purchased</span>
+                <span className="shrink-0 w-24 text-right">Weight</span>
+                <span className="shrink-0 w-7" />
+              </div>
               {items.map((item) => (
                 <SortableGearItemRow
                   key={item.id}
