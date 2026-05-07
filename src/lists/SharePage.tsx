@@ -92,6 +92,15 @@ export default function SharePage() {
   // Read-only view — no `prior` stability arg (renders once per slug-fetch).
   const grouped = groupListItemsByCategory(itemsForRender, categoriesForRender)
 
+  // Honor the owner's per-list "Group worn" preference. When on, worn items
+  // are filtered out of category sections (via CategoryGroup's hideWorn)
+  // and rendered in a trailing Worn section, mirroring the authed
+  // ListDetailPage. Share view is read-only; no toggle here.
+  const showWornGroup = list.group_worn
+  const wornItems = showWornGroup
+    ? grouped.flatMap((g) => g.items.filter((i) => i.is_worn))
+    : []
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-5xl px-4 py-10">
@@ -136,8 +145,18 @@ export default function SharePage() {
               weightUnit={weightUnit}
               isBelowLg={isBelowLg}
               collapsible={false}
+              hideWorn={showWornGroup}
             />
           ))}
+          {showWornGroup && wornItems.length > 0 && (
+            <CategoryGroup
+              name="Worn"
+              items={wornItems}
+              weightUnit={weightUnit}
+              isBelowLg={isBelowLg}
+              collapsible={false}
+            />
+          )}
         </div>
 
         <div className="mt-8 text-center">

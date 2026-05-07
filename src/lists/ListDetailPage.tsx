@@ -147,12 +147,9 @@ function ListDetailInner({
   // full items array. Lifted here because both PackingProgress (the toggle)
   // and CategoryGroup (the filter consumer) live as children of this page.
   const [showUnpackedOnly, setShowUnpackedOnly] = useState(false)
-  // Pack-mode "Group worn" toggle — when true, is_worn items are pulled out
-  // of their categories and rendered in a flat Worn section at the bottom,
-  // mirroring how worn gear sits by the door rather than in the pack. State
-  // is per-instance (resets on list switch via key=routeId) and pack-mode
-  // only; edit mode ignores it.
-  const [groupWorn, setGroupWorn] = useState(false)
+  // "Group worn" is per-list and persisted on lists.group_worn — derived
+  // below from the resolved list row, not local state. Applies in both
+  // normal and pack mode, and is honored on /r/<slug>.
   // Mobile sidebar drawer — open/setOpen are owned by SidebarDrawerContext
   // so the trigger button in NavBar (a sibling subtree under AppShell) can
   // toggle the same state. The hook also sets `available` so NavBar knows
@@ -353,6 +350,22 @@ function ListDetailInner({
       apply: (item, description) => ({
         ...item,
         description: description || null,
+        updated_at: new Date().toISOString(),
+      }),
+    }),
+  })
+
+  // Toggle the per-list "Group worn" preference. Optimistic on ['lists']
+  // mirrors notesMut so the UI flips immediately and rolls back on error.
+  const groupWornMut = useMutation({
+    mutationFn: (next: boolean) => updateList(listId, { group_worn: next }),
+    ...makeOptimisticUpdate<List, boolean>({
+      qc,
+      queryKey: queryKeys.lists(),
+      id: () => listId,
+      apply: (item, next) => ({
+        ...item,
+        group_worn: next,
         updated_at: new Date().toISOString(),
       }),
     }),
@@ -601,18 +614,16 @@ function ListDetailInner({
 
   const grouped = useGroupedListItems(listItems, categories)
 
-  // Pack-mode + Group Worn: hide is_worn items inside each category and
-  // render them in a trailing Worn section. Phase 5 follow-up: previously
-  // we mapped+filtered to a `displayedGrouped` array up here, which minted
-  // fresh group objects AND fresh items arrays for EVERY category whenever
-  // any single item changed — defeating React.memo(CategoryGroup). The
-  // worn-hiding is now done at the leaf via CategoryGroup's `hideWorn`
-  // prop (same shape as the existing `showUnpackedOnly`), so unchanged
-  // categories keep their stable items reference from useGroupedListItems.
-  // The trailing Worn section gets its items from useStableWornItems,
-  // which holds the prior result and reuses it when worn membership +
-  // worn-item references are unchanged.
-  const showWornGroup = mode === 'pack' && groupWorn
+  // Group Worn: hide is_worn items inside each category and render them in
+  // a trailing Worn section. Phase 5 follow-up: worn-hiding is done at the
+  // leaf via CategoryGroup's `hideWorn` prop (same shape as the existing
+  // `showUnpackedOnly`), so unchanged categories keep their stable items
+  // reference from useGroupedListItems. The trailing Worn section gets its
+  // items from useStableWornItems, which holds the prior result and reuses
+  // it when worn membership + worn-item references are unchanged. Sourced
+  // from list.group_worn (per-list, persisted) and active in both normal
+  // and pack mode.
+  const showWornGroup = list?.group_worn ?? false
   const wornItems = useStableWornItems(grouped, showWornGroup)
 
   // gearItems / listItems are read by handlers in sharedGroupProps and the
@@ -778,8 +789,6 @@ function ListDetailInner({
               onReset={resetPacked}
               showUnpackedOnly={showUnpackedOnly}
               onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
-              groupWorn={groupWorn}
-              onToggleGroupWorn={() => setGroupWorn((v) => !v)}
             />
           )}
 
@@ -802,6 +811,34 @@ function ListDetailInner({
                   <WeightTable items={listItems} categories={categories} />
                 </PanelCard>
               )}
+            </div>
+          )}
+
+          {/* List-organization controls — sit above the items list and stay
+              visible in both normal and pack mode. The Group worn toggle
+              writes to lists.group_worn (per-list, persisted) so the
+              setting survives reloads, mobile sessions, and the public
+              /r/<slug> share view. Hidden when there are no items because
+              the toggle is only meaningful with rows to organize. */}
+          {listItems.length > 0 && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => groupWornMut.mutate(!showWornGroup)}
+                aria-pressed={showWornGroup}
+                title={
+                  showWornGroup
+                    ? 'Worn items are grouped at the bottom — click to merge back into categories'
+                    : 'Move worn items into a separate Worn section'
+                }
+                className={`rounded-lg border px-3 py-1 text-xs font-medium ${
+                  showWornGroup
+                    ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                    : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Group worn
+              </button>
             </div>
           )}
 
@@ -917,19 +954,23 @@ function ListDetailInner({
                   </DragOverlay>
                 </DndContext>
 
-                {/* Worn section — pack-mode only, only when toggle is on and
-                    there's at least one worn item. Sits outside the DndContext
-                    (drag is disabled in pack mode anyway, and the section
-                    isn't a drop target). sortable=false so rows render as
-                    plain ItemRow without engaging dnd-kit. The items array
-                    walks categories in display order so the in-section
-                    order is stable and predictable. */}
+                {/* Worn section — visible in both normal and pack mode when
+                    list.group_worn is on and at least one worn item exists.
+                    Sits outside the DndContext: it isn't a reorder target
+                    (sortable=false), and worn items don't render inside
+                    their original category sections while grouping is on
+                    (CategoryGroup's hideWorn handles that). packMode follows
+                    the page mode so the section's row chrome (packed
+                    checkbox column, packed-count header) matches the rest
+                    of the page. The items array walks categories in display
+                    order so the in-section order is stable and predictable. */}
                 {showWornGroup && wornItems.length > 0 && (
                   <CategoryGroup
                     name="Worn"
                     items={wornItems}
                     weightUnit={weightUnit}
-                    packMode
+                    isBelowLg={isBelowLg}
+                    packMode={mode === 'pack'}
                     sortable={false}
                     showUnpackedOnly={showUnpackedOnly}
                     onUpdate={sharedGroupProps.onUpdate}

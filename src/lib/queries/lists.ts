@@ -53,10 +53,12 @@ export async function fetchLists(userId: string): Promise<List[]> {
 // Public read (shared list, no auth). Returns only the columns the share
 // view renders — no user_id, no slug echo, no is_shared / sort_order /
 // timestamps. See SECURITY.md "Public read paths" for the allowlist.
+// group_worn is included so the share view honors the owner's worn-grouping
+// preference (see PublicList in types.ts).
 export async function fetchSharedList(slug: string): Promise<PublicList | null> {
   const { data, error } = await supabase
     .from('lists')
-    .select('id, name, description')
+    .select('id, name, description, group_worn')
     .eq('slug', slug)
     .eq('is_shared', true)
     .single()
@@ -89,7 +91,7 @@ export async function createList(
 
 export async function updateList(
   id: string,
-  patch: Partial<Pick<List, 'name' | 'description' | 'is_shared'>>,
+  patch: Partial<Pick<List, 'name' | 'description' | 'is_shared' | 'group_worn'>>,
 ): Promise<void> {
   const { error } = await supabase.from('lists').update(patch).eq('id', id)
   if (error) throw error
