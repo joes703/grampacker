@@ -1,11 +1,11 @@
-# About grampacker
+**About grampacker**
 
-I built grampacker for myself. I was keeping my gear and packing lists in spreadsheets but I wanted a better tool. I tried other apps and ran into different limits. So I built the tool I wanted.
+grampacker is a web application that helps backpackers build packing lists and track pack weight.
 
-I'm sharing it in case it's useful to you too. It's free to use.
+You can keep an inventory of your gear, create multiple packing lists, share lists with others, and use packing mode to check off items as you pack.
 
-This is a personal project. No company, no roadmap committee, no ads, no data harvesting. You sign in with an email and password. Your gear, your lists, and the URLs you choose to share are yours. I'll keep it running and maintained as long as I can.
+grampacker is a personal project. It is free to use, with no ads or data harvesting.
 
-## Contact
+**Contact**
 
-For bugs or feature ideas: hello [at] grampacker [dot] app.
+For bugs or feature ideas: hello [at] grampacker [dot] app
