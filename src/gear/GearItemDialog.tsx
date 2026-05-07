@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } from 'lucide-react'
+import { Check, CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
 import Modal from '../components/Modal'
 import WeightInput from '../components/WeightInput'
@@ -30,6 +30,7 @@ type Props = {
    *  argument is null. */
   listContext?: ListContextPatch
   onSave: (gearPatch: GearPatch, listPatch: ListContextPatch | null) => void
+  onCreateCategory?: (name: string) => Promise<Category>
   onClose: () => void
   saving?: boolean
   /** Mobile-only (< lg) action buttons. Both render only when listContext
@@ -50,6 +51,7 @@ export default function GearItemDialog({
   defaultCategoryId = null,
   listContext,
   onSave,
+  onCreateCategory,
   onClose,
   saving = false,
   onRemoveFromList,
@@ -75,6 +77,10 @@ export default function GearItemDialog({
   const [quantity, setQuantity] = useState(listContext?.quantity ?? 1)
   const [worn, setWorn] = useState(listContext?.is_worn ?? false)
   const [consumable, setConsumable] = useState(listContext?.is_consumable ?? false)
+  const [newCategoryOpen, setNewCategoryOpen] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [creatingCategory, setCreatingCategory] = useState(false)
+  const [categoryError, setCategoryError] = useState<string | null>(null)
 
   // Form state is initialized from props by the useState initializers above;
   // there is no reset effect because the dialog is keyed on the target's id
@@ -122,6 +128,23 @@ export default function GearItemDialog({
     const next = !consumable
     setConsumable(next)
     if (next) setWorn(false)
+  }
+
+  async function handleCreateCategory() {
+    const trimmed = newCategoryName.trim()
+    if (!trimmed || !onCreateCategory) return
+    setCreatingCategory(true)
+    setCategoryError(null)
+    try {
+      const created = await onCreateCategory(trimmed)
+      setCategoryId(created.id)
+      setNewCategoryName('')
+      setNewCategoryOpen(false)
+    } catch {
+      setCategoryError("Couldn't create category. Please try again.")
+    } finally {
+      setCreatingCategory(false)
+    }
   }
 
   const isEdit = Boolean(item)
@@ -185,7 +208,14 @@ export default function GearItemDialog({
               <select
                 id="gi-cat"
                 value={categoryId ?? ''}
-                onChange={(e) => setCategoryId(e.target.value || null)}
+                onChange={(e) => {
+                  if (e.target.value === '__new_category__') {
+                    setNewCategoryOpen(true)
+                    setCategoryError(null)
+                  } else {
+                    setCategoryId(e.target.value || null)
+                  }
+                }}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">— Uncategorized —</option>
@@ -194,7 +224,54 @@ export default function GearItemDialog({
                     {c.name}
                   </option>
                 ))}
+                {onCreateCategory && <option value="__new_category__">+ New category</option>}
               </select>
+              {newCategoryOpen && (
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Category name"
+                    maxLength={128}
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void handleCreateCategory()
+                      }
+                      if (e.key === 'Escape') {
+                        setNewCategoryName('')
+                        setNewCategoryOpen(false)
+                        setCategoryError(null)
+                      }
+                    }}
+                    className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleCreateCategory()}
+                    disabled={creatingCategory || !newCategoryName.trim()}
+                    aria-label="Create category"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
+                  >
+                    <Check size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewCategoryName('')
+                      setNewCategoryOpen(false)
+                      setCategoryError(null)
+                    }}
+                    aria-label="Cancel new category"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+              {categoryError && <p className="mt-1 text-xs text-red-600">{categoryError}</p>}
             </div>
           </div>
           <div className="flex gap-4">
