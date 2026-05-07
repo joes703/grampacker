@@ -40,8 +40,10 @@ export default function PrivacyButton({ list }: Props) {
         title={list.is_shared ? 'Public — click to manage' : 'Private — click to manage'}
         aria-label={list.is_shared ? 'Privacy: public — click to manage' : 'Privacy: private — click to manage'}
         aria-pressed={list.is_shared}
-        className={`inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 ${
-          list.is_shared ? 'text-blue-600' : 'text-gray-500'
+        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
+          list.is_shared
+            ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+            : 'border-gray-300 text-gray-500 hover:bg-gray-50'
         }`}
       >
         <Globe size={14} />
