@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { Suspense, lazy, useMemo } from 'react'
 import { useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { fetchSharedList, fetchSharedListItems, fetchSharedListCategories } from '../lib/queries'
@@ -11,6 +11,12 @@ import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
 import AboutLink from '../components/AboutLink'
+
+// Notes are rendered as Markdown on the public share view (typing markdown
+// in the authed NotesEditor textarea is the only authoring path). Lazy so
+// the react-markdown + remark-gfm chunk (~46 KB gzip) doesn't land in the
+// share-view cold-load when the list has no description.
+const MarkdownContent = lazy(() => import('../components/MarkdownContent'))
 
 export default function SharePage() {
   const { slug } = useParams<{ slug: string }>()
@@ -121,9 +127,11 @@ export default function SharePage() {
         <div className={`mb-6 grid gap-4 ${items.length > 0 ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
           <PanelCard title="Notes">
             {list.description ? (
-              <p className="px-3 py-2 text-sm text-gray-700 whitespace-pre-line min-h-[8rem]">
-                {list.description}
-              </p>
+              <div className="px-3 py-2 min-h-[8rem]">
+                <Suspense fallback={null}>
+                  <MarkdownContent content={list.description} />
+                </Suspense>
+              </div>
             ) : (
               <p className="px-3 py-2 text-sm text-gray-400 italic min-h-[8rem]">No notes</p>
             )}
