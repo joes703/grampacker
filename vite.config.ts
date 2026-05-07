@@ -51,7 +51,12 @@ export default defineConfig({
             options: {
               cacheName: 'supabase-rest',
               expiration: {
-                maxEntries: 50,
+                // Each list visit produces ~3-5 unique URLs (lists, list_items
+                // for that listId, gear_items, categories). 300 entries covers
+                // ~75 lists comfortably, vs. the previous 50 cap which could
+                // evict the very list a user prepped before going offline. JSON
+                // payloads are small; storage cost is a few MB at the cap.
+                maxEntries: 300,
                 maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
               },
               // Treat opaque/cors responses as cacheable. Supabase responds
