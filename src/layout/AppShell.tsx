@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react'
 import { Routes, Route } from 'react-router'
 import NavBar from './NavBar'
 import RootRedirect from './RootRedirect'
@@ -5,9 +6,14 @@ import { SidebarDrawerProvider } from './sidebar-drawer-context'
 import GearLibraryPage from '../gear/GearLibraryPage'
 import ListsPage from '../lists/ListsPage'
 import ListDetailPage from '../lists/ListDetailPage'
-import SettingsPage from '../settings/SettingsPage'
-import HelpPage from '../help/HelpPage'
 import OfflineBanner from '../components/OfflineBanner'
+
+// Settings and Help are rarely visited and don't need to ship in the main
+// bundle. ListsPage/ListDetailPage/GearLibraryPage stay eager — they are
+// the post-login destinations and the primary navigation surfaces; lazy
+// would add a chunk hop on every nav with no real win.
+const SettingsPage = lazy(() => import('../settings/SettingsPage'))
+const HelpPage = lazy(() => import('../help/HelpPage'))
 
 function NotFound() {
   return (
@@ -24,15 +30,17 @@ export default function AppShell() {
         <OfflineBanner />
         <NavBar />
         <main className="mx-auto max-w-7xl px-4 pt-4 lg:pt-8 pb-8">
-          <Routes>
-            <Route path="/" element={<RootRedirect />} />
-            <Route path="/gear" element={<GearLibraryPage />} />
-            <Route path="/lists" element={<ListsPage />} />
-            <Route path="/lists/:id" element={<ListDetailPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/help" element={<HelpPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <Suspense fallback={null}>
+            <Routes>
+              <Route path="/" element={<RootRedirect />} />
+              <Route path="/gear" element={<GearLibraryPage />} />
+              <Route path="/lists" element={<ListsPage />} />
+              <Route path="/lists/:id" element={<ListDetailPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/help" element={<HelpPage />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </SidebarDrawerProvider>
