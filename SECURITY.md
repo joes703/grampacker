@@ -24,23 +24,23 @@ This is also what makes the model auditable: there is one place to look (the mig
 
 Every table in the `public` schema has **Row Level Security** enabled. RLS is a Postgres feature that filters every query (SELECT/INSERT/UPDATE/DELETE) through a per-table policy expressed as a SQL predicate. Without a matching policy, queries return zero rows and writes are rejected.
 
-Every user-owned table currently uses the **owner-keyed** pattern: `auth.uid() = user_id`. The row carries the owner's id directly. Used on `profiles`, `categories`, `gear_items`, `lists`, and `list_items` (the latter gained a direct `user_id` column in migration `20260506000002`, replacing its previous joined-via-parent policy).
+Every user-owned table currently uses the **owner-keyed** pattern: `(select auth.uid()) = user_id`. The row carries the owner's id directly. Used on `profiles`, `categories`, `gear_items`, `lists`, and `list_items` (the latter gained a direct `user_id` column in migration `20260506000002`, replacing its previous joined-via-parent policy).
 
-A second pattern — **joined-via-parent** (`EXISTS (SELECT 1 FROM <parent> WHERE <parent>.id = <child>.<fk> AND <parent>.user_id = auth.uid())`) — is the option for future child tables that don't carry their own `user_id`. Not currently used by any table after the `list_items` migration. The template lives in "Adding a new table safely" below.
+A second pattern — **joined-via-parent** (`EXISTS (SELECT 1 FROM <parent> WHERE <parent>.id = <child>.<fk> AND <parent>.user_id = (select auth.uid()))`) — is the option for future child tables that don't carry their own `user_id`. Not currently used by any table after the `list_items` migration. The template lives in "Adding a new table safely" below.
 
-Owner policies are defined `FOR ALL` with both `USING` (read filter) and `WITH CHECK` (write filter); the `WITH CHECK` is what stops a user from updating one of their rows to belong to someone else.
+Owner-keyed tables carry one policy per (role, action) pair. Authenticated SELECT combines own-or-shared into a single permissive predicate (`(select auth.uid()) = user_id OR <public-share-predicate>`). Anon SELECT applies only the public-share predicate. Authenticated INSERT / UPDATE / DELETE are owner-only and gate on `(select auth.uid()) = user_id`; UPDATE additionally carries `WITH CHECK` against the same predicate so a user can't update one of their rows to belong to someone else. The `(select auth.uid())` form is a Supabase advisor recommendation — wrapping the function call in a subquery lets Postgres cache the value as an initPlan instead of re-evaluating it per row. The previous `*_owner_all` (FOR ALL) + `*_public_select_*` (FOR SELECT) pair-per-table shape was replaced in migration `20260512000000`.
 
-| Table | Owner policy | Public-read policy |
-|---|---|---|
-| `profiles` | `auth.uid() = id` (self-select / self-update only — no insert by user; the `handle_new_user` trigger does that) | — |
-| `categories` | `auth.uid() = user_id` (`categories_owner_all`) | `categories_public_select_via_shared_list` (transitive: only when a shared list references one of this category's gear items) |
-| `gear_items` | `auth.uid() = user_id` (`gear_items_owner_all`) | `gear_items_public_select_via_shared_list` (transitive: only when a shared list references this gear item) |
-| `lists` | `auth.uid() = user_id` (`lists_owner_all`) | `lists_public_select_shared` (`is_shared = true`) |
-| `list_items` | `auth.uid() = user_id` (`list_items_owner_all`; direct since migration `20260506000002`) | `list_items_public_select_shared` (joins `lists` and checks `is_shared = true`) |
+| Table | Authenticated SELECT policy | Authenticated write policies | Anon SELECT policy |
+|---|---|---|---|
+| `profiles` | `profiles_self_select` — `(select auth.uid()) = id` | `profiles_self_update` — same predicate, USING + WITH CHECK. (No INSERT path; the `handle_new_user` trigger creates profile rows.) | — |
+| `categories` | `categories_auth_select` — `(select auth.uid()) = user_id OR <transitive shared-list EXISTS>` | `categories_auth_insert` / `categories_auth_update` / `categories_auth_delete`, all gated on `(select auth.uid()) = user_id` | `categories_anon_select` — transitive shared-list EXISTS only |
+| `gear_items` | `gear_items_auth_select` — same OR shape, transitive predicate via `list_items → lists.is_shared` | `gear_items_auth_insert` / `gear_items_auth_update` / `gear_items_auth_delete`, owner-keyed | `gear_items_anon_select` — transitive via `list_items → lists.is_shared` |
+| `lists` | `lists_auth_select` — `(select auth.uid()) = user_id OR is_shared = true` | `lists_auth_insert` / `lists_auth_update` / `lists_auth_delete`, owner-keyed | `lists_anon_select` — `is_shared = true` |
+| `list_items` | `list_items_auth_select` — `(select auth.uid()) = user_id OR EXISTS (lists where is_shared = true)` (direct since `20260506000002` added `user_id`) | `list_items_auth_insert` / `list_items_auth_update` / `list_items_auth_delete`, owner-keyed | `list_items_anon_select` — same EXISTS predicate |
 
 A defense-in-depth net guards against forgetting RLS on a new table. The `rls_auto_enable` event trigger (migration `20260429000000`) fires on every `CREATE TABLE` in `public` and runs `alter table … enable row level security` automatically. **This does not write the policies for you** — an RLS-enabled table without policies fails closed: nobody (including the owner) can read or write. Defense-in-depth, not autopilot.
 
-For the precise SQL, see migrations `20260425000000`, `20260425000001`, `20260425000002`, and `20260427000000`.
+For the precise SQL of the current shape, see migration `20260512000000_advisor_cleanup_rls_policies.sql`. For the historical owner_all / public_select_* shape that preceded it, see migrations `20260425000000`, `20260425000001`, `20260425000002`, and `20260427000000`.
 
 ### Cross-owner FK enforcement
 
@@ -198,30 +198,50 @@ Last verified: _<YYYY-MM-DD by name>_. Re-verify after any Supabase plan/project
 
 1. **Reference `auth.users(id)`** on user-owned data, either directly via a `user_id` column or transitively through a parent that has one. `ON DELETE CASCADE` so account deletion cleans up.
 2. **Enable RLS explicitly** in the migration: `alter table <name> enable row level security`. The `rls_auto_enable` trigger already does this, but writing it explicitly makes the migration self-documenting and removes the dependency on the trigger being installed.
-3. **Write policies** for SELECT/INSERT/UPDATE/DELETE. Use one of the two patterns:
-   - **Owner-keyed:**
+3. **Write policies** for SELECT/INSERT/UPDATE/DELETE. Use one policy per (role, action) pair. Two patterns:
+   - **Owner-keyed (no public-share path):**
      ```sql
-     create policy <name>_owner_all on <table>
-       for all using (auth.uid() = user_id)
-       with check (auth.uid() = user_id);
+     create policy <name>_auth_select on <table>
+       for select to authenticated
+       using ((select auth.uid()) = user_id);
+
+     create policy <name>_auth_insert on <table>
+       for insert to authenticated
+       with check ((select auth.uid()) = user_id);
+
+     create policy <name>_auth_update on <table>
+       for update to authenticated
+       using ((select auth.uid()) = user_id)
+       with check ((select auth.uid()) = user_id);
+
+     create policy <name>_auth_delete on <table>
+       for delete to authenticated
+       using ((select auth.uid()) = user_id);
      ```
-   - **Joined-via-parent:**
+   - **Joined-via-parent (child table without its own `user_id`):** swap each `(select auth.uid()) = user_id` predicate above with the joined form:
      ```sql
-     create policy <name>_owner_all on <table>
-       for all using (
-         exists (select 1 from <parent>
-                 where <parent>.id = <table>.<fk>
-                 and <parent>.user_id = auth.uid())
-       )
-       with check (
-         exists (select 1 from <parent>
-                 where <parent>.id = <table>.<fk>
-                 and <parent>.user_id = auth.uid())
-       );
+     exists (select 1 from <parent>
+             where <parent>.id = <table>.<fk>
+             and <parent>.user_id = (select auth.uid()))
+     ```
+   - **Owner-keyed plus public-share read:** add an anon SELECT policy carrying only the public-share predicate, and combine the public-share predicate with the owner check inside the authenticated SELECT policy:
+     ```sql
+     create policy <name>_anon_select on <table>
+       for select to anon
+       using (<public-share-predicate>);
+
+     create policy <name>_auth_select on <table>
+       for select to authenticated
+       using ((select auth.uid()) = user_id or <public-share-predicate>);
+
+     -- writes unchanged from the owner-keyed pattern above
+     <auth_insert / auth_update / auth_delete>
      ```
 4. **`WITH CHECK` is mandatory** on policies that govern INSERT or UPDATE. Without it, a user could update a row they own to belong to someone else.
-5. **If the table participates in sharing,** add a `*_public_select_*` policy that gates on the shared parent's `is_shared = true` flag (or the transitive equivalent — see `gear_items_public_select_via_shared_list` for the shape).
-6. **Don't grant** anything to `public` or `anon` directly. The default Supabase grants on the role plus your RLS policies handle access. Extra grants are how leaks happen.
+5. **Always wrap `auth.uid()` in `(select auth.uid())`.** Direct calls trigger the Supabase `auth_rls_initplan` advisor warning and re-evaluate the function per row; the subquery form lets Postgres cache the value as an initPlan.
+6. **Always pass `TO authenticated` or `TO anon`** explicitly, even for self-only tables. Without a `TO` clause the policy applies to every role inheriting from `public` (`anon`, `authenticated`, plus Supabase internals like `authenticator`, `dashboard_user`, `supabase_privileged_role`) and shows up in `multiple_permissive_policies` warnings on every role that doesn't actually need access.
+7. **If the table participates in sharing,** use the third sub-pattern above. The public-share predicate is the same one the anon policy carries, OR'd into the authenticated SELECT so signed-in users opening a friend's share link still see the row. See `gear_items_anon_select` / `gear_items_auth_select` for the canonical transitive shape.
+8. **Don't grant** anything to `public` or `anon` directly. The default Supabase grants on the role plus your RLS policies handle access. Extra grants are how leaks happen.
 
 ---
 
@@ -272,6 +292,7 @@ Last verified: _<YYYY-MM-DD by name>_. Re-verify after any Supabase plan/project
 - `20260506000000_composite_fks_for_same_owner.sql` + `20260506000001_revert_composite_fks_for_same_owner.sql` — first cross-owner-FK lockdown attempt (RLS WITH CHECK subquery), reverted after triggering policy recursion (Postgres 42P17). Kept in history for the lesson; see "Cross-owner FK enforcement" above.
 - `20260506000002_add_user_id_to_list_items_composite_fks.sql` — composite FKs for cross-owner enforcement; adds `list_items.user_id`; simplifies `list_items_owner_all` to direct `auth.uid() = user_id`.
 - `20260506000003_fix_category_delete_set_null_columns.sql` — fixes the composite FK on `gear_items.category_id` to use the PG 15+ `ON DELETE SET NULL (category_id)` column-list form so `user_id` (NOT NULL) doesn't get nulled on category deletion.
+- `20260512000000_advisor_cleanup_rls_policies.sql` — Supabase advisor cleanup. Replaces `*_owner_all` (FOR ALL) + `*_public_select_*` (FOR SELECT) per-table with role-and-action-specific policies on every owner-keyed table; wraps every `auth.uid()` reference in `(select auth.uid())`. Closes 26 advisor warnings (`auth_rls_initplan` × 6 + `multiple_permissive_policies` × ~20) without changing behavior.
 
 **ADRs** (in `DECISIONS.md`):
 - ADR 3 — Bulk DB operations through Postgres RPCs (rationale + accepted linter warning).
