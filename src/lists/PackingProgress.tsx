@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { RotateCcw, WifiOff } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 type Props = {
@@ -8,6 +8,12 @@ type Props = {
   onReset: () => void
   showUnpackedOnly: boolean
   onToggleShowUnpackedOnly: () => void
+  // True when navigator.onLine is false. Surfaces a contextual capability-
+  // boundary message (separate from the global OfflineBanner at AppShell:
+  // this one explains specifically what's gated, not just that the network
+  // is down) and disables Reset since it would fail. The Unpacked-only
+  // toggle stays enabled because it's local view state.
+  offline?: boolean
 }
 
 export default function PackingProgress({
@@ -16,6 +22,7 @@ export default function PackingProgress({
   onReset,
   showUnpackedOnly,
   onToggleShowUnpackedOnly,
+  offline = false,
 }: Props) {
   const pct = total === 0 ? 0 : Math.round((packed / total) * 100)
   const done = packed === total && total > 0
@@ -52,8 +59,9 @@ export default function PackingProgress({
           <button
             type="button"
             onClick={() => setConfirmingReset(true)}
-            disabled={packed === 0}
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40"
+            disabled={packed === 0 || offline}
+            title={offline ? 'Offline — reconnect to reset packed state' : undefined}
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <RotateCcw size={12} /> Reset
           </button>
@@ -65,6 +73,16 @@ export default function PackingProgress({
           style={{ width: `${pct}%` }}
         />
       </div>
+      {offline && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mt-2 flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 border border-amber-200"
+        >
+          <WifiOff size={12} aria-hidden="true" className="mt-0.5 shrink-0" />
+          <span>Offline — you can view this list, but packing checkmarks need a connection.</span>
+        </div>
+      )}
       {confirmingReset && (
         // Reset is recoverable (just clears is_packed flags), so the confirm
         // uses ConfirmDialog's default neutral styling — no `dangerous` flag.

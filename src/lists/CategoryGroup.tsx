@@ -66,6 +66,10 @@ export type GroupProps = {
    *  produce a fresh items array per group every time the toggle flips,
    *  which would defeat React.memo's shallow compare. */
   hideWorn?: boolean
+  /** Pack-mode write-block forwarded to each ItemRow's checkbox. Set by
+   *  ListDetailPage when offline so checkbox taps don't fire failing
+   *  mutations. Authed pack-mode only. */
+  packActionsDisabled?: boolean
   onUpdate?: (itemId: string, patch: ListItemPatch) => void
   onDelete?: (itemId: string) => void
   onSaveGearName?: (gearItemId: string, name: string) => void
@@ -108,6 +112,7 @@ function CategoryGroup({
   reorderPending = false,
   showUnpackedOnly = false,
   hideWorn = false,
+  packActionsDisabled = false,
   onUpdate,
   onDelete,
   onSaveGearName,
@@ -164,6 +169,7 @@ function CategoryGroup({
       weightUnit,
       isBelowLg,
       packMode,
+      packActionsDisabled,
       reorderPending,
       onUpdate: onUpdate ? (patch: ListItemPatch) => onUpdate(item.id, patch) : undefined,
       onSaveName: onSaveGearName ? (n: string) => onSaveGearName(gearId, n) : undefined,
