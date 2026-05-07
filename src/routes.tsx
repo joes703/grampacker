@@ -2,7 +2,6 @@ import { Suspense, lazy } from 'react'
 import { Routes, Route, Navigate } from 'react-router'
 import { useAuth } from './auth/AuthProvider'
 import AppShell from './layout/AppShell'
-import AboutPage from './about/AboutPage'
 
 // Auth pages and SharePage are reachable only by unauthed visitors and
 // never load alongside the authed app. Lazy-loading defers their bundles
@@ -29,9 +28,6 @@ export default function AppRoutes() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/r/:slug" element={<SharePage />} />
-        {/* Public — readable without a session. AboutPage owns its own
-            chrome (auth-aware mini-header) since it sits outside AppShell. */}
-        <Route path="/about" element={<AboutPage />} />
         <Route
           path="/*"
           element={

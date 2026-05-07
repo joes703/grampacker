@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { ClipboardList, HelpCircle, Info, LogOut, PanelLeftOpen, Pencil, Settings } from 'lucide-react'
+import { ClipboardList, HelpCircle, LogOut, PanelLeftOpen, Pencil, Settings } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import { supabase } from '../lib/supabase'
 import { queryKeys, fetchLists, updateList, makeOptimisticUpdate } from '../lib/queries'
@@ -19,10 +19,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 // Per-route slot resolution. Mounted only inside AppShell, which is gated by
 // PrivateRoute — so this component is never rendered on /login, /register,
-// /forgot-password, /reset-password, /about, or /r/:slug. The path-match
-// logic only needs to handle authenticated routes plus the AppShell catch-
-// all. AppShell can't pass routeId via props (NavBar sits outside the inner
-// <Routes>), so the current list id is parsed from pathname here.
+// /forgot-password, /reset-password, or /r/:slug. The path-match logic only
+// needs to handle authenticated routes plus the AppShell catch-all. AppShell
+// can't pass routeId via props (NavBar sits outside the inner <Routes>), so
+// the current list id is parsed from pathname here.
 type RouteContext =
   | { kind: 'list-detail'; listId: string }
   | { kind: 'manage-lists' }
@@ -85,8 +85,8 @@ export default function NavBar() {
         <RouteHeading route={route} />
 
         {/* Right cluster — list-context controls (only on /lists/:id) and
-            the persistent secondary destinations (Help/About/Settings/Sign
-            out at md+, HamburgerMenu at <md). */}
+            the persistent secondary destinations (Help/Settings/Sign out at
+            md+, HamburgerMenu at <md). */}
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {route.kind === 'list-detail' && <ListContextControls listId={route.listId} />}
 
@@ -103,16 +103,6 @@ export default function NavBar() {
             >
               <HelpCircle size={14} />
               <span className="sr-only lg:not-sr-only">Help</span>
-            </NavLink>
-            <NavLink
-              to="/about"
-              title="About"
-              className={({ isActive }) =>
-                `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
-              }
-            >
-              <Info size={14} />
-              <span className="sr-only lg:not-sr-only">About</span>
             </NavLink>
             <NavLink
               to="/settings"

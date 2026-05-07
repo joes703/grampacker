@@ -1,8 +1,15 @@
-import { useState, type FormEvent } from 'react'
+import { Suspense, lazy, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useAuth } from './AuthProvider'
+import Modal from '../components/Modal'
+import aboutContent from '../../about.md?raw'
+
+// MarkdownPage carries the entire react-markdown + remark-gfm chunk (~46 KB
+// gzip). Lazy so it only downloads when the visitor actually opens the
+// About modal — login-page cold-load stays lean.
+const MarkdownPage = lazy(() => import('../components/MarkdownPage'))
 
 export default function LoginPage() {
   useDocumentTitle('Sign in')
@@ -16,6 +23,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
 
   if (authLoading) return null
   if (session) return <Navigate to="/" replace />
@@ -38,7 +46,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm bg-white rounded-xl shadow-sm border border-gray-200 p-8">
         <h1 className="text-xl font-semibold text-gray-900 mb-6">Sign in</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -91,6 +99,27 @@ export default function LoginPage() {
           </Link>
         </p>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setAboutOpen(true)}
+        className="mt-6 text-xs text-gray-500 hover:text-gray-700"
+      >
+        About grampacker
+      </button>
+
+      <Modal
+        open={aboutOpen}
+        onClose={() => setAboutOpen(false)}
+        title="About grampacker"
+        className="w-full max-w-lg"
+      >
+        <div className="max-h-[80vh] overflow-y-auto px-6 pb-6 pt-2">
+          <Suspense fallback={null}>
+            <MarkdownPage content={aboutContent} />
+          </Suspense>
+        </div>
+      </Modal>
     </div>
   )
 }
