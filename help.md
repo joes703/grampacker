@@ -1,102 +1,104 @@
-# How to use grampacker
+# Help
 
-## Get started
+grampacker helps you keep track of your backpacking gear, build packing lists, and see what your pack weighs.
 
-If you have data in Lighterpack, export it as CSV and import it from /gear. Items, categories, weights, and worn/consumable flags come over.
+## Basic concepts
 
-If you're starting fresh, build up your gear inventory first or jump straight into a list and add items as you go.
+### Gear inventory
 
-## Concepts
+Your gear inventory is the master list of gear you own. It is useful when you want to reuse the same items across multiple trips.
 
-You'll probably spend most of the time working in the list page. 
-There are a few other pages/views you may find helpful: 
-- Gear Library. All the gear you own is stored here. 
-- List pack mode. This is a simplified view of your list, with checkboxes added to help you pack.
-- Public share. You can enable and disable a public read only copy of a list. Helpful for getting advice on your list ahead of a trip.
+You can add gear directly in the Gear Library, import gear from a CSV, or create new gear while working on a list.
 
-Base weight is the weight of all of your gear minus consumables (food, fuel, water) and the things you wear. Total pack weight is base weight + consumables. Worn items are shown but are not added to anything else.
+### Packing lists
 
-## Build a list
+A packing list is a trip-specific set of gear. You can create different lists for different trips, seasons, or styles of travel.
 
-There are 3 ways to create a gear list. 
+Items on a list come from your gear inventory. If you edit an item's name, description, category, or weight, that change updates the inventory too.
 
-1. Import a CSV from Lighterpack (or with those columns) into a new list.
-2. Import a CSV of your gear into the Gear Library, then either add items to a list from the gear picker, or select items in the Gear Library and create a new list from the selection.
-3. Click on new item and start adding items.
+### Categories
 
-The library panel on the left of a list shows your full inventory. Click an item to add it to the list. Click again to remove it.
+Categories organize gear into groups like Shelter, Sleep, Clothing, Food, or Electronics.
 
-You can also type a new name into the list itself. That creates the item in both the list and your inventory at the same time.
+You can create, rename, delete, and reorder categories in the Gear Library. Items can be moved between categories from the item edit dialog.
 
-## Edit and reorder
+### Weight totals
 
-Click an item's name, description, or weight to edit it inline. Changes save automatically and update the inventory.
+grampacker uses three weight concepts:
 
-Drag any row up or down to reorder it within its category. To move an item to a different category, open the edit modal and pick from the Category dropdown.
+- **Base weight**: gear you carry, not including consumables or worn items.
+- **Consumables**: items like food, fuel, or water. These are tracked separately because their weight changes during a trip.
+- **Worn items**: things you wear instead of carry in your pack.
 
-The kebab menu (three dots) on each row has Edit, Remove from list, and Delete from inventory.
+Total pack weight includes base weight and consumables. Worn items are shown, but not counted in pack weight.
 
-## Share a list
+You can turn on **Group worn** from a list's top controls to move worn items into their own Worn section. This applies while editing the list, in Pack mode, and on public shared links.
 
-Click the globe icon at the top of a list. Flip the Public link toggle on, then copy the URL. Anyone with the link can view the list. They can't edit it, and they don't need an account. Flip the toggle off and the link stops working.
+## Building a list
+
+You can build a list in a few ways:
+
+1. Create a new list and add items from your gear inventory.
+2. Add a new item directly from the list. This also adds it to your inventory.
+3. Import a CSV from Lighterpack or another compatible spreadsheet.
+4. Select items in the Gear Library and create a list from that selection.
+
+On desktop, the library panel appears next to your list. Click an inventory item to add it to the list. Click it again to remove it.
+
+## Editing items
+
+You can edit item names, descriptions, and weights inline.
+
+For more options, open the item menu or edit dialog. From there you can change category, cost, purchase date, quantity, worn status, or consumable status depending on where you are in the app.
+
+Deleting from a list only removes the item from that list. Deleting from inventory removes it from your gear library and from any lists where it appears.
+
+## Reordering
+
+Drag items to reorder them within a category.
+
+Drag categories in the Gear Library to change the order they appear in your inventory and lists.
+
+To move an item to a different category, open the item edit dialog and choose a category.
 
 ## Pack mode
 
-Click the clipboard icon at the top of a list to enter Pack mode. Tap items to check them off as they go in the bag.
+Pack mode is a simplified checklist view for packing your bag.
 
-Two controls sit above the list. Unpacked only hides items you've already packed. Reset clears the checkmarks.
+Open a list and switch to Pack mode. Tap items as they go into your pack.
 
-When you're standing over a half-packed bag the night before a 5am drive, you don't want to be navigating a UI. Pack mode is sparse on purpose.
+Pack mode includes controls to:
 
-## Gear library
+- show only unpacked items
+- reset packed checkmarks
 
-Open /gear from the nav (top bar on desktop, bottom tab bar on mobile).
+Pack mode is intentionally simple so it is easy to use while packing.
 
-Click Select to enter multi-select. The bulk action toolbar appears at the bottom with Select all, Select none, Move to category, Delete, and Create list.
+## Sharing a list
 
-Each row has a kebab menu with Edit and Delete from inventory. Categories are draggable to reorder.
+You can create a public read-only link for a list.
 
-## Export and delete
+Open the list privacy controls, turn on the public link, and copy the URL. Anyone with the link can view the list without an account.
 
-Account settings has both: download a single zip with your full inventory and every list, or delete your account. Both are one click, no friction either way.
+Public links are read-only. Other people cannot edit your list.
 
-## FAQ
+Turn the public link off to stop sharing the list.
 
-### Why a separate gear inventory?
+## Importing and exporting
 
-I wanted a source of truth for everything I own. Lists can be built from inventory, and edits flow both ways in case you don't want to work in both. The inventory has its own multi-select mode (the Select button) for moving categories, deleting items, or creating a new list from your selection. I try not to force the inventory, so you can do most things from the list view.
+You can import gear or lists from CSV files.
 
-### Why does editing a list item change the inventory?
+Lighterpack CSV exports should work as a starting point. You can also use your own spreadsheet if it has compatible columns.
 
-Because most edits are real corrections. Those changes should stick across every list.
+From Settings, you can export your account data as a zip file. The export includes your gear inventory and lists.
 
-When you actually want a one-off, you can create a new item instead. The coupling is intentional so that you don't have to worry about where you created an item. 
+## Account and privacy
 
-### Why can't I drag from the picker?
+grampacker is free to use and does not show ads.
 
-Drag-and-drop is good for moving things you've already placed. It's slower than a click when you're picking from a long list. Inside a list, drag sorts items within their category — to move an item to a different category, open the edit modal and pick from the Category dropdown. From the picker, click adds and click again removes.
+Your private gear and lists are only available to your account. A list becomes publicly viewable only when you turn on its public link.
 
-### Why no images?
-
-Storage costs scale with users in a way I can't sustain for free. Hosting user-uploaded images also means moderating content, which I don't want to do.
-
-### What's the tech stack and why?
-
-**TypeScript** for the language. It adds types to JavaScript. The editor flags mistakes before I run the code, and the types serve as documentation when I come back to a file weeks later.
-
-**React** for the UI. It's widely used, so when I get stuck, help is easy to find.
-
-**Vite** for the build tool. It's fast and has almost nothing to configure.
-
-**Supabase** for the backend. It handles authentication, the database, and access control in one service. The database is Postgres, so my data isn't locked into a proprietary format. Access rules are enforced at the database level using row-level security.
-
-**Cloudflare Pages** for hosting. 
-
-Fewer moving parts, fewer things to break, hopefully easier to maintain.
-
-### Did you use AI to build this?
-
-Yes. AI made it realistic for me to ship something working in a reasonable amount of time. Every design decision in this app is mine. The code that implements them was written with help.
+You can delete your account from Settings.
 
 ## Contact
 
