@@ -154,7 +154,29 @@ function CategorySectionInner(
 
         {/* Header actions — hidden in select mode */}
         {!selectMode && !renaming && (
-          <div className="flex items-center gap-0.5 ml-auto">
+          <div
+            className={`flex items-center gap-1.5 ml-auto ${
+              items.length > 0 && !collapsed ? 'lg:pr-1' : ''
+            }`}
+          >
+            {/* Desktop column labels — widths and gap mirror GearItemRow's
+               right-side columns (w-20 cost, w-24 purchase date, w-24
+               weight, w-7 kebab) so labels sit directly above row values.
+               lg:pr-1 nudges the block 4px left to absorb the header's
+               px-2 vs the row's px-3 outer-padding difference. lg:contents
+               flattens the labels into the parent flex on desktop so the
+               parent's gap-1.5 applies between every column. Suppressed
+               on mobile, when the category is collapsed, on empty
+               categories, and in select mode (the parent !selectMode
+               gate handles that — the row reshapes there: checkbox added,
+               kebab removed, so labels would no longer match columns). */}
+            {items.length > 0 && !collapsed && (
+              <div aria-hidden="true" className="hidden lg:contents text-xs text-gray-400">
+                <span className="shrink-0 w-20 text-right">Price</span>
+                <span className="shrink-0 w-24 text-right">Purchased</span>
+                <span className="shrink-0 w-24 text-right">Weight</span>
+              </div>
+            )}
             {category && (
               <CategoryKebab
                 onRename={() => {
@@ -198,21 +220,6 @@ function CategorySectionInner(
             // Per-category SortableContext — items reorder within their own
             // category only. Each row's useSortable resolves to this list.
             <SortableContext items={items.map((i) => makeDnDId('gear-item', i.id))} strategy={verticalListSortingStrategy}>
-              {/* Desktop column labels — width/gap/padding mirror GearItemRow's
-                 right-side columns (w-20 cost, w-24 purchase date, w-24
-                 weight, w-7 kebab) so text aligns over the values below.
-                 Hidden on mobile and when the category is collapsed; only
-                 rendered when there's at least one row to label. */}
-              <div
-                aria-hidden="true"
-                className="hidden lg:flex items-center gap-1.5 px-3 pb-0.5 text-xs text-gray-400"
-              >
-                <div className="flex-1 min-w-0" />
-                <span className="shrink-0 w-20 text-right">Price</span>
-                <span className="shrink-0 w-24 text-right">Purchased</span>
-                <span className="shrink-0 w-24 text-right">Weight</span>
-                <span className="shrink-0 w-7" />
-              </div>
               {items.map((item) => (
                 <SortableGearItemRow
                   key={item.id}
