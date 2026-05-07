@@ -38,6 +38,7 @@ export function optimisticListPlaceholder(args: {
     slug: generateSlug(),
     sort_order: args.sortOrder,
     is_shared: false,
+    group_worn: false,
     created_at: now,
     updated_at: now,
   }

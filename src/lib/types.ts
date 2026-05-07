@@ -6,6 +6,11 @@ export type List = {
   slug: string
   is_shared: boolean
   sort_order: number
+  // Per-list organization toggle. When true, is_worn list_items are pulled
+  // out of their categories and rendered in a trailing "Worn" section in
+  // both normal and pack mode, and on the public /r/<slug> share view.
+  // Default false; persisted in public.lists.group_worn.
+  group_worn: boolean
   created_at: string
   updated_at: string
 }
@@ -63,7 +68,7 @@ export type GearItem = {
 // for the allowlist rationale. SharePage maps these to the full types at the
 // boundary before passing items/categories to shared components.
 
-export type PublicList = Pick<List, 'id' | 'name' | 'description'>
+export type PublicList = Pick<List, 'id' | 'name' | 'description' | 'group_worn'>
 
 export type PublicGearItem = Pick<
   GearItem,

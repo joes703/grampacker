@@ -8,8 +8,6 @@ type Props = {
   onReset: () => void
   showUnpackedOnly: boolean
   onToggleShowUnpackedOnly: () => void
-  groupWorn: boolean
-  onToggleGroupWorn: () => void
 }
 
 export default function PackingProgress({
@@ -18,8 +16,6 @@ export default function PackingProgress({
   onReset,
   showUnpackedOnly,
   onToggleShowUnpackedOnly,
-  groupWorn,
-  onToggleGroupWorn,
 }: Props) {
   const pct = total === 0 ? 0 : Math.round((packed / total) * 100)
   const done = packed === total && total > 0
@@ -52,19 +48,6 @@ export default function PackingProgress({
             }`}
           >
             Unpacked only
-          </button>
-          <button
-            type="button"
-            onClick={onToggleGroupWorn}
-            aria-pressed={groupWorn}
-            title={groupWorn ? 'Worn items grouped at the bottom — click to merge back into categories' : 'Group worn items at the bottom (mirrors gear that sits by the door)'}
-            className={`rounded-lg border px-3 py-1 text-xs font-medium ${
-              groupWorn
-                ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            Group worn
           </button>
           <button
             type="button"
