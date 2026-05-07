@@ -1,16 +1,16 @@
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
-import { HelpCircle, Info, LogOut, Menu, Settings } from 'lucide-react'
+import { HelpCircle, LogOut, Menu, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 
-// Kebab-style menu for the < md band's secondary destinations (Help, About,
+// Kebab-style menu for the < md band's secondary destinations (Help,
 // Settings, Sign out) — pairs with the bottom MobileTabBar (Lists, Gear).
-// At md+ the top NavBar shows all six destinations directly (icon-only at
+// At md+ the top NavBar shows all destinations directly (icon-only at
 // md-lg, fully labeled at lg+), so this menu steps aside. Modeled on the
 // portal-popover pattern used by RowKebab — overlay + fixed-positioned
 // panel, dismisses on outside click, scroll, or resize. A right-side drawer
-// would be heavier UX for four items; this keeps the codebase to one
+// would be heavier UX for three items; this keeps the codebase to one
 // popover idiom.
 export default function HamburgerMenu() {
   const navigate = useNavigate()
@@ -47,9 +47,6 @@ export default function HamburgerMenu() {
         >
           <MenuLink to="/help" icon={<HelpCircle size={14} />} onClick={close}>
             Help
-          </MenuLink>
-          <MenuLink to="/about" icon={<Info size={14} />} onClick={close}>
-            About
           </MenuLink>
           <MenuLink to="/settings" icon={<Settings size={14} />} onClick={close}>
             Settings

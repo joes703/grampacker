@@ -8,8 +8,8 @@ import { createContext, useContext, useMemo, useState, useEffect } from 'react'
 //
 // Pages that have a sidebar drawer call useRegisterSidebarDrawer() on
 // mount; the trigger renders whenever any page is registered. Pages
-// that don't (Gear, Settings, Help, About) simply omit the call and
-// the trigger stays hidden, leaving NavBar's mobile chrome at: brand
+// that don't (Gear, Settings, Help) simply omit the call and the
+// trigger stays hidden, leaving NavBar's mobile chrome at: brand
 // + hamburger.
 
 type SidebarDrawerContextValue = {
