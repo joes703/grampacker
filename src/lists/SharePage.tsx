@@ -10,6 +10,7 @@ import { useDocumentTitle } from '../lib/use-document-title'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
+import AboutLink from '../components/AboutLink'
 
 export default function SharePage() {
   const { slug } = useParams<{ slug: string }>()
@@ -138,9 +139,9 @@ export default function SharePage() {
           ))}
         </div>
 
-        <p className="mt-8 text-center text-xs text-gray-400">
-          Made with grampacker
-        </p>
+        <div className="mt-8 text-center">
+          <AboutLink className="text-xs text-gray-400 hover:text-gray-600" />
+        </div>
       </div>
     </div>
   )
