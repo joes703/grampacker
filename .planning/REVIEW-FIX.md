@@ -900,3 +900,42 @@ The audit numbering skips L5, L6, L8 — those don't exist.
 - The four post-Phase-2 cleanups noted in user memory (category edit icon, empty-cat confirm, inline category create, kebab clipping).
 - Either of the two standing security deferrals if the threat model warrants.
 - New feature work, infrastructure, or whatever's surfaced since the audits ran.
+
+---
+
+# grampacker — Phase 21 fix summary (2026-05-06)
+
+## Shipped
+
+- **C1 — `ac668fb`** — Migration `20260512000000_advisor_cleanup_rls_policies.sql`. Drops the per-table `*_owner_all` (FOR ALL) + `*_public_select_*` (FOR SELECT) pair on profiles / categories / gear_items / lists / list_items, replaces with role-and-action-specific policies. Every `auth.uid()` reference now wrapped in `(select auth.uid())` for initPlan caching. Authenticated SELECT combines own-or-shared into one permissive predicate (matches today's combined behavior); anon SELECT carries only the public-share predicate; INSERT/UPDATE/DELETE are owner-only on authenticated, gated on `(select auth.uid()) = user_id` with WITH CHECK on UPDATE.
+- **C2 — `b153769`** — `SECURITY.md` updated: per-table policy table, surrounding paragraph, and "Adding a new table safely" templates rewritten to describe the new shape. New migration added to the reference list; the precise-SQL pointer now leads with the current migration before the historical references. Adding-a-new-table guidance also now explicitly requires wrapping `auth.uid()` in `(select auth.uid())` and passing `TO authenticated` / `TO anon` on every policy. The term `*_owner_all` survives only in historical / explanatory context (the paragraph naming the pre-Phase-21 shape that was replaced, the cross-owner-FK narrative, and the migration-reference list); the current recommended pattern is the role-and-action-specific shape.
+
+## Advisor delta
+
+- `auth_rls_initplan` (6 warnings on `profiles_self_select`, `profiles_self_update`, `categories_owner_all`, `gear_items_owner_all`, `lists_owner_all`, `list_items_owner_all`) → 0.
+- `multiple_permissive_policies` on SELECT for categories / gear_items / list_items / lists (~20 warnings, fanned across every role inheriting from public — anon, authenticated, and Supabase internals like `authenticator`, `dashboard_user`, `supabase_privileged_role` — because the old policies had no `TO` clause) → 0. Explicit `TO anon` / `TO authenticated` on every new policy collapses each (role, action) cell to one policy and leaves the internal roles with no matching policy on these tables.
+- `auth_leaked_password_protection` left intentionally as-is — the auth setting is unenabled by product decision.
+
+## Behavior preservation
+
+To be verified by manual smoke (full checklist in `.planning/REVIEW-PHASE21.md`):
+
+- Signed-out `/r/:slug` works for shared lists.
+- Signed-in user opening a non-owner's `/r/:slug` works.
+- Signed-in user's own `/lists`, `/gear`, list-detail, settings still show only own rows (the database policy is permissive on owner-or-shared, but the query-level `user_id = auth.uid()` filters in fetchLists / fetchGearItems / fetchCategories / fetchListItems narrow the results — see SECURITY.md "Defense-in-depth extras → Query-level owner scoping").
+- Create / update / delete / reorder still works for lists, list_items, gear_items, categories.
+- Cross-owner write attempt (forged `PATCH /rest/v1/lists?id=eq.<other-users-list-id>`) is rejected.
+- Account deletion still cascades through profile + categories + gear_items + lists + list_items.
+
+## Verification SQL
+
+After applying the migration to production via `supabase db push`:
+
+- `pg_policies` should list 22 policies on the rewritten tables (2 profiles + 5 each for categories, gear_items, lists, list_items). Each row's `roles` array should be exactly `{anon}` or `{authenticated}` (no `{public}`). Each `qual`/`with_check` containing `auth.uid` should contain `(select auth.uid())` literally — full V1/V2/V3 queries in the Phase 21 spec.
+- Supabase dashboard → Database → Advisors should show zero remaining warnings in both families on these tables.
+
+## Notes
+
+This is post-campaign housekeeping rather than a review-artifact closure. The three review campaigns (`REVIEW-quality.md`, `REVIEW-security.md`, `REVIEW-performance.md`) closed at Phase 17 / 19 / 20 respectively. Recorded here in the same ledger for traceability of advisor-driven schema changes.
+
+The migration must be applied to production via `supabase db push` — local agent can't deploy migrations.
