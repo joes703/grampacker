@@ -25,6 +25,7 @@ import {
   fetchListItems,
   fetchGearItems,
   fetchCategories,
+  createCategory,
   addGearItemToList,
   updateListItem,
   deleteListItem,
@@ -41,7 +42,7 @@ import {
   type ListItemPatch,
 } from '../lib/queries'
 import { supabase } from '../lib/supabase'
-import type { GearItem, ListItemWithGear, List } from '../lib/types'
+import type { Category, GearItem, ListItemWithGear, List } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useLatestRef } from '../lib/use-latest-ref'
@@ -230,6 +231,22 @@ function ListDetailInner({
   })
 
   // ── Mutations ──────────────────────────────────────────────────────────────
+
+  const addCategoryMut = useMutation({
+    mutationFn: (name: string) => createCategory(userId, name, categories.length),
+    ...makeOptimisticInsert<Category, string>({
+      qc,
+      queryKey: queryKeys.categories(),
+      optimistic: (name) => ({
+        id: `temp-${randomTempId()}`,
+        user_id: userId,
+        name,
+        sort_order: categories.length,
+        is_default: false,
+        created_at: new Date().toISOString(),
+      }),
+    }),
+  })
 
   const addMut = useMutation({
     mutationFn: (item: GearItem) =>
@@ -980,6 +997,7 @@ function ListDetailInner({
           saving={updateGearItemMut.isPending || updateMut.isPending}
           saveError={dialog.saveError}
           onClose={() => setDialog(null)}
+          onCreateCategory={(categoryName) => addCategoryMut.mutateAsync(categoryName)}
           onSave={async (gearPatch, listPatch) => {
             const gearTarget = dialog.gear
             const listTarget = dialog.listItem
@@ -1079,4 +1097,3 @@ function ListDetailInner({
     </div>
   )
 }
-

@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
-import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Plus, Check, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Check, X, MoreVertical } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
 import type { WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
 import { makeDnDId } from '../lib/dnd-ids'
+import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import { SortableGearItemRow } from './GearItemRow'
 import RowIconButton from '../components/RowIconButton'
 
@@ -25,7 +27,6 @@ type CategorySectionProps = {
   onDeleteItem: (item: GearItem) => void
   onRenameCategory: (id: string, name: string) => void
   onDeleteCategory: (category: Category) => void
-  onAddItemToCategory: (categoryId: string | null) => void
   /** Threaded to each SortableGearItemRow as `reorderPending` so the gear-
    *  item drag handles disable while the gear-item reorder mutation is in
    *  flight. Distinct from the category-level reorderPending on
@@ -55,7 +56,6 @@ function CategorySectionInner(
     onDeleteItem,
     onRenameCategory,
     onDeleteCategory,
-    onAddItemToCategory,
     itemReorderPending,
     dragHandleRef,
     dragHandleListeners,
@@ -131,40 +131,38 @@ function CategorySectionInner(
             className="flex-1 rounded border border-blue-400 bg-white px-1.5 py-0.5 text-sm font-medium focus:outline-none"
           />
         ) : (
-          <span className="flex-1 text-sm font-medium text-gray-700 select-none">
-            {name}
-            <span className="ml-1.5 text-xs font-normal tabular-nums text-gray-500">({items.length})</span>
-          </span>
+          category && !selectMode ? (
+            <button
+              type="button"
+              onClick={() => {
+                setRenameDraft(category.name)
+                setRenaming(true)
+              }}
+              title="Click to rename"
+              className="flex-1 min-w-0 rounded px-1 py-0.5 text-left text-sm font-medium text-gray-700 hover:bg-gray-200"
+            >
+              <span className="truncate">{name}</span>
+              <span className="ml-1.5 text-xs font-normal tabular-nums text-gray-500">({items.length})</span>
+            </button>
+          ) : (
+            <span className="flex-1 text-sm font-medium text-gray-700 select-none">
+              {name}
+              <span className="ml-1.5 text-xs font-normal tabular-nums text-gray-500">({items.length})</span>
+            </span>
+          )
         )}
 
         {/* Header actions — hidden in select mode */}
         {!selectMode && !renaming && (
           <div className="flex items-center gap-0.5 ml-auto">
-            <RowIconButton
-              onClick={() => onAddItemToCategory(category?.id ?? null)}
-              title="Add item to this category"
-              ariaLabel="Add item to this category"
-              icon={<Plus size={14} />}
-            />
             {category && (
-              <>
-                <RowIconButton
-                  onClick={() => {
-                    setRenameDraft(category.name)
-                    setRenaming(true)
-                  }}
-                  title="Rename category"
-                  ariaLabel="Rename category"
-                  icon={<Pencil size={14} />}
-                />
-                <RowIconButton
-                  variant="danger"
-                  onClick={() => onDeleteCategory(category)}
-                  title="Delete category"
-                  ariaLabel="Delete category"
-                  icon={<Trash2 size={14} />}
-                />
-              </>
+              <CategoryKebab
+                onRename={() => {
+                  setRenameDraft(category.name)
+                  setRenaming(true)
+                }}
+                onDelete={() => onDeleteCategory(category)}
+              />
             )}
           </div>
         )}
@@ -220,6 +218,74 @@ function CategorySectionInner(
         </div>
       )}
     </div>
+  )
+}
+
+function CategoryKebab({
+  onRename,
+  onDelete,
+}: {
+  onRename: () => void
+  onDelete: () => void
+}) {
+  const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
+    useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
+
+  return (
+    <>
+      <RowIconButton
+        ref={triggerRef}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (menuOpen) close()
+          else openMenu()
+        }}
+        ariaLabel="Category options"
+        icon={<MoreVertical size={14} />}
+      />
+
+      {menuOpen && menuPos && 'left' in menuPos && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+          style={{ top: menuPos.top, left: menuPos.left }}
+        >
+          <MenuItem icon={<Pencil size={13} />} onClick={() => { close(); onRename() }}>
+            Rename
+          </MenuItem>
+          <div className="my-1 border-t border-gray-100" />
+          <MenuItem icon={<Trash2 size={13} />} onClick={() => { close(); onDelete() }} danger>
+            Delete category
+          </MenuItem>
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
+function MenuItem({
+  icon,
+  children,
+  onClick,
+  danger,
+}: {
+  icon: React.ReactNode
+  children: React.ReactNode
+  onClick: () => void
+  danger?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
+        danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-100'
+      }`}
+    >
+      {icon}
+      <span className="truncate">{children}</span>
+    </button>
   )
 }
 

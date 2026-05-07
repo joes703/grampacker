@@ -125,6 +125,14 @@ export default function GearLibraryPage() {
     clearSelected()
   }
 
+  function commitNewCategory() {
+    const name = newCategoryName.trim()
+    if (!name) return
+    addCategory.mutate(name)
+    setNewCategoryName('')
+    setDialog(null)
+  }
+
   // ── CSV import/export ─────────────────────────────────────────────────────────
   const {
     inputRef: importInputRef,
@@ -525,6 +533,15 @@ export default function GearLibraryPage() {
     [filteredItems, categories],
   )
 
+  const itemCountByCategoryId = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const item of allItems) {
+      if (item.category_id === null) continue
+      counts.set(item.category_id, (counts.get(item.category_id) ?? 0) + 1)
+    }
+    return counts
+  }, [allItems])
+
   // Stable list of every collapsible key currently rendered — real category
   // ids plus '__uncategorized__' when that bucket is non-empty. Mirrors the
   // key derivation the per-category collapse trigger uses, so the bulk
@@ -618,10 +635,52 @@ export default function GearLibraryPage() {
           <Plus size={14} />
           New item
         </button>
+        {dialog?.type === 'add-category' ? (
+          <div className="flex items-center gap-2">
+            <input
+              autoFocus
+              type="text"
+              placeholder="Category name"
+              maxLength={128}
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitNewCategory()
+                if (e.key === 'Escape') {
+                  setNewCategoryName('')
+                  setDialog(null)
+                }
+              }}
+              className="w-44 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={commitNewCategory}
+              disabled={!newCategoryName.trim()}
+              className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+            >
+              Add
+            </button>
+            <button
+              onClick={() => { setNewCategoryName(''); setDialog(null) }}
+              className="rounded p-1.5 text-gray-400 hover:text-gray-600"
+              aria-label="Cancel new category"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setDialog({ type: 'add-category' })}
+            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            <Plus size={14} />
+            New category
+          </button>
+        )}
       </div>
 
       {/* Sticky bulk-action bar — shown only in selection mode. Sits between
-          the page header and "Add category" so it sticks to the top of the
+          the page header and the category list so it sticks to the top of the
           gear list area as the user scrolls. */}
       {selectMode && (
         <BulkActionsToolbar
@@ -636,85 +695,29 @@ export default function GearLibraryPage() {
         />
       )}
 
-      {/* Add category row */}
-      {dialog?.type === 'add-category' ? (
-        <div className="flex items-center gap-2 mb-4">
-          <input
-            autoFocus
-            type="text"
-            placeholder="Category name"
-            maxLength={128}
-            value={newCategoryName}
-            onChange={(e) => setNewCategoryName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && newCategoryName.trim()) {
-                addCategory.mutate(newCategoryName.trim())
-                setNewCategoryName('')
-                setDialog(null)
-              }
-              if (e.key === 'Escape') {
-                setNewCategoryName('')
-                setDialog(null)
-              }
-            }}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <button
-            onClick={() => {
-              if (newCategoryName.trim()) {
-                addCategory.mutate(newCategoryName.trim())
-                setNewCategoryName('')
-              }
-              setDialog(null)
-            }}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            Add
-          </button>
-          <button
-            onClick={() => { setNewCategoryName(''); setDialog(null) }}
-            className="rounded p-1.5 text-gray-400 hover:text-gray-600"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      ) : (
-        // "Add category" + bulk collapse/expand share one row — both are
-        // category-list-scoped affordances. flex-wrap covers narrow
-        // viewports; the bulk-collapse pair shifts under "Add category"
-        // when there's no horizontal room.
-        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <button
-            onClick={() => setDialog({ type: 'add-category' })}
-            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
-          >
-            <Plus size={14} />
-            Add category
-          </button>
-          <div className="ml-auto flex items-center gap-3 text-sm text-gray-500">
-            <button
-              type="button"
-              onClick={() => resetCollapsed(collapsibleKeys)}
-              disabled={collapsibleKeys.length === 0}
-              title="Collapse all categories"
-              className="flex items-center gap-1 hover:text-gray-700 disabled:opacity-40"
-            >
-              <ChevronsDownUp size={14} />
-              Collapse all
-            </button>
-            <button
-              type="button"
-              onClick={expandAll}
-              disabled={collapsibleKeys.length === 0}
-              title="Expand all categories"
-              className="flex items-center gap-1 hover:text-gray-700 disabled:opacity-40"
-            >
-              <ChevronsUpDown size={14} />
-              Expand all
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Category-list controls */}
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-3 text-sm text-gray-500">
+        <button
+          type="button"
+          onClick={() => resetCollapsed(collapsibleKeys)}
+          disabled={collapsibleKeys.length === 0}
+          title="Collapse all categories"
+          className="flex items-center gap-1 hover:text-gray-700 disabled:opacity-40"
+        >
+          <ChevronsDownUp size={14} />
+          Collapse all
+        </button>
+        <button
+          type="button"
+          onClick={expandAll}
+          disabled={collapsibleKeys.length === 0}
+          title="Expand all categories"
+          className="flex items-center gap-1 hover:text-gray-700 disabled:opacity-40"
+        >
+          <ChevronsUpDown size={14} />
+          Expand all
+        </button>
+      </div>
 
       {/* Category list */}
       {isLoading ? (
@@ -756,10 +759,13 @@ export default function GearLibraryPage() {
                   onDeleteItem: (item: GearItem) => setDialog({ type: 'delete-item', item }),
                   onRenameCategory: (id: string, name: string) =>
                     renameCategory.mutate({ id, name }),
-                  onDeleteCategory: (cat: Category) =>
-                    setDialog({ type: 'delete-category', category: cat }),
-                  onAddItemToCategory: (categoryId: string | null) =>
-                    setDialog({ type: 'create-item', categoryId }),
+                  onDeleteCategory: (cat: Category) => {
+                    if ((itemCountByCategoryId.get(cat.id) ?? 0) === 0) {
+                      removeCategory.mutate(cat.id)
+                    } else {
+                      setDialog({ type: 'delete-category', category: cat })
+                    }
+                  },
                   itemReorderPending: reorderGearItemsMut.isPending,
                 }
 
@@ -807,6 +813,7 @@ export default function GearLibraryPage() {
           defaultCategoryId={dialog.type === 'create-item' ? dialog.categoryId : undefined}
           saving={addItem.isPending || editItem.isPending}
           onClose={() => setDialog(null)}
+          onCreateCategory={(categoryName) => addCategory.mutateAsync(categoryName)}
           onSave={(gearPatch) => {
             // Gear library page never opens the dialog with a list context,
             // so listPatch is always null here and is ignored.
