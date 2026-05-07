@@ -355,22 +355,6 @@ function ListDetailInner({
     }),
   })
 
-  // Toggle the per-list "Group worn" preference. Optimistic on ['lists']
-  // mirrors notesMut so the UI flips immediately and rolls back on error.
-  const groupWornMut = useMutation({
-    mutationFn: (next: boolean) => updateList(listId, { group_worn: next }),
-    ...makeOptimisticUpdate<List, boolean>({
-      qc,
-      queryKey: queryKeys.lists(),
-      id: () => listId,
-      apply: (item, next) => ({
-        ...item,
-        group_worn: next,
-        updated_at: new Date().toISOString(),
-      }),
-    }),
-  })
-
   // Editing an item's name/description/category from the list view writes
   // to gear_items so it propagates to the gear library and every list that
   // uses the same item. The list-items cache fan-out below is what closes
@@ -811,34 +795,6 @@ function ListDetailInner({
                   <WeightTable items={listItems} categories={categories} />
                 </PanelCard>
               )}
-            </div>
-          )}
-
-          {/* List-organization controls — sit above the items list and stay
-              visible in both normal and pack mode. The Group worn toggle
-              writes to lists.group_worn (per-list, persisted) so the
-              setting survives reloads, mobile sessions, and the public
-              /r/<slug> share view. Hidden when there are no items because
-              the toggle is only meaningful with rows to organize. */}
-          {listItems.length > 0 && (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => groupWornMut.mutate(!showWornGroup)}
-                aria-pressed={showWornGroup}
-                title={
-                  showWornGroup
-                    ? 'Worn items are grouped at the bottom — click to merge back into categories'
-                    : 'Move worn items into a separate Worn section'
-                }
-                className={`rounded-lg border px-3 py-1 text-xs font-medium ${
-                  showWornGroup
-                    ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                    : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                Group worn
-              </button>
             </div>
           )}
 

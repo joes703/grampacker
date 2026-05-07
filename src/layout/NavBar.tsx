@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { ClipboardList, HelpCircle, LogOut, PanelLeftOpen, Pencil, Settings } from 'lucide-react'
+import { ClipboardList, HelpCircle, LogOut, PanelLeftOpen, Pencil, Settings, Shirt } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import { supabase } from '../lib/supabase'
 import { queryKeys, fetchLists, updateList, makeOptimisticUpdate } from '../lib/queries'
@@ -299,6 +299,7 @@ function ListHeading({
 function ListContextControls({ listId }: { listId: string }) {
   const auth = useRequireSession()
   const userId = auth?.userId ?? ''
+  const qc = useQueryClient()
   const { data: lists = [] } = useQuery({
     queryKey: queryKeys.lists(),
     queryFn: () => fetchLists(userId),
@@ -320,6 +321,24 @@ function ListContextControls({ listId }: { listId: string }) {
       { replace: false },
     )
   }
+
+  // Group worn — per-list, persisted on lists.group_worn. The mutation lives
+  // here (not on ListDetailPage) so the toggle can sit alongside g/oz, Pack,
+  // and Share in the top bar; ListDetailPage still derives showWornGroup
+  // straight from list.group_worn via the same ['lists'] cache.
+  const groupWornMut = useMutation({
+    mutationFn: (next: boolean) => updateList(listId, { group_worn: next }),
+    ...makeOptimisticUpdate<List, boolean>({
+      qc,
+      queryKey: queryKeys.lists(),
+      id: () => listId,
+      apply: (item, next) => ({
+        ...item,
+        group_worn: next,
+        updated_at: new Date().toISOString(),
+      }),
+    }),
+  })
 
   // Renders nothing list-specific until the list resolves — otherwise we'd
   // briefly render Pack/Share against a stale or absent list. g/oz is
@@ -355,13 +374,35 @@ function ListContextControls({ listId }: { listId: string }) {
         <ClipboardList size={14} />
         <span>Pack</span>
       </button>
+      <button
+        onClick={() => groupWornMut.mutate(!list.group_worn)}
+        title={
+          list.group_worn
+            ? 'Worn items grouped at the bottom — click to merge back into categories'
+            : 'Move worn items into a separate Worn section'
+        }
+        aria-label="Group worn items"
+        aria-pressed={list.group_worn}
+        className={`hidden md:inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
+          list.group_worn
+            ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+            : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+        }`}
+      >
+        <Shirt size={14} />
+        <span>Group worn</span>
+      </button>
       <div className="hidden md:flex">
         <PrivacyButton list={list} />
       </div>
 
-      {/* <md kebab containing Pack + Share */}
+      {/* <md kebab containing Pack + Group worn + Share */}
       <div className="md:hidden">
-        <ListActionsKebab list={list} onShareClick={() => setShareOpen(true)} />
+        <ListActionsKebab
+          list={list}
+          onShareClick={() => setShareOpen(true)}
+          onGroupWornClick={() => groupWornMut.mutate(!list.group_worn)}
+        />
       </div>
 
       {/* Mobile share modal — only opens via the kebab. PrivacyPanel handles
