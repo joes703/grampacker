@@ -18,10 +18,10 @@ type Props = {
   onGroupWornClick: () => void
 }
 
-// Mobile-only kebab on /lists/:id that exposes Pack and Share. At md+ those
-// controls render inline in the top bar and this component is hidden by its
-// parent's `md:hidden` wrapper. Pack mode is URL-driven (?mode=pack); Share
-// hands off to NavBar via the onShareClick callback.
+// Mobile-only kebab on /lists/:id that exposes Pack, Group worn, and Share.
+// At md+ those controls render inline in the top bar and this component is
+// hidden by its parent's `md:hidden` wrapper. Pack mode is URL-driven
+// (?mode=pack); Share hands off to NavBar via the onShareClick callback.
 export default function ListActionsKebab({ list, onShareClick, onGroupWornClick }: Props) {
   const [searchParams, setSearchParams] = useSearchParams()
   const isPackMode = searchParams.get('mode') === 'pack'
@@ -81,8 +81,11 @@ export default function ListActionsKebab({ list, onShareClick, onGroupWornClick 
           <button
             type="button"
             onClick={togglePackMode}
-            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 ${
-              isPackMode ? 'text-blue-700' : 'text-gray-700'
+            aria-pressed={isPackMode}
+            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${
+              isPackMode
+                ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'text-gray-700 hover:bg-gray-100'
             }`}
           >
             <ClipboardList size={14} />
@@ -94,8 +97,11 @@ export default function ListActionsKebab({ list, onShareClick, onGroupWornClick 
               setPos(null)
               onGroupWornClick()
             }}
-            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 ${
-              list.group_worn ? 'text-blue-700' : 'text-gray-700'
+            aria-pressed={list.group_worn}
+            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${
+              list.group_worn
+                ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'text-gray-700 hover:bg-gray-100'
             }`}
           >
             <Shirt size={14} />
@@ -107,8 +113,11 @@ export default function ListActionsKebab({ list, onShareClick, onGroupWornClick 
               setPos(null)
               onShareClick()
             }}
-            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 ${
-              list.is_shared ? 'text-blue-700' : 'text-gray-700'
+            aria-pressed={list.is_shared}
+            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${
+              list.is_shared
+                ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'text-gray-700 hover:bg-gray-100'
             }`}
           >
             <Globe size={14} />
