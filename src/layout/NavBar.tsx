@@ -7,9 +7,8 @@ import { supabase } from '../lib/supabase'
 import { queryKeys, fetchLists, updateList, makeOptimisticUpdate } from '../lib/queries'
 import type { List } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
-import HamburgerMenu from './HamburgerMenu'
+import MobileMenu from './MobileMenu'
 import ListSelector from './ListSelector'
-import ListActionsKebab from './ListActionsKebab'
 import { useSidebarDrawer } from './sidebar-drawer-context'
 import InlineTitle from '../lists/InlineTitle'
 import PrivacyButton from '../lists/PrivacyButton'
@@ -86,7 +85,9 @@ export default function NavBar() {
 
         {/* Right cluster — list-context controls (only on /lists/:id) and
             the persistent secondary destinations (Help/Settings/Sign out at
-            md+, HamburgerMenu at <md). */}
+            md+, MobileMenu at <md). On /lists/:id the MobileMenu is rendered
+            by ListContextControls instead so the list-action rows can sit
+            above the global section in a single popover. */}
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {route.kind === 'list-detail' && <ListContextControls listId={route.listId} />}
 
@@ -124,10 +125,17 @@ export default function NavBar() {
             </button>
           </div>
 
-          {/* < md trigger for the secondary-destination popover. */}
-          <div className="md:hidden">
-            <HamburgerMenu />
-          </div>
+          {/* < md trigger for the secondary-destination popover. On
+              /lists/:id the same menu is rendered by ListContextControls
+              with list-action props above the global section, so suppress
+              this top-level mount there to avoid two adjacent menu
+              triggers (the original bug). On every other authed route the
+              top-level mount is the only menu surface. */}
+          {route.kind !== 'list-detail' && (
+            <div className="md:hidden">
+              <MobileMenu />
+            </div>
+          )}
         </div>
       </div>
     </header>
@@ -340,12 +348,13 @@ function ListContextControls({ listId }: { listId: string }) {
     }),
   })
 
-  // Renders nothing list-specific until the list resolves — otherwise we'd
-  // briefly render Pack/Share against a stale or absent list. g/oz is
-  // global and could render eagerly, but keeping the cluster atomic
-  // simplifies the layout.
-  if (!list) return null
-
+  // List-specific affordances (Pack pill, Group worn pill, PrivacyButton,
+  // mobile share modal body) only render once `list` resolves. g/oz and
+  // the mobile menu render unconditionally so the user retains access to
+  // global actions (Help / Settings / Sign out) and the unit toggle during
+  // the lists query's cold-load window. Without that, /lists/:id has no
+  // reachable global menu while loading — a regression versus rendering
+  // null.
   return (
     <>
       {/* g/oz toggle — same on every viewport. The text label is short
@@ -359,75 +368,89 @@ function ListContextControls({ listId }: { listId: string }) {
         {weightUnit}
       </button>
 
-      {/* md+ inline controls */}
-      <button
-        onClick={togglePackMode}
-        title={isPackMode ? 'Pack mode: on' : 'Pack mode: off'}
-        aria-label="Pack mode"
-        aria-pressed={isPackMode}
-        className={`hidden md:inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
-          isPackMode
-            ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-            : 'border-gray-300 text-gray-500 hover:bg-gray-50'
-        }`}
-      >
-        <ClipboardList size={14} />
-        <span>Pack</span>
-      </button>
-      <button
-        onClick={() => groupWornMut.mutate(!list.group_worn)}
-        title={
-          list.group_worn
-            ? 'Worn items grouped at the bottom — click to merge back into categories'
-            : 'Move worn items into a separate Worn section'
-        }
-        aria-label="Group worn items"
-        aria-pressed={list.group_worn}
-        className={`hidden md:inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
-          list.group_worn
-            ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-            : 'border-gray-300 text-gray-500 hover:bg-gray-50'
-        }`}
-      >
-        <Shirt size={14} />
-        <span>Group worn</span>
-      </button>
-      <div className="hidden md:flex">
-        <PrivacyButton list={list} />
-      </div>
+      {/* md+ inline list controls — gated on resolved list to avoid
+          rendering Pack / Group worn / Share against a stale or absent
+          row. */}
+      {list && (
+        <>
+          <button
+            onClick={togglePackMode}
+            title={isPackMode ? 'Pack mode: on' : 'Pack mode: off'}
+            aria-label="Pack mode"
+            aria-pressed={isPackMode}
+            className={`hidden md:inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
+              isPackMode
+                ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            <ClipboardList size={14} />
+            <span>Pack</span>
+          </button>
+          <button
+            onClick={() => groupWornMut.mutate(!list.group_worn)}
+            title={
+              list.group_worn
+                ? 'Worn items grouped at the bottom — click to merge back into categories'
+                : 'Move worn items into a separate Worn section'
+            }
+            aria-label="Group worn items"
+            aria-pressed={list.group_worn}
+            className={`hidden md:inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
+              list.group_worn
+                ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            <Shirt size={14} />
+            <span>Group worn</span>
+          </button>
+          <div className="hidden md:flex">
+            <PrivacyButton list={list} />
+          </div>
+        </>
+      )}
 
-      {/* <md kebab containing Pack + Group worn + Share */}
+      {/* < md unified menu — replaces the previous adjacent
+          ListActionsKebab + HamburgerMenu pair. Renders unconditionally
+          so the global section (Help, Settings, Sign out) remains
+          reachable during the cold-load window; list-action handlers
+          flow through only once `list` resolves so the toggle rows are
+          either fully wired or hidden, never half-functional. */}
       <div className="md:hidden">
-        <ListActionsKebab
+        <MobileMenu
           list={list}
-          onShareClick={() => setShareOpen(true)}
-          onGroupWornClick={() => groupWornMut.mutate(!list.group_worn)}
+          onPackToggle={list ? togglePackMode : undefined}
+          onGroupWornToggle={list ? () => groupWornMut.mutate(!list.group_worn) : undefined}
+          onShareClick={list ? () => setShareOpen(true) : undefined}
         />
       </div>
 
-      {/* Mobile share modal — only opens via the kebab. PrivacyPanel handles
-          the toggle, URL, and copy interactions; identical body to
-          PrivacyButton's desktop popover. */}
-      <Modal
-        open={shareOpen}
-        onClose={() => setShareOpen(false)}
-        title="Share list"
-        className="w-full max-w-sm"
-      >
-        <div className="p-4">
-          <h2 className="mb-3 text-base font-semibold text-gray-900">Share list</h2>
-          <PrivacyPanel list={list} />
-          <div className="mt-4 flex justify-end">
-            <button
-              type="button"
-              onClick={() => setShareOpen(false)}
-              className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
-            >
-              Close
-            </button>
+      {/* Mobile share modal — opens via the mobile menu's Share row.
+          PrivacyPanel handles the toggle, URL, and copy interactions;
+          identical body to PrivacyButton's desktop popover. */}
+      {list && (
+        <Modal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          title="Share list"
+          className="w-full max-w-sm"
+        >
+          <div className="p-4">
+            <h2 className="mb-3 text-base font-semibold text-gray-900">Share list</h2>
+            <PrivacyPanel list={list} />
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShareOpen(false)}
+                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+              >
+                Close
+              </button>
+            </div>
           </div>
-        </div>
-      </Modal>
+        </Modal>
+      )}
     </>
   )
 }

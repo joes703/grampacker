@@ -21,7 +21,7 @@ type MenuPos =
 //     176, w-48 = 192, etc.). Min 8px from viewport left to avoid
 //     clipping. Used by row kebabs.
 //   - right-anchored: menu's right edge is `viewport.innerWidth -
-//     trigger.right` from the right side. Used by HamburgerMenu and
+//     trigger.right` from the right side. Used by MobileMenu and
 //     similar fixed-position headers; menuWidth is unused since the
 //     coordinate is measured from the right.
 export function useAnchoredMenu(anchor: AnchorVariant): {

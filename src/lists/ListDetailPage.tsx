@@ -150,9 +150,9 @@ function ListDetailInner({
   // refresh-stable, and back/forward navigable. Anything other than the
   // exact string 'pack' (missing, garbage, typo) falls back to edit mode
   // silently. The toggle UI lives in the top bar (NavBar's
-  // ListContextControls / ListActionsKebab); this page reads the URL
-  // only. Public share view at /r/:slug is a different page and never
-  // sees this parameter.
+  // ListContextControls / MobileMenu); this page reads the URL only.
+  // Public share view at /r/:slug is a different page and never sees
+  // this parameter.
   const [searchParams] = useSearchParams()
   const mode: Mode = searchParams.get('mode') === 'pack' ? 'pack' : 'edit'
   const { weightUnit } = useWeightUnit()
