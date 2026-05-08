@@ -15,7 +15,7 @@ export type ListImportRow = {
 function toBool(v: string | undefined): boolean {
   const s = (v ?? '').trim().toLowerCase()
   // 1/yes/true: traditional CSV boolean conventions.
-  // worn/consumable: Lighterpack's literal column-value style — a
+  // worn/consumable: Lighterpack's literal column-value style. A
   // worn-flag column carries the string "Worn" when true and empty
   // when false; same for consumable. Recognising both literals here
   // (rather than column-aware parsing) keeps toBool a single function
@@ -53,7 +53,7 @@ export function parseListCsv(text: string): ListImportRow[] | string {
       const isConsumable = consumKey ? toBool(row[consumKey]) : false
       // worn_xor_consumable is a DB CHECK constraint; if both are truthy in
       // the CSV the insert fails with a generic error. Silently normalize
-      // by clearing both — the user can re-flag the right one in the UI.
+      // by clearing both. The user can re-flag the right one in the UI.
       const bothSet = isWorn && isConsumable
       return {
         name:         (row[nameKey] ?? '').trim().slice(0, 256),
@@ -79,8 +79,8 @@ export function nameFromCsvFilename(filename: string): string {
 // Lighterpack-compatible 10-column header (Item Name, Category, desc, qty,
 // weight, unit, url, price, worn, consumable) so users can re-import a
 // grampacker list export into Lighterpack and so users coming from
-// Lighterpack see a familiar shape. is_packed is excluded — Lighterpack
-// has no equivalent and it's per-user runtime checklist state. url and
+// Lighterpack see a familiar shape. is_packed is excluded because
+// Lighterpack has no equivalent and it's per-user runtime checklist state. url and
 // price are emitted as Lighterpack defaults ('' and 0) since grampacker
 // doesn't store them. Boolean values use Lighterpack's "Worn" /
 // "Consumable" literals (capitalized when true, empty when false). The

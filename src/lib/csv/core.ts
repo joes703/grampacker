@@ -1,4 +1,4 @@
-// Generic CSV format primitives. Format-agnostic — knows about commas,
+// Generic CSV format primitives. Format-agnostic: knows about commas,
 // quotes, newlines, and the Excel/Google Sheets formula-injection
 // escape, but knows NOTHING about gear-library or list-import column
 // shapes. The format-specific adapters live in ./gear and ./list.
@@ -8,9 +8,9 @@ function escapeCell(v: string | number | boolean | null | undefined): string {
   // Formula-injection neutralization. Excel, Google Sheets, and Numbers
   // evaluate cells whose first character is =, +, -, @, tab, or CR as a
   // formula. A leading single apostrophe is the standard "treat as text"
-  // escape — strips on display in those tools, not interpreted as part of
-  // the cell value. Applied uniformly at the cell-writer layer so every
-  // export path inherits it.
+  // escape: it strips on display in those tools and is not interpreted
+  // as part of the cell value. Applied uniformly at the cell-writer
+  // layer so every export path inherits it.
   //
   // We deliberately don't strip leading apostrophes on the import side
   // (parseCsv): third-party tools like Lighterpack may emit them

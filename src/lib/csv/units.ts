@@ -8,8 +8,8 @@
 //   weight_grams CHECK constraint; without this an over-cap row aborts
 //   the bulk insert with Postgres 22003 numeric_value_out_of_range,
 //   killing the whole batch).
-// - defaults to grams on unknown unit (CSV import tolerance — typo
-//   "kgs" or empty unit becomes grams; matches the prior behavior).
+// - defaults to grams on unknown unit (CSV import tolerance: a typo
+//   like "kgs" or an empty unit becomes grams; matches the prior behavior).
 //
 // Used by both gear.parseGearCsv and list.parseListCsv. Lives outside
 // either to avoid circular imports and to keep the dependency
@@ -40,8 +40,8 @@ export function toGrams(value: string, unit: string): number {
     case 'grams':
     default:
       // Empty + g/gram/grams take the default; unknown units (typos
-      // etc.) also default to grams as the most-tolerant fallback —
-      // matches the previous behavior, just with the happy path now
+      // etc.) also default to grams as the most-tolerant fallback.
+      // Matches the previous behavior, just with the happy path now
       // explicit instead of hidden under `default`.
       grams = n
   }

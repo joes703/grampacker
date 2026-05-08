@@ -15,14 +15,14 @@ export function gearItemsToCsv(items: GearItem[], categories: Category[]): strin
   const catMap = new Map(categories.map((c) => [c.id, c.name]))
   // Lighterpack-compatible base 10 columns so users can re-import a
   // grampacker gear-library export into Lighterpack without manual header
-  // massaging — Lighterpack ignores unknown columns. The gear library has
+  // massaging (Lighterpack ignores unknown columns). The gear library has
   // no list-item context (no quantity / worn / consumable), so those get
   // Lighterpack defaults: qty=1, worn/consumable empty. url is empty
   // since grampacker doesn't store it; price stays at the Lighterpack
   // default 0 (its own field, not aliased to cost). cost and
   // purchase_date are grampacker-specific extension columns appended
   // after the Lighterpack 10; Lighterpack ignores them on its import.
-  // Both blank for null — never 0 or epoch.
+  // Both blank for null, never 0 or epoch.
   const rows = items.map((item) => ({
     'Item Name': item.name,
     Category: item.category_id ? (catMap.get(item.category_id) ?? '') : '',
@@ -59,7 +59,7 @@ export function parseGearCsv(text: string): GearCsvRow[] | string {
   // cost: prefer our column name; fall back to Lighterpack's "price" so a
   // Lighterpack export imports its prices directly. Two-pass lookup (not
   // a single find with OR) so column order in the source CSV doesn't
-  // matter — our own export has price=0 and cost=N side by side, and the
+  // matter. Our own export has price=0 and cost=N side by side, and the
   // user-set cost must always win over the Lighterpack-default price.
   const costKey   = keys.find((k) => k === 'cost') ?? keys.find((k) => k === 'price')
   const dateKey   = keys.find((k) => k === 'purchase_date' || k === 'purchase date')
@@ -83,14 +83,14 @@ export function parseGearCsv(text: string): GearCsvRow[] | string {
 }
 
 // Empty/whitespace cells become null (gifts and unknown values stay
-// unknown — never coerced to 0). Negative or unparseable inputs also
+// unknown, never coerced to 0). Negative or unparseable inputs also
 // drop to null rather than corrupting the row.
 function parseCost(raw: string | undefined): number | null {
   const s = (raw ?? '').trim()
   if (!s) return null
   const n = parseFloat(s)
   if (!isFinite(n) || n < 0) return null
-  // Round to cents — numeric(10,2) in the DB rejects extra precision.
+  // Round to cents; numeric(10,2) in the DB rejects extra precision.
   // Cap at the column's max (99,999,999.99); without this, an over-cap
   // row would abort the entire bulk INSERT with Postgres 22003
   // numeric_value_out_of_range, taking the whole batch with it.
@@ -98,7 +98,7 @@ function parseCost(raw: string | undefined): number | null {
 }
 
 // Strict ISO YYYY-MM-DD; anything else (or empty) is null. We deliberately
-// don't accept locale formats — silent ambiguity (07/04/2024 = July 4 or
+// don't accept locale formats: silent ambiguity (07/04/2024 = July 4 or
 // April 7?) is worse than rejecting. Users can re-format their CSV.
 function parseIsoDate(raw: string | undefined): string | null {
   const s = (raw ?? '').trim()

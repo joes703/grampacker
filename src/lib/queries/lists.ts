@@ -30,15 +30,15 @@ async function withSlugRetry<T>(insert: (slug: string) => Promise<T>, max = 5): 
       lastErr = err
     }
   }
-  // Reachable when (a) `max` 23505 collisions in a row — astronomically
-  // unlikely; or (b) caller passes `max <= 0` so the loop body never
-  // runs and `lastErr` stays undefined. The explicit Error fallback
-  // covers (b) so toast/error-handling that expects a real Error
-  // doesn't see a thrown undefined.
+  // Reachable when (a) `max` 23505 collisions in a row, which is
+  // astronomically unlikely, or (b) the caller passes `max <= 0` so the
+  // loop body never runs and `lastErr` stays undefined. The explicit
+  // Error fallback covers (b) so toast/error-handling that expects a
+  // real Error doesn't see a thrown undefined.
   throw lastErr ?? new Error('slug generation: exhausted retries')
 }
 
-// Owner-scoped private read — see queries/index.ts for the convention.
+// Owner-scoped private read. See queries/index.ts for the convention.
 export async function fetchLists(userId: string): Promise<List[]> {
   const { data, error } = await supabase
     .from('lists')
@@ -51,7 +51,7 @@ export async function fetchLists(userId: string): Promise<List[]> {
 }
 
 // Public read (shared list, no auth). Returns only the columns the share
-// view renders — no user_id, no slug echo, no is_shared / sort_order /
+// view renders: no user_id, no slug echo, no is_shared / sort_order /
 // timestamps. See SECURITY.md "Public read paths" for the allowlist.
 // group_worn is included so the share view honors the owner's worn-grouping
 // preference (see PublicList in types.ts).
@@ -111,13 +111,14 @@ export async function reorderLists(updates: { id: string; sort_order: number }[]
 //
 // Phase 8 (M3a): one SECURITY DEFINER RPC replaces the previous
 // createList + bulk list_items insert pair. Two RTT -> one. Slug retry
-// stays client-side via withSlugRetry — the RPC takes p_slug and the
+// stays client-side via withSlugRetry; the RPC takes p_slug and the
 // 23505 propagates through supabase.rpc()'s PostgrestError.
 //
 // Atomicity is now visible: previously the parent list could persist
 // even if the bulk list_items insert failed (cap trigger, FK on a stale
 // gear_item_id). The RPC wraps both inserts in one transaction, so any
-// failure rolls back the whole gesture — no orphan list rows.
+// failure rolls back the whole gesture and no orphan list rows are left
+// behind.
 export async function createListFromSelection(
   userId: string,
   name: string,
@@ -144,7 +145,7 @@ export async function createListFromSelection(
 // insert). Three RTT -> one. The "(copy)" name suffix and per-row
 // field copying happen inside the RPC; this function passes only the
 // source id, slug, and sort_order. The `source: List` parameter shape
-// is preserved for caller compatibility — passing the whole row is
+// is preserved for caller compatibility; passing the whole row is
 // harmless even though only `source.id` is read here.
 export async function duplicateList(source: List, userId: string, sortOrder: number): Promise<List> {
   return withSlugRetry(async (slug) => {

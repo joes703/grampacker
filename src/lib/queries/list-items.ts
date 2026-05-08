@@ -4,7 +4,7 @@ import type { ListImportRow } from '../csv'
 import { bulkUpdateSortOrder } from './optimistic'
 import { resolveOrCreateCategories, resolveOrCreateGearForImport } from './import-helpers'
 
-// Owner-scoped private read — see queries/index.ts for the convention.
+// Owner-scoped private read. See queries/index.ts for the convention.
 // Uses the list_items.user_id column added in 20260506000002.
 export async function fetchListItems(listId: string, userId: string): Promise<ListItemWithGear[]> {
   const { data, error } = await supabase
@@ -34,7 +34,7 @@ export async function fetchAllUserListItems(userId: string): Promise<ListItemWit
 }
 
 // Public read (shared list, no auth). Returns only the columns the share
-// view renders — no list_id (viewer already has it), no is_packed (owner's
+// view renders: no list_id (viewer already has it), no is_packed (owner's
 // packing state), no created_at/updated_at. See SECURITY.md "Public read
 // paths" for the allowlist.
 export async function fetchSharedListItems(listId: string): Promise<PublicListItem[]> {
@@ -47,7 +47,7 @@ export async function fetchSharedListItems(listId: string): Promise<PublicListIt
   // PostgREST returns the gear_item join as a single object (one-to-one
   // via the gear_item_id FK), but TypeScript infers it as an array from
   // the explicit-column SELECT. The `as unknown as` two-step matches the
-  // pattern used by the authed fetchListItems below — the runtime shape
+  // pattern used by the authed fetchListItems below: the runtime shape
   // is correct; only the inferred TS shape needs the override.
   return data as unknown as PublicListItem[]
 }
