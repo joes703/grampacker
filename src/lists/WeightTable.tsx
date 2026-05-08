@@ -70,7 +70,7 @@ export function computeWeightBreakdown(
 
   const catRows = sortedCats.map((c) => {
     const grams = basePerCat.get(c.id)
-    if (grams === undefined) throw new Error('computeWeightBreakdown: filtered key missing — unreachable')
+    if (grams === undefined) throw new Error('computeWeightBreakdown: filtered key missing (unreachable)')
     return { id: c.id, name: c.name, grams }
   })
   const uncatGrams = basePerCat.get(null)

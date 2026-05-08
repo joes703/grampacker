@@ -37,8 +37,8 @@ export default function PrivacyButton({ list }: Props) {
         ref={triggerRef}
         type="button"
         onClick={() => (open ? setPos(null) : openPopover())}
-        title={list.is_shared ? 'Public — click to manage' : 'Private — click to manage'}
-        aria-label={list.is_shared ? 'Privacy: public — click to manage' : 'Privacy: private — click to manage'}
+        title={list.is_shared ? 'Public. Click to manage.' : 'Private. Click to manage.'}
+        aria-label={list.is_shared ? 'Privacy: public. Click to manage.' : 'Privacy: private. Click to manage.'}
         aria-pressed={list.is_shared}
         className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
           list.is_shared

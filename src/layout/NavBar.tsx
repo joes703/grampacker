@@ -242,7 +242,7 @@ function ListHeading({
       ref={containerRef}
       role="button"
       tabIndex={-1}
-      aria-label="Switch list (click) — use the chevron to keyboard-activate"
+      aria-label="Switch list (click). Use the chevron to keyboard-activate."
       onClick={handleContainerClick}
       onKeyDown={(e) => {
         // Only act on keys focused on the container itself. Descendants
@@ -391,7 +391,7 @@ function ListContextControls({ listId }: { listId: string }) {
             onClick={() => groupWornMut.mutate(!list.group_worn)}
             title={
               list.group_worn
-                ? 'Worn items grouped at the bottom — click to merge back into categories'
+                ? 'Worn items grouped at the bottom. Click to merge back into categories.'
                 : 'Move worn items into a separate Worn section'
             }
             aria-label="Group worn items"

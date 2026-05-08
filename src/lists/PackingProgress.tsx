@@ -47,7 +47,7 @@ export default function PackingProgress({
             type="button"
             onClick={onToggleShowUnpackedOnly}
             aria-pressed={showUnpackedOnly}
-            title={showUnpackedOnly ? 'Showing unpacked only — click to show all' : 'Show unpacked only'}
+            title={showUnpackedOnly ? 'Showing unpacked only. Click to show all.' : 'Show unpacked only'}
             className={`rounded-lg border px-3 py-1 text-xs font-medium ${
               showUnpackedOnly
                 ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
@@ -60,7 +60,7 @@ export default function PackingProgress({
             type="button"
             onClick={() => setConfirmingReset(true)}
             disabled={packed === 0 || offline}
-            title={offline ? 'Offline — reconnect to reset packed state' : undefined}
+            title={offline ? 'Offline. Reconnect to reset packed state.' : undefined}
             className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <RotateCcw size={12} /> Reset
@@ -80,7 +80,7 @@ export default function PackingProgress({
           className="mt-2 flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 border border-amber-200"
         >
           <WifiOff size={12} aria-hidden="true" className="mt-0.5 shrink-0" />
-          <span>Offline — you can view this list, but packing checkmarks need a connection.</span>
+          <span>Offline. You can view this list, but packing checkmarks need a connection.</span>
         </div>
       )}
       {confirmingReset && (

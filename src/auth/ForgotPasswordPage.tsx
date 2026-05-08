@@ -44,7 +44,7 @@ export default function ForgotPasswordPage() {
         {submitted ? (
           <>
             <p className="text-sm text-gray-700">
-              If an account exists for <span className="font-medium">{email}</span>, we&apos;ve sent a reset link. Check your inbox (and spam folder) — the link expires after a short while.
+              If an account exists for <span className="font-medium">{email}</span>, we&apos;ve sent a reset link. Check your inbox (and spam folder); the link expires after a short while.
             </p>
             <p className="mt-6 text-center text-sm text-gray-600">
               <Link to="/login" className="text-blue-600 hover:underline">
