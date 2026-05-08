@@ -951,6 +951,7 @@ function ListDetailInner({
                     weightUnit={weightUnit}
                     isBelowLg={isBelowLg}
                     packMode={mode === 'pack'}
+                    packActionsDisabled={!online}
                     sortable={false}
                     showUnpackedOnly={showUnpackedOnly}
                     onUpdate={sharedGroupProps.onUpdate}
