@@ -103,7 +103,12 @@ export default function ListDetailPage() {
   // userId as the user_id filter — empty string returns empty results
   // rather than the unfiltered union.
   const userIdForQuery = auth?.userId ?? ''
-  const { data: lists = [] } = useQuery({
+  // isPending captures the "no data yet" window for first load. Passing it
+  // through to the inner lets the not-found branch wait for the query to
+  // settle before declaring the list missing — without this, the default
+  // empty-array fallback would render "List not found" on every cold load
+  // for ~1 paint before the query resolves.
+  const { data: lists = [], isPending: listsLoading } = useQuery({
     queryKey: queryKeys.lists(),
     queryFn: () => fetchLists(userIdForQuery),
   })
@@ -116,17 +121,28 @@ export default function ListDetailPage() {
   // key={routeId} forces a fresh ListDetailInner instance per list, so local
   // state (open dialogs, draft inputs, etc.) doesn't leak when the user
   // switches lists.
-  return <ListDetailInner key={routeId} listId={routeId} lists={lists} userId={userId} qc={qc} />
+  return (
+    <ListDetailInner
+      key={routeId}
+      listId={routeId}
+      lists={lists}
+      listsLoading={listsLoading}
+      userId={userId}
+      qc={qc}
+    />
+  )
 }
 
 function ListDetailInner({
   listId,
   lists,
+  listsLoading,
   userId,
   qc,
 }: {
   listId: string
   lists: List[]
+  listsLoading: boolean
   userId: string
   qc: ReturnType<typeof useQueryClient>
 }) {
@@ -200,12 +216,15 @@ function ListDetailInner({
   // under stale cache), clear the cache so the next `/` visit takes the
   // slow path instead of looping back here. Scoped to readLastListId() ===
   // listId so a direct deep-link to an unrelated missing list doesn't
-  // wipe an otherwise-valid cache.
+  // wipe an otherwise-valid cache. Gated on !listsLoading so the in-flight
+  // window — where `list` is undefined for a different reason — doesn't
+  // wipe a perfectly valid cache during cold load.
   useEffect(() => {
+    if (listsLoading) return
     if (!list && listId && readLastListId() === listId) {
       clearLastListId()
     }
-  }, [list, listId])
+  }, [list, listId, listsLoading])
 
   const { data: listItems = [] } = useQuery({
     queryKey: queryKeys.listItems(listId),
@@ -724,7 +743,16 @@ function ListDetailInner({
     [mode, weightUnit, isBelowLg, showUnpackedOnly, online],
   )
 
-  // ── Not found ──────────────────────────────────────────────────────────────
+  // ── Loading / not found ────────────────────────────────────────────────────
+
+  // Cold-load window: lists query in-flight, no resolved list yet. Render a
+  // neutral skeleton instead of "List not found" — the latter is reserved
+  // for the genuinely-missing case (deleted list, stale deep link, RLS
+  // miss). Without this gate, every cold load on /lists/:id flashed
+  // "List not found" for ~1 paint before the query resolved.
+  if (listsLoading && !list) {
+    return <div className="h-64" aria-busy="true" />
+  }
 
   if (!list) {
     return (
