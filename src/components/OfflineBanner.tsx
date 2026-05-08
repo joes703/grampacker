@@ -29,7 +29,7 @@ export default function OfflineBanner() {
       className="flex items-center justify-center gap-2 bg-amber-50 px-4 py-1.5 text-xs font-medium text-amber-800 border-b border-amber-200"
     >
       <WifiOff size={12} aria-hidden="true" />
-      <span>Offline — saved pages may still be available.</span>
+      <span>Offline. Showing saved data when available.</span>
     </div>
   )
 }
