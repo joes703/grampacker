@@ -113,6 +113,35 @@ describe('AuthProvider offline session fallback', () => {
     expect(getByTestId('auth').dataset.userId).toBe('cached-user')
   })
 
+  it('keeps the cached session when a null auth event fires offline', async () => {
+    const cached = makeSession('cached-user')
+    localStorage.setItem(OFFLINE_SESSION_KEY, JSON.stringify(cached))
+    mockState.getSession.mockResolvedValue({ data: { session: cached }, error: null })
+
+    const { getByTestId } = render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    )
+
+    await act(async () => {})
+
+    expect(getByTestId('auth').dataset.userId).toBe('cached-user')
+
+    const listener = mockState.onAuthStateChange.mock.calls[0]?.[0] as
+      | ((event: 'SIGNED_OUT', session: Session | null) => void)
+      | undefined
+    expect(listener).toBeDefined()
+
+    setNavigatorOnline(false)
+    await act(async () => {
+      listener?.('SIGNED_OUT', null)
+    })
+
+    expect(getByTestId('auth').dataset.userId).toBe('cached-user')
+    expect(localStorage.getItem(OFFLINE_SESSION_KEY)).not.toBeNull()
+  })
+
   it('does not use the cached session when the browser is online', async () => {
     localStorage.setItem(OFFLINE_SESSION_KEY, JSON.stringify(makeSession('cached-user')))
     mockState.getSession.mockResolvedValue({

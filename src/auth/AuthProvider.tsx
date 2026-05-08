@@ -3,6 +3,10 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
 const OFFLINE_SESSION_KEY = 'grampacker:last-auth-session'
+// Supabase owns sb-<project>-auth-token and may clear it during refresh
+// failures. Keep a separate last-known-good copy so an offline reload can
+// still render cached app data until the next online auth round-trip decides
+// whether the session is truly invalid.
 
 type AuthContextValue = {
   session: Session | null
@@ -74,10 +78,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (ignored) return
       if (session) {
         writeOfflineSession(session)
-      } else {
-        clearOfflineSession()
+        setSession(session)
+        return
       }
-      setSession(session)
+
+      if (!isOnline()) {
+        // Offline null-session events are treated as transient refresh
+        // failures. A real sign-out or invalid refresh token will be
+        // reconciled by the next online auth event/getSession result.
+        return
+      }
+
+      clearOfflineSession()
+      setSession(null)
     })
 
     return () => {
