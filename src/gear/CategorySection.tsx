@@ -103,13 +103,17 @@ function CategorySectionInner(
           <span className="w-5" />
         )}
 
-        {/* Collapse toggle */}
+        {/* Collapse toggle — sized for touch on mobile (40×40, the minimum
+            comfortable target on phone hardware) and tightened on desktop
+            where mouse precision is higher. The chevron is the only
+            collapse affordance; the name button next to it triggers
+            rename, not collapse, so the two intents stay separate. */}
         <button
           onClick={onToggleCollapse}
           aria-expanded={!collapsed}
           aria-controls={regionId}
           aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
-          className="text-gray-500 hover:text-gray-800"
+          className="inline-flex h-10 w-10 lg:h-7 lg:w-7 items-center justify-center rounded text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0"
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
         </button>
