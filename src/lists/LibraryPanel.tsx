@@ -172,7 +172,7 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
 }) {
   return (
     <div>
-      {/* Category header — chevron is the only interactive collapse target.
+      {/* Category header - chevron is the only interactive collapse target.
           Static label area below has no hover state so the chevron is the
           obvious affordance. The header strip's bg-gray-50 stays as a
           visual section divider; it just isn't clickable as a whole. */}

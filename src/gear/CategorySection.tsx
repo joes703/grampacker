@@ -103,7 +103,7 @@ function CategorySectionInner(
           <span className="w-5" />
         )}
 
-        {/* Collapse toggle — sized for touch on mobile (40×40, the minimum
+        {/* Collapse toggle - sized for touch on mobile (40x40, the minimum
             comfortable target on phone hardware) and tightened on desktop
             where mouse precision is higher. The chevron is the only
             collapse affordance; the name button next to it triggers
