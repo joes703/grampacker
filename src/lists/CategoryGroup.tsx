@@ -190,17 +190,30 @@ function CategoryGroup({
         packMode ? 'gap-0.5 lg:gap-1.5 px-2 lg:px-3' : 'gap-1.5 px-3'
       }`}>
         {collapsible ? (
-          <button
-            onClick={() => setCollapsed((v) => !v)}
-            aria-expanded={!collapsed}
-            aria-controls={regionId}
-            className="flex flex-1 min-w-0 items-center gap-1.5 text-left"
-          >
-            {collapsed ? (
-              <ChevronRight size={14} className="text-gray-400 shrink-0" />
-            ) : (
-              <ChevronDown size={14} className="text-gray-400 shrink-0" />
-            )}
+          // Chevron is the only interactive collapse target. Mobile mistaps
+          // (tapping near the first row but landing on the header) used to
+          // collapse the whole section because the entire header strip was
+          // one button. Splitting into chevron-button + static label moves
+          // that risk to a 40px-square explicit affordance.
+          <div className="flex flex-1 min-w-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setCollapsed((v) => !v)}
+              aria-expanded={!collapsed}
+              aria-controls={regionId}
+              aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
+              className="inline-flex h-10 w-10 lg:h-7 lg:w-7 items-center justify-center rounded text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0"
+            >
+              {collapsed ? (
+                <ChevronRight size={14} />
+              ) : (
+                <ChevronDown size={14} />
+              )}
+            </button>
+            {/* Static label area — explicitly NOT a button, no hover state.
+                Chevron is the obvious affordance; the name remains
+                read-only here (rename happens via the modal, not by tapping
+                the header). */}
             <span className={`truncate text-sm font-medium ${complete ? 'text-gray-400' : 'text-gray-700'}`}>{name}</span>
             <span className="shrink-0 text-xs tabular-nums text-gray-400">
               {packMode ? `${packedCount} / ${sectionItems.length}` : `(${sectionItems.length})`}
@@ -208,7 +221,7 @@ function CategoryGroup({
             {complete && (
               <Check size={14} className="shrink-0 text-green-600" aria-label="All packed" />
             )}
-          </button>
+          </div>
         ) : (
           <span className="flex-1 min-w-0 truncate text-sm font-medium text-gray-700">{name}</span>
         )}

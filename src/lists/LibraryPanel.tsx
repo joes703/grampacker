@@ -172,23 +172,30 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
 }) {
   return (
     <div>
-      {/* Category header */}
-      <button
-        onClick={() => onToggle(toggleKey)}
-        aria-expanded={!collapsed}
-        aria-controls={regionId}
-        className="flex w-full items-center gap-1.5 px-3 py-0.5 bg-gray-50 hover:bg-gray-100 text-left border-b border-gray-100"
-      >
-        {collapsed ? (
-          <ChevronRight size={13} className="shrink-0 text-gray-400" />
-        ) : (
-          <ChevronDown size={13} className="shrink-0 text-gray-400" />
-        )}
-        <span className="flex-1 text-sm font-medium text-gray-700">
+      {/* Category header — chevron is the only interactive collapse target.
+          Static label area below has no hover state so the chevron is the
+          obvious affordance. The header strip's bg-gray-50 stays as a
+          visual section divider; it just isn't clickable as a whole. */}
+      <div className="flex w-full items-center gap-1.5 px-3 py-0.5 bg-gray-50 border-b border-gray-100">
+        <button
+          type="button"
+          onClick={() => onToggle(toggleKey)}
+          aria-expanded={!collapsed}
+          aria-controls={regionId}
+          aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
+          className="inline-flex h-10 w-10 lg:h-7 lg:w-7 items-center justify-center rounded text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0"
+        >
+          {collapsed ? (
+            <ChevronRight size={13} />
+          ) : (
+            <ChevronDown size={13} />
+          )}
+        </button>
+        <span className="flex-1 truncate text-sm font-medium text-gray-700">
           {name}
         </span>
-        <span className="text-xs tabular-nums text-gray-400">{items.length}</span>
-      </button>
+        <span className="shrink-0 text-xs tabular-nums text-gray-400">{items.length}</span>
+      </div>
 
       {/* Items — pure picker rows. Click toggles add/remove on the active list. */}
       {!collapsed && (
