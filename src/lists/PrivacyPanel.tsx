@@ -38,7 +38,7 @@ export default function PrivacyPanel({ list }: Props) {
       {list.is_shared ? (
         <>
           <p className="text-xs text-gray-500 mb-2">
-            Public — anyone can view this list, and public lists may be discoverable without the link.
+            Public. Anyone can view this list, and public lists may be discoverable without the link.
           </p>
           <div className="flex gap-1">
             <input

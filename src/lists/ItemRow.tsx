@@ -171,7 +171,7 @@ export default function ItemRow({
               if (packActionsDisabled) return
               onUpdate?.({ is_packed: e.target.checked })
             }}
-            title={packActionsDisabled ? 'Offline — reconnect to mark items as packed' : undefined}
+            title={packActionsDisabled ? 'Offline. Reconnect to mark items as packed.' : undefined}
             className="h-4 w-4 rounded border-gray-300 text-blue-600 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
           />
           {/* Name + description at lg+ in the same 2:3 proportion as edit
@@ -275,8 +275,8 @@ export default function ItemRow({
             variant="purpleToggle"
             active={item.is_worn}
             onClick={() => onUpdate({ is_worn: !item.is_worn, is_consumable: false })}
-            title={item.is_worn ? 'Worn — click to clear' : 'Mark as worn'}
-            ariaLabel={item.is_worn ? 'Worn — click to clear' : 'Mark as worn'}
+            title={item.is_worn ? 'Worn. Click to clear.' : 'Mark as worn'}
+            ariaLabel={item.is_worn ? 'Worn. Click to clear.' : 'Mark as worn'}
             icon={<Shirt size={14} />}
           />
         ) : (
@@ -291,8 +291,8 @@ export default function ItemRow({
             variant="orangeToggle"
             active={item.is_consumable}
             onClick={() => onUpdate({ is_consumable: !item.is_consumable, is_worn: false })}
-            title={item.is_consumable ? 'Consumable — click to clear' : 'Mark as consumable'}
-            ariaLabel={item.is_consumable ? 'Consumable — click to clear' : 'Mark as consumable'}
+            title={item.is_consumable ? 'Consumable. Click to clear.' : 'Mark as consumable'}
+            ariaLabel={item.is_consumable ? 'Consumable. Click to clear.' : 'Mark as consumable'}
             icon={<UtensilsCrossed size={14} />}
           />
         ) : (
