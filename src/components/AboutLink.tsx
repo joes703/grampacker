@@ -35,7 +35,7 @@ export default function AboutLink({ className }: Props) {
         title="About grampacker"
         className="w-full max-w-lg"
       >
-        <div className="max-h-[80vh] overflow-y-auto px-6 pb-6 pt-2">
+        <div className="max-h-[80vh] overflow-y-auto px-6 pb-6 pt-2 text-left">
           <Suspense fallback={null}>
             <MarkdownPage content={aboutContent} />
           </Suspense>
