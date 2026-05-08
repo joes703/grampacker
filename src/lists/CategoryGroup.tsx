@@ -210,7 +210,7 @@ function CategoryGroup({
                 <ChevronDown size={14} />
               )}
             </button>
-            {/* Static label area — explicitly NOT a button, no hover state.
+            {/* Static label area - explicitly NOT a button, no hover state.
                 Chevron is the obvious affordance; the name remains
                 read-only here (rename happens via the modal, not by tapping
                 the header). */}
