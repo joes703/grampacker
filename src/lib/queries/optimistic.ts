@@ -6,9 +6,9 @@ import { showToast } from '../toast'
 
 // Single-round-trip sort_order rewrite. Calls a SECURITY DEFINER RPC that
 // runs UPDATE … SET sort_order against a whitelisted table. Sidesteps the
-// PostgREST upsert path entirely — no INSERT … ON CONFLICT, no RLS WITH
+// PostgREST upsert path entirely: no INSERT … ON CONFLICT, no RLS WITH
 // CHECK against a partial row, no NOT NULL trap. The function enforces
-// ownership inline per table — categories, gear_items, and lists filter
+// ownership inline per table: categories, gear_items, and lists filter
 // on user_id = auth.uid(); list_items join lists and filter on
 // lists.user_id = auth.uid(). See migrations
 // 20260430000000_bulk_reorder_rpc.sql (function shape),
@@ -16,7 +16,7 @@ import { showToast } from '../toast'
 // 20260502000000_add_gear_items_to_bulk_reorder.sql (gear_items branch),
 // and 20260503000000_add_lists_to_bulk_reorder.sql (lists branch).
 //
-// The TS-side union matches the SQL function's table whitelist — keeps
+// The TS-side union matches the SQL function's table whitelist. That keeps
 // misuse a compile error rather than a runtime exception.
 type ReorderableTable = 'categories' | 'list_items' | 'gear_items' | 'lists'
 
@@ -49,8 +49,8 @@ export async function bulkUpdateSortOrder<T extends { id: string; sort_order: nu
 // and is then re-sorted by sort_order so the visual order matches.
 //
 // IMPORTANT: `updates` must be a permutation of an existing subset of the
-// cached rows — i.e. every id in `updates` must already exist in the cache,
-// and the sort_order values must be a permutation of those rows' existing
+// cached rows. Every id in `updates` must already exist in the cache, and
+// the sort_order values must be a permutation of those rows' existing
 // sort_order values. Passing a partial subset with arbitrary values can
 // silently corrupt the cache: rows you didn't touch keep their old
 // sort_order, the merged + sorted result then puts them in surprising
@@ -66,7 +66,7 @@ export async function bulkUpdateSortOrder<T extends { id: string; sort_order: nu
 //   sortable rows in the SAME synchronous tick that onDragEnd returns.
 //   That transition animates each row's transform back to identity. If
 //   the cache update happens one microtask later (which an `await` forces),
-//   the transition animates against the still-original DOM order — the
+//   the transition animates against the still-original DOM order. The
 //   dropped row visibly snaps to its starting position before a later
 //   re-render jumps it to the correct new position.
 //
@@ -74,7 +74,7 @@ export async function bulkUpdateSortOrder<T extends { id: string; sort_order: nu
 //   same tick. The drop transition then animates against the correct final
 //   order from the start.
 //
-//   The cancel still happens — it's just fire-and-forget. The theoretical
+//   The cancel still happens; it's just fire-and-forget. The theoretical
 //   race (an in-flight refetch resolves between our setQueryData and the
 //   cancel taking effect, overwriting the optimistic state with stale
 //   server truth) is rare in practice (the app uses staleTime: 30s, so
@@ -84,7 +84,7 @@ export async function bulkUpdateSortOrder<T extends { id: string; sort_order: nu
 //
 // makeOptimisticInsert / makeOptimisticUpdate / makeOptimisticDelete cover
 // the common useMutation lifecycle for single-row writes against a cached
-// list. Mirror the reorder helper's shape — drop the spread into the
+// list. Mirror the reorder helper's shape. Drop the spread into the
 // useMutation options:
 //
 //   useMutation({
@@ -97,12 +97,12 @@ export async function bulkUpdateSortOrder<T extends { id: string; sort_order: nu
 //   })
 //
 // All three helpers fire `cancelQueries` without awaiting (same rationale as
-// reorder — keep the cache write in the same tick as the user gesture so any
+// reorder: keep the cache write in the same tick as the user gesture so any
 // concurrent CSS transition animates against the correct final state). The
 // theoretical clobber race is rare (staleTime: 30s) and self-heals on
 // settled-time invalidation.
 //
-// Side caches (joined / cascading) take an `invalidateKeys` array — they
+// Side caches (joined / cascading) take an `invalidateKeys` array. They
 // receive no optimistic write but invalidate on settled. Optimistic
 // fan-out across multiple caches (e.g. updating embedded gear in every
 // list-items cache) is out of scope.
@@ -125,7 +125,7 @@ type CommonOpts = {
 
 type OptimisticContext<T> = { previous: T[] | undefined }
 
-// Shared lifecycle pieces — error rollback and settled invalidation are
+// Shared lifecycle pieces. Error rollback and settled invalidation are
 // identical across all three CRUD helpers.
 function makeRollback<T>(opts: CommonOpts) {
   return (
@@ -147,14 +147,14 @@ function makeSettled(opts: CommonOpts) {
   }
 }
 
-// Insert one row into the cached array. The mutationFn runs in parallel —
+// Insert one row into the cached array. The mutationFn runs in parallel;
 // when it resolves, the settled refetch replaces the temp row with the
 // server row (the temp id and the server id won't match, but the refetch
 // rewrites the whole array so the temp row drops out and the real row
 // takes its place).
 export function makeOptimisticInsert<TList extends { id: string }, TInput>(opts: CommonOpts & {
   // Build the optimistic placeholder row from the mutation input. The id
-  // should be a client-generated temp id (e.g. crypto.randomUUID()) — the
+  // should be a client-generated temp id (e.g. crypto.randomUUID()). The
   // settled refetch replaces it with the server row. Other fields should
   // match what the server will return so the UI doesn't flash on settle.
   optimistic: (input: TInput) => TList
@@ -253,8 +253,8 @@ export function makeOptimisticBulkDelete<TList extends { id: string }, TInput>(o
 // Apply a patch to every row whose id matches `ids(input)`. Used for
 // multi-select bulk moves (e.g. "Move 12 items to Kitchen" on the gear
 // page). Mirrors makeOptimisticBulkDelete but writes via apply() instead
-// of filter — caller controls how the patch composes with each row, which
-// matters for nested fields like an embedded gear_item.category_id.
+// of filter, so the caller controls how the patch composes with each row.
+// That matters for nested fields like an embedded gear_item.category_id.
 export function makeOptimisticBulkMove<TList extends { id: string }, TInput>(opts: CommonOpts & {
   ids: (input: TInput) => string[]
   apply: (item: TList, input: TInput) => TList
@@ -302,7 +302,7 @@ export function makeOptimisticReorder<T extends { id: string; sort_order: number
       ctx: { previous: T[] | undefined } | undefined,
     ) => {
       if (ctx?.previous) qc.setQueryData(queryKey, ctx.previous)
-      // The rollback is otherwise silent — items just snap back to their
+      // The rollback is otherwise silent: items just snap back to their
       // original positions. Without a toast, users on a flaky connection
       // can't distinguish "save failed" from "I dragged it back myself".
       showToast("Couldn't save the new order. Please try again.", { type: 'error' })

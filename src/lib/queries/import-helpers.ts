@@ -35,10 +35,10 @@ export async function resolveOrCreateCategories(
 
 // Resolve each CSV row to a gear_id, creating new gear items as needed.
 // Match policy:
-//   - Match against existing library only — newly-created gear within this
+//   - Match against existing library only. Newly-created gear within this
 //     import is NOT considered a match candidate for later rows (within-CSV
 //     duplicates create separate gear items, matching user typing intent).
-//   - Match key is gearKey(category_id, name, weight_grams) — exact triple.
+//   - Match key is gearKey(category_id, name, weight_grams), an exact triple.
 //
 // Returns gear ids in the same order as the input rows. Rows with empty
 // names yield null (the list-items path filters them out before insert).
@@ -91,7 +91,7 @@ export async function resolveOrCreateGearForImport({
       continue
     }
     const categoryId = resolveCategoryId(row.category, catByName)
-    // Dedup key intentionally excludes cost/purchase_date — they're
+    // Dedup key intentionally excludes cost/purchase_date. Those are
     // display-only metadata and can change over time without making an
     // item "different". Matching on (category, name, weight) keeps a
     // re-import from duplicating the same physical item.
