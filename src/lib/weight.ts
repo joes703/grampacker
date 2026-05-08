@@ -26,14 +26,28 @@ export function gramsToLbOzParts(grams: number): { lb: number; oz: number } {
   return { lb, oz }
 }
 
+// Same-tab broadcast event. The browser's `storage` event only fires in OTHER
+// tabs that share the localStorage origin, so without this dispatch a toggle
+// in NavBar would update its own component but not the simultaneously-mounted
+// ListDetailPage, GearLibraryPage, or SharePage. The hook
+// (use-weight-unit.ts) subscribes to both `storage` (cross-tab) and this
+// custom event (same-tab).
+export const WEIGHT_UNIT_EVENT = 'weight-unit-change'
+export const WEIGHT_UNIT_KEY = 'weightUnit'
+
 export function getWeightUnit(): WeightUnit {
   // localStorage is a trust boundary — anything could be in there. Validate
   // explicitly and fall back to the default for null, missing, or any
   // unexpected string.
-  const raw = localStorage.getItem('weightUnit')
+  const raw = localStorage.getItem(WEIGHT_UNIT_KEY)
   return raw === 'g' || raw === 'oz' ? raw : 'g'
 }
 
 export function setWeightUnit(unit: WeightUnit): void {
-  localStorage.setItem('weightUnit', unit)
+  localStorage.setItem(WEIGHT_UNIT_KEY, unit)
+  // Notify same-tab subscribers. Cross-tab updates ride the native `storage`
+  // event automatically — no manual dispatch needed there.
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(WEIGHT_UNIT_EVENT))
+  }
 }
