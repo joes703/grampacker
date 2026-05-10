@@ -625,7 +625,7 @@ function ListCard({
           else openMenu()
         }}
         aria-label="List options"
-        className="absolute right-2 top-2 z-20 inline-flex h-7 w-7 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        className="absolute right-2 top-2 z-20 inline-flex h-9 w-9 lg:h-7 lg:w-7 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
       >
         <MoreVertical size={16} />
       </button>
