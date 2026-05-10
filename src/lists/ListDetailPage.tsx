@@ -47,7 +47,12 @@ import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useOnline } from '../lib/use-online'
 import { useLatestRef } from '../lib/use-latest-ref'
-import { writeLastListId, readLastListId, clearLastListId } from '../lib/last-list-id'
+import {
+  writeLastListPath,
+  readLastListPath,
+  clearLastListPath,
+  getListIdFromListPath,
+} from '../lib/last-list-path'
 import { parseDnDId } from '../lib/dnd-ids'
 import { showToast } from '../lib/toast'
 import { assignSortOrderSlots } from '../lib/grouping'
@@ -200,29 +205,37 @@ function ListDetailInner({
   // the title doesn't briefly drop to the bare app name.
   useDocumentTitle(list?.name ?? 'Lists')
 
-  // M4 cache write: stash the list_id only AFTER the list resolves to a
-  // real, RLS-permitted row. Writing on mount unconditionally would make
-  // a stale cache sticky — RootRedirect would send user B to user A's
-  // list and the unconditional write would refresh the bad id, locking
-  // the loop in. The reactive dep `list?.id` is undefined while the
-  // lists query is in-flight or the route is invalid, so no write fires
-  // on those paths.
+  // M4 cache write: stash the list path only AFTER the list resolves to
+  // a real, RLS-permitted row. Writing on mount unconditionally would
+  // make a stale cache sticky — RootRedirect would send user B to user
+  // A's list and the unconditional write would refresh the bad path,
+  // locking the loop in. The reactive dep `list?.id` is undefined while
+  // the lists query is in-flight or the route is invalid, so no write
+  // fires on those paths. The `mode` dep tracks pack-mode toggling so
+  // the stored path stays in sync: enters pack mode -> stored path
+  // gains ?mode=pack; exits -> stored path drops it.
   useEffect(() => {
-    if (list?.id) writeLastListId(list.id)
-  }, [list?.id])
+    if (list?.id) {
+      const path = mode === 'pack' ? `/lists/${list.id}?mode=pack` : `/lists/${list.id}`
+      writeLastListPath(path)
+    }
+  }, [list?.id, mode])
 
   // M4 cache self-heal: if the route's listId is the cached one but the
   // list isn't in the user's `lists` collection (deleted, different user
   // under stale cache), clear the cache so the next `/` visit takes the
-  // slow path instead of looping back here. Scoped to readLastListId() ===
-  // listId so a direct deep-link to an unrelated missing list doesn't
-  // wipe an otherwise-valid cache. Gated on !listsLoading so the in-flight
+  // slow path instead of looping back here. Compare the cached path's
+  // extracted UUID against listId so an unrelated missing-list deep-link
+  // doesn't wipe a valid cache. Gated on !listsLoading so the in-flight
   // window — where `list` is undefined for a different reason — doesn't
   // wipe a perfectly valid cache during cold load.
   useEffect(() => {
     if (listsLoading) return
-    if (!list && listId && readLastListId() === listId) {
-      clearLastListId()
+    if (!list && listId) {
+      const cachedPath = readLastListPath()
+      if (cachedPath && getListIdFromListPath(cachedPath) === listId) {
+        clearLastListPath()
+      }
     }
   }, [list, listId, listsLoading])
 
