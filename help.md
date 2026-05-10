@@ -30,7 +30,7 @@ grampacker uses three weight concepts:
 - **Consumables**: items like food, fuel, or water. These are tracked separately because their weight changes during a trip.
 - **Worn items**: things you wear instead of carry in your pack.
 
-Total pack weight includes base weight and consumables. Worn items are shown, but not counted in pack weight.
+Pack weight includes base weight and consumables. Total weight includes pack weight plus worn items.
 
 You can turn on **Group worn** from a list's top controls to move worn items into their own Worn section. This applies while editing the list, in Pack mode, and on public shared links.
 
@@ -45,11 +45,13 @@ You can build a list in a few ways:
 
 On desktop, the library panel appears next to your list. Click an inventory item to add it to the list. Click it again to remove it.
 
+In the Gear Library, use Select to choose multiple items. From there you can move items to a category, delete them, or create a new list from the selection.
+
 ## Editing items
 
-On desktop, many item fields can be edited inline. On mobile, tap an item to open the edit dialog.
+On desktop, click an item's name, description, weight, or quantity to edit it directly. On mobile, tap an item to open the edit dialog.
 
-For more options, open the item menu or edit dialog. From there you can change category, cost, purchase date, quantity, worn status, or consumable status depending on where you are in the app.
+For more options, open the item menu or edit dialog. From a list, you can change category, quantity, worn status, and consumable status. From the Gear Library, you can also manage cost and purchase date.
 
 Deleting from a list only removes the item from that list. Deleting from inventory removes it from your gear library and from any lists where it appears.
 
@@ -90,7 +92,7 @@ Public lists may be discoverable, so only share lists you are comfortable making
 
 You can import gear or lists from CSV files.
 
-Lighterpack CSV exports should work as a starting point. You can also use your own spreadsheet if it has compatible columns.
+Lighterpack CSV exports should work as a starting point. You can also use your own spreadsheet if it has compatible columns. At minimum, your CSV needs a name column and a weight column.
 
 From Settings, you can export your account data as a zip file. The export includes your gear inventory and lists.
 
