@@ -47,7 +47,7 @@ On desktop, the library panel appears next to your list. Click an inventory item
 
 ## Editing items
 
-You can edit item names, descriptions, and weights inline.
+On desktop, many item fields can be edited inline. On mobile, tap an item to open the edit dialog.
 
 For more options, open the item menu or edit dialog. From there you can change category, cost, purchase date, quantity, worn status, or consumable status depending on where you are in the app.
 
@@ -84,6 +84,8 @@ Public links are read-only. Other people cannot edit your list.
 
 Turn the public link off to stop sharing the list.
 
+Public lists may be discoverable, so only share lists you are comfortable making public.
+
 ## Importing and exporting
 
 You can import gear or lists from CSV files.
@@ -91,6 +93,14 @@ You can import gear or lists from CSV files.
 Lighterpack CSV exports should work as a starting point. You can also use your own spreadsheet if it has compatible columns.
 
 From Settings, you can export your account data as a zip file. The export includes your gear inventory and lists.
+
+## Mobile and offline use
+
+grampacker works in a mobile browser and can be added to your home screen so it opens like an app.
+
+For offline use, open the lists you need while you still have a connection. Previously opened lists may still be available when offline.
+
+Packing checkmarks need a connection. If you are offline, you can view saved list data, but Pack mode checkmarks are disabled until you reconnect.
 
 ## Account and privacy
 
