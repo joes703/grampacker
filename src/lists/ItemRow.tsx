@@ -162,7 +162,7 @@ export default function ItemRow({
             drops cursor-pointer to match. The native disabled state is the
             right semantic — assistive tech announces "disabled checkbox,"
             which composes with the offline banner above to explain why. */}
-        <label className={`flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 ${packActionsDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+        <label className={`flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 ${packActionsDisabled ? 'cursor-not-allowed' : 'cursor-pointer active:bg-gray-50'}`}>
           <input
             type="checkbox"
             checked={item.is_packed}
