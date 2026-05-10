@@ -148,7 +148,7 @@ export default function ItemRow({
       <div
         ref={outerRef}
         style={outerStyle}
-        className={`flex items-center gap-0.5 lg:gap-1.5 border-b border-gray-100 px-2 lg:px-3 py-0.5 text-sm transition-colors ${
+        className={`flex items-center gap-0.5 lg:gap-1.5 border-b border-gray-100 px-2 lg:px-3 py-2 lg:py-0.5 text-sm transition-colors ${
           item.is_packed ? 'bg-green-50' : 'bg-white'
         }`}
       >
@@ -217,7 +217,7 @@ export default function ItemRow({
     <div
       ref={outerRef}
       style={outerStyle}
-      className="group relative flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-0.5 text-sm"
+      className="group relative flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-2 lg:py-0.5 text-sm"
     >
       {dragHandle}
 

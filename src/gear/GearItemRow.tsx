@@ -48,7 +48,7 @@ export default function GearItemRow({
     <div
       ref={outerRef}
       style={outerStyle}
-      className={`group relative flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-0.5 text-sm ${
+      className={`group relative flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-2 lg:py-0.5 text-sm ${
         selected ? 'bg-blue-50' : 'hover:bg-gray-50'
       }`}
     >
