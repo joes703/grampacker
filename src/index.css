@@ -3,3 +3,15 @@
 html {
   font-size: 16px;
 }
+
+/* Prevent iOS Safari from zooming the page when form controls receive focus.
+   Keep desktop form sizing unchanged. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='color']),
+  textarea,
+  textarea[class],
+  select,
+  select[class] {
+    font-size: 16px;
+  }
+}
