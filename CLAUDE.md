@@ -61,6 +61,18 @@
 - Don't bypass the `usePortalPopover` hook by writing inline event listeners for new popovers.
 - Don't add `target="_blank"` without `rel="noopener noreferrer"` on the same anchor. Modern browsers default to `noopener` for `_blank`, but explicit `rel` is the codebase convention and removes the silent dependency on the browser default. The only current site is `src/components/MarkdownPage.tsx`'s external-link branch (already correctly paired); this rule keeps any future site honest.
 
+## Supply chain
+
+- Use `npm ci` for deploy/CI installs, not `npm install`. `npm ci` installs exactly from `package-lock.json` and fails closed on drift; `npm install` can mutate the lockfile mid-deploy.
+- Cloudflare Pages' install command lives in the dashboard, not in any repo file. The repo cannot enforce it. Manually confirm in Cloudflare → Pages → grampacker → Settings → Builds & deployments that "Install command" is `npm ci`.
+- Do not use `git add -A` or `git add .`. Stage exact files by path. See `feedback_explicit_git_add` memory for the incident history.
+- Do not add `ignore-scripts=true` to `.npmrc` without testing a clean install + build first and explicitly accepting the tradeoff. `fsevents` (Vite's macOS file-watcher) currently uses an install script; flipping the flag silently degrades dev file-watching on macOS.
+- If GitHub Actions workflows are added later:
+  - Avoid `pull_request_target` for workflows that check out or run fork code. Use `pull_request` for untrusted code paths.
+  - Pin third-party actions to a full commit SHA, not a tag (`uses: owner/action@<sha>` with the tag in a trailing comment).
+  - Do not share cache keys (`actions/cache`, setup-node cache, etc.) between trusted (push/release) and untrusted (PR) workflow contexts. A poisoned cache from a PR can otherwise leak into release builds.
+  - Keep npm publish / OIDC workflows isolated from PR workflows. Separate files, separate triggers, no shared composite actions that PRs can influence.
+
 ## Deferred upgrades
 
 - eslint 9 → 10: blocked on eslint-plugin-jsx-a11y publishing a release with ^10 in its peer range. Revisit when they ship.
