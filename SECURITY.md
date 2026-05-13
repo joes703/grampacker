@@ -197,8 +197,23 @@ Last verified: _<YYYY-MM-DD by name>_. Re-verify after any Supabase plan/project
 ## Adding a new table safely
 
 1. **Reference `auth.users(id)`** on user-owned data, either directly via a `user_id` column or transitively through a parent that has one. `ON DELETE CASCADE` so account deletion cleans up.
-2. **Enable RLS explicitly** in the migration: `alter table <name> enable row level security`. The `rls_auto_enable` trigger already does this, but writing it explicitly makes the migration self-documenting and removes the dependency on the trigger being installed.
-3. **Write policies** for SELECT/INSERT/UPDATE/DELETE. Use one policy per (role, action) pair. Two patterns:
+2. **Grant explicit Data API table privileges** to `authenticated`, `service_role`, and (only if the table participates in a public-share path) `anon`. Supabase is dropping the implicit "all public-schema tables are reachable through the Data API" default (2026-05-30 for new projects, 2026-10-30 for existing). The GRANT controls Data API reachability; RLS still gates which rows are visible. Pick the template that matches the table:
+   - **Private owner table:**
+     ```sql
+     grant select, insert, update, delete on table public.<table> to authenticated;
+     grant select, insert, update, delete on table public.<table> to service_role;
+     alter table public.<table> enable row level security;
+     ```
+   - **Public-share readable table:**
+     ```sql
+     grant select on table public.<table> to anon;
+     grant select, insert, update, delete on table public.<table> to authenticated;
+     grant select, insert, update, delete on table public.<table> to service_role;
+     alter table public.<table> enable row level security;
+     ```
+   See `20260514000000_explicit_data_api_table_grants.sql` for the backfill on existing tables.
+3. **Enable RLS explicitly** in the migration: `alter table <name> enable row level security` (already shown in the GRANT templates above). The `rls_auto_enable` trigger also handles this, but writing it explicitly makes the migration self-documenting and removes the dependency on the trigger being installed.
+4. **Write policies** for SELECT/INSERT/UPDATE/DELETE. Use one policy per (role, action) pair. Two patterns:
    - **Owner-keyed (no public-share path):**
      ```sql
      create policy <name>_auth_select on <table>
@@ -237,11 +252,11 @@ Last verified: _<YYYY-MM-DD by name>_. Re-verify after any Supabase plan/project
      -- writes unchanged from the owner-keyed pattern above
      <auth_insert / auth_update / auth_delete>
      ```
-4. **`WITH CHECK` is mandatory** on policies that govern INSERT or UPDATE. Without it, a user could update a row they own to belong to someone else.
-5. **Always wrap `auth.uid()` in `(select auth.uid())`.** Direct calls trigger the Supabase `auth_rls_initplan` advisor warning and re-evaluate the function per row; the subquery form lets Postgres cache the value as an initPlan.
-6. **Always pass `TO authenticated` or `TO anon`** explicitly, even for self-only tables. Without a `TO` clause the policy applies to every role inheriting from `public` (`anon`, `authenticated`, plus Supabase internals like `authenticator`, `dashboard_user`, `supabase_privileged_role`) and shows up in `multiple_permissive_policies` warnings on every role that doesn't actually need access.
-7. **If the table participates in sharing,** use the third sub-pattern above. The public-share predicate is the same one the anon policy carries, OR'd into the authenticated SELECT so signed-in users opening a friend's share link still see the row. See `gear_items_anon_select` / `gear_items_auth_select` for the canonical transitive shape.
-8. **Don't grant** anything to `public` or `anon` directly. The default Supabase grants on the role plus your RLS policies handle access. Extra grants are how leaks happen.
+5. **`WITH CHECK` is mandatory** on policies that govern INSERT or UPDATE. Without it, a user could update a row they own to belong to someone else.
+6. **Always wrap `auth.uid()` in `(select auth.uid())`.** Direct calls trigger the Supabase `auth_rls_initplan` advisor warning and re-evaluate the function per row; the subquery form lets Postgres cache the value as an initPlan.
+7. **Always pass `TO authenticated` or `TO anon`** explicitly, even for self-only tables. Without a `TO` clause the policy applies to every role inheriting from `public` (`anon`, `authenticated`, plus Supabase internals like `authenticator`, `dashboard_user`, `supabase_privileged_role`) and shows up in `multiple_permissive_policies` warnings on every role that doesn't actually need access.
+8. **If the table participates in sharing,** use the third sub-pattern above. The public-share predicate is the same one the anon policy carries, OR'd into the authenticated SELECT so signed-in users opening a friend's share link still see the row. See `gear_items_anon_select` / `gear_items_auth_select` for the canonical transitive shape.
+9. **Do not rely on the legacy default public-schema grants for Data API access.** Every new public-schema table migration must include the explicit table grants from step 2 plus the RLS policies above. Never grant table privileges to the `public` role or to `anon` beyond what step 2 prescribes (anon gets `SELECT` and only on tables with a public-share predicate). Function `EXECUTE` grants follow the separate rules in "Adding a SECURITY DEFINER function safely" below.
 
 ---
 
@@ -293,6 +308,7 @@ Last verified: _<YYYY-MM-DD by name>_. Re-verify after any Supabase plan/project
 - `20260506000002_add_user_id_to_list_items_composite_fks.sql`: composite FKs for cross-owner enforcement; adds `list_items.user_id`; simplifies `list_items_owner_all` to direct `auth.uid() = user_id`.
 - `20260506000003_fix_category_delete_set_null_columns.sql`: fixes the composite FK on `gear_items.category_id` to use the PG 15+ `ON DELETE SET NULL (category_id)` column-list form so `user_id` (NOT NULL) doesn't get nulled on category deletion.
 - `20260512000000_advisor_cleanup_rls_policies.sql`: Supabase advisor cleanup. Replaces `*_owner_all` (FOR ALL) + `*_public_select_*` (FOR SELECT) per-table with role-and-action-specific policies on every owner-keyed table; wraps every `auth.uid()` reference in `(select auth.uid())`. Closes 26 advisor warnings (`auth_rls_initplan` * 6 + `multiple_permissive_policies` * ~20) without changing behavior.
+- `20260514000000_explicit_data_api_table_grants.sql`: explicit table GRANTs for `profiles`, `categories`, `gear_items`, `lists`, `list_items` to `authenticated`, `service_role`, and (the four content tables only) `anon`. Backfill ahead of Supabase removing the implicit "public-schema tables are reachable through the Data API" default (2026-10-30 for existing projects). RLS unchanged.
 
 **ADRs** (in `DECISIONS.md`):
 - ADR 3: Bulk DB operations through Postgres RPCs (rationale + accepted linter warning).
