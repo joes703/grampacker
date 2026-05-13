@@ -211,7 +211,13 @@ Last verified: _<YYYY-MM-DD by name>_. Re-verify after any Supabase plan/project
      grant select, insert, update, delete on table public.<table> to service_role;
      alter table public.<table> enable row level security;
      ```
-   See `20260514000000_explicit_data_api_table_grants.sql` for the backfill on existing tables.
+   See `20260514000000_explicit_data_api_table_grants.sql` for the backfill on existing tables, and `20260514000001_normalize_data_api_table_grants.sql` for the follow-up normalization. When normalizing a table that already exists in production, do not just add the new grants — historical Supabase defaults granted broad table privileges (INSERT/UPDATE/DELETE/TRUNCATE/TRIGGER/REFERENCES) to API roles and to the `public` pseudo-role. Revoke them first, then re-grant the narrow matrix:
+     ```sql
+     revoke all privileges on table public.<table>
+       from public, anon, authenticated, service_role;
+     -- ...then the GRANT block above.
+     ```
+     Verify with the query at the bottom of `20260514000001_*.sql`. The expected matrix has no `TRUNCATE`, `TRIGGER`, or `REFERENCES`, and `anon` is absent for private tables.
 3. **Enable RLS explicitly** in the migration: `alter table <name> enable row level security` (already shown in the GRANT templates above). The `rls_auto_enable` trigger also handles this, but writing it explicitly makes the migration self-documenting and removes the dependency on the trigger being installed.
 4. **Write policies** for SELECT/INSERT/UPDATE/DELETE. Use one policy per (role, action) pair. Two patterns:
    - **Owner-keyed (no public-share path):**
@@ -309,6 +315,7 @@ Last verified: _<YYYY-MM-DD by name>_. Re-verify after any Supabase plan/project
 - `20260506000003_fix_category_delete_set_null_columns.sql`: fixes the composite FK on `gear_items.category_id` to use the PG 15+ `ON DELETE SET NULL (category_id)` column-list form so `user_id` (NOT NULL) doesn't get nulled on category deletion.
 - `20260512000000_advisor_cleanup_rls_policies.sql`: Supabase advisor cleanup. Replaces `*_owner_all` (FOR ALL) + `*_public_select_*` (FOR SELECT) per-table with role-and-action-specific policies on every owner-keyed table; wraps every `auth.uid()` reference in `(select auth.uid())`. Closes 26 advisor warnings (`auth_rls_initplan` * 6 + `multiple_permissive_policies` * ~20) without changing behavior.
 - `20260514000000_explicit_data_api_table_grants.sql`: explicit table GRANTs for `profiles`, `categories`, `gear_items`, `lists`, `list_items` to `authenticated`, `service_role`, and (the four content tables only) `anon`. Backfill ahead of Supabase removing the implicit "public-schema tables are reachable through the Data API" default (2026-10-30 for existing projects). RLS unchanged.
+- `20260514000001_normalize_data_api_table_grants.sql`: follow-up that revokes the historical broad defaults (INSERT/UPDATE/DELETE/TRUNCATE/TRIGGER/REFERENCES leaked to `anon`/`authenticated` and to the `public` pseudo-role) on the five tables, then re-grants the same narrow matrix as 20260514000000. RLS unchanged.
 
 **ADRs** (in `DECISIONS.md`):
 - ADR 3: Bulk DB operations through Postgres RPCs (rationale + accepted linter warning).
