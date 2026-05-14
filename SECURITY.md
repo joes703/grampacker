@@ -69,7 +69,7 @@ When adding a new FK from one user-owned table to another:
 PostgREST authenticates incoming requests against one of three Postgres roles:
 
 - **`anon`**: unauthenticated. Used by the public share view (`/r/:slug`). Reads only via the `*_public_select_via_shared_list` and `*_public_select_shared` policies. Has no write capability anywhere.
-- **`authenticated`**: signed-in users. Reads / writes via the owner policies. Has `EXECUTE` on the five user-callable SECURITY DEFINER RPCs we expose: `delete_account`, `bulk_update_sort_order`, `add_gear_item_with_list_item`, `create_list_from_selection`, `duplicate_list`. (The two trigger-only definers, `handle_new_user` and `rls_auto_enable`, have EXECUTE revoked from all roles; triggers fire regardless of EXECUTE privileges.)
+- **`authenticated`**: signed-in users. Reads / writes via the owner policies. Has `EXECUTE` on the five user-callable RPCs we expose: `delete_account`, `bulk_update_sort_order`, `add_gear_item_with_list_item`, `create_list_from_selection`, `duplicate_list`. Of these, only `delete_account` is `SECURITY DEFINER`; the other four are `SECURITY INVOKER` (converted in `20260514202025`). The two trigger-only definers, `handle_new_user` and `rls_auto_enable`, have EXECUTE revoked from all roles; triggers fire regardless of EXECUTE privileges.
 - **`public`** (Postgres pseudo-role): every grant defaults to this unless explicitly revoked. We **explicitly revoke `EXECUTE` from `public`** on every SECURITY DEFINER function we own, so a misconfigured grant elsewhere can't accidentally expose them.
 
 There is no admin role today. The owner of every row is the user; there is no separate operator path.
@@ -100,40 +100,50 @@ The `Public*` types in `src/lib/types.ts` (PublicList, PublicListItem, PublicGea
 
 ## SECURITY DEFINER functions
 
-`SECURITY DEFINER` makes a Postgres function execute with the privileges of its owner (effectively a superuser, in Supabase's setup) instead of the calling user. This **bypasses RLS** for the duration of the function. We use it sparingly (seven functions total), and every one of them is structured to preserve the security boundary despite the bypass.
+`SECURITY DEFINER` makes a Postgres function execute with the privileges of its owner (effectively a superuser, in Supabase's setup) instead of the calling user. This **bypasses RLS** for the duration of the function. We use it sparingly: three functions total, and every one is structured to preserve the security boundary despite the bypass.
 
 ### Why we use it
 
-PostgREST's auto-generated upsert path (`INSERT … ON CONFLICT DO UPDATE`) evaluates the INSERT-side RLS `WITH CHECK`, NOT NULL, and FK constraints against the proposed row **before** resolving the conflict, so partial-column payloads (e.g. `[{id, sort_order}]` for a bulk reorder) fail repeatedly on whichever required column catches the missing value first. A `SECURITY DEFINER` function that issues a plain `UPDATE` sidesteps the entire INSERT path. See `DECISIONS.md` ADR 3 for the full debugging story.
+`SECURITY DEFINER` is reserved for the three functions that act on objects the calling role provably cannot touch:
+
+- **`delete_account()`** issues `DELETE FROM auth.users`; the `authenticated` role has no DELETE privilege there.
+- **`handle_new_user()`** inserts into `public.profiles` from a trigger that fires as `supabase_auth_admin`, which has neither an INSERT grant nor an INSERT RLS policy on that table.
+- **`rls_auto_enable()`** runs `ALTER TABLE … ENABLE ROW LEVEL SECURITY`, which requires table ownership.
+
+Four functions that were previously `SECURITY DEFINER` for historical reasons (`bulk_update_sort_order`, `add_gear_item_with_list_item`, `create_list_from_selection`, `duplicate_list`) were converted to `SECURITY INVOKER` in `20260514202025` once RLS policies plus the composite FKs (`20260506000002`) were confirmed to enforce the same ownership their inline checks do. See `DECISIONS.md` ADR 3 for the bulk-reorder case and the full debugging story behind the original RPC decision.
 
 ### Compensating-control checklist
 
-Every `SECURITY DEFINER` function we own MUST have all four of:
+Every `SECURITY DEFINER` function we own MUST have all of:
 
-1. **`search_path` pinned**: `set search_path = public, pg_temp` (or similar). Prevents schema-shadowing attacks where a malicious temp-schema object intercepts unqualified references inside the function.
+1. **`search_path = ''`**: every referenced object fully schema-qualified inside the body. Prevents schema-shadowing attacks where a malicious temp-schema object intercepts unqualified references. (`rls_auto_enable` is the one exception: it stays pinned to the unshadowable `pg_catalog`; see the inventory note.)
 2. **`EXECUTE` revoked from `public` and `anon`**, granted to `authenticated` only (or revoked entirely for trigger-only functions).
-3. **Inline ownership check** in the function body. Because RLS is bypassed, the function itself must re-assert that the caller owns the row(s) it's touching. The check is what preserves the security boundary; the `SECURITY DEFINER` flag is purely a PostgREST workaround, not a privilege grant. Forgetting this turns the function into an authorization oracle.
+3. **Inline ownership check** in the function body, *for user-callable definers*. Because RLS is bypassed, the function must re-assert that the caller owns the row(s) it's touching. Of the three remaining definers only `delete_account` is user-callable, and its check is `auth.uid()` scoping the `DELETE` to the caller's own row. Trigger-only definers (`handle_new_user`, `rls_auto_enable`) have no caller-supplied ids to check.
 4. **Trust assumption documented** in a header comment so a future reviewer can audit the model without re-deriving it.
 
 ### Inventory
 
+All three remaining `SECURITY DEFINER` functions:
+
 | Function | Purpose | EXECUTE | Inline check | Migration |
 |---|---|---|---|---|
-| `handle_new_user()` | Trigger on `auth.users` insert; creates the `profiles` row. | Revoked from all (trigger fires regardless of EXECUTE privileges). | N/A: runs in trigger context with the new user's id from `NEW`. | `20260425000000`, hardened in `20260429000000` |
-| `delete_account()` | User-callable RPC; deletes `auth.users` row for `auth.uid()`. ON DELETE CASCADE wipes all owned data. | `authenticated` only. | `if auth.uid() is null then raise exception 'not authenticated'` then `delete from auth.users where id = auth.uid()`. | `20260426000000` |
-| `bulk_update_sort_order(p_table, p_ids, p_orders)` | Bulk `sort_order` rewrite for whitelisted tables. | `authenticated` only. | Per-table branch enforces ownership inline (`user_id = auth.uid()` for direct-owned tables; join filter on `lists` for `list_items`). | `20260430000000` (function shape), `20260501000000` (ownership check), `20260502000000` (gear_items), `20260503000000` (lists) |
-| `add_gear_item_with_list_item(...)` | User-callable RPC for the /lists/:id "+ Add new item" flow. Inserts a `gear_items` row and a `list_items` row referencing it in one transaction. | `authenticated` only. | `auth.uid() <> p_user_id` raises `42501`; defense-in-depth `EXISTS` checks raise `P0002` before any insert: that `p_list_id` is owned by `p_user_id`, and (when non-null) that `p_category_id` is owned by `p_user_id`. The category check is added by the patch migration; without it, RLS bypass inside `DEFINER` would let a forged `p_category_id` through to the composite-FK rollback path with a less clear error. | `20260510000000` (function shape), patched in `20260510000001` (category ownership check) |
-| `create_list_from_selection(...)` | User-callable RPC for the /gear "Create list from selection" multi-select flow. Inserts a `lists` row and bulk-inserts `list_items` referencing the supplied `gear_item_ids`. | `authenticated` only. | `auth.uid() <> p_user_id` raises `42501`; per-id ownership check on every supplied `p_gear_item_ids` element (count of owned ids must equal input count) raises `P0002` before the parent insert. | `20260510000000` |
-| `duplicate_list(...)` | User-callable RPC for the /lists "Duplicate" kebab. Copies a `lists` row (name suffixed " (copy)") and every owned `list_items` row from source to new in one transaction. | `authenticated` only. | `auth.uid() <> p_user_id` raises `42501`; explicit `select … where id = p_source_list_id and user_id = p_user_id` raises `P0002` if the source list isn't owned by the caller. | `20260510000000` |
-| `rls_auto_enable()` | Event trigger on `CREATE TABLE` in `public`; auto-enables RLS. | Revoked from all (event trigger fires regardless). | N/A: defense-in-depth net, not user-callable. | `20260429000000` |
+| `handle_new_user()` | Trigger on `auth.users` insert; creates the `profiles` row. Needs DEFINER: fires as `supabase_auth_admin`, which has no INSERT grant or INSERT RLS policy on `public.profiles`. | Revoked from all (trigger fires regardless of EXECUTE privileges). | N/A: runs in trigger context with the new user's id from `NEW`. | `20260425000000`, hardened in `20260429000000`, `search_path` tightened to `''` in `20260514202025` |
+| `delete_account()` | User-callable RPC; deletes the `auth.users` row for `auth.uid()`. ON DELETE CASCADE wipes all owned data. Needs DEFINER: `authenticated` has no DELETE on `auth.users`. | `authenticated` only. | `if auth.uid() is null then raise exception 'not authenticated'` then `delete from auth.users where id = auth.uid()`; the `where` clause scopes the delete to the caller's own row. | `20260426000000`, `search_path` tightened to `''` in `20260514202025` |
+| `rls_auto_enable()` | Event trigger on `CREATE TABLE` in `public`; auto-enables RLS. Needs DEFINER: `ALTER TABLE … ENABLE RLS` requires table ownership. | Revoked from all (event trigger fires regardless). | N/A: defense-in-depth net, not user-callable. | `20260429000000` |
+
+`rls_auto_enable` keeps `set search_path = 'pg_catalog'` rather than `''`: its body depends on `pg_event_trigger_ddl_commands()` and `format()`, `pg_catalog` cannot be shadowed, and re-testing an event trigger to tighten it further is high-risk and low-value. `20260514202025` left it untouched on purpose.
+
+Four formerly-DEFINER RPCs (`bulk_update_sort_order`, `add_gear_item_with_list_item`, `create_list_from_selection`, `duplicate_list`) were converted to `SECURITY INVOKER` in `20260514202025`. They remain `EXECUTE`-granted to `authenticated` only, run with `search_path = ''`, and keep their inline `auth.uid()` ownership checks (now defense-in-depth on top of RLS, and preserving the exact `42501` / `P0002` error contracts). Under INVOKER their writes are gated by the `*_auth_*` RLS policies plus the composite FKs from `20260506000002`, which enforce the same ownership the inline checks do.
 
 ---
 
-## Accepted linter warning
+## SECURITY DEFINER linter warning
 
 Supabase's database linter raises `authenticated_security_definer_function_executable` on every SECURITY DEFINER function granted to `authenticated`. The linter is generic and flags the *class* of risk; it doesn't know whether the function is constrained.
 
-We accept the warning deliberately on the five user-callable definers: `delete_account()`, `bulk_update_sort_order()`, `add_gear_item_with_list_item()`, `create_list_from_selection()`, and `duplicate_list()`. The full reasoning, including why each of the linter's three suggested remediations (revoke EXECUTE, switch to `SECURITY INVOKER`, move out of the `public` schema) breaks the feature without addressing a real risk, lives in `DECISIONS.md` ADR 3 under "Accepted linter warning". The same pattern (search_path pinned, EXECUTE granted to `authenticated` only, inline `auth.uid()` ownership check + per-row ownership re-verification, trust assumption documented in the migration header) applies uniformly across all five. When the linter raises this warning on a new function, decide between accepting (and document the rationale alongside ADR 3's pattern) or refactoring away from `DEFINER`. Don't silently leave it.
+After the `20260514202025` audit, the only function this applies to is **`delete_account()`**. It must stay `SECURITY DEFINER` (the `authenticated` role has no DELETE on `auth.users`) and must stay `EXECUTE`-granted to `authenticated` (it's user-callable from Settings), so the warning is **accepted deliberately for `delete_account()` alone**. Its safety comes from its constraints: `search_path = ''`, `EXECUTE` revoked from `public`/`anon`, the `auth.uid() is null` guard, and the `where id = auth.uid()` clause that scopes the delete to the caller's own auth row.
+
+The four RPCs this section previously covered (`bulk_update_sort_order`, `add_gear_item_with_list_item`, `create_list_from_selection`, `duplicate_list`) were converted to `SECURITY INVOKER` in `20260514202025`, which **resolves** the warning for them rather than accepting it. When the linter raises this warning on a new function, default to converting to `INVOKER`; accept only when the function genuinely needs owner privileges the caller lacks, and document why alongside `DECISIONS.md` ADR 3's pattern. Don't silently leave it.
 
 ---
 
@@ -141,7 +151,7 @@ We accept the warning deliberately on the five user-callable definers: `delete_a
 
 These don't carry the primary security load (RLS does), but they catch mistakes that would otherwise be silent.
 
-- **`search_path` pinning** on every public function (migration `20260429000000`). Prevents schema-shadowing.
+- **`search_path` pinning** on every public function (migration `20260429000000`; tightened to `search_path = ''` with fully-qualified bodies for the DEFINER functions and the four converted RPCs in `20260514202025`). Prevents schema-shadowing.
 - **`rls_auto_enable` event trigger.** Already covered above. Stops a forgotten `enable row level security` from silently exposing a new table.
 - **`ON DELETE CASCADE` chains.** `auth.users` → `profiles` → `categories` / `gear_items` / `lists`; `gear_items` → `list_items`; `lists` → `list_items`. The cascade is what makes account deletion comprehensive: `delete_account()` performs cleanup by removing the `auth.users` row, and the cascade does the rest. (`delete_account()` itself is a SECURITY DEFINER RPC whose only auth check is `auth.uid() is null`. See "Accepted residual risks" for what that does and does not gate against.)
 - **Per-user resource caps via `BEFORE INSERT` triggers:** 100 lists per user, 500 gear items per user, 300 list items per list. Stops a runaway client from filling the database. Each cap is enforced both client-side (for friendly errors) and database-side (the source of truth).
@@ -268,8 +278,8 @@ Last verified: _<YYYY-MM-DD by name>_. Re-verify after any Supabase plan/project
 
 ## Adding a SECURITY DEFINER function safely
 
-1. **Decide whether you actually need DEFINER.** Default to `SECURITY INVOKER` (the default if you don't specify); RLS handles the authorization. `DEFINER` is for the narrow case where the auto-generated PostgREST path can't express what you need (the bulk-partial-column case is the canonical example).
-2. **Pin `search_path`:** `set search_path = public, pg_temp` (or whatever schemas the function actually references; pin them all explicitly).
+1. **Decide whether you actually need DEFINER.** Default to `SECURITY INVOKER` (the default if you don't specify); RLS plus table grants handle the authorization. `DEFINER` is only for the narrow case where the function needs privileges the calling role genuinely lacks: `delete_account` (DELETE on `auth.users`), `handle_new_user` (INSERT into `profiles` as `supabase_auth_admin`), `rls_auto_enable` (ALTER TABLE ownership). If RLS and grants already permit what the function does, use `INVOKER`; see `20260514202025` for four functions that were moved off `DEFINER` once that was confirmed.
+2. **Set `search_path = ''`:** and fully schema-qualify every referenced object in the body (`public.<table>`, `auth.uid()`, etc.). `pg_catalog` is always searched implicitly, so builtins need no qualification. An empty `search_path` with qualified references is the strict form; do not rely on a `public, pg_temp` path.
 3. **Lock down EXECUTE:**
    ```sql
    revoke execute on function <name>(<args>) from public, anon;
@@ -278,8 +288,8 @@ Last verified: _<YYYY-MM-DD by name>_. Re-verify after any Supabase plan/project
    For trigger-only functions, revoke from all roles including `authenticated`; the trigger fires regardless of EXECUTE privileges.
 4. **Add an inline `auth.uid()` ownership check** at the top of the function body. The check is the compensating control for bypassing RLS. Without it, `DEFINER` becomes a privilege escalation primitive.
 5. **Document the trust assumption** in a header comment: what the function does, why it needs `DEFINER`, what the inline check enforces, and what would have to change to break the model.
-6. **Reference `bulk_update_sort_order`** (migrations `20260501000000` + `20260502000000` + `20260503000000`) as the canonical pattern. Each table branch in that function is a concrete example of the inline-ownership pattern in both shapes (direct user_id and joined-via-parent).
-7. **Expect the Supabase linter warning.** Decide between accept-with-rationale (alongside `DECISIONS.md` ADR 3) and refactor-to-INVOKER. Don't silently leave it.
+6. **Reference the inline-ownership pattern** in `add_gear_item_with_list_item` / `create_list_from_selection` / `duplicate_list` (migration `20260514202025`). Those functions are now `SECURITY INVOKER`, but the inline `auth.uid()` checks they kept are exactly the compensating-control shape a new `DEFINER` function needs: `auth.uid() <> p_user_id` raising `42501`, plus per-id `EXISTS` ownership checks raising `P0002` before any write.
+7. **Expect the Supabase linter warning.** Default to refactor-to-INVOKER (`20260514202025` has four worked examples). Accept-with-rationale only when the function genuinely needs owner privileges the caller lacks, documented alongside `DECISIONS.md` ADR 3. Don't silently leave it.
 
 ---
 
@@ -316,6 +326,7 @@ Last verified: _<YYYY-MM-DD by name>_. Re-verify after any Supabase plan/project
 - `20260512000000_advisor_cleanup_rls_policies.sql`: Supabase advisor cleanup. Replaces `*_owner_all` (FOR ALL) + `*_public_select_*` (FOR SELECT) per-table with role-and-action-specific policies on every owner-keyed table; wraps every `auth.uid()` reference in `(select auth.uid())`. Closes 26 advisor warnings (`auth_rls_initplan` * 6 + `multiple_permissive_policies` * ~20) without changing behavior.
 - `20260514000000_explicit_data_api_table_grants.sql`: explicit table GRANTs for `profiles`, `categories`, `gear_items`, `lists`, `list_items` to `authenticated`, `service_role`, and (the four content tables only) `anon`. Backfill ahead of Supabase removing the implicit "public-schema tables are reachable through the Data API" default (2026-10-30 for existing projects). RLS unchanged.
 - `20260514000001_normalize_data_api_table_grants.sql`: follow-up that revokes the historical broad defaults (INSERT/UPDATE/DELETE/TRUNCATE/TRIGGER/REFERENCES leaked to `anon`/`authenticated` and to the `public` pseudo-role) on the five tables, then re-grants the same narrow matrix as 20260514000000. RLS unchanged.
+- `20260514202025_reduce_security_definer.sql`: function-security audit. Converts `bulk_update_sort_order`, `add_gear_item_with_list_item`, `create_list_from_selection`, and `duplicate_list` from `SECURITY DEFINER` to `SECURITY INVOKER` (RLS + composite FKs enforce the same ownership; inline checks kept as defense-in-depth). Tightens `delete_account` and `handle_new_user` to `search_path = ''` (both stay DEFINER). Leaves `rls_auto_enable` untouched.
 
 **ADRs** (in `DECISIONS.md`):
 - ADR 3: Bulk DB operations through Postgres RPCs (rationale + accepted linter warning).
