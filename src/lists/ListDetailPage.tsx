@@ -65,7 +65,7 @@ import WeightTable from './WeightTable'
 import LibraryPanel from './LibraryPanel'
 import PackingProgress from './PackingProgress'
 import NotesEditor from './NotesEditor'
-import { type AddItemData } from './AddItemRow'
+import { type AddItemData } from './use-quick-add-form'
 import CategoryGroup from './CategoryGroup'
 import PanelCard from './PanelCard'
 import ItemRow from './ItemRow'
@@ -502,17 +502,23 @@ function ListDetailInner({
     },
   })
 
-  // "+ Add new item" inside a category — creates a gear_item (so it lives in the
-  // gear library too), then adds it to this list under the same category. The
-  // draft row in CategoryGroup collects all the fields up front.
+  // List Detail "Quick Add" is the per-category "Add new item" affordance
+  // (desktop inline AddItemRow or mobile QuickAddItemModal, both driven by
+  // useQuickAddForm). It creates a gear_item (so the item also lands in the
+  // gear library) and the matching list_item together, under the category
+  // whose section the user added from.
   //
-  // Phase 8 (M2): collapsed two PostgREST round-trips (createGearItem +
-  // addGearItemToList) into one SECURITY DEFINER RPC. Pure cache-invalidate
-  // on success; the RPC return value (gear_item_id, list_item_id) is unused
-  // because the invalidate refetches both queries. The list-page "Add new
-  // item" affordance is intentionally minimal (name/description/weight/
-  // category only) — cost and purchase_date are inventory-page concerns and
-  // stay null inside the RPC.
+  // Quick Add intentionally collects only the fields needed to put a new
+  // item on this list: name, description, weight, quantity, worn,
+  // consumable. Full inventory details like cost and purchase date live in
+  // GearItemDialog, not here. They are deliberately out of scope for Quick
+  // Add, not missing by accident.
+  //
+  // The add_gear_item_with_list_item RPC matches that contract exactly: one
+  // SECURITY DEFINER round-trip that inserts both rows atomically, with
+  // cost/purchase_date fixed at null. Pure cache-invalidate on success; the
+  // RPC return value (gear_item_id, list_item_id) is unused because the
+  // invalidate refetches both queries.
   const addNewItemMut = useMutation({
     mutationFn: async ({ categoryId, data }: { categoryId: string | null; data: AddItemData }) => {
       const { error } = await supabase.rpc('add_gear_item_with_list_item', {
