@@ -6,7 +6,9 @@ import type { ListItemPatch } from '../lib/queries'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { makeDnDId } from '../lib/dnd-ids'
 import ItemRow, { SortableItemRow } from './ItemRow'
-import AddItemRow, { type AddItemData } from './AddItemRow'
+import AddItemRow from './AddItemRow'
+import QuickAddItemModal from './QuickAddItemModal'
+import { type AddItemData } from './use-quick-add-form'
 
 // Single source of truth for a category section. Used by both the
 // authenticated list detail view and the public share view.
@@ -122,7 +124,11 @@ function CategoryGroup({
   onEditGearItem,
   onDeleteGearItem,
 }: GroupProps) {
+  // `adding` drives the desktop inline AddItemRow; `quickAddOpen` drives the
+  // mobile QuickAddItemModal. The footer "Add item" button picks one based
+  // on the viewport. Both submit the same AddItemData through onAddItem.
   const [adding, setAdding] = useState(false)
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   // Stable id for the collapsible region so the header button can announce
   // aria-controls. categoryId is always set when collapsible=true (share view
@@ -292,7 +298,7 @@ function CategoryGroup({
             <div className="flex items-center gap-1.5 px-3 py-0.5 text-sm">
               {onAddItem ? (
                 <button
-                  onClick={() => setAdding(true)}
+                  onClick={() => (isBelowLg ? setQuickAddOpen(true) : setAdding(true))}
                   className="flex flex-1 min-w-0 items-center gap-1 text-left text-gray-400 hover:text-blue-600"
                 >
                   <Plus size={12} /> Add new item
@@ -319,6 +325,21 @@ function CategoryGroup({
             </div>
           )}
         </div>
+      )}
+
+      {/* Mobile Quick Add modal. Rendered outside the collapsible region so a
+          collapse can't unmount it mid-edit. The guard is tight on purpose:
+          onAddItem gates it to the authed list view (share view never passes
+          it), and !packMode drops it if the page flips to pack mode while the
+          modal is open. */}
+      {quickAddOpen && onAddItem && !packMode && (
+        <QuickAddItemModal
+          onSubmit={(data) => {
+            onAddItem(categoryId ?? null, data)
+            setQuickAddOpen(false)
+          }}
+          onClose={() => setQuickAddOpen(false)}
+        />
       )}
     </div>
   )

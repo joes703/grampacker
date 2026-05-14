@@ -1,46 +1,39 @@
-import { useState } from 'react'
 import { Shirt, UtensilsCrossed, XCircle } from 'lucide-react'
 import RowIconButton from '../components/RowIconButton'
 import WeightInput from '../components/WeightInput'
-
-export type AddItemData = {
-  name: string
-  description: string | null
-  weight_grams: number
-  quantity: number
-  is_worn: boolean
-  is_consumable: boolean
-}
+import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
 
 type Props = {
   onSubmit: (data: AddItemData) => void
   onCancel: () => void
 }
 
-// Editable draft row for the "+ Add new item" affordance under a category.
-// Mirrors the regular ListItemRow column geometry; full-row blur commits when
-// name is non-empty, cancels when blank.
+// Desktop inline presentation of the List Detail "Quick Add" flow. Mirrors
+// the regular ListItemRow column geometry; full-row blur commits when name
+// is non-empty, cancels when blank. The form state, validation, and submit
+// payload all come from useQuickAddForm, which the mobile QuickAddItemModal
+// shares so the two presentations can't drift.
 export default function AddItemRow({ onSubmit, onCancel }: Props) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [weightGrams, setWeightGrams] = useState(0)
-  const [quantity, setQuantity] = useState('1')
-  const [worn, setWorn] = useState(false)
-  const [consumable, setConsumable] = useState(false)
+  const {
+    name,
+    setName,
+    description,
+    setDescription,
+    weightGrams,
+    setWeightGrams,
+    quantity,
+    setQuantity,
+    worn,
+    toggleWorn,
+    consumable,
+    toggleConsumable,
+    buildData,
+  } = useQuickAddForm()
 
   function commit() {
-    const trimmed = name.trim()
-    if (!trimmed) return
-    const w = Math.max(0, Math.min(weightGrams, 100000))
-    const q = Math.max(1, Math.min(parseInt(quantity, 10) || 1, 9999))
-    onSubmit({
-      name: trimmed.slice(0, 256),
-      description: description.trim() ? description.trim().slice(0, 2000) : null,
-      weight_grams: w,
-      quantity: q,
-      is_worn: worn,
-      is_consumable: consumable,
-    })
+    const data = buildData()
+    if (!data) return
+    onSubmit(data)
   }
 
   function handleKey(e: React.KeyboardEvent) {
@@ -92,7 +85,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
       <RowIconButton
         variant="purpleToggle"
         active={worn}
-        onClick={() => { setWorn((v) => !v); if (!worn) setConsumable(false) }}
+        onClick={toggleWorn}
         title="Worn"
         ariaLabel="Worn"
         icon={<Shirt size={14} />}
@@ -100,7 +93,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
       <RowIconButton
         variant="orangeToggle"
         active={consumable}
-        onClick={() => { setConsumable((v) => !v); if (!consumable) setWorn(false) }}
+        onClick={toggleConsumable}
         title="Consumable"
         ariaLabel="Consumable"
         icon={<UtensilsCrossed size={14} />}
