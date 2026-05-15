@@ -44,10 +44,7 @@ export default function LoginPage() {
         <div className="mb-6">
           <p className="text-2xl font-semibold text-gray-900">Grampacker</p>
           <p className="mt-2 text-sm text-gray-600">
-            A simple gear list and pack weight tracker for backpacking trips.
-          </p>
-          <p className="mt-2 text-sm text-gray-500">
-            Works on web and mobile, includes a packing mode, and works offline.
+            A backpacking gear list, weight tracker, and packing tool.
           </p>
         </div>
         <h1 className="text-xl font-semibold text-gray-900 mb-6">Sign in</h1>

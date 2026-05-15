@@ -1,6 +1,6 @@
 **About grampacker**
 
-grampacker is a simple gear list and pack weight tracker for backpacking trips.
+grampacker is a backpacking gear list, weight tracker, and packing tool.
 
 It helps you keep an inventory of your gear, build trip-specific packing lists, share lists with others, and use packing mode to check off items as you pack.
 
