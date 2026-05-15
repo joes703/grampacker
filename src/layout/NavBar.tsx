@@ -52,7 +52,7 @@ export default function NavBar() {
   }
 
   return (
-    <header className="border-b border-gray-200 bg-white">
+    <header className="border-b border-gray-200 bg-white print:hidden">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 sm:gap-3 lg:gap-6 px-4">
         {/* Mobile sidebar trigger — only renders when the active page has
             registered sidebar content (today: ListDetailPage). On pages
