@@ -15,6 +15,12 @@ type Props = {
   offline?: boolean
   pendingSyncCount?: number
   syncing?: boolean
+  // True after a sync attempt errored. The auto-retry-on-reconnect path
+  // still runs (the page-level effect clears this on offline), but until
+  // then we surface a manual Retry affordance so a transient server error
+  // doesn't strand the user waiting for an offline transition.
+  syncBlocked?: boolean
+  onRetrySync?: () => void
 }
 
 export default function PackingProgress({
@@ -26,6 +32,8 @@ export default function PackingProgress({
   offline = false,
   pendingSyncCount = 0,
   syncing = false,
+  syncBlocked = false,
+  onRetrySync,
 }: Props) {
   const pct = total === 0 ? 0 : Math.round((packed / total) * 100)
   const done = packed === total && total > 0
@@ -83,13 +91,24 @@ export default function PackingProgress({
           className="mt-2 flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 border border-amber-200"
         >
           <WifiOff size={12} aria-hidden="true" className="mt-0.5 shrink-0" />
-          <span>
+          <span className="flex-1">
             {syncing
               ? 'Syncing packing checkmarks...'
               : offline
                 ? 'Offline. Packing checkmarks will sync when you reconnect.'
-                : `${pendingSyncCount} packing ${pendingSyncCount === 1 ? 'checkmark is' : 'checkmarks are'} waiting to sync.`}
+                : syncBlocked
+                  ? `Couldn't sync ${pendingSyncCount} packing ${pendingSyncCount === 1 ? 'checkmark' : 'checkmarks'}.`
+                  : `${pendingSyncCount} packing ${pendingSyncCount === 1 ? 'checkmark is' : 'checkmarks are'} waiting to sync.`}
           </span>
+          {syncBlocked && !offline && !syncing && onRetrySync && (
+            <button
+              type="button"
+              onClick={onRetrySync}
+              className="shrink-0 rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+            >
+              Retry
+            </button>
+          )}
         </div>
       )}
       {confirmingReset && (

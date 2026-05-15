@@ -63,6 +63,7 @@ import {
   queuePendingPackedState,
   readPendingPackedStates,
   removePendingPackedStates,
+  subscribeToPendingPackedStates,
   type PendingPackedState,
 } from '../lib/offline-packed-queue'
 import { parseListCsv, type ListImportRow } from '../lib/csv'
@@ -199,15 +200,41 @@ function ListDetailInner({
     readPendingPackedStates(userId, listId),
   )
   const [packingSyncing, setPackingSyncing] = useState(false)
-  const packingSyncBlocked = useRef(false)
+  // Two parallel handles on "sync is blocked":
+  //   - packingSyncBlockedRef drives the sync effect's early-return guard,
+  //     kept out of the effect's deps so a read+write inside the same
+  //     effect doesn't trip react-hooks/set-state-in-effect.
+  //   - packingSyncBlocked (state) drives the visible Retry affordance in
+  //     PackingProgress. The two are updated together via markSyncBlocked.
+  // packingSyncRetryNonce is the explicit retry signal: incrementing it
+  // changes the effect's deps so a Retry click re-runs the effect even
+  // though the underlying state machine is otherwise unchanged.
+  const [packingSyncBlocked, setPackingSyncBlocked] = useState(false)
+  const packingSyncBlockedRef = useRef(false)
+  const [packingSyncRetryNonce, setPackingSyncRetryNonce] = useState(0)
+  // In-flight is intra-effect only and must not cause re-renders, so it
+  // stays a ref.
   const packingSyncInFlight = useRef(false)
 
+  const markSyncBlocked = useCallback((blocked: boolean) => {
+    packingSyncBlockedRef.current = blocked
+    setPackingSyncBlocked(blocked)
+  }, [])
+
+  // Offline transition clears any prior sync-blocked state so the next
+  // reconnect (or Retry click) attempts a fresh sync. The set-state-in-
+  // effect lint rule fires here because we setState in a useEffect body,
+  // but the call is one-shot per online change (the effect re-runs only
+  // when `online` flips), and `packingSyncBlocked` state is not in this
+  // effect's deps, so there is no read-then-write loop.
   useEffect(() => {
-    if (!online) {
-      packingSyncBlocked.current = false
-      return
-    }
-    if (packingSyncBlocked.current || pendingPackedStates.length === 0 || packingSyncInFlight.current) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- offline transition is the natural trigger for clearing the blocker; alternative idioms (online-edge detection via a ref, or a route-level event handler) buy nothing here
+    if (!online) markSyncBlocked(false)
+  }, [online, markSyncBlocked])
+
+  useEffect(() => {
+    if (!online) return
+    if (packingSyncBlockedRef.current || pendingPackedStates.length === 0 || packingSyncInFlight.current) return
     let cancelled = false
 
     async function syncPendingPackedStates() {
@@ -236,8 +263,8 @@ function ListDetailInner({
         removePendingPackedStates(userId, listId, syncedIds)
         if (!cancelled) {
           setPendingPackedStates(readPendingPackedStates(userId, listId))
-          packingSyncBlocked.current = true
-          showToast("Couldn't sync packing checkmarks. We'll try again when you're online.", { type: 'error' })
+          markSyncBlocked(true)
+          showToast("Couldn't sync packing checkmarks. Try Retry, or we'll try again next time you reconnect.", { type: 'error' })
         }
       } finally {
         if (!cancelled) setPackingSyncing(false)
@@ -249,7 +276,23 @@ function ListDetailInner({
     return () => {
       cancelled = true
     }
-  }, [online, pendingPackedStates, qc, userId, listId])
+  }, [online, pendingPackedStates, qc, userId, listId, packingSyncRetryNonce, markSyncBlocked])
+
+  // Cross-tab consistency. When another tab queues or syncs a pending
+  // checkmark, this effect refreshes our local state so the UI matches
+  // what's on disk. Subscriber returns the filtered list for our
+  // (userId, listId), so we don't have to re-read here.
+  useEffect(() => {
+    return subscribeToPendingPackedStates(userId, listId, setPendingPackedStates)
+  }, [userId, listId])
+
+  const onRetrySync = useCallback(() => {
+    // Clear both handles AND bump the nonce so the sync effect re-runs.
+    // Without the nonce, deps would be unchanged and the effect would
+    // sit idle.
+    markSyncBlocked(false)
+    setPackingSyncRetryNonce((n) => n + 1)
+  }, [markSyncBlocked])
 
   // Counter that increments to programmatically focus LibraryPanel's search
   // input from the empty-state "Add from your inventory" affordance at lg+.
@@ -812,7 +855,9 @@ function ListDetailInner({
         const offlinePackedValue = patch.is_packed
         if (!online && typeof offlinePackedValue === 'boolean') {
           const entry = queuePendingPackedState(userId, listId, itemId, offlinePackedValue)
-          packingSyncBlocked.current = false
+          // Clear any prior sync-blocked state so the next reconnect (or
+          // a Retry click) attempts a fresh sync that includes this entry.
+          markSyncBlocked(false)
           setPendingPackedStates((curr) => [
             ...curr.filter((pending) => pending.itemId !== itemId),
             entry,
@@ -937,16 +982,20 @@ function ListDetailInner({
         <div className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'max-w-3xl mx-auto' : ''}`}>
           {/* Pack-mode progress bar */}
           {mode === 'pack' && listItems.length > 0 && (
-            <PackingProgress
-              total={listItems.length}
-              packed={listItems.filter((i) => i.is_packed).length}
-              onReset={resetPacked}
-              showUnpackedOnly={showUnpackedOnly}
-              onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
-              offline={!online}
-              pendingSyncCount={pendingPackedStates.length}
-              syncing={packingSyncing}
-            />
+            <div className="print:hidden">
+              <PackingProgress
+                total={listItems.length}
+                packed={listItems.filter((i) => i.is_packed).length}
+                onReset={resetPacked}
+                showUnpackedOnly={showUnpackedOnly}
+                onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
+                offline={!online}
+                pendingSyncCount={pendingPackedStates.length}
+                syncing={packingSyncing}
+                syncBlocked={packingSyncBlocked}
+                onRetrySync={onRetrySync}
+              />
+            </div>
           )}
 
           {/* Notes + Weight summary — side by side on desktop, with Notes

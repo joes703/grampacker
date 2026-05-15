@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   applyPendingPackedStates,
   queuePendingPackedState,
@@ -7,6 +7,9 @@ import {
   type PendingPackedState,
 } from './offline-packed-queue'
 import type { ListItemWithGear } from './types'
+
+const STORAGE_KEY = 'grampacker:pending-packed:v1'
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 const USER_ID = 'user-1'
 const LIST_ID = 'list-1'
@@ -51,6 +54,10 @@ function item(id: string, isPacked: boolean): ListItemWithGear {
 describe('offline packed queue', () => {
   beforeEach(() => {
     storage.clear()
+    vi.useRealTimers()
+  })
+
+  afterEach(() => {
     vi.useRealTimers()
   })
 
@@ -105,5 +112,106 @@ describe('offline packed queue', () => {
 
     expect(next[0]?.is_packed).toBe(true)
     expect(next[1]).toBe(items[1])
+  })
+
+  it('returns the same items reference when the pending list is empty', () => {
+    // Memoization downstream (useGroupedListItems, sharedGroupProps memo)
+    // depends on this invariant.
+    const items = [item('item-1', false), item('item-2', true)]
+    expect(applyPendingPackedStates(items, [])).toBe(items)
+  })
+
+  it('returns the same items reference when pending values match existing state', () => {
+    const items = [item('item-1', false), item('item-2', true)]
+    const pending: PendingPackedState[] = [
+      { userId: USER_ID, listId: LIST_ID, itemId: 'item-1', is_packed: false, updated_at: 1 },
+      { userId: USER_ID, listId: LIST_ID, itemId: 'item-2', is_packed: true, updated_at: 2 },
+    ]
+    expect(applyPendingPackedStates(items, pending)).toBe(items)
+  })
+
+  it('returns [] when localStorage contains malformed JSON', () => {
+    storage.set(STORAGE_KEY, '{not valid json')
+    expect(readPendingPackedStates(USER_ID, LIST_ID)).toEqual([])
+  })
+
+  it('returns [] when localStorage contains a non-object root', () => {
+    storage.set(STORAGE_KEY, JSON.stringify([1, 2, 3]))
+    expect(readPendingPackedStates(USER_ID, LIST_ID)).toEqual([])
+  })
+
+  it('skips malformed entries within a valid object root', () => {
+    // The object root is structurally fine, but one entry is missing
+    // required fields. The valid sibling should still come through.
+    const stored = {
+      'user-1:list-1:item-1': {
+        userId: USER_ID,
+        listId: LIST_ID,
+        itemId: 'item-1',
+        is_packed: true,
+        updated_at: Date.now(),
+      },
+      'broken': { userId: USER_ID }, // missing fields
+    }
+    storage.set(STORAGE_KEY, JSON.stringify(stored))
+    const result = readPendingPackedStates(USER_ID, LIST_ID)
+    expect(result.map((entry) => entry.itemId)).toEqual(['item-1'])
+  })
+
+  it('prunes entries older than the TTL on read', () => {
+    // Seed storage directly with one fresh and one stale entry. After a
+    // read, the stale entry should be dropped and the write-back should
+    // remove it from the underlying storage as well.
+    const now = Date.now()
+    const stored = {
+      'user-1:list-1:fresh': {
+        userId: USER_ID,
+        listId: LIST_ID,
+        itemId: 'fresh',
+        is_packed: true,
+        updated_at: now - ONE_DAY_MS,
+      },
+      'user-1:list-1:stale': {
+        userId: USER_ID,
+        listId: LIST_ID,
+        itemId: 'stale',
+        is_packed: true,
+        updated_at: now - 365 * ONE_DAY_MS,
+      },
+    }
+    storage.set(STORAGE_KEY, JSON.stringify(stored))
+
+    const result = readPendingPackedStates(USER_ID, LIST_ID)
+    expect(result.map((entry) => entry.itemId)).toEqual(['fresh'])
+
+    // Storage was rewritten without the stale entry.
+    const persisted = JSON.parse(storage.get(STORAGE_KEY) ?? '{}') as Record<string, unknown>
+    expect(Object.keys(persisted)).toEqual(['user-1:list-1:fresh'])
+  })
+
+  it('does not write back when nothing was pruned', () => {
+    // A clean read should be a pure read. Confirm by snapshotting the
+    // raw payload before and after.
+    const now = Date.now()
+    const stored = {
+      'user-1:list-1:item-1': {
+        userId: USER_ID,
+        listId: LIST_ID,
+        itemId: 'item-1',
+        is_packed: true,
+        updated_at: now,
+      },
+    }
+    const raw = JSON.stringify(stored)
+    storage.set(STORAGE_KEY, raw)
+    readPendingPackedStates(USER_ID, LIST_ID)
+    expect(storage.get(STORAGE_KEY)).toBe(raw)
+  })
+
+  it('clears the storage key when removing the last entry', () => {
+    queuePendingPackedState(USER_ID, LIST_ID, 'item-1', true)
+    expect(storage.get(STORAGE_KEY)).toBeDefined()
+    removePendingPackedStates(USER_ID, LIST_ID, ['item-1'])
+    expect(storage.get(STORAGE_KEY)).toBeUndefined()
   })
 })
