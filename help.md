@@ -102,7 +102,7 @@ grampacker works in a mobile browser and can be added to your home screen so it 
 
 For offline use, open the lists you need while you still have a connection. Previously opened lists may still be available when offline.
 
-Packing checkmarks need a connection. If you are offline, you can view saved list data, but Pack mode checkmarks are disabled until you reconnect.
+Packing checkmarks work offline and sync when you reconnect. Other edits, like changing list items or quantities, still need a connection.
 
 ## Account and privacy
 
