@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
-import { useQuery, useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   DndContext,
   DragOverlay,
@@ -60,6 +60,11 @@ import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
 import { applyPendingPackedStates } from '../lib/offline-packed-queue'
 import { useOfflinePackedSync } from './use-offline-packed-sync'
+import {
+  fanOutGearListItemsCaches,
+  rollbackListItemsCaches,
+  invalidateListItemsCaches,
+} from './list-items-fan-out'
 import { parseListCsv, type ListImportRow } from '../lib/csv'
 import { randomTempId } from '../lib/random-temp-id'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
@@ -427,12 +432,11 @@ function ListDetailInner({
     }),
   })
 
-  // Editing an item's name/description/category from the list view writes
-  // to gear_items so it propagates to the gear library and every list that
-  // uses the same item. The list-items cache fan-out below is what closes
-  // B-2: without it, an immediate reorder after a category change reads
-  // stale embedded category_id and writes corrupted sort_order. Mirrors
-  // GearLibraryPage.editItem; helper extraction is a future commit.
+  // Editing gear from a list writes to gear_items so the change propagates
+  // to the gear library and every list that uses the same item. The
+  // ['list-items', *] fan-out is what closes B-2: without it, an immediate
+  // reorder after a category change reads stale embedded category_id and
+  // writes corrupted sort_order.
   const updateGearItemMut = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateGearItem>[1] }) =>
       updateGearItem(id, patch),
@@ -442,56 +446,31 @@ function ListDetailInner({
       qc.setQueryData<GearItem[]>(queryKeys.gearItems(), (curr) =>
         curr ? curr.map((g) => (g.id === id ? { ...g, ...patch } : g)) : curr,
       )
-
-      const affected = qc.getQueryCache()
-        .findAll({ queryKey: ['list-items'] })
-        .filter((q) => (q.state.data as ListItemWithGear[] | undefined)?.some((i) => i.gear_item_id === id))
-      const listSnapshots: { key: QueryKey; data: ListItemWithGear[] | undefined }[] = []
-      for (const q of affected) {
-        const key = q.queryKey
-        qc.cancelQueries({ queryKey: key })
-        listSnapshots.push({ key, data: qc.getQueryData<ListItemWithGear[]>(key) })
-        qc.setQueryData<ListItemWithGear[]>(key, (curr) =>
-          curr?.map((item) =>
-            item.gear_item_id === id
-              ? { ...item, gear_item: { ...item.gear_item, ...patch } }
-              : item,
-          ),
-        )
-      }
-
+      const listSnapshots = fanOutGearListItemsCaches(qc, id, (items) =>
+        items.map((item) =>
+          item.gear_item_id === id
+            ? { ...item, gear_item: { ...item.gear_item, ...patch } }
+            : item,
+        ),
+      )
       return { previousGear, listSnapshots }
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.previousGear) qc.setQueryData(queryKeys.gearItems(), ctx.previousGear)
-      if (ctx?.listSnapshots) {
-        for (const { key, data } of ctx.listSnapshots) {
-          qc.setQueryData(key, data)
-        }
-      }
+      if (ctx?.listSnapshots) rollbackListItemsCaches(qc, ctx.listSnapshots)
     },
     onSettled: (_data, _err, _vars, ctx) => {
       qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      if (ctx?.listSnapshots) {
-        for (const { key } of ctx.listSnapshots) {
-          qc.invalidateQueries({ queryKey: key })
-        }
-      }
+      if (ctx?.listSnapshots) invalidateListItemsCaches(qc, ctx.listSnapshots)
     },
   })
 
-  // Delete a gear item entirely (from the gear library and every list that uses it).
-  // gear_items.id is referenced by list_items with ON DELETE CASCADE on gear_item_id,
-  // so deleting a gear item also removes every list_item that references it.
-  //
-  // The list-page entry point needs cross-cache fan-out beyond the helper:
-  // makeOptimisticDelete only filters ['gear-items'], but the row the user is
-  // looking at on /lists/:id is rendered from ['list-items', listId]. Without
-  // a fan-out, the row stays visible on screen until the settled invalidation/
-  // refetch round-trip completes — undermining the whole point of an
-  // optimistic delete. Mirror updateGearItemMut's fan-out shape: snapshot
-  // every affected ['list-items', _] cache, optimistically filter rows whose
-  // gear_item_id matches, restore on error, invalidate per-key on settled.
+  // Delete a gear item entirely (gear library and every list that uses it).
+  // gear_items.id is referenced by list_items with ON DELETE CASCADE on
+  // gear_item_id, so deleting a gear_item also removes every list_item that
+  // references it. makeOptimisticDelete only touches the ['gear-items']
+  // cache; the ['list-items', *] fan-out is what makes the row vanish on
+  // /lists/:id immediately instead of waiting for the settled refetch.
   const deleteHelper = makeOptimisticDelete<GearItem, string>({
     qc,
     queryKey: queryKeys.gearItems(),
@@ -501,36 +480,19 @@ function ListDetailInner({
     mutationFn: deleteGearItem,
     onMutate: (id: string) => {
       const helperCtx = deleteHelper.onMutate(id)
-      const affected = qc.getQueryCache()
-        .findAll({ queryKey: ['list-items'] })
-        .filter((q) => (q.state.data as ListItemWithGear[] | undefined)?.some((i) => i.gear_item_id === id))
-      const listSnapshots: { key: QueryKey; data: ListItemWithGear[] | undefined }[] = []
-      for (const q of affected) {
-        const key = q.queryKey
-        qc.cancelQueries({ queryKey: key })
-        listSnapshots.push({ key, data: qc.getQueryData<ListItemWithGear[]>(key) })
-        qc.setQueryData<ListItemWithGear[]>(key, (curr) =>
-          curr?.filter((item) => item.gear_item_id !== id),
-        )
-      }
+      const listSnapshots = fanOutGearListItemsCaches(qc, id, (items) =>
+        items.filter((item) => item.gear_item_id !== id),
+      )
       return { ...helperCtx, listSnapshots }
     },
     onError: (err, vars, ctx) => {
       deleteHelper.onError(err, vars, ctx)
-      if (ctx?.listSnapshots) {
-        for (const { key, data } of ctx.listSnapshots) {
-          qc.setQueryData(key, data)
-        }
-      }
+      if (ctx?.listSnapshots) rollbackListItemsCaches(qc, ctx.listSnapshots)
       showToast("Couldn't delete that item. Please try again.", { type: 'error' })
     },
     onSettled: (_data, _err, _vars, ctx) => {
       deleteHelper.onSettled()
-      if (ctx?.listSnapshots) {
-        for (const { key } of ctx.listSnapshots) {
-          qc.invalidateQueries({ queryKey: key })
-        }
-      }
+      if (ctx?.listSnapshots) invalidateListItemsCaches(qc, ctx.listSnapshots)
     },
   })
 
