@@ -215,6 +215,13 @@ function ListDetailInner({
   // In-flight is intra-effect only and must not cause re-renders, so it
   // stays a ref.
   const packingSyncInFlight = useRef(false)
+  // Monotonic counter incremented by resetPacked. Each sync loop captures
+  // its starting value and checks before every cache mutation; if the
+  // current value has changed, the in-flight loop bails. Without this,
+  // a Reset clicked mid-sync would race the loop: the loop's captured
+  // pendingPackedStates array and its post-await cache writes would
+  // re-introduce packed=true state for items the user just cleared.
+  const syncGeneration = useRef(0)
 
   const markSyncBlocked = useCallback((blocked: boolean) => {
     packingSyncBlockedRef.current = blocked
@@ -239,12 +246,22 @@ function ListDetailInner({
 
     async function syncPendingPackedStates() {
       packingSyncInFlight.current = true
+      // Snapshot the current generation. resetPacked increments
+      // syncGeneration to invalidate this run mid-flight; we check
+      // before each await (to skip remaining iterations) AND after each
+      // await (to skip the post-resolution cache write for an iteration
+      // that was in flight when reset fired).
+      const generation = syncGeneration.current
       setPackingSyncing(true)
       const syncedIds: string[] = []
+      function aborted() {
+        return cancelled || syncGeneration.current !== generation
+      }
       try {
         for (const entry of pendingPackedStates) {
-          if (cancelled) return
+          if (aborted()) return
           await updateListItem(entry.itemId, { is_packed: entry.is_packed })
+          if (aborted()) return
           qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
             curr
               ? curr.map((item) =>
@@ -255,19 +272,24 @@ function ListDetailInner({
           syncedIds.push(entry.itemId)
         }
         removePendingPackedStates(userId, listId, syncedIds)
-        if (!cancelled) {
+        if (!aborted()) {
           setPendingPackedStates(readPendingPackedStates(userId, listId))
           qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
         }
       } catch {
         removePendingPackedStates(userId, listId, syncedIds)
-        if (!cancelled) {
+        if (!aborted()) {
           setPendingPackedStates(readPendingPackedStates(userId, listId))
           markSyncBlocked(true)
           showToast("Couldn't sync packing checkmarks. Try Retry, or we'll try again next time you reconnect.", { type: 'error' })
         }
       } finally {
-        if (!cancelled) setPackingSyncing(false)
+        // Unconditional: leaving packingSyncing=true after the cleanup
+        // (cancelled === true case) leaks the "Syncing..." banner past
+        // the effect re-run, since the new run may not enter the sync
+        // body. setState on an unmounted component is a no-op in
+        // React 19, so this is safe.
+        setPackingSyncing(false)
         packingSyncInFlight.current = false
       }
     }
@@ -707,14 +729,17 @@ function ListDetailInner({
     // bypassed UI state (e.g. a stale render between offline event and
     // re-render) shouldn't fire a doomed mutation.
     if (typeof navigator !== 'undefined' && !navigator.onLine) return
-    // Drop any pending packed-state queue before clearing the server. Two
-    // reasons: (1) without this, an in-flight sync loop could race the
-    // reset and re-pack items the user just cleared; (2) the
-    // applyPendingPackedStates overlay would re-introduce queued packed
-    // values into the rendered listItems even after the server cleared.
-    // Reset is gated to online-only, so the queue should usually be empty
-    // by the time this fires, but the race exists if the user clicks Reset
-    // mid-sync after a fresh reconnect.
+    // Invalidate any in-flight sync loop. Bumping syncGeneration before
+    // we touch the queue or the server means the loop's pre/post-await
+    // aborted() checks will trip, and the loop won't re-introduce
+    // packed=true values into the cache after this point.
+    syncGeneration.current += 1
+    // Drop any pending packed-state queue before clearing the server.
+    // Without this, applyPendingPackedStates would re-introduce queued
+    // packed values into the rendered listItems even after the server
+    // cleared. Reset is gated to online-only, so the queue should
+    // usually be empty by the time this fires, but the race exists if
+    // the user clicks Reset mid-sync after a fresh reconnect.
     const pendingIds = pendingPackedStates.map((p) => p.itemId)
     if (pendingIds.length > 0) {
       removePendingPackedStates(userId, listId, pendingIds)
