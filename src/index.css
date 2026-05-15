@@ -15,3 +15,27 @@ html {
     font-size: 16px;
   }
 }
+
+/* Pack-Mode Print. Most print rules live next to the elements they affect
+   via Tailwind print: variants. This block handles the few things that
+   utilities can't reach: the page box itself, the gray app background, and
+   open <dialog> portals (Modal) which sit in the top layer and would
+   otherwise print over the checklist. */
+@media print {
+  @page {
+    margin: 0.5in;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  /* Modals are native <dialog open> elements opened via showModal(). They
+     render in the browser's top layer and aren't reachable via the React
+     tree's class names, so a global selector is the only option. If a
+     modal happens to be open when the user prints, drop it from the
+     printed output rather than letting it cover the checklist. */
+  dialog[open] {
+    display: none !important;
+  }
+}

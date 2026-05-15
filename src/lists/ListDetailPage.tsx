@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import {
@@ -58,6 +58,13 @@ import { showToast } from '../lib/toast'
 import { assignSortOrderSlots } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
+import {
+  applyPendingPackedStates,
+  queuePendingPackedState,
+  readPendingPackedStates,
+  removePendingPackedStates,
+  type PendingPackedState,
+} from '../lib/offline-packed-queue'
 import { parseListCsv, type ListImportRow } from '../lib/csv'
 import { randomTempId } from '../lib/random-temp-id'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
@@ -164,12 +171,9 @@ function ListDetailInner({
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
   // long list registers ONE matchMedia subscription instead of one per row.
   const isBelowLg = useIsBelowLg()
-  // Page-level online state. Pack-mode write actions (is_packed checkbox,
-  // Reset packed) are disabled while offline by deliberate product choice
-  // (no offline mutation outbox; honest capability boundary). Read-only
-  // viewing of cached lists still works. Drilled through sharedGroupProps
-  // so each row gets the same flag as a stable boolean rather than each
-  // row subscribing to online events itself.
+  // Page-level online state. Pack-mode checkmarks queue locally while
+  // offline; Reset packed remains online-only because it is a bulk server
+  // mutation with no per-row intent to replay.
   const online = useOnline()
   // Pack-mode filter: when true, hide already-packed items from each
   // category. Header counts and the "complete" affordance still reflect the
@@ -191,6 +195,61 @@ function ListDetailInner({
   // dialog or switching to a different gear item naturally discards the
   // error: there's no separate state to keep in sync.
   const [dialog, setDialog] = useState<DialogState | null>(null)
+  const [pendingPackedStates, setPendingPackedStates] = useState<PendingPackedState[]>(() =>
+    readPendingPackedStates(userId, listId),
+  )
+  const [packingSyncing, setPackingSyncing] = useState(false)
+  const packingSyncBlocked = useRef(false)
+  const packingSyncInFlight = useRef(false)
+
+  useEffect(() => {
+    if (!online) {
+      packingSyncBlocked.current = false
+      return
+    }
+    if (packingSyncBlocked.current || pendingPackedStates.length === 0 || packingSyncInFlight.current) return
+    let cancelled = false
+
+    async function syncPendingPackedStates() {
+      packingSyncInFlight.current = true
+      setPackingSyncing(true)
+      const syncedIds: string[] = []
+      try {
+        for (const entry of pendingPackedStates) {
+          if (cancelled) return
+          await updateListItem(entry.itemId, { is_packed: entry.is_packed })
+          qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
+            curr
+              ? curr.map((item) =>
+                  item.id === entry.itemId ? { ...item, is_packed: entry.is_packed } : item,
+                )
+              : curr,
+          )
+          syncedIds.push(entry.itemId)
+        }
+        removePendingPackedStates(userId, listId, syncedIds)
+        if (!cancelled) {
+          setPendingPackedStates(readPendingPackedStates(userId, listId))
+          qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+        }
+      } catch {
+        removePendingPackedStates(userId, listId, syncedIds)
+        if (!cancelled) {
+          setPendingPackedStates(readPendingPackedStates(userId, listId))
+          packingSyncBlocked.current = true
+          showToast("Couldn't sync packing checkmarks. We'll try again when you're online.", { type: 'error' })
+        }
+      } finally {
+        if (!cancelled) setPackingSyncing(false)
+        packingSyncInFlight.current = false
+      }
+    }
+
+    syncPendingPackedStates()
+    return () => {
+      cancelled = true
+    }
+  }, [online, pendingPackedStates, qc, userId, listId])
 
   // Counter that increments to programmatically focus LibraryPanel's search
   // input from the empty-state "Add from your inventory" affordance at lg+.
@@ -239,10 +298,14 @@ function ListDetailInner({
     }
   }, [list, listId, listsLoading])
 
-  const { data: listItems = [] } = useQuery({
+  const { data: serverListItems = [] } = useQuery({
     queryKey: queryKeys.listItems(listId),
     queryFn: () => fetchListItems(listId, userId),
   })
+  const listItems = useMemo(
+    () => applyPendingPackedStates(serverListItems, pendingPackedStates),
+    [serverListItems, pendingPackedStates],
+  )
 
   const { data: gearItems = [] } = useQuery({
     queryKey: queryKeys.gearItems(),
@@ -601,6 +664,19 @@ function ListDetailInner({
     // bypassed UI state (e.g. a stale render between offline event and
     // re-render) shouldn't fire a doomed mutation.
     if (typeof navigator !== 'undefined' && !navigator.onLine) return
+    // Drop any pending packed-state queue before clearing the server. Two
+    // reasons: (1) without this, an in-flight sync loop could race the
+    // reset and re-pack items the user just cleared; (2) the
+    // applyPendingPackedStates overlay would re-introduce queued packed
+    // values into the rendered listItems even after the server cleared.
+    // Reset is gated to online-only, so the queue should usually be empty
+    // by the time this fires, but the race exists if the user clicks Reset
+    // mid-sync after a fresh reconnect.
+    const pendingIds = pendingPackedStates.map((p) => p.itemId)
+    if (pendingIds.length > 0) {
+      removePendingPackedStates(userId, listId, pendingIds)
+      setPendingPackedStates([])
+    }
     // Optimistic clear — flip is_packed=false on every cached item so the UI
     // updates immediately, then issue a single PATCH and invalidate to settle.
     await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
@@ -729,16 +805,23 @@ function ListDetailInner({
       isBelowLg,
       sortable: true,
       showUnpackedOnly,
-      // Pack-mode checkbox write-block when offline. Forwarded through
-      // CategoryGroup → ItemRow. Only consulted when packMode is true (the
-      // checkbox is the only pack-mode write affordance).
-      packActionsDisabled: !online,
+      // Pack-mode checkboxes stay active offline. Only reset remains
+      // online-only; individual ticks queue locally and sync on reconnect.
+      packActionsDisabled: false,
       onUpdate: (itemId: string, patch: ListItemPatch) => {
-        // Defense-in-depth: ItemRow already disables the checkbox when
-        // packActionsDisabled, but if any other code path tries to fire an
-        // is_packed update offline, suppress it rather than letting the
-        // mutation fail-and-rollback.
-        if (typeof navigator !== 'undefined' && !navigator.onLine && 'is_packed' in patch) return
+        const offlinePackedValue = patch.is_packed
+        if (!online && typeof offlinePackedValue === 'boolean') {
+          const entry = queuePendingPackedState(userId, listId, itemId, offlinePackedValue)
+          packingSyncBlocked.current = false
+          setPendingPackedStates((curr) => [
+            ...curr.filter((pending) => pending.itemId !== itemId),
+            entry,
+          ])
+          qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
+            curr ? curr.map((item) => (item.id === itemId ? { ...item, is_packed: offlinePackedValue } : item)) : curr,
+          )
+          return
+        }
         updateMut.mutate({ itemId, patch })
       },
       onDelete: (itemId: string) => deleteMut.mutate(itemId),
@@ -789,6 +872,23 @@ function ListDetailInner({
           (NavBar's RouteHeading + ListContextControls); the page body owns
           the two-column layout below. */}
 
+      {/* Print-only header. NavBar (list name) and the Notes/WeightTable
+          panels are hidden in print and pack mode hides them on screen too,
+          so the printed sheet needs its own list-name + notes + compact
+          weight summary block. `hidden print:block` keeps it out of the
+          screen DOM entirely. WeightTable already no-ops on empty lists. */}
+      <div className="hidden print:block">
+        <h1 className="text-2xl font-bold text-gray-900">{list.name}</h1>
+        {list.description && (
+          <p className="mt-1 whitespace-pre-line text-sm text-gray-700">{list.description}</p>
+        )}
+        {listItems.length > 0 && (
+          <div className="mt-3 mb-4">
+            <WeightTable items={listItems} categories={categories} />
+          </div>
+        )}
+      </div>
+
       {/* Two-column grid (sidebar collapses in pack mode). The visibility
           condition is `mode !== 'pack'` — derived directly, not stored. */}
       <div className="flex gap-4 items-start">
@@ -796,7 +896,7 @@ function ListDetailInner({
             so the user can focus on packing. List management lives on /lists. */}
         {mode !== 'pack' && (
           <aside
-            className="hidden lg:flex w-80 shrink-0 flex-col sticky self-start"
+            className="hidden lg:flex w-80 shrink-0 flex-col sticky self-start print:hidden"
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
           >
             <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
@@ -844,6 +944,8 @@ function ListDetailInner({
               showUnpackedOnly={showUnpackedOnly}
               onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
               offline={!online}
+              pendingSyncCount={pendingPackedStates.length}
+              syncing={packingSyncing}
             />
           )}
 
@@ -853,7 +955,7 @@ function ListDetailInner({
               packing (PackingProgress above is the only summary the
               packer needs). The entire grid renders nothing in pack mode. */}
           {mode !== 'pack' && (
-            <div className={`grid gap-4 ${listItems.length > 0 ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
+            <div className={`print:hidden grid gap-4 ${listItems.length > 0 ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
               <PanelCard title="Notes">
                 <NotesEditor
                   key={list.id}
@@ -871,7 +973,7 @@ function ListDetailInner({
 
           {/* Items grouped by category */}
           {listItems.length === 0 ? (
-            <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 print:hidden">
               <h2 className="text-base font-semibold text-gray-900">Add gear to this list</h2>
               <p className="mt-1 text-sm text-gray-500">
                 Pick a starting point. The empty state goes away as soon as you add something.
@@ -998,7 +1100,7 @@ function ListDetailInner({
                     weightUnit={weightUnit}
                     isBelowLg={isBelowLg}
                     packMode={mode === 'pack'}
-                    packActionsDisabled={!online}
+                    packActionsDisabled={false}
                     sortable={false}
                     showUnpackedOnly={showUnpackedOnly}
                     onUpdate={sharedGroupProps.onUpdate}
@@ -1020,22 +1122,24 @@ function ListDetailInner({
           fetches the vaul chunk. Combined with the H5 Phase-3 carry-over,
           this is what actually moves vaul out of the main bundle. */}
       {isBelowLg && (
-        <Suspense fallback={null}>
-          <ListSidebarDrawer
-            open={drawerOpen}
-            onOpenChange={setDrawerOpen}
-            manageHref={`/gear?from=${listId}`}
-          >
-            <LibraryPanel
-              gearItems={gearItems}
-              categories={categories}
-              listItemGearIds={listItemGearIds}
-              weightUnit={weightUnit}
-              onAdd={onLibraryAdd}
-              onRemove={onLibraryRemove}
-            />
-          </ListSidebarDrawer>
-        </Suspense>
+        <div className="print:hidden">
+          <Suspense fallback={null}>
+            <ListSidebarDrawer
+              open={drawerOpen}
+              onOpenChange={setDrawerOpen}
+              manageHref={`/gear?from=${listId}`}
+            >
+              <LibraryPanel
+                gearItems={gearItems}
+                categories={categories}
+                listItemGearIds={listItemGearIds}
+                weightUnit={weightUnit}
+                onAdd={onLibraryAdd}
+                onRemove={onLibraryRemove}
+              />
+            </ListSidebarDrawer>
+          </Suspense>
+        </div>
       )}
 
       {/* Gear-item edit (reached from the row tap on mobile or the kebab →

@@ -149,19 +149,16 @@ export default function ItemRow({
         ref={outerRef}
         style={outerStyle}
         className={`flex items-center gap-0.5 lg:gap-1.5 border-b border-gray-100 px-2 lg:px-3 py-2 lg:py-0.5 text-sm transition-colors ${
-          item.is_packed ? 'bg-green-50' : 'bg-white'
+          item.is_packed ? 'bg-green-50 print:bg-transparent' : 'bg-white'
         }`}
       >
         {/* Wrapping label means clicking/tapping the name toggles packed,
             and screen readers announce the item name as the checkbox's
             accessible name (no separate aria-label needed).
 
-            When packActionsDisabled (offline), the input is `disabled` so
+            When packActionsDisabled is true, the input is `disabled` so
             click + keyboard activation are blocked at the platform level,
-            and the onChange is also a no-op as defense in depth. The label
-            drops cursor-pointer to match. The native disabled state is the
-            right semantic — assistive tech announces "disabled checkbox,"
-            which composes with the offline banner above to explain why. */}
+            and the onChange is also a no-op as defense in depth. */}
         <label className={`flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 ${packActionsDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
           <input
             type="checkbox"
@@ -171,8 +168,16 @@ export default function ItemRow({
               if (packActionsDisabled) return
               onUpdate?.({ is_packed: e.target.checked })
             }}
-            title={packActionsDisabled ? 'Offline. Reconnect to mark items as packed.' : undefined}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={packActionsDisabled ? 'Packing checkmark unavailable.' : undefined}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed print:hidden"
+          />
+          {/* Print-only empty checkbox. The native input above is suppressed
+              in print because browsers render its checked state visually,
+              and the printed sheet should be a blank checklist regardless
+              of which items the user has already marked digitally. */}
+          <span
+            aria-hidden="true"
+            className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
           />
           {/* Name + description at lg+ in the same 2:3 proportion as edit
               mode. <lg keeps the single-column name-only layout (mirrors
@@ -182,7 +187,7 @@ export default function ItemRow({
             <div className="flex-[2] min-w-0">
               <span
                 className={`block w-full truncate font-normal ${
-                  item.is_packed ? 'text-gray-400 line-through' : 'text-gray-900'
+                  item.is_packed ? 'text-gray-400 line-through print:text-gray-900 print:no-underline' : 'text-gray-900'
                 }`}
               >
                 {name}
@@ -191,7 +196,7 @@ export default function ItemRow({
             <div className="hidden lg:block lg:flex-[3] min-w-0">
               <span
                 className={`block w-full truncate text-sm font-normal ${
-                  item.is_packed ? 'text-gray-300 line-through' : 'text-gray-500'
+                  item.is_packed ? 'text-gray-300 line-through print:text-gray-600 print:no-underline' : 'text-gray-500'
                 }`}
               >
                 {description}

@@ -208,7 +208,7 @@ function CategoryGroup({
               aria-expanded={!collapsed}
               aria-controls={regionId}
               aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
-              className="inline-flex h-10 w-10 lg:h-7 lg:w-7 items-center justify-center rounded text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0"
+              className="inline-flex h-10 w-10 lg:h-7 lg:w-7 items-center justify-center rounded text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0 print:hidden"
             >
               {collapsed ? (
                 <ChevronRight size={14} />
@@ -222,10 +222,20 @@ function CategoryGroup({
                 the header). */}
             <span className={`truncate text-sm font-medium ${complete ? 'text-gray-400' : 'text-gray-700'}`}>{name}</span>
             <span className="shrink-0 text-xs tabular-nums text-gray-400">
-              {packMode ? `${packedCount} / ${sectionItems.length}` : `(${sectionItems.length})`}
+              {packMode ? (
+                <>
+                  {/* Digital packed count is meaningless on a paper checklist
+                      where every box prints empty. Show the same "(N)"
+                      total as edit mode in print to keep header parity. */}
+                  <span className="print:hidden">{packedCount} / {sectionItems.length}</span>
+                  <span className="hidden print:inline">({sectionItems.length})</span>
+                </>
+              ) : (
+                `(${sectionItems.length})`
+              )}
             </span>
             {complete && (
-              <Check size={14} className="shrink-0 text-green-600" aria-label="All packed" />
+              <Check size={14} className="shrink-0 text-green-600 print:hidden" aria-label="All packed" />
             )}
           </div>
         ) : (
