@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import {
@@ -58,14 +58,8 @@ import { showToast } from '../lib/toast'
 import { assignSortOrderSlots } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
-import {
-  applyPendingPackedStates,
-  queuePendingPackedState,
-  readPendingPackedStates,
-  removePendingPackedStates,
-  subscribeToPendingPackedStates,
-  type PendingPackedState,
-} from '../lib/offline-packed-queue'
+import { applyPendingPackedStates } from '../lib/offline-packed-queue'
+import { useOfflinePackedSync } from './use-offline-packed-sync'
 import { parseListCsv, type ListImportRow } from '../lib/csv'
 import { randomTempId } from '../lib/random-temp-id'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
@@ -196,125 +190,35 @@ function ListDetailInner({
   // dialog or switching to a different gear item naturally discards the
   // error: there's no separate state to keep in sync.
   const [dialog, setDialog] = useState<DialogState | null>(null)
-  const [pendingPackedStates, setPendingPackedStates] = useState<PendingPackedState[]>(() =>
-    readPendingPackedStates(userId, listId),
-  )
-  const [packingSyncing, setPackingSyncing] = useState(false)
-  // Two parallel handles on "sync is blocked":
-  //   - packingSyncBlockedRef drives the sync effect's early-return guard,
-  //     kept out of the effect's deps so a read+write inside the same
-  //     effect doesn't trip react-hooks/set-state-in-effect.
-  //   - packingSyncBlocked (state) drives the visible Retry affordance in
-  //     PackingProgress. The two are updated together via markSyncBlocked.
-  // packingSyncRetryNonce is the explicit retry signal: incrementing it
-  // changes the effect's deps so a Retry click re-runs the effect even
-  // though the underlying state machine is otherwise unchanged.
-  const [packingSyncBlocked, setPackingSyncBlocked] = useState(false)
-  const packingSyncBlockedRef = useRef(false)
-  const [packingSyncRetryNonce, setPackingSyncRetryNonce] = useState(0)
-  // In-flight is intra-effect only and must not cause re-renders, so it
-  // stays a ref.
-  const packingSyncInFlight = useRef(false)
-  // Monotonic counter incremented by resetPacked. Each sync loop captures
-  // its starting value and checks before every cache mutation; if the
-  // current value has changed, the in-flight loop bails. Without this,
-  // a Reset clicked mid-sync would race the loop: the loop's captured
-  // pendingPackedStates array and its post-await cache writes would
-  // re-introduce packed=true state for items the user just cleared.
-  const syncGeneration = useRef(0)
-
-  const markSyncBlocked = useCallback((blocked: boolean) => {
-    packingSyncBlockedRef.current = blocked
-    setPackingSyncBlocked(blocked)
-  }, [])
-
-  // Offline transition clears any prior sync-blocked state so the next
-  // reconnect (or Retry click) attempts a fresh sync. The set-state-in-
-  // effect lint rule fires here because we setState in a useEffect body,
-  // but the call is one-shot per online change (the effect re-runs only
-  // when `online` flips), and `packingSyncBlocked` state is not in this
-  // effect's deps, so there is no read-then-write loop.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- offline transition is the natural trigger for clearing the blocker; alternative idioms (online-edge detection via a ref, or a route-level event handler) buy nothing here
-    if (!online) markSyncBlocked(false)
-  }, [online, markSyncBlocked])
-
-  useEffect(() => {
-    if (!online) return
-    if (packingSyncBlockedRef.current || pendingPackedStates.length === 0 || packingSyncInFlight.current) return
-    let cancelled = false
-
-    async function syncPendingPackedStates() {
-      packingSyncInFlight.current = true
-      // Snapshot the current generation. resetPacked increments
-      // syncGeneration to invalidate this run mid-flight; we check
-      // before each await (to skip remaining iterations) AND after each
-      // await (to skip the post-resolution cache write for an iteration
-      // that was in flight when reset fired).
-      const generation = syncGeneration.current
-      setPackingSyncing(true)
-      const syncedIds: string[] = []
-      function aborted() {
-        return cancelled || syncGeneration.current !== generation
-      }
-      try {
-        for (const entry of pendingPackedStates) {
-          if (aborted()) return
-          await updateListItem(entry.itemId, { is_packed: entry.is_packed })
-          if (aborted()) return
-          qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-            curr
-              ? curr.map((item) =>
-                  item.id === entry.itemId ? { ...item, is_packed: entry.is_packed } : item,
-                )
-              : curr,
-          )
-          syncedIds.push(entry.itemId)
-        }
-        removePendingPackedStates(userId, listId, syncedIds)
-        if (!aborted()) {
-          setPendingPackedStates(readPendingPackedStates(userId, listId))
-          qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
-        }
-      } catch {
-        removePendingPackedStates(userId, listId, syncedIds)
-        if (!aborted()) {
-          setPendingPackedStates(readPendingPackedStates(userId, listId))
-          markSyncBlocked(true)
-          showToast("Couldn't sync packing checkmarks. Try Retry, or we'll try again next time you reconnect.", { type: 'error' })
-        }
-      } finally {
-        // Unconditional: leaving packingSyncing=true after the cleanup
-        // (cancelled === true case) leaks the "Syncing..." banner past
-        // the effect re-run, since the new run may not enter the sync
-        // body. setState on an unmounted component is a no-op in
-        // React 19, so this is safe.
-        setPackingSyncing(false)
-        packingSyncInFlight.current = false
-      }
-    }
-
-    syncPendingPackedStates()
-    return () => {
-      cancelled = true
-    }
-  }, [online, pendingPackedStates, qc, userId, listId, packingSyncRetryNonce, markSyncBlocked])
-
-  // Cross-tab consistency. When another tab queues or syncs a pending
-  // checkmark, this effect refreshes our local state so the UI matches
-  // what's on disk. Subscriber returns the filtered list for our
-  // (userId, listId), so we don't have to re-read here.
-  useEffect(() => {
-    return subscribeToPendingPackedStates(userId, listId, setPendingPackedStates)
-  }, [userId, listId])
-
-  const onRetrySync = useCallback(() => {
-    // Clear both handles AND bump the nonce so the sync effect re-runs.
-    // Without the nonce, deps would be unchanged and the effect would
-    // sit idle.
-    markSyncBlocked(false)
-    setPackingSyncRetryNonce((n) => n + 1)
-  }, [markSyncBlocked])
+  const {
+    pendingPackedStates,
+    packingSyncing,
+    packingSyncBlocked,
+    queueOfflinePackedState,
+    retrySync: onRetrySync,
+    clearForReset: clearPackedQueueForReset,
+  } = useOfflinePackedSync({
+    userId,
+    listId,
+    online,
+    updateListItem,
+    // Immediate cache feedback per-item so a partial-failure scenario
+    // doesn't leave the cache showing pre-sync state for items that
+    // already synced (we don't invalidate in the error path).
+    onItemSynced: (itemId, isPacked) => {
+      qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
+        curr
+          ? curr.map((item) => (item.id === itemId ? { ...item, is_packed: isPacked } : item))
+          : curr,
+      )
+    },
+    onSyncComplete: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+    },
+    onSyncError: () => {
+      showToast("Couldn't sync packing checkmarks. Try Retry, or we'll try again next time you reconnect.", { type: 'error' })
+    },
+  })
 
   // Counter that increments to programmatically focus LibraryPanel's search
   // input from the empty-state "Add from your inventory" affordance at lg+.
@@ -729,22 +633,12 @@ function ListDetailInner({
     // bypassed UI state (e.g. a stale render between offline event and
     // re-render) shouldn't fire a doomed mutation.
     if (typeof navigator !== 'undefined' && !navigator.onLine) return
-    // Invalidate any in-flight sync loop. Bumping syncGeneration before
-    // we touch the queue or the server means the loop's pre/post-await
-    // aborted() checks will trip, and the loop won't re-introduce
-    // packed=true values into the cache after this point.
-    syncGeneration.current += 1
-    // Drop any pending packed-state queue before clearing the server.
-    // Without this, applyPendingPackedStates would re-introduce queued
-    // packed values into the rendered listItems even after the server
-    // cleared. Reset is gated to online-only, so the queue should
-    // usually be empty by the time this fires, but the race exists if
-    // the user clicks Reset mid-sync after a fresh reconnect.
-    const pendingIds = pendingPackedStates.map((p) => p.itemId)
-    if (pendingIds.length > 0) {
-      removePendingPackedStates(userId, listId, pendingIds)
-      setPendingPackedStates([])
-    }
+    // Invalidate any in-flight sync loop AND drop the pending queue
+    // before clearing the server. clearPackedQueueForReset bumps the
+    // hook's sync generation so the loop's pre/post-await aborted()
+    // checks trip and the loop won't re-introduce packed=true values
+    // into the cache after this point.
+    clearPackedQueueForReset()
     // Optimistic clear — flip is_packed=false on every cached item so the UI
     // updates immediately, then issue a single PATCH and invalidate to settle.
     await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
@@ -879,14 +773,10 @@ function ListDetailInner({
       onUpdate: (itemId: string, patch: ListItemPatch) => {
         const offlinePackedValue = patch.is_packed
         if (!online && typeof offlinePackedValue === 'boolean') {
-          const entry = queuePendingPackedState(userId, listId, itemId, offlinePackedValue)
-          // Clear any prior sync-blocked state so the next reconnect (or
-          // a Retry click) attempts a fresh sync that includes this entry.
-          markSyncBlocked(false)
-          setPendingPackedStates((curr) => [
-            ...curr.filter((pending) => pending.itemId !== itemId),
-            entry,
-          ])
+          // Queue the local intent (the hook owns queue state +
+          // blocked-flag reset) and optimistically update the cache so
+          // the row reflects the tick before reconnect.
+          queueOfflinePackedState(itemId, offlinePackedValue)
           qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
             curr ? curr.map((item) => (item.id === itemId ? { ...item, is_packed: offlinePackedValue } : item)) : curr,
           )
