@@ -165,42 +165,40 @@ export default function ItemRow({
           item.is_packed ? 'bg-green-50 print:bg-transparent' : 'bg-white'
         }`}
       >
+        {/* Ready checkbox sits OUTSIDE the wrapping label below so that
+            clicking the row's name still toggles Packed (the muscle-memory
+            destination). With implicit label association, the browser
+            forwards a non-input click on the label to its FIRST nested
+            input — putting Ready there would steal that gesture. Ready
+            gets its own aria-label since it's no longer wrapped. */}
+        {readyChecksEnabled && (
+          <>
+            <input
+              type="checkbox"
+              checked={item.is_ready}
+              disabled={packActionsDisabled}
+              onChange={(e) => {
+                if (packActionsDisabled) return
+                onUpdate?.({ is_ready: e.target.checked })
+              }}
+              aria-label={`Mark ${name} ready`}
+              title={packActionsDisabled ? 'Ready checkmark unavailable.' : 'Ready'}
+              className="h-4 w-4 rounded border-gray-300 text-amber-600 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed print:hidden"
+            />
+            <span
+              aria-hidden="true"
+              className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
+            />
+          </>
+        )}
         {/* Wrapping label means clicking/tapping the name toggles packed,
             and screen readers announce the item name as the checkbox's
             accessible name (no separate aria-label needed).
 
             When packActionsDisabled is true, the input is `disabled` so
             click + keyboard activation are blocked at the platform level,
-            and the onChange is also a no-op as defense in depth.
-
-            Ready checkbox (when readyChecksEnabled) renders BEFORE packed.
-            Both checkboxes share the same label so the name still toggles
-            packed (the more common destination tap target on a row).
-            Ready uses a separate handler — clicks on the Ready checkbox
-            don't bubble to the wrapping label because the input's own
-            onChange fires first and we treat the event as handled. */}
+            and the onChange is also a no-op as defense in depth. */}
         <label className={`flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 ${packActionsDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-          {readyChecksEnabled && (
-            <>
-              <input
-                type="checkbox"
-                checked={item.is_ready}
-                disabled={packActionsDisabled}
-                onChange={(e) => {
-                  if (packActionsDisabled) return
-                  onUpdate?.({ is_ready: e.target.checked })
-                }}
-                onClick={(e) => e.stopPropagation()}
-                aria-label={`Mark ${name} ready`}
-                title={packActionsDisabled ? 'Ready checkmark unavailable.' : 'Ready'}
-                className="h-4 w-4 rounded border-gray-300 text-amber-600 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed print:hidden"
-              />
-              <span
-                aria-hidden="true"
-                className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
-              />
-            </>
-          )}
           <input
             type="checkbox"
             checked={item.is_packed}
