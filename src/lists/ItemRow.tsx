@@ -187,24 +187,20 @@ export default function ItemRow({
             aria-hidden="true"
             className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
           />
+          <StatusSlot status={item.gear_item.status} />
           {/* Name + description at lg+ in the same 2:3 proportion as edit
               mode. <lg keeps the single-column name-only layout (mirrors
               MobileRowBody's edit-mode treatment of dropping description
               on small viewports). */}
           <div className="flex flex-1 min-w-0 items-center gap-3">
-            <div className="flex-[2] min-w-0 flex items-center gap-1.5">
+            <div className="flex-[2] min-w-0">
               <span
-                className={`block min-w-0 flex-1 truncate font-normal ${
+                className={`block w-full truncate font-normal ${
                   item.is_packed ? 'text-gray-400 line-through print:text-gray-900 print:no-underline' : 'text-gray-900'
                 }`}
               >
                 {name}
               </span>
-              <GearStatusBadge
-                status={item.gear_item.status}
-                compact
-                className="shrink-0 print:hidden"
-              />
             </div>
             <div className="hidden lg:block lg:flex-[3] min-w-0">
               <span
@@ -246,6 +242,7 @@ export default function ItemRow({
            row tap. Read-only rows (share view) render as a non-interactive
            div instead of a button. */
         <div className="flex flex-1 items-center gap-1">
+          <StatusSlot status={item.gear_item.status} />
           <MobileRowBody
             item={item}
             name={name}
@@ -259,25 +256,18 @@ export default function ItemRow({
            interactive single-row layout that has shipped to date. */
         <>
         {/* Name + description as proportional columns — name : description = 2 : 3 */}
+        <StatusSlot status={item.gear_item.status} />
         <div className="flex-1 min-w-0 flex items-center gap-3">
-          <div className="flex-[2] min-w-0 flex items-center gap-2">
+          <div className="flex-[2] min-w-0">
             {onSaveName ? (
               <InlineText
                 value={name}
                 onSave={onSaveName}
-                className="block min-w-0 flex-1 truncate font-normal text-gray-900"
+                className="block w-full truncate font-normal text-gray-900"
               />
             ) : (
-              <span className="block min-w-0 flex-1 truncate font-normal text-gray-900">{name}</span>
+              <span className="block w-full truncate font-normal text-gray-900">{name}</span>
             )}
-            {/* Inventory status — print:hidden keeps printed checklists
-                clean. Badge returns null for 'active', so no extra branch
-                needed for default-status items. */}
-            <GearStatusBadge
-              status={item.gear_item.status}
-              compact
-              className="shrink-0 print:hidden"
-            />
           </div>
           <div className="flex-[3] min-w-0">
             {onSaveDescription ? (
@@ -405,6 +395,18 @@ export default function ItemRow({
   )
 }
 
+// Fixed-width leading slot for inventory status indicators in list rows.
+// Normal list view renders this at the far left after any drag handle.
+// Pack Mode renders it immediately after the checkbox so the checkbox
+// remains the first control while status still scans on the left.
+function StatusSlot({ status }: { status: GearStatus }) {
+  return (
+    <span className="shrink-0 w-5 inline-flex items-center justify-center print:hidden">
+      <GearStatusBadge status={status} compact />
+    </span>
+  )
+}
+
 // Mobile row body — name + a single worn/consumable indicator slot + qty +
 // weight. Description is dropped on mobile (it's redundant with the modal
 // editor and waste viewport on a 375 px screen). Worn and consumable share
@@ -425,13 +427,8 @@ function MobileRowBody({
   const itemWeight = item.gear_item.weight_grams
   const cells = (
     <>
-      <div className="flex-1 min-w-0 flex items-center gap-1.5">
+      <div className="flex-1 min-w-0">
         <span className="block min-w-0 flex-1 truncate font-normal text-gray-900">{name}</span>
-        <GearStatusBadge
-          status={item.gear_item.status}
-          compact
-          className="shrink-0 print:hidden"
-        />
       </div>
       {/* Single worn/consumable indicator slot */}
       <span className="shrink-0 w-6 inline-flex items-center justify-center">
