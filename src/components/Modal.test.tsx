@@ -75,6 +75,26 @@ describe('Modal', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  it('fires onClose when the native close event dispatches (Escape / programmatic close)', () => {
+    // Real browsers fire the dialog's `close` event on Escape and on any
+    // call to `dialog.close()`. The component's onClose prop is wired
+    // through React's `<dialog onClose>` listener. Calling close()
+    // directly here bypasses the backdrop-click path and asserts the
+    // native-close → React onClose handoff works on its own.
+    const onClose = vi.fn()
+    const { container } = render(
+      <Modal open={true} onClose={onClose} title="Test">
+        <div>content</div>
+      </Modal>,
+    )
+    const dialog = container.querySelector('dialog')
+    expect(dialog).not.toBeNull()
+
+    dialog!.close()
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('renders children inside the dialog when open', () => {
     const { container } = render(
       <Modal open={true} onClose={() => {}} title="Test">
