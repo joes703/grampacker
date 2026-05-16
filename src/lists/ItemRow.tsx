@@ -54,6 +54,10 @@ type Props = {
   // matchMedia subscription, not 300. Set in sharedGroupProps.
   isBelowLg: boolean
   packMode?: boolean
+  // Pack-mode + readyChecksEnabled: render a Ready checkbox BEFORE the
+  // Packed checkbox. Order in pack-mode row: [Ready] [Packed] status name
+  // ... worn/consumable qty. Ignored when packMode is false.
+  readyChecksEnabled?: boolean
   // Read by the SortableItemRow wrapper only; plain ItemRow ignores it. Lives
   // on the base Props so CategoryGroup's rowPropsFor() builder can spread the
   // same object into either renderer.
@@ -63,7 +67,7 @@ type Props = {
   // false — offline pack-mode is read-only by deliberate product choice (no
   // mutation outbox; honest capability boundary). Ignored outside pack mode.
   packActionsDisabled?: boolean
-  onUpdate?: (patch: Partial<Pick<ListItemWithGear, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed'>>) => void
+  onUpdate?: (patch: Partial<Pick<ListItemWithGear, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed' | 'is_ready'>>) => void
   onSaveName?: (name: string) => void
   onSaveDescription?: (description: string) => void
   onSaveWeight?: (weight_grams: number) => void
@@ -84,6 +88,7 @@ export default function ItemRow({
   weightUnit,
   isBelowLg,
   packMode = false,
+  readyChecksEnabled = false,
   packActionsDisabled = false,
   onUpdate,
   onSaveName,
@@ -166,8 +171,36 @@ export default function ItemRow({
 
             When packActionsDisabled is true, the input is `disabled` so
             click + keyboard activation are blocked at the platform level,
-            and the onChange is also a no-op as defense in depth. */}
+            and the onChange is also a no-op as defense in depth.
+
+            Ready checkbox (when readyChecksEnabled) renders BEFORE packed.
+            Both checkboxes share the same label so the name still toggles
+            packed (the more common destination tap target on a row).
+            Ready uses a separate handler — clicks on the Ready checkbox
+            don't bubble to the wrapping label because the input's own
+            onChange fires first and we treat the event as handled. */}
         <label className={`flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 ${packActionsDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+          {readyChecksEnabled && (
+            <>
+              <input
+                type="checkbox"
+                checked={item.is_ready}
+                disabled={packActionsDisabled}
+                onChange={(e) => {
+                  if (packActionsDisabled) return
+                  onUpdate?.({ is_ready: e.target.checked })
+                }}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={`Mark ${name} ready`}
+                title={packActionsDisabled ? 'Ready checkmark unavailable.' : 'Ready'}
+                className="h-4 w-4 rounded border-gray-300 text-amber-600 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed print:hidden"
+              />
+              <span
+                aria-hidden="true"
+                className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
+              />
+            </>
+          )}
           <input
             type="checkbox"
             checked={item.is_packed}

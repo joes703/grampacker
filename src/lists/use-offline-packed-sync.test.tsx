@@ -5,6 +5,7 @@ import { useOfflinePackedSync } from './use-offline-packed-sync'
 
 const USER_ID = 'user-1'
 const LIST_ID = 'list-1'
+const STORAGE_KEY = 'grampacker:pending-checks:v2'
 const storage = new Map<string, string>()
 
 // Match the helper's mock localStorage so module-internal reads land in
@@ -62,6 +63,7 @@ describe('useOfflinePackedSync', () => {
   it('starts with an empty queue and no syncing/blocked state', () => {
     const { result } = renderHook(() => useOfflinePackedSync(defaultOptions()))
     expect(result.current.pendingPackedStates).toEqual([])
+    expect(result.current.pendingReadyStates).toEqual([])
     expect(result.current.packingSyncing).toBe(false)
     expect(result.current.packingSyncBlocked).toBe(false)
   })
@@ -94,8 +96,8 @@ describe('useOfflinePackedSync', () => {
 
     await waitFor(() => expect(onSyncComplete).toHaveBeenCalledTimes(1))
     expect(updateListItem).toHaveBeenCalledTimes(2)
-    expect(onItemSynced).toHaveBeenCalledWith('item-1', true)
-    expect(onItemSynced).toHaveBeenCalledWith('item-2', true)
+    expect(onItemSynced).toHaveBeenCalledWith('item-1', { is_packed: true })
+    expect(onItemSynced).toHaveBeenCalledWith('item-2', { is_packed: true })
     expect(result.current.pendingPackedStates).toEqual([])
     expect(result.current.packingSyncing).toBe(false)
     expect(result.current.packingSyncBlocked).toBe(false)
@@ -172,11 +174,10 @@ describe('useOfflinePackedSync', () => {
     await waitFor(() => expect(result.current.packingSyncBlocked).toBe(false))
   })
 
-  it('clearForReset aborts an in-flight sync before its post-await callbacks fire', async () => {
-    // This is the H bug regression test. We hold updateListItem on item-1
-    // while syncing, call clearForReset, then release the promise. The
-    // hook's aborted() check should trip and skip onItemSynced for item-1
-    // and the entire post-loop onSyncComplete branch.
+  it('clearPackedForReset aborts an in-flight sync before its post-await callbacks fire', async () => {
+    // Regression test for the reset/sync race fixed in 20260515: a Reset
+    // Packed click while item-1's update is in flight must NOT let
+    // onItemSynced fire for item-1, and must NOT attempt item-2.
     const onItemSynced = vi.fn()
     const onSyncComplete = vi.fn()
     const item1 = deferred<void>()
@@ -203,7 +204,7 @@ describe('useOfflinePackedSync', () => {
 
     // User clicks Reset before item-1's promise resolves.
     act(() => {
-      result.current.clearForReset()
+      result.current.clearPackedForReset()
     })
 
     // Now resolve item-1's pending updateListItem promise. The loop's
@@ -223,7 +224,7 @@ describe('useOfflinePackedSync', () => {
     expect(result.current.pendingPackedStates).toEqual([])
   })
 
-  it('clearForReset drops the queue from storage as well as state', () => {
+  it('clearPackedForReset drops the queue from storage as well as state', () => {
     const { result } = renderHook(() => useOfflinePackedSync(defaultOptions()))
     act(() => {
       result.current.queueOfflinePackedState('item-1', true)
@@ -232,7 +233,7 @@ describe('useOfflinePackedSync', () => {
     expect(storage.size).toBeGreaterThan(0)
 
     act(() => {
-      result.current.clearForReset()
+      result.current.clearPackedForReset()
     })
 
     expect(result.current.pendingPackedStates).toEqual([])
@@ -249,19 +250,79 @@ describe('useOfflinePackedSync', () => {
       userId: USER_ID,
       listId: LIST_ID,
       itemId: 'from-other-tab',
-      is_packed: true,
+      patch: { is_packed: true },
       updated_at: Date.now(),
     }
-    storage.set('grampacker:pending-packed:v1', JSON.stringify({ 'key': entry }))
+    storage.set(STORAGE_KEY, JSON.stringify({ 'key': entry }))
 
     await act(async () => {
-      window.dispatchEvent(
-        new StorageEvent('storage', { key: 'grampacker:pending-packed:v1' }),
-      )
+      window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }))
     })
 
     await waitFor(() =>
       expect(result.current.pendingPackedStates.map((p) => p.itemId)).toEqual(['from-other-tab']),
     )
+  })
+
+  it('queues a ready tick and surfaces it on pendingReadyStates only', () => {
+    const { result } = renderHook(() => useOfflinePackedSync(defaultOptions()))
+    act(() => {
+      result.current.queueOfflineReadyState('item-1', true)
+    })
+    expect(result.current.pendingReadyStates.map((p) => p.itemId)).toEqual(['item-1'])
+    expect(result.current.pendingPackedStates).toEqual([])
+  })
+
+  it('clearReadyForReset clears only ready; pending packed survives', () => {
+    const { result } = renderHook(() => useOfflinePackedSync(defaultOptions()))
+    act(() => {
+      result.current.queueOfflinePackedState('item-1', true)
+      result.current.queueOfflineReadyState('item-1', true)
+    })
+    // One merged entry carrying both fields.
+    expect(result.current.pendingPackedStates).toHaveLength(1)
+    expect(result.current.pendingReadyStates).toHaveLength(1)
+
+    act(() => {
+      result.current.clearReadyForReset()
+    })
+
+    expect(result.current.pendingReadyStates).toEqual([])
+    expect(result.current.pendingPackedStates.map((p) => p.itemId)).toEqual(['item-1'])
+  })
+
+  it('clearPackedForReset clears only packed; pending ready survives', () => {
+    const { result } = renderHook(() => useOfflinePackedSync(defaultOptions()))
+    act(() => {
+      result.current.queueOfflinePackedState('item-1', true)
+      result.current.queueOfflineReadyState('item-2', true)
+    })
+
+    act(() => {
+      result.current.clearPackedForReset()
+    })
+
+    expect(result.current.pendingPackedStates).toEqual([])
+    expect(result.current.pendingReadyStates.map((p) => p.itemId)).toEqual(['item-2'])
+  })
+
+  it('flushes ready + packed for the same item in one PATCH', async () => {
+    const onItemSynced = vi.fn()
+    const updateListItem = vi.fn(async () => {})
+    const { result, rerender } = renderHook(
+      ({ online }: { online: boolean }) =>
+        useOfflinePackedSync(defaultOptions({ online, updateListItem, onItemSynced })),
+      { initialProps: { online: false } },
+    )
+
+    act(() => {
+      result.current.queueOfflineReadyState('item-1', true)
+      result.current.queueOfflinePackedState('item-1', true)
+    })
+    rerender({ online: true })
+
+    await waitFor(() => expect(updateListItem).toHaveBeenCalledTimes(1))
+    expect(updateListItem).toHaveBeenCalledWith('item-1', { is_ready: true, is_packed: true })
+    expect(onItemSynced).toHaveBeenCalledWith('item-1', { is_ready: true, is_packed: true })
   })
 })

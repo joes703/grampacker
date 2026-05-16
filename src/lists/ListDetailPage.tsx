@@ -30,6 +30,7 @@ import {
   updateListItem,
   deleteListItem,
   resetPackedForList,
+  resetReadyForList,
   updateList,
   reorderListItems,
   updateGearItem,
@@ -58,7 +59,7 @@ import { showToast } from '../lib/toast'
 import { assignSortOrderSlots } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
-import { applyPendingPackedStates } from '../lib/offline-packed-queue'
+import { applyPendingPackedStates, applyPendingReadyStates } from '../lib/offline-packed-queue'
 import { useOfflinePackedSync } from './use-offline-packed-sync'
 import {
   fanOutGearListItemsCaches,
@@ -197,12 +198,16 @@ function ListDetailInner({
   // error: there's no separate state to keep in sync.
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const {
+    pendingCheckStates,
     pendingPackedStates,
+    pendingReadyStates,
     packingSyncing,
     packingSyncBlocked,
     queueOfflinePackedState,
+    queueOfflineReadyState,
     retrySync: onRetrySync,
-    clearForReset: clearPackedQueueForReset,
+    clearPackedForReset: clearPackedQueueForReset,
+    clearReadyForReset: clearReadyQueueForReset,
   } = useOfflinePackedSync({
     userId,
     listId,
@@ -210,11 +215,13 @@ function ListDetailInner({
     updateListItem,
     // Immediate cache feedback per-item so a partial-failure scenario
     // doesn't leave the cache showing pre-sync state for items that
-    // already synced (we don't invalidate in the error path).
-    onItemSynced: (itemId, isPacked) => {
+    // already synced (we don't invalidate in the error path). Apply
+    // whichever fields the patch carried — Ready and Packed can sync in
+    // one PATCH if both were toggled offline for the same item.
+    onItemSynced: (itemId, patch) => {
       qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
         curr
-          ? curr.map((item) => (item.id === itemId ? { ...item, is_packed: isPacked } : item))
+          ? curr.map((item) => (item.id === itemId ? { ...item, ...patch } : item))
           : curr,
       )
     },
@@ -278,8 +285,11 @@ function ListDetailInner({
     queryFn: () => fetchListItems(listId, userId),
   })
   const listItems = useMemo(
-    () => applyPendingPackedStates(serverListItems, pendingPackedStates),
-    [serverListItems, pendingPackedStates],
+    () => applyPendingReadyStates(
+      applyPendingPackedStates(serverListItems, pendingPackedStates),
+      pendingReadyStates,
+    ),
+    [serverListItems, pendingPackedStates, pendingReadyStates],
   )
 
   const { data: gearItems = [] } = useQuery({
@@ -350,6 +360,7 @@ function ListDetailInner({
           is_worn: false,
           is_consumable: false,
           is_packed: false,
+          is_ready: false,
           sort_order: listItems.length,
           created_at: now,
           updated_at: now,
@@ -429,6 +440,25 @@ function ListDetailInner({
       apply: (item, description) => ({
         ...item,
         description: description || null,
+        updated_at: new Date().toISOString(),
+      }),
+    }),
+  })
+
+  // Per-list Ready Checks toggle (Pack Mode only). Optimistic on the
+  // lists cache so the new checkbox column appears/disappears immediately;
+  // server-write reconciles on settle. We deliberately preserve existing
+  // is_ready values when toggling off — hiding the column is a UI choice,
+  // not a data wipe, matching how group_worn behaves.
+  const readyChecksToggleMut = useMutation({
+    mutationFn: (enabled: boolean) => updateList(listId, { ready_checks_enabled: enabled }),
+    ...makeOptimisticUpdate<List, boolean>({
+      qc,
+      queryKey: queryKeys.lists(),
+      id: () => listId,
+      apply: (item, enabled) => ({
+        ...item,
+        ready_checks_enabled: enabled,
         updated_at: new Date().toISOString(),
       }),
     }),
@@ -627,6 +657,30 @@ function ListDetailInner({
     }
   }
 
+  // Mirror of resetPacked for Ready Checks. Reset Ready and Reset Packed
+  // are independent: clearing one MUST NOT clear the other on the cache
+  // or in the offline queue. clearReadyQueueForReset drops only the
+  // is_ready field from each pending entry (keeping any pending is_packed
+  // intact) and bumps the same syncGeneration so an in-flight loop's
+  // post-await aborted() check trips before its next per-item callback.
+  async function resetReady() {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return
+    clearReadyQueueForReset()
+    await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
+    const previous = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
+    qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
+      curr ? curr.map((i) => (i.is_ready ? { ...i, is_ready: false } : i)) : curr,
+    )
+    try {
+      await resetReadyForList(listId)
+    } catch (err) {
+      if (previous) qc.setQueryData(queryKeys.listItems(listId), previous)
+      throw err
+    } finally {
+      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+    }
+  }
+
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
@@ -734,6 +788,7 @@ function ListDetailInner({
   const sharedGroupProps = useMemo(
     () => ({
       packMode: mode === 'pack',
+      readyChecksEnabled: list?.ready_checks_enabled ?? false,
       weightUnit,
       isBelowLg,
       sortable: true,
@@ -742,16 +797,36 @@ function ListDetailInner({
       // online-only; individual ticks queue locally and sync on reconnect.
       packActionsDisabled: false,
       onUpdate: (itemId: string, patch: ListItemPatch) => {
-        const offlinePackedValue = patch.is_packed
-        if (!online && typeof offlinePackedValue === 'boolean') {
-          // Queue the local intent (the hook owns queue state +
-          // blocked-flag reset) and optimistically update the cache so
-          // the row reflects the tick before reconnect.
-          queueOfflinePackedState(itemId, offlinePackedValue)
-          qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-            curr ? curr.map((item) => (item.id === itemId ? { ...item, is_packed: offlinePackedValue } : item)) : curr,
-          )
-          return
+        // Pack-mode checks (is_packed and is_ready) queue locally when
+        // offline; everything else routes through the server mutation
+        // (and will fail offline by design — see help.md "Mobile and
+        // offline use"). When BOTH pack-fields are present in one patch
+        // we queue each independently so the merged storage entry can
+        // sync as a single PATCH on reconnect.
+        if (!online) {
+          const offlinePackedValue = patch.is_packed
+          const offlineReadyValue = patch.is_ready
+          const queuedPacked = typeof offlinePackedValue === 'boolean'
+          const queuedReady = typeof offlineReadyValue === 'boolean'
+          if (queuedPacked || queuedReady) {
+            if (queuedPacked) queueOfflinePackedState(itemId, offlinePackedValue)
+            if (queuedReady) queueOfflineReadyState(itemId, offlineReadyValue)
+            // Optimistic cache update for whichever fields toggled. We
+            // build the next item by spreading both fields so a future
+            // batched patch (packed + ready in one click) lands atomically.
+            qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
+              curr
+                ? curr.map((item) => {
+                    if (item.id !== itemId) return item
+                    const next = { ...item }
+                    if (queuedPacked) next.is_packed = offlinePackedValue
+                    if (queuedReady) next.is_ready = offlineReadyValue
+                    return next
+                  })
+                : curr,
+            )
+            return
+          }
         }
         updateMut.mutate({ itemId, patch })
       },
@@ -778,7 +853,7 @@ function ListDetailInner({
         updateGearItemMut.mutate({ id: gearId, patch: { status } }),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above re: mutation refs
-    [mode, weightUnit, isBelowLg, showUnpackedOnly, online],
+    [mode, list?.ready_checks_enabled, weightUnit, isBelowLg, showUnpackedOnly, online],
   )
 
   // ── Loading / not found ────────────────────────────────────────────────────
@@ -881,10 +956,16 @@ function ListDetailInner({
                 showUnpackedOnly={showUnpackedOnly}
                 onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
                 offline={!online}
-                pendingSyncCount={pendingPackedStates.length}
+                pendingSyncCount={pendingCheckStates.length}
                 syncing={packingSyncing}
                 syncBlocked={packingSyncBlocked}
                 onRetrySync={onRetrySync}
+                readyChecks={{
+                  ready: listItems.filter((i) => i.is_ready).length,
+                  enabled: list.ready_checks_enabled,
+                  onToggleEnabled: () => readyChecksToggleMut.mutate(!list.ready_checks_enabled),
+                  onResetReady: resetReady,
+                }}
               />
             </div>
           )}

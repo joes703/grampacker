@@ -79,6 +79,8 @@ beforeEach(() => {
 // regression.
 const FORBIDDEN_PUBLIC_COLUMNS = [
   'is_packed',
+  'is_ready',
+  'ready_checks_enabled',
   'user_id',
   'slug',
   'is_shared',

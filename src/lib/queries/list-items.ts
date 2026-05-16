@@ -75,7 +75,7 @@ export async function addGearItemToList(
 }
 
 export type ListItemPatch = Partial<
-  Pick<ListItem, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed'>
+  Pick<ListItem, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed' | 'is_ready'>
 >
 
 export async function updateListItem(id: string, patch: ListItemPatch): Promise<void> {
@@ -100,6 +100,19 @@ export async function resetPackedForList(listId: string): Promise<void> {
     .update({ is_packed: false })
     .eq('list_id', listId)
     .eq('is_packed', true)
+  if (error) throw error
+}
+
+// Mirror of resetPackedForList for the Ready Checks column. Gated on
+// `is_ready = true` so the PATCH touches only rows that need updating.
+// The two reset paths are intentionally independent: Reset Ready must
+// NEVER clear is_packed, and Reset Packed must NEVER clear is_ready.
+export async function resetReadyForList(listId: string): Promise<void> {
+  const { error } = await supabase
+    .from('list_items')
+    .update({ is_ready: false })
+    .eq('list_id', listId)
+    .eq('is_ready', true)
   if (error) throw error
 }
 

@@ -73,8 +73,21 @@ Pack mode includes controls to:
 
 - show only unpacked items
 - reset packed checkmarks
+- turn on Ready checks (see below)
 
 Pack mode is intentionally simple so it is easy to use while packing.
+
+### Ready checks
+
+Ready checks add a second checkbox to each item in Pack mode, so you can mark an item Ready before it goes into your pack. Useful when you want to inspect, charge, refill, or stage gear before the final pack pass.
+
+Turn it on with the **Ready checks** button at the top of Pack mode. The toggle is per-list, so each list can have it on or off independently. It stays off by default.
+
+When Ready checks are on, every row gets a Ready checkbox (amber) before the Packed checkbox (blue). The two states are independent: you can mark an item Ready without marking it Packed, and an item is only fully packed when its Packed checkbox is checked.
+
+A second progress bar tracks how many items are Ready, alongside the Packed progress bar. Separate **Reset ready** and **Reset packed** buttons let you clear either state without affecting the other.
+
+Like Packed, Ready checkmarks work offline and sync when you reconnect. Ready state is not shown on public share links.
 
 ## Sharing a list
 
