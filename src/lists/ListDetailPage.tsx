@@ -64,6 +64,7 @@ import {
   fanOutGearListItemsCaches,
   rollbackListItemsCaches,
   invalidateListItemsCaches,
+  patchAffectsListItemsView,
 } from './list-items-fan-out'
 import { parseListCsv, type ListImportRow } from '../lib/csv'
 import { randomTempId } from '../lib/random-temp-id'
@@ -446,13 +447,20 @@ function ListDetailInner({
       qc.setQueryData<GearItem[]>(queryKeys.gearItems(), (curr) =>
         curr ? curr.map((g) => (g.id === id ? { ...g, ...patch } : g)) : curr,
       )
-      const listSnapshots = fanOutGearListItemsCaches(qc, id, (items) =>
-        items.map((item) =>
-          item.gear_item_id === id
-            ? { ...item, gear_item: { ...item.gear_item, ...patch } }
-            : item,
-        ),
-      )
+      // Skip the cross-cache fan-out when the patch doesn't touch any
+      // gear field that list_items projects via its embedded gear_item
+      // join (name, description, weight_grams, category_id). A
+      // sort_order- or cost-only edit can't change anything the list
+      // view renders; the gear-items cache update above is enough.
+      const listSnapshots = patchAffectsListItemsView(patch)
+        ? fanOutGearListItemsCaches(qc, id, (items) =>
+            items.map((item) =>
+              item.gear_item_id === id
+                ? { ...item, gear_item: { ...item.gear_item, ...patch } }
+                : item,
+            ),
+          )
+        : []
       return { previousGear, listSnapshots }
     },
     onError: (_err, _vars, ctx) => {

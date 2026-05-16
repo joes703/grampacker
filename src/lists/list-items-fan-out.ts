@@ -13,6 +13,28 @@ import type { ListItemWithGear } from '../lib/types'
 // rollback, and returning the snapshots so the mutation's onError and
 // onSettled handlers can rollback or invalidate.
 
+// Subset of gear_items columns that are projected into list_items.gear_item
+// via the PostgREST join (see fetchListItems / fetchSharedListItems).
+// A gear-edit patch that doesn't touch any of these fields cannot change
+// anything the list view renders, so its fan-out across every
+// ['list-items', *] cache is wasted work. CLAUDE.md "Cache invalidation
+// rules" calls this out explicitly for sort_order: gear_items.sort_order
+// changes are invisible to list_items consumers, which order by their own
+// list_items.sort_order column.
+const EMBEDDED_GEAR_FIELDS: ReadonlySet<string> = new Set([
+  'name',
+  'description',
+  'weight_grams',
+  'category_id',
+])
+
+export function patchAffectsListItemsView(patch: Record<string, unknown>): boolean {
+  for (const key of Object.keys(patch)) {
+    if (EMBEDDED_GEAR_FIELDS.has(key)) return true
+  }
+  return false
+}
+
 export type ListItemsSnapshot = { key: QueryKey; data: ListItemWithGear[] | undefined }
 
 export function fanOutGearListItemsCaches(
