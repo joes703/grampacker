@@ -221,6 +221,7 @@ export default function GearLibraryPage() {
           weight_grams: data.weight_grams,
           cost: data.cost,
           purchase_date: data.purchase_date,
+          status: data.status,
           sort_order: allItems.length,
           created_at: now,
           updated_at: now,

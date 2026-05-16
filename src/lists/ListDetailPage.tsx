@@ -344,6 +344,7 @@ function ListDetailInner({
             description: item.description,
             weight_grams: item.weight_grams,
             category_id: item.category_id,
+            status: item.status,
           },
           quantity: 1,
           is_worn: false,

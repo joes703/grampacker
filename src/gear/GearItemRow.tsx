@@ -10,6 +10,7 @@ import { makeDnDId } from '../lib/dnd-ids'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
+import GearStatusBadge from './GearStatusBadge'
 
 type Props = {
   item: GearItem
@@ -78,6 +79,7 @@ export default function GearItemRow({
             className="flex flex-1 min-w-0 items-center gap-2 text-left"
           >
             <span className="flex-1 min-w-0 truncate font-normal text-gray-900">{item.name}</span>
+            <GearStatusBadge status={item.status} compact className="shrink-0" />
             <span className="shrink-0 w-20 text-right tabular-nums text-gray-600">
               {formatItemWeight(item.weight_grams, weightUnit)}
             </span>
@@ -91,12 +93,13 @@ export default function GearItemRow({
            replaces per-row actions). */
         <>
           <div className="flex-1 min-w-0 flex items-center gap-3">
-            <div className="flex-[2] min-w-0">
+            <div className="flex-[2] min-w-0 flex items-center gap-2">
               <InlineText
                 value={item.name}
                 onSave={(v) => onInlineSave({ name: v })}
-                className="block w-full truncate font-normal text-gray-900"
+                className="block min-w-0 flex-1 truncate font-normal text-gray-900"
               />
+              <GearStatusBadge status={item.status} compact className="shrink-0" />
             </div>
             {(item.description !== null || !selectMode) && (
               <div className="flex-[3] min-w-0">

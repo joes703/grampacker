@@ -1,0 +1,57 @@
+import { PackageX, Wrench, type LucideIcon } from 'lucide-react'
+
+// Inventory-level advisory metadata on gear_items.status. Values are pinned
+// to the DB CHECK constraint in migration 20260516000000 — keep this list
+// and the constraint in lockstep. 'active' is the default and renders no
+// visible treatment; the other two surface a small badge in private views
+// only (gear library, gear picker, private list rows) and are explicitly
+// excluded from public share projections.
+
+export const GEAR_STATUSES = ['active', 'needs_repair', 'loaned_out'] as const
+
+export type GearStatus = (typeof GEAR_STATUSES)[number]
+
+export const DEFAULT_GEAR_STATUS: GearStatus = 'active'
+
+export function isGearStatus(value: unknown): value is GearStatus {
+  return typeof value === 'string' && (GEAR_STATUSES as readonly string[]).includes(value)
+}
+
+// Coerce an arbitrary value (CSV cell, network payload) to a GearStatus,
+// returning the default when the input is missing or unrecognized. Callers
+// that need to distinguish "missing" from "invalid" should use isGearStatus
+// directly.
+export function coerceGearStatus(value: unknown): GearStatus {
+  return isGearStatus(value) ? value : DEFAULT_GEAR_STATUS
+}
+
+type GearStatusVisual = {
+  label: string
+  icon: LucideIcon
+  // Tailwind utility classes applied to the badge container. Kept as a
+  // single string so consumers don't have to know which slot is which.
+  badgeClass: string
+}
+
+const VISUALS: Record<Exclude<GearStatus, 'active'>, GearStatusVisual> = {
+  needs_repair: {
+    label: 'Needs repair',
+    icon: Wrench,
+    badgeClass:
+      'bg-amber-50 text-amber-800 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:ring-amber-800/50',
+  },
+  loaned_out: {
+    label: 'Loaned out',
+    icon: PackageX,
+    badgeClass:
+      'bg-rose-50 text-rose-800 ring-1 ring-rose-200 dark:bg-rose-900/30 dark:text-rose-200 dark:ring-rose-800/50',
+  },
+}
+
+// Returns the visual descriptor for a non-default status, or null when the
+// status is 'active' (no badge should be rendered). Centralizing the
+// null-for-active decision here keeps every call site honest — there is
+// no path where 'active' produces a badge.
+export function gearStatusVisual(status: GearStatus): GearStatusVisual | null {
+  return status === 'active' ? null : VISUALS[status]
+}

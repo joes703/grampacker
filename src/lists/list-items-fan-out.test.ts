@@ -27,6 +27,7 @@ function makeItem(overrides: Partial<ListItemWithGear> = {}): ListItemWithGear {
       description: null,
       weight_grams: 1200,
       category_id: 'cat-1',
+      status: 'active',
     },
     ...overrides,
   }
@@ -51,6 +52,10 @@ describe('patchAffectsListItemsView', () => {
 
   it('returns true for category_id', () => {
     expect(patchAffectsListItemsView({ category_id: 'cat-9' })).toBe(true)
+  })
+
+  it('returns true for status', () => {
+    expect(patchAffectsListItemsView({ status: 'needs_repair' })).toBe(true)
   })
 
   it('returns true when any embedded field is present alongside non-embedded fields', () => {

@@ -1,3 +1,5 @@
+import type { GearStatus } from './gear-status'
+
 export type List = {
   id: string
   user_id: string
@@ -32,7 +34,10 @@ export type ListItem = {
 // ListItem joined with its source GearItem. Always present: gear_item_id is
 // NOT NULL with ON DELETE CASCADE, so a list_item cannot outlive its gear.
 export type ListItemWithGear = ListItem & {
-  gear_item: Pick<GearItem, 'id' | 'name' | 'description' | 'weight_grams' | 'category_id'>
+  gear_item: Pick<
+    GearItem,
+    'id' | 'name' | 'description' | 'weight_grams' | 'category_id' | 'status'
+  >
 }
 
 export type Category = {
@@ -58,6 +63,12 @@ export type GearItem = {
   // intentionally omit these. cost is USD; purchase_date is ISO YYYY-MM-DD.
   cost: number | null
   purchase_date: string | null
+  // Advisory inventory metadata. NOT NULL with default 'active' in the DB
+  // (migration 20260516000000). Surfaced in private views (gear library,
+  // gear picker, private list rows) but explicitly excluded from public
+  // share projections — see PublicGearItem below. Type pinned to GearStatus
+  // so the union and the CHECK constraint stay in lockstep.
+  status: GearStatus
   sort_order: number
   created_at: string
   updated_at: string

@@ -13,8 +13,9 @@ import type { ListItemWithGear } from '../lib/types'
 // rollback, and returning the snapshots so the mutation's onError and
 // onSettled handlers can rollback or invalidate.
 
-// Subset of gear_items columns that are projected into list_items.gear_item
-// via the PostgREST join (see fetchListItems / fetchSharedListItems).
+// Subset of gear_items columns that are projected into private
+// list_items.gear_item via the PostgREST join (see fetchListItems /
+// fetchAllUserListItems).
 // A gear-edit patch that doesn't touch any of these fields cannot change
 // anything the list view renders, so its fan-out across every
 // ['list-items', *] cache is wasted work. CLAUDE.md "Cache invalidation
@@ -26,6 +27,7 @@ const EMBEDDED_GEAR_FIELDS: ReadonlySet<string> = new Set([
   'description',
   'weight_grams',
   'category_id',
+  'status',
 ])
 
 export function patchAffectsListItemsView(patch: Record<string, unknown>): boolean {

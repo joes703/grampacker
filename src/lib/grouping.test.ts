@@ -32,6 +32,7 @@ function listItem(overrides: {
       description: overrides.description ?? null,
       weight_grams: overrides.weight_grams ?? 100,
       category_id: overrides.category_id,
+      status: 'active',
     },
   }
 }
@@ -167,6 +168,7 @@ function gearItem(overrides: {
     category_id: overrides.category_id,
     cost: null,
     purchase_date: null,
+    status: 'active',
     sort_order: 0,
     created_at: '2024-01-01',
     updated_at: '2024-01-01',

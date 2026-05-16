@@ -89,6 +89,11 @@ export default function SharePage() {
     is_packed: false,
     created_at: '',
     updated_at: '',
+    // Status is private inventory metadata; the public wire response omits
+    // it (see SECURITY.md "Public read column allowlist" and the assertion
+    // in shared-projections.test.ts). Fill with 'active' here so the shared
+    // ItemRow component renders no badge — equivalent to "not shown".
+    gear_item: { ...i.gear_item, status: 'active' as const },
   }))
   const categoriesForRender: Category[] = categories.map((c: PublicCategory) => ({
     ...c,

@@ -1,4 +1,5 @@
 import { supabase } from '../supabase'
+import { DEFAULT_GEAR_STATUS, type GearStatus } from '../gear-status'
 import type { Category, GearItem } from '../types'
 import { createCategory } from './categories'
 
@@ -86,6 +87,7 @@ export async function resolveOrCreateGearForImport({
     category_id: string | null
     cost: number | null
     purchase_date: string | null
+    status: GearStatus
     sort_order: number
   }[] = []
   let matchedCount = 0
@@ -119,6 +121,10 @@ export async function resolveOrCreateGearForImport({
         category_id: categoryId,
         cost: row.cost ?? null,
         purchase_date: row.purchase_date ?? null,
+        // Status is app-internal only; CSV import does not carry it.
+        // Imported gear always gets the default, matching the DB default
+        // and the GearItemDialog default.
+        status: DEFAULT_GEAR_STATUS,
         sort_order: startSortOrder + newGearRows.length,
       })
     }
