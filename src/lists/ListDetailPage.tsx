@@ -369,15 +369,36 @@ function ListDetailInner({
     }),
   })
 
+  // mutationKey is used by the onSettled override below to detect sibling
+  // updates still in flight. Two parallel updateMut calls (e.g. tapping
+  // Packed then Ready in quick succession) each carry their own PATCH; the
+  // first to settle fires invalidateQueries, which races the second PATCH
+  // and can overwrite its optimistic value with stale server data. Gating
+  // the invalidate on "no other update-list-item mutations are pending"
+  // makes only the LAST settled call refetch — by then both server writes
+  // are durable.
+  const updateMutKey = ['update-list-item', listId] as const
+  const updateMutOptimistic = makeOptimisticUpdate<
+    ListItemWithGear,
+    { itemId: string; patch: ListItemPatch }
+  >({
+    qc,
+    queryKey: queryKeys.listItems(listId),
+    id: ({ itemId }) => itemId,
+    apply: (item, { patch }) => ({ ...item, ...patch }),
+  })
   const updateMut = useMutation({
+    mutationKey: updateMutKey,
     mutationFn: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) =>
       updateListItem(itemId, patch),
-    ...makeOptimisticUpdate<ListItemWithGear, { itemId: string; patch: ListItemPatch }>({
-      qc,
-      queryKey: queryKeys.listItems(listId),
-      id: ({ itemId }) => itemId,
-      apply: (item, { patch }) => ({ ...item, ...patch }),
-    }),
+    ...updateMutOptimistic,
+    onSettled: (_data, _err, _vars, _ctx) => {
+      // qc.isMutating excludes mutations that have already entered settled
+      // state (success/error) by the time their own onSettled runs, so a
+      // non-zero count means at least one sibling is still pending.
+      if (qc.isMutating({ mutationKey: updateMutKey }) > 0) return
+      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+    },
   })
 
   const deleteMut = useMutation({
