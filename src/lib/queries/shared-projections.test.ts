@@ -193,6 +193,9 @@ describe('fetchSharedListItems (public share view list_items projection)', () =>
     expect(gearCols).not.toContain('sort_order')
     expect(gearCols).not.toContain('cost')
     expect(gearCols).not.toContain('purchase_date')
+    // status is advisory inventory metadata (needs_repair, loaned_out).
+    // Surfaced in private views only; share viewers must not see it.
+    expect(gearCols).not.toContain('status')
 
     // Returned PublicListItem shape: exactly the allowlist keys.
     expect(result).toHaveLength(1)

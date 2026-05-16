@@ -47,6 +47,7 @@ function makeGearItem(overrides: Partial<GearItem>): GearItem {
     category_id: 'cat-default',
     cost: null,
     purchase_date: null,
+    status: 'active',
     sort_order: 0,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
@@ -192,9 +193,12 @@ describe('resolveOrCreateGearForImport', () => {
       category_id: string | null
       cost: number | null
       purchase_date: string | null
+      status: string
       sort_order: number
     }>
     expect(insertedRows).toHaveLength(1)
+    // Status is hard-coded to the default in the import path — CSV
+    // import does not carry status. See src/lib/queries/import-helpers.ts.
     expect(insertedRows[0]).toEqual({
       user_id: 'u-1',
       name: 'Tent',
@@ -203,6 +207,7 @@ describe('resolveOrCreateGearForImport', () => {
       category_id: 'cat-shelter',
       cost: 450,
       purchase_date: '2024-06-15',
+      status: 'active',
       sort_order: 0,
     })
   })

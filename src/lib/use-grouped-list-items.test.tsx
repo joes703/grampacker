@@ -59,6 +59,7 @@ function makeItem(overrides: {
       description: null,
       weight_grams: 100,
       category_id: overrides.category_id,
+      status: 'active',
     },
   }
 }

@@ -9,7 +9,7 @@ import { resolveOrCreateCategories, resolveOrCreateGearForImport } from './impor
 export async function fetchListItems(listId: string, userId: string): Promise<ListItemWithGear[]> {
   const { data, error } = await supabase
     .from('list_items')
-    .select('*, gear_item:gear_items(id, name, description, weight_grams, category_id)')
+    .select('*, gear_item:gear_items(id, name, description, weight_grams, category_id, status)')
     .eq('user_id', userId)
     .eq('list_id', listId)
     .order('sort_order', { ascending: true })
@@ -25,7 +25,7 @@ export async function fetchAllUserListItems(userId: string): Promise<ListItemWit
   const { data, error } = await supabase
     .from('list_items')
     .select(
-      '*, gear_item:gear_items(id, name, description, weight_grams, category_id), list:lists!inner(user_id)',
+      '*, gear_item:gear_items(id, name, description, weight_grams, category_id, status), list:lists!inner(user_id)',
     )
     .eq('list.user_id', userId)
     .order('sort_order', { ascending: true })

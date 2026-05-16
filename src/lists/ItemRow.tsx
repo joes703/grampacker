@@ -11,6 +11,7 @@ import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
 import WeightInput from '../components/WeightInput'
+import GearStatusBadge from '../gear/GearStatusBadge'
 
 // Single source of truth for a list item row. Used by both the authenticated
 // list detail view and the public share view.
@@ -184,14 +185,19 @@ export default function ItemRow({
               MobileRowBody's edit-mode treatment of dropping description
               on small viewports). */}
           <div className="flex flex-1 min-w-0 items-center gap-3">
-            <div className="flex-[2] min-w-0">
+            <div className="flex-[2] min-w-0 flex items-center gap-1.5">
               <span
-                className={`block w-full truncate font-normal ${
+                className={`block min-w-0 flex-1 truncate font-normal ${
                   item.is_packed ? 'text-gray-400 line-through print:text-gray-900 print:no-underline' : 'text-gray-900'
                 }`}
               >
                 {name}
               </span>
+              <GearStatusBadge
+                status={item.gear_item.status}
+                compact
+                className="shrink-0 print:hidden"
+              />
             </div>
             <div className="hidden lg:block lg:flex-[3] min-w-0">
               <span
@@ -247,16 +253,24 @@ export default function ItemRow({
         <>
         {/* Name + description as proportional columns — name : description = 2 : 3 */}
         <div className="flex-1 min-w-0 flex items-center gap-3">
-          <div className="flex-[2] min-w-0">
+          <div className="flex-[2] min-w-0 flex items-center gap-2">
             {onSaveName ? (
               <InlineText
                 value={name}
                 onSave={onSaveName}
-                className="block w-full truncate font-normal text-gray-900"
+                className="block min-w-0 flex-1 truncate font-normal text-gray-900"
               />
             ) : (
-              <span className="block w-full truncate font-normal text-gray-900">{name}</span>
+              <span className="block min-w-0 flex-1 truncate font-normal text-gray-900">{name}</span>
             )}
+            {/* Inventory status — print:hidden keeps printed checklists
+                clean. Badge returns null for 'active', so no extra branch
+                needed for default-status items. */}
+            <GearStatusBadge
+              status={item.gear_item.status}
+              compact
+              className="shrink-0 print:hidden"
+            />
           </div>
           <div className="flex-[3] min-w-0">
             {onSaveDescription ? (
@@ -402,8 +416,13 @@ function MobileRowBody({
   const itemWeight = item.gear_item.weight_grams
   const cells = (
     <>
-      <div className="flex-1 min-w-0">
-        <span className="block w-full truncate font-normal text-gray-900">{name}</span>
+      <div className="flex-1 min-w-0 flex items-center gap-1.5">
+        <span className="block min-w-0 flex-1 truncate font-normal text-gray-900">{name}</span>
+        <GearStatusBadge
+          status={item.gear_item.status}
+          compact
+          className="shrink-0 print:hidden"
+        />
       </div>
       {/* Single worn/consumable indicator slot */}
       <span className="shrink-0 w-6 inline-flex items-center justify-center">

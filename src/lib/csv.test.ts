@@ -46,6 +46,7 @@ describe('csv round-trip', () => {
         description: 'cuben fiber',
         weight_grams: 240,
         category_id: 'cat-shelter',
+        status: 'active',
       },
     },
     {
@@ -66,6 +67,7 @@ describe('csv round-trip', () => {
         description: null,
         weight_grams: 100,
         category_id: 'cat-kitchen',
+        status: 'active',
       },
     },
     {
@@ -86,6 +88,7 @@ describe('csv round-trip', () => {
         description: 'with comma + quotes for escapeCell',
         weight_grams: 320,
         category_id: null,
+        status: 'active',
       },
     },
   ]
@@ -246,7 +249,7 @@ describe('gear csv with cost and purchase_date', () => {
     return {
       id: 'g-x', user_id: 'u', category_id: 'cat-shelter',
       name: 'Item', description: null, weight_grams: 100,
-      cost: null, purchase_date: null,
+      cost: null, purchase_date: null, status: 'active',
       sort_order: 0,
       created_at: '2024-01-01', updated_at: '2024-01-01',
       ...overrides,

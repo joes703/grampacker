@@ -28,6 +28,7 @@ function listItem(overrides: {
       description: null,
       weight_grams: overrides.weight_grams,
       category_id: overrides.category_id,
+      status: 'active',
     },
   }
 }

@@ -47,6 +47,7 @@ function item(id: string, isPacked: boolean): ListItemWithGear {
       description: null,
       weight_grams: 10,
       category_id: null,
+      status: 'active',
     },
   }
 }

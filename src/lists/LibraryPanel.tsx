@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { groupByCategory } from '../lib/grouping'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
+import GearStatusBadge from '../gear/GearStatusBadge'
 
 type Props = {
   gearItems: GearItem[]
@@ -229,6 +230,7 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                   >
                     {item.name}
                   </span>
+                  <GearStatusBadge status={item.status} compact className="shrink-0" />
                   <span
                     className={`shrink-0 text-xs tabular-nums ${
                       inList ? 'text-gray-300' : 'text-gray-500'
