@@ -188,7 +188,8 @@ The Supabase JS client uses `window.localStorage` for the JWT and refresh token 
 - A backend service is introduced that could hold the session in an HttpOnly cookie. At that point cookie-based storage becomes the obvious choice.
 - The CSP weakens (e.g. `'unsafe-inline'` on `script-src`, or a third-party script source added without subresource integrity).
 
-See `REVIEW-security.md` finding F2 (2026-05-04 audit) and the F1 mitigation in `public/_headers`.
+The 2026-05-04 security audit accepted this residual risk because the CSP in
+`public/_headers` keeps script execution tightly scoped to this app.
 
 ---
 
