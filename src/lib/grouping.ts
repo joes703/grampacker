@@ -14,12 +14,16 @@ type GroupByCategoryOptions<T> = {
 // What "structurally identical" means for stability: same length AND for
 // each index i, items[i] is referentially identical OR has identical render-
 // affecting field values. Render-affecting fields for ListItemWithGear are
-// the per-list trip fields (sort_order, quantity, is_packed, is_worn,
-// is_consumable) plus the embedded gear_item's id + weight_grams + name +
-// description. Description must be in the comparator because desktop
-// ItemRow renders and edits it — excluding it would let memo skip the
-// re-render after a description edit and leave stale text on screen.
-// Timestamps and other non-rendered gear_item fields stay out.
+// the per-list trip fields (sort_order, quantity, is_packed, is_ready,
+// is_worn, is_consumable) plus the embedded gear_item's id + weight_grams
+// + name + description. Description must be in the comparator because
+// desktop ItemRow renders and edits it — excluding it would let memo skip
+// the re-render after a description edit and leave stale text on screen.
+// is_ready is in here for the same reason: pack-mode rows render its
+// checkbox state, so omitting it would let an is_ready-only update slip
+// past the structural-stability layer and reuse the prior items array,
+// leaving the Ready checkbox visually stuck. Timestamps and other
+// non-rendered gear_item fields stay out.
 function listItemsArrayEqual(a: ListItemWithGear[], b: ListItemWithGear[]): boolean {
   if (a === b) return true
   if (a.length !== b.length) return false
@@ -31,6 +35,7 @@ function listItemsArrayEqual(a: ListItemWithGear[], b: ListItemWithGear[]): bool
     if (x.sort_order !== y.sort_order) return false
     if (x.quantity !== y.quantity) return false
     if (x.is_packed !== y.is_packed) return false
+    if (x.is_ready !== y.is_ready) return false
     if (x.is_worn !== y.is_worn) return false
     if (x.is_consumable !== y.is_consumable) return false
     if (x.gear_item.id !== y.gear_item.id) return false
