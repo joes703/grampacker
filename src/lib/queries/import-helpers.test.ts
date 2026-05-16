@@ -86,6 +86,34 @@ describe('resolveOrCreateGearForImport', () => {
     expect(mockState.insertCalls).toHaveLength(0)
   })
 
+  it('matches NFC and NFD compositions of the same name (Unicode normalization)', async () => {
+    // Two byte-different but visually identical names: a precomposed `é`
+    // (NFC, single codepoint U+00E9) and a decomposed `e` + combining
+    // acute (NFD, two codepoints U+0065 U+0301). Some spreadsheet tools
+    // and macOS filesystems emit NFD; an export+re-import round-trip
+    // shouldn't double-insert. gearKey() normalizes to NFC before
+    // lowercasing so both forms produce the same dedup key.
+    const nfd = 'caf' + 'é' // "café" composed as e + combining acute
+    const nfc = 'café' // "café" with precomposed é
+    expect(nfd).not.toBe(nfc) // sanity: the two strings are not identical
+    expect(nfd.length).toBe(5) // 'c','a','f','e',combining acute -- 5 codepoints
+    expect(nfc.length).toBe(4) // 'c','a','f','é'                  -- 4 codepoints
+    const result = await resolveOrCreateGearForImport({
+      userId: 'u-1',
+      rows: [{ name: nfd, description: null, weight_grams: 50, category: 'Kitchen' }],
+      existingGearItems: [
+        makeGearItem({ id: 'g-1', name: nfc, weight_grams: 50, category_id: 'cat-kitchen' }),
+      ],
+      catByName: new Map([['kitchen', 'cat-kitchen']]),
+      startSortOrder: 0,
+    })
+
+    expect(result.gearIdByRow).toEqual(['g-1'])
+    expect(result.matchedCount).toBe(1)
+    expect(result.newCount).toBe(0)
+    expect(mockState.insertCalls).toHaveLength(0)
+  })
+
   it('matches whitespace-trimmed names', async () => {
     const result = await resolveOrCreateGearForImport({
       userId: 'u-1',

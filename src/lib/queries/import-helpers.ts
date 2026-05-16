@@ -10,8 +10,15 @@ import { createCategory } from './categories'
 // Composite dedup key: a CSV row matches an existing gear item when its
 // category + lowercase name + weight all agree. Same shape used to seed the
 // existing-gear map and to look up each row.
+//
+// Unicode normalization: NFC before lowercase so visually identical names
+// that happen to be encoded differently (e.g. "café" with a precomposed
+// `é` vs. "café" composed as `e` + combining acute) compare equal.
+// Without this, a re-import from a tool that emits NFD created duplicate
+// gear rows for the same item. NFC + toLowerCase (not toLocaleLowerCase)
+// stays locale-independent so the key is identical in every runtime.
 export function gearKey(categoryId: string | null, name: string, weight_grams: number): string {
-  return `${categoryId ?? ''}:${name.trim().toLowerCase()}:${weight_grams}`
+  return `${categoryId ?? ''}:${name.trim().normalize('NFC').toLowerCase()}:${weight_grams}`
 }
 
 // Resolve/create categories referenced by the import rows. Returns a
