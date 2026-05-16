@@ -28,11 +28,14 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     setLoading(false)
     if (error) {
-      if (error.message.toLowerCase().includes('email not confirmed')) {
-        setError('Please confirm your email address before signing in. Check your inbox.')
-      } else {
-        setError('Invalid email or password.')
-      }
+      // Single generic message regardless of underlying cause (wrong
+      // password, unconfirmed email, unknown email). Distinguishing
+      // "email not confirmed" used to be friendlier but leaked account-
+      // state probing surface to the sign-in form. The post-signup page
+      // already tells new users to check their inbox, so the only cost
+      // of the collapse is asking returning users to re-read the prompt
+      // if they signed up but never confirmed.
+      setError('Invalid email or password.')
     } else {
       navigate('/')
     }

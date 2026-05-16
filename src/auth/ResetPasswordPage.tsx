@@ -101,9 +101,12 @@ export default function ResetPasswordPage() {
     setState({ kind: 'updating' })
     const { error } = await supabase.auth.updateUser({ password })
     if (error) {
-      // Supabase password-policy errors (too short, etc.) are user-actionable;
-      // surface verbatim. Drop back to ready so the user can try again.
-      setFormError(error.message)
+      // Genericize: Supabase's verbatim error.message can leak account-
+      // state probes or policy details that aren't user-actionable here.
+      // Client-side length check above already covers the only actionable
+      // case (too short). Anything else is "try again or request a new
+      // link", which the user can do from this same page.
+      setFormError('Could not update password. Please try again, or request a new reset link.')
       setState({ kind: 'ready' })
       return
     }
