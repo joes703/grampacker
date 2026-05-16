@@ -32,11 +32,14 @@ export default defineConfig({
         skipWaiting: true,
         navigateFallback: 'index.html',
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
-        // Cache is URL-keyed, not auth-keyed. Assumes single-user-per-
-        // browser. If grampacker ever supports multiple users on shared
-        // devices, either implement cacheKeyWillBeUsed to mix the auth
-        // subject into the key, or clear caches on logout. Solo-user
-        // today; revisit when assumption changes.
+        // Supabase REST cache below is URL-keyed (not auth-keyed). The
+        // shared-device boundary is enforced from the app side instead:
+        // AuthProvider calls clearSupabaseRestCache() (src/lib/sw-cache.ts)
+        // whenever the active user id changes, flushing the
+        // 'supabase-rest' cache on sign-out and on a different user
+        // signing in within the same tab. StaleWhileRevalidate is kept
+        // for same-user offline/read performance; the boundary control
+        // is the user-id-change clear, not a per-request cache-key plugin.
         runtimeCaching: [
           {
             // Supabase REST GETs (PostgREST reads). Match host-agnostically
