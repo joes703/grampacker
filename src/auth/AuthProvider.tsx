@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
+import { clearSupabaseRestCache } from '../lib/sw-cache'
 
 const OFFLINE_SESSION_KEY = 'grampacker:last-auth-session'
 // Supabase owns sb-<project>-auth-token and may clear it during refresh
@@ -46,6 +47,26 @@ function clearOfflineSession() {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  // Tracks the active user id across auth events so we can flush the
+  // Workbox runtime REST cache when the user actually changes. `undefined`
+  // means "not yet seeded" (mount); a concrete user id or null means we've
+  // seen at least one auth result. Transitions FROM undefined never clear
+  // (the cache content belongs to whichever user we're booting as). See
+  // src/lib/sw-cache.ts and vite.config.ts for the surrounding model.
+  const lastUserIdRef = useRef<string | null | undefined>(undefined)
+
+  function reconcileUserId(nextUserId: string | null) {
+    const prev = lastUserIdRef.current
+    lastUserIdRef.current = nextUserId
+    if (prev === undefined) return
+    if (prev === nextUserId) return
+    // Identity changed (sign-out, sign-in as a different user, or a
+    // stale session reconciliation). Clear the URL-keyed REST cache so
+    // no row JSON from the previous user can be served to the next one.
+    // Fire-and-forget; failures are silent inside the helper.
+    if (!isOnline()) return
+    void clearSupabaseRestCache()
+  }
 
   useEffect(() => {
     let ignored = false
@@ -56,18 +77,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session) {
           writeOfflineSession(session)
           setSession(session)
+          reconcileUserId(session.user.id)
         } else if (error && !isOnline()) {
-          setSession(readOfflineSession())
+          const offline = readOfflineSession()
+          setSession(offline)
+          reconcileUserId(offline?.user.id ?? null)
         } else {
           clearOfflineSession()
           setSession(null)
+          reconcileUserId(null)
         }
         setLoading(false)
       })
       .catch(() => {
         if (ignored) return
         if (!isOnline()) {
-          setSession(readOfflineSession())
+          const offline = readOfflineSession()
+          setSession(offline)
+          reconcileUserId(offline?.user.id ?? null)
         }
         setLoading(false)
       })
@@ -79,6 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session) {
         writeOfflineSession(session)
         setSession(session)
+        reconcileUserId(session.user.id)
         return
       }
 
@@ -86,11 +114,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Offline null-session events are treated as transient refresh
         // failures. A real sign-out or invalid refresh token will be
         // reconciled by the next online auth event/getSession result.
+        // Skip reconcileUserId here so the previous online user id stays
+        // recorded; flipping it to null offline would cause a spurious
+        // cache clear on the next online auth event.
         return
       }
 
       clearOfflineSession()
       setSession(null)
+      reconcileUserId(null)
     })
 
     return () => {
