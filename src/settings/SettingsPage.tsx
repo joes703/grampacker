@@ -278,8 +278,14 @@ function DeleteAccount() {
     setErr(null)
   }
 
+  // Reentrancy gate: `busy` (set true here, cleared only on error paths)
+  // is the single source of truth that keeps double-submits from racing
+  // each other to call `delete_account()`. The submit button is also
+  // `disabled={busy}` below; do not remove that without replacing this
+  // guard with an explicit idempotency check.
   async function handleDelete(e: React.FormEvent) {
     e.preventDefault()
+    if (busy) return
     setBusy(true)
     setErr(null)
     const email = session?.user.email

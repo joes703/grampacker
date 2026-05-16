@@ -33,6 +33,8 @@ export default function SharePage() {
 
   const { data: items = [], isLoading: itemsLoading } = useQuery({
     queryKey: ['shared-list-items', list?.id],
+    // Safe non-null: `enabled: Boolean(list?.id)` gates the queryFn so it
+    // only runs after fetchSharedList resolved with a real list.
     queryFn: () => fetchSharedListItems(list!.id),
     enabled: Boolean(list?.id),
   })
