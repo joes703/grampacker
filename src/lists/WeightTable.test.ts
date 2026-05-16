@@ -19,6 +19,7 @@ function listItem(overrides: {
     is_worn: overrides.is_worn ?? false,
     is_consumable: overrides.is_consumable ?? false,
     is_packed: false,
+    is_ready: false,
     sort_order: 0,
     created_at: '2024-01-01',
     updated_at: '2024-01-01',

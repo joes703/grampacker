@@ -91,7 +91,9 @@ export async function createList(
 
 export async function updateList(
   id: string,
-  patch: Partial<Pick<List, 'name' | 'description' | 'is_shared' | 'group_worn'>>,
+  patch: Partial<
+    Pick<List, 'name' | 'description' | 'is_shared' | 'group_worn' | 'ready_checks_enabled'>
+  >,
 ): Promise<void> {
   const { error } = await supabase.from('lists').update(patch).eq('id', id)
   if (error) throw error

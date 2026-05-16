@@ -13,6 +13,10 @@ export type List = {
   // both normal and pack mode, and on the public /r/<slug> share view.
   // Default false; persisted in public.lists.group_worn.
   group_worn: boolean
+  // Per-list pack-mode toggle for Ready Checks (optional second checkbox
+  // column). Default false. NOT exposed on PublicList — share viewers
+  // never see pack-mode state.
+  ready_checks_enabled: boolean
   created_at: string
   updated_at: string
 }
@@ -26,6 +30,10 @@ export type ListItem = {
   is_worn: boolean
   is_consumable: boolean
   is_packed: boolean
+  // Pack-mode Ready check — independent of is_packed. Surfaced only when
+  // the owning list has ready_checks_enabled = true. NOT exposed on
+  // PublicListItem; share viewers never see pack-mode state.
+  is_ready: boolean
   sort_order: number
   created_at: string
   updated_at: string

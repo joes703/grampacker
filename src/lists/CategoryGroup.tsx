@@ -49,6 +49,10 @@ export type GroupProps = {
   // pass it; defaults to false (desktop layout) until they're wired.
   isBelowLg?: boolean
   packMode?: boolean
+  /** Pack-mode-only: when true, ItemRow renders a Ready checkbox before the
+   *  Packed checkbox. Owner toggles this from PackingProgress; share view and
+   *  edit-mode pages don't pass it. */
+  readyChecksEnabled?: boolean
   collapsible?: boolean
   /** Stable region id derivation + add-item context. null = uncategorized.
    *  undefined disables the chevron/region-id behavior (share view). */
@@ -110,6 +114,7 @@ function CategoryGroup({
   weightUnit,
   isBelowLg = false,
   packMode = false,
+  readyChecksEnabled = false,
   collapsible = true,
   categoryId,
   sortable = false,
@@ -178,6 +183,7 @@ function CategoryGroup({
       weightUnit,
       isBelowLg,
       packMode,
+      readyChecksEnabled,
       packActionsDisabled,
       reorderPending,
       onUpdate: onUpdate ? (patch: ListItemPatch) => onUpdate(item.id, patch) : undefined,

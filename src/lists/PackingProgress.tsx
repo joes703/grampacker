@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RotateCcw, WifiOff } from 'lucide-react'
+import { CheckSquare, RotateCcw, WifiOff } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 type Props = {
@@ -21,6 +21,16 @@ type Props = {
   // doesn't strand the user waiting for an offline transition.
   syncBlocked?: boolean
   onRetrySync?: () => void
+  // Ready Checks block (optional). When provided, render a second
+  // progress bar + a separate Reset Ready button alongside the existing
+  // Packed cluster. The toggle flips ready_checks_enabled through the
+  // page-level mutation passed in as onToggleEnabled.
+  readyChecks?: {
+    ready: number
+    enabled: boolean
+    onToggleEnabled: () => void
+    onResetReady: () => void
+  }
 }
 
 export default function PackingProgress({
@@ -34,10 +44,15 @@ export default function PackingProgress({
   syncing = false,
   syncBlocked = false,
   onRetrySync,
+  readyChecks,
 }: Props) {
   const pct = total === 0 ? 0 : Math.round((packed / total) * 100)
   const done = packed === total && total > 0
   const [confirmingReset, setConfirmingReset] = useState(false)
+  const [confirmingResetReady, setConfirmingResetReady] = useState(false)
+  const readyCount = readyChecks?.ready ?? 0
+  const readyPct = total === 0 ? 0 : Math.round((readyCount / total) * 100)
+  const readyDone = readyChecks?.enabled === true && readyCount === total && total > 0
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -67,6 +82,21 @@ export default function PackingProgress({
           >
             Unpacked only
           </button>
+          {readyChecks && (
+            <button
+              type="button"
+              onClick={readyChecks.onToggleEnabled}
+              aria-pressed={readyChecks.enabled}
+              className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-xs font-medium ${
+                readyChecks.enabled
+                  ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                  : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <CheckSquare size={12} aria-hidden />
+              Ready checks
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setConfirmingReset(true)}
@@ -74,7 +104,7 @@ export default function PackingProgress({
             title={offline ? 'Offline. Reconnect to reset packed state.' : undefined}
             className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <RotateCcw size={12} /> Reset
+            <RotateCcw size={12} /> Reset packed
           </button>
         </div>
       </div>
@@ -84,6 +114,37 @@ export default function PackingProgress({
           style={{ width: `${pct}%` }}
         />
       </div>
+      {readyChecks?.enabled && (
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+            <span className="text-sm font-medium tabular-nums text-gray-700">
+              {readyCount} / {total} ready
+            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {readyDone && (
+                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                  All ready!
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setConfirmingResetReady(true)}
+                disabled={readyCount === 0 || offline}
+                title={offline ? 'Offline. Reconnect to reset ready state.' : undefined}
+                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <RotateCcw size={12} /> Reset ready
+              </button>
+            </div>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+            <div
+              className={`h-2 rounded-full transition-all ${readyDone ? 'bg-green-500' : 'bg-amber-500'}`}
+              style={{ width: `${readyPct}%` }}
+            />
+          </div>
+        </div>
+      )}
       {(offline || pendingSyncCount > 0 || syncing) && (
         <div
           role="status"
@@ -93,12 +154,12 @@ export default function PackingProgress({
           <WifiOff size={12} aria-hidden="true" className="mt-0.5 shrink-0" />
           <span className="flex-1">
             {syncing
-              ? 'Syncing packing checkmarks...'
+              ? 'Syncing pack-mode checkmarks...'
               : offline
-                ? 'Offline. Packing checkmarks will sync when you reconnect.'
+                ? 'Offline. Pack-mode checkmarks will sync when you reconnect.'
                 : syncBlocked
-                  ? `Couldn't sync ${pendingSyncCount} packing ${pendingSyncCount === 1 ? 'checkmark' : 'checkmarks'}.`
-                  : `${pendingSyncCount} packing ${pendingSyncCount === 1 ? 'checkmark is' : 'checkmarks are'} waiting to sync.`}
+                  ? `Couldn't sync ${pendingSyncCount} pack-mode ${pendingSyncCount === 1 ? 'change' : 'changes'}.`
+                  : `${pendingSyncCount} pack-mode ${pendingSyncCount === 1 ? 'change is' : 'changes are'} waiting to sync.`}
           </span>
           {syncBlocked && !offline && !syncing && onRetrySync && (
             <button
@@ -122,6 +183,18 @@ export default function PackingProgress({
           onConfirm={() => {
             setConfirmingReset(false)
             onReset()
+          }}
+        />
+      )}
+      {confirmingResetReady && readyChecks && (
+        <ConfirmDialog
+          title="Reset ready?"
+          message="All items will be marked not ready. This won't change packed checkmarks, your inventory, weights, or quantities."
+          confirmLabel="Reset"
+          onCancel={() => setConfirmingResetReady(false)}
+          onConfirm={() => {
+            setConfirmingResetReady(false)
+            readyChecks.onResetReady()
           }}
         />
       )}

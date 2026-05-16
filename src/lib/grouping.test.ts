@@ -10,6 +10,7 @@ function listItem(overrides: {
   is_worn?: boolean
   is_consumable?: boolean
   is_packed?: boolean
+  is_ready?: boolean
   sort_order?: number
   name?: string
   description?: string | null
@@ -23,6 +24,7 @@ function listItem(overrides: {
     is_worn: overrides.is_worn ?? false,
     is_consumable: overrides.is_consumable ?? false,
     is_packed: overrides.is_packed ?? false,
+    is_ready: overrides.is_ready ?? false,
     sort_order: overrides.sort_order ?? 0,
     created_at: '2024-01-01',
     updated_at: '2024-01-01',

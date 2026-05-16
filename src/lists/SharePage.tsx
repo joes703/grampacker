@@ -87,6 +87,10 @@ export default function SharePage() {
     user_id: '',
     list_id: list.id,
     is_packed: false,
+    // Ready Checks are private pack-mode state; the public wire response
+    // omits is_ready (asserted in shared-projections.test.ts). Fill with
+    // a placeholder so downstream components see a valid ListItemWithGear.
+    is_ready: false,
     created_at: '',
     updated_at: '',
     // Status is private inventory metadata; the public wire response omits
