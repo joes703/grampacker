@@ -758,6 +758,13 @@ export default function GearLibraryPage() {
                     editItem.mutate({ id, patch }),
                   onEditItem: (item: GearItem) => setDialog({ type: 'edit-item', item }),
                   onDeleteItem: (item: GearItem) => setDialog({ type: 'delete-item', item }),
+                  // Quick status change from the row kebab. Shares the
+                  // editItem mutation so optimistic fan-out into open
+                  // ['list-items'] caches stays consistent with the dialog
+                  // path. The menu component already skips re-selecting the
+                  // current status, so this never fires a no-op PATCH.
+                  onSetItemStatus: (id: string, status: GearItem['status']) =>
+                    editItem.mutate({ id, patch: { status } }),
                   onRenameCategory: (id: string, name: string) =>
                     renameCategory.mutate({ id, name }),
                   onDeleteCategory: (cat: Category) => {
@@ -798,6 +805,7 @@ export default function GearLibraryPage() {
                   onInlineSave={() => {}}
                   onEdit={() => {}}
                   onDelete={() => {}}
+                  onSetStatus={() => {}}
                 />
               ) : null}
             </DragOverlay>

@@ -25,6 +25,7 @@ type CategorySectionProps = {
   onInlineSave: (id: string, patch: Partial<Pick<GearItem, 'name' | 'description'>>) => void
   onEditItem: (item: GearItem) => void
   onDeleteItem: (item: GearItem) => void
+  onSetItemStatus: (id: string, status: GearItem['status']) => void
   onRenameCategory: (id: string, name: string) => void
   onDeleteCategory: (category: Category) => void
   /** Threaded to each SortableGearItemRow as `reorderPending` so the gear-
@@ -54,6 +55,7 @@ function CategorySectionInner(
     onInlineSave,
     onEditItem,
     onDeleteItem,
+    onSetItemStatus,
     onRenameCategory,
     onDeleteCategory,
     itemReorderPending,
@@ -242,6 +244,7 @@ function CategorySectionInner(
                   onInlineSave={(patch) => onInlineSave(item.id, patch)}
                   onEdit={() => onEditItem(item)}
                   onDelete={() => onDeleteItem(item)}
+                  onSetStatus={(status) => onSetItemStatus(item.id, status)}
                 />
               ))}
             </SortableContext>

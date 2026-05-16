@@ -4,6 +4,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import type { GearItem } from '../lib/types'
+import type { GearStatus } from '../lib/gear-status'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
 import { makeDnDId } from '../lib/dnd-ids'
@@ -11,6 +12,7 @@ import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
 import GearStatusBadge from './GearStatusBadge'
+import GearStatusMenuItems from './GearStatusMenuItems'
 
 type Props = {
   item: GearItem
@@ -25,6 +27,7 @@ type Props = {
   onInlineSave: (patch: Partial<Pick<GearItem, 'name' | 'description'>>) => void
   onEdit: () => void
   onDelete: () => void
+  onSetStatus: (status: GearStatus) => void
   // Drag plumbing — populated by SortableGearItemRow.
   dragHandle?: ReactNode
   outerRef?: (el: HTMLElement | null) => void
@@ -41,6 +44,7 @@ export default function GearItemRow({
   onInlineSave,
   onEdit,
   onDelete,
+  onSetStatus,
   dragHandle,
   outerRef,
   outerStyle,
@@ -70,8 +74,11 @@ export default function GearItemRow({
            tap toggles selection in select mode, otherwise opens the edit
            dialog. The leading checkbox (rendered above when selectMode is
            on) is a sibling of the button, so a checkbox tap only fires
-           its own onChange — no double-toggle. */
+           its own onChange — no double-toggle. Status sits in a
+           fixed-width leading slot so it doesn't compete with the name
+           cell and rows align even when most items are 'active'. */
         <div className="flex flex-1 items-center gap-2">
+          <StatusSlot status={item.status} />
           <button
             type="button"
             onClick={selectMode ? onToggleSelect : onEdit}
@@ -79,7 +86,6 @@ export default function GearItemRow({
             className="flex flex-1 min-w-0 items-center gap-2 text-left"
           >
             <span className="flex-1 min-w-0 truncate font-normal text-gray-900">{item.name}</span>
-            <GearStatusBadge status={item.status} compact className="shrink-0" />
             <span className="shrink-0 w-20 text-right tabular-nums text-gray-600">
               {formatItemWeight(item.weight_grams, weightUnit)}
             </span>
@@ -92,14 +98,14 @@ export default function GearItemRow({
            action affordance. Hidden in select mode (selection itself
            replaces per-row actions). */
         <>
+          <StatusSlot status={item.status} />
           <div className="flex-1 min-w-0 flex items-center gap-3">
-            <div className="flex-[2] min-w-0 flex items-center gap-2">
+            <div className="flex-[2] min-w-0">
               <InlineText
                 value={item.name}
                 onSave={(v) => onInlineSave({ name: v })}
-                className="block min-w-0 flex-1 truncate font-normal text-gray-900"
+                className="block w-full truncate font-normal text-gray-900"
               />
-              <GearStatusBadge status={item.status} compact className="shrink-0" />
             </div>
             {(item.description !== null || !selectMode) && (
               <div className="flex-[3] min-w-0">
@@ -121,7 +127,14 @@ export default function GearItemRow({
           <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
             {formatItemWeight(item.weight_grams, weightUnit)}
           </span>
-          {!selectMode && <GearRowKebab onEdit={onEdit} onDelete={onDelete} />}
+          {!selectMode && (
+            <GearRowKebab
+              status={item.status}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onSetStatus={onSetStatus}
+            />
+          )}
         </>
       )}
     </div>
@@ -168,7 +181,17 @@ function formatPurchaseDate(date: string | null): string {
 // inventory (red, opens the confirm dialog). Each row owns its own popover
 // state so multiple kebabs can't open at once and the dismiss listeners
 // only target the relevant menu.
-function GearRowKebab({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+function GearRowKebab({
+  status,
+  onEdit,
+  onDelete,
+  onSetStatus,
+}: {
+  status: GearStatus
+  onEdit: () => void
+  onDelete: () => void
+  onSetStatus: (s: GearStatus) => void
+}) {
   const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
     useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
 
@@ -184,12 +207,22 @@ function GearRowKebab({ onEdit, onDelete }: { onEdit: () => void; onDelete: () =
       {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
           ref={menuRef}
+          role="menu"
           className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
           style={{ top: menuPos.top, left: menuPos.left }}
         >
           <MenuItem icon={<Pencil size={13} />} onClick={() => { close(); onEdit() }}>
             Edit
           </MenuItem>
+          <div className="my-1 border-t border-gray-100" />
+          {/* Quick status — fast path that bypasses the full edit modal.
+              Selecting the current status is a no-op inside the menu
+              component; selecting a different status fires onSetStatus and
+              we close the menu. */}
+          <GearStatusMenuItems
+            current={status}
+            onSelect={(s) => { close(); onSetStatus(s) }}
+          />
           <div className="my-1 border-t border-gray-100" />
           <MenuItem
             icon={<Trash2 size={13} />}
@@ -202,6 +235,17 @@ function GearRowKebab({ onEdit, onDelete }: { onEdit: () => void; onDelete: () =
         document.body,
       )}
     </>
+  )
+}
+
+// Fixed-width leading slot for status indicators. Always reserves the same
+// horizontal space so rows align whether the item is 'active' (no badge
+// rendered) or not. Hidden in print since these are private-view affordances.
+function StatusSlot({ status }: { status: GearStatus }) {
+  return (
+    <span className="shrink-0 w-5 inline-flex items-center justify-center print:hidden">
+      <GearStatusBadge status={status} compact />
+    </span>
   )
 }
 

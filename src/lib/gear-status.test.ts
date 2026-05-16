@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   DEFAULT_GEAR_STATUS,
+  GEAR_STATUS_MENU_OPTIONS,
   GEAR_STATUSES,
   coerceGearStatus,
   gearStatusVisual,
@@ -73,5 +74,31 @@ describe('gearStatusVisual', () => {
   it('uses the user-facing labels from the spec', () => {
     expect(gearStatusVisual('needs_repair')?.label).toBe('Needs repair')
     expect(gearStatusVisual('loaned_out')?.label).toBe('Loaned out')
+  })
+})
+
+describe('GEAR_STATUS_MENU_OPTIONS', () => {
+  it('lists all three statuses in canonical order with labels and icons', () => {
+    expect(GEAR_STATUS_MENU_OPTIONS).toHaveLength(3)
+    expect(GEAR_STATUS_MENU_OPTIONS.map((o) => o.status)).toEqual([
+      'active',
+      'needs_repair',
+      'loaned_out',
+    ])
+    expect(GEAR_STATUS_MENU_OPTIONS.map((o) => o.label)).toEqual([
+      'Active',
+      'Needs repair',
+      'Loaned out',
+    ])
+    for (const opt of GEAR_STATUS_MENU_OPTIONS) {
+      // icon is a lucide component (forwarded ref → function/object).
+      expect(opt.icon).toBeTruthy()
+    }
+  })
+
+  it('covers every value in GEAR_STATUSES (no menu/DB drift)', () => {
+    expect(GEAR_STATUS_MENU_OPTIONS.map((o) => o.status).sort()).toEqual(
+      [...GEAR_STATUSES].sort(),
+    )
   })
 })

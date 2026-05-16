@@ -2,6 +2,7 @@ import { memo, useState } from 'react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Check, ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
+import type { GearStatus } from '../lib/gear-status'
 import type { ListItemPatch } from '../lib/queries'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { makeDnDId } from '../lib/dnd-ids'
@@ -88,6 +89,7 @@ export type GroupProps = {
   // GearItem from its gearItems query before opening dialogs.
   onEditGearItem?: (gearItemId: string) => void
   onDeleteGearItem?: (gearItemId: string) => void
+  onSetGearStatus?: (gearItemId: string, status: GearStatus) => void
 }
 
 // Wrapped in React.memo (default shallow compare) at the export below.
@@ -123,6 +125,7 @@ function CategoryGroup({
   onAddItem,
   onEditGearItem,
   onDeleteGearItem,
+  onSetGearStatus,
 }: GroupProps) {
   // `adding` drives the desktop inline AddItemRow; `quickAddOpen` drives the
   // mobile QuickAddItemModal. The footer "Add item" button picks one based
@@ -183,6 +186,7 @@ function CategoryGroup({
       onSaveWeight: onSaveGearWeight ? (w: number) => onSaveGearWeight(gearId, w) : undefined,
       onEditGearItem: onEditGearItem ? () => onEditGearItem(gearId) : undefined,
       onDeleteGearItem: onDeleteGearItem ? () => onDeleteGearItem(gearId) : undefined,
+      onSetGearStatus: onSetGearStatus ? (s: GearStatus) => onSetGearStatus(gearId, s) : undefined,
       onDelete: onDelete ? () => onDelete(item.id) : undefined,
     }
   }
