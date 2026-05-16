@@ -4,6 +4,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { CircleMinus, GripVertical, MoreVertical, Pencil, Shirt, Trash2, UtensilsCrossed } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
+import type { GearStatus } from '../lib/gear-status'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
 import { makeDnDId } from '../lib/dnd-ids'
@@ -12,6 +13,7 @@ import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
 import WeightInput from '../components/WeightInput'
 import GearStatusBadge from '../gear/GearStatusBadge'
+import GearStatusMenuItems from '../gear/GearStatusMenuItems'
 
 // Single source of truth for a list item row. Used by both the authenticated
 // list detail view and the public share view.
@@ -68,6 +70,10 @@ type Props = {
   onDelete?: () => void
   onEditGearItem?: () => void
   onDeleteGearItem?: () => void
+  // Quick status setter for the row kebab. When provided alongside the
+  // other gear handlers (private list view), the kebab gets the three-row
+  // status sub-menu. Omitted on the share view, which can't mutate.
+  onSetGearStatus?: (status: GearStatus) => void
   dragHandle?: ReactNode
   outerRef?: (el: HTMLElement | null) => void
   outerStyle?: React.CSSProperties
@@ -86,6 +92,7 @@ export default function ItemRow({
   onDelete,
   onEditGearItem,
   onDeleteGearItem,
+  onSetGearStatus,
   dragHandle,
   outerRef,
   outerStyle,
@@ -385,9 +392,11 @@ export default function ItemRow({
             read-only rows. */}
         {showKebab && (
           <RowKebab
+            currentStatus={item.gear_item.status}
             onRemoveFromList={onDelete!}
             onEdit={onEditGearItem}
             onDeleteFromInventory={onDeleteGearItem}
+            onSetGearStatus={onSetGearStatus}
           />
         )}
         </>
@@ -510,13 +519,17 @@ export function SortableItemRow(props: Omit<Props, 'dragHandle' | 'outerRef' | '
 // multiple kebabs can't open at once and click-outside closes only the
 // relevant menu.
 function RowKebab({
+  currentStatus,
   onRemoveFromList,
   onEdit,
   onDeleteFromInventory,
+  onSetGearStatus,
 }: {
+  currentStatus: GearStatus
   onRemoveFromList: () => void
   onEdit?: () => void
   onDeleteFromInventory?: () => void
+  onSetGearStatus?: (status: GearStatus) => void
 }) {
   const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
     useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
@@ -533,6 +546,7 @@ function RowKebab({
       {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
           ref={menuRef}
+          role="menu"
           className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
           style={{ top: menuPos.top, left: menuPos.left }}
         >
@@ -546,6 +560,15 @@ function RowKebab({
             <MenuItem icon={<Pencil size={13} />} onClick={() => { close(); onEdit() }}>
               Edit
             </MenuItem>
+          )}
+          {onSetGearStatus && (
+            <>
+              <div className="my-1 border-t border-gray-100" />
+              <GearStatusMenuItems
+                current={currentStatus}
+                onSelect={(s) => { close(); onSetGearStatus(s) }}
+              />
+            </>
           )}
           {onDeleteFromInventory && (
             <>

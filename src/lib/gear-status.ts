@@ -1,4 +1,4 @@
-import { PackageX, Wrench, type LucideIcon } from 'lucide-react'
+import { CircleCheck, PackageX, Wrench, type LucideIcon } from 'lucide-react'
 
 // Inventory-level advisory metadata on gear_items.status. Values are pinned
 // to the DB CHECK constraint in migration 20260516000000 — keep this list
@@ -55,3 +55,20 @@ const VISUALS: Record<Exclude<GearStatus, 'active'>, GearStatusVisual> = {
 export function gearStatusVisual(status: GearStatus): GearStatusVisual | null {
   return status === 'active' ? null : VISUALS[status]
 }
+
+// Menu-row metadata: every status (including 'active') gets a label and
+// icon for the row-kebab quick-set menu. Distinct from gearStatusVisual,
+// which intentionally returns null for 'active' so badges stay quiet.
+// Ordered ['active', 'needs_repair', 'loaned_out'] to match GEAR_STATUSES
+// — single source of truth for menu rendering order.
+export type GearStatusMenuOption = {
+  status: GearStatus
+  label: string
+  icon: LucideIcon
+}
+
+export const GEAR_STATUS_MENU_OPTIONS: readonly GearStatusMenuOption[] = [
+  { status: 'active', label: 'Active', icon: CircleCheck },
+  { status: 'needs_repair', label: 'Needs repair', icon: Wrench },
+  { status: 'loaned_out', label: 'Loaned out', icon: PackageX },
+] as const

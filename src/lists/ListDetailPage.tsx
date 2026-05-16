@@ -771,6 +771,11 @@ function ListDetailInner({
         const g = gearItemsRef.current.find((x) => x.id === gearId)
         if (g) setDialog({ type: 'delete-gear', candidate: g })
       },
+      // Quick status — same updateGearItemMut path the dialog uses, so the
+      // existing list-items fan-out (gear_item.status is in the embedded
+      // projection) keeps open list views consistent.
+      onSetGearStatus: (gearId: string, status: GearItem['status']) =>
+        updateGearItemMut.mutate({ id: gearId, patch: { status } }),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above re: mutation refs
     [mode, weightUnit, isBelowLg, showUnpackedOnly, online],
