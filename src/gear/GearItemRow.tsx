@@ -74,17 +74,17 @@ export default function GearItemRow({
            tap toggles selection in select mode, otherwise opens the edit
            dialog. The leading checkbox (rendered above when selectMode is
            on) is a sibling of the button, so a checkbox tap only fires
-           its own onChange — no double-toggle. Status sits in a
-           fixed-width leading slot so it doesn't compete with the name
-           cell and rows align even when most items are 'active'. */
+           its own onChange — no double-toggle. */
         <div className="flex flex-1 items-center gap-2">
-          <StatusSlot status={item.status} />
           <button
             type="button"
             onClick={selectMode ? onToggleSelect : onEdit}
             aria-label={selectMode ? (selected ? 'Deselect item' : 'Select item') : 'Edit item'}
             className="flex flex-1 min-w-0 items-center gap-2 text-left"
           >
+            {/* GearStatusBadge returns null for 'active' — non-active rows
+                pick up a small leading icon, active rows take no space. */}
+            <GearStatusBadge status={item.status} compact className="shrink-0 print:hidden" />
             <span className="flex-1 min-w-0 truncate font-normal text-gray-900">{item.name}</span>
             <span className="shrink-0 w-20 text-right tabular-nums text-gray-600">
               {formatItemWeight(item.weight_grams, weightUnit)}
@@ -98,13 +98,15 @@ export default function GearItemRow({
            action affordance. Hidden in select mode (selection itself
            replaces per-row actions). */
         <>
-          <StatusSlot status={item.status} />
           <div className="flex-1 min-w-0 flex items-center gap-3">
-            <div className="flex-[2] min-w-0">
+            <div className="flex-[2] min-w-0 flex items-center gap-1.5">
+              {/* Inline status badge — null-for-active means no reserved
+                  whitespace; non-active rows pick up a subtle leading icon. */}
+              <GearStatusBadge status={item.status} compact className="shrink-0 print:hidden" />
               <InlineText
                 value={item.name}
                 onSave={(v) => onInlineSave({ name: v })}
-                className="block w-full truncate font-normal text-gray-900"
+                className="block min-w-0 flex-1 truncate font-normal text-gray-900"
               />
             </div>
             {(item.description !== null || !selectMode) && (
@@ -238,16 +240,6 @@ function GearRowKebab({
   )
 }
 
-// Fixed-width leading slot for status indicators. Always reserves the same
-// horizontal space so rows align whether the item is 'active' (no badge
-// rendered) or not. Hidden in print since these are private-view affordances.
-function StatusSlot({ status }: { status: GearStatus }) {
-  return (
-    <span className="shrink-0 w-5 inline-flex items-center justify-center print:hidden">
-      <GearStatusBadge status={status} compact />
-    </span>
-  )
-}
 
 function MenuItem({
   icon,

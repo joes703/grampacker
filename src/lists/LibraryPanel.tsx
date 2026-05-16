@@ -223,12 +223,10 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                   // paint hints; dimming alone is sufficient visual cue.
                   className="flex w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
                 >
-                  {/* Leading fixed-width status slot — reserves the same
-                      horizontal space whether the row's status is 'active'
-                      (badge renders null) or not, so names line up. */}
-                  <span className="shrink-0 w-5 inline-flex items-center justify-center">
-                    <GearStatusBadge status={item.status} compact />
-                  </span>
+                  {/* Status badge — null-for-active means no leading
+                      whitespace on the common case; non-active rows pick
+                      up a subtle icon next to the name. */}
+                  <GearStatusBadge status={item.status} compact className="shrink-0" />
                   <span
                     className={`flex-1 min-w-0 truncate text-sm font-normal ${
                       inList ? 'text-gray-400' : 'text-gray-900'
