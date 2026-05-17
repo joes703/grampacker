@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { computeWeightBreakdown } from './WeightTable'
+import { computeWeightBreakdown } from '../lib/weight-breakdown'
 import type { Category, ListItemWithGear } from '../lib/types'
 
 function listItem(overrides: {
