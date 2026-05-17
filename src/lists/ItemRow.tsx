@@ -15,6 +15,7 @@ import WeightInput from '../components/WeightInput'
 import GearStatusBadge from '../gear/GearStatusBadge'
 import GearStatusMenuItems from '../gear/GearStatusMenuItems'
 import { WornIcon, ConsumableIcon } from './list-item-flags'
+import PackModeCheckbox from './PackModeCheckbox'
 
 // Single source of truth for a list item row. Used by both the authenticated
 // list detail view and the public share view.
@@ -178,17 +179,17 @@ export default function ItemRow({
             gets its own aria-label since it's no longer wrapped. */}
         {readyChecksEnabled && (
           <>
-            <input
-              type="checkbox"
+            <PackModeCheckbox
+              variant="ready"
               checked={item.is_ready}
               disabled={packActionsDisabled}
-              onChange={(e) => {
+              onChange={(checked) => {
                 if (packActionsDisabled) return
-                onUpdate?.({ is_ready: e.target.checked })
+                onUpdate?.({ is_ready: checked })
               }}
-              aria-label={`Mark ${name} ready`}
+              ariaLabel={`Mark ${name} ready`}
               title={packActionsDisabled ? 'Ready checkmark unavailable.' : 'Ready'}
-              className="h-4 w-4 rounded border-gray-300 text-amber-600 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed print:hidden"
+              standaloneLabel
             />
             <span
               aria-hidden="true"
@@ -204,16 +205,15 @@ export default function ItemRow({
             click + keyboard activation are blocked at the platform level,
             and the onChange is also a no-op as defense in depth. */}
         <label className={`flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 ${packActionsDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-          <input
-            type="checkbox"
+          <PackModeCheckbox
+            variant="packed"
             checked={item.is_packed}
             disabled={packActionsDisabled}
-            onChange={(e) => {
+            onChange={(checked) => {
               if (packActionsDisabled) return
-              onUpdate?.({ is_packed: e.target.checked })
+              onUpdate?.({ is_packed: checked })
             }}
             title={packActionsDisabled ? 'Packing checkmark unavailable.' : undefined}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed print:hidden"
           />
           {/* Print-only empty checkbox. The native input above is suppressed
               in print because browsers render its checked state visually,
