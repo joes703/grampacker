@@ -14,6 +14,7 @@ import RowIconButton from '../components/RowIconButton'
 import WeightInput from '../components/WeightInput'
 import GearStatusBadge from '../gear/GearStatusBadge'
 import GearStatusMenuItems from '../gear/GearStatusMenuItems'
+import { WornIcon, ConsumableIcon } from './list-item-flags'
 
 // Single source of truth for a list item row. Used by both the authenticated
 // list detail view and the public share view.
@@ -162,7 +163,11 @@ export default function ItemRow({
         ref={outerRef}
         style={outerStyle}
         className={`flex items-center gap-0.5 lg:gap-1.5 border-b border-gray-100 px-2 lg:px-3 py-2 lg:py-0.5 text-sm transition-colors ${
-          item.is_packed ? 'bg-green-50 print:bg-transparent' : 'bg-white'
+          // Calmer "done" treatment than a green tint — the gray background
+          // pairs with the text-gray-400 line-through inside the label to
+          // read as completed without celebrating. print:bg-transparent
+          // keeps the paper checklist visually neutral.
+          item.is_packed ? 'bg-gray-50 print:bg-transparent' : 'bg-white'
         }`}
       >
         {/* Ready checkbox sits OUTSIDE the wrapping label below so that
@@ -249,10 +254,10 @@ export default function ItemRow({
           </div>
         </label>
         <span className="shrink-0 w-6 lg:w-7 inline-flex items-center justify-center">
-          {item.is_worn && <Shirt size={14} className="text-purple-600" aria-label="Worn" />}
+          {item.is_worn && <WornIcon />}
         </span>
         <span className="shrink-0 w-6 lg:w-7 inline-flex items-center justify-center">
-          {item.is_consumable && <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />}
+          {item.is_consumable && <ConsumableIcon />}
         </span>
         <span className="shrink-0 w-10 text-right tabular-nums text-xs text-gray-500">
           {item.quantity}
@@ -334,7 +339,7 @@ export default function ItemRow({
           />
         ) : (
           <span className="shrink-0 w-7 inline-flex items-center justify-center">
-            {item.is_worn && <Shirt size={14} className="text-purple-600" aria-label="Worn" />}
+            {item.is_worn && <WornIcon />}
           </span>
         )}
 
@@ -350,7 +355,7 @@ export default function ItemRow({
           />
         ) : (
           <span className="shrink-0 w-7 inline-flex items-center justify-center">
-            {item.is_consumable && <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />}
+            {item.is_consumable && <ConsumableIcon />}
           </span>
         )}
 
@@ -461,11 +466,7 @@ function MobileRowBody({
       </div>
       {/* Single worn/consumable indicator slot */}
       <span className="shrink-0 w-6 inline-flex items-center justify-center">
-        {item.is_worn ? (
-          <Shirt size={14} className="text-purple-600" aria-label="Worn" />
-        ) : item.is_consumable ? (
-          <UtensilsCrossed size={14} className="text-orange-600" aria-label="Consumable" />
-        ) : null}
+        {item.is_worn ? <WornIcon /> : item.is_consumable ? <ConsumableIcon /> : null}
       </span>
       <span className="shrink-0 w-8 text-right tabular-nums text-gray-600">
         {item.quantity}
