@@ -8,7 +8,6 @@ import { queryKeys, fetchLists, updateList, makeOptimisticUpdate } from '../lib/
 import type { List } from '../lib/types'
 import MobileMenu from './MobileMenu'
 import ListSelector from './ListSelector'
-import WeightUnitToggle from './WeightUnitToggle'
 import InlineTitle from '../lists/InlineTitle'
 import ListSettingsButton from '../lists/ListSettingsButton'
 
@@ -70,10 +69,6 @@ export default function NavBar() {
             on every authed route. */}
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {route.kind === 'list-detail' && <ListContextControls listId={route.listId} />}
-          {/* Gear Inventory exposes the same g/oz display control in the
-              top chrome, freeing the page's content area for create/
-              filter/utility controls. Same control on every viewport. */}
-          {route.kind === 'gear' && <WeightUnitToggle />}
 
           {/* Persistent links on md+. Lists/Gear NavLinks removed — list
               switching is the chevron selector, gear access moves to the
@@ -279,12 +274,11 @@ function ListHeading({
   )
 }
 
-// /lists/:id-only controls. Renders inline g/oz on every viewport, plus the
-// md+ List options button and Pack pill. The mobile equivalents of List
-// options and Pack live in MobileListActionBar (bottom of the page); the
-// global MobileMenu (Help / Settings / Sign out) is mounted at the NavBar
-// top level. Sharing reaches the user through the List options modal — it
-// has no top-level trigger of its own.
+// /lists/:id-only controls. md+ List options button and Pack pill. Weight
+// units now live as a global display preference in Settings (and as a
+// segmented control on the public share page); they no longer crowd the
+// authed top bar. Mobile equivalents of List options and Pack are in
+// MobileListActionBar.
 function ListContextControls({ listId }: { listId: string }) {
   const auth = useRequireSession()
   const userId = auth?.userId ?? ''
@@ -308,39 +302,28 @@ function ListContextControls({ listId }: { listId: string }) {
     )
   }
 
-  // List-specific affordances (List options button, Pack pill) only render
-  // once `list` resolves. g/oz renders unconditionally so the user retains
-  // access to the unit toggle during the lists query's cold-load window.
+  // Affordances render only once `list` resolves; during the cold-load
+  // window nothing list-specific is shown.
+  if (!list) return null
   return (
     <>
-      <WeightUnitToggle />
-
-      {/* md+ inline list controls — gated on resolved list to avoid
-          rendering List options / Pack against a stale or absent row.
-          Order matches the target mental model: List options (current-list
-          settings) sits next to the selector + units cluster, then Pack
-          stands alone as the mode switch. */}
-      {list && (
-        <>
-          <div className="hidden md:flex">
-            <ListSettingsButton list={list} />
-          </div>
-          <button
-            onClick={togglePackMode}
-            title={isPackMode ? 'Pack mode: on' : 'Pack mode: off'}
-            aria-label="Pack mode"
-            aria-pressed={isPackMode}
-            className={`hidden md:inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
-              isPackMode
-                ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                : 'border-gray-300 text-gray-500 hover:bg-gray-50'
-            }`}
-          >
-            <ClipboardList size={14} />
-            <span>Pack</span>
-          </button>
-        </>
-      )}
+      <div className="hidden md:flex">
+        <ListSettingsButton list={list} />
+      </div>
+      <button
+        onClick={togglePackMode}
+        title={isPackMode ? 'Pack mode: on' : 'Pack mode: off'}
+        aria-label="Pack mode"
+        aria-pressed={isPackMode}
+        className={`hidden md:inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
+          isPackMode
+            ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+            : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+        }`}
+      >
+        <ClipboardList size={14} />
+        <span>Pack</span>
+      </button>
     </>
   )
 }
