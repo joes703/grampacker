@@ -1,4 +1,8 @@
 import { CircleCheck, PackageX, Wrench, type LucideIcon } from 'lucide-react'
+import {
+  LOANED_OUT_BADGE_CLASS,
+  NEEDS_REPAIR_BADGE_CLASS,
+} from './row-indicator-styles'
 
 // Inventory-level advisory metadata on gear_items.status. Values are pinned
 // to the DB CHECK constraint in migration 20260516000000 — keep this list
@@ -37,14 +41,12 @@ const VISUALS: Record<Exclude<GearStatus, 'active'>, GearStatusVisual> = {
   needs_repair: {
     label: 'Needs repair',
     icon: Wrench,
-    badgeClass:
-      'bg-amber-50 text-amber-800 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:ring-amber-800/50',
+    badgeClass: NEEDS_REPAIR_BADGE_CLASS,
   },
   loaned_out: {
     label: 'Loaned out',
     icon: PackageX,
-    badgeClass:
-      'bg-rose-50 text-rose-800 ring-1 ring-rose-200 dark:bg-rose-900/30 dark:text-rose-200 dark:ring-rose-800/50',
+    badgeClass: LOANED_OUT_BADGE_CLASS,
   },
 }
 

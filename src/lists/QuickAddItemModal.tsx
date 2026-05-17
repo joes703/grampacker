@@ -2,6 +2,7 @@ import { type FormEvent } from 'react'
 import { Minus, Plus, Shirt, UtensilsCrossed, X } from 'lucide-react'
 import Modal from '../components/Modal'
 import WeightInput from '../components/WeightInput'
+import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
 
 type Props = {
@@ -159,7 +160,7 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
                 onChange={toggleWorn}
                 className="h-4 w-4 rounded border-gray-300 text-blue-600"
               />
-              <Shirt size={14} className="text-purple-600" />
+              <Shirt size={14} className={WORN_ICON_CLASS} />
               <span className="text-sm text-gray-700">Worn (not added to pack weight)</span>
             </label>
             <label className="flex cursor-pointer select-none items-center gap-2">
@@ -169,7 +170,7 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
                 onChange={toggleConsumable}
                 className="h-4 w-4 rounded border-gray-300 text-blue-600"
               />
-              <UtensilsCrossed size={14} className="text-orange-600" />
+              <UtensilsCrossed size={14} className={CONSUMABLE_ICON_CLASS} />
               <span className="text-sm text-gray-700">Consumable (food, fuel, water)</span>
             </label>
           </div>

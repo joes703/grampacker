@@ -47,10 +47,13 @@ const VARIANT_CLASSES: Record<Variant, string> = {
 }
 
 // Active worn/consumable buttons render as icon-only color, matching the
-// static read-only sites (see list-item-flags.tsx: text-purple-600 for
-// Worn, text-orange-600 for Consumable). No active background: pack mode,
-// share view, mobile, and editable normal view should all read as the
-// same simple tinted icon.
+// static read-only sites. The text-purple-600 / text-orange-600 / hover
+// strings above are duplicated literally because Tailwind only scans for
+// whole class tokens; do NOT replace them with `hover:${WORN_ICON_CLASS}`
+// or similar. Source of truth for the hue values: lib/row-indicator-styles
+// (WORN_ICON_CLASS, CONSUMABLE_ICON_CLASS). No active background: pack
+// mode, share view, mobile, and editable normal view should all read as
+// the same simple tinted icon.
 const ACTIVE_CLASSES: Partial<Record<Variant, string>> = {
   purpleToggle: 'text-purple-600 hover:bg-gray-100',
   orangeToggle: 'text-orange-600 hover:bg-gray-100',

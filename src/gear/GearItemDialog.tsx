@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Check, CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
 import { DEFAULT_GEAR_STATUS, type GearStatus } from '../lib/gear-status'
+import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
 import Modal from '../components/Modal'
 import WeightInput from '../components/WeightInput'
 
@@ -383,7 +384,7 @@ export default function GearItemDialog({
                     onChange={toggleWorn}
                     className="h-4 w-4 rounded border-gray-300 text-blue-600"
                   />
-                  <Shirt size={14} className="text-purple-600" />
+                  <Shirt size={14} className={WORN_ICON_CLASS} />
                   <span className="text-sm text-gray-700">Worn (not added to pack weight)</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -393,7 +394,7 @@ export default function GearItemDialog({
                     onChange={toggleConsumable}
                     className="h-4 w-4 rounded border-gray-300 text-blue-600"
                   />
-                  <UtensilsCrossed size={14} className="text-orange-600" />
+                  <UtensilsCrossed size={14} className={CONSUMABLE_ICON_CLASS} />
                   <span className="text-sm text-gray-700">Consumable (food, fuel, water)</span>
                 </label>
               </div>
