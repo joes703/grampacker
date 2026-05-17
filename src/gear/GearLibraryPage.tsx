@@ -64,6 +64,10 @@ import BulkMoveCategoryDialog from './BulkMoveCategoryDialog'
 import BulkActionsToolbar from './BulkActionsToolbar'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
+import CategoryFilterChips, {
+  UNCATEGORIZED_CHIP_VALUE,
+  type CategoryChipValue,
+} from '../components/CategoryFilterChips'
 import { useDocumentTitle } from '../lib/use-document-title'
 
 type DialogState =
@@ -112,6 +116,7 @@ export default function GearLibraryPage() {
 
   // ── Local state ───────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState<CategoryChipValue>(null)
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [selectMode, setSelectMode] = useState(false)
   const { set: selectedIds, toggle: toggleSelect, clear: clearSelected, reset: resetSelected } = useToggleSet<string>()
@@ -523,15 +528,43 @@ export default function GearLibraryPage() {
   }
 
   // ── Derived data ──────────────────────────────────────────────────────────────
-  const filteredItems = useMemo(() => {
+  const searchFiltered = useMemo(() => {
     if (!search) return allItems
     const q = search.toLowerCase()
     return allItems.filter((i) => i.name.toLowerCase().includes(q))
   }, [allItems, search])
 
+  const sortedCats = useMemo(
+    () => [...categories].sort((a, b) => a.sort_order - b.sort_order),
+    [categories],
+  )
+
+  // Layer the category-chip filter on top of search. Chip rail derives its
+  // visible chips from searchFiltered so the rail narrows as the user
+  // types; the chip selection then narrows what the page renders further.
+  const filteredItems = useMemo(() => {
+    if (selectedCategory === null) return searchFiltered
+    if (selectedCategory === UNCATEGORIZED_CHIP_VALUE) {
+      return searchFiltered.filter((i) => i.category_id === null)
+    }
+    return searchFiltered.filter((i) => i.category_id === selectedCategory)
+  }, [searchFiltered, selectedCategory])
+
+  // When a real category is selected, only render that one section. When
+  // Uncategorized is selected, render no real-category sections (the null
+  // bucket tail in groupGearItemsByCategory carries the items). When "All"
+  // is selected, keep the existing behavior (all category sections render
+  // — including empty ones, because the gear library uses them as drop
+  // targets / "+ Add item" affordances).
+  const categoriesForGrouping = useMemo(() => {
+    if (selectedCategory === null) return categories
+    if (selectedCategory === UNCATEGORIZED_CHIP_VALUE) return []
+    return categories.filter((c) => c.id === selectedCategory)
+  }, [categories, selectedCategory])
+
   const groups = useMemo(
-    () => groupGearItemsByCategory(filteredItems, categories),
-    [filteredItems, categories],
+    () => groupGearItemsByCategory(filteredItems, categoriesForGrouping),
+    [filteredItems, categoriesForGrouping],
   )
 
   const itemCountByCategoryId = useMemo(() => {
@@ -571,7 +604,8 @@ export default function GearLibraryPage() {
       </button>
 
       {/* Page header */}
-      <div className="flex flex-wrap items-center gap-3 mb-6">
+      <div className="mb-6">
+      <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold text-gray-900">
           Gear Library
           <span className="ml-2 text-sm font-normal text-gray-500">{allItems.length} items</span>
@@ -678,6 +712,18 @@ export default function GearLibraryPage() {
             New category
           </button>
         )}
+      </div>
+      {/* Category filter chips — sit just below the header row so they
+          stay visually grouped with the search input. Horizontal-scroll
+          rail on narrow viewports. */}
+      <div className="mt-3">
+        <CategoryFilterChips
+          categories={sortedCats}
+          items={searchFiltered}
+          selected={selectedCategory}
+          onChange={setSelectedCategory}
+        />
+      </div>
       </div>
 
       {/* Sticky bulk-action bar — shown only in selection mode. Sits between
