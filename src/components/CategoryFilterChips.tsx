@@ -24,9 +24,14 @@ type Props = {
   onChange: (next: CategoryChipValue) => void
 }
 
-// Horizontal-scroll pill rail used above gear lists to filter by category
-// without dropping the existing search input. Selecting a chip narrows
-// what the page renders; "All" clears the filter.
+// Wrapping pill rail used above gear lists to filter by category without
+// dropping the existing search input. Selecting a chip narrows what the
+// page renders; "All" clears the filter.
+//
+// Chips wrap to additional rows when they overflow the container width,
+// so offscreen chips can't end up out of reach on mobile and there's no
+// horizontal scrollbar on desktop. Order is preserved across wraps: All,
+// then categories in sort_order, then Uncategorized (when present).
 //
 // Visibility rule: only show chips that have at least one item under the
 // current search, EXCEPT for the currently-selected chip — that one stays
@@ -38,9 +43,8 @@ type Props = {
 //
 // Accessibility:
 //   - Each chip is a real <button> with aria-pressed for the selected one.
-//   - The scrollable container is overflow-x-auto without overflow-y, so
-//     focus outlines aren't clipped vertically when a chip is focused.
-//   - whitespace-nowrap on chips prevents wrapping inside the rail.
+//   - whitespace-nowrap on each chip keeps multi-word category names
+//     intact when they wrap to a new row.
 export default function CategoryFilterChips({ categories, items, selected, onChange }: Props) {
   // Derive which buckets have at least one item under the current search.
   const presentCategoryIds = useMemo(() => {
@@ -72,7 +76,7 @@ export default function CategoryFilterChips({ categories, items, selected, onCha
     <div
       role="group"
       aria-label="Filter by category"
-      className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1"
+      className="flex flex-wrap gap-1.5"
     >
       <Chip
         label="All"

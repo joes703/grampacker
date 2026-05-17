@@ -208,7 +208,7 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
           aria-expanded={!collapsed}
           aria-controls={regionId}
           aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
-          className="inline-flex h-10 w-10 lg:h-7 lg:w-7 items-center justify-center rounded text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0"
+          className="inline-flex h-9 w-9 lg:h-7 lg:w-7 items-center justify-center rounded text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0"
         >
           {collapsed ? (
             <ChevronRight size={13} />
