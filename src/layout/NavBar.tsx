@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ClipboardList, HelpCircle, LogOut, PanelLeftOpen, Pencil, Settings } from 'lucide-react'
+import { ClipboardList, HelpCircle, LogOut, Pencil, Plus, Settings } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import { supabase } from '../lib/supabase'
 import { queryKeys, fetchLists, updateList, makeOptimisticUpdate } from '../lib/queries'
@@ -54,18 +54,22 @@ export default function NavBar() {
     <header className="border-b border-gray-200 bg-white print:hidden">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 sm:gap-3 lg:gap-6 px-4">
         {/* Mobile sidebar trigger — only renders when the active page has
-            registered sidebar content (today: ListDetailPage). On pages
-            without a drawer, this slot collapses and the brand sits at the
-            left edge. Hidden on lg+ where the page renders the equivalent
-            left aside inline. */}
+            registered sidebar content (today: ListDetailPage). Visible
+            "Add gear" label so the affordance reads as the action it
+            performs (open the gear picker drawer to add gear to the
+            list), not as an ambiguous icon. On pages without a drawer,
+            this slot collapses and the brand sits at the left edge.
+            Hidden on lg+ where the page renders the equivalent left
+            aside inline. */}
         {available && (
           <button
             type="button"
             onClick={() => setOpen(true)}
-            aria-label="Open gear library"
-            className="lg:hidden inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
+            aria-label="Add gear to list"
+            className="lg:hidden inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
           >
-            <PanelLeftOpen size={20} />
+            <Plus size={16} />
+            <span>Add gear</span>
           </button>
         )}
 
