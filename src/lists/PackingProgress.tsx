@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckSquare, RotateCcw, WifiOff } from 'lucide-react'
+import { RotateCcw, WifiOff } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 type Props = {
@@ -21,14 +21,15 @@ type Props = {
   // doesn't strand the user waiting for an offline transition.
   syncBlocked?: boolean
   onRetrySync?: () => void
-  // Ready Checks block (optional). When provided, render a second
+  // Ready Checks block (optional). When `enabled`, render a second
   // progress bar + a separate Reset Ready button alongside the existing
-  // Packed cluster. The toggle flips ready_checks_enabled through the
-  // page-level mutation passed in as onToggleEnabled.
+  // Packed cluster. Enabling/disabling Ready Checks is no longer a
+  // pack-mode affordance — that toggle lives in ListSettingsPanel (the
+  // List options popover/modal). PackingProgress only consumes the
+  // resolved state.
   readyChecks?: {
     ready: number
     enabled: boolean
-    onToggleEnabled: () => void
     onResetReady: () => void
   }
 }
@@ -56,9 +57,9 @@ export default function PackingProgress({
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
-      {/* The control cluster wraps on narrow viewports so three toggles
-          plus the optional "All packed!" chip don't horizontally squeeze
-          on a 375 px screen. */}
+      {/* The control cluster wraps on narrow viewports so the Unpacked-
+          only toggle, Reset packed button, and the optional "All packed!"
+          chip don't horizontally squeeze on a 375 px screen. */}
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <span className="text-sm font-medium tabular-nums text-gray-700">
           {packed} / {total} packed
@@ -82,21 +83,6 @@ export default function PackingProgress({
           >
             Unpacked only
           </button>
-          {readyChecks && (
-            <button
-              type="button"
-              onClick={readyChecks.onToggleEnabled}
-              aria-pressed={readyChecks.enabled}
-              className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-xs font-medium ${
-                readyChecks.enabled
-                  ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                  : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <CheckSquare size={12} aria-hidden />
-              Ready checks
-            </button>
-          )}
           <button
             type="button"
             onClick={() => setConfirmingReset(true)}

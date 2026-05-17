@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router'
-import { useQuery } from '@tanstack/react-query'
-import { ClipboardList, HelpCircle, LogOut, PanelLeftOpen, Pencil, Settings, Shirt } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ClipboardList, HelpCircle, LogOut, PanelLeftOpen, Pencil, Settings } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import { supabase } from '../lib/supabase'
 import { queryKeys, fetchLists, updateList, makeOptimisticUpdate } from '../lib/queries'
@@ -13,8 +13,9 @@ import { useSidebarDrawer } from './sidebar-drawer-context'
 import InlineTitle from '../lists/InlineTitle'
 import PrivacyButton from '../lists/PrivacyButton'
 import PrivacyPanel from '../lists/PrivacyPanel'
+import ListSettingsButton from '../lists/ListSettingsButton'
+import ListSettingsPanel from '../lists/ListSettingsPanel'
 import Modal from '../components/Modal'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 // Per-route slot resolution. Mounted only inside AppShell, which is gated by
 // PrivateRoute — so this component is never rendered on /login, /register,
@@ -307,7 +308,6 @@ function ListHeading({
 function ListContextControls({ listId }: { listId: string }) {
   const auth = useRequireSession()
   const userId = auth?.userId ?? ''
-  const qc = useQueryClient()
   const { data: lists = [] } = useQuery({
     queryKey: queryKeys.lists(),
     queryFn: () => fetchLists(userId),
@@ -317,6 +317,7 @@ function ListContextControls({ listId }: { listId: string }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const isPackMode = searchParams.get('mode') === 'pack'
   const [shareOpen, setShareOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   function togglePackMode() {
     setSearchParams(
@@ -330,31 +331,13 @@ function ListContextControls({ listId }: { listId: string }) {
     )
   }
 
-  // Group worn — per-list, persisted on lists.group_worn. The mutation lives
-  // here (not on ListDetailPage) so the toggle can sit alongside g/oz, Pack,
-  // and Share in the top bar; ListDetailPage still derives showWornGroup
-  // straight from list.group_worn via the same ['lists'] cache.
-  const groupWornMut = useMutation({
-    mutationFn: (next: boolean) => updateList(listId, { group_worn: next }),
-    ...makeOptimisticUpdate<List, boolean>({
-      qc,
-      queryKey: queryKeys.lists(),
-      id: () => listId,
-      apply: (item, next) => ({
-        ...item,
-        group_worn: next,
-        updated_at: new Date().toISOString(),
-      }),
-    }),
-  })
-
-  // List-specific affordances (Pack pill, Group worn pill, PrivacyButton,
-  // mobile share modal body) only render once `list` resolves. g/oz and
-  // the mobile menu render unconditionally so the user retains access to
-  // global actions (Help / Settings / Sign out) and the unit toggle during
-  // the lists query's cold-load window. Without that, /lists/:id has no
-  // reachable global menu while loading — a regression versus rendering
-  // null.
+  // List-specific affordances (Pack pill, ListSettingsButton, PrivacyButton,
+  // mobile share/settings modal bodies) only render once `list` resolves.
+  // g/oz and the mobile menu render unconditionally so the user retains
+  // access to global actions (Help / Settings / Sign out) and the unit
+  // toggle during the lists query's cold-load window. Without that,
+  // /lists/:id has no reachable global menu while loading — a regression
+  // versus rendering null.
   return (
     <>
       {/* g/oz toggle — same on every viewport. The text label is short
@@ -369,8 +352,7 @@ function ListContextControls({ listId }: { listId: string }) {
       </button>
 
       {/* md+ inline list controls — gated on resolved list to avoid
-          rendering Pack / Group worn / Share against a stale or absent
-          row. */}
+          rendering Pack / Options / Share against a stale or absent row. */}
       {list && (
         <>
           <button
@@ -387,24 +369,9 @@ function ListContextControls({ listId }: { listId: string }) {
             <ClipboardList size={14} />
             <span>Pack</span>
           </button>
-          <button
-            onClick={() => groupWornMut.mutate(!list.group_worn)}
-            title={
-              list.group_worn
-                ? 'Worn items grouped at the bottom. Click to merge back into categories.'
-                : 'Move worn items into a separate Worn section'
-            }
-            aria-label="Group worn items"
-            aria-pressed={list.group_worn}
-            className={`hidden md:inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
-              list.group_worn
-                ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                : 'border-gray-300 text-gray-500 hover:bg-gray-50'
-            }`}
-          >
-            <Shirt size={14} />
-            <span>Group worn</span>
-          </button>
+          <div className="hidden md:flex">
+            <ListSettingsButton list={list} />
+          </div>
           <div className="hidden md:flex">
             <PrivacyButton list={list} />
           </div>
@@ -421,7 +388,7 @@ function ListContextControls({ listId }: { listId: string }) {
         <MobileMenu
           list={list}
           onPackToggle={list ? togglePackMode : undefined}
-          onGroupWornToggle={list ? () => groupWornMut.mutate(!list.group_worn) : undefined}
+          onListSettingsClick={list ? () => setSettingsOpen(true) : undefined}
           onShareClick={list ? () => setShareOpen(true) : undefined}
         />
       </div>
@@ -443,6 +410,32 @@ function ListContextControls({ listId }: { listId: string }) {
               <button
                 type="button"
                 onClick={() => setShareOpen(false)}
+                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Mobile list-options modal — opens via the mobile menu's
+          List options row. ListSettingsPanel handles Group worn +
+          Ready checks toggles; identical body to the desktop popover. */}
+      {list && (
+        <Modal
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          title="List options"
+          className="w-full max-w-sm"
+        >
+          <div className="p-4">
+            <h2 className="mb-3 text-base font-semibold text-gray-900">List options</h2>
+            <ListSettingsPanel list={list} />
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(false)}
                 className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
               >
                 Close

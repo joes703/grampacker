@@ -7,7 +7,7 @@ import {
   LogOut,
   Menu,
   Settings,
-  Shirt,
+  Settings2,
 } from 'lucide-react'
 import type { List } from '../lib/types'
 import { supabase } from '../lib/supabase'
@@ -18,7 +18,7 @@ import { useAnchoredMenu } from '../lib/use-anchored-menu'
 //      list-action props — renders the global-only section (Help, Settings,
 //      Sign out).
 //   2. NavBar's ListContextControls on /lists/:id, with all list-action
-//      props — renders Pack mode, Group worn, Share, divider, then the
+//      props — renders Pack mode, List options, Share, divider, then the
 //      global section.
 //
 // Replaces the previous pair of adjacent overflow buttons (HamburgerMenu +
@@ -28,9 +28,8 @@ import { useAnchoredMenu } from '../lib/use-anchored-menu'
 // State distribution:
 //   - URL state (Pack mode, current pathname) is read locally so active
 //     styling stays correct without lifting state.
-//   - Mutation state (Group worn, Share modal open/close) lives in
-//     ListContextControls; this component just calls the handlers passed
-//     in via props.
+//   - List-options + Share modals (open/close) live in ListContextControls;
+//     this component just calls the handlers passed in via props.
 //   - Sign out lives here, since both consumption sites need it and
 //     centralizing it avoids two copies of the supabase.auth.signOut +
 //     navigate('/login') pair.
@@ -40,14 +39,14 @@ type Props = {
    *  before the lists query resolves), only the global section renders. */
   list?: List
   onPackToggle?: () => void
-  onGroupWornToggle?: () => void
+  onListSettingsClick?: () => void
   onShareClick?: () => void
 }
 
 export default function MobileMenu({
   list,
   onPackToggle,
-  onGroupWornToggle,
+  onListSettingsClick,
   onShareClick,
 }: Props) {
   const navigate = useNavigate()
@@ -58,11 +57,10 @@ export default function MobileMenu({
     useAnchoredMenu({ variant: 'right-anchored' })
 
   // The list-action section requires both the list row (for active states
-  // on Group worn / Share) and all three handlers. If any is missing, hide
-  // the section — partial rendering would mean a row whose toggle did
-  // nothing.
+  // on Share) and all three handlers. If any is missing, hide the section
+  // — partial rendering would mean a row whose toggle did nothing.
   const showListActions =
-    Boolean(list) && Boolean(onPackToggle) && Boolean(onGroupWornToggle) && Boolean(onShareClick)
+    Boolean(list) && Boolean(onPackToggle) && Boolean(onListSettingsClick) && Boolean(onShareClick)
 
   async function handleSignOut() {
     close()
@@ -103,15 +101,15 @@ export default function MobileMenu({
                   onPackToggle?.()
                 }}
               />
-              <ToggleRow
-                icon={<Shirt size={14} />}
-                label={list.group_worn ? 'Ungroup worn' : 'Group worn'}
-                active={list.group_worn}
+              <MenuRowButton
+                icon={<Settings2 size={14} />}
                 onClick={() => {
                   close()
-                  onGroupWornToggle?.()
+                  onListSettingsClick?.()
                 }}
-              />
+              >
+                List options…
+              </MenuRowButton>
               <ToggleRow
                 icon={<Globe size={14} />}
                 label="Share…"
@@ -192,6 +190,32 @@ function ToggleRow({
     >
       {icon}
       <span>{label}</span>
+    </button>
+  )
+}
+
+// Non-toggle row primitive — opens a modal or runs an action that lives
+// elsewhere. Used by "List options…" which routes to a modal hosting
+// ListSettingsPanel (the toggles live there, not in the menu). Same row
+// chrome as MenuLink so the menu reads as one consistent list, just
+// without the active-state styling since the row has no persistent state.
+function MenuRowButton({
+  icon,
+  children,
+  onClick,
+}: {
+  icon: React.ReactNode
+  children: React.ReactNode
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+    >
+      {icon}
+      <span>{children}</span>
     </button>
   )
 }
