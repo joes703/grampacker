@@ -68,8 +68,8 @@ function SummaryStrip({ breakdown }: { breakdown: WeightBreakdown }) {
   return (
     <div className="grid grid-cols-3 divide-x divide-gray-100 rounded-lg border border-gray-200 bg-white">
       <Stat label="Base" grams={breakdown.baseGrams} unit={weightUnit} />
-      <Stat label="Total" grams={breakdown.totalPackGrams} unit={weightUnit} />
       <Stat label="Consumable" grams={breakdown.consumableGrams} unit={weightUnit} />
+      <Stat label="Pack total" grams={breakdown.totalPackGrams} unit={weightUnit} />
     </div>
   )
 }
@@ -84,7 +84,7 @@ function Stat({
   unit: 'g' | 'oz'
 }) {
   return (
-    <div className="px-3 py-2">
+    <div className="px-3 py-2 text-center">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
       <p className="mt-0.5 text-sm font-medium tabular-nums text-gray-900">
         {formatTotalWeight(grams, unit)}
