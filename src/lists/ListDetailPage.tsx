@@ -26,7 +26,6 @@ import {
   fetchGearItems,
   fetchCategories,
   createCategory,
-  createGearItem,
   addGearItemToList,
   updateListItem,
   deleteListItem,
@@ -96,7 +95,6 @@ type Mode = 'edit' | 'pack'
 // one variant so they can never drift apart.
 type DialogState =
   | { type: 'edit-gear'; gear: GearItem; listItem: ListItemWithGear | null; saveError: string | null }
-  | { type: 'create-gear'; defaultCategoryId: string | null; saveError: string | null }
   | { type: 'delete-gear'; candidate: GearItem }
   | { type: 'import-preview'; rows: ListImportRow[]; filename: string }
   | { type: 'import-error'; message: string }
@@ -600,32 +598,6 @@ function ListDetailInner({
     },
   })
 
-  // Canonical create-and-attach used by the picker's "+ New gear item"
-  // action. Two steps because GearItemDialog collects the full inventory
-  // field set (cost, purchase_date, status) that the add_gear_item_with_
-  // list_item RPC doesn't accept. Step 1 inserts the gear row; step 2
-  // attaches it to the current list with the list-side quantity / worn /
-  // consumable selections from the dialog's "On this list" section.
-  // Partial-failure semantics mirror the edit-gear flow: if attach fails
-  // after gear succeeds, the gear exists in inventory and the user can
-  // still pick it from the picker — saveError on the dialog explains.
-  const createGearFromPickerMut = useMutation({
-    mutationFn: async ({
-      gearPatch,
-      listFields,
-    }: {
-      gearPatch: Parameters<typeof createGearItem>[1]
-      listFields: { quantity: number; is_worn: boolean; is_consumable: boolean }
-    }) => {
-      const newGear = await createGearItem(userId, gearPatch, gearItems.length)
-      await addGearItemToList(listId, userId, newGear.id, listItems.length, listFields)
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
-    },
-  })
-
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -984,9 +956,7 @@ function ListDetailInner({
                   weightUnit={weightUnit}
                   onAdd={onLibraryAdd}
                   onRemove={onLibraryRemove}
-                  onCreateGearItemRequest={(defaultCategoryId) =>
-                    setDialog({ type: 'create-gear', defaultCategoryId, saveError: null })
-                  }
+                  manageHref={`/gear?from=${listId}`}
                   focusSearchTrigger={focusSearchTrigger}
                 />
               </div>
@@ -1211,9 +1181,7 @@ function ListDetailInner({
                 weightUnit={weightUnit}
                 onAdd={onLibraryAdd}
                 onRemove={onLibraryRemove}
-                onCreateGearItemRequest={(defaultCategoryId) =>
-                  setDialog({ type: 'create-gear', defaultCategoryId, saveError: null })
-                }
+                manageHref={`/gear?from=${listId}`}
               />
             </ListSidebarDrawer>
           </Suspense>
@@ -1296,43 +1264,6 @@ function ListDetailInner({
         />
       )}
 
-      {/* Canonical "+ New gear item" path from the picker. Same dialog
-          the gear library uses for create/edit — cost, purchase_date,
-          status, category are all editable, no reduced-form drift. The
-          listContext is seeded with sensible defaults (qty 1, not worn,
-          not consumable) so the dialog renders its "On this list"
-          section and the user can adjust before saving. Save runs the
-          two-step create-and-attach mutation; partial failure mirrors
-          the edit-gear flow by surfacing saveError. */}
-      {dialog?.type === 'create-gear' && (
-        <GearItemDialog
-          key="create-gear"
-          categories={categories}
-          defaultCategoryId={dialog.defaultCategoryId}
-          listContext={{ quantity: 1, is_worn: false, is_consumable: false }}
-          saving={createGearFromPickerMut.isPending}
-          saveError={dialog.saveError}
-          onClose={() => setDialog(null)}
-          onCreateCategory={(categoryName) => addCategoryMut.mutateAsync(categoryName)}
-          onSave={async (gearPatch, listPatch) => {
-            // listPatch is guaranteed non-null here because listContext
-            // is passed above; the fallback exists only to narrow the
-            // type for TypeScript.
-            const listFields = listPatch ?? { quantity: 1, is_worn: false, is_consumable: false }
-            setDialog({ ...dialog, saveError: null })
-            try {
-              await createGearFromPickerMut.mutateAsync({ gearPatch, listFields })
-              setDialog(null)
-            } catch {
-              setDialog({
-                ...dialog,
-                saveError:
-                  "Couldn't create the gear item. Try again, or close to discard.",
-              })
-            }
-          }}
-        />
-      )}
 
       {/* Delete-from-inventory confirm (reached from the kebab). Removes the
           gear item from the library and cascades to every list_item that

@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react'
+import { Link } from 'react-router'
+import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { groupByCategory } from '../lib/grouping'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
@@ -16,16 +17,12 @@ type Props = {
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
   onRemove: (item: GearItem) => void
-  /** Optional hook for the secondary "+ New gear item" action. The
-   *  picker is a picker/filter surface and intentionally does NOT own
-   *  gear-creation form state — the parent (ListDetailPage) opens the
-   *  canonical GearItemDialog in create mode with the same field set
-   *  the gear library uses, then runs the create-and-attach mutation
-   *  on save. We pass `defaultCategoryId` so the dialog pre-fills the
-   *  category dropdown from whichever chip is currently selected (real
-   *  category id → that category, All / Uncategorized → null). Omit on
-   *  read-only surfaces. */
-  onCreateGearItemRequest?: (defaultCategoryId: string | null) => void
+  /** Forward link to the Gear Inventory page. Surfaced in the empty
+   *  state so a user who can't find a piece of gear is pointed at the
+   *  canonical place to create it. Inventory-first: the picker is a
+   *  picker, not a creation surface. Same href the drawer's "Manage"
+   *  affordance uses (carries `?from=<listId>` for the Back link). */
+  manageHref?: string
   // Increment from a parent to programmatically focus the search input.
   // Used by the empty-list onboarding affordance on /lists/:id at lg+.
   // The skipInitialFocus ref guards the mount-time effect run so that
@@ -34,7 +31,7 @@ type Props = {
   focusSearchTrigger?: number
 }
 
-export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove, onCreateGearItemRequest, focusSearchTrigger }: Props) {
+export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove, manageHref, focusSearchTrigger }: Props) {
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<CategoryChipValue>(null)
   const [collapsed, setCollapsed] = useState(new Set<string>())
@@ -135,36 +132,24 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
           selected={selectedCategory}
           onChange={setSelectedCategory}
         />
-        {/* Secondary "New gear item" path — kept quiet so picking an
-            existing item from the rows below remains the primary
-            affordance. Tapping hands off to the parent, which opens the
-            canonical GearItemDialog (same form the gear library uses) so
-            cost / purchase_date / status / category are all available
-            and there's no reduced-form drift. The selected chip becomes
-            the default category. */}
-        {onCreateGearItemRequest && (
-          <button
-            type="button"
-            onClick={() => {
-              const defaultCategoryId =
-                selectedCategory && selectedCategory !== UNCATEGORIZED_CHIP_VALUE
-                  ? selectedCategory
-                  : null
-              onCreateGearItemRequest(defaultCategoryId)
-            }}
-            className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-blue-600"
-          >
-            <Plus size={12} /> New gear item
-          </button>
-        )}
       </div>
 
       {/* Category groups */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {groups.length === 0 ? (
-          <p className="p-4 text-center text-sm text-gray-400 italic">
-            {q ? 'No items found' : 'No gear items yet'}
-          </p>
+          // Inventory-first empty state. Whether the user is searching
+          // for something that isn't in their library yet or they have
+          // no gear at all, the answer is the same: create gear in
+          // Gear Inventory, then come back here to add it. We point
+          // them there with a quiet link rather than hosting a creation
+          // form inside the picker.
+          <EmptyState
+            heading={searchFiltered.length === 0 && !q && !selectedCategory
+              ? 'No gear in your inventory yet'
+              : 'No matching gear in your inventory.'}
+            body="Create new gear from Gear Inventory, then add it to this list."
+            manageHref={manageHref}
+          />
         ) : (
           <>
             {groups.map(({ category, items }) => {
@@ -193,6 +178,36 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
         )}
       </div>
 
+    </div>
+  )
+}
+
+// Empty-state cell shown when search / chip filters produce zero
+// matches, or when the user's inventory is genuinely empty. Inventory-
+// first wording: the cell explains where gear lives instead of offering
+// to create it here. The Manage link is rendered only when the parent
+// supplies an href (it's omitted on read-only surfaces).
+function EmptyState({
+  heading,
+  body,
+  manageHref,
+}: {
+  heading: string
+  body: string
+  manageHref?: string
+}) {
+  return (
+    <div className="p-4 text-center text-sm text-gray-500">
+      <p className="font-medium text-gray-700">{heading}</p>
+      <p className="mt-1 text-xs text-gray-500">{body}</p>
+      {manageHref && (
+        <Link
+          to={manageHref}
+          className="mt-2 inline-flex items-center text-xs font-medium text-blue-600 hover:underline"
+        >
+          Open Gear Inventory
+        </Link>
+      )}
     </div>
   )
 }

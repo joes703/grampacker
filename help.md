@@ -2,13 +2,19 @@
 
 grampacker helps you keep track of your backpacking gear, build packing lists, and see what your pack weighs.
 
+## How grampacker works
+
+grampacker is inventory-first: your gear lives in **Gear Inventory**, and each list pulls from that inventory. Keeping one master list of gear means weights, categories, status, cost, and other details stay consistent across every trip.
+
+On desktop, list rows include an inline quick-add shortcut for fast keyboard planning — that shortcut creates the new gear in your inventory and adds it to the current list in one step. On mobile, tap **Add** to choose existing gear from your inventory; create brand-new gear in **Gear Inventory** first, then add it to a list.
+
 ## Basic concepts
 
 ### Gear inventory
 
-Your gear inventory is the master list of gear you own. It is useful when you want to reuse the same items across multiple trips.
+Your gear inventory is the master list of gear you own and the canonical place to create and edit full gear items. It's where weight, category, status, cost, and purchase date live, so each list inherits the same details and stays consistent across trips.
 
-You can add gear directly in the Gear Library, import gear from a CSV, or create new gear while working on a list.
+Open **Gear Inventory** to add gear, edit existing items, or import gear from a CSV. The desktop list view also exposes a quick-add shortcut that creates inventory gear inline.
 
 ### Packing lists
 
@@ -39,11 +45,13 @@ You can turn on **Group worn items** from a list's **List options** button to mo
 You can build a list in a few ways:
 
 1. Create a new list and add items from your gear inventory.
-2. Add a new item directly from the list. This also adds it to your inventory.
+2. On desktop, use the inline quick-add shortcut at the bottom of any category to create new gear and attach it to the list in one step.
 3. Import a CSV from Lighterpack or another compatible spreadsheet.
-4. Select items in the Gear Library and create a list from that selection.
+4. Select items in Gear Inventory and create a list from that selection.
 
 On desktop, the library panel appears next to your list. Click an inventory item to add it to the list. Click it again to remove it.
+
+On mobile, tap **Add** to open the inventory picker. Use search and the category chips to find gear, then tap items to add them. If you can't find the gear you want, create it in **Gear Inventory** first — then come back and add it to the list. Mobile list view doesn't create new gear directly; it's a picker over your inventory.
 
 In the Gear Library, use Select to choose multiple items. From there you can move items to a category, delete them, or create a new list from the selection.
 
