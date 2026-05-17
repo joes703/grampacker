@@ -73,6 +73,7 @@ import { useCsvFileInput } from '../lib/use-csv-file-input'
 import WeightTable from './WeightTable'
 import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
+import MobileListActionBar from './MobileListActionBar'
 import PackingProgress from './PackingProgress'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
@@ -901,10 +902,12 @@ function ListDetailInner({
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 pb-20 lg:pb-0 print:pb-0">
       {/* List name, g/oz, Pack toggle, and Share live in the top bar
           (NavBar's RouteHeading + ListContextControls); the page body owns
-          the two-column layout below. */}
+          the two-column layout below. pb-20 reserves space under the fixed
+          mobile bottom action bar so its content can't be obscured by it;
+          lg:pb-0 drops the padding where the bar isn't rendered. */}
 
       {/* Print-only header. NavBar (list name) and the Notes/WeightTable
           panels are hidden in print and pack mode hides them on screen too,
@@ -1314,6 +1317,10 @@ function ListDetailInner({
           </div>
         </Modal>
       )}
+
+      {/* Mobile-only bottom action bar — hosts Add, Pack, Options. lg:hidden
+          inside the bar itself, so desktop never renders it. */}
+      <MobileListActionBar list={list} />
 
     </div>
   )

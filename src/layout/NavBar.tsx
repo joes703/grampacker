@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ClipboardList, HelpCircle, LogOut, Pencil, Plus, Settings } from 'lucide-react'
+import { ClipboardList, HelpCircle, LogOut, Pencil, Settings } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import { supabase } from '../lib/supabase'
 import { queryKeys, fetchLists, updateList, makeOptimisticUpdate } from '../lib/queries'
@@ -9,11 +9,8 @@ import type { List } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import MobileMenu from './MobileMenu'
 import ListSelector from './ListSelector'
-import { useSidebarDrawer } from './sidebar-drawer-context'
 import InlineTitle from '../lists/InlineTitle'
 import ListSettingsButton from '../lists/ListSettingsButton'
-import ListSettingsPanel from '../lists/ListSettingsPanel'
-import Modal from '../components/Modal'
 
 // Per-route slot resolution. Mounted only inside AppShell, which is gated by
 // PrivateRoute — so this component is never rendered on /login, /register,
@@ -43,7 +40,6 @@ export default function NavBar() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const route = resolveRoute(pathname)
-  const { available, setOpen } = useSidebarDrawer()
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -53,27 +49,6 @@ export default function NavBar() {
   return (
     <header className="border-b border-gray-200 bg-white print:hidden">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 sm:gap-3 lg:gap-6 px-4">
-        {/* Mobile sidebar trigger — only renders when the active page has
-            registered sidebar content (today: ListDetailPage). Visible
-            "Add" label so the affordance reads as the action it performs
-            (open the gear picker drawer, which is the single mobile
-            add path) without crowding the list title. On pages without
-            a drawer, this slot collapses and the brand sits at the left
-            edge. Hidden on lg+ where the page renders the equivalent
-            left aside inline and category sections expose their own
-            inline add-row instead. */}
-        {available && (
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            aria-label="Add to list"
-            className="lg:hidden inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            <Plus size={16} />
-            <span>Add</span>
-          </button>
-        )}
-
         {/* Brand. Hidden on <md to free space for the route heading +
             controls (the route's own heading carries the identity). On md+
             it's the home link. */}
@@ -89,9 +64,10 @@ export default function NavBar() {
 
         {/* Right cluster — list-context controls (only on /lists/:id) and
             the persistent secondary destinations (Help/Settings/Sign out at
-            md+, MobileMenu at <md). On /lists/:id the MobileMenu is rendered
-            by ListContextControls instead so the list-action rows can sit
-            above the global section in a single popover. */}
+            md+, MobileMenu at <md). On /lists/:id the primary list actions
+            (Add, Pack, Options) live in the mobile bottom action bar, so
+            the MobileMenu here stays global-only and renders unconditionally
+            on every authed route. */}
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {route.kind === 'list-detail' && <ListContextControls listId={route.listId} />}
 
@@ -129,17 +105,12 @@ export default function NavBar() {
             </button>
           </div>
 
-          {/* < md trigger for the secondary-destination popover. On
-              /lists/:id the same menu is rendered by ListContextControls
-              with list-action props above the global section, so suppress
-              this top-level mount there to avoid two adjacent menu
-              triggers (the original bug). On every other authed route the
-              top-level mount is the only menu surface. */}
-          {route.kind !== 'list-detail' && (
-            <div className="md:hidden">
-              <MobileMenu />
-            </div>
-          )}
+          {/* < md trigger for the secondary-destination popover. The
+              mobile bottom action bar handles list-specific actions on
+              /lists/:id, so this menu is global-only on every route. */}
+          <div className="md:hidden">
+            <MobileMenu />
+          </div>
         </div>
       </div>
     </header>
@@ -304,11 +275,12 @@ function ListHeading({
   )
 }
 
-// /lists/:id-only controls. Renders inline g/oz, List options, Pack at md+;
-// at <md the same actions live in a kebab. Sharing no longer has its own
-// top-level trigger — it's a Sharing section inside List options, so the
-// modal hosts ListSettingsPanel and the user reaches the public-link toggle
-// + copy URL by opening List options.
+// /lists/:id-only controls. Renders inline g/oz on every viewport, plus the
+// md+ List options button and Pack pill. The mobile equivalents of List
+// options and Pack live in MobileListActionBar (bottom of the page); the
+// global MobileMenu (Help / Settings / Sign out) is mounted at the NavBar
+// top level. Sharing reaches the user through the List options modal — it
+// has no top-level trigger of its own.
 function ListContextControls({ listId }: { listId: string }) {
   const auth = useRequireSession()
   const userId = auth?.userId ?? ''
@@ -320,7 +292,6 @@ function ListContextControls({ listId }: { listId: string }) {
   const { weightUnit, toggleWeightUnit } = useWeightUnit()
   const [searchParams, setSearchParams] = useSearchParams()
   const isPackMode = searchParams.get('mode') === 'pack'
-  const [settingsOpen, setSettingsOpen] = useState(false)
 
   function togglePackMode() {
     setSearchParams(
@@ -334,13 +305,9 @@ function ListContextControls({ listId }: { listId: string }) {
     )
   }
 
-  // List-specific affordances (List options button, Pack pill, mobile
-  // settings modal body) only render once `list` resolves. g/oz and the
-  // mobile menu render unconditionally so the user retains access to
-  // global actions (Help / Settings / Sign out) and the unit toggle during
-  // the lists query's cold-load window. Without that, /lists/:id has no
-  // reachable global menu while loading — a regression versus rendering
-  // null.
+  // List-specific affordances (List options button, Pack pill) only render
+  // once `list` resolves. g/oz renders unconditionally so the user retains
+  // access to the unit toggle during the lists query's cold-load window.
   return (
     <>
       {/* g/oz toggle — same on every viewport. The text label is short
@@ -379,46 +346,6 @@ function ListContextControls({ listId }: { listId: string }) {
             <span>Pack</span>
           </button>
         </>
-      )}
-
-      {/* < md unified menu — Pack, List options, then the global section.
-          Sharing reaches the user through the List options modal, not as
-          its own row. Renders unconditionally so the global section
-          (Help, Settings, Sign out) remains reachable during the cold-load
-          window; list-action handlers flow through only once `list`
-          resolves so the rows are either fully wired or hidden. */}
-      <div className="md:hidden">
-        <MobileMenu
-          list={list}
-          onPackToggle={list ? togglePackMode : undefined}
-          onListSettingsClick={list ? () => setSettingsOpen(true) : undefined}
-        />
-      </div>
-
-      {/* Mobile list-options modal — opens via the mobile menu's
-          List options row. ListSettingsPanel hosts Group worn items and
-          the Sharing section (public-link toggle + copy URL). */}
-      {list && (
-        <Modal
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          title="List options"
-          className="w-full max-w-sm"
-        >
-          <div className="p-4">
-            <h2 className="mb-3 text-base font-semibold text-gray-900">List options</h2>
-            <ListSettingsPanel list={list} />
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(false)}
-                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </Modal>
       )}
     </>
   )
