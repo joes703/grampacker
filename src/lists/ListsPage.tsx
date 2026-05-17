@@ -243,7 +243,7 @@ export default function ListsPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold text-gray-900">
-          Manage Lists
+          All lists
           <span className="ml-2 text-sm font-normal text-gray-500">{lists.length}</span>
         </h1>
 
@@ -597,9 +597,12 @@ function ListCard({
       </div>
 
       {/* Workflow actions: Pack launches into pack mode via the URL state
-          on /lists/:id; Share reuses the in-list PrivacyButton (its popover
-          is anchored to its own trigger, so dropping it into the card just
-          works). The row sits at z-10 with pointer-events-auto, above the
+          on /lists/:id; Share is the per-card PrivacyButton (anchored to
+          its own trigger so dropping it into the card just works). On
+          /lists/:id sharing has moved inside List options, but the card
+          surface keeps a one-tap share affordance — the All lists page is
+          a list-library overview and per-card share matches that mental
+          model. The row sits at z-10 with pointer-events-auto, above the
           card's full-area Link at z-0 — clicks on the buttons hit them
           directly via z-order, no propagation interception needed. */}
       <div className="relative z-10 mt-3 flex items-center justify-end gap-2 pointer-events-auto">

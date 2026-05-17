@@ -32,7 +32,7 @@ grampacker uses three weight concepts:
 
 Pack weight includes base weight and consumables. Total weight includes pack weight plus worn items.
 
-You can turn on **Group worn** from a list's **Options** button to move worn items into their own Worn section. This applies while editing the list, in Pack mode, and on public shared links.
+You can turn on **Group worn items** from a list's **List options** button to move worn items into their own Worn section. This applies while editing the list, in Pack mode, and on public shared links.
 
 ## Building a list
 
@@ -91,17 +91,18 @@ Like Packed, Ready checkmarks work offline and sync when you reconnect. Ready st
 
 ### List options
 
-The **Options** button near the top of a list opens broader list-presentation settings that apply across views:
+The **List options** button near the top of a list opens current-list settings that apply across views:
 
-- **Group worn** moves worn items into their own section at the bottom of the list. Applies while editing, in Pack mode, and on public share links.
+- **Group worn items** moves worn items into their own section at the bottom of the list. Applies while editing, in Pack mode, and on public share links.
+- **Sharing** turns on a public read-only link for the list and provides the URL to copy. Anyone with the link can view the list.
 
-Sharing controls live in the separate **Share** button. Pack mode controls like Ready checks and Show unpacked only live in Pack mode itself.
+Pack mode controls like Ready checks and Show unpacked only live in Pack mode itself.
 
 ## Sharing a list
 
 You can create a public read-only link for a list.
 
-Open the list privacy controls, turn on the public link, and copy the URL. Anyone with the link can view the list without an account.
+Open **List options**, turn on the public link under the Sharing section, and copy the URL. Anyone with the link can view the list without an account. The All lists page also has a per-card Share button if you want to manage public links from the list library.
 
 Public links are read-only. Other people cannot edit your list.
 

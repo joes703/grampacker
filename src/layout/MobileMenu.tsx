@@ -2,7 +2,6 @@ import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 import {
   ClipboardList,
-  Globe,
   HelpCircle,
   LogOut,
   Menu,
@@ -17,9 +16,10 @@ import { useAnchoredMenu } from '../lib/use-anchored-menu'
 //   1. NavBar top-level on every authed route EXCEPT /lists/:id, with no
 //      list-action props — renders the global-only section (Help, Settings,
 //      Sign out).
-//   2. NavBar's ListContextControls on /lists/:id, with all list-action
-//      props — renders Pack mode, List options, Share, divider, then the
-//      global section.
+//   2. NavBar's ListContextControls on /lists/:id, with the list-action
+//      props — renders Pack mode, List options…, divider, then the global
+//      section. Sharing is reached through the List options modal, not its
+//      own row.
 //
 // Replaces the previous pair of adjacent overflow buttons (HamburgerMenu +
 // ListActionsKebab) which competed on the same right-side region of the
@@ -28,26 +28,24 @@ import { useAnchoredMenu } from '../lib/use-anchored-menu'
 // State distribution:
 //   - URL state (Pack mode, current pathname) is read locally so active
 //     styling stays correct without lifting state.
-//   - List-options + Share modals (open/close) live in ListContextControls;
-//     this component just calls the handlers passed in via props.
+//   - List-options modal (open/close) lives in ListContextControls; this
+//     component just calls the handler passed in via props.
 //   - Sign out lives here, since both consumption sites need it and
 //     centralizing it avoids two copies of the supabase.auth.signOut +
 //     navigate('/login') pair.
 type Props = {
-  /** Provide together with the three list-action handlers to enable the
+  /** Provide together with the list-action handlers to enable the
    *  list-actions section. When list is undefined (e.g. cold-load window
    *  before the lists query resolves), only the global section renders. */
   list?: List
   onPackToggle?: () => void
   onListSettingsClick?: () => void
-  onShareClick?: () => void
 }
 
 export default function MobileMenu({
   list,
   onPackToggle,
   onListSettingsClick,
-  onShareClick,
 }: Props) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -56,11 +54,11 @@ export default function MobileMenu({
   const { open, openMenu, close, triggerRef, menuRef, menuPos } =
     useAnchoredMenu({ variant: 'right-anchored' })
 
-  // The list-action section requires both the list row (for active states
-  // on Share) and all three handlers. If any is missing, hide the section
-  // — partial rendering would mean a row whose toggle did nothing.
+  // The list-action section requires the list row and both handlers. If
+  // any is missing, hide the section — partial rendering would mean a row
+  // whose toggle did nothing.
   const showListActions =
-    Boolean(list) && Boolean(onPackToggle) && Boolean(onListSettingsClick) && Boolean(onShareClick)
+    Boolean(list) && Boolean(onPackToggle) && Boolean(onListSettingsClick)
 
   async function handleSignOut() {
     close()
@@ -110,15 +108,6 @@ export default function MobileMenu({
               >
                 List options…
               </MenuRowButton>
-              <ToggleRow
-                icon={<Globe size={14} />}
-                label="Share…"
-                active={list.is_shared}
-                onClick={() => {
-                  close()
-                  onShareClick?.()
-                }}
-              />
               <div className="my-1 border-t border-gray-100" />
             </>
           )}
