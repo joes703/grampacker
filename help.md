@@ -32,7 +32,7 @@ grampacker uses three weight concepts:
 
 Pack weight includes base weight and consumables. Total weight includes pack weight plus worn items.
 
-You can turn on **Group worn** from a list's top controls to move worn items into their own Worn section. This applies while editing the list, in Pack mode, and on public shared links.
+You can turn on **Group worn** from a list's **Options** button to move worn items into their own Worn section. This applies while editing the list, in Pack mode, and on public shared links.
 
 ## Building a list
 
@@ -73,7 +73,6 @@ Pack mode includes controls to:
 
 - show only unpacked items
 - reset packed checkmarks
-- turn on Ready checks (see below)
 
 Pack mode is intentionally simple so it is easy to use while packing.
 
@@ -81,13 +80,22 @@ Pack mode is intentionally simple so it is easy to use while packing.
 
 Ready checks add a second checkbox to each item in Pack mode, so you can mark an item Ready before it goes into your pack. Useful when you want to inspect, charge, refill, or stage gear before the final pack pass.
 
-Turn it on with the **Ready checks** button at the top of Pack mode. The toggle is per-list, so each list can have it on or off independently. It stays off by default.
+Turn it on from the **Options** button at the top of the list (next to Share). Ready checks is a per-list setting, so each list can have it on or off independently. It stays off by default.
 
-When Ready checks are on, every row gets a Ready checkbox (amber) before the Packed checkbox (blue). The two states are independent: you can mark an item Ready without marking it Packed, and an item is only fully packed when its Packed checkbox is checked.
+When Ready checks are on, every row in Pack mode gets a Ready checkbox (amber) before the Packed checkbox (blue). The two states are independent: you can mark an item Ready without marking it Packed, and an item is only fully packed when its Packed checkbox is checked.
 
 A second progress bar tracks how many items are Ready, alongside the Packed progress bar. Separate **Reset ready** and **Reset packed** buttons let you clear either state without affecting the other.
 
 Like Packed, Ready checkmarks work offline and sync when you reconnect. Ready state is not shown on public share links.
+
+### List options
+
+The **Options** button near the top of a list opens settings that affect how the list is displayed:
+
+- **Group worn** moves worn items into their own section at the bottom of the list. Applies while editing, in Pack mode, and on public share links.
+- **Ready checks** turns on the second checkbox in Pack mode (see above).
+
+Both are per-list and stay off by default. Sharing controls live in the separate **Share** button.
 
 ## Sharing a list
 

@@ -392,7 +392,7 @@ function ListDetailInner({
     mutationFn: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) =>
       updateListItem(itemId, patch),
     ...updateMutOptimistic,
-    onSettled: (_data, _err, _vars, _ctx) => {
+    onSettled: () => {
       // qc.isMutating excludes mutations that have already entered settled
       // state (success/error) by the time their own onSettled runs, so a
       // non-zero count means at least one sibling is still pending.
@@ -461,25 +461,6 @@ function ListDetailInner({
       apply: (item, description) => ({
         ...item,
         description: description || null,
-        updated_at: new Date().toISOString(),
-      }),
-    }),
-  })
-
-  // Per-list Ready Checks toggle (Pack Mode only). Optimistic on the
-  // lists cache so the new checkbox column appears/disappears immediately;
-  // server-write reconciles on settle. We deliberately preserve existing
-  // is_ready values when toggling off — hiding the column is a UI choice,
-  // not a data wipe, matching how group_worn behaves.
-  const readyChecksToggleMut = useMutation({
-    mutationFn: (enabled: boolean) => updateList(listId, { ready_checks_enabled: enabled }),
-    ...makeOptimisticUpdate<List, boolean>({
-      qc,
-      queryKey: queryKeys.lists(),
-      id: () => listId,
-      apply: (item, enabled) => ({
-        ...item,
-        ready_checks_enabled: enabled,
         updated_at: new Date().toISOString(),
       }),
     }),
@@ -984,7 +965,6 @@ function ListDetailInner({
                 readyChecks={{
                   ready: listItems.filter((i) => i.is_ready).length,
                   enabled: list.ready_checks_enabled,
-                  onToggleEnabled: () => readyChecksToggleMut.mutate(!list.ready_checks_enabled),
                   onResetReady: resetReady,
                 }}
               />
