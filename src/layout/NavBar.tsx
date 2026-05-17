@@ -55,21 +55,22 @@ export default function NavBar() {
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 sm:gap-3 lg:gap-6 px-4">
         {/* Mobile sidebar trigger — only renders when the active page has
             registered sidebar content (today: ListDetailPage). Visible
-            "Add gear" label so the affordance reads as the action it
-            performs (open the gear picker drawer to add gear to the
-            list), not as an ambiguous icon. On pages without a drawer,
-            this slot collapses and the brand sits at the left edge.
-            Hidden on lg+ where the page renders the equivalent left
-            aside inline. */}
+            "Add" label so the affordance reads as the action it performs
+            (open the gear picker drawer, which is the single mobile
+            add path) without crowding the list title. On pages without
+            a drawer, this slot collapses and the brand sits at the left
+            edge. Hidden on lg+ where the page renders the equivalent
+            left aside inline and category sections expose their own
+            inline add-row instead. */}
         {available && (
           <button
             type="button"
             onClick={() => setOpen(true)}
-            aria-label="Add gear to list"
+            aria-label="Add to list"
             className="lg:hidden inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
           >
             <Plus size={16} />
-            <span>Add gear</span>
+            <span>Add</span>
           </button>
         )}
 

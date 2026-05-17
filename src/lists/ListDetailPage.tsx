@@ -956,6 +956,7 @@ function ListDetailInner({
                   weightUnit={weightUnit}
                   onAdd={onLibraryAdd}
                   onRemove={onLibraryRemove}
+                  onAddNewItem={onAddNewItem}
                   focusSearchTrigger={focusSearchTrigger}
                 />
               </div>
@@ -1180,6 +1181,7 @@ function ListDetailInner({
                 weightUnit={weightUnit}
                 onAdd={onLibraryAdd}
                 onRemove={onLibraryRemove}
+                onAddNewItem={onAddNewItem}
               />
             </ListSidebarDrawer>
           </Suspense>
