@@ -6,9 +6,9 @@ import { useRequireSession } from '../auth/use-require-session'
 import { supabase } from '../lib/supabase'
 import { queryKeys, fetchLists, updateList, makeOptimisticUpdate } from '../lib/queries'
 import type { List } from '../lib/types'
-import { useWeightUnit } from '../lib/use-weight-unit'
 import MobileMenu from './MobileMenu'
 import ListSelector from './ListSelector'
+import WeightUnitToggle from './WeightUnitToggle'
 import InlineTitle from '../lists/InlineTitle'
 import ListSettingsButton from '../lists/ListSettingsButton'
 
@@ -70,6 +70,10 @@ export default function NavBar() {
             on every authed route. */}
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {route.kind === 'list-detail' && <ListContextControls listId={route.listId} />}
+          {/* Gear Inventory exposes the same g/oz display control in the
+              top chrome, freeing the page's content area for create/
+              filter/utility controls. Same control on every viewport. */}
+          {route.kind === 'gear' && <WeightUnitToggle />}
 
           {/* Persistent links on md+. Lists/Gear NavLinks removed — list
               switching is the chevron selector, gear access moves to the
@@ -289,7 +293,6 @@ function ListContextControls({ listId }: { listId: string }) {
     queryFn: () => fetchLists(userId),
   })
   const list = lists.find((l) => l.id === listId)
-  const { weightUnit, toggleWeightUnit } = useWeightUnit()
   const [searchParams, setSearchParams] = useSearchParams()
   const isPackMode = searchParams.get('mode') === 'pack'
 
@@ -310,16 +313,7 @@ function ListContextControls({ listId }: { listId: string }) {
   // access to the unit toggle during the lists query's cold-load window.
   return (
     <>
-      {/* g/oz toggle — same on every viewport. The text label is short
-          enough to render even at 375px without crowding. */}
-      <button
-        onClick={toggleWeightUnit}
-        title={`Switch to ${weightUnit === 'g' ? 'oz' : 'g'}`}
-        aria-label={`Toggle weight unit (currently ${weightUnit})`}
-        className="rounded-lg border border-gray-300 px-2 sm:px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
-      >
-        {weightUnit}
-      </button>
+      <WeightUnitToggle />
 
       {/* md+ inline list controls — gated on resolved list to avoid
           rendering List options / Pack against a stale or absent row.

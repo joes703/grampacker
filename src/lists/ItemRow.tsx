@@ -163,7 +163,13 @@ export default function ItemRow({
       <div
         ref={outerRef}
         style={outerStyle}
-        className={`flex items-center gap-0.5 lg:gap-1.5 border-b border-gray-100 px-2 lg:px-3 py-2 lg:py-0.5 text-sm transition-colors ${
+        // gap-2 lg:gap-2.5 controls only the space between the Ready
+        // checkbox (left) and the wrapping label that hosts Packed +
+        // name. When readyChecksEnabled is false the row has just one
+        // direct flex child (the label) so this gap is inert. Bumped
+        // from gap-0.5 lg:gap-1.5 so the two checkboxes don't read as
+        // a single cluster on touch.
+        className={`flex items-center gap-2 lg:gap-2.5 border-b border-gray-100 px-2 lg:px-3 py-2 lg:py-0.5 text-sm transition-colors ${
           // Calmer "done" treatment than a green tint — the gray background
           // pairs with the text-gray-400 line-through inside the label to
           // read as completed without celebrating. print:bg-transparent
