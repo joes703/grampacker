@@ -71,6 +71,7 @@ import { parseListCsv, type ListImportRow } from '../lib/csv'
 import { randomTempId } from '../lib/random-temp-id'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import WeightTable from './WeightTable'
+import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
 import PackingProgress from './PackingProgress'
 import NotesEditor from './NotesEditor'
@@ -993,10 +994,14 @@ function ListDetailInner({
           )}
 
           {/* Notes + Weight summary — side by side on desktop, with Notes
-              getting the wider column. Both
-              hidden in pack mode: neither is active-use information while
-              packing (PackingProgress above is the only summary the
-              packer needs). The entire grid renders nothing in pack mode. */}
+              getting the wider column. Both hidden in pack mode: neither
+              is active-use information while packing (PackingProgress
+              above is the only summary the packer needs). The entire grid
+              renders nothing in pack mode.
+              WeightSummary owns its own mobile-vs-desktop split: below lg
+              it's a compact Base/Total/Consumable strip with a collapsed
+              "Weight breakdown" disclosure, at lg+ it's the existing
+              PanelCard table. */}
           {mode !== 'pack' && (
             <div className={`print:hidden grid gap-4 ${listItems.length > 0 ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
               <PanelCard title="Notes">
@@ -1006,11 +1011,7 @@ function ListDetailInner({
                   onSave={(v) => notesMut.mutate(v)}
                 />
               </PanelCard>
-              {listItems.length > 0 && (
-                <PanelCard title="Weight summary">
-                  <WeightTable items={listItems} categories={categories} />
-                </PanelCard>
-              )}
+              <WeightSummary items={listItems} categories={categories} />
             </div>
           )}
 

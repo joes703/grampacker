@@ -19,6 +19,18 @@ export function formatItemWeight(grams: number, unit: WeightUnit): string {
   return `${gramsToOz(grams).toFixed(1)} oz`
 }
 
+// Aggregate weight for summary slots (base, total, consumable). Uses
+// compound lb+oz in imperial mode once the value crosses 1 lb so big
+// numbers stay readable. Distinct from formatItemWeight on purpose: per-
+// row oz-only keeps row columns tabular, while a summary stat at 14 kg
+// reads as "30 lb 13.8 oz" not "493.8 oz".
+export function formatTotalWeight(grams: number, unit: WeightUnit): string {
+  if (unit === 'g') return `${grams} g`
+  const { lb, oz } = gramsToLbOzParts(grams)
+  if (lb > 0) return `${lb} lb ${oz.toFixed(1)} oz`
+  return `${oz.toFixed(1)} oz`
+}
+
 export function gramsToLbOzParts(grams: number): { lb: number; oz: number } {
   const totalOz = gramsToOz(grams)
   const lb = Math.floor(totalOz / 16)
