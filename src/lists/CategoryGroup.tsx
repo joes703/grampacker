@@ -4,7 +4,7 @@ import { Check, ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import type { ListItemPatch } from '../lib/queries'
-import { formatItemWeight, type WeightUnit } from '../lib/weight'
+import { formatTotalWeight, type WeightUnit } from '../lib/weight'
 import { makeDnDId } from '../lib/dnd-ids'
 import ItemRow, { SortableItemRow } from './ItemRow'
 import AddItemRow from './AddItemRow'
@@ -339,7 +339,7 @@ function CategoryGroup({
                 <div className="shrink-0 w-7" />
                 <div className="shrink-0 w-12" />
                 <div className="shrink-0 w-24 text-right tabular-nums font-semibold text-gray-700">
-                  {items.length > 0 ? formatItemWeight(totalGrams, weightUnit) : ''}
+                  {items.length > 0 ? formatTotalWeight(totalGrams, weightUnit) : ''}
                 </div>
                 {showKebabSlot && <div className="shrink-0 w-7" />}
               </div>
@@ -347,7 +347,7 @@ function CategoryGroup({
                 <div className="shrink-0 w-6" />
                 <div className="shrink-0 w-8" />
                 <div className="shrink-0 w-20 text-right tabular-nums font-semibold text-gray-700">
-                  {items.length > 0 ? formatItemWeight(totalGrams, weightUnit) : ''}
+                  {items.length > 0 ? formatTotalWeight(totalGrams, weightUnit) : ''}
                 </div>
               </div>
             </div>
