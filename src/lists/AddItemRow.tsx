@@ -85,6 +85,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
       <RowIconButton
         variant="purpleToggle"
         active={worn}
+        alwaysVisible
         onClick={toggleWorn}
         title="Worn"
         ariaLabel="Worn"
@@ -93,6 +94,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
       <RowIconButton
         variant="orangeToggle"
         active={consumable}
+        alwaysVisible
         onClick={toggleConsumable}
         title="Consumable"
         ariaLabel="Consumable"

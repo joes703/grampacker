@@ -25,6 +25,11 @@ type Props = {
   ariaLabel: string
   variant?: Variant
   active?: boolean
+  /** Defeat the toggle variants' hover-reveal. Used by form rows
+   *  (e.g. AddItemRow) where the inactive flag toggles must always be
+   *  visible because there's no parent row hover affordance to reveal
+   *  them. No-op for variants whose idle state is already always-visible. */
+  alwaysVisible?: boolean
   ref?: Ref<HTMLButtonElement>
 } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label' | 'children'>
 
@@ -34,20 +39,21 @@ const VARIANT_CLASSES: Record<Variant, string> = {
   default: 'text-gray-400 hover:text-gray-700 hover:bg-gray-100',
   danger: 'text-gray-400 hover:text-red-600 hover:bg-red-50',
   success: 'text-green-600 hover:text-green-700 hover:bg-green-50',
-  purpleToggle: 'text-gray-400 hover:text-gray-700 hover:bg-gray-100',
-  orangeToggle: 'text-gray-400 hover:text-gray-700 hover:bg-gray-100',
+  purpleToggle:
+    'text-gray-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-purple-600 hover:bg-gray-100',
+  orangeToggle:
+    'text-gray-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-orange-600 hover:bg-gray-100',
   dragHandle: 'cursor-grab touch-none text-gray-400 hover:text-gray-600 active:cursor-grabbing',
 }
 
-// Active worn/consumable buttons render with the SAME icon color as the
+// Active worn/consumable buttons render as icon-only color, matching the
 // static read-only sites (see list-item-flags.tsx: text-purple-600 for
-// Worn, text-orange-600 for Consumable). The faint gray bg gives the
-// button a "pressed" hint without the louder chip background the prior
-// design used. This keeps icon hue consistent across pack mode, share
-// view, mobile, and the editable normal view.
+// Worn, text-orange-600 for Consumable). No active background: pack mode,
+// share view, mobile, and editable normal view should all read as the
+// same simple tinted icon.
 const ACTIVE_CLASSES: Partial<Record<Variant, string>> = {
-  purpleToggle: 'bg-gray-100 text-purple-600',
-  orangeToggle: 'bg-gray-100 text-orange-600',
+  purpleToggle: 'text-purple-600 hover:bg-gray-100',
+  orangeToggle: 'text-orange-600 hover:bg-gray-100',
 }
 
 export default function RowIconButton({
@@ -55,18 +61,24 @@ export default function RowIconButton({
   ariaLabel,
   variant = 'default',
   active = false,
+  alwaysVisible = false,
   type = 'button',
   className = '',
   ref,
   ...rest
 }: Props) {
   const stateClass = (active ? ACTIVE_CLASSES[variant] : undefined) ?? VARIANT_CLASSES[variant]
+  // opacity-100 wins over the variant's opacity-0 via CSS source order
+  // (Tailwind orders numeric utilities by value), but ordering aside the
+  // explicit prop keeps consumers from reaching past the API to defeat
+  // the hover-reveal with a magic className string.
+  const visibilityClass = alwaysVisible ? 'opacity-100' : ''
   return (
     <button
       ref={ref}
       type={type}
       aria-label={ariaLabel}
-      className={`${BASE} ${stateClass} ${className}`.trim()}
+      className={`${BASE} ${stateClass} ${visibilityClass} ${className}`.trim()}
       {...rest}
     >
       {icon}
