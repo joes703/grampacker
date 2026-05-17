@@ -39,9 +39,15 @@ const VARIANT_CLASSES: Record<Variant, string> = {
   dragHandle: 'cursor-grab touch-none text-gray-400 hover:text-gray-600 active:cursor-grabbing',
 }
 
+// Active worn/consumable buttons render with the SAME icon color as the
+// static read-only sites (see list-item-flags.tsx: text-purple-600 for
+// Worn, text-orange-600 for Consumable). The faint gray bg gives the
+// button a "pressed" hint without the louder chip background the prior
+// design used. This keeps icon hue consistent across pack mode, share
+// view, mobile, and the editable normal view.
 const ACTIVE_CLASSES: Partial<Record<Variant, string>> = {
-  purpleToggle: 'bg-purple-100 text-purple-700',
-  orangeToggle: 'bg-orange-100 text-orange-700',
+  purpleToggle: 'bg-gray-100 text-purple-600',
+  orangeToggle: 'bg-gray-100 text-orange-600',
 }
 
 export default function RowIconButton({
