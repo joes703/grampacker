@@ -11,8 +11,6 @@ import MobileMenu from './MobileMenu'
 import ListSelector from './ListSelector'
 import { useSidebarDrawer } from './sidebar-drawer-context'
 import InlineTitle from '../lists/InlineTitle'
-import PrivacyButton from '../lists/PrivacyButton'
-import PrivacyPanel from '../lists/PrivacyPanel'
 import ListSettingsButton from '../lists/ListSettingsButton'
 import ListSettingsPanel from '../lists/ListSettingsPanel'
 import Modal from '../components/Modal'
@@ -25,7 +23,7 @@ import Modal from '../components/Modal'
 // the current list id is parsed from pathname here.
 type RouteContext =
   | { kind: 'list-detail'; listId: string }
-  | { kind: 'manage-lists' }
+  | { kind: 'all-lists' }
   | { kind: 'gear' }
   | { kind: 'settings' }
   | { kind: 'help' }
@@ -34,7 +32,7 @@ type RouteContext =
 function resolveRoute(pathname: string): RouteContext {
   const listMatch = pathname.match(/^\/lists\/([^/]+)$/)
   if (listMatch?.[1]) return { kind: 'list-detail', listId: listMatch[1] }
-  if (pathname === '/lists') return { kind: 'manage-lists' }
+  if (pathname === '/lists') return { kind: 'all-lists' }
   if (pathname === '/gear') return { kind: 'gear' }
   if (pathname === '/settings') return { kind: 'settings' }
   if (pathname === '/help') return { kind: 'help' }
@@ -173,7 +171,7 @@ function RouteHeading({ route }: { route: RouteContext }) {
     return <ListHeading list={list} lists={lists} userId={userId} />
   }
 
-  if (route.kind === 'manage-lists') return <StaticHeading>Manage Lists</StaticHeading>
+  if (route.kind === 'all-lists') return <StaticHeading>All lists</StaticHeading>
   if (route.kind === 'gear') return <StaticHeading>Gear Library</StaticHeading>
   if (route.kind === 'settings') return <StaticHeading>Settings</StaticHeading>
   if (route.kind === 'help') return <StaticHeading>Help</StaticHeading>
@@ -301,10 +299,11 @@ function ListHeading({
   )
 }
 
-// /lists/:id-only controls. Renders inline g/oz, Pack, Share at md+; renders
-// inline g/oz + a kebab containing Pack and Share at <md. Share-from-kebab
-// opens a Modal hosting PrivacyPanel — same content as PrivacyButton's
-// popover, just in a centered dialog instead of an anchored popover.
+// /lists/:id-only controls. Renders inline g/oz, List options, Pack at md+;
+// at <md the same actions live in a kebab. Sharing no longer has its own
+// top-level trigger — it's a Sharing section inside List options, so the
+// modal hosts ListSettingsPanel and the user reaches the public-link toggle
+// + copy URL by opening List options.
 function ListContextControls({ listId }: { listId: string }) {
   const auth = useRequireSession()
   const userId = auth?.userId ?? ''
@@ -316,7 +315,6 @@ function ListContextControls({ listId }: { listId: string }) {
   const { weightUnit, toggleWeightUnit } = useWeightUnit()
   const [searchParams, setSearchParams] = useSearchParams()
   const isPackMode = searchParams.get('mode') === 'pack'
-  const [shareOpen, setShareOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   function togglePackMode() {
@@ -331,13 +329,13 @@ function ListContextControls({ listId }: { listId: string }) {
     )
   }
 
-  // List-specific affordances (Pack pill, ListSettingsButton, PrivacyButton,
-  // mobile share/settings modal bodies) only render once `list` resolves.
-  // g/oz and the mobile menu render unconditionally so the user retains
-  // access to global actions (Help / Settings / Sign out) and the unit
-  // toggle during the lists query's cold-load window. Without that,
-  // /lists/:id has no reachable global menu while loading — a regression
-  // versus rendering null.
+  // List-specific affordances (List options button, Pack pill, mobile
+  // settings modal body) only render once `list` resolves. g/oz and the
+  // mobile menu render unconditionally so the user retains access to
+  // global actions (Help / Settings / Sign out) and the unit toggle during
+  // the lists query's cold-load window. Without that, /lists/:id has no
+  // reachable global menu while loading — a regression versus rendering
+  // null.
   return (
     <>
       {/* g/oz toggle — same on every viewport. The text label is short
@@ -352,9 +350,15 @@ function ListContextControls({ listId }: { listId: string }) {
       </button>
 
       {/* md+ inline list controls — gated on resolved list to avoid
-          rendering Pack / Options / Share against a stale or absent row. */}
+          rendering List options / Pack against a stale or absent row.
+          Order matches the target mental model: List options (current-list
+          settings) sits next to the selector + units cluster, then Pack
+          stands alone as the mode switch. */}
       {list && (
         <>
+          <div className="hidden md:flex">
+            <ListSettingsButton list={list} />
+          </div>
           <button
             onClick={togglePackMode}
             title={isPackMode ? 'Pack mode: on' : 'Pack mode: off'}
@@ -369,59 +373,26 @@ function ListContextControls({ listId }: { listId: string }) {
             <ClipboardList size={14} />
             <span>Pack</span>
           </button>
-          <div className="hidden md:flex">
-            <ListSettingsButton list={list} />
-          </div>
-          <div className="hidden md:flex">
-            <PrivacyButton list={list} />
-          </div>
         </>
       )}
 
-      {/* < md unified menu — replaces the previous adjacent
-          ListActionsKebab + HamburgerMenu pair. Renders unconditionally
-          so the global section (Help, Settings, Sign out) remains
-          reachable during the cold-load window; list-action handlers
-          flow through only once `list` resolves so the toggle rows are
-          either fully wired or hidden, never half-functional. */}
+      {/* < md unified menu — Pack, List options, then the global section.
+          Sharing reaches the user through the List options modal, not as
+          its own row. Renders unconditionally so the global section
+          (Help, Settings, Sign out) remains reachable during the cold-load
+          window; list-action handlers flow through only once `list`
+          resolves so the rows are either fully wired or hidden. */}
       <div className="md:hidden">
         <MobileMenu
           list={list}
           onPackToggle={list ? togglePackMode : undefined}
           onListSettingsClick={list ? () => setSettingsOpen(true) : undefined}
-          onShareClick={list ? () => setShareOpen(true) : undefined}
         />
       </div>
 
-      {/* Mobile share modal — opens via the mobile menu's Share row.
-          PrivacyPanel handles the toggle, URL, and copy interactions;
-          identical body to PrivacyButton's desktop popover. */}
-      {list && (
-        <Modal
-          open={shareOpen}
-          onClose={() => setShareOpen(false)}
-          title="Share list"
-          className="w-full max-w-sm"
-        >
-          <div className="p-4">
-            <h2 className="mb-3 text-base font-semibold text-gray-900">Share list</h2>
-            <PrivacyPanel list={list} />
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShareOpen(false)}
-                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
       {/* Mobile list-options modal — opens via the mobile menu's
-          List options row. ListSettingsPanel handles Group worn +
-          Ready checks toggles; identical body to the desktop popover. */}
+          List options row. ListSettingsPanel hosts Group worn items and
+          the Sharing section (public-link toggle + copy URL). */}
       {list && (
         <Modal
           open={settingsOpen}

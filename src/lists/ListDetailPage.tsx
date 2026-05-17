@@ -939,7 +939,7 @@ function ListDetailInner({
                 </span>
                 {/* Forward affordance to the gear management page. ?from=
                     plumbs the originating list id so /gear's Back link
-                    round-trips here rather than to the manage-lists view. */}
+                    round-trips here rather than to the all-lists view. */}
                 <Link
                   to={`/gear?from=${listId}`}
                   className="inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
