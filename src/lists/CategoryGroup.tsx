@@ -8,7 +8,6 @@ import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import { makeDnDId } from '../lib/dnd-ids'
 import ItemRow, { SortableItemRow } from './ItemRow'
 import AddItemRow from './AddItemRow'
-import QuickAddItemModal from './QuickAddItemModal'
 import { type AddItemData } from './use-quick-add-form'
 
 // Single source of truth for a category section. Used by both the
@@ -132,11 +131,12 @@ function CategoryGroup({
   onDeleteGearItem,
   onSetGearStatus,
 }: GroupProps) {
-  // `adding` drives the desktop inline AddItemRow; `quickAddOpen` drives the
-  // mobile QuickAddItemModal. The footer "Add item" button picks one based
-  // on the viewport. Both submit the same AddItemData through onAddItem.
+  // `adding` drives the desktop inline AddItemRow. Mobile no longer
+  // exposes a per-category "Add new item" footer — the single mobile add
+  // path is the top-bar "Add" button, which opens the gear picker drawer
+  // (and the picker exposes a secondary "New gear item" path that reuses
+  // QuickAddItemModal). See ListDetailPage's add-flow comments.
   const [adding, setAdding] = useState(false)
-  const [quickAddOpen, setQuickAddOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   // Stable id for the collapsible region so the header button can announce
   // aria-controls. categoryId is always set when collapsible=true (share view
@@ -316,21 +316,24 @@ function CategoryGroup({
             />
           )}
 
-          {/* Footer row — "+ Add new item" on the left (only when authed),
-              category total on the right. Column stubs branch on viewport
-              to keep the total aligned under the Weight column. */}
+          {/* Footer row — "+ Add new item" on the left at lg+, category
+              total on the right. The button is desktop-only: mobile uses
+              the top-bar "Add" + picker drawer flow and showing this row
+              there too would create two competing add affordances. A
+              spacer takes the flex-1 slot on mobile so the right-column
+              totals stay flush. Column stubs branch on viewport to keep
+              the total aligned under the Weight column. */}
           {!packMode && !adding && (
             <div className="flex items-center gap-1.5 px-3 py-0.5 text-sm">
               {onAddItem ? (
                 <button
-                  onClick={() => (isBelowLg ? setQuickAddOpen(true) : setAdding(true))}
-                  className="flex flex-1 min-w-0 items-center gap-1 text-left text-gray-400 hover:text-blue-600"
+                  onClick={() => setAdding(true)}
+                  className="hidden lg:flex flex-1 min-w-0 items-center gap-1 text-left text-gray-400 hover:text-blue-600"
                 >
                   <Plus size={12} /> Add new item
                 </button>
-              ) : (
-                <div className="flex-1 min-w-0" />
-              )}
+              ) : null}
+              <div className={`flex-1 min-w-0 ${onAddItem ? 'lg:hidden' : ''}`} />
               <div className="hidden lg:contents">
                 <div className="shrink-0 w-7" />
                 <div className="shrink-0 w-7" />
@@ -352,20 +355,6 @@ function CategoryGroup({
         </div>
       )}
 
-      {/* Mobile Quick Add modal. Rendered outside the collapsible region so a
-          collapse can't unmount it mid-edit. The guard is tight on purpose:
-          onAddItem gates it to the authed list view (share view never passes
-          it), and !packMode drops it if the page flips to pack mode while the
-          modal is open. */}
-      {quickAddOpen && onAddItem && !packMode && (
-        <QuickAddItemModal
-          onSubmit={(data) => {
-            onAddItem(categoryId ?? null, data)
-            setQuickAddOpen(false)
-          }}
-          onClose={() => setQuickAddOpen(false)}
-        />
-      )}
     </div>
   )
 }
