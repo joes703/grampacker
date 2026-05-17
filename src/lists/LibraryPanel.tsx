@@ -4,6 +4,10 @@ import type { GearItem, Category } from '../lib/types'
 import { groupByCategory } from '../lib/grouping'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import GearStatusBadge from '../gear/GearStatusBadge'
+import CategoryFilterChips, {
+  UNCATEGORIZED_CHIP_VALUE,
+  type CategoryChipValue,
+} from '../components/CategoryFilterChips'
 
 type Props = {
   gearItems: GearItem[]
@@ -22,6 +26,7 @@ type Props = {
 
 export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove, focusSearchTrigger }: Props) {
   const [search, setSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState<CategoryChipValue>(null)
   const [collapsed, setCollapsed] = useState(new Set<string>())
   const searchInputRef = useRef<HTMLInputElement>(null)
   // Capture the focusSearchTrigger value at mount and compare on every
@@ -50,7 +55,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
   }, [])
 
   const q = search.trim().toLowerCase()
-  const filtered = useMemo(
+  const searchFiltered = useMemo(
     () =>
       q
         ? gearItems.filter(
@@ -61,6 +66,17 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
         : gearItems,
     [gearItems, q],
   )
+
+  // Layer the category-chip filter on top of the search filter. The chip
+  // rail derives its visible chips from searchFiltered (above) so the rail
+  // narrows with search, and the chip selection then narrows further.
+  const filtered = useMemo(() => {
+    if (selectedCategory === null) return searchFiltered
+    if (selectedCategory === UNCATEGORIZED_CHIP_VALUE) {
+      return searchFiltered.filter((g) => g.category_id === null)
+    }
+    return searchFiltered.filter((g) => g.category_id === selectedCategory)
+  }, [searchFiltered, selectedCategory])
 
   // Build groups ordered by category sort_order. sortedCats stays in its
   // own memo so the sort only reruns when `categories` changes — not on
@@ -88,8 +104,10 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
 
   return (
     <div className="flex h-full flex-col">
-      {/* Search */}
-      <div className="p-3 border-b border-gray-200">
+      {/* Search + category chips. Chips sit immediately below the search
+          input so a single eye-line covers both filters; selection composes
+          with the search query rather than replacing it. */}
+      <div className="p-3 border-b border-gray-200 space-y-2">
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -101,6 +119,12 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
             className="w-full rounded-lg border border-gray-300 pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
+        <CategoryFilterChips
+          categories={sortedCats}
+          items={searchFiltered}
+          selected={selectedCategory}
+          onChange={setSelectedCategory}
+        />
       </div>
 
       {/* Category groups */}
