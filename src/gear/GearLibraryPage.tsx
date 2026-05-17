@@ -603,34 +603,29 @@ export default function GearLibraryPage() {
         {fromListId ? 'Back to list' : 'Back to lists'}
       </button>
 
-      {/* Page header. The NavBar already renders "Gear Library" as the
-          route heading on every viewport plus the global g/oz toggle,
-          so the page content focuses on inventory-specific controls:
-          create actions, utilities, filters. Below md, "Gear Library"
-          repeats only the route heading and is dropped to leave search
-          prominent; md+ keeps the in-content heading + item count
-          because the wider chrome can host both without crowding.
-          Layout reads top-to-bottom on mobile, side-by-side on desktop:
-            row 1: title (md+) / item count (mobile) + full-width search
-            row 2: create actions — New item (primary), New category (outline)
-            row 3: utility actions — Select / Import / Export (all outline)
-            row 4: category chips (wrapping)
+      {/* Page header. NavBar already renders "Gear Library" as the route
+          heading on every viewport plus the global g/oz toggle, so the
+          in-content title is dropped — the page content focuses on
+          inventory-specific controls (count, create, utility, filters).
+          Layout uses a single flex-wrap row with cluster-level
+          `w-full md:w-auto` so mobile stacks the clusters into rows and
+          desktop fits them on a single header row without duplicating
+          markup:
+            mobile:   count + search │ create │ utility │ chips
+            desktop:  count + search │ create │ (spacer) │ utility │ chips
           Color semantics: primary blue = main constructive action only
-          (New item / Add). Outline = secondary, less-frequent, or
-          utility. This keeps the visual hierarchy honest at a glance. */}
+          (New item / Add). Outline = secondary, less-frequent, utility.
+          Keeps the visual hierarchy honest at a glance. */}
       <div className="mb-6 space-y-3">
-        {/* Title / item count + search */}
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="hidden md:block text-xl font-semibold text-gray-900">
-            Gear Library
-            <span className="ml-2 text-sm font-normal text-gray-500">{allItems.length} items</span>
-          </h1>
-          <p className="md:hidden text-sm text-gray-500">{allItems.length} items</p>
-          {/* Search occupies the remaining row width on mobile (flex-1
-              + min-w-0) so it's never squeezed by adjacent buttons; on
-              md+ it locks to a comfortable fixed width and sits at the
-              right edge next to the heading. */}
-          <div className="relative flex-1 min-w-0 md:flex-none md:ml-auto md:w-48">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
+          {/* Item count metadata — kept on every viewport now that the
+              "Gear Library" h1 is gone; sits to the left of search. */}
+          <p className="text-sm text-gray-500 shrink-0">{allItems.length} items</p>
+
+          {/* Search — fills the remaining mobile-row width (flex-1
+              min-w-0) so it isn't squeezed; locks to a comfortable
+              fixed width at md+ so create/utility have room. */}
+          <div className="relative flex-1 min-w-0 md:flex-none md:w-56">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="search"
@@ -640,104 +635,106 @@ export default function GearLibraryPage() {
               className="w-full rounded-lg border border-gray-300 pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-        </div>
 
-        {/* Create row — primary New item, secondary New category. The
-            inline rename input replaces just the New category button
-            (the Add/Cancel pair) when active, so New item stays put. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setDialog({ type: 'create-item' })}
-            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            <Plus size={14} />
-            New item
-          </button>
-          {dialog?.type === 'add-category' ? (
-            <div className="flex items-center gap-2">
-              <input
-                autoFocus
-                type="text"
-                placeholder="Category name"
-                maxLength={128}
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitNewCategory()
-                  if (e.key === 'Escape') {
-                    setNewCategoryName('')
-                    setDialog(null)
-                  }
-                }}
-                className="w-44 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                onClick={commitNewCategory}
-                disabled={!newCategoryName.trim()}
-                className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"
-              >
-                Add
-              </button>
-              <button
-                onClick={() => { setNewCategoryName(''); setDialog(null) }}
-                className="rounded p-1.5 text-gray-400 hover:text-gray-600"
-                aria-label="Cancel new category"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          ) : (
+          {/* Create cluster — primary New item, secondary New category.
+              w-full forces this cluster to its own mobile row; md:w-auto
+              lets it sit inline on desktop. The inline rename input
+              replaces only the New category button when active. */}
+          <div className="flex w-full items-center gap-2 md:w-auto">
             <button
-              onClick={() => setDialog({ type: 'add-category' })}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              onClick={() => setDialog({ type: 'create-item' })}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
             >
               <Plus size={14} />
-              New category
+              New item
             </button>
-          )}
-        </div>
+            {dialog?.type === 'add-category' ? (
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="Category name"
+                  maxLength={128}
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitNewCategory()
+                    if (e.key === 'Escape') {
+                      setNewCategoryName('')
+                      setDialog(null)
+                    }
+                  }}
+                  className="w-44 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={commitNewCategory}
+                  disabled={!newCategoryName.trim()}
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+                >
+                  Add
+                </button>
+                <button
+                  onClick={() => { setNewCategoryName(''); setDialog(null) }}
+                  className="rounded p-1.5 text-gray-400 hover:text-gray-600"
+                  aria-label="Cancel new category"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setDialog({ type: 'add-category' })}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <Plus size={14} />
+                New category
+              </button>
+            )}
+          </div>
 
-        {/* Utility row — Select / Import / Export. All outline so they
-            don't compete with the primary create action above. Hidden
-            file input sits here next to its trigger. */}
-        <div className="flex flex-wrap items-center gap-2">
-          {selectMode ? (
+          {/* Utility cluster — Select / Import / Export. w-full takes
+              its own row on mobile; md:ml-auto pushes it to the right
+              edge of the header row on desktop so primary actions
+              (create) sit left, utilities sit right. */}
+          <div className="flex w-full items-center gap-2 md:w-auto md:ml-auto">
+            {selectMode ? (
+              <button
+                onClick={exitSelectMode}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            ) : (
+              <button
+                onClick={() => setSelectMode(true)}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Select
+              </button>
+            )}
             <button
-              onClick={exitSelectMode}
-              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              onClick={() => setDialog({ type: 'import-explainer' })}
+              title="Import gear items from CSV"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
-              Cancel
+              <Upload size={14} /> Import
             </button>
-          ) : (
             <button
-              onClick={() => setSelectMode(true)}
-              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              onClick={handleExport}
+              disabled={allItems.length === 0}
+              title="Export gear library as CSV"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
             >
-              Select
+              <Download size={14} /> Export
             </button>
-          )}
-          <button
-            onClick={() => setDialog({ type: 'import-explainer' })}
-            title="Import gear items from CSV"
-            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            <Upload size={14} /> Import
-          </button>
-          <button
-            onClick={handleExport}
-            disabled={allItems.length === 0}
-            title="Export gear library as CSV"
-            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
-          >
-            <Download size={14} /> Export
-          </button>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".csv,text/csv"
-            className="hidden"
-            onChange={handleImportFile}
-          />
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={handleImportFile}
+            />
+          </div>
         </div>
 
         {/* Category filter chips — wrapping chip rail. Quietly styled

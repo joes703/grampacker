@@ -16,7 +16,12 @@ export default function ToggleSwitch({ checked, onChange, ariaLabel }: Props) {
       aria-checked={checked}
       aria-label={ariaLabel}
       onClick={onChange}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+      // focus-visible (not bare focus) so a tap on touch — which the
+      // <dialog> autofocus inherits when the modal opens by tap — does
+      // NOT render the keyboard focus ring. Keyboard Tab still shows
+      // the ring because the browser's focus-visible heuristic stays
+      // true through programmatic focus that follows keyboard input.
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-blue-500 ${
         checked ? 'bg-blue-600' : 'bg-gray-300'
       }`}
     >
