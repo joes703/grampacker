@@ -603,13 +603,19 @@ export default function GearLibraryPage() {
         {fromListId ? 'Back to list' : 'Back to lists'}
       </button>
 
-      {/* Page header */}
+      {/* Page header. The NavBar already renders "Gear Library" as the
+          route heading on every viewport, so duplicating it as an in-
+          content <h1> below md is redundant. md+ keeps the in-content
+          heading because the top bar is denser and the desktop title
+          adds useful "you are here" weight; mobile collapses to just
+          the item count as quiet metadata, leaving search prominent. */}
       <div className="mb-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold text-gray-900">
+        <h1 className="hidden md:block text-xl font-semibold text-gray-900">
           Gear Library
           <span className="ml-2 text-sm font-normal text-gray-500">{allItems.length} items</span>
         </h1>
+        <p className="md:hidden text-sm text-gray-500">{allItems.length} items</p>
         <div className="relative ml-auto">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
