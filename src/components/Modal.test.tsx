@@ -9,10 +9,20 @@ import Modal from './Modal'
 // regardless of the `open` prop. close() must dispatch the native 'close'
 // event so React's onClose prop (delegated via the dialog's onClose listener)
 // fires through the same path production uses.
+//
+// showModal() in real browsers also auto-focuses the first sequentially
+// focusable descendant. The shim mirrors that so the focus-redirect test
+// below is a true regression check — without the shim's auto-focus side
+// effect, the test would pass trivially even if the production redirect
+// were reverted.
 beforeAll(() => {
   if (!HTMLDialogElement.prototype.showModal) {
     HTMLDialogElement.prototype.showModal = function () {
       this.setAttribute('open', '')
+      const first = this.querySelector<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )
+      first?.focus()
     }
   }
   if (!HTMLDialogElement.prototype.close) {
@@ -93,6 +103,24 @@ describe('Modal', () => {
     dialog!.close()
 
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('moves initial focus to the dialog itself, not the first focusable child', () => {
+    // Native dialog.showModal() auto-focuses the first focusable
+    // descendant. On a touch-tap open that renders as a visible focus
+    // ring on whatever happens to come first (e.g. the first toggle in
+    // List options), which reads as an accidental selection. Modal
+    // explicitly refocuses the dialog after showModal() so the
+    // indicator doesn't appear — keyboard users still Tab into the
+    // first control next because the dialog is tabIndex={-1}.
+    const { container } = render(
+      <Modal open={true} onClose={() => {}} title="Test">
+        <button type="button">first focusable</button>
+      </Modal>,
+    )
+    const dialog = container.querySelector('dialog')
+    expect(dialog).not.toBeNull()
+    expect(document.activeElement).toBe(dialog)
   })
 
   it('renders children inside the dialog when open', () => {

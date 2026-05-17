@@ -37,8 +37,19 @@ export default function Modal({
   useEffect(() => {
     const dialog = ref.current
     if (!dialog) return
-    if (open && !dialog.open) dialog.showModal()
-    else if (!open && dialog.open) dialog.close()
+    if (open && !dialog.open) {
+      dialog.showModal()
+      // Native showModal() auto-focuses the first sequentially focusable
+      // descendant. On touch-open that lands a visible focus indicator on
+      // whatever control happens to come first (e.g. the first toggle in
+      // List options), which reads as an accidental selection. Pull focus
+      // onto the dialog itself instead — tabIndex={-1} makes it
+      // programmatically focusable without entering the tab order, so
+      // keyboard users still Tab into the first real control next.
+      // preventScroll avoids the browser scrolling the focused dialog into
+      // view (it's already centered by showModal()).
+      dialog.focus({ preventScroll: true })
+    } else if (!open && dialog.open) dialog.close()
   }, [open])
 
   function handleClick(e: React.MouseEvent<HTMLDialogElement>) {
@@ -64,6 +75,7 @@ export default function Modal({
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- backdrop click; Esc handled by native <dialog>
     <dialog
       ref={ref}
+      tabIndex={-1}
       aria-label={title}
       onClose={onClose}
       onClick={handleClick}
@@ -71,7 +83,10 @@ export default function Modal({
       // dialog:modal { margin: auto } gets overridden by Tailwind preflight's
       // `* { margin: 0 }` (author origin > UA), so without this an opened
       // dialog renders pinned to top: 0; left: 0 instead of centered.
-      className={`m-auto rounded-xl bg-white p-0 shadow-lg backdrop:bg-black/40 ${className ?? ''}`}
+      // focus:outline-none suppresses any UA focus ring on the dialog
+      // itself when we focus it after showModal() — the dialog is a
+      // focus sink, not a visible target.
+      className={`m-auto rounded-xl bg-white p-0 shadow-lg backdrop:bg-black/40 focus:outline-none ${className ?? ''}`}
     >
       {children}
     </dialog>
