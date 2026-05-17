@@ -71,8 +71,9 @@ Open a list and switch to Pack mode. Tap items as they go into your pack.
 
 Pack mode includes controls to:
 
-- show only unpacked items
-- reset packed checkmarks
+- **Show unpacked only** — filter packed items out of view as you work.
+- **Reset packed** — clear all packed checkmarks for this list.
+- **Ready checks** — turn on a second checkbox per item (see below).
 
 Pack mode is intentionally simple so it is easy to use while packing.
 
@@ -80,7 +81,7 @@ Pack mode is intentionally simple so it is easy to use while packing.
 
 Ready checks add a second checkbox to each item in Pack mode, so you can mark an item Ready before it goes into your pack. Useful when you want to inspect, charge, refill, or stage gear before the final pack pass.
 
-Turn it on from the **Options** button at the top of the list (next to Share). Ready checks is a per-list setting, so each list can have it on or off independently. It stays off by default.
+Turn it on from the **Ready checks** toggle in the Pack mode options row. Ready checks is a per-list setting, so each list can have it on or off independently. It stays off by default. Turning it off hides the Ready UI but keeps any per-item Ready marks intact for next time.
 
 When Ready checks are on, every row in Pack mode gets a Ready checkbox (amber) before the Packed checkbox (blue). The two states are independent: you can mark an item Ready without marking it Packed, and an item is only fully packed when its Packed checkbox is checked.
 
@@ -90,12 +91,11 @@ Like Packed, Ready checkmarks work offline and sync when you reconnect. Ready st
 
 ### List options
 
-The **Options** button near the top of a list opens settings that affect how the list is displayed:
+The **Options** button near the top of a list opens broader list-presentation settings that apply across views:
 
 - **Group worn** moves worn items into their own section at the bottom of the list. Applies while editing, in Pack mode, and on public share links.
-- **Ready checks** turns on the second checkbox in Pack mode (see above).
 
-Both are per-list and stay off by default. Sharing controls live in the separate **Share** button.
+Sharing controls live in the separate **Share** button. Pack mode controls like Ready checks and Show unpacked only live in Pack mode itself.
 
 ## Sharing a list
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RotateCcw, WifiOff } from 'lucide-react'
+import { CheckSquare, RotateCcw, WifiOff } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 type Props = {
@@ -21,15 +21,14 @@ type Props = {
   // doesn't strand the user waiting for an offline transition.
   syncBlocked?: boolean
   onRetrySync?: () => void
-  // Ready Checks block (optional). When `enabled`, render a second
-  // progress bar + a separate Reset Ready button alongside the existing
-  // Packed cluster. Enabling/disabling Ready Checks is no longer a
-  // pack-mode affordance — that toggle lives in ListSettingsPanel (the
-  // List options popover/modal). PackingProgress only consumes the
-  // resolved state.
+  // Ready Checks block. Always supplied so the bottom options row can
+  // render the toggle; the Ready progress bar + Reset Ready only render
+  // when `enabled`. The toggle flips ready_checks_enabled via the page-
+  // level mutation passed as onToggleEnabled.
   readyChecks?: {
     ready: number
     enabled: boolean
+    onToggleEnabled: () => void
     onResetReady: () => void
   }
 }
@@ -57,9 +56,10 @@ export default function PackingProgress({
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
-      {/* The control cluster wraps on narrow viewports so the Unpacked-
-          only toggle, Reset packed button, and the optional "All packed!"
-          chip don't horizontally squeeze on a 375 px screen. */}
+      {/* Packed header — count on the left, "All packed!" chip + Reset
+          packed on the right. View toggles (Show unpacked only, Ready
+          checks) live below in the options row so this row stays focused
+          on the Packed progress + its reset action. */}
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <span className="text-sm font-medium tabular-nums text-gray-700">
           {packed} / {total} packed
@@ -70,19 +70,6 @@ export default function PackingProgress({
               All packed!
             </span>
           )}
-          <button
-            type="button"
-            onClick={onToggleShowUnpackedOnly}
-            aria-pressed={showUnpackedOnly}
-            title={showUnpackedOnly ? 'Showing unpacked only. Click to show all.' : 'Show unpacked only'}
-            className={`rounded-lg border px-3 py-1 text-xs font-medium ${
-              showUnpackedOnly
-                ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            Unpacked only
-          </button>
           <button
             type="button"
             onClick={() => setConfirmingReset(true)}
@@ -100,6 +87,7 @@ export default function PackingProgress({
           style={{ width: `${pct}%` }}
         />
       </div>
+
       {readyChecks?.enabled && (
         <div className="mt-3">
           <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
@@ -131,6 +119,42 @@ export default function PackingProgress({
           </div>
         </div>
       )}
+
+      {/* Options row — Pack Mode view toggles grouped together, separated
+          from the progress/reset rows above. `flex-wrap` lets the two
+          pills stack on narrow viewports without crowding. */}
+      <div className="mt-3 flex items-center gap-2 flex-wrap print:hidden">
+        <button
+          type="button"
+          onClick={onToggleShowUnpackedOnly}
+          aria-pressed={showUnpackedOnly}
+          title={showUnpackedOnly ? 'Showing unpacked only. Click to show all.' : 'Show unpacked only'}
+          className={`rounded-lg border px-3 py-1 text-xs font-medium ${
+            showUnpackedOnly
+              ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+              : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          Show unpacked only
+        </button>
+        {readyChecks && (
+          <button
+            type="button"
+            onClick={readyChecks.onToggleEnabled}
+            aria-pressed={readyChecks.enabled}
+            title={readyChecks.enabled ? 'Ready checks on. Click to turn off.' : 'Turn on Ready checks'}
+            className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-xs font-medium ${
+              readyChecks.enabled
+                ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <CheckSquare size={12} aria-hidden />
+            Ready checks
+          </button>
+        )}
+      </div>
+
       {(offline || pendingSyncCount > 0 || syncing) && (
         <div
           role="status"
