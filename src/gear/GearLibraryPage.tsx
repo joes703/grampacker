@@ -613,9 +613,9 @@ export default function GearLibraryPage() {
           markup:
             mobile:   count + search │ create │ utility │ chips
             desktop:  count + search │ create │ (spacer) │ utility │ chips
-          Color semantics: primary blue = main constructive action only
-          (New item / Add). Outline = secondary, less-frequent, utility.
-          Keeps the visual hierarchy honest at a glance. */}
+          Color semantics: outline buttons are the default toolbar shape here.
+          The full-page dialog has the primary blue submit; the toolbar should
+          stay calm and let placement, not color, distinguish create actions. */}
       <div className="mb-6 space-y-3">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
           {/* Item count metadata — kept on every viewport now that the
@@ -636,14 +636,16 @@ export default function GearLibraryPage() {
             />
           </div>
 
-          {/* Create cluster — primary New item, secondary New category.
+          {/* Create cluster — New item is first because it is the common
+              create action, but it uses the same quiet outline treatment as
+              the rest of the toolbar.
               w-full forces this cluster to its own mobile row; md:w-auto
               lets it sit inline on desktop. The inline rename input
               replaces only the New category button when active. */}
           <div className="flex w-full items-center gap-2 md:w-auto">
             <button
               onClick={() => setDialog({ type: 'create-item' })}
-              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               <Plus size={14} />
               New item
