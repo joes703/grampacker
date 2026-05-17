@@ -182,6 +182,23 @@ function ChangePasswordForm() {
 
 // ── Download all ──────────────────────────────────────────────────────────────
 
+function exportTimestamp(date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return [
+    date.getFullYear(),
+    '-',
+    pad(date.getMonth() + 1),
+    '-',
+    pad(date.getDate()),
+    'T',
+    pad(date.getHours()),
+    '-',
+    pad(date.getMinutes()),
+    '-',
+    pad(date.getSeconds()),
+  ].join('')
+}
+
 function DownloadAllData() {
   const qc = useQueryClient()
   const { session } = useAuth()
@@ -234,9 +251,8 @@ function DownloadAllData() {
       const blob = new Blob([new Uint8Array(zipped)], { type: 'application/zip' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      const date = new Date().toISOString().slice(0, 10)
       a.href = url
-      a.download = `grampacker-${date}.zip`
+      a.download = `grampacker-export-${exportTimestamp()}.zip`
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
