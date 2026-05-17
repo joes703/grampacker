@@ -62,6 +62,7 @@ import CreateListFromSelectionDialog from './CreateListFromSelectionDialog'
 import GearImportPreviewDialog from './GearImportPreviewDialog'
 import BulkMoveCategoryDialog from './BulkMoveCategoryDialog'
 import BulkActionsToolbar from './BulkActionsToolbar'
+import MobileGearActionBar from './MobileGearActionBar'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 import CategoryFilterChips, {
@@ -592,7 +593,7 @@ export default function GearLibraryPage() {
   if (!auth) return null
 
   return (
-    <div>
+    <div className="pb-20 lg:pb-0 print:pb-0">
       {/* Back to list */}
       <button
         type="button"
@@ -603,19 +604,26 @@ export default function GearLibraryPage() {
         {fromListId ? 'Back to list' : 'Back to lists'}
       </button>
 
-      {/* Page header. NavBar already renders "Gear Library" as the route
-          heading on every viewport plus the global g/oz toggle, so the
-          in-content title is dropped — the page content focuses on
-          inventory-specific controls (count, create, utility, filters).
-          Layout uses a single flex-wrap row with cluster-level
-          `w-full md:w-auto` so mobile stacks the clusters into rows and
-          desktop fits them on a single header row without duplicating
-          markup:
-            mobile:   count + search │ create │ utility │ chips
-            desktop:  count + search │ create │ (spacer) │ utility │ chips
-          Color semantics: outline buttons are the default toolbar shape here.
-          The full-page dialog has the primary blue submit; the toolbar should
-          stay calm and let placement, not color, distinguish create actions. */}
+      {/* Hidden file input for CSV import. Mounted at the page level so
+          it's always reachable via importInputRef.current.click(), even
+          when its old neighbor (the desktop utility cluster) is
+          display:none on mobile. */}
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={handleImportFile}
+      />
+
+      {/* Page header. NavBar renders "Gear Library" as the route heading,
+          so the in-content title is dropped. Mobile shows only count +
+          search + chips here; the three primary actions (New, Select,
+          Options) live in MobileGearActionBar at the bottom of the page,
+          and the rare utility actions (New category, Import, Export,
+          Collapse/Expand all) hide behind the Options modal. Desktop
+          keeps the inline single-row toolbar (search, create cluster,
+          utility cluster right-aligned). */}
       <div className="mb-6 space-y-3">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
           {/* Item count metadata — kept on every viewport now that the
@@ -636,16 +644,19 @@ export default function GearLibraryPage() {
             />
           </div>
 
-          {/* Create cluster — New item is first because it is the common
-              create action, but it uses the same quiet outline treatment as
-              the rest of the toolbar.
-              w-full forces this cluster to its own mobile row; md:w-auto
-              lets it sit inline on desktop. The inline rename input
-              replaces only the New category button when active. */}
-          <div className="flex w-full items-center gap-2 md:w-auto">
+          {/* Create cluster — desktop inline toolbar (md+). On mobile,
+              the cluster only renders to host the inline category-rename
+              input when the user picked "New category" from the Options
+              modal; otherwise it stays hidden because New is reachable
+              from the bottom action bar. */}
+          <div
+            className={`items-center gap-2 w-full md:w-auto md:flex ${
+              dialog?.type === 'add-category' ? 'flex' : 'hidden'
+            }`}
+          >
             <button
               onClick={() => setDialog({ type: 'create-item' })}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="hidden md:flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               <Plus size={14} />
               New item
@@ -686,7 +697,7 @@ export default function GearLibraryPage() {
             ) : (
               <button
                 onClick={() => setDialog({ type: 'add-category' })}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="hidden md:flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 <Plus size={14} />
                 New category
@@ -694,11 +705,11 @@ export default function GearLibraryPage() {
             )}
           </div>
 
-          {/* Utility cluster — Select / Import / Export. w-full takes
-              its own row on mobile; md:ml-auto pushes it to the right
-              edge of the header row on desktop so primary actions
-              (create) sit left, utilities sit right. */}
-          <div className="flex w-full items-center gap-2 md:w-auto md:ml-auto">
+          {/* Utility cluster — Select / Import / Export. Desktop-only;
+              mobile users reach these via MobileGearActionBar (Select)
+              or the Options modal (Import, Export). md:ml-auto pushes
+              the cluster to the right edge of the header row on desktop. */}
+          <div className="hidden md:flex items-center gap-2 md:ml-auto">
             {selectMode ? (
               <button
                 onClick={exitSelectMode}
@@ -729,13 +740,6 @@ export default function GearLibraryPage() {
             >
               <Download size={14} /> Export
             </button>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={handleImportFile}
-            />
           </div>
         </div>
 
@@ -765,8 +769,9 @@ export default function GearLibraryPage() {
         />
       )}
 
-      {/* Category-list controls */}
-      <div className="mb-4 flex flex-wrap items-center justify-end gap-3 text-sm text-gray-500">
+      {/* Category-list view controls — desktop-only. Mobile users
+          reach Collapse/Expand all from the gear Options modal. */}
+      <div className="mb-4 hidden md:flex flex-wrap items-center justify-end gap-3 text-sm text-gray-500">
         <button
           type="button"
           onClick={() => resetCollapsed(collapsibleKeys)}
@@ -1021,6 +1026,21 @@ export default function GearLibraryPage() {
           onClose={() => setDialog(null)}
         />
       )}
+
+      {/* Mobile bottom action bar — New / Select / Options. lg:hidden
+          inside the component itself, so desktop never renders it. */}
+      <MobileGearActionBar
+        onNewItem={() => setDialog({ type: 'create-item' })}
+        selectMode={selectMode}
+        onToggleSelectMode={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+        onNewCategory={() => setDialog({ type: 'add-category' })}
+        onImport={() => setDialog({ type: 'import-explainer' })}
+        onExport={handleExport}
+        canExport={allItems.length > 0}
+        onCollapseAll={() => resetCollapsed(collapsibleKeys)}
+        onExpandAll={expandAll}
+        canCollapseExpand={collapsibleKeys.length > 0}
+      />
     </div>
   )
 }

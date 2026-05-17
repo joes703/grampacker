@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { Download, KeyRound, Trash2 } from 'lucide-react'
+import { Download, KeyRound, Scale, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../lib/supabase'
 import {
@@ -14,6 +14,7 @@ import {
 import type { ListItemWithGear } from '../lib/types'
 import { gearItemsToCsv, listItemsToCsv } from '../lib/csv'
 import TypedConfirmDialog from '../components/TypedConfirmDialog'
+import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import { useDocumentTitle } from '../lib/use-document-title'
 
 export default function SettingsPage() {
@@ -24,6 +25,19 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <h1 className="text-xl font-semibold text-gray-900">Settings</h1>
+
+      {/* Weight units — canonical control for the global display
+          preference. Replaces the small g/oz toggle that used to live in
+          the authed top bar; the public Share page has its own segmented
+          control so viewers (who have no Settings access) can still
+          change units. */}
+      <Section title="Display" subtitle="How weights are shown across the app" icon={<Scale size={16} />}>
+        <UnitSegmentedControl
+          idPrefix="settings"
+          label="Weight units"
+          hint="Affects how gear, list, and pack weights are displayed everywhere."
+        />
+      </Section>
 
       <Section title="Account" subtitle={email} icon={<KeyRound size={16} />}>
         <ChangePasswordForm />

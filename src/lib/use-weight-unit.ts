@@ -49,7 +49,14 @@ function getServerSnapshot(): WeightUnit {
   return 'g'
 }
 
-export function useWeightUnit(): { weightUnit: WeightUnit; toggleWeightUnit: () => void } {
+export function useWeightUnit(): {
+  weightUnit: WeightUnit
+  toggleWeightUnit: () => void
+  /** Set the unit to an absolute value. Used by segmented controls
+   *  (Settings, SharePage) that present each unit as its own button
+   *  rather than a single toggle. */
+  setUnit: (unit: WeightUnit) => void
+} {
   const weightUnit = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
   function toggleWeightUnit() {
@@ -60,5 +67,9 @@ export function useWeightUnit(): { weightUnit: WeightUnit; toggleWeightUnit: () 
     setWeightUnit(weightUnit === 'g' ? 'oz' : 'g')
   }
 
-  return { weightUnit, toggleWeightUnit }
+  function setUnit(unit: WeightUnit) {
+    setWeightUnit(unit)
+  }
+
+  return { weightUnit, toggleWeightUnit, setUnit }
 }

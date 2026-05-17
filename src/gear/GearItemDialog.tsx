@@ -156,15 +156,34 @@ export default function GearItemDialog({
   const heading = isEdit ? 'Edit item' : 'New item'
 
   return (
-    <Modal open onClose={onClose} title={heading} className="w-full max-w-md" closeOnBackdropClick={false}>
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-5">
+    // max-h-[90vh] + flex column lets the dialog cap its height and split
+    // into header / scrollable body / sticky footer. On viewports tall
+    // enough to fit the form (most desktops), the body just doesn't
+    // scroll. On mobile, the body scrolls and Save/Cancel stay reachable
+    // at the bottom of the modal without the user hunting for them.
+    <Modal
+      open
+      onClose={onClose}
+      title={heading}
+      className="w-full max-w-md max-h-[90vh] flex flex-col"
+      closeOnBackdropClick={false}
+    >
+      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        {/* Header — sits above the scroll region so the close button
+            never disappears as the user scrolls the form. */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-3 shrink-0">
           <h2 className="text-base font-semibold text-gray-900">{heading}</h2>
           <button type="button" onClick={onClose} className="rounded p-1 text-gray-400 hover:text-gray-600">
             <X size={18} />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
+
+        {/* Scroll region — flex-1 min-h-0 is the standard recipe for a
+            flex child that can shrink AND grow inside its parent's flex
+            constraints. Without min-h-0 the child would refuse to be
+            smaller than its content and the overflow-y-auto would
+            never kick in. */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 space-y-4">
           <div>
             <label htmlFor="gi-name" className="block text-sm font-medium text-gray-700 mb-1">
               Name
@@ -446,7 +465,21 @@ export default function GearItemDialog({
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-1">
+          {/* Bottom padding so the last form field has breathing room
+              above the sticky footer. */}
+          <div className="h-2" aria-hidden="true" />
+        </div>
+
+        {/* Sticky footer — Cancel / Save. Stays visible at the bottom of
+            the modal even when the scroll region above scrolls. Inside
+            the form so Enter from any field still submits. The
+            safe-area padding handles iOS home-indicator overlap when the
+            dialog snaps to the bottom on short viewports. */}
+        <div
+          className="shrink-0 border-t border-gray-100 bg-white px-6 py-3"
+          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+        >
+          <div className="flex justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
@@ -462,8 +495,8 @@ export default function GearItemDialog({
               {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Add item'}
             </button>
           </div>
-        </form>
-      </div>
+        </div>
+      </form>
     </Modal>
   )
 }

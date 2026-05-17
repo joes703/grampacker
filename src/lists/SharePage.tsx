@@ -12,6 +12,7 @@ import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
 import AboutLink from '../components/AboutLink'
 import OfflineBanner from '../components/OfflineBanner'
+import UnitSegmentedControl from '../components/UnitSegmentedControl'
 
 // Notes are rendered as Markdown on the public share view (typing markdown
 // in the authed NotesEditor textarea is the only authoring path). Lazy so
@@ -21,7 +22,7 @@ const MarkdownContent = lazy(() => import('../components/MarkdownContent'))
 
 export default function SharePage() {
   const { slug } = useParams<{ slug: string }>()
-  const { weightUnit, toggleWeightUnit } = useWeightUnit()
+  const { weightUnit } = useWeightUnit()
   const isBelowLg = useIsBelowLg()
 
   const { data: list, isLoading: listLoading } = useQuery({
@@ -123,16 +124,15 @@ export default function SharePage() {
     <div className="min-h-screen bg-gray-50">
       <OfflineBanner />
       <div className="mx-auto max-w-5xl px-4 py-10">
-        {/* Header */}
-        <div className="mb-6 flex items-center gap-3">
+        {/* Header. Viewers don't have Settings access, so the share page
+            keeps its own units control — but rendered as the same
+            Metric / Imperial segmented control authed users see in
+            Settings rather than a tiny "g" / "oz" toggle. Writes through
+            the same useWeightUnit store, so the choice persists on this
+            device. */}
+        <div className="mb-6 flex flex-wrap items-center gap-3">
           <h1 className="flex-1 min-w-0 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
-          <button
-            onClick={toggleWeightUnit}
-            title={`Switch to ${weightUnit === 'g' ? 'oz' : 'g'}`}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
-          >
-            {weightUnit}
-          </button>
+          <UnitSegmentedControl idPrefix="share" />
         </div>
 
         {/* Notes + Weight summary — side by side on desktop, with Notes
