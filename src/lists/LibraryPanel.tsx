@@ -8,8 +8,6 @@ import CategoryFilterChips, {
   UNCATEGORIZED_CHIP_VALUE,
   type CategoryChipValue,
 } from '../components/CategoryFilterChips'
-import QuickAddItemModal from './QuickAddItemModal'
-import { type AddItemData } from './use-quick-add-form'
 
 type Props = {
   gearItems: GearItem[]
@@ -18,15 +16,16 @@ type Props = {
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
   onRemove: (item: GearItem) => void
-  /** Optional create-and-attach hook. When provided, the picker renders
-   *  a quiet secondary "+ New gear item" action below the search/chips
-   *  that opens QuickAddItemModal; on submit, the new gear is created
-   *  and attached to the current list via the same RPC the inline
-   *  desktop add-row uses. Omit (or leave undefined) on read-only
-   *  surfaces. The defaultCategoryId argument carries the currently
-   *  selected chip's category id (or null for All / Uncategorized) so
-   *  the new item lands in the user's filtered context. */
-  onAddNewItem?: (categoryId: string | null, data: AddItemData) => void
+  /** Optional hook for the secondary "+ New gear item" action. The
+   *  picker is a picker/filter surface and intentionally does NOT own
+   *  gear-creation form state — the parent (ListDetailPage) opens the
+   *  canonical GearItemDialog in create mode with the same field set
+   *  the gear library uses, then runs the create-and-attach mutation
+   *  on save. We pass `defaultCategoryId` so the dialog pre-fills the
+   *  category dropdown from whichever chip is currently selected (real
+   *  category id → that category, All / Uncategorized → null). Omit on
+   *  read-only surfaces. */
+  onCreateGearItemRequest?: (defaultCategoryId: string | null) => void
   // Increment from a parent to programmatically focus the search input.
   // Used by the empty-list onboarding affordance on /lists/:id at lg+.
   // The skipInitialFocus ref guards the mount-time effect run so that
@@ -35,10 +34,9 @@ type Props = {
   focusSearchTrigger?: number
 }
 
-export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove, onAddNewItem, focusSearchTrigger }: Props) {
+export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove, onCreateGearItemRequest, focusSearchTrigger }: Props) {
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<CategoryChipValue>(null)
-  const [newItemOpen, setNewItemOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(new Set<string>())
   const searchInputRef = useRef<HTMLInputElement>(null)
   // Capture the focusSearchTrigger value at mount and compare on every
@@ -139,14 +137,21 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
         />
         {/* Secondary "New gear item" path — kept quiet so picking an
             existing item from the rows below remains the primary
-            affordance. Tapping opens QuickAddItemModal (same component
-            mobile previously reached from CategoryGroup's footer row);
-            the create-and-attach mutation lives in ListDetailPage and is
-            shared with the desktop inline AddItemRow path. */}
-        {onAddNewItem && (
+            affordance. Tapping hands off to the parent, which opens the
+            canonical GearItemDialog (same form the gear library uses) so
+            cost / purchase_date / status / category are all available
+            and there's no reduced-form drift. The selected chip becomes
+            the default category. */}
+        {onCreateGearItemRequest && (
           <button
             type="button"
-            onClick={() => setNewItemOpen(true)}
+            onClick={() => {
+              const defaultCategoryId =
+                selectedCategory && selectedCategory !== UNCATEGORIZED_CHIP_VALUE
+                  ? selectedCategory
+                  : null
+              onCreateGearItemRequest(defaultCategoryId)
+            }}
             className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-blue-600"
           >
             <Plus size={12} /> New gear item
@@ -188,23 +193,6 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
         )}
       </div>
 
-      {/* QuickAddItemModal mount for the secondary "New gear item" path.
-          Derives the default category from the active chip filter so the
-          new item lands in the user's current context: a real category
-          chip → that category, All / Uncategorized → null. */}
-      {newItemOpen && onAddNewItem && (
-        <QuickAddItemModal
-          onSubmit={(data) => {
-            const categoryId =
-              selectedCategory && selectedCategory !== UNCATEGORIZED_CHIP_VALUE
-                ? selectedCategory
-                : null
-            onAddNewItem(categoryId, data)
-            setNewItemOpen(false)
-          }}
-          onClose={() => setNewItemOpen(false)}
-        />
-      )}
     </div>
   )
 }
