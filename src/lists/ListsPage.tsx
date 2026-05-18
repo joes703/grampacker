@@ -16,12 +16,12 @@ import {
 import {
   SortableContext,
   arrayMove,
-  rectSortingStrategy,
   sortableKeyboardCoordinates,
   useSortable,
+  verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ClipboardList, CopyPlus, Download, GripVertical, MoreVertical, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { CopyPlus, Download, Globe, GripVertical, MoreVertical, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import {
   queryKeys,
@@ -54,7 +54,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
 import ListsEmptyState from './ListsEmptyState'
-import PrivacyButton from './PrivacyButton'
+import PrivacyPanel from './PrivacyPanel'
 
 // Single discriminated union for every transient dialog/modal/inline-form on
 // this page. Mirrors the pattern in ListDetailPage / GearLibraryPage — `type`
@@ -63,6 +63,7 @@ type DialogState =
   | { type: 'creating'; draft: string }
   | { type: 'renaming'; list: List; draft: string }
   | { type: 'confirm-delete'; list: List }
+  | { type: 'share-list'; list: List }
   | { type: 'import-preview'; rows: ListImportRow[]; filename: string }
   | { type: 'import-error'; message: string }
 
@@ -182,10 +183,10 @@ export default function ListsPage() {
     setActiveId(null)
   }
 
-  // Card-level reorder. The grid is multi-column at sm+/lg+, so we use
-  // rectSortingStrategy (calculates target by bounding-rect intersection
-  // across wraps) instead of verticalListSortingStrategy. Single case —
-  // no category-level concern on this page.
+  // Row-level reorder. Rows are stacked vertically inside a single
+  // container, so verticalListSortingStrategy is the right collision
+  // model — predicts target purely by Y axis. The DnD kind is still
+  // `list-card` (an internal identifier); only the visual shape changed.
   function handleDragEnd(e: DragEndEvent) {
     setActiveId(null)
     const { active, over } = e
@@ -294,13 +295,33 @@ export default function ListsPage() {
         onChange={handleImportFile}
       />
 
-      {/* Card grid */}
+      {/* Row list. Single bordered container with divide-y between rows —
+          a compact list manager rather than a dashboard of cards. The
+          row body is owned by ListRow; the sortable wrapper threads the
+          drag handle ref/listeners through. */}
       {listsLoading ? (
         <p className="text-sm text-gray-400">Loading…</p>
       ) : (() => {
         const activeParsed = activeId ? parseDnDId(activeId) : null
         const activeList =
           activeParsed?.kind === 'list-card' ? lists.find((l) => l.id === activeParsed.id) : null
+        const rowHandlers = (list: List) => ({
+          renaming: dialog?.type === 'renaming' && dialog.list.id === list.id,
+          renameDraft: dialog?.type === 'renaming' && dialog.list.id === list.id ? dialog.draft : '',
+          onRenameDraftChange: (v: string) => setDialog({ type: 'renaming', list, draft: v }),
+          onStartRename: () => setDialog({ type: 'renaming', list, draft: list.name }),
+          onSubmitRename: () => {
+            if (dialog?.type !== 'renaming') return
+            const trimmed = dialog.draft.trim()
+            if (trimmed && trimmed !== list.name) renameMut.mutate({ id: list.id, name: trimmed })
+            setDialog(null)
+          },
+          onCancelRename: () => setDialog(null),
+          onExport: () => handleExport(list),
+          onDuplicate: () => duplicateMut.mutate(list),
+          onShare: () => setDialog({ type: 'share-list', list }),
+          onDelete: () => setDialog({ type: 'confirm-delete', list }),
+        })
         return (
           <DndContext
             sensors={sensors}
@@ -309,50 +330,81 @@ export default function ListsPage() {
             onDragEnd={handleDragEnd}
             onDragCancel={handleDragCancel}
           >
-            <SortableContext items={lists.map((l) => makeDnDId('list-card', l.id))} strategy={rectSortingStrategy}>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {lists.map((list) => (
-                  <SortableListCard
-                    key={list.id}
-                    list={list}
-                    now={now}
-                    reorderPending={reorderListsMut.isPending}
-                    renaming={dialog?.type === 'renaming' && dialog.list.id === list.id}
-                    renameDraft={dialog?.type === 'renaming' && dialog.list.id === list.id ? dialog.draft : ''}
-                    onRenameDraftChange={(v) => setDialog({ type: 'renaming', list, draft: v })}
-                    onStartRename={() => setDialog({ type: 'renaming', list, draft: list.name })}
-                    onSubmitRename={() => {
-                      if (dialog?.type !== 'renaming') return
-                      const trimmed = dialog.draft.trim()
-                      if (trimmed && trimmed !== list.name) renameMut.mutate({ id: list.id, name: trimmed })
-                      setDialog(null)
-                    }}
-                    onCancelRename={() => setDialog(null)}
-                    onExport={() => handleExport(list)}
-                    onDuplicate={() => duplicateMut.mutate(list)}
-                    onDelete={() => setDialog({ type: 'confirm-delete', list })}
-                  />
-                ))}
+            <SortableContext items={lists.map((l) => makeDnDId('list-card', l.id))} strategy={verticalListSortingStrategy}>
+              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                <ul className="divide-y divide-gray-100">
+                  {lists.map((list) => (
+                    <SortableListRow
+                      key={list.id}
+                      list={list}
+                      now={now}
+                      reorderPending={reorderListsMut.isPending}
+                      {...rowHandlers(list)}
+                    />
+                  ))}
+                </ul>
               </div>
             </SortableContext>
             <DragOverlay>
               {activeList ? (
-                <ListCard
-                  list={activeList}
-                  now={now}
-                  renaming={false}
-                  renameDraft=""
-                  onRenameDraftChange={() => {}}
-                  onStartRename={() => {}}
-                  onSubmitRename={() => {}}
-                  onCancelRename={() => {}}
-                  onExport={() => {}}
-                  onDuplicate={() => {}}
-                  onDelete={() => {}}
-                />
+                // Overlay clone — a static row with a soft shadow so the
+                // user can see what they're dragging. Wired to no-op
+                // handlers because the overlay is purely visual; the
+                // real row underneath still owns interaction.
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                  <ul>
+                    <ListRow
+                      list={activeList}
+                      now={now}
+                      renaming={false}
+                      renameDraft=""
+                      onRenameDraftChange={() => {}}
+                      onStartRename={() => {}}
+                      onSubmitRename={() => {}}
+                      onCancelRename={() => {}}
+                      onExport={() => {}}
+                      onDuplicate={() => {}}
+                      onShare={() => {}}
+                      onDelete={() => {}}
+                    />
+                  </ul>
+                </div>
               ) : null}
             </DragOverlay>
           </DndContext>
+        )
+      })()}
+
+      {/* Share dialog. PrivacyButton's own popover anchors to its trigger
+          icon; embedding that inside a kebab menu would nest popovers and
+          fight the menu's outside-click dismissal. A plain Modal wrapping
+          PrivacyPanel keeps the toggle + URL-copy UI intact and avoids the
+          anchoring trap. The dialog reads the live List from the lists
+          cache (rather than the snapshot the kebab captured) so the
+          public-link toggle re-renders the panel's URL row optimistically
+          after every flip. */}
+      {dialog?.type === 'share-list' && (() => {
+        const live = lists.find((l) => l.id === dialog.list.id) ?? dialog.list
+        return (
+          <Modal open onClose={() => setDialog(null)} title="Share list" className="w-full max-w-sm">
+            <div className="p-5">
+              <div className="mb-3 flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-base font-semibold text-gray-900">Share list</h2>
+                  <p className="mt-0.5 truncate text-xs text-gray-500">{live.name}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDialog(null)}
+                  aria-label="Close"
+                  className="rounded p-1 text-gray-400 hover:text-gray-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <PrivacyPanel list={live} />
+            </div>
+          </Modal>
         )
       })()}
 
@@ -451,11 +503,11 @@ function NewListInline({
   )
 }
 
-type ListCardProps = {
+type ListRowProps = {
   list: List
-  // Page-level clock for relative-date display. Drilled down to CardMeta so
-  // ListsPage owns one setInterval rather than one per card. M9 fix: pre-
-  // fix, formatRelativeDate read Date.now() at render time only, so a card
+  // Page-level clock for relative-date display. Drilled down to RowMeta so
+  // ListsPage owns one setInterval rather than one per row. M9 fix: pre-
+  // fix, formatRelativeDate read Date.now() at render time only, so a row
   // that mounted saying "1 min ago" stayed "1 min ago" forever.
   now: number
   renaming: boolean
@@ -466,6 +518,7 @@ type ListCardProps = {
   onCancelRename: () => void
   onExport: () => void
   onDuplicate: () => void
+  onShare: () => void
   onDelete: () => void
   // Sortable wrapper threads its dnd-kit ref + transform style + drag-
   // handle button through these. Omitted by the DragOverlay clone (no
@@ -475,14 +528,14 @@ type ListCardProps = {
   dragHandle?: React.ReactNode
 }
 
-// Sortable wrapper for the cards grid. Calls useSortable, wires the card
+// Sortable wrapper for the row list. Calls useSortable, wires the row's
 // outer ref + transform style + drag-handle button, and forwards everything
-// else to ListCard. Disabled while the card's rename input is open so the
+// else to ListRow. Disabled while the row's rename input is open so the
 // user can type without accidental drags, and while a previous reorder
 // mutation is in flight to prevent the rollback-clobber race when two
 // reorders overlap.
-function SortableListCard(
-  props: Omit<ListCardProps, 'outerRef' | 'outerStyle' | 'dragHandle'> & { reorderPending?: boolean },
+function SortableListRow(
+  props: Omit<ListRowProps, 'outerRef' | 'outerStyle' | 'dragHandle'> & { reorderPending?: boolean },
 ) {
   const {
     attributes,
@@ -511,14 +564,18 @@ function SortableListCard(
       {...attributes}
       tabIndex={-1}
       aria-label="Drag to reorder list"
-      className="absolute left-2 top-2 z-20 inline-flex h-7 w-7 items-center justify-center rounded text-gray-400 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
+      // Touch-friendly hit target on mobile (h-9 w-9), tightens on lg+.
+      // `touch-none` keeps the pointer drag from racing the browser's
+      // scroll on touch devices; PointerSensor's 5px activation
+      // distance still gates accidental click-vs-drag misreads.
+      className="inline-flex h-9 w-9 lg:h-7 lg:w-7 shrink-0 items-center justify-center rounded text-gray-400 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
     >
       <GripVertical size={16} />
     </button>
   )
 
   return (
-    <ListCard
+    <ListRow
       {...props}
       outerRef={setNodeRef}
       outerStyle={sortableStyle}
@@ -527,7 +584,7 @@ function SortableListCard(
   )
 }
 
-function ListCard({
+function ListRow({
   list,
   now,
   renaming,
@@ -538,11 +595,12 @@ function ListCard({
   onCancelRename,
   onExport,
   onDuplicate,
+  onShare,
   onDelete,
   outerRef,
   outerStyle,
   dragHandle,
-}: ListCardProps) {
+}: ListRowProps) {
   const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
     useAnchoredMenu({ variant: 'right-flush', menuWidth: 176 })
   const renameInputRef = useRef<HTMLInputElement>(null)
@@ -551,19 +609,20 @@ function ListCard({
     if (renaming) renameInputRef.current?.select()
   }, [renaming])
 
-  // Card chrome: same border/radius/bg the gear page uses for category sections.
-  // Hover lift kept subtle so the grid doesn't feel busy.
-  const cardClass =
-    'relative flex flex-col rounded-xl border border-gray-200 bg-white p-4 transition-shadow hover:shadow-md'
+  // Row chrome: a flex strip inside the shared bordered container. No
+  // hover-shadow — the container is the visual anchor, and a per-row
+  // lift would re-introduce the card feel this refactor is replacing.
+  // Hover bg is the same gray-50 every other interactive row in the app
+  // uses (gear, list-detail, picker).
+  const rowClass =
+    'relative flex items-center gap-2 px-3 py-2 hover:bg-gray-50'
 
-  // Renaming swaps the title for an input and disables card navigation. Keeps
-  // the kebab visible so the user can cancel by reopening the menu, but the
-  // common path is Enter / Escape / blur on the input itself. The drag handle
-  // is also rendered (the SortableListCard wrapper passes `disabled: renaming`
-  // to useSortable, so the handle is inert during rename — keeps layout stable).
+  // Renaming swaps the name link for an input. The kebab is hidden during
+  // rename to keep the focused control unambiguous; Enter / Escape / blur
+  // on the input commits or cancels.
   if (renaming) {
     return (
-      <div ref={outerRef} style={outerStyle} className={cardClass}>
+      <li ref={outerRef as React.Ref<HTMLLIElement>} style={outerStyle} className={rowClass}>
         {dragHandle}
         <input
           ref={renameInputRef}
@@ -576,53 +635,31 @@ function ListCard({
             if (e.key === 'Escape') onCancelRename()
           }}
           onBlur={onSubmitRename}
-          className="ml-8 w-[calc(100%-2rem)] rounded border border-blue-400 px-2 py-1 text-base font-semibold text-gray-900 focus:outline-none"
+          className="flex-1 min-w-0 rounded border border-blue-400 px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-        <CardMeta list={list} now={now} />
-      </div>
+      </li>
     )
   }
 
   return (
-    <div ref={outerRef} style={outerStyle} className={cardClass}>
+    <li ref={outerRef as React.Ref<HTMLLIElement>} style={outerStyle} className={rowClass}>
       {dragHandle}
-      {/* Whole-card link covers the card area. The drag handle and kebab
-          buttons above sit in a higher stacking context so their clicks
-          aren't intercepted. PointerSensor activation distance of 5px keeps
-          accidental click-vs-drag misreads off the table. */}
+
+      {/* Name is the primary click target; takes whatever flex room the
+          meta and kebab leave behind. truncate caps long names rather
+          than wrapping the row. */}
       <Link
         to={`/lists/${list.id}`}
-        className="absolute inset-0 z-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 focus:outline-none focus:underline"
         aria-label={`Open ${list.name}`}
-      />
+      >
+        {list.name}
+      </Link>
 
-      <div className="relative z-10 pointer-events-none">
-        <h3 className="truncate px-8 text-base font-semibold text-gray-900">{list.name}</h3>
-        <CardMeta list={list} now={now} />
-      </div>
+      <RowMeta list={list} now={now} />
 
-      {/* Workflow actions: Pack launches into pack mode via the URL state
-          on /lists/:id; Share is the per-card PrivacyButton (anchored to
-          its own trigger so dropping it into the card just works). On
-          /lists/:id sharing has moved inside List options, but the card
-          surface keeps a one-tap share affordance — the Lists page is
-          a list-library overview and per-card share matches that mental
-          model. The row sits at z-10 with pointer-events-auto, above the
-          card's full-area Link at z-0 — clicks on the buttons hit them
-          directly via z-order, no propagation interception needed. */}
-      <div className="relative z-10 mt-3 flex items-center justify-end gap-2 pointer-events-auto">
-        <Link
-          to={`/lists/${list.id}?mode=pack`}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
-        >
-          <ClipboardList size={14} />
-          <span className="hidden sm:inline">Pack</span>
-        </Link>
-        <PrivacyButton list={list} />
-      </div>
-
-      {/* Kebab — pointer-events-auto so it overrides the parent's
-          pointer-events-none, giving it precedence over the absolute Link. */}
+      {/* Kebab. Hidden during rename above. Live ARIA expanded so screen
+          readers track the menu state. */}
       <button
         ref={triggerRef}
         type="button"
@@ -633,7 +670,9 @@ function ListCard({
           else openMenu()
         }}
         aria-label="List options"
-        className="absolute right-2 top-2 z-20 inline-flex h-9 w-9 lg:h-7 lg:w-7 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        className="inline-flex h-9 w-9 lg:h-7 lg:w-7 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
       >
         <MoreVertical size={16} />
       </button>
@@ -641,6 +680,7 @@ function ListCard({
       {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
           ref={menuRef}
+          role="menu"
           className="fixed z-50 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
           style={{ top: menuPos.top, left: menuPos.left }}
         >
@@ -649,6 +689,9 @@ function ListCard({
             onClick={() => { close(); onStartRename() }}
           >
             Rename
+          </MenuItem>
+          <MenuItem icon={<Globe size={13} />} onClick={() => { close(); onShare() }}>
+            Share…
           </MenuItem>
           <MenuItem icon={<Download size={13} />} onClick={() => { close(); onExport() }}>
             Export CSV
@@ -663,23 +706,23 @@ function ListCard({
         </div>,
         document.body,
       )}
-    </div>
+    </li>
   )
 }
 
-function CardMeta({ list, now }: { list: List; now: number }) {
+function RowMeta({ list, now }: { list: List; now: number }) {
   const updated = formatRelativeDate(list.updated_at, now)
+  // Hidden on the smallest viewports so the row stays readable on a
+  // narrow phone; comes back at sm+. tabular-nums keeps the column
+  // visually steady as the relative time ticks.
   return (
-    <div className="mt-2 space-y-1 text-sm text-gray-500">
-      {list.description && (
-        <p className="line-clamp-2 text-gray-600">{list.description}</p>
-      )}
-      <p className="text-xs text-gray-400">Updated {updated}</p>
-    </div>
+    <span className="hidden sm:inline shrink-0 text-xs tabular-nums text-gray-400">
+      Updated {updated}
+    </span>
   )
 }
 
-// Friendly relative date for the card metadata. Falls back to an absolute
+// Friendly relative date for the row metadata. Falls back to an absolute
 // short date once the value is more than a week old. `now` is supplied by
 // the caller's useNow hook so the displayed "X min ago" reticks once a
 // minute while the page stays open.
@@ -718,6 +761,8 @@ function MenuItem({
 }) {
   return (
     <button
+      type="button"
+      role="menuitem"
       onClick={onClick}
       className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
         danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-100'
