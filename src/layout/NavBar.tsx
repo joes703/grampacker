@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ClipboardList, HelpCircle, LogOut, Pencil, Settings } from 'lucide-react'
+import { Backpack, ClipboardList, HelpCircle, ListChecks, LogOut, Pencil, Settings } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import { supabase } from '../lib/supabase'
 import { queryKeys, fetchLists, updateList, makeOptimisticUpdate } from '../lib/queries'
@@ -70,11 +70,33 @@ export default function NavBar() {
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {route.kind === 'list-detail' && <ListContextControls listId={route.listId} />}
 
-          {/* Persistent secondary links on md+. Primary mobile app navigation
-              lives in the bottom bar; desktop keeps list switching in the
-              list-name selector and Gear Library in normal app navigation
-              flows. */}
+          {/* Persistent secondary links on md+. Mobile primary navigation
+              lives in the bottom bars; desktop surfaces Lists + Gear here
+              alongside Help/Settings/Sign out so the user can always reach
+              the two primary destinations regardless of which page they're
+              on. The list-name selector inside the route heading still
+              owns list switching on /lists/:id. */}
           <div className="hidden md:flex items-center gap-1">
+            <NavLink
+              to="/lists"
+              title="Lists"
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
+              }
+            >
+              <ListChecks size={14} />
+              <span className="sr-only lg:not-sr-only">Lists</span>
+            </NavLink>
+            <NavLink
+              to="/gear"
+              title="Gear"
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
+              }
+            >
+              <Backpack size={14} />
+              <span className="sr-only lg:not-sr-only">Gear</span>
+            </NavLink>
             <NavLink
               to="/help"
               title="Help"

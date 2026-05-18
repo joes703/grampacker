@@ -417,42 +417,42 @@ export default function GearItemDialog({
                   <span className="text-sm text-gray-700">Consumable (food, fuel, water)</span>
                 </label>
               </div>
-            </div>
-          )}
-
-          {/* Mobile-only destructive / scoping actions. On desktop these live
-              in the row kebab (list view) or as inline icon buttons (gear
-              inventory). The wrapper renders if either action is wired;
-              "Remove from list" still requires listContext (it has no
-              meaning outside a list), but "Delete from inventory" applies
-              both to list-view edits and to the gear inventory page. */}
-          {(onRemoveFromList || onDeleteFromInventory) && (
-            <div className="lg:hidden border-t border-gray-200 pt-4 space-y-3">
-              {listContext && onRemoveFromList && (
+              {/* Remove from list — list-scoped membership action, sits in
+                  the "On this list" section near quantity/worn/consumable
+                  rather than buried in the bottom destructive row. Neutral
+                  outline because it's not destructive: the gear item stays
+                  in the inventory. */}
+              {onRemoveFromList && (
                 <button
                   type="button"
                   onClick={onRemoveFromList}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   <CircleMinus size={14} />
                   Remove from list
                 </button>
               )}
-              {onDeleteFromInventory && (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-red-700 mb-2">
-                    Danger
-                  </p>
-                  <button
-                    type="button"
-                    onClick={onDeleteFromInventory}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
-                  >
-                    <Trash2 size={14} />
-                    Delete from inventory
-                  </button>
-                </div>
-              )}
+            </div>
+          )}
+
+          {/* Mobile-only Delete from inventory. The destructive action stays
+              at the bottom of the dialog so it can't be tapped by accident
+              while editing fields; "Remove from list" moved into the "On
+              this list" section above because it's list-scoped, not global.
+              On desktop these actions are reached via the row kebab; the
+              wrapper is `lg:hidden`. Cancel of the delete confirm restores
+              this dialog (see ListDetailPage / GearLibraryPage delete state
+              `returnDialog`). */}
+          {onDeleteFromInventory && (
+            <div className="lg:hidden border-t border-gray-200 pt-4">
+              <button
+                type="button"
+                onClick={onDeleteFromInventory}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
+              >
+                <Trash2 size={14} />
+                Delete from inventory
+              </button>
             </div>
           )}
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Backpack, Boxes, CheckSquare, Plus, Settings2 } from 'lucide-react'
+import { Backpack, CheckSquare, ListChecks, Plus, Settings2 } from 'lucide-react'
 import MobileOptionsModal from '../components/MobileOptionsModal'
 import MobileBottomBar from '../components/MobileBottomBar'
 import GearOptionsContent from './GearOptionsContent'
@@ -63,14 +63,14 @@ export default function MobileGearActionBar({
             type: 'link',
             to: '/lists',
             label: 'Lists',
-            icon: <Backpack size={18} />,
+            icon: <ListChecks size={18} />,
             ariaLabel: 'Lists',
           },
           {
             type: 'link',
             to: '/gear',
             label: 'Gear',
-            icon: <Boxes size={18} />,
+            icon: <Backpack size={18} />,
             ariaLabel: 'Gear',
           },
           {
