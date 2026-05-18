@@ -19,7 +19,7 @@ import {
 } from '@dnd-kit/sortable'
 import { useQuery, useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
-import { ChevronsDownUp, ChevronsUpDown, Download, Plus, Search, Upload, X } from 'lucide-react'
+import { Plus, Search, X } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import {
   queryKeys,
@@ -63,6 +63,7 @@ import GearImportPreviewDialog from './GearImportPreviewDialog'
 import BulkMoveCategoryDialog from './BulkMoveCategoryDialog'
 import BulkActionsToolbar from './BulkActionsToolbar'
 import MobileGearActionBar from './MobileGearActionBar'
+import GearOptionsButton from './GearOptionsButton'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 import { useDocumentTitle } from '../lib/use-document-title'
@@ -574,13 +575,13 @@ export default function GearLibraryPage() {
       />
 
       {/* Page header. NavBar renders "Gear Library" as the route heading,
-          so the in-content title is dropped. Mobile shows only count +
-          search + chips here; the three primary actions (New, Select,
-          Options) live in MobileGearActionBar at the bottom of the page,
-          and the rare utility actions (New category, Import, Export,
-          Collapse/Expand all) hide behind the Options modal. Desktop
-          keeps the inline single-row toolbar (search, create cluster,
-          utility cluster right-aligned). */}
+          so the in-content title is dropped. Both viewports expose only
+          the frequent actions (search + New item + Select + Options);
+          rare/utility actions (New category, Import, Export, Collapse /
+          Expand all) live behind the Options surface — a desktop popover
+          (GearOptionsButton) and a mobile modal (MobileGearActionBar).
+          The two surfaces consume the same GearOptionsContent so the
+          row list stays in lockstep. */}
       <div className="mb-6 space-y-3">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
           {/* Item count metadata — kept on every viewport now that the
@@ -589,7 +590,7 @@ export default function GearLibraryPage() {
 
           {/* Search — fills the remaining mobile-row width (flex-1
               min-w-0) so it isn't squeezed; locks to a comfortable
-              fixed width at md+ so create/utility have room. */}
+              fixed width at md+ so the right-side cluster has room. */}
           <div className="relative flex-1 min-w-0 md:flex-none md:w-56">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -601,72 +602,60 @@ export default function GearLibraryPage() {
             />
           </div>
 
-          {/* Create cluster — desktop inline toolbar (md+). On mobile,
-              the cluster only renders to host the inline category-rename
-              input when the user picked "New category" from the Options
-              modal; otherwise it stays hidden because New is reachable
-              from the bottom action bar. */}
-          <div
-            className={`items-center gap-2 w-full md:w-auto md:flex ${
-              dialog?.type === 'add-category' ? 'flex' : 'hidden'
-            }`}
-          >
+          {/* Inline "New category" input — only present while the
+              add-category dialog state is active. Triggered from
+              either the desktop Options popover or the mobile Options
+              modal. Hidden by default on every viewport; visible
+              full-width on mobile, inline on desktop when active. The
+              shared input here keeps a single source of truth instead
+              of duplicating the inline editor per surface. */}
+          {dialog?.type === 'add-category' && (
+            <div className="flex w-full md:w-auto items-center gap-2">
+              <input
+                autoFocus
+                type="text"
+                placeholder="Category name"
+                maxLength={128}
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitNewCategory()
+                  if (e.key === 'Escape') {
+                    setNewCategoryName('')
+                    setDialog(null)
+                  }
+                }}
+                className="w-44 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={commitNewCategory}
+                disabled={!newCategoryName.trim()}
+                className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+              >
+                Add
+              </button>
+              <button
+                onClick={() => { setNewCategoryName(''); setDialog(null) }}
+                className="rounded p-1.5 text-gray-400 hover:text-gray-600"
+                aria-label="Cancel new category"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
+          {/* Right cluster — New item + Select + Options. Desktop-only;
+              mobile users reach the equivalents from MobileGearActionBar.
+              md:ml-auto pushes the cluster to the right edge of the
+              header row. */}
+          <div className="hidden md:flex items-center gap-2 md:ml-auto">
             <button
               onClick={() => setDialog({ type: 'create-item' })}
-              className="hidden md:flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               <Plus size={14} />
               New item
             </button>
-            {dialog?.type === 'add-category' ? (
-              <div className="flex items-center gap-2">
-                <input
-                  autoFocus
-                  type="text"
-                  placeholder="Category name"
-                  maxLength={128}
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') commitNewCategory()
-                    if (e.key === 'Escape') {
-                      setNewCategoryName('')
-                      setDialog(null)
-                    }
-                  }}
-                  className="w-44 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  onClick={commitNewCategory}
-                  disabled={!newCategoryName.trim()}
-                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"
-                >
-                  Add
-                </button>
-                <button
-                  onClick={() => { setNewCategoryName(''); setDialog(null) }}
-                  className="rounded p-1.5 text-gray-400 hover:text-gray-600"
-                  aria-label="Cancel new category"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setDialog({ type: 'add-category' })}
-                className="hidden md:flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                <Plus size={14} />
-                New category
-              </button>
-            )}
-          </div>
-
-          {/* Utility cluster — Select / Import / Export. Desktop-only;
-              mobile users reach these via MobileGearActionBar (Select)
-              or the Options modal (Import, Export). md:ml-auto pushes
-              the cluster to the right edge of the header row on desktop. */}
-          <div className="hidden md:flex items-center gap-2 md:ml-auto">
             {selectMode ? (
               <button
                 onClick={exitSelectMode}
@@ -682,21 +671,15 @@ export default function GearLibraryPage() {
                 Select
               </button>
             )}
-            <button
-              onClick={() => setDialog({ type: 'import-explainer' })}
-              title="Import gear items from CSV"
-              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              <Upload size={14} /> Import
-            </button>
-            <button
-              onClick={handleExport}
-              disabled={allItems.length === 0}
-              title="Export gear library as CSV"
-              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
-            >
-              <Download size={14} /> Export
-            </button>
+            <GearOptionsButton
+              onNewCategory={() => setDialog({ type: 'add-category' })}
+              onImport={() => setDialog({ type: 'import-explainer' })}
+              onExport={handleExport}
+              canExport={allItems.length > 0}
+              onCollapseAll={() => resetCollapsed(collapsibleKeys)}
+              onExpandAll={expandAll}
+              canCollapseExpand={collapsibleKeys.length > 0}
+            />
           </div>
         </div>
 
@@ -717,31 +700,6 @@ export default function GearLibraryPage() {
           onDelete={() => bulkDelete.mutate(Array.from(selectedIds))}
         />
       )}
-
-      {/* Category-list view controls — desktop-only. Mobile users
-          reach Collapse/Expand all from the gear Options modal. */}
-      <div className="mb-4 hidden md:flex flex-wrap items-center justify-end gap-3 text-sm text-gray-500">
-        <button
-          type="button"
-          onClick={() => resetCollapsed(collapsibleKeys)}
-          disabled={collapsibleKeys.length === 0}
-          title="Collapse all categories"
-          className="flex items-center gap-1 hover:text-gray-700 disabled:opacity-40"
-        >
-          <ChevronsDownUp size={14} />
-          Collapse all
-        </button>
-        <button
-          type="button"
-          onClick={expandAll}
-          disabled={collapsibleKeys.length === 0}
-          title="Expand all categories"
-          className="flex items-center gap-1 hover:text-gray-700 disabled:opacity-40"
-        >
-          <ChevronsUpDown size={14} />
-          Expand all
-        </button>
-      </div>
 
       {/* Category list */}
       {isLoading ? (
