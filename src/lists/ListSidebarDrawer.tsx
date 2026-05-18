@@ -8,9 +8,10 @@ import { X } from 'lucide-react'
 // vaul + the chrome icons. Together with M11's useIsBelowLg gate at the
 // caller, vaul never loads on desktop.
 //
-// Header: title + close. The drawer previously also carried a "Manage"
-// link to Gear Inventory; the mobile bottom bar now exposes a Gear
-// destination on every authed route, so the in-drawer nav was redundant.
+// Header: title + close. The title labels the drawer as a picker into the
+// user's gear inventory rather than the Gear destination itself; the
+// drawer previously carried a "Manage" link too, but the mobile bottom
+// bar now exposes Gear on every authed route, so that nav is redundant.
 type Props = {
   open: boolean
   onOpenChange: (next: boolean) => void
@@ -24,11 +25,11 @@ export default function ListSidebarDrawer({ open, onOpenChange, children }: Prop
         <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40" />
         <Drawer.Content className="fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-sm flex-col bg-gray-50">
           <Drawer.Title className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-3">
-            <span className="text-sm font-semibold text-gray-900">Gear Library</span>
+            <span className="text-sm font-semibold text-gray-900">Add from inventory</span>
             <button
               type="button"
               onClick={() => onOpenChange(false)}
-              aria-label="Close gear library"
+              aria-label="Close picker"
               className="ml-auto rounded p-1 text-gray-400 hover:text-gray-600"
             >
               <X size={18} />

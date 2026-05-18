@@ -147,7 +147,7 @@ function RouteHeading({ route }: { route: RouteContext }) {
     return <ListHeading list={list} lists={lists} userId={userId} />
   }
 
-  if (route.kind === 'all-lists') return <StaticHeading>All lists</StaticHeading>
+  if (route.kind === 'all-lists') return <StaticHeading>Lists</StaticHeading>
   if (route.kind === 'gear') return <StaticHeading>Gear Library</StaticHeading>
   if (route.kind === 'settings') return <StaticHeading>Settings</StaticHeading>
   if (route.kind === 'help') return <StaticHeading>Help</StaticHeading>
