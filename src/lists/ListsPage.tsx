@@ -55,6 +55,7 @@ import Modal from '../components/Modal'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
 import ListsEmptyState from './ListsEmptyState'
 import PrivacyPanel from './PrivacyPanel'
+import MobileListsActionBar from './MobileListsActionBar'
 
 // Single discriminated union for every transient dialog/modal/inline-form on
 // this page. Mirrors the pattern in ListDetailPage / GearLibraryPage — `type`
@@ -454,6 +455,15 @@ export default function ListsPage() {
           </div>
         </Modal>
       )}
+
+      {/* Mobile-only bottom action bar — Lists / Gear / New / Options.
+          Import CSV lives behind the Options modal so the bottom bar
+          stays focused on "New list" as the primary action. lg:hidden
+          inside the component itself, so desktop never renders it. */}
+      <MobileListsActionBar
+        onNewList={() => setDialog({ type: 'creating', draft: '' })}
+        onImportCsv={openImportPicker}
+      />
     </div>
   )
 }

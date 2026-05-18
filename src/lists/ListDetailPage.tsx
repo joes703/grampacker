@@ -91,7 +91,12 @@ type Mode = 'edit' | 'pack'
 // one variant so they can never drift apart.
 type DialogState =
   | { type: 'edit-gear'; gear: GearItem; listItem: ListItemWithGear | null; saveError: string | null }
-  | { type: 'delete-gear'; candidate: GearItem }
+  // `returnDialog` lets the confirm dialog restore the prior dialog on
+  // cancel — set when the delete is launched from inside GearItemDialog
+  // so the user lands back in the form they were editing rather than
+  // dropping all the way to the page. Omitted (undefined) for deletes
+  // launched directly from the row kebab.
+  | { type: 'delete-gear'; candidate: GearItem; returnDialog?: DialogState }
 
 export default function ListDetailPage() {
   // Default title for the wrapper; ListDetailInner overrides with the list
@@ -1074,22 +1079,22 @@ function ListDetailInner({
                     Sits outside the DndContext: it isn't a reorder target
                     (sortable=false), and worn items don't render inside
                     their original category sections while grouping is on
-                    (CategoryGroup's hideWorn handles that). packMode follows
-                    the page mode so the section's row chrome (packed
-                    checkbox column, packed-count header) matches the rest
-                    of the page. The items array walks categories in display
-                    order so the in-section order is stable and predictable. */}
+                    (CategoryGroup's hideWorn handles that). Spreads the
+                    same sharedGroupProps every in-category section uses so
+                    row chrome stays consistent — including readyChecksEnabled
+                    (Ready checkbox column in Pack mode), packActionsDisabled,
+                    onSetGearStatus, edit/delete handlers, weight unit, and
+                    breakpoint. Worn-specific overrides come after the spread
+                    so they win: section name "Worn", the stable wornItems
+                    list, and sortable={false}. The items array walks
+                    categories in display order so in-section order is
+                    stable and predictable. */}
                 {showWornGroup && wornItems.length > 0 && (
                   <CategoryGroup
+                    {...sharedGroupProps}
                     name="Worn"
                     items={wornItems}
-                    weightUnit={weightUnit}
-                    isBelowLg={isBelowLg}
-                    packMode={mode === 'pack'}
-                    packActionsDisabled={false}
                     sortable={false}
-                    showUnpackedOnly={showUnpackedOnly}
-                    onUpdate={sharedGroupProps.onUpdate}
                   />
                 )}
               </div>
@@ -1196,7 +1201,7 @@ function ListDetailInner({
             dialog.listItem
               ? () => {
                   const target = dialog.gear
-                  setDialog({ type: 'delete-gear', candidate: target })
+                  setDialog({ type: 'delete-gear', candidate: target, returnDialog: dialog })
                 }
               : undefined
           }
@@ -1213,7 +1218,10 @@ function ListDetailInner({
           message={`This will remove "${dialog.candidate.name}" from your inventory and from any list it appears on. This cannot be undone.`}
           confirmLabel="Delete"
           dangerous
-          onCancel={() => setDialog(null)}
+          // Cancel restores the prior dialog when one was captured (the
+          // user launched delete from inside GearItemDialog). Otherwise
+          // close to the page.
+          onCancel={() => setDialog(dialog.returnDialog ?? null)}
           onConfirm={() => {
             const target = dialog.candidate
             setDialog(null)

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { Backpack, Boxes, ClipboardList, Plus, Settings2 } from 'lucide-react'
+import { Backpack, ClipboardList, ListChecks, Plus, Settings2 } from 'lucide-react'
 import type { List } from '../lib/types'
 import { useSidebarDrawer } from '../layout/sidebar-drawer-context'
 import MobileOptionsModal from '../components/MobileOptionsModal'
@@ -62,14 +62,14 @@ export default function MobileListActionBar({ list }: Props) {
             type: 'link',
             to: '/lists',
             label: 'Lists',
-            icon: <Backpack size={18} />,
+            icon: <ListChecks size={18} />,
             ariaLabel: 'Lists',
           },
           {
             type: 'link',
             to: '/gear',
             label: 'Gear',
-            icon: <Boxes size={18} />,
+            icon: <Backpack size={18} />,
             ariaLabel: 'Gear',
           },
           {

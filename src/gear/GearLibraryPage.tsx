@@ -71,7 +71,11 @@ import { useDocumentTitle } from '../lib/use-document-title'
 type DialogState =
   | { type: 'create-item'; categoryId?: string | null }
   | { type: 'edit-item'; item: GearItem }
-  | { type: 'delete-item'; item: GearItem }
+  // `returnDialog` lets the confirm dialog restore the prior dialog on
+  // cancel — set when the delete is launched from inside GearItemDialog
+  // so the user lands back in the edit form. Omitted (undefined) for
+  // deletes launched directly from the row kebab or trash icon.
+  | { type: 'delete-item'; item: GearItem; returnDialog?: DialogState }
   | { type: 'delete-category'; category: Category }
   | { type: 'add-category' }
   | { type: 'bulk-move' }
@@ -820,7 +824,7 @@ export default function GearLibraryPage() {
           // trash button by transitioning dialog state.
           onDeleteFromInventory={
             dialog.type === 'edit-item'
-              ? () => setDialog({ type: 'delete-item', item: dialog.item })
+              ? () => setDialog({ type: 'delete-item', item: dialog.item, returnDialog: dialog })
               : undefined
           }
         />
@@ -832,7 +836,10 @@ export default function GearLibraryPage() {
           message={`This will remove "${dialog.item.name}" from your inventory and from any list it appears on. This cannot be undone.`}
           confirmLabel="Delete"
           dangerous
-          onCancel={() => setDialog(null)}
+          // Cancel restores the prior dialog when one was captured (the
+          // user launched delete from inside GearItemDialog). Otherwise
+          // close to the page.
+          onCancel={() => setDialog(dialog.returnDialog ?? null)}
           onConfirm={() => {
             removeItem.mutate(dialog.item.id, { onSuccess: () => setDialog(null) })
           }}
