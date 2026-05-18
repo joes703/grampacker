@@ -165,10 +165,10 @@ export default function GearItemDialog({
       open
       onClose={onClose}
       title={heading}
-      className="w-full max-w-md max-h-[90vh] flex flex-col"
+      className="w-[calc(100vw-2rem)] max-w-md max-h-[90vh] overflow-hidden"
       closeOnBackdropClick={false}
     >
-      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+      <form onSubmit={handleSubmit} className="flex max-h-[90vh] min-h-0 flex-col">
         {/* Header — sits above the scroll region so the close button
             never disappears as the user scrolls the form. */}
         <div className="flex items-center justify-between px-6 pt-6 pb-3 shrink-0">

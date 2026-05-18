@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate } from 'react-router'
-import { HelpCircle, LogOut, Menu, Settings } from 'lucide-react'
+import { Backpack, Boxes, HelpCircle, LogOut, Menu, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 
@@ -45,6 +45,27 @@ export default function MobileMenu() {
           className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
           style={{ top: menuPos.top, right: menuPos.right }}
         >
+          {/* App navigation + global section. Mobile pages such as
+              Settings/Help still need a way back into the app without
+              relying on browser Back. */}
+          <MenuLink
+            to="/lists"
+            icon={<Backpack size={14} />}
+            active={pathname === '/lists' || pathname.startsWith('/lists/')}
+            onClick={close}
+          >
+            Lists
+          </MenuLink>
+          <MenuLink
+            to="/gear"
+            icon={<Boxes size={14} />}
+            active={pathname === '/gear'}
+            onClick={close}
+          >
+            Gear Library
+          </MenuLink>
+          <div className="my-1 border-t border-gray-100" />
+
           {/* Global section — Help, Settings, Sign out. NavLink would
               normally drive active styling, but the menu only opens on
               non-active routes (you don't open the mobile menu from /help
