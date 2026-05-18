@@ -72,14 +72,14 @@ export default function MobileGearActionBar({
             to: '/lists',
             label: 'Lists',
             icon: <Backpack size={18} />,
-            ariaLabel: 'All lists',
+            ariaLabel: 'Lists',
           },
           {
             type: 'link',
             to: '/gear',
             label: 'Gear',
             icon: <Boxes size={18} />,
-            ariaLabel: 'Gear Library',
+            ariaLabel: 'Gear',
           },
           {
             type: 'button',

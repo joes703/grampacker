@@ -26,6 +26,10 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-2xl space-y-8">
       <h1 className="text-xl font-semibold text-gray-900">Settings</h1>
 
+      <Section title="Account" subtitle={email} icon={<KeyRound size={16} />}>
+        <ChangePasswordForm />
+      </Section>
+
       {/* Weight units — canonical control for the global display
           preference. Replaces the small g/oz toggle that used to live in
           the authed top bar; the public Share page has its own segmented
@@ -39,11 +43,7 @@ export default function SettingsPage() {
         />
       </Section>
 
-      <Section title="Account" subtitle={email} icon={<KeyRound size={16} />}>
-        <ChangePasswordForm />
-      </Section>
-
-      <Section title="Download all data" subtitle="A zip with your gear library and one CSV per list" icon={<Download size={16} />}>
+      <Section title="Download all data" subtitle="A zip with your gear inventory and one CSV per list" icon={<Download size={16} />}>
         <DownloadAllData />
       </Section>
 
@@ -350,7 +350,7 @@ function DeleteAccount() {
   return (
     <div>
       <p className="text-sm text-gray-600 mb-3">
-        This permanently deletes your account, gear library, and all lists. This cannot be undone.
+        This permanently deletes your account, gear inventory, and all lists. This cannot be undone.
       </p>
       <button
         onClick={() => setConfirming(true)}

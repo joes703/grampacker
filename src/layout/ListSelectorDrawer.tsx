@@ -3,7 +3,7 @@ import { X } from 'lucide-react'
 
 // Lazy boundary for vaul (~15-20 KB gzip mobile-only). Imported via
 // React.lazy from ListSelector. The body (SelectorBody — list of lists,
-// "+ New list", "All lists") stays in ListSelector since it's also used
+// "+ New list", "Lists") stays in ListSelector since it's also used
 // by the desktop popover and doesn't depend on vaul; passed as children.
 // Together with M11's useIsMobile gate, vaul never loads on desktop.
 type Props = {

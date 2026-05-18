@@ -286,7 +286,7 @@ function SelectorBody({
 
       <div className="border-t border-gray-100" />
 
-      {/* All lists */}
+      {/* Lists landing page */}
       <button
         type="button"
         onClick={() => {
@@ -295,7 +295,7 @@ function SelectorBody({
         }}
         className="px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
       >
-        All lists
+        Lists
       </button>
     </div>
   )

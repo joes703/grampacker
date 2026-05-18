@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router'
+import { useParams, useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   DndContext,
@@ -16,7 +16,7 @@ import {
   arrayMove,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable'
-import { Backpack, Plus, Upload } from 'lucide-react'
+import { Backpack } from 'lucide-react'
 const ListSidebarDrawer = lazy(() => import('./ListSidebarDrawer'))
 import { useRequireSession } from '../auth/use-require-session'
 import {
@@ -35,7 +35,6 @@ import {
   reorderListItems,
   updateGearItem,
   deleteGearItem,
-  importCsvRowsToList,
   makeOptimisticReorder,
   makeOptimisticInsert,
   makeOptimisticUpdate,
@@ -67,9 +66,7 @@ import {
   invalidateListItemsCaches,
   patchAffectsListItemsView,
 } from './list-items-fan-out'
-import { parseListCsv, type ListImportRow } from '../lib/csv'
 import { randomTempId } from '../lib/random-temp-id'
-import { useCsvFileInput } from '../lib/use-csv-file-input'
 import WeightTable from './WeightTable'
 import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
@@ -80,10 +77,8 @@ import { type AddItemData } from './use-quick-add-form'
 import CategoryGroup from './CategoryGroup'
 import PanelCard from './PanelCard'
 import ItemRow from './ItemRow'
-import ListImportPreviewDialog from './ListImportPreviewDialog'
 import GearItemDialog from '../gear/GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
-import Modal from '../components/Modal'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
 
@@ -97,8 +92,6 @@ type Mode = 'edit' | 'pack'
 type DialogState =
   | { type: 'edit-gear'; gear: GearItem; listItem: ListItemWithGear | null; saveError: string | null }
   | { type: 'delete-gear'; candidate: GearItem }
-  | { type: 'import-preview'; rows: ListImportRow[]; filename: string }
-  | { type: 'import-error'; message: string }
 
 export default function ListDetailPage() {
   // Default title for the wrapper; ListDetailInner overrides with the list
@@ -410,31 +403,6 @@ function ListDetailInner({
       queryKey: queryKeys.listItems(listId),
       id: (itemId) => itemId,
     }),
-  })
-
-  // CSV import targeting the CURRENT list (not a new one — that path lives
-  // on /lists). Reuses parseListCsv → preview → importCsvRowsToList. The
-  // list itself isn't renamed, so the parsed filename is kept only for
-  // display in the preview header (ListImportPreviewDialog uses it as a
-  // title hint).
-  const {
-    inputRef: importInputRef,
-    onChange: handleImportFile,
-    openPicker: openImportPicker,
-  } = useCsvFileInput<ListImportRow>(parseListCsv, {
-    onParsed: (rows, filename) => setDialog({ type: 'import-preview', rows, filename }),
-    onError: (message) => setDialog({ type: 'import-error', message }),
-  })
-
-  const importMut = useMutation({
-    mutationFn: (rows: ListImportRow[]) =>
-      importCsvRowsToList(listId, userId, rows, gearItems, categories, listItems.length),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      qc.invalidateQueries({ queryKey: queryKeys.categories() })
-      setDialog(null)
-    },
   })
 
   // Empty-state "Add from your inventory" handler. lg+ focuses the desktop
@@ -936,12 +904,13 @@ function ListDetailInner({
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
           >
             <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
-              {/* Quiet section header — orientation only. The Manage link
-                  used to live here, but the primary nav (top bar + mobile
-                  bottom bar) already exposes Gear Library. */}
+              {/* Quiet section header — labels the panel as a picker into
+                  the user's gear inventory, not the Gear destination itself.
+                  The Manage link used to live here, but the primary nav
+                  (top bar + mobile bottom bar) already exposes Gear. */}
               <div className="border-b border-gray-200 bg-gray-50 px-3 py-2">
                 <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Gear Library
+                  Add from inventory
                 </span>
               </div>
               <div className="flex-1 overflow-hidden">
@@ -1013,54 +982,31 @@ function ListDetailInner({
 
           {/* Items grouped by category */}
           {listItems.length === 0 ? (
-            <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 print:hidden">
-              <h2 className="text-base font-semibold text-gray-900">Add gear to this list</h2>
-              <p className="mt-1 text-sm text-gray-500">
-                Pick a starting point. The empty state goes away as soon as you add something.
-              </p>
-              {/* Three equal-weight onboarding affordances. Order is most-
-                  to-least likely path; soft-blue hover tint matches the
-                  Import CSV button on /lists, reinforcing creation-path
-                  affordance. Card #1 dispatches differently per viewport
-                  (desktop focuses the visible search input; mobile opens
-                  the drawer) since the gear picker is laid out differently
-                  on each. */}
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <button
-                  type="button"
-                  onClick={handleAddFromInventory}
-                  className="flex flex-col items-start gap-1.5 rounded-lg border border-gray-200 p-4 text-left transition-colors hover:border-blue-300 hover:bg-blue-50"
-                >
-                  <Backpack size={20} className="text-blue-600" />
-                  <span className="font-medium text-gray-900">Add from your inventory</span>
-                  <span className="text-xs text-gray-500">Pick from gear you've already saved.</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={openImportPicker}
-                  className="flex flex-col items-start gap-1.5 rounded-lg border border-gray-200 p-4 text-left transition-colors hover:border-blue-300 hover:bg-blue-50"
-                >
-                  <Upload size={20} className="text-blue-600" />
-                  <span className="font-medium text-gray-900">Import gear from CSV</span>
-                  <span className="text-xs text-gray-500">Lighterpack or any CSV with the standard fields.</span>
-                </button>
-                <Link
-                  to="/gear"
-                  className="flex flex-col items-start gap-1.5 rounded-lg border border-gray-200 p-4 text-left transition-colors hover:border-blue-300 hover:bg-blue-50"
-                >
-                  <Plus size={20} className="text-blue-600" />
-                  <span className="font-medium text-gray-900">Create gear directly</span>
-                  <span className="text-xs text-gray-500">Build your inventory in the gear library.</span>
-                </Link>
+            // Calm single-cell empty state. The button dispatches per
+            // viewport: lg+ focuses the always-mounted LibraryPanel
+            // search input in the desktop aside; below lg it opens the
+            // mobile picker drawer. The same "Add" affordance lives in
+            // the mobile bottom bar, so the cell is reassurance, not
+            // the sole entry point.
+            <div className="rounded-xl border border-gray-200 bg-white p-6 print:hidden">
+              <div className="flex items-start gap-3">
+                <Backpack size={20} className="mt-0.5 shrink-0 text-blue-600" />
+                <div className="min-w-0">
+                  <h2 className="text-base font-semibold text-gray-900">Add gear to this list</h2>
+                  <p className="mt-1 text-sm text-gray-500">
+                    <span className="hidden lg:inline">Use the inventory picker on the left, or tap </span>
+                    <span className="lg:hidden">Tap </span>
+                    <button
+                      type="button"
+                      onClick={handleAddFromInventory}
+                      className="font-medium text-blue-600 underline-offset-2 hover:underline"
+                    >
+                      Add
+                    </button>
+                    {' '}to pull items from your gear inventory.
+                  </p>
+                </div>
               </div>
-              {/* Hidden file input for the Import CSV affordance above. */}
-              <input
-                ref={importInputRef}
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={handleImportFile}
-              />
             </div>
           ) : (() => {
             const activeParsed = activeId ? parseDnDId(activeId) : null
@@ -1274,38 +1220,6 @@ function ListDetailInner({
             deleteGearItemMut.mutate(target.id)
           }}
         />
-      )}
-
-      {/* CSV import preview — populates the current list (does not create
-          a new one). On confirm, importMut writes the rows and clears the
-          dialog; the empty state below disappears as listItems repopulates. */}
-      {dialog?.type === 'import-preview' && (
-        <ListImportPreviewDialog
-          rows={dialog.rows}
-          saving={importMut.isPending}
-          onConfirm={() => importMut.mutate(dialog.rows)}
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {/* CSV import error — dismissable via Close button or backdrop click
-          (Modal's default closeOnBackdropClick). */}
-      {dialog?.type === 'import-error' && (
-        <Modal open onClose={() => setDialog(null)} title="Import error" className="w-full max-w-sm">
-          <div className="p-6">
-            <h2 className="mb-2 text-base font-semibold text-gray-900">Import error</h2>
-            <p className="mb-4 text-sm text-red-600">{dialog.message}</p>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setDialog(null)}
-                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </Modal>
       )}
 
       {/* Mobile-only bottom action bar — hosts Add, Pack, Options. lg:hidden

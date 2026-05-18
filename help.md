@@ -4,9 +4,9 @@ grampacker helps you keep track of your backpacking gear, build packing lists, a
 
 ## How grampacker works
 
-grampacker is inventory-first: your gear lives in **Gear Inventory**, and each list pulls from that inventory. Keeping one master list of gear means weights, categories, status, cost, and other details stay consistent across every trip.
+grampacker is inventory-first: your gear lives in your gear inventory (the **Gear** page), and each list pulls from that inventory. Keeping one master list of gear means weights, categories, status, cost, and other details stay consistent across every trip.
 
-On desktop, list rows include an inline quick-add shortcut for fast keyboard planning — that shortcut creates the new gear in your inventory and adds it to the current list in one step. On mobile, tap **Add** to choose existing gear from your inventory; create brand-new gear in **Gear Inventory** first, then add it to a list.
+On desktop, list rows include an inline quick-add shortcut for fast keyboard planning — that shortcut creates the new gear in your inventory and adds it to the current list in one step. On mobile, tap **Add** to choose existing gear from your inventory; create brand-new gear on the **Gear** page first, then add it to a list.
 
 ## Basic concepts
 
@@ -14,7 +14,7 @@ On desktop, list rows include an inline quick-add shortcut for fast keyboard pla
 
 Your gear inventory is the master list of gear you own and the canonical place to create and edit full gear items. It's where weight, category, status, cost, and purchase date live, so each list inherits the same details and stays consistent across trips.
 
-Open **Gear Inventory** to add gear, edit existing items, or import gear from a CSV. The desktop list view also exposes a quick-add shortcut that creates inventory gear inline.
+Open the **Gear** page to add gear, edit existing items, or import gear from a CSV. The desktop list view also exposes a quick-add shortcut that creates inventory gear inline.
 
 ### Packing lists
 
@@ -26,7 +26,7 @@ Items on a list come from your gear inventory. If you edit an item's name, descr
 
 Categories organize gear into groups like Shelter, Sleep, Clothing, Food, or Electronics.
 
-You can create, rename, delete, and reorder categories in the Gear Library. Items can be moved between categories from the item edit dialog.
+You can create, rename, delete, and reorder categories on the **Gear** page. Items can be moved between categories from the item edit dialog.
 
 ### Weight totals
 
@@ -47,27 +47,27 @@ You can build a list in a few ways:
 1. Create a new list and add items from your gear inventory.
 2. On desktop, use the inline quick-add shortcut at the bottom of any category to create new gear and attach it to the list in one step.
 3. Import a CSV from Lighterpack or another compatible spreadsheet.
-4. Select items in Gear Inventory and create a list from that selection.
+4. Select items on the **Gear** page and create a list from that selection.
 
 On desktop, the library panel appears next to your list. Click an inventory item to add it to the list. Click it again to remove it.
 
-On mobile, tap **Add** to open the inventory picker. Search your inventory, then tap items to add them. If you can't find the gear you want, create it in **Gear Inventory** first — then come back and add it to the list. Mobile list view doesn't create new gear directly; it's a picker over your inventory.
+On mobile, tap **Add** to open the inventory picker. Search your inventory, then tap items to add them. If you can't find the gear you want, create it on the **Gear** page first — then come back and add it to the list. Mobile list view doesn't create new gear directly; it's a picker over your inventory.
 
-In the Gear Library, use Select to choose multiple items. From there you can move items to a category, delete them, or create a new list from the selection.
+On the **Gear** page, use Select to choose multiple items. From there you can move items to a category, delete them, or create a new list from the selection.
 
 ## Editing items
 
 On desktop, click an item's name, description, weight, or quantity to edit it directly. On mobile, tap an item to open the edit dialog.
 
-For more options, open the item menu or edit dialog. From a list, you can change category, quantity, worn status, and consumable status. From the Gear Library, you can also manage cost and purchase date.
+For more options, open the item menu or edit dialog. From a list, you can change category, quantity, worn status, and consumable status. From the **Gear** page, you can also manage cost and purchase date.
 
-Deleting from a list only removes the item from that list. Deleting from inventory removes it from your gear library and from any lists where it appears.
+Deleting from a list only removes the item from that list. Deleting from inventory removes it from your gear inventory and from any lists where it appears.
 
 ## Reordering
 
 Drag items to reorder them within a category.
 
-Drag categories in the Gear Library to change the order they appear in your inventory and lists.
+Drag categories on the **Gear** page to change the order they appear in your inventory and lists.
 
 To move an item to a different category, open the item edit dialog and choose a category.
 
@@ -110,7 +110,7 @@ Pack mode controls like Ready checks and Show unpacked only live in Pack mode it
 
 You can create a public read-only link for a list.
 
-Open **List options**, turn on the public link under the Sharing section, and copy the URL. Anyone with the link can view the list without an account. The All lists page also has a per-card Share button if you want to manage public links from the list library.
+Open **List options**, turn on the public link under the Sharing section, and copy the URL. Anyone with the link can view the list without an account. The **Lists** page also has a per-card Share button if you want to manage public links from the list library.
 
 Public links are read-only. Other people cannot edit your list.
 

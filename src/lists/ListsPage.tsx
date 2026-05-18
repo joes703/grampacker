@@ -243,7 +243,7 @@ export default function ListsPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold text-gray-900">
-          All lists
+          Lists
           <span className="ml-2 text-sm font-normal text-gray-500">{lists.length}</span>
         </h1>
 
@@ -262,10 +262,15 @@ export default function ListsPage() {
             />
           ) : (
             <>
+              {/* Import CSV is a secondary path — demoted to a neutral
+                  outline button so it doesn't compete with the primary
+                  "New list" affordance. A header kebab would be a better
+                  long-term home for this; that move belongs with the
+                  upcoming Lists page row refactor (audit phase 2). */}
               <button
                 onClick={openImportPicker}
                 title="Import a CSV as a new list"
-                className="flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 <Upload size={14} /> Import CSV
               </button>
@@ -600,7 +605,7 @@ function ListCard({
           on /lists/:id; Share is the per-card PrivacyButton (anchored to
           its own trigger so dropping it into the card just works). On
           /lists/:id sharing has moved inside List options, but the card
-          surface keeps a one-tap share affordance — the All lists page is
+          surface keeps a one-tap share affordance — the Lists page is
           a list-library overview and per-card share matches that mental
           model. The row sits at z-10 with pointer-events-auto, above the
           card's full-area Link at z-0 — clicks on the buttons hit them

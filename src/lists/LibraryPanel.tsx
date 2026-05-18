@@ -110,15 +110,15 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
         {groups.length === 0 ? (
           // Inventory-first empty state. Whether the user is searching
           // for something that isn't in their library yet or they have
-          // no gear at all, the answer is the same: create gear in
-          // Gear Inventory, then come back here to add it. The mobile
-          // bottom bar has a Gear destination so we don't restate that
+          // no gear at all, the answer is the same: create gear on the
+          // Gear page, then come back here to add it. The mobile bottom
+          // bar has a Gear destination so we don't restate that
           // navigation path here.
           <EmptyState
             heading={searchFiltered.length === 0 && !q
               ? 'No gear in your inventory yet'
               : 'No matching gear in your inventory.'}
-            body="Create new gear from Gear Inventory, then add it to this list."
+            body="Add gear to your inventory first, then add it to this list."
           />
         ) : (
           <>
@@ -156,7 +156,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
 // user's inventory is genuinely empty. Inventory-first wording: the
 // cell explains where gear lives instead of offering to create it here.
 // No nav link — the mobile bottom bar and desktop primary nav both
-// already surface Gear Library access.
+// already surface the Gear destination.
 function EmptyState({
   heading,
   body,

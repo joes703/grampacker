@@ -22,8 +22,8 @@ type Props = {
 // ListSettingsButton popover, the always-mounted LibraryPanel aside).
 //
 // Visibility: this component is only rendered by ListDetailPage's authed
-// branch, so it's automatically scoped away from Gear Inventory, All
-// lists, Settings, Help, and the public /r/:slug share view. Pack mode
+// branch, so it's automatically scoped away from Gear, Lists, Settings,
+// Help, and the public /r/:slug share view. Pack mode
 // keeps it visible — Add stays useful for mid-pack additions and Options
 // is the same modal, so there's no surprise.
 //
@@ -63,14 +63,14 @@ export default function MobileListActionBar({ list }: Props) {
             to: '/lists',
             label: 'Lists',
             icon: <Backpack size={18} />,
-            ariaLabel: 'All lists',
+            ariaLabel: 'Lists',
           },
           {
             type: 'link',
             to: '/gear',
             label: 'Gear',
             icon: <Boxes size={18} />,
-            ariaLabel: 'Gear Library',
+            ariaLabel: 'Gear',
           },
           {
             type: 'button',
