@@ -1,14 +1,9 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router'
 import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { groupByCategory } from '../lib/grouping'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import GearStatusBadge from '../gear/GearStatusBadge'
-import CategoryFilterChips, {
-  UNCATEGORIZED_CHIP_VALUE,
-  type CategoryChipValue,
-} from '../components/CategoryFilterChips'
 
 type Props = {
   gearItems: GearItem[]
@@ -17,12 +12,6 @@ type Props = {
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
   onRemove: (item: GearItem) => void
-  /** Forward link to the Gear Inventory page. Surfaced in the empty
-   *  state so a user who can't find a piece of gear is pointed at the
-   *  canonical place to create it. Inventory-first: the picker is a
-   *  picker, not a creation surface. Same href the drawer's "Manage"
-   *  affordance uses (carries `?from=<listId>` for the Back link). */
-  manageHref?: string
   // Increment from a parent to programmatically focus the search input.
   // Used by the empty-list onboarding affordance on /lists/:id at lg+.
   // The skipInitialFocus ref guards the mount-time effect run so that
@@ -31,9 +20,8 @@ type Props = {
   focusSearchTrigger?: number
 }
 
-export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove, manageHref, focusSearchTrigger }: Props) {
+export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove, focusSearchTrigger }: Props) {
   const [search, setSearch] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<CategoryChipValue>(null)
   const [collapsed, setCollapsed] = useState(new Set<string>())
   const searchInputRef = useRef<HTMLInputElement>(null)
   // Capture the focusSearchTrigger value at mount and compare on every
@@ -74,20 +62,9 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
     [gearItems, q],
   )
 
-  // Layer the category-chip filter on top of the search filter. The chip
-  // rail derives its visible chips from searchFiltered (above) so the rail
-  // narrows with search, and the chip selection then narrows further.
-  const filtered = useMemo(() => {
-    if (selectedCategory === null) return searchFiltered
-    if (selectedCategory === UNCATEGORIZED_CHIP_VALUE) {
-      return searchFiltered.filter((g) => g.category_id === null)
-    }
-    return searchFiltered.filter((g) => g.category_id === selectedCategory)
-  }, [searchFiltered, selectedCategory])
-
   // Build groups ordered by category sort_order. sortedCats stays in its
   // own memo so the sort only reruns when `categories` changes — not on
-  // every search keystroke (which churns `filtered`).
+  // every search keystroke (which churns the filtered set).
   const sortedCats = useMemo(
     () => [...categories].sort((a, b) => a.sort_order - b.sort_order),
     [categories],
@@ -102,19 +79,19 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
   // null-keyed items are present) appended after real-cat groups.
   const groups = useMemo(
     () =>
-      groupByCategory(filtered, sortedCats, (g) => g.category_id, {
+      groupByCategory(searchFiltered, sortedCats, (g) => g.category_id, {
         keepEmpty: false,
         orphanPolicy: 'drop',
       }),
-    [filtered, sortedCats],
+    [searchFiltered, sortedCats],
   )
 
   return (
     <div className="flex h-full flex-col">
-      {/* Search + category chips. Chips sit immediately below the search
-          input so a single eye-line covers both filters; selection composes
-          with the search query rather than replacing it. */}
-      <div className="p-3 border-b border-gray-200 space-y-2">
+      {/* Search-only picker header. Category chips were removed once the
+          mobile bottom nav made the panel feel like clutter; users still
+          have the per-category section collapse / item tap to navigate. */}
+      <div className="p-3 border-b border-gray-200">
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -126,12 +103,6 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
             className="w-full rounded-lg border border-gray-300 pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
-        <CategoryFilterChips
-          categories={sortedCats}
-          items={searchFiltered}
-          selected={selectedCategory}
-          onChange={setSelectedCategory}
-        />
       </div>
 
       {/* Category groups */}
@@ -140,15 +111,14 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
           // Inventory-first empty state. Whether the user is searching
           // for something that isn't in their library yet or they have
           // no gear at all, the answer is the same: create gear in
-          // Gear Inventory, then come back here to add it. We point
-          // them there with a quiet link rather than hosting a creation
-          // form inside the picker.
+          // Gear Inventory, then come back here to add it. The mobile
+          // bottom bar has a Gear destination so we don't restate that
+          // navigation path here.
           <EmptyState
-            heading={searchFiltered.length === 0 && !q && !selectedCategory
+            heading={searchFiltered.length === 0 && !q
               ? 'No gear in your inventory yet'
               : 'No matching gear in your inventory.'}
             body="Create new gear from Gear Inventory, then add it to this list."
-            manageHref={manageHref}
           />
         ) : (
           <>
@@ -182,32 +152,22 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
   )
 }
 
-// Empty-state cell shown when search / chip filters produce zero
-// matches, or when the user's inventory is genuinely empty. Inventory-
-// first wording: the cell explains where gear lives instead of offering
-// to create it here. The Manage link is rendered only when the parent
-// supplies an href (it's omitted on read-only surfaces).
+// Empty-state cell shown when search produces zero matches or when the
+// user's inventory is genuinely empty. Inventory-first wording: the
+// cell explains where gear lives instead of offering to create it here.
+// No nav link — the mobile bottom bar and desktop primary nav both
+// already surface Gear Library access.
 function EmptyState({
   heading,
   body,
-  manageHref,
 }: {
   heading: string
   body: string
-  manageHref?: string
 }) {
   return (
     <div className="p-4 text-center text-sm text-gray-500">
       <p className="font-medium text-gray-700">{heading}</p>
       <p className="mt-1 text-xs text-gray-500">{body}</p>
-      {manageHref && (
-        <Link
-          to={manageHref}
-          className="mt-2 inline-flex items-center text-xs font-medium text-blue-600 hover:underline"
-        >
-          Open Gear Inventory
-        </Link>
-      )}
     </div>
   )
 }

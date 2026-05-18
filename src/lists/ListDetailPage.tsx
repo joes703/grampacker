@@ -16,7 +16,7 @@ import {
   arrayMove,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable'
-import { Backpack, ChevronRight, Plus, Upload } from 'lucide-react'
+import { Backpack, Plus, Upload } from 'lucide-react'
 const ListSidebarDrawer = lazy(() => import('./ListSidebarDrawer'))
 import { useRequireSession } from '../auth/use-require-session'
 import {
@@ -936,19 +936,13 @@ function ListDetailInner({
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
           >
             <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
-              <div className="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2">
+              {/* Quiet section header — orientation only. The Manage link
+                  used to live here, but the primary nav (top bar + mobile
+                  bottom bar) already exposes Gear Library. */}
+              <div className="border-b border-gray-200 bg-gray-50 px-3 py-2">
                 <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Gear Library
                 </span>
-                {/* Forward affordance to the gear management page. ?from=
-                    plumbs the originating list id so /gear's Back link
-                    round-trips here rather than to the all-lists view. */}
-                <Link
-                  to={`/gear?from=${listId}`}
-                  className="inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
-                >
-                  Manage <ChevronRight size={12} />
-                </Link>
               </div>
               <div className="flex-1 overflow-hidden">
                 <LibraryPanel
@@ -958,7 +952,6 @@ function ListDetailInner({
                   weightUnit={weightUnit}
                   onAdd={onLibraryAdd}
                   onRemove={onLibraryRemove}
-                  manageHref={`/gear?from=${listId}`}
                   focusSearchTrigger={focusSearchTrigger}
                 />
               </div>
@@ -1052,7 +1045,7 @@ function ListDetailInner({
                   <span className="text-xs text-gray-500">Lighterpack or any CSV with the standard fields.</span>
                 </button>
                 <Link
-                  to={`/gear?from=${listId}`}
+                  to="/gear"
                   className="flex flex-col items-start gap-1.5 rounded-lg border border-gray-200 p-4 text-left transition-colors hover:border-blue-300 hover:bg-blue-50"
                 >
                   <Plus size={20} className="text-blue-600" />
@@ -1174,7 +1167,6 @@ function ListDetailInner({
             <ListSidebarDrawer
               open={drawerOpen}
               onOpenChange={setDrawerOpen}
-              manageHref={`/gear?from=${listId}`}
             >
               <LibraryPanel
                 gearItems={gearItems}
@@ -1183,7 +1175,6 @@ function ListDetailInner({
                 weightUnit={weightUnit}
                 onAdd={onLibraryAdd}
                 onRemove={onLibraryRemove}
-                manageHref={`/gear?from=${listId}`}
               />
             </ListSidebarDrawer>
           </Suspense>
