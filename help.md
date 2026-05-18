@@ -51,7 +51,7 @@ You can build a list in a few ways:
 
 On desktop, the library panel appears next to your list. Click an inventory item to add it to the list. Click it again to remove it.
 
-On mobile, tap **Add** to open the inventory picker. Use search and the category chips to find gear, then tap items to add them. If you can't find the gear you want, create it in **Gear Inventory** first — then come back and add it to the list. Mobile list view doesn't create new gear directly; it's a picker over your inventory.
+On mobile, tap **Add** to open the inventory picker. Search your inventory, then tap items to add them. If you can't find the gear you want, create it in **Gear Inventory** first — then come back and add it to the list. Mobile list view doesn't create new gear directly; it's a picker over your inventory.
 
 In the Gear Library, use Select to choose multiple items. From there you can move items to a category, delete them, or create a new list from the selection.
 
