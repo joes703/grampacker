@@ -132,7 +132,7 @@ export default function SharePage() {
             device. */}
         <div className="mb-6 flex flex-wrap items-center gap-3">
           <h1 className="flex-1 min-w-0 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
-          <UnitSegmentedControl idPrefix="share" />
+          <UnitSegmentedControl idPrefix="share" label="Units" />
         </div>
 
         {/* Notes + Weight summary — side by side on desktop, with Notes
