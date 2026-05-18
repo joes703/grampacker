@@ -16,7 +16,7 @@ import {
   arrayMove,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable'
-import { Backpack } from 'lucide-react'
+import { Backpack, ClipboardList } from 'lucide-react'
 const ListSidebarDrawer = lazy(() => import('./ListSidebarDrawer'))
 import { useRequireSession } from '../auth/use-require-session'
 import {
@@ -71,6 +71,8 @@ import WeightTable from './WeightTable'
 import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
 import MobileListActionBar from './MobileListActionBar'
+import CurrentListHeader from './CurrentListHeader'
+import ListSettingsButton from './ListSettingsButton'
 import PackingProgress from './PackingProgress'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
@@ -163,12 +165,23 @@ function ListDetailInner({
   // Pack mode is URL-represented as ?mode=pack so it's bookmarkable,
   // refresh-stable, and back/forward navigable. Anything other than the
   // exact string 'pack' (missing, garbage, typo) falls back to edit mode
-  // silently. The toggle UI lives in the top bar (NavBar's
-  // ListContextControls / MobileMenu); this page reads the URL only.
-  // Public share view at /r/:slug is a different page and never sees
-  // this parameter.
-  const [searchParams] = useSearchParams()
+  // silently. The toggle UI lives in the desktop list toolbar below (this
+  // page) and in MobileListActionBar at <lg; this hook owns both the
+  // read and the write. Public share view at /r/:slug is a different
+  // page and never sees this parameter.
+  const [searchParams, setSearchParams] = useSearchParams()
   const mode: Mode = searchParams.get('mode') === 'pack' ? 'pack' : 'edit'
+  function togglePackMode() {
+    setSearchParams(
+      (prev) => {
+        const np = new URLSearchParams(prev)
+        if (mode === 'pack') np.delete('mode')
+        else np.set('mode', 'pack')
+        return np
+      },
+      { replace: false },
+    )
+  }
   const { weightUnit } = useWeightUnit()
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
   // long list registers ONE matchMedia subscription instead of one per row.
@@ -876,10 +889,32 @@ function ListDetailInner({
 
   return (
     <div className="flex flex-col gap-4 print:pb-0">
-      {/* List name and desktop list controls live in the top bar
-          (NavBar's RouteHeading + ListContextControls); the page body owns
-          the two-column layout below. AppShell reserves mobile bottom space
-          globally so fixed bottom navigation never covers the last rows. */}
+      {/* Desktop list toolbar — owns list identity and list-scoped actions
+          on this page now that the global top bar is global-only. Mobile
+          keeps the list name + switcher in NavBar's route heading and Pack /
+          List options in MobileListActionBar, so this toolbar is md+ only.
+          Hidden in print: the print-only block below carries the list name. */}
+      <div className="hidden md:flex items-center gap-2 print:hidden">
+        <CurrentListHeader list={list} lists={lists} userId={userId} />
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={togglePackMode}
+            title={mode === 'pack' ? 'Pack mode: on' : 'Pack mode: off'}
+            aria-label="Pack mode"
+            aria-pressed={mode === 'pack'}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
+              mode === 'pack'
+                ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            <ClipboardList size={14} />
+            <span>Pack</span>
+          </button>
+          <ListSettingsButton list={list} />
+        </div>
+      </div>
 
       {/* Print-only header. NavBar (list name) and the Notes/WeightTable
           panels are hidden in print and pack mode hides them on screen too,

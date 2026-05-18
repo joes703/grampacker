@@ -1,15 +1,12 @@
-import { useRef, useState } from 'react'
-import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Backpack, ClipboardList, HelpCircle, ListChecks, LogOut, Pencil, Settings } from 'lucide-react'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router'
+import { useQuery } from '@tanstack/react-query'
+import { Backpack, HelpCircle, ListChecks, LogOut, Settings } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import { supabase } from '../lib/supabase'
-import { queryKeys, fetchLists, updateList, makeOptimisticUpdate } from '../lib/queries'
-import type { List } from '../lib/types'
+import { queryKeys, fetchLists } from '../lib/queries'
+import { useIsMobile } from '../lib/use-breakpoint'
 import MobileMenu from './MobileMenu'
-import ListSelector from './ListSelector'
-import InlineTitle from '../lists/InlineTitle'
-import ListSettingsButton from '../lists/ListSettingsButton'
+import CurrentListHeader from '../lists/CurrentListHeader'
 
 // Per-route slot resolution. Mounted only inside AppShell, which is gated by
 // PrivateRoute — so this component is never rendered on /login, /register,
@@ -35,6 +32,15 @@ function resolveRoute(pathname: string): RouteContext {
   return { kind: 'other' }
 }
 
+// Global authed top bar. Stable across every authed route:
+//   - Brand on md+.
+//   - Route heading slot — static labels on /lists, /gear, /settings, /help;
+//     CurrentListHeader on /lists/:id at <md (mobile keeps the list name +
+//     switcher in the top bar). At md+ on /lists/:id the slot is empty — the
+//     desktop list-detail page body owns the list toolbar (CurrentListHeader
+//     + List options + Pack pill) so the global nav stays clean and stable.
+//   - Persistent secondary cluster on md+: Lists, Gear, Help, Settings, Sign out.
+//   - MobileMenu on <md for the same global destinations.
 export default function NavBar() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -61,22 +67,12 @@ export default function NavBar() {
         {/* Heading slot — varies by route. */}
         <RouteHeading route={route} />
 
-        {/* Right cluster — list-context controls (only on /lists/:id) and
-            the persistent secondary destinations (Help/Settings/Sign out at
-            md+, MobileMenu at <md). On /lists/:id the primary list actions
-            (Add, Pack, Options) live in the mobile bottom action bar, so
-            the MobileMenu here stays global-only and renders unconditionally
-            on every authed route. */}
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
-          {route.kind === 'list-detail' && <ListContextControls listId={route.listId} />}
-
-          {/* Persistent secondary links on md+. Mobile primary navigation
-              lives in the bottom bars; desktop surfaces Lists + Gear here
-              alongside Help/Settings/Sign out so the user can always reach
-              the two primary destinations regardless of which page they're
-              on. The list-name selector inside the route heading still
-              owns list switching on /lists/:id. */}
-          <div className="hidden md:flex items-center gap-1">
+          {/* Persistent global navigation on md+. Lists + Gear sit alongside
+              Help/Settings/Sign out so the two primary destinations are
+              always reachable. List switching on /lists/:id happens in the
+              page body's desktop list toolbar (CurrentListHeader), not here. */}
+          <div className="hidden md:flex items-center gap-1 pl-2">
             <NavLink
               to="/lists"
               title="Lists"
@@ -139,13 +135,15 @@ export default function NavBar() {
   )
 }
 
-// Route-specific heading slot. /lists/:id loads the lists query and renders
-// InlineTitle + ListSelector once the current list resolves. Other routes
-// render a static text heading. Loading state on /lists/:id shows just the
-// chevron-less placeholder so the bar's height stays stable.
+// Route-specific heading slot. /lists/:id renders CurrentListHeader at
+// <md only — desktop list-detail moves the list selector into the page
+// body. Other routes render a static text heading at all sizes. Loading
+// state on /lists/:id shows just the chevron-less placeholder so the
+// bar's height stays stable.
 function RouteHeading({ route }: { route: RouteContext }) {
   const auth = useRequireSession()
   const userId = auth?.userId ?? ''
+  const isMobile = useIsMobile()
 
   // Lists are fetched here for both the heading text and the selector body.
   // The query is also used by ListDetailPage / RootRedirect — same key, so
@@ -159,6 +157,13 @@ function RouteHeading({ route }: { route: RouteContext }) {
   })
 
   if (route.kind === 'list-detail') {
+    // Desktop list-detail moves the list selector into the page body's
+    // toolbar (ListDetailPage's CurrentListHeader). Skip mounting it here
+    // on desktop entirely — a plain CSS `md:hidden` would still mount the
+    // component, registering a redundant ListSelector portal and matchMedia
+    // listeners, and would surface the inline-rename input + selector
+    // chevron in the desktop DOM even though they're invisible.
+    if (!isMobile) return <div className="flex-1 min-w-0" />
     const list = lists.find((l) => l.id === route.listId)
     if (!list) {
       // Either the lists query is still loading, or the URL points at a
@@ -166,7 +171,11 @@ function RouteHeading({ route }: { route: RouteContext }) {
       // way, render no heading content rather than thrash.
       return <div className="flex-1 min-w-0" />
     }
-    return <ListHeading list={list} lists={lists} userId={userId} />
+    return (
+      <div className="flex flex-1 min-w-0">
+        <CurrentListHeader list={list} lists={lists} userId={userId} />
+      </div>
+    )
   }
 
   if (route.kind === 'all-lists') return <StaticHeading>Lists</StaticHeading>
@@ -181,172 +190,5 @@ function StaticHeading({ children }: { children: React.ReactNode }) {
     <h1 className="flex-1 min-w-0 truncate text-base sm:text-lg font-semibold text-gray-900">
       {children}
     </h1>
-  )
-}
-
-function ListHeading({
-  list,
-  lists,
-  userId,
-}: {
-  list: import('../lib/types').List
-  lists: import('../lib/types').List[]
-  userId: string
-}) {
-  const qc = useQueryClient()
-  const renameMut = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => updateList(id, { name }),
-    ...makeOptimisticUpdate<List, { id: string; name: string }>({
-      qc,
-      queryKey: queryKeys.lists(),
-      id: ({ id }) => id,
-      apply: (item, { name }) => ({
-        ...item,
-        name,
-        updated_at: new Date().toISOString(),
-      }),
-    }),
-  })
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [selectorOpen, setSelectorOpen] = useState(false)
-  const [editing, setEditing] = useState(false)
-  // Counter the pencil increments to push InlineTitle into edit mode. The
-  // counter idiom matches LibraryPanel's focusSearchTrigger.
-  const [editTrigger, setEditTrigger] = useState(0)
-
-  function handleContainerClick() {
-    // Mid-edit, the container becomes click-inert: the input owns the
-    // click target while the user is typing, and its blur handler runs
-    // commit/cancel for clicks that escape. Without this guard, clicking
-    // the container's padding while editing would commit AND open the
-    // selector in the same gesture.
-    if (editing) return
-    setSelectorOpen((o) => !o)
-  }
-
-  return (
-    // Visual container — primary click target now opens the selector
-    // (frequent action). Rename moves to the sibling pencil affordance,
-    // hover-revealed at md+ and always visible at <md (touch).
-    //
-    // The chevron button inside ListSelector is the keyboard-accessible
-    // trigger for the selector (Tab + Enter); this div is a mouse-only
-    // hit-area expansion. We still satisfy the click-events-have-key-events
-    // / no-static-element-interactions a11y rules with role="button" +
-    // tabIndex={-1} + an Enter/Space onKeyDown so screen-reader users who
-    // happen to focus the container directly get the same affordance.
-    <div
-      ref={containerRef}
-      role="button"
-      tabIndex={-1}
-      aria-label="Switch list (click). Use the chevron to keyboard-activate."
-      onClick={handleContainerClick}
-      onKeyDown={(e) => {
-        // Only act on keys focused on the container itself. Descendants
-        // (the rename input, the chevron button, the pencil button) own
-        // their own key handling — without this guard, keystrokes bubble
-        // up through the React tree and Space/Enter get preventDefault'd
-        // before the descendant can read them. Most visible failure:
-        // spacebar didn't insert spaces while renaming a list inline.
-        if (e.target !== e.currentTarget) return
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          handleContainerClick()
-        }
-      }}
-      className={`group flex flex-1 min-w-0 items-center rounded-lg bg-gray-50 transition-colors hover:bg-gray-100 ${
-        editing ? 'cursor-default' : 'cursor-pointer'
-      }`}
-    >
-      <InlineTitle
-        key={list.id}
-        name={list.name}
-        onSave={(v) => renameMut.mutate({ id: list.id, name: v })}
-        editTrigger={editTrigger}
-        onEditingChange={setEditing}
-      />
-      {!editing && (
-        <button
-          type="button"
-          onClick={(e) => {
-            // Don't bubble to the container's onClick — that would open
-            // the selector in the same gesture as entering edit mode.
-            e.stopPropagation()
-            setEditTrigger((t) => t + 1)
-          }}
-          aria-label="Rename list"
-          title="Rename list"
-          // 32×32 hit area (h-8 w-8) for touch comfort. opacity-100 at
-          // <md so touch users can always see it; md:opacity-0 +
-          // md:group-hover:opacity-100 hides it on desktop until the
-          // user hovers the switcher container.
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-gray-400 opacity-100 transition-opacity hover:text-gray-600 md:opacity-0 md:group-hover:opacity-100"
-        >
-          <Pencil size={14} />
-        </button>
-      )}
-      <ListSelector
-        lists={lists}
-        currentListId={list.id}
-        userId={userId}
-        open={selectorOpen}
-        onOpenChange={setSelectorOpen}
-        anchorRef={containerRef}
-      />
-    </div>
-  )
-}
-
-// /lists/:id-only controls. md+ List options button and Pack pill. Weight
-// units now live as a global display preference in Settings (and as a
-// segmented control on the public share page); they no longer crowd the
-// authed top bar. Mobile equivalents of List options and Pack are in
-// MobileListActionBar.
-function ListContextControls({ listId }: { listId: string }) {
-  const auth = useRequireSession()
-  const userId = auth?.userId ?? ''
-  const { data: lists = [] } = useQuery({
-    queryKey: queryKeys.lists(),
-    queryFn: () => fetchLists(userId),
-  })
-  const list = lists.find((l) => l.id === listId)
-  const [searchParams, setSearchParams] = useSearchParams()
-  const isPackMode = searchParams.get('mode') === 'pack'
-
-  function togglePackMode() {
-    setSearchParams(
-      (prev) => {
-        const np = new URLSearchParams(prev)
-        if (isPackMode) np.delete('mode')
-        else np.set('mode', 'pack')
-        return np
-      },
-      { replace: false },
-    )
-  }
-
-  // Affordances render only once `list` resolves; during the cold-load
-  // window nothing list-specific is shown.
-  if (!list) return null
-  return (
-    <>
-      <div className="hidden md:flex">
-        <ListSettingsButton list={list} />
-      </div>
-      <button
-        onClick={togglePackMode}
-        title={isPackMode ? 'Pack mode: on' : 'Pack mode: off'}
-        aria-label="Pack mode"
-        aria-pressed={isPackMode}
-        className={`hidden md:inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
-          isPackMode
-            ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-            : 'border-gray-300 text-gray-500 hover:bg-gray-50'
-        }`}
-      >
-        <ClipboardList size={14} />
-        <span>Pack</span>
-      </button>
-    </>
   )
 }
