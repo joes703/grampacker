@@ -134,8 +134,7 @@ function CategoryGroup({
   // `adding` drives the desktop inline AddItemRow. Mobile no longer
   // exposes a per-category "Add new item" footer — the single mobile add
   // path is the top-bar "Add" button, which opens the gear picker drawer
-  // (and the picker exposes a secondary "New gear item" path that reuses
-  // QuickAddItemModal). See ListDetailPage's add-flow comments.
+  // over existing inventory. New gear is created from Gear Inventory.
   const [adding, setAdding] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   // Stable id for the collapsible region so the header button can announce
