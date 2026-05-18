@@ -70,9 +70,10 @@ export default function NavBar() {
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {route.kind === 'list-detail' && <ListContextControls listId={route.listId} />}
 
-          {/* Persistent links on md+. Lists/Gear NavLinks removed — list
-              switching is the chevron selector, gear access moves to the
-              sidebar in Phase 3. */}
+          {/* Persistent secondary links on md+. Primary mobile app navigation
+              lives in the bottom bar; desktop keeps list switching in the
+              list-name selector and Gear Library in normal app navigation
+              flows. */}
           <div className="hidden md:flex items-center gap-1">
             <NavLink
               to="/help"

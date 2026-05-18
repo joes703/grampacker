@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { ClipboardList, Plus, Settings2 } from 'lucide-react'
+import { Backpack, Boxes, ClipboardList, Plus, Settings2 } from 'lucide-react'
 import type { List } from '../lib/types'
 import { useSidebarDrawer } from '../layout/sidebar-drawer-context'
 import MobileOptionsModal from '../components/MobileOptionsModal'
+import MobileBottomBar from '../components/MobileBottomBar'
 import ListSettingsPanel from './ListSettingsPanel'
 
 type Props = {
@@ -54,39 +55,50 @@ export default function MobileListActionBar({ list }: Props) {
 
   return (
     <>
-      <nav
-        aria-label="List actions"
-        // pb-[env(safe-area-inset-bottom)] respects iOS home-indicator
-        // safe area on phones. print:hidden so the bar doesn't show in
-        // a printed list. z-40 keeps it above the page but below
-        // modals/portals (z-50).
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] print:hidden"
-      >
-        <div className="mx-auto flex h-14 max-w-7xl items-stretch px-2">
-          <BarButton
-            label="Add"
-            icon={<Plus size={18} />}
-            onClick={() => drawer.setOpen(true)}
-            disabled={!drawer.available}
-            ariaLabel="Add gear to list"
-          />
-          <BarButton
-            label="Pack"
-            icon={<ClipboardList size={18} />}
-            onClick={togglePackMode}
-            active={isPackMode}
-            ariaLabel="Pack mode"
-            ariaPressed={isPackMode}
-          />
-          <BarButton
-            label="Options"
-            icon={<Settings2 size={18} />}
-            onClick={() => setSettingsOpen(true)}
-            disabled={!list}
-            ariaLabel="List options"
-          />
-        </div>
-      </nav>
+      <MobileBottomBar
+        label="List navigation and actions"
+        items={[
+          {
+            type: 'link',
+            to: '/lists',
+            label: 'Lists',
+            icon: <Backpack size={18} />,
+            ariaLabel: 'All lists',
+          },
+          {
+            type: 'link',
+            to: '/gear',
+            label: 'Gear',
+            icon: <Boxes size={18} />,
+            ariaLabel: 'Gear Library',
+          },
+          {
+            type: 'button',
+            label: 'Add',
+            icon: <Plus size={18} />,
+            onClick: () => drawer.setOpen(true),
+            disabled: !drawer.available,
+            ariaLabel: 'Add gear to list',
+          },
+          {
+            type: 'button',
+            label: 'Pack',
+            icon: <ClipboardList size={18} />,
+            onClick: togglePackMode,
+            active: isPackMode,
+            ariaLabel: 'Pack mode',
+            ariaPressed: isPackMode,
+          },
+          {
+            type: 'button',
+            label: 'Options',
+            icon: <Settings2 size={18} />,
+            onClick: () => setSettingsOpen(true),
+            disabled: !list,
+            ariaLabel: 'List options',
+          },
+        ]}
+      />
 
       {list && (
         <MobileOptionsModal
@@ -98,41 +110,5 @@ export default function MobileListActionBar({ list }: Props) {
         </MobileOptionsModal>
       )}
     </>
-  )
-}
-
-function BarButton({
-  label,
-  icon,
-  onClick,
-  active = false,
-  disabled = false,
-  ariaLabel,
-  ariaPressed,
-}: {
-  label: string
-  icon: React.ReactNode
-  onClick: () => void
-  active?: boolean
-  disabled?: boolean
-  ariaLabel: string
-  ariaPressed?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      aria-pressed={ariaPressed}
-      className={`flex flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-2 text-xs font-medium ${
-        active
-          ? 'text-blue-700'
-          : 'text-gray-600 hover:bg-gray-50'
-      } disabled:opacity-40 disabled:hover:bg-transparent`}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
   )
 }

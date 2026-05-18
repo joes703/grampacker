@@ -16,13 +16,21 @@ describe('GearStatusBadge', () => {
 
   it('renders the label and accessible name for needs_repair', () => {
     const { getByLabelText, container } = render(<GearStatusBadge status="needs_repair" />)
-    expect(getByLabelText('Needs repair')).toBeTruthy()
+    const badge = getByLabelText('Needs repair')
+    expect(badge).toBeTruthy()
+    expect(badge.className).toContain('bg-amber-50')
+    expect(badge.className).toContain('text-amber-800')
+    expect(badge.className).toContain('ring-amber-200')
     expect(container.textContent).toContain('Needs repair')
   })
 
   it('renders the label and accessible name for loaned_out', () => {
     const { getByLabelText, container } = render(<GearStatusBadge status="loaned_out" />)
-    expect(getByLabelText('Loaned out')).toBeTruthy()
+    const badge = getByLabelText('Loaned out')
+    expect(badge).toBeTruthy()
+    expect(badge.className).toContain('bg-rose-50')
+    expect(badge.className).toContain('text-rose-800')
+    expect(badge.className).toContain('ring-rose-200')
     expect(container.textContent).toContain('Loaned out')
   })
 
