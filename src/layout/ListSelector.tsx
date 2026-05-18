@@ -29,7 +29,8 @@ type Props = {
 
 // Trigger + dual-surface dropdown: portal popover at md+, Vaul bottom sheet
 // at <md. Same content body for both. Used by the top bar to switch between
-// lists, create a new one inline, or jump to /lists for full management.
+// lists and create a new one inline. The Lists page itself is reached via
+// the persistent app navigation, not from this chooser.
 export default function ListSelector({ lists, currentListId, userId, open, onOpenChange, anchorRef }: Props) {
   const isMobile = useIsMobile()
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
@@ -283,20 +284,6 @@ function SelectorBody({
           <span>New list</span>
         </button>
       )}
-
-      <div className="border-t border-gray-100" />
-
-      {/* Lists landing page */}
-      <button
-        type="button"
-        onClick={() => {
-          onClose()
-          navigate('/lists')
-        }}
-        className="px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
-      >
-        Lists
-      </button>
     </div>
   )
 }
