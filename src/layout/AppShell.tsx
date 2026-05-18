@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react'
 import { Routes, Route } from 'react-router'
 import NavBar from './NavBar'
+import MobilePrimaryNav from './MobilePrimaryNav'
 import RootRedirect from './RootRedirect'
 import { SidebarDrawerProvider } from './sidebar-drawer-context'
 import GearLibraryPage from '../gear/GearLibraryPage'
@@ -29,7 +30,7 @@ export default function AppShell() {
       <div className="min-h-screen bg-gray-50">
         <OfflineBanner />
         <NavBar />
-        <main className="mx-auto max-w-7xl px-4 pt-4 lg:pt-8 pb-8">
+        <main className="mx-auto max-w-7xl px-4 pt-4 lg:pt-8 pb-20 lg:pb-8">
           <Suspense fallback={null}>
             <Routes>
               <Route path="/" element={<RootRedirect />} />
@@ -42,6 +43,7 @@ export default function AppShell() {
             </Routes>
           </Suspense>
         </main>
+        <MobilePrimaryNav />
       </div>
     </SidebarDrawerProvider>
   )

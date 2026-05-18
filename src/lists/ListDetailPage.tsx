@@ -902,12 +902,11 @@ function ListDetailInner({
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col gap-4 pb-20 lg:pb-0 print:pb-0">
-      {/* List name, g/oz, Pack toggle, and Share live in the top bar
+    <div className="flex flex-col gap-4 print:pb-0">
+      {/* List name and desktop list controls live in the top bar
           (NavBar's RouteHeading + ListContextControls); the page body owns
-          the two-column layout below. pb-20 reserves space under the fixed
-          mobile bottom action bar so its content can't be obscured by it;
-          lg:pb-0 drops the padding where the bar isn't rendered. */}
+          the two-column layout below. AppShell reserves mobile bottom space
+          globally so fixed bottom navigation never covers the last rows. */}
 
       {/* Print-only header. NavBar (list name) and the Notes/WeightTable
           panels are hidden in print and pack mode hides them on screen too,

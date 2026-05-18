@@ -593,7 +593,7 @@ export default function GearLibraryPage() {
   if (!auth) return null
 
   return (
-    <div className="pb-20 lg:pb-0 print:pb-0">
+    <div className="print:pb-0">
       {/* Back to list */}
       <button
         type="button"

@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import {
+  Backpack,
+  Boxes,
   CheckSquare,
   ChevronsDownUp,
   ChevronsUpDown,
@@ -10,6 +12,7 @@ import {
   Upload,
 } from 'lucide-react'
 import MobileOptionsModal from '../components/MobileOptionsModal'
+import MobileBottomBar from '../components/MobileBottomBar'
 
 type Props = {
   /** Open the canonical "New item" dialog. */
@@ -61,37 +64,48 @@ export default function MobileGearActionBar({
 
   return (
     <>
-      <nav
-        aria-label="Gear actions"
-        // pb-[env(safe-area-inset-bottom)] respects iOS home-indicator
-        // safe area on phones. print:hidden so the bar doesn't show in
-        // a printed page. z-40 keeps it above the page but below
-        // modals/portals (z-50).
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] print:hidden"
-      >
-        <div className="mx-auto flex h-14 max-w-7xl items-stretch px-2">
-          <BarButton
-            label="New"
-            icon={<Plus size={18} />}
-            onClick={onNewItem}
-            ariaLabel="New gear item"
-          />
-          <BarButton
-            label="Select"
-            icon={<CheckSquare size={18} />}
-            onClick={onToggleSelectMode}
-            active={selectMode}
-            ariaLabel={selectMode ? 'Exit selection mode' : 'Enter selection mode'}
-            ariaPressed={selectMode}
-          />
-          <BarButton
-            label="Options"
-            icon={<Settings2 size={18} />}
-            onClick={() => setOptionsOpen(true)}
-            ariaLabel="Gear options"
-          />
-        </div>
-      </nav>
+      <MobileBottomBar
+        label="Gear navigation and actions"
+        items={[
+          {
+            type: 'link',
+            to: '/lists',
+            label: 'Lists',
+            icon: <Backpack size={18} />,
+            ariaLabel: 'All lists',
+          },
+          {
+            type: 'link',
+            to: '/gear',
+            label: 'Gear',
+            icon: <Boxes size={18} />,
+            ariaLabel: 'Gear Library',
+          },
+          {
+            type: 'button',
+            label: 'New',
+            icon: <Plus size={18} />,
+            onClick: onNewItem,
+            ariaLabel: 'New gear item',
+          },
+          {
+            type: 'button',
+            label: 'Select',
+            icon: <CheckSquare size={18} />,
+            onClick: onToggleSelectMode,
+            active: selectMode,
+            ariaLabel: selectMode ? 'Exit selection mode' : 'Enter selection mode',
+            ariaPressed: selectMode,
+          },
+          {
+            type: 'button',
+            label: 'Options',
+            icon: <Settings2 size={18} />,
+            onClick: () => setOptionsOpen(true),
+            ariaLabel: 'Gear options',
+          },
+        ]}
+      />
 
       {/* Gear options modal — hosts the rare/utility actions. Each row
           closes the modal as part of its handler so the user lands
@@ -150,37 +164,6 @@ export default function MobileGearActionBar({
         </div>
       </MobileOptionsModal>
     </>
-  )
-}
-
-function BarButton({
-  label,
-  icon,
-  onClick,
-  active = false,
-  ariaLabel,
-  ariaPressed,
-}: {
-  label: string
-  icon: React.ReactNode
-  onClick: () => void
-  active?: boolean
-  ariaLabel: string
-  ariaPressed?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={ariaLabel}
-      aria-pressed={ariaPressed}
-      className={`flex flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-2 text-xs font-medium ${
-        active ? 'text-blue-700' : 'text-gray-600 hover:bg-gray-50'
-      }`}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
   )
 }
 
