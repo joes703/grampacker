@@ -8,9 +8,8 @@ import {
   Plus,
   Settings2,
   Upload,
-  X,
 } from 'lucide-react'
-import Modal from '../components/Modal'
+import MobileOptionsModal from '../components/MobileOptionsModal'
 
 type Props = {
   /** Open the canonical "New item" dialog. */
@@ -98,72 +97,58 @@ export default function MobileGearActionBar({
           closes the modal as part of its handler so the user lands
           straight in the action (e.g. New category opens its own input
           row in the page header). */}
-      <Modal
+      <MobileOptionsModal
         open={optionsOpen}
         onClose={() => setOptionsOpen(false)}
         title="Gear options"
-        className="w-full max-w-sm"
       >
-        <div className="p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-gray-900">Gear options</h2>
-            <button
-              type="button"
-              onClick={() => setOptionsOpen(false)}
-              aria-label="Close"
-              className="rounded p-1 text-gray-400 hover:text-gray-600"
-            >
-              <X size={18} />
-            </button>
-          </div>
-          <div className="space-y-1">
-            <OptionRow
-              icon={<FolderPlus size={16} />}
-              label="New category"
-              onClick={() => {
-                setOptionsOpen(false)
-                onNewCategory()
-              }}
-            />
-            <OptionRow
-              icon={<Upload size={16} />}
-              label="Import from CSV"
-              onClick={() => {
-                setOptionsOpen(false)
-                onImport()
-              }}
-            />
-            <OptionRow
-              icon={<Download size={16} />}
-              label="Export to CSV"
-              onClick={() => {
-                setOptionsOpen(false)
-                onExport()
-              }}
-              disabled={!canExport}
-            />
-            <div className="my-2 border-t border-gray-100" />
-            <OptionRow
-              icon={<ChevronsDownUp size={16} />}
-              label="Collapse all categories"
-              onClick={() => {
-                setOptionsOpen(false)
-                onCollapseAll()
-              }}
-              disabled={!canCollapseExpand}
-            />
-            <OptionRow
-              icon={<ChevronsUpDown size={16} />}
-              label="Expand all categories"
-              onClick={() => {
-                setOptionsOpen(false)
-                onExpandAll()
-              }}
-              disabled={!canCollapseExpand}
-            />
-          </div>
+        <div className="space-y-1">
+          <OptionRow
+            icon={<FolderPlus size={16} />}
+            label="New category"
+            onClick={() => {
+              setOptionsOpen(false)
+              onNewCategory()
+            }}
+          />
+          <OptionRow
+            icon={<Upload size={16} />}
+            label="Import from CSV"
+            onClick={() => {
+              setOptionsOpen(false)
+              onImport()
+            }}
+          />
+          <OptionRow
+            icon={<Download size={16} />}
+            label="Export to CSV"
+            onClick={() => {
+              setOptionsOpen(false)
+              onExport()
+            }}
+            disabled={!canExport}
+          />
+          <div className="my-2 border-t border-gray-100" />
+          <OptionRow
+            icon={<ChevronsDownUp size={16} />}
+            label="Collapse all categories"
+            onClick={() => {
+              setOptionsOpen(false)
+              onCollapseAll()
+            }}
+            disabled={!canCollapseExpand}
+          />
+          <OptionRow
+            icon={<ChevronsUpDown size={16} />}
+            label="Expand all categories"
+            onClick={() => {
+              setOptionsOpen(false)
+              onExpandAll()
+            }}
+            disabled={!canCollapseExpand}
+          />
         </div>
-      </Modal>
+      </MobileOptionsModal>
     </>
   )
 }
