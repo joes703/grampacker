@@ -8,10 +8,10 @@ import ListSettingsPanel from './ListSettingsPanel'
 type Props = { list: List }
 
 // Popover trigger for current-list settings (Group worn items + Sharing).
-// Shares the usePortalPopover dismiss pattern with the per-card
-// PrivacyButton, RowKebab, etc. (see CLAUDE.md's popover rule). The
-// per-card share button on /lists keeps its own PrivacyButton; this is the
-// in-list-detail entrypoint where sharing now lives inside List options.
+// Shares the usePortalPopover dismiss pattern with the gear/list row
+// kebabs (see CLAUDE.md's popover rule). On /lists, sharing is reached
+// from the per-row kebab's Share entry (modal + PrivacyPanel); this is
+// the in-list-detail entrypoint where sharing lives inside List options.
 export default function ListSettingsButton({ list }: Props) {
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)

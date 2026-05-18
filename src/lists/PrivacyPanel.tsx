@@ -8,10 +8,11 @@ import ToggleSwitch from '../components/ToggleSwitch'
 type Props = { list: List }
 
 // Inner UI for the share/privacy controls — public/private toggle plus a
-// copyable share URL when public. Today's only consumer is ListSettingsPanel's
-// Sharing section (the standalone PrivacyButton is still used on per-card
-// share affordances inside ListsPage). Section heading and supporting copy
-// live in the parent so this body stays minimal.
+// copyable share URL when public. Consumed by ListSettingsPanel's Sharing
+// section on the list detail page, and by the per-row Share dialog on the
+// Lists page (modal-wrapped to avoid nesting popovers inside a kebab).
+// Section heading and supporting copy live in the parent so this body
+// stays minimal.
 export default function PrivacyPanel({ list }: Props) {
   const qc = useQueryClient()
   const [copied, setCopied] = useState(false)
