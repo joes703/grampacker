@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router'
 import { ClipboardList, Plus, Settings2 } from 'lucide-react'
 import type { List } from '../lib/types'
 import { useSidebarDrawer } from '../layout/sidebar-drawer-context'
-import Modal from '../components/Modal'
+import MobileOptionsModal from '../components/MobileOptionsModal'
 import ListSettingsPanel from './ListSettingsPanel'
 
 type Props = {
@@ -89,26 +89,13 @@ export default function MobileListActionBar({ list }: Props) {
       </nav>
 
       {list && (
-        <Modal
+        <MobileOptionsModal
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
           title="List options"
-          className="w-full max-w-sm"
         >
-          <div className="p-4">
-            <h2 className="mb-3 text-base font-semibold text-gray-900">List options</h2>
-            <ListSettingsPanel list={list} />
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(false)}
-                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </Modal>
+          <ListSettingsPanel list={list} />
+        </MobileOptionsModal>
       )}
     </>
   )
