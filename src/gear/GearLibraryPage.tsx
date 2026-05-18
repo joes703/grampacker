@@ -18,8 +18,8 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { useQuery, useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
-import { useNavigate, useSearchParams } from 'react-router'
-import { ArrowLeft, ChevronsDownUp, ChevronsUpDown, Download, Plus, Search, Upload, X } from 'lucide-react'
+import { useNavigate } from 'react-router'
+import { ChevronsDownUp, ChevronsUpDown, Download, Plus, Search, Upload, X } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import {
   queryKeys,
@@ -65,10 +65,6 @@ import BulkActionsToolbar from './BulkActionsToolbar'
 import MobileGearActionBar from './MobileGearActionBar'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
-import CategoryFilterChips, {
-  UNCATEGORIZED_CHIP_VALUE,
-  type CategoryChipValue,
-} from '../components/CategoryFilterChips'
 import { useDocumentTitle } from '../lib/use-document-title'
 
 type DialogState =
@@ -90,9 +86,6 @@ export default function GearLibraryPage() {
   const userId = auth?.userId ?? ''
   const qc = useQueryClient()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const fromListId = searchParams.get('from')
-  const backTarget = fromListId ? `/lists/${fromListId}` : '/lists'
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const { data: categories = [] } = useQuery({
@@ -117,7 +110,6 @@ export default function GearLibraryPage() {
 
   // ── Local state ───────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<CategoryChipValue>(null)
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [selectMode, setSelectMode] = useState(false)
   const { set: selectedIds, toggle: toggleSelect, clear: clearSelected, reset: resetSelected } = useToggleSet<string>()
@@ -535,37 +527,12 @@ export default function GearLibraryPage() {
     return allItems.filter((i) => i.name.toLowerCase().includes(q))
   }, [allItems, search])
 
-  const sortedCats = useMemo(
-    () => [...categories].sort((a, b) => a.sort_order - b.sort_order),
-    [categories],
-  )
-
-  // Layer the category-chip filter on top of search. Chip rail derives its
-  // visible chips from searchFiltered so the rail narrows as the user
-  // types; the chip selection then narrows what the page renders further.
-  const filteredItems = useMemo(() => {
-    if (selectedCategory === null) return searchFiltered
-    if (selectedCategory === UNCATEGORIZED_CHIP_VALUE) {
-      return searchFiltered.filter((i) => i.category_id === null)
-    }
-    return searchFiltered.filter((i) => i.category_id === selectedCategory)
-  }, [searchFiltered, selectedCategory])
-
-  // When a real category is selected, only render that one section. When
-  // Uncategorized is selected, render no real-category sections (the null
-  // bucket tail in groupGearItemsByCategory carries the items). When "All"
-  // is selected, keep the existing behavior (all category sections render
-  // — including empty ones, because the gear library uses them as drop
-  // targets / "+ Add item" affordances).
-  const categoriesForGrouping = useMemo(() => {
-    if (selectedCategory === null) return categories
-    if (selectedCategory === UNCATEGORIZED_CHIP_VALUE) return []
-    return categories.filter((c) => c.id === selectedCategory)
-  }, [categories, selectedCategory])
-
+  // After removing category chips, search is the only narrowing filter on
+  // the page. Empty categories still render as section headers so the user
+  // can use them as drop targets / "+ Add item" affordances.
   const groups = useMemo(
-    () => groupGearItemsByCategory(filteredItems, categoriesForGrouping),
-    [filteredItems, categoriesForGrouping],
+    () => groupGearItemsByCategory(searchFiltered, categories),
+    [searchFiltered, categories],
   )
 
   const itemCountByCategoryId = useMemo(() => {
@@ -594,16 +561,6 @@ export default function GearLibraryPage() {
 
   return (
     <div className="print:pb-0">
-      {/* Back to list */}
-      <button
-        type="button"
-        onClick={() => navigate(backTarget)}
-        className="mb-4 inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
-      >
-        <ArrowLeft size={14} />
-        {fromListId ? 'Back to list' : 'Back to lists'}
-      </button>
-
       {/* Hidden file input for CSV import. Mounted at the page level so
           it's always reachable via importInputRef.current.click(), even
           when its old neighbor (the desktop utility cluster) is
@@ -743,14 +700,6 @@ export default function GearLibraryPage() {
           </div>
         </div>
 
-        {/* Category filter chips — wrapping chip rail. Quietly styled
-            so they don't compete with create/utility buttons above. */}
-        <CategoryFilterChips
-          categories={sortedCats}
-          items={searchFiltered}
-          selected={selectedCategory}
-          onChange={setSelectedCategory}
-        />
       </div>
 
       {/* Sticky bulk-action bar — shown only in selection mode. Sits between
@@ -759,9 +708,9 @@ export default function GearLibraryPage() {
       {selectMode && (
         <BulkActionsToolbar
           selectedCount={selectedIds.size}
-          selectableTotal={filteredItems.length}
+          selectableTotal={searchFiltered.length}
           onClose={exitSelectMode}
-          onSelectAll={() => resetSelected(filteredItems.map((i) => i.id))}
+          onSelectAll={() => resetSelected(searchFiltered.map((i) => i.id))}
           onDeselectAll={clearSelected}
           onCreateList={() => setDialog({ type: 'create-list-from-selection' })}
           onMoveToCategory={() => setDialog({ type: 'bulk-move' })}

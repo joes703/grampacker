@@ -1,6 +1,5 @@
 import { Drawer } from 'vaul'
-import { Link } from 'react-router'
-import { ChevronRight, X } from 'lucide-react'
+import { X } from 'lucide-react'
 
 // Lazy boundary for vaul's left-direction sidebar drawer on the list page.
 // Mirrors ListSelectorDrawer's shape: Drawer.Root + Drawer.Portal +
@@ -8,16 +7,17 @@ import { ChevronRight, X } from 'lucide-react'
 // (LibraryPanel) is passed in as `children` so this file imports only
 // vaul + the chrome icons. Together with M11's useIsBelowLg gate at the
 // caller, vaul never loads on desktop.
+//
+// Header: title + close. The drawer previously also carried a "Manage"
+// link to Gear Inventory; the mobile bottom bar now exposes a Gear
+// destination on every authed route, so the in-drawer nav was redundant.
 type Props = {
   open: boolean
   onOpenChange: (next: boolean) => void
-  /** Used in the "Manage" link href; closes the drawer on tap so the user
-   *  sees the exit animation rather than an abrupt unmount on route change. */
-  manageHref: string
   children: React.ReactNode
 }
 
-export default function ListSidebarDrawer({ open, onOpenChange, manageHref, children }: Props) {
+export default function ListSidebarDrawer({ open, onOpenChange, children }: Props) {
   return (
     <Drawer.Root open={open} onOpenChange={onOpenChange} direction="left">
       <Drawer.Portal>
@@ -25,13 +25,6 @@ export default function ListSidebarDrawer({ open, onOpenChange, manageHref, chil
         <Drawer.Content className="fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-sm flex-col bg-gray-50">
           <Drawer.Title className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-3">
             <span className="text-sm font-semibold text-gray-900">Gear Library</span>
-            <Link
-              to={manageHref}
-              onClick={() => onOpenChange(false)}
-              className="inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
-            >
-              Manage <ChevronRight size={12} />
-            </Link>
             <button
               type="button"
               onClick={() => onOpenChange(false)}
