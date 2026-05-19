@@ -93,6 +93,36 @@ describe('usePortalPopover', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  it('returns focus to the trigger after Escape closes the popover', () => {
+    const onClose = vi.fn()
+    const { getByTestId } = render(<Harness isOpen={true} onClose={onClose} />)
+
+    // Start with focus somewhere other than the trigger (jsdom defaults
+    // activeElement to <body> after render, which is sufficient).
+    expect(document.activeElement).not.toBe(getByTestId('trigger'))
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(document.activeElement).toBe(getByTestId('trigger'))
+  })
+
+  it('does not return focus to the trigger on outside mousedown', () => {
+    const onClose = vi.fn()
+    const { getByTestId } = render(<Harness isOpen={true} onClose={onClose} />)
+
+    expect(document.activeElement).not.toBe(getByTestId('trigger'))
+
+    act(() => {
+      document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(document.activeElement).not.toBe(getByTestId('trigger'))
+  })
+
   it('closes on window scroll when closeOnScroll is true (default)', () => {
     const onClose = vi.fn()
     render(<Harness isOpen={true} onClose={onClose} />)

@@ -64,7 +64,12 @@ export function usePortalPopover(opts: {
       onCloseRef.current()
     }
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onCloseRef.current()
+      if (e.key !== 'Escape') return
+      onCloseRef.current()
+      // Return focus to the trigger so keyboard users land where they started.
+      // Only on Escape: outside-click/scroll/resize are user-initiated focus
+      // changes (or implicit ones) and stealing focus back would feel wrong.
+      triggerRef.current?.focus()
     }
 
     document.addEventListener('mousedown', handleMouseDown)
