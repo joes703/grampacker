@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Review dependency changes
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         # Private repositories without GitHub Advanced Security support can
         # report "Dependency review is not supported on this repository."
         # Keep this advisory; CI's npm audit/signature/IOC checks are the
