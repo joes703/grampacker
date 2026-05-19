@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
+import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
+import PrimaryButton from '../components/PrimaryButton'
 
 type Props = {
   selectedCount: number
@@ -54,9 +56,9 @@ export default function CreateListFromSelectionDialog({
           )}
 
           <div>
-            <label htmlFor="cls-name" className="block text-sm font-medium text-gray-700 mb-1">
+            <FormLabel htmlFor="cls-name">
               List name
-            </label>
+            </FormLabel>
             <input
               id="cls-name"
               autoFocus
@@ -70,9 +72,9 @@ export default function CreateListFromSelectionDialog({
           </div>
 
           <div>
-            <label htmlFor="cls-desc" className="block text-sm font-medium text-gray-700 mb-1">
+            <FormLabel htmlFor="cls-desc">
               Description <span className="text-xs font-normal text-gray-400">(optional)</span>
-            </label>
+            </FormLabel>
             <textarea
               id="cls-desc"
               maxLength={2000}
@@ -91,13 +93,12 @@ export default function CreateListFromSelectionDialog({
             >
               Cancel
             </button>
-            <button
+            <PrimaryButton
               type="submit"
               disabled={!canSubmit}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
               {saving ? 'Creating…' : 'Create list'}
-            </button>
+            </PrimaryButton>
           </div>
       </form>
     </Modal>

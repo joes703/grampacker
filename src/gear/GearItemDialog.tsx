@@ -3,7 +3,9 @@ import { Check, CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } fr
 import type { Category, GearItem } from '../lib/types'
 import { DEFAULT_GEAR_STATUS, type GearStatus } from '../lib/gear-status'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
+import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
+import PrimaryButton from '../components/PrimaryButton'
 import WeightInput from '../components/WeightInput'
 
 export type GearPatch = {
@@ -185,9 +187,9 @@ export default function GearItemDialog({
             never kick in. */}
         <div className="flex-1 min-h-0 overflow-y-auto px-6 space-y-4">
           <div>
-            <label htmlFor="gi-name" className="block text-sm font-medium text-gray-700 mb-1">
+            <FormLabel htmlFor="gi-name">
               Name
-            </label>
+            </FormLabel>
             <input
               id="gi-name"
               type="text"
@@ -200,9 +202,9 @@ export default function GearItemDialog({
             />
           </div>
           <div>
-            <label htmlFor="gi-desc" className="block text-sm font-medium text-gray-700 mb-1">
+            <FormLabel htmlFor="gi-desc">
               Description
-            </label>
+            </FormLabel>
             <textarea
               id="gi-desc"
               maxLength={2000}
@@ -214,9 +216,9 @@ export default function GearItemDialog({
           </div>
           <div className="flex gap-4">
             <div className="w-40">
-              <label htmlFor="gi-weight" className="block text-sm font-medium text-gray-700 mb-1">
+              <FormLabel htmlFor="gi-weight">
                 Weight
-              </label>
+              </FormLabel>
               <WeightInput
                 inputId="gi-weight"
                 grams={weightGrams}
@@ -226,9 +228,9 @@ export default function GearItemDialog({
               />
             </div>
             <div className="flex-1">
-              <label htmlFor="gi-cat" className="block text-sm font-medium text-gray-700 mb-1">
+              <FormLabel htmlFor="gi-cat">
                 Category
-              </label>
+              </FormLabel>
               <select
                 id="gi-cat"
                 value={categoryId ?? ''}
@@ -272,15 +274,16 @@ export default function GearItemDialog({
                     }}
                     className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                  <button
+                  <PrimaryButton
                     type="button"
                     onClick={() => void handleCreateCategory()}
                     disabled={creatingCategory || !newCategoryName.trim()}
                     aria-label="Create category"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
+                    size="icon"
+                    disabledOpacity="40"
                   >
                     <Check size={16} />
-                  </button>
+                  </PrimaryButton>
                   <button
                     type="button"
                     onClick={() => {
@@ -303,9 +306,9 @@ export default function GearItemDialog({
               to min-w-0 so native date controls cannot overflow the modal. */}
           <div className="grid grid-cols-2 gap-4">
             <div className="min-w-0">
-              <label htmlFor="gi-cost" className="block text-sm font-medium text-gray-700 mb-1">
+              <FormLabel htmlFor="gi-cost">
                 Cost (USD)
-              </label>
+              </FormLabel>
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
                   $
@@ -324,9 +327,9 @@ export default function GearItemDialog({
               </div>
             </div>
             <div className="min-w-0">
-              <label htmlFor="gi-pdate" className="block text-sm font-medium text-gray-700 mb-1">
+              <FormLabel htmlFor="gi-pdate">
                 Purchase date
-              </label>
+              </FormLabel>
               <input
                 id="gi-pdate"
                 type="date"
@@ -337,9 +340,9 @@ export default function GearItemDialog({
             </div>
           </div>
           <div>
-            <label htmlFor="gi-status" className="block text-sm font-medium text-gray-700 mb-1">
+            <FormLabel htmlFor="gi-status">
               Status
-            </label>
+            </FormLabel>
             <select
               id="gi-status"
               value={status}
@@ -362,9 +365,9 @@ export default function GearItemDialog({
                 On this list
               </p>
               <div>
-                <label htmlFor="gi-qty" className="block text-sm font-medium text-gray-700 mb-1">
+                <FormLabel htmlFor="gi-qty">
                   Quantity
-                </label>
+                </FormLabel>
                 <div className="inline-flex items-center gap-2">
                   <button
                     type="button"
@@ -490,13 +493,12 @@ export default function GearItemDialog({
             >
               Cancel
             </button>
-            <button
+            <PrimaryButton
               type="submit"
               disabled={saving || !name.trim()}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
               {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Add item'}
-            </button>
+            </PrimaryButton>
           </div>
         </div>
       </form>

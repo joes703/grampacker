@@ -15,6 +15,8 @@ import type { ListItemWithGear } from '../lib/types'
 import { gearItemsToCsv, listItemsToCsv } from '../lib/csv'
 import TypedConfirmDialog from '../components/TypedConfirmDialog'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
+import FormLabel from '../components/FormLabel'
+import PrimaryButton from '../components/PrimaryButton'
 import { useDocumentTitle } from '../lib/use-document-title'
 
 export default function SettingsPage() {
@@ -148,7 +150,7 @@ function ChangePasswordForm() {
   return (
     <form onSubmit={submit} className="space-y-3 max-w-md">
       <div>
-        <label htmlFor="cp-current" className="block text-sm font-medium text-gray-700 mb-1">Current password</label>
+        <FormLabel htmlFor="cp-current">Current password</FormLabel>
         <input
           id="cp-current"
           type="password"
@@ -159,7 +161,7 @@ function ChangePasswordForm() {
         />
       </div>
       <div>
-        <label htmlFor="cp-new" className="block text-sm font-medium text-gray-700 mb-1">New password</label>
+        <FormLabel htmlFor="cp-new">New password</FormLabel>
         <input
           id="cp-new"
           type="password"
@@ -170,7 +172,7 @@ function ChangePasswordForm() {
         />
       </div>
       <div>
-        <label htmlFor="cp-confirm" className="block text-sm font-medium text-gray-700 mb-1">Confirm new password</label>
+        <FormLabel htmlFor="cp-confirm">Confirm new password</FormLabel>
         <input
           id="cp-confirm"
           type="password"
@@ -183,13 +185,12 @@ function ChangePasswordForm() {
       {msg && (
         <p className={`text-sm ${msg.kind === 'ok' ? 'text-green-600' : 'text-red-600'}`}>{msg.text}</p>
       )}
-      <button
+      <PrimaryButton
         type="submit"
         disabled={busy || !currentPassword || !password || !confirm}
-        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
         {busy ? 'Updating…' : 'Change password'}
-      </button>
+      </PrimaryButton>
     </form>
   )
 }
@@ -379,9 +380,9 @@ function DeleteAccount() {
           className="mt-4 space-y-3 max-w-md rounded-lg border border-red-200 bg-red-50 p-4"
         >
           <div>
-            <label htmlFor="da-current" className="block text-sm font-medium text-gray-700 mb-1">
+            <FormLabel htmlFor="da-current">
               Confirm with your current password
-            </label>
+            </FormLabel>
             <input
               id="da-current"
               type="password"

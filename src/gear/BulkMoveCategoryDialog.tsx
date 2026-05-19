@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Category } from '../lib/types'
 import Modal from '../components/Modal'
+import PrimaryButton from '../components/PrimaryButton'
 
 type Props = {
   categories: Category[]
@@ -37,13 +38,12 @@ export default function BulkMoveCategoryDialog({ categories, count, onMove, onCl
           >
             Cancel
           </button>
-          <button
+          <PrimaryButton
             type="button"
             onClick={() => onMove(selected || null)}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
             Move
-          </button>
+          </PrimaryButton>
         </div>
       </div>
     </Modal>

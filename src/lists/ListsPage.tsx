@@ -52,6 +52,7 @@ import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
+import PrimaryButton from '../components/PrimaryButton'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
 import ListsEmptyState from './ListsEmptyState'
 import PrivacyPanel from './PrivacyPanel'
@@ -277,12 +278,13 @@ export default function ListsPage() {
               >
                 <Upload size={14} /> Import CSV
               </button>
-              <button
+              <PrimaryButton
                 onClick={() => setDialog({ type: 'creating', draft: '' })}
-                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                size="sm"
+                className="gap-1.5"
               >
                 <Plus size={14} /> New list
-              </button>
+              </PrimaryButton>
             </>
           )}
         </div>
@@ -494,13 +496,14 @@ function NewListInline({
         }}
         className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
-      <button
+      <PrimaryButton
         onClick={onSubmit}
         disabled={!draft.trim() || saving}
-        className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        size="sm"
+        className="gap-1.5"
       >
         <Plus size={14} /> Create
-      </button>
+      </PrimaryButton>
       <button
         onClick={onCancel}
         aria-label="Cancel"

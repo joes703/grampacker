@@ -3,6 +3,8 @@ import { Link, Navigate } from 'react-router'
 import { supabase } from '../lib/supabase'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useAuth } from './AuthProvider'
+import FormLabel from '../components/FormLabel'
+import PrimaryButton from '../components/PrimaryButton'
 
 // Signed-out password recovery. The user enters their email; if an account
 // exists, Supabase sends a recovery link to /reset-password. We always show
@@ -59,9 +61,9 @@ export default function ForgotPasswordPage() {
             </p>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label htmlFor="fp-email" className="block text-sm font-medium text-gray-700 mb-1">
+                <FormLabel htmlFor="fp-email">
                   Email
-                </label>
+                </FormLabel>
                 <input
                   id="fp-email"
                   type="email"
@@ -72,13 +74,13 @@ export default function ForgotPasswordPage() {
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <button
+              <PrimaryButton
                 type="submit"
                 disabled={loading || !email}
-                className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                fullWidth
               >
                 {loading ? 'Sending…' : 'Send reset link'}
-              </button>
+              </PrimaryButton>
             </form>
             <p className="mt-6 text-center text-sm text-gray-600">
               <Link to="/login" className="text-blue-600 hover:underline">

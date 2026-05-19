@@ -1,6 +1,8 @@
 import { type FormEvent } from 'react'
 import { Minus, Plus, Shirt, UtensilsCrossed, X } from 'lucide-react'
+import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
+import PrimaryButton from '../components/PrimaryButton'
 import WeightInput from '../components/WeightInput'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
@@ -73,9 +75,9 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="qa-name" className="mb-1 block text-sm font-medium text-gray-700">
+            <FormLabel htmlFor="qa-name">
               Name
-            </label>
+            </FormLabel>
             <input
               id="qa-name"
               type="text"
@@ -89,9 +91,9 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
           </div>
 
           <div>
-            <label htmlFor="qa-desc" className="mb-1 block text-sm font-medium text-gray-700">
+            <FormLabel htmlFor="qa-desc">
               Description
-            </label>
+            </FormLabel>
             <textarea
               id="qa-desc"
               maxLength={2000}
@@ -104,9 +106,9 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
 
           <div className="flex gap-4">
             <div className="w-40">
-              <label htmlFor="qa-weight" className="mb-1 block text-sm font-medium text-gray-700">
+              <FormLabel htmlFor="qa-weight">
                 Weight
-              </label>
+              </FormLabel>
               <WeightInput
                 inputId="qa-weight"
                 grams={weightGrams}
@@ -116,9 +118,9 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
               />
             </div>
             <div className="flex-1">
-              <label htmlFor="qa-qty" className="mb-1 block text-sm font-medium text-gray-700">
+              <FormLabel htmlFor="qa-qty">
                 Quantity
-              </label>
+              </FormLabel>
               <div className="inline-flex items-center gap-2">
                 <button
                   type="button"
@@ -183,13 +185,12 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
             >
               Cancel
             </button>
-            <button
+            <PrimaryButton
               type="submit"
               disabled={!canSubmit}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
               Add item
-            </button>
+            </PrimaryButton>
           </div>
         </form>
       </div>
