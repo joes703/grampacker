@@ -578,9 +578,9 @@ export default function GearLibraryPage() {
         onChange={handleImportFile}
       />
 
-      {/* Page header. NavBar renders "Gear Library" as the route heading,
-          so the in-content title is dropped. Both viewports expose only
-          the frequent actions (search + New item + Select + Options);
+      {/* Page header. NavBar renders "Gear" as the route heading, so the
+          in-content title is dropped. Both viewports expose only the
+          frequent actions (search + New item + Select + Options);
           rare/utility actions (New category, Import, Export, Collapse /
           Expand all) live behind the Options surface — a desktop popover
           (GearOptionsButton) and a mobile modal (MobileGearActionBar).
@@ -589,7 +589,7 @@ export default function GearLibraryPage() {
       <div className="mb-6 space-y-3">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
           {/* Item count metadata — kept on every viewport now that the
-              "Gear Library" h1 is gone; sits to the left of search. */}
+              page h1 is gone; sits to the left of search. */}
           <p className="text-sm text-gray-500 shrink-0">{allItems.length} items</p>
 
           {/* Search — fills the remaining mobile-row width (flex-1

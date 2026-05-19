@@ -1,14 +1,15 @@
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router'
-import { Backpack, HelpCircle, ListChecks, LogOut, Menu, Settings } from 'lucide-react'
+import { HelpCircle, LogOut, Menu, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 
-// Mobile (<md) global menu — Lists/Gear destinations + Help, Settings,
-// Sign out. Mounted at the NavBar top level on every authed route,
-// including /lists/:id. List-specific actions (Pack, List options, Add)
-// live in the page's MobileListActionBar at the bottom of the screen,
-// not here.
+// Mobile (<md) global menu — Help, Settings, Sign out only. Mounted at
+// the NavBar top level on every authed route. The primary destinations
+// (Gear, Lists) live in the persistent mobile bottom bars on every page,
+// so they're deliberately not duplicated here. List-specific actions
+// (Pack, List options, Add) live in the page's MobileListActionBar at
+// the bottom of the screen, not here.
 //
 // State distribution:
 //   - Open/close lives in this component (useAnchoredMenu).
@@ -57,26 +58,9 @@ export default function MobileMenu() {
           className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
           style={{ top: menuPos.top, right: menuPos.right }}
         >
-          {/* App navigation + global section. Mobile pages such as
-              Settings/Help still need a way back into the app without
-              relying on browser Back. */}
-          <MenuItem
-            icon={<ListChecks size={14} />}
-            active={pathname === '/lists' || pathname.startsWith('/lists/')}
-            onClick={() => go('/lists')}
-          >
-            Lists
-          </MenuItem>
-          <MenuItem
-            icon={<Backpack size={14} />}
-            active={pathname === '/gear'}
-            onClick={() => go('/gear')}
-          >
-            Gear
-          </MenuItem>
-          <div className="my-1 border-t border-gray-100" />
-
-          {/* Global section — Help, Settings, Sign out. */}
+          {/* Global section — Help, Settings, Sign out. Gear and Lists
+              are already persistent in the mobile bottom bar on every
+              authed route, so they aren't duplicated here. */}
           <MenuItem
             icon={<HelpCircle size={14} />}
             active={pathname === '/help'}

@@ -41,7 +41,7 @@ function resolveRoute(pathname: string): RouteContext {
 //     List options + Pack pill) so the global nav stays clean and stable.
 //     List switching happens through the Lists destination, not from the
 //     list title in either layout.
-//   - Persistent secondary cluster on md+: Lists, Gear, Help, Settings, Sign out.
+//   - Persistent secondary cluster on md+: Gear, Lists, Help, Settings, Sign out.
 //   - MobileMenu on <md for the same global destinations.
 export default function NavBar() {
   const navigate = useNavigate()
@@ -70,22 +70,14 @@ export default function NavBar() {
         <RouteHeading route={route} />
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
-          {/* Persistent global navigation on md+. Lists + Gear sit alongside
+          {/* Persistent global navigation on md+. Gear + Lists sit alongside
               Help/Settings/Sign out so the two primary destinations are
-              always reachable. The Lists destination is also where users
-              switch between lists — the per-page title (CurrentListHeader)
-              only identifies the current list, never switches it. */}
+              always reachable. Gear is first because it's the source/library
+              that lists are built from. The Lists destination is also where
+              users switch between lists — the per-page title
+              (CurrentListHeader) only identifies the current list, never
+              switches it. */}
           <div className="hidden md:flex items-center gap-1 pl-2">
-            <NavLink
-              to="/lists"
-              title="Lists"
-              className={({ isActive }) =>
-                `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
-              }
-            >
-              <ListChecks size={14} />
-              <span className="sr-only lg:not-sr-only">Lists</span>
-            </NavLink>
             <NavLink
               to="/gear"
               title="Gear"
@@ -95,6 +87,16 @@ export default function NavBar() {
             >
               <Backpack size={14} />
               <span className="sr-only lg:not-sr-only">Gear</span>
+            </NavLink>
+            <NavLink
+              to="/lists"
+              title="Lists"
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
+              }
+            >
+              <ListChecks size={14} />
+              <span className="sr-only lg:not-sr-only">Lists</span>
             </NavLink>
             <NavLink
               to="/help"
@@ -178,7 +180,7 @@ function RouteHeading({ route }: { route: RouteContext }) {
   }
 
   if (route.kind === 'all-lists') return <StaticHeading>Lists</StaticHeading>
-  if (route.kind === 'gear') return <StaticHeading>Gear Library</StaticHeading>
+  if (route.kind === 'gear') return <StaticHeading>Gear</StaticHeading>
   if (route.kind === 'settings') return <StaticHeading>Settings</StaticHeading>
   if (route.kind === 'help') return <StaticHeading>Help</StaticHeading>
   return <div className="flex-1 min-w-0" />
