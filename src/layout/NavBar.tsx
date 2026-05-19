@@ -35,10 +35,12 @@ function resolveRoute(pathname: string): RouteContext {
 // Global authed top bar. Stable across every authed route:
 //   - Brand on md+.
 //   - Route heading slot — static labels on /lists, /gear, /settings, /help;
-//     CurrentListHeader on /lists/:id at <md (mobile keeps the list name +
-//     switcher in the top bar). At md+ on /lists/:id the slot is empty — the
-//     desktop list-detail page body owns the list toolbar (CurrentListHeader
-//     + List options + Pack pill) so the global nav stays clean and stable.
+//     CurrentListHeader on /lists/:id at <md (mobile keeps the list name in
+//     the top bar). At md+ on /lists/:id the slot is empty — the desktop
+//     list-detail page body owns the list toolbar (CurrentListHeader +
+//     List options + Pack pill) so the global nav stays clean and stable.
+//     List switching happens through the Lists destination, not from the
+//     list title in either layout.
 //   - Persistent secondary cluster on md+: Lists, Gear, Help, Settings, Sign out.
 //   - MobileMenu on <md for the same global destinations.
 export default function NavBar() {
@@ -70,8 +72,9 @@ export default function NavBar() {
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {/* Persistent global navigation on md+. Lists + Gear sit alongside
               Help/Settings/Sign out so the two primary destinations are
-              always reachable. List switching on /lists/:id happens in the
-              page body's desktop list toolbar (CurrentListHeader), not here. */}
+              always reachable. The Lists destination is also where users
+              switch between lists — the per-page title (CurrentListHeader)
+              only identifies the current list, never switches it. */}
           <div className="hidden md:flex items-center gap-1 pl-2">
             <NavLink
               to="/lists"
@@ -136,33 +139,29 @@ export default function NavBar() {
 }
 
 // Route-specific heading slot. /lists/:id renders CurrentListHeader at
-// <md only — desktop list-detail moves the list selector into the page
-// body. Other routes render a static text heading at all sizes. Loading
-// state on /lists/:id shows just the chevron-less placeholder so the
-// bar's height stays stable.
+// <md only — desktop list-detail moves the list title into the page body.
+// Other routes render a static text heading at all sizes. Loading state
+// on /lists/:id shows a neutral placeholder so the bar's height stays
+// stable.
 function RouteHeading({ route }: { route: RouteContext }) {
   const auth = useRequireSession()
   const userId = auth?.userId ?? ''
   const isMobile = useIsMobile()
 
-  // Lists are fetched here for both the heading text and the selector body.
-  // The query is also used by ListDetailPage / RootRedirect — same key, so
-  // there's a single source of truth in the cache.
+  // Lists are fetched here for the mobile heading text. The query is also
+  // used by ListDetailPage / RootRedirect — same key, so there's a single
+  // source of truth in the cache.
   const { data: lists = [] } = useQuery({
     queryKey: queryKeys.lists(),
     queryFn: () => fetchLists(userId),
-    // Don't fetch when there's no list-context — the static-heading routes
-    // don't need lists, but we keep the query enabled there too so the
-    // cache is warm when the user switches into a list. Cheap.
   })
 
   if (route.kind === 'list-detail') {
-    // Desktop list-detail moves the list selector into the page body's
+    // Desktop list-detail anchors the list title in the page body's
     // toolbar (ListDetailPage's CurrentListHeader). Skip mounting it here
     // on desktop entirely — a plain CSS `md:hidden` would still mount the
-    // component, registering a redundant ListSelector portal and matchMedia
-    // listeners, and would surface the inline-rename input + selector
-    // chevron in the desktop DOM even though they're invisible.
+    // component and surface the inline-rename input in the desktop DOM
+    // even though it's invisible.
     if (!isMobile) return <div className="flex-1 min-w-0" />
     const list = lists.find((l) => l.id === route.listId)
     if (!list) {
@@ -173,7 +172,7 @@ function RouteHeading({ route }: { route: RouteContext }) {
     }
     return (
       <div className="flex flex-1 min-w-0">
-        <CurrentListHeader list={list} lists={lists} userId={userId} />
+        <CurrentListHeader list={list} />
       </div>
     )
   }

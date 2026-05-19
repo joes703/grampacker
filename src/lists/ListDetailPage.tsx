@@ -247,10 +247,10 @@ function ListDetailInner({
   })
 
   // Counter that increments to programmatically focus LibraryPanel's search
-  // input from the empty-state "Add from your inventory" affordance at lg+.
-  // LibraryPanel watches the prop via useEffect with a skipInitialFocus ref,
-  // so list-switches (which remount this whole subtree via key=routeId in
-  // the wrapper) don't auto-focus.
+  // input from the empty-state "Add from gear" affordance at lg+. LibraryPanel
+  // watches the prop via useEffect with a skipInitialFocus ref, so list-
+  // switches (which remount this whole subtree via key=routeId in the
+  // wrapper) don't auto-focus.
   const [focusSearchTrigger, setFocusSearchTrigger] = useState(0)
 
   const list = lists.find((l) => l.id === listId)
@@ -423,10 +423,10 @@ function ListDetailInner({
     }),
   })
 
-  // Empty-state "Add from your inventory" handler. lg+ focuses the desktop
-  // aside's LibraryPanel search input; below lg the aside is hidden so we
-  // open the mobile drawer instead. The breakpoint match mirrors the
-  // sidebar's `lg:flex` / `lg:hidden` rendering.
+  // Empty-state "Add from gear" handler. lg+ focuses the desktop aside's
+  // LibraryPanel search input; below lg the aside is hidden so we open the
+  // mobile drawer instead. The breakpoint match mirrors the sidebar's
+  // `lg:flex` / `lg:hidden` rendering.
   function handleAddFromInventory() {
     if (window.matchMedia('(min-width: 1024px)').matches) {
       setFocusSearchTrigger((t) => t + 1)
@@ -889,33 +889,6 @@ function ListDetailInner({
 
   return (
     <div className="flex flex-col gap-4 print:pb-0">
-      {/* Desktop list toolbar — owns list identity and list-scoped actions
-          on this page now that the global top bar is global-only. Mobile
-          keeps the list name + switcher in NavBar's route heading and Pack /
-          List options in MobileListActionBar, so this toolbar is md+ only.
-          Hidden in print: the print-only block below carries the list name. */}
-      <div className="hidden md:flex items-center gap-2 print:hidden">
-        <CurrentListHeader list={list} lists={lists} userId={userId} />
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={togglePackMode}
-            title={mode === 'pack' ? 'Pack mode: on' : 'Pack mode: off'}
-            aria-label="Pack mode"
-            aria-pressed={mode === 'pack'}
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
-              mode === 'pack'
-                ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                : 'border-gray-300 text-gray-500 hover:bg-gray-50'
-            }`}
-          >
-            <ClipboardList size={14} />
-            <span>Pack</span>
-          </button>
-          <ListSettingsButton list={list} />
-        </div>
-      </div>
-
       {/* Print-only header. NavBar (list name) and the Notes/WeightTable
           panels are hidden in print and pack mode hides them on screen too,
           so the printed sheet needs its own list-name + notes + compact
@@ -944,13 +917,12 @@ function ListDetailInner({
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
           >
             <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
-              {/* Quiet section header — labels the panel as a picker into
-                  the user's gear inventory, not the Gear destination itself.
-                  The Manage link used to live here, but the primary nav
-                  (top bar + mobile bottom bar) already exposes Gear. */}
+              {/* Quiet section header — labels the panel as the picker for
+                  pulling existing gear into this list. The Gear destination
+                  is reached via the primary nav (top bar + mobile bottom bar). */}
               <div className="border-b border-gray-200 bg-gray-50 px-3 py-2">
                 <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Add from inventory
+                  Add from gear
                 </span>
               </div>
               <div className="flex-1 overflow-hidden">
@@ -968,12 +940,41 @@ function ListDetailInner({
           </aside>
         )}
 
-        {/* RIGHT column — weight table + items (always visible; packing
-            checkbox column appears in pack mode). Pack mode narrows from
-            7xl (AppShell main) to 3xl + mx-auto so the sparser layout
-            reads as focused rather than stretched across the full width
-            the missing sidebar leaves behind. */}
+        {/* RIGHT column — list document. Title toolbar + weight table +
+            items (always visible; packing checkbox column appears in pack
+            mode). Pack mode narrows from 7xl (AppShell main) to 3xl +
+            mx-auto so the sparser layout reads as focused rather than
+            stretched across the full width the missing sidebar leaves
+            behind. */}
         <div className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'max-w-3xl mx-auto' : ''}`}>
+          {/* Desktop list toolbar — anchors list identity and list-scoped
+              actions to the document column on this page now that the global
+              top bar is global-only. Mobile keeps the list name in NavBar's
+              route heading and Pack / List options in MobileListActionBar,
+              so this toolbar is md+ only. Hidden in print: the print-only
+              block above carries the list name. */}
+          <div className="hidden md:flex items-center gap-2 print:hidden">
+            <CurrentListHeader list={list} />
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={togglePackMode}
+                title={mode === 'pack' ? 'Pack mode: on' : 'Pack mode: off'}
+                aria-label="Pack mode"
+                aria-pressed={mode === 'pack'}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
+                  mode === 'pack'
+                    ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                    : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <ClipboardList size={14} />
+                <span>Pack</span>
+              </button>
+              <ListSettingsButton list={list} />
+            </div>
+          </div>
+
           {/* Pack-mode progress bar */}
           {mode === 'pack' && listItems.length > 0 && (
             <div className="print:hidden">
@@ -1034,7 +1035,7 @@ function ListDetailInner({
                 <div className="min-w-0">
                   <h2 className="text-base font-semibold text-gray-900">Add gear to this list</h2>
                   <p className="mt-1 text-sm text-gray-500">
-                    <span className="hidden lg:inline">Use the inventory picker on the left, or tap </span>
+                    <span className="hidden lg:inline">Use the gear picker on the left, or tap </span>
                     <span className="lg:hidden">Tap </span>
                     <button
                       type="button"
@@ -1043,7 +1044,7 @@ function ListDetailInner({
                     >
                       Add
                     </button>
-                    {' '}to pull items from your gear inventory.
+                    {' '}to pull items from your gear.
                   </p>
                 </div>
               </div>

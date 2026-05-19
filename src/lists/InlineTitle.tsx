@@ -9,16 +9,13 @@ type Props = {
   // LibraryPanel — skipInitialEdit guards the mount-time effect run.
   editTrigger?: number
   // Notifies the parent when edit mode starts/ends so the parent can
-  // suppress its own click handlers (e.g. the list-switcher container's
-  // open-selector click) and hide the pencil affordance during edit.
+  // hide the pencil affordance during edit.
   onEditingChange?: (editing: boolean) => void
 }
 
-// Inline rename for the top bar's list name on /lists/:id. The display
-// element is now a plain <h1>; the rename trigger lives outside this
-// component (a pencil button in NavBar's ListHeading) so the surrounding
-// list-switcher container can claim mouse clicks for the more frequent
-// switch-list action.
+// Inline rename for the list title on /lists/:id. The display element is a
+// plain <h1>; the rename trigger lives outside this component (a pencil
+// button in CurrentListHeader).
 //
 // Validation: empty trimmed name on explicit save (Enter) renders an inline
 // red error below the input and keeps the input in edit mode so the user
@@ -113,9 +110,8 @@ export default function InlineTitle({ name, onSave, editTrigger, onEditingChange
     )
   }
 
-  // Plain heading — no inner button, no click-to-edit. The list-switcher
-  // container in NavBar owns the click target (opens the selector); rename
-  // entry comes from the sibling pencil affordance.
+  // Plain heading — no inner button, no click-to-edit. Rename entry
+  // comes from the sibling pencil affordance in CurrentListHeader.
   return (
     <h1 className="flex-1 min-w-0 truncate px-2 py-0.5 text-xl font-semibold text-gray-900">
       {name}

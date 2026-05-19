@@ -2,16 +2,14 @@ import { Drawer } from 'vaul'
 import { X } from 'lucide-react'
 
 // Lazy boundary for vaul's left-direction sidebar drawer on the list page.
-// Mirrors ListSelectorDrawer's shape: Drawer.Root + Drawer.Portal +
-// Drawer.Overlay + Drawer.Content + Drawer.Title; the panel body
-// (LibraryPanel) is passed in as `children` so this file imports only
-// vaul + the chrome icons. Together with M11's useIsBelowLg gate at the
-// caller, vaul never loads on desktop.
+// The panel body (LibraryPanel) is passed in as `children` so this file
+// imports only vaul + the chrome icons. Together with M11's useIsBelowLg
+// gate at the caller, vaul never loads on desktop.
 //
-// Header: title + close. The title labels the drawer as a picker into the
-// user's gear inventory rather than the Gear destination itself; the
-// drawer previously carried a "Manage" link too, but the mobile bottom
-// bar now exposes Gear on every authed route, so that nav is redundant.
+// Header: title + close. The title labels the drawer as the picker for
+// pulling existing gear into this list; the Gear destination itself is
+// reached via the mobile bottom bar, which exposes it on every authed
+// route.
 type Props = {
   open: boolean
   onOpenChange: (next: boolean) => void
@@ -25,7 +23,7 @@ export default function ListSidebarDrawer({ open, onOpenChange, children }: Prop
         <Drawer.Overlay className="fixed inset-0 z-40 bg-black/40" />
         <Drawer.Content className="fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-sm flex-col bg-gray-50">
           <Drawer.Title className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-3">
-            <span className="text-sm font-semibold text-gray-900">Add from inventory</span>
+            <span className="text-sm font-semibold text-gray-900">Add from gear</span>
             <button
               type="button"
               onClick={() => onOpenChange(false)}
