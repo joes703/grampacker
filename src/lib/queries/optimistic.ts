@@ -1,5 +1,4 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
-import { supabase } from '../supabase'
 import { showToast } from '../toast'
 
 // ── Bulk helpers ──────────────────────────────────────────────────────────────
@@ -25,6 +24,10 @@ export async function bulkUpdateSortOrder<T extends { id: string; sort_order: nu
   updates: T[],
 ): Promise<void> {
   if (updates.length === 0) return
+  // Keep the real Supabase client out of this module's import path. Most
+  // consumers import the optimistic cache helpers below, including pure unit
+  // tests that should not need VITE_SUPABASE_* just to evaluate the module.
+  const { supabase } = await import('../supabase')
   const { error } = await supabase.rpc('bulk_update_sort_order', {
     p_table: table,
     p_ids: updates.map((u) => u.id),

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { createClient } from '@supabase/supabase-js'
-import { reorderCategories, reorderGearItems, reorderListItems, reorderLists } from './queries'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 // Integration test for the bulk reorder helpers. All four go through a
 // SECURITY DEFINER RPC (bulk_update_sort_order) that runs UPDATE … SET
@@ -26,9 +25,16 @@ const canRun = Boolean(url && key && email && password)
 const d = canRun ? describe : describe.skip
 
 d('bulk reorder helpers preserve untouched columns', () => {
-  const supabase = createClient(url!, key!)
+  let supabase: SupabaseClient
+  let reorderCategories: typeof import('./queries').reorderCategories
+  let reorderGearItems: typeof import('./queries').reorderGearItems
+  let reorderListItems: typeof import('./queries').reorderListItems
+  let reorderLists: typeof import('./queries').reorderLists
 
   beforeAll(async () => {
+    supabase = createClient(url!, key!)
+    ;({ reorderCategories, reorderGearItems, reorderListItems, reorderLists } = await import('./queries'))
+
     const { error } = await supabase.auth.signInWithPassword({
       email: email!,
       password: password!,
