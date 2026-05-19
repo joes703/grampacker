@@ -1,11 +1,12 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Backpack, HelpCircle, ListChecks, LogOut, Settings } from 'lucide-react'
+import { Backpack, HelpCircle, LogOut, Settings } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import { supabase } from '../lib/supabase'
 import { queryKeys, fetchLists } from '../lib/queries'
 import { useIsMobile } from '../lib/use-breakpoint'
 import MobileMenu from './MobileMenu'
+import ListsNavDropdown from './ListsNavDropdown'
 import CurrentListHeader from '../lists/CurrentListHeader'
 
 // Per-route slot resolution. Mounted only inside AppShell, which is gated by
@@ -73,8 +74,8 @@ export default function NavBar() {
           {/* Persistent global navigation on md+. Gear + Lists sit alongside
               Help/Settings/Sign out so the two primary destinations are
               always reachable. Gear is first because it's the source/library
-              that lists are built from. The Lists destination is also where
-              users switch between lists — the per-page title
+              that lists are built from. The Lists pill is a dropdown
+              (ListsNavDropdown) for fast list switching; the per-page title
               (CurrentListHeader) only identifies the current list, never
               switches it. */}
           <div className="hidden md:flex items-center gap-1 pl-2">
@@ -88,16 +89,7 @@ export default function NavBar() {
               <Backpack size={14} />
               <span className="sr-only lg:not-sr-only">Gear</span>
             </NavLink>
-            <NavLink
-              to="/lists"
-              title="Lists"
-              className={({ isActive }) =>
-                `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
-              }
-            >
-              <ListChecks size={14} />
-              <span className="sr-only lg:not-sr-only">Lists</span>
-            </NavLink>
+            <ListsNavDropdown />
             <NavLink
               to="/help"
               title="Help"
