@@ -65,8 +65,21 @@ vi.mock('../supabase', () => ({
 }))
 
 import { fetchSharedList } from './lists'
-import { fetchSharedListItems } from './list-items'
+import { fetchSharedListItems, fetchListItems, fetchAllUserListItems } from './list-items'
 import { fetchSharedListCategories } from './categories'
+import { GEAR_ITEM_AUTH_SELECT, GEAR_ITEM_PUBLIC_SELECT } from './projections'
+
+// Helper: parse the column list inside the `gear_item:gear_items(...)`
+// nested join substring and return a trimmed, sorted array. Lets tests
+// assert exact set equality rather than substring containment.
+function gearColumnList(selectString: string): string[] {
+  const inner = selectString.match(/gear_item:gear_items\(([^)]+)\)/)?.[1] ?? ''
+  return inner
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .sort()
+}
 
 beforeEach(() => {
   mockState.calls.length = 0
@@ -88,6 +101,54 @@ const FORBIDDEN_PUBLIC_COLUMNS = [
   'created_at',
   'updated_at',
 ]
+
+describe('gear-item projection constants', () => {
+  // The constants are the wire-level allowlist for the gear_item join.
+  // Locking their literal values here means: any widening (new column) is
+  // a deliberate, reviewable diff in this test file, not a silent change
+  // somewhere in the queries layer.
+  it('GEAR_ITEM_PUBLIC_SELECT contains only the public allowlist', () => {
+    expect(GEAR_ITEM_PUBLIC_SELECT).toBe(
+      'gear_item:gear_items(id, name, description, weight_grams, category_id)',
+    )
+    expect(gearColumnList(GEAR_ITEM_PUBLIC_SELECT)).toEqual([
+      'category_id',
+      'description',
+      'id',
+      'name',
+      'weight_grams',
+    ])
+    // Defense in depth: re-enumerate the forbidden private columns so a
+    // future widening that adds one trips this test directly on the
+    // constant, not just at a call site.
+    const inner = GEAR_ITEM_PUBLIC_SELECT
+    for (const forbidden of ['cost', 'purchase_date', 'status', 'is_ready', 'user_id', 'sort_order']) {
+      expect(inner).not.toContain(forbidden)
+    }
+    expect(inner).not.toContain('*')
+  })
+
+  it('GEAR_ITEM_AUTH_SELECT extends the public allowlist with status only', () => {
+    expect(GEAR_ITEM_AUTH_SELECT).toBe(
+      'gear_item:gear_items(id, name, description, weight_grams, category_id, status)',
+    )
+    expect(gearColumnList(GEAR_ITEM_AUTH_SELECT)).toEqual([
+      'category_id',
+      'description',
+      'id',
+      'name',
+      'status',
+      'weight_grams',
+    ])
+    // Cost and purchase_date stay out of joins on principle: they're
+    // gear-library-only columns. Authenticated users read them directly
+    // from gear_items, not via the list_items join.
+    expect(GEAR_ITEM_AUTH_SELECT).not.toContain('cost')
+    expect(GEAR_ITEM_AUTH_SELECT).not.toContain('purchase_date')
+    expect(GEAR_ITEM_AUTH_SELECT).not.toContain('user_id')
+    expect(GEAR_ITEM_AUTH_SELECT).not.toContain('*')
+  })
+})
 
 describe('fetchSharedList (public share view list projection)', () => {
   it('reads from public.lists with an explicit, narrow select string', async () => {
@@ -183,13 +244,22 @@ describe('fetchSharedListItems (public share view list_items projection)', () =>
 
     // Nested gear_item join uses an explicit column list, not a wildcard.
     expect(cols).toContain('gear_item:gear_items(')
+    // The select embeds the shared constant verbatim. Any divergence (a
+    // local hand-written join that drifted from the constant) fails here.
+    expect(cols).toContain(GEAR_ITEM_PUBLIC_SELECT)
+
     const gearCols = cols.match(/gear_item:gear_items\(([^)]+)\)/)?.[1] ?? ''
     expect(gearCols).not.toContain('*')
-    expect(gearCols).toContain('id')
-    expect(gearCols).toContain('name')
-    expect(gearCols).toContain('description')
-    expect(gearCols).toContain('weight_grams')
-    expect(gearCols).toContain('category_id')
+    // Exact-set equality: the public gear projection is ONLY the
+    // allowlist below. Adding a column to the join (even one already
+    // visible to authed users) requires updating this list deliberately.
+    expect(gearColumnList(cols)).toEqual([
+      'category_id',
+      'description',
+      'id',
+      'name',
+      'weight_grams',
+    ])
     // Gear-item columns excluded from the public view (per SECURITY.md):
     expect(gearCols).not.toContain('user_id')
     expect(gearCols).not.toContain('sort_order')
@@ -198,6 +268,10 @@ describe('fetchSharedListItems (public share view list_items projection)', () =>
     // status is advisory inventory metadata (needs_repair, loaned_out).
     // Surfaced in private views only; share viewers must not see it.
     expect(gearCols).not.toContain('status')
+    // is_ready lives on list_items (not gear_items), but assert absence
+    // here too: a typo that put it inside the gear_item parens would
+    // surface as a runtime PostgREST error in prod. Catch at unit level.
+    expect(gearCols).not.toContain('is_ready')
 
     // Returned PublicListItem shape: exactly the allowlist keys.
     expect(result).toHaveLength(1)
@@ -216,6 +290,58 @@ describe('fetchSharedListItems (public share view list_items projection)', () =>
     expect(Object.keys(result[0]!.gear_item).sort()).toEqual(
       ['category_id', 'description', 'id', 'name', 'weight_grams'],
     )
+  })
+})
+
+describe('fetchListItems (authenticated list view list_items projection)', () => {
+  it('embeds GEAR_ITEM_AUTH_SELECT with status in the list_items SELECT', async () => {
+    mockState.nextList = { data: [], error: null }
+
+    await fetchListItems('list-1', 'user-1')
+
+    expect(mockState.calls).toHaveLength(1)
+    expect(mockState.calls[0]?.table).toBe('list_items')
+    const cols = mockState.calls[0]?.selectCols ?? ''
+    // The list_items row itself is fetched with `*` (authenticated path
+    // exposes the owner's full row to the owner). What we lock is the
+    // *nested* gear projection: status is included for authed views.
+    expect(cols).toContain(GEAR_ITEM_AUTH_SELECT)
+    const gearCols = gearColumnList(cols)
+    expect(gearCols).toEqual([
+      'category_id',
+      'description',
+      'id',
+      'name',
+      'status',
+      'weight_grams',
+    ])
+  })
+})
+
+describe('fetchAllUserListItems (authenticated export list_items projection)', () => {
+  it('embeds GEAR_ITEM_AUTH_SELECT alongside the lists!inner ownership join', async () => {
+    mockState.nextList = { data: [], error: null }
+
+    await fetchAllUserListItems('user-1')
+
+    expect(mockState.calls).toHaveLength(1)
+    expect(mockState.calls[0]?.table).toBe('list_items')
+    const cols = mockState.calls[0]?.selectCols ?? ''
+    expect(cols).toContain(GEAR_ITEM_AUTH_SELECT)
+    // Settings export path also pulls the lists row for the user_id
+    // ownership filter. Lock that bit too so a "tidy-up" diff that drops
+    // it (and turns the export into a leaky cross-user query in the
+    // absence of RLS) is caught at the unit level.
+    expect(cols).toContain('list:lists!inner(user_id)')
+    const gearCols = gearColumnList(cols)
+    expect(gearCols).toEqual([
+      'category_id',
+      'description',
+      'id',
+      'name',
+      'status',
+      'weight_grams',
+    ])
   })
 })
 

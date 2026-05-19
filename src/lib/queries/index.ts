@@ -77,3 +77,4 @@ export {
   importCsvRowsToList,
 } from './list-items'
 export type { ListItemPatch } from './list-items'
+export { GEAR_ITEM_AUTH_SELECT, GEAR_ITEM_PUBLIC_SELECT } from './projections'
