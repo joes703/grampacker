@@ -293,6 +293,100 @@ describe('fetchSharedListItems (public share view list_items projection)', () =>
   })
 })
 
+// Runtime shape guard inside fetchSharedListItems. Locks the
+// TS/runtime contract (PostgREST response matches PublicListItem) so a
+// future shape drift or accidental column widening fails the share page
+// loudly instead of silently propagating into the renderer. NOT a
+// security boundary — that's RLS + the narrow SELECT + the projection
+// constant tests above.
+describe('fetchSharedListItems runtime shape guard', () => {
+  // Canonical valid row. Tests below mutate one field at a time so each
+  // negative case isolates a single failure mode.
+  function validPublicRow() {
+    return {
+      id: 'li-1',
+      gear_item_id: 'g-1',
+      quantity: 2,
+      is_worn: false,
+      is_consumable: false,
+      sort_order: 0,
+      gear_item: {
+        id: 'g-1',
+        name: 'Tent',
+        description: null,
+        weight_grams: 1200,
+        category_id: 'cat-1',
+      },
+    }
+  }
+
+  it('returns the rows normally for a well-shaped payload', async () => {
+    mockState.nextList = { data: [validPublicRow()], error: null }
+    const result = await fetchSharedListItems('list-1')
+    expect(result).toHaveLength(1)
+    expect(result[0]?.gear_item.name).toBe('Tent')
+  })
+
+  it('throws when gear_item is null', async () => {
+    const row = { ...validPublicRow(), gear_item: null }
+    mockState.nextList = { data: [row], error: null }
+    await expect(fetchSharedListItems('list-1')).rejects.toThrow(
+      /gear_item is null or not an object/,
+    )
+  })
+
+  it('throws when gear_item carries a private column (status)', async () => {
+    const row = validPublicRow()
+    const tampered = { ...row, gear_item: { ...row.gear_item, status: 'active' } }
+    mockState.nextList = { data: [tampered], error: null }
+    await expect(fetchSharedListItems('list-1')).rejects.toThrow(
+      /gear_item keys.*do not match expected/,
+    )
+  })
+
+  it('throws when gear_item carries a private column (cost)', async () => {
+    const row = validPublicRow()
+    const tampered = { ...row, gear_item: { ...row.gear_item, cost: 199.99 } }
+    mockState.nextList = { data: [tampered], error: null }
+    await expect(fetchSharedListItems('list-1')).rejects.toThrow(
+      /gear_item keys.*do not match expected/,
+    )
+  })
+
+  it('throws when the list_item carries a private column (is_packed)', async () => {
+    const tampered = { ...validPublicRow(), is_packed: true }
+    mockState.nextList = { data: [tampered], error: null }
+    await expect(fetchSharedListItems('list-1')).rejects.toThrow(
+      /row 0 keys.*do not match expected/,
+    )
+  })
+
+  it('throws when the list_item carries a private column (user_id)', async () => {
+    const tampered = { ...validPublicRow(), user_id: 'owner-1' }
+    mockState.nextList = { data: [tampered], error: null }
+    await expect(fetchSharedListItems('list-1')).rejects.toThrow(
+      /row 0 keys.*do not match expected/,
+    )
+  })
+
+  it('throws when a primitive field is the wrong type (quantity as string)', async () => {
+    const tampered = { ...validPublicRow(), quantity: '2' }
+    mockState.nextList = { data: [tampered], error: null }
+    await expect(fetchSharedListItems('list-1')).rejects.toThrow(
+      /field "quantity" is not number/,
+    )
+  })
+
+  it('throws when gear_item.weight_grams is the wrong type', async () => {
+    const row = validPublicRow()
+    const tampered = { ...row, gear_item: { ...row.gear_item, weight_grams: '1200' } }
+    mockState.nextList = { data: [tampered], error: null }
+    await expect(fetchSharedListItems('list-1')).rejects.toThrow(
+      /field "gear_item.weight_grams" is not number/,
+    )
+  })
+})
+
 describe('fetchListItems (authenticated list view list_items projection)', () => {
   it('embeds GEAR_ITEM_AUTH_SELECT with status in the list_items SELECT', async () => {
     mockState.nextList = { data: [], error: null }

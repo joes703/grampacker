@@ -45,12 +45,108 @@ export async function fetchSharedListItems(listId: string): Promise<PublicListIt
     .eq('list_id', listId)
     .order('sort_order', { ascending: true })
   if (error) throw error
-  // PostgREST returns the gear_item join as a single object (one-to-one
-  // via the gear_item_id FK), but TypeScript infers it as an array from
-  // the explicit-column SELECT. The `as unknown as` two-step matches the
-  // pattern used by the authed fetchListItems below: the runtime shape
-  // is correct; only the inferred TS shape needs the override.
-  return data as unknown as PublicListItem[]
+  // Runtime guard for the TS/runtime contract: PostgREST returns gear_item
+  // as a single object (one-to-one via FK) but TS infers it as an array
+  // from the explicit-column SELECT; the previous `as unknown as` cast
+  // silently accepted any shape. This assert turns a future PostgREST
+  // shape change (or a leaked private column) into a loud error instead.
+  // Authorization stays at RLS + the narrow SELECT above + the
+  // shared-projections.test.ts allowlist; this is a maintainability
+  // guard, not a security boundary.
+  assertPublicListItems(data)
+  return data
+}
+
+// Expected key sets for the public share response. Kept narrow on
+// purpose: the assert below rejects extra keys, so a future PostgREST
+// upgrade that widens the projection (or a developer who edits
+// GEAR_ITEM_PUBLIC_SELECT without updating PublicListItem in types.ts)
+// fails the share page at the boundary instead of silently leaking.
+const PUBLIC_LIST_ITEM_KEYS: readonly string[] = [
+  'id',
+  'gear_item_id',
+  'quantity',
+  'is_worn',
+  'is_consumable',
+  'sort_order',
+  'gear_item',
+]
+const PUBLIC_GEAR_ITEM_KEYS: readonly string[] = [
+  'id',
+  'name',
+  'description',
+  'weight_grams',
+  'category_id',
+]
+
+function shapeError(index: number, field: string, expected: string): Error {
+  return new Error(
+    `Unexpected public list item response shape: row ${index} field "${field}" is not ${expected}`,
+  )
+}
+
+// Type-narrowing assertion: callers can use `data` as PublicListItem[]
+// after this returns. Error messages name the row index and the field,
+// never values, so a thrown error never echoes user data into logs.
+function assertPublicListItems(data: unknown): asserts data is PublicListItem[] {
+  if (!Array.isArray(data)) {
+    throw new Error('Unexpected public list item response shape: payload is not an array')
+  }
+  for (let i = 0; i < data.length; i++) {
+    assertPublicListItemRow(data[i], i)
+  }
+}
+
+function assertPublicListItemRow(row: unknown, index: number): void {
+  if (!row || typeof row !== 'object') {
+    throw new Error(
+      `Unexpected public list item response shape: row ${index} is not an object`,
+    )
+  }
+  const r = row as Record<string, unknown>
+  const keys = Object.keys(r).sort()
+  const want = [...PUBLIC_LIST_ITEM_KEYS].sort()
+  if (keys.length !== want.length || keys.some((k, j) => k !== want[j])) {
+    throw new Error(
+      `Unexpected public list item response shape: row ${index} keys [${keys.join(', ')}] ` +
+        `do not match expected [${want.join(', ')}]`,
+    )
+  }
+  if (typeof r.id !== 'string') throw shapeError(index, 'id', 'string')
+  if (typeof r.gear_item_id !== 'string') throw shapeError(index, 'gear_item_id', 'string')
+  if (typeof r.quantity !== 'number') throw shapeError(index, 'quantity', 'number')
+  if (typeof r.sort_order !== 'number') throw shapeError(index, 'sort_order', 'number')
+  if (typeof r.is_worn !== 'boolean') throw shapeError(index, 'is_worn', 'boolean')
+  if (typeof r.is_consumable !== 'boolean') throw shapeError(index, 'is_consumable', 'boolean')
+  assertPublicGearItem(r.gear_item, index)
+}
+
+function assertPublicGearItem(g: unknown, index: number): void {
+  if (!g || typeof g !== 'object') {
+    throw new Error(
+      `Unexpected public list item response shape: row ${index} gear_item is null or not an object`,
+    )
+  }
+  const gr = g as Record<string, unknown>
+  const keys = Object.keys(gr).sort()
+  const want = [...PUBLIC_GEAR_ITEM_KEYS].sort()
+  if (keys.length !== want.length || keys.some((k, j) => k !== want[j])) {
+    throw new Error(
+      `Unexpected public list item response shape: row ${index} gear_item keys ` +
+        `[${keys.join(', ')}] do not match expected [${want.join(', ')}]`,
+    )
+  }
+  if (typeof gr.id !== 'string') throw shapeError(index, 'gear_item.id', 'string')
+  if (typeof gr.name !== 'string') throw shapeError(index, 'gear_item.name', 'string')
+  if (typeof gr.weight_grams !== 'number') {
+    throw shapeError(index, 'gear_item.weight_grams', 'number')
+  }
+  if (gr.description !== null && typeof gr.description !== 'string') {
+    throw shapeError(index, 'gear_item.description', 'string or null')
+  }
+  if (gr.category_id !== null && typeof gr.category_id !== 'string') {
+    throw shapeError(index, 'gear_item.category_id', 'string or null')
+  }
 }
 
 export async function addGearItemToList(
