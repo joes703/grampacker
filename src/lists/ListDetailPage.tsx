@@ -520,6 +520,9 @@ function ListDetailInner({
       showToast("Couldn't delete that item. Please try again.", { type: 'error' })
     },
     onSettled: (_data, _err, _vars, ctx) => {
+      // Dual invalidation: ON DELETE CASCADE on list_items.gear_item_id
+      // means the gear-item delete also removes its list_items rows, so
+      // both caches need to refetch (gear library + every list it was on).
       deleteHelper.onSettled()
       if (ctx?.listSnapshots) invalidateListItemsCaches(qc, ctx.listSnapshots)
     },
@@ -866,6 +869,8 @@ function ListDetailInner({
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
+  const editDialogListItem = dialog?.type === 'edit-gear' ? dialog.listItem : null
+
   return (
     <div className="flex flex-col gap-4 print:pb-0">
       <PrintListHeader list={list} listItems={listItems} categories={categories} />
@@ -1102,11 +1107,11 @@ function ListDetailInner({
           categories={categories}
           item={dialog.gear}
           listContext={
-            dialog.listItem
+            editDialogListItem
               ? {
-                  quantity: dialog.listItem.quantity,
-                  is_worn: dialog.listItem.is_worn,
-                  is_consumable: dialog.listItem.is_consumable,
+                  quantity: editDialogListItem.quantity,
+                  is_worn: editDialogListItem.is_worn,
+                  is_consumable: editDialogListItem.is_consumable,
                 }
               : undefined
           }
@@ -1141,11 +1146,10 @@ function ListDetailInner({
             setDialog(null)
           }}
           onRemoveFromList={
-            dialog.listItem
+            editDialogListItem
               ? () => {
-                  const target = dialog.listItem!
                   setDialog(null)
-                  deleteMut.mutate(target.id)
+                  deleteMut.mutate(editDialogListItem.id)
                 }
               : undefined
           }
