@@ -2,6 +2,7 @@ import { X } from 'lucide-react'
 import type { ListImportRow } from '../lib/csv'
 import { formatItemWeight } from '../lib/weight'
 import Modal from '../components/Modal'
+import PrimaryButton from '../components/PrimaryButton'
 
 type Props = {
   rows: ListImportRow[]
@@ -70,14 +71,13 @@ export default function ListImportPreviewDialog({ rows, saving, onConfirm, onClo
         >
           Cancel
         </button>
-        <button
+        <PrimaryButton
           type="button"
           onClick={onConfirm}
           disabled={saving}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
           {saving ? 'Importing…' : `Import ${rows.length} item${rows.length !== 1 ? 's' : ''}`}
-        </button>
+        </PrimaryButton>
       </div>
     </Modal>
   )

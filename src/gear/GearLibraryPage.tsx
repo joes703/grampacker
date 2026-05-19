@@ -66,6 +66,7 @@ import MobileGearActionBar from './MobileGearActionBar'
 import GearOptionsButton from './GearOptionsButton'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
+import PrimaryButton from '../components/PrimaryButton'
 import { useDocumentTitle } from '../lib/use-document-title'
 
 type DialogState =
@@ -631,13 +632,14 @@ export default function GearLibraryPage() {
                 }}
                 className="w-44 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <button
+              <PrimaryButton
                 onClick={commitNewCategory}
                 disabled={!newCategoryName.trim()}
-                className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+                size="sm"
+                disabledOpacity="40"
               >
                 Add
-              </button>
+              </PrimaryButton>
               <button
                 onClick={() => { setNewCategoryName(''); setDialog(null) }}
                 className="rounded p-1.5 text-gray-400 hover:text-gray-600"
@@ -902,13 +904,12 @@ export default function GearLibraryPage() {
               >
                 Cancel
               </button>
-              <button
+              <PrimaryButton
                 type="button"
                 onClick={() => { setDialog(null); openImportPicker() }}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
               >
                 Continue
-              </button>
+              </PrimaryButton>
             </div>
           </div>
         </Modal>

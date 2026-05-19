@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
 import { useDocumentTitle } from '../lib/use-document-title'
+import FormLabel from '../components/FormLabel'
+import PrimaryButton from '../components/PrimaryButton'
 
 // Landing page for password recovery email links. The user clicks the link
 // in their inbox, Supabase verifies the recovery token, and redirects here
@@ -136,9 +138,9 @@ export default function ResetPasswordPage() {
         {(state.kind === 'ready' || state.kind === 'updating') && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="rp-new" className="block text-sm font-medium text-gray-700 mb-1">
+              <FormLabel htmlFor="rp-new">
                 New password
-              </label>
+              </FormLabel>
               <input
                 id="rp-new"
                 type="password"
@@ -150,9 +152,9 @@ export default function ResetPasswordPage() {
               />
             </div>
             <div>
-              <label htmlFor="rp-confirm" className="block text-sm font-medium text-gray-700 mb-1">
+              <FormLabel htmlFor="rp-confirm">
                 Confirm new password
-              </label>
+              </FormLabel>
               <input
                 id="rp-confirm"
                 type="password"
@@ -164,13 +166,13 @@ export default function ResetPasswordPage() {
               />
             </div>
             {formError && <p className="text-sm text-red-600">{formError}</p>}
-            <button
+            <PrimaryButton
               type="submit"
               disabled={state.kind === 'updating' || !password || !confirm}
-              className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              fullWidth
             >
               {state.kind === 'updating' ? 'Updating…' : 'Set new password'}
-            </button>
+            </PrimaryButton>
           </form>
         )}
       </div>

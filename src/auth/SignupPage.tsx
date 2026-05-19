@@ -3,6 +3,8 @@ import { Link, Navigate } from 'react-router'
 import { supabase } from '../lib/supabase'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useAuth } from './AuthProvider'
+import FormLabel from '../components/FormLabel'
+import PrimaryButton from '../components/PrimaryButton'
 
 export default function SignupPage() {
   useDocumentTitle('Sign up')
@@ -67,9 +69,9 @@ export default function SignupPage() {
             <h1 className="text-xl font-semibold text-gray-900 mb-6">Create account</h1>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                <FormLabel htmlFor="email">
                   Email
-                </label>
+                </FormLabel>
                 <input
                   id="email"
                   type="email"
@@ -81,9 +83,9 @@ export default function SignupPage() {
                 />
               </div>
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+                <FormLabel htmlFor="password">
                   Password
-                </label>
+                </FormLabel>
                 <input
                   id="password"
                   type="password"
@@ -96,13 +98,13 @@ export default function SignupPage() {
                 <p className="mt-1 text-xs text-gray-500">8–128 characters</p>
               </div>
               {error && <p className="text-sm text-red-600">{error}</p>}
-              <button
+              <PrimaryButton
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                fullWidth
               >
                 {loading ? 'Creating account…' : 'Create account'}
-              </button>
+              </PrimaryButton>
             </form>
             <p className="mt-6 text-center text-sm text-gray-600">
               Already have an account?{' '}
