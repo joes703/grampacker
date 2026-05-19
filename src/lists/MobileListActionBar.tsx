@@ -60,17 +60,17 @@ export default function MobileListActionBar({ list }: Props) {
         items={[
           {
             type: 'link',
-            to: '/lists',
-            label: 'Lists',
-            icon: <ListChecks size={18} />,
-            ariaLabel: 'Lists',
-          },
-          {
-            type: 'link',
             to: '/gear',
             label: 'Gear',
             icon: <Backpack size={18} />,
             ariaLabel: 'Gear',
+          },
+          {
+            type: 'link',
+            to: '/lists',
+            label: 'Lists',
+            icon: <ListChecks size={18} />,
+            ariaLabel: 'Lists',
           },
           {
             type: 'button',

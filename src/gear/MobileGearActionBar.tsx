@@ -20,7 +20,7 @@ type Props = {
   canCollapseExpand: boolean
 }
 
-// Mobile-only bottom action bar for Gear Library. Mirrors the layout
+// Mobile-only bottom action bar for the Gear page. Mirrors the layout
 // model used by MobileListActionBar on List Detail: top bar holds
 // orientation (route heading + global menu), content holds browse/filter
 // (search + chips), and the three primary actions live at the bottom
@@ -61,17 +61,17 @@ export default function MobileGearActionBar({
         items={[
           {
             type: 'link',
-            to: '/lists',
-            label: 'Lists',
-            icon: <ListChecks size={18} />,
-            ariaLabel: 'Lists',
-          },
-          {
-            type: 'link',
             to: '/gear',
             label: 'Gear',
             icon: <Backpack size={18} />,
             ariaLabel: 'Gear',
+          },
+          {
+            type: 'link',
+            to: '/lists',
+            label: 'Lists',
+            icon: <ListChecks size={18} />,
+            ariaLabel: 'Lists',
           },
           {
             type: 'button',

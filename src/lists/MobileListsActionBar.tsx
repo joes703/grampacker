@@ -14,7 +14,7 @@ type Props = {
 }
 
 // Mobile-only bottom action bar for the Lists page. Same layout model as
-// MobileListActionBar (List Detail) and MobileGearActionBar (Gear Library):
+// MobileListActionBar (List Detail) and MobileGearActionBar (Gear page):
 // the first two slots are destination links, the right slots are page-local
 // actions, rare actions live behind Options. Import CSV is moved into the
 // Options modal so it doesn't compete with the primary "New" affordance.
@@ -32,18 +32,18 @@ export default function MobileListsActionBar({ onNewList, onImportCsv }: Props) 
         items={[
           {
             type: 'link',
+            to: '/gear',
+            label: 'Gear',
+            icon: <Backpack size={18} />,
+            ariaLabel: 'Gear',
+          },
+          {
+            type: 'link',
             to: '/lists',
             label: 'Lists',
             icon: <ListChecks size={18} />,
             ariaLabel: 'Lists',
             active: true,
-          },
-          {
-            type: 'link',
-            to: '/gear',
-            label: 'Gear',
-            icon: <Backpack size={18} />,
-            ariaLabel: 'Gear',
           },
           {
             type: 'button',
