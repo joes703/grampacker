@@ -22,6 +22,30 @@ export default defineConfig({
     // attributes, regex duplicate named groups) ships through if it's ever
     // added. Bumps cleanly in lockstep with tsconfig.app.json's lib/target.
     target: 'es2025',
+    rollupOptions: {
+      output: {
+        // Split heavy third-party deps out of the main bundle so a code-only
+        // deploy (the common case) invalidates only the small app chunk,
+        // not the ~500 kB of vendor JS. The PWA precache still ships every
+        // chunk on first load, but on subsequent updates the SW can reuse
+        // the unchanged vendor chunks from cache. Keep this list small and
+        // explicit: over-splitting fragments the cache and hurts cold load.
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('@supabase/supabase-js')) return 'supabase'
+            if (id.includes('@dnd-kit/')) return 'dnd-kit'
+            if (
+              id.includes('/react-dom/') ||
+              id.includes('/react-router/') ||
+              /\/react\/(?!.*\/node_modules)/.test(id)
+            ) {
+              return 'react'
+            }
+          }
+          return undefined
+        },
+      },
+    },
   },
   plugins: [
     react(),
