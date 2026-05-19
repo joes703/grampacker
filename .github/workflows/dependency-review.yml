@@ -21,6 +21,11 @@ jobs:
 
       - name: Review dependency changes
         uses: actions/dependency-review-action@v4
+        # Private repositories without GitHub Advanced Security support can
+        # report "Dependency review is not supported on this repository."
+        # Keep this advisory; CI's npm audit/signature/IOC checks are the
+        # enforceable dependency gate for this repo.
+        continue-on-error: true
         with:
           fail-on-severity: moderate
           comment-summary-in-pr: always
