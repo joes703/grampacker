@@ -49,9 +49,9 @@ You can build a list in a few ways:
 3. Import a CSV from Lighterpack or another compatible spreadsheet.
 4. Select items on the **Gear** page and create a list from that selection.
 
-On desktop, the library panel appears next to your list. Click an inventory item to add it to the list. Click it again to remove it.
+On desktop, the **Add from gear** picker appears next to your list. Click a gear item to add it to the list. Click it again to remove it.
 
-On mobile, tap **Add** to open the inventory picker. Search your inventory, then tap items to add them. If you can't find the gear you want, create it on the **Gear** page first — then come back and add it to the list. Mobile list view doesn't create new gear directly; it's a picker over your inventory.
+On mobile, tap **Add** to open the gear picker. Search your gear, then tap items to add them. If you can't find the gear you want, create it on the **Gear** page first — then come back and add it to the list. Mobile list view doesn't create new gear directly; it's a picker over your gear inventory.
 
 On the **Gear** page, use Select to choose multiple items. From there you can move items to a category, delete them, or create a new list from the selection.
 
@@ -99,7 +99,7 @@ Like Packed, Ready checkmarks work offline and sync when you reconnect. Ready st
 
 ### List options
 
-The **List options** button near the top of a list opens current-list settings that apply across views:
+The **List options** button (in the list toolbar on desktop, in the bottom action bar on mobile) opens current-list settings that apply across views:
 
 - **Group worn items** moves worn items into their own section at the bottom of the list. Applies while editing, in Pack mode, and on public share links.
 - **Sharing** turns on a public read-only link for the list and provides the URL to copy. Anyone with the link can view the list.
@@ -110,7 +110,7 @@ Pack mode controls like Ready checks and Show unpacked only live in Pack mode it
 
 You can create a public read-only link for a list.
 
-Open **List options**, turn on the public link under the Sharing section, and copy the URL. Anyone with the link can view the list without an account. The **Lists** page also has a per-card Share button if you want to manage public links from the list library.
+Open **List options**, turn on the public link under the Sharing section, and copy the URL. Anyone with the link can view the list without an account. Each row on the **Lists** page also has a **Share** action in its menu if you want to manage public links from there.
 
 Public links are read-only. Other people cannot edit your list.
 

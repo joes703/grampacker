@@ -43,7 +43,9 @@ function resolveRoute(pathname: string): RouteContext {
 //     List switching happens through the Lists destination, not from the
 //     list title in either layout.
 //   - Persistent secondary cluster on md+: Gear, Lists, Help, Settings, Sign out.
-//   - MobileMenu on <md for the same global destinations.
+//   - MobileMenu on <md exposes only Help, Settings, Sign out — Gear and
+//     Lists are already pinned to the mobile bottom bar on every authed
+//     route, so they aren't duplicated in the hamburger.
 export default function NavBar() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -120,9 +122,10 @@ export default function NavBar() {
             </button>
           </div>
 
-          {/* < md trigger for the secondary-destination popover. The
-              mobile bottom action bar handles list-specific actions on
-              /lists/:id, so this menu is global-only on every route. */}
+          {/* < md trigger for the global-destinations popover (Help,
+              Settings, Sign out only). The mobile bottom action bars
+              handle Gear, Lists, and any page-local actions, so this
+              menu deliberately doesn't duplicate them. */}
           <div className="md:hidden">
             <MobileMenu />
           </div>
