@@ -16,7 +16,6 @@ import {
   arrayMove,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable'
-import { Backpack, ClipboardList } from 'lucide-react'
 const ListSidebarDrawer = lazy(() => import('./ListSidebarDrawer'))
 import { useRequireSession } from '../auth/use-require-session'
 import {
@@ -67,12 +66,12 @@ import {
   patchAffectsListItemsView,
 } from './list-items-fan-out'
 import { randomTempId } from '../lib/random-temp-id'
-import WeightTable from './WeightTable'
 import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
 import MobileListActionBar from './MobileListActionBar'
-import CurrentListHeader from './CurrentListHeader'
-import ListSettingsButton from './ListSettingsButton'
+import ListDocumentToolbar from './ListDocumentToolbar'
+import EmptyListCell from './EmptyListCell'
+import PrintListHeader from './PrintListHeader'
 import PackingProgress from './PackingProgress'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
@@ -165,10 +164,10 @@ function ListDetailInner({
   // Pack mode is URL-represented as ?mode=pack so it's bookmarkable,
   // refresh-stable, and back/forward navigable. Anything other than the
   // exact string 'pack' (missing, garbage, typo) falls back to edit mode
-  // silently. The toggle UI lives in the desktop list toolbar below (this
-  // page) and in MobileListActionBar at <lg; this hook owns both the
-  // read and the write. Public share view at /r/:slug is a different
-  // page and never sees this parameter.
+  // silently. The toggle UI lives in ListDocumentToolbar at md+ and in
+  // MobileListActionBar at <lg; this hook owns both the read and the
+  // write. Public share view at /r/:slug is a different page and never
+  // sees this parameter.
   const [searchParams, setSearchParams] = useSearchParams()
   const mode: Mode = searchParams.get('mode') === 'pack' ? 'pack' : 'edit'
   function togglePackMode() {
@@ -205,10 +204,10 @@ function ListDetailInner({
   const { open: drawerOpen, setOpen: setDrawerOpen } = useRegisterSidebarDrawer()
   // Single discriminated union for every transient dialog/modal/inline-form
   // on this page. Mirrors the pattern in src/gear/GearLibraryPage.tsx —
-  // `type` discriminator, `null` for the closed state. Folding gearDialogError
-  // (for partial-save messaging) into the edit-gear variant means closing the
-  // dialog or switching to a different gear item naturally discards the
-  // error: there's no separate state to keep in sync.
+  // `type` discriminator, `null` for the closed state. Folding the partial-
+  // save error into the edit-gear variant means closing the dialog or
+  // switching gear items naturally discards the error: no separate state to
+  // keep in sync.
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const {
     pendingCheckStates,
@@ -732,17 +731,6 @@ function ListDetailInner({
   const gearItemsRef = useLatestRef(gearItems)
   const listItemsRef = useLatestRef(listItems)
 
-  // Per-row handler bag passed to every CategoryGroup. Memoized so each
-  // category section doesn't re-render on every parent state change.
-  //
-  // Mutation refs are intentionally NOT in deps. TanStack Query rebuilds the
-  // useMutation result object on every render (the wrapper is fresh; only the
-  // internal `.mutate` callback is stable), so depending on `updateMut` etc.
-  // would defeat the memo and re-create this bag every render. Calling
-  // `.mutate` through the live binding is safe: the closure resolves
-  // `updateMut.mutate` at call time, which is always the current stable ref.
-  // setDialog (the React useState setter) is React-guaranteed stable and
-  // included for completeness.
   // Stable callbacks for LibraryPanel. Inline arrows would mint fresh
   // references on every parent render and defeat LibraryPanel's React.memo
   // on the inner CategoryGroup. addMut / deleteMut follow the same
@@ -776,6 +764,16 @@ function ListDetailInner({
     [],
   )
 
+  // Per-row handler bag passed to every CategoryGroup. Memoized so each
+  // category section doesn't re-render on every parent state change.
+  //
+  // Mutation refs are intentionally NOT in deps. TanStack Query rebuilds the
+  // useMutation result object on every render (the wrapper is fresh; only
+  // the internal `.mutate` callback is stable), so depending on `updateMut`
+  // etc. would defeat the memo and re-create this bag every render. Calling
+  // `.mutate` through the live binding is safe: the closure resolves
+  // `updateMut.mutate` at call time, which is always the current stable ref.
+  // setDialog (the React useState setter) is React-guaranteed stable.
   const sharedGroupProps = useMemo(
     () => ({
       packMode: mode === 'pack',
@@ -870,22 +868,7 @@ function ListDetailInner({
 
   return (
     <div className="flex flex-col gap-4 print:pb-0">
-      {/* Print-only header. NavBar (list name) and the Notes/WeightTable
-          panels are hidden in print and pack mode hides them on screen too,
-          so the printed sheet needs its own list-name + notes + compact
-          weight summary block. `hidden print:block` keeps it out of the
-          screen DOM entirely. WeightTable already no-ops on empty lists. */}
-      <div className="hidden print:block">
-        <h1 className="text-2xl font-bold text-gray-900">{list.name}</h1>
-        {list.description && (
-          <p className="mt-1 whitespace-pre-line text-sm text-gray-700">{list.description}</p>
-        )}
-        {listItems.length > 0 && (
-          <div className="mt-3 mb-4">
-            <WeightTable items={listItems} categories={categories} />
-          </div>
-        )}
-      </div>
+      <PrintListHeader list={list} listItems={listItems} categories={categories} />
 
       {/* Two-column grid (sidebar collapses in pack mode). The visibility
           condition is `mode !== 'pack'` — derived directly, not stored. */}
@@ -927,33 +910,11 @@ function ListDetailInner({
             stretched across the full width the missing sidebar leaves
             behind. */}
         <div className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'max-w-3xl mx-auto' : ''}`}>
-          {/* Desktop list toolbar — anchors list identity and list-scoped
-              actions to the document column on this page now that the global
-              top bar is global-only. Mobile keeps the list name in NavBar's
-              route heading and Pack / List options in MobileListActionBar,
-              so this toolbar is md+ only. Hidden in print: the print-only
-              block above carries the list name. */}
-          <div className="hidden md:flex items-center gap-2 print:hidden">
-            <CurrentListHeader list={list} />
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                type="button"
-                onClick={togglePackMode}
-                title={mode === 'pack' ? 'Pack mode: on' : 'Pack mode: off'}
-                aria-label="Pack mode"
-                aria-pressed={mode === 'pack'}
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium ${
-                  mode === 'pack'
-                    ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                    : 'border-gray-300 text-gray-500 hover:bg-gray-50'
-                }`}
-              >
-                <ClipboardList size={14} />
-                <span>Pack</span>
-              </button>
-              <ListSettingsButton list={list} />
-            </div>
-          </div>
+          <ListDocumentToolbar
+            list={list}
+            packMode={mode === 'pack'}
+            onTogglePackMode={togglePackMode}
+          />
 
           {/* Pack-mode progress bar */}
           {mode === 'pack' && listItems.length > 0 && (
@@ -1003,33 +964,7 @@ function ListDetailInner({
 
           {/* Items grouped by category */}
           {listItems.length === 0 ? (
-            // Calm single-cell empty state. Desktop describes the
-            // always-mounted gear picker aside as the affordance. Mobile
-            // points at the bottom-bar Add button (same wording, same
-            // action) so a tap on the inline button opens the picker
-            // drawer too.
-            <div className="rounded-xl border border-gray-200 bg-white p-6 print:hidden">
-              <div className="flex items-start gap-3">
-                <Backpack size={20} className="mt-0.5 shrink-0 text-blue-600" />
-                <div className="min-w-0">
-                  <h2 className="text-base font-semibold text-gray-900">Add gear to this list</h2>
-                  <p className="mt-1 hidden lg:block text-sm text-gray-500">
-                    Use the gear picker on the left to pull items from your gear.
-                  </p>
-                  <p className="mt-1 lg:hidden text-sm text-gray-500">
-                    Tap{' '}
-                    <button
-                      type="button"
-                      onClick={() => setDrawerOpen(true)}
-                      className="font-medium text-blue-600 underline-offset-2 hover:underline"
-                    >
-                      Add
-                    </button>
-                    {' '}to pull items from your gear.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <EmptyListCell onMobileAdd={() => setDrawerOpen(true)} />
           ) : (() => {
             const activeParsed = activeId ? parseDnDId(activeId) : null
             const activeItem =
