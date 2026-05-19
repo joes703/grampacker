@@ -6,7 +6,7 @@ grampacker helps you keep track of your backpacking gear, build packing lists, a
 
 grampacker is inventory-first: your gear lives in your gear inventory (the **Gear** page), and each list pulls from that inventory. Keeping one master list of gear means weights, categories, status, cost, and other details stay consistent across every trip.
 
-On desktop, list rows include an inline quick-add shortcut for fast keyboard planning — that shortcut creates the new gear in your inventory and adds it to the current list in one step. On mobile, tap **Add** to choose existing gear from your inventory; create brand-new gear on the **Gear** page first, then add it to a list.
+On desktop, category sections in a list include an inline quick-add shortcut for fast keyboard planning — that shortcut creates new gear in your inventory and adds it to the current list in one step. On mobile, tap **Add** to choose existing gear from your inventory; create brand-new gear on the **Gear** page first, then add it to a list.
 
 ## Basic concepts
 
@@ -59,7 +59,7 @@ On the **Gear** page, use Select to choose multiple items. From there you can mo
 
 On desktop, click an item's name, description, weight, or quantity to edit it directly. On mobile, tap an item to open the edit dialog.
 
-For more options, open the item menu or edit dialog. From a list, you can change category, quantity, worn status, and consumable status. From the **Gear** page, you can also manage cost and purchase date.
+For more options, open the item menu or edit dialog. Gear details like name, description, category, weight, status, cost, and purchase date are shared everywhere that gear appears. List-specific fields like quantity, worn status, and consumable status apply only to the current list.
 
 Deleting from a list only removes the item from that list. Deleting from inventory removes it from your gear inventory and from any lists where it appears.
 

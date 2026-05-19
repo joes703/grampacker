@@ -13,6 +13,10 @@ dist
 
 # Claude Code project-level tooling config (per-clone, not shared)
 /.claude/
+/AGENTS.md
+
+# Supabase CLI local link/version cache (per-clone, regenerated)
+/supabase/.temp/
 
 # Lighthouse / Chrome DevTools report exports — generated locally, never
 # checked in
