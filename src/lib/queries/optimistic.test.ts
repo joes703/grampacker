@@ -383,6 +383,112 @@ describe('makeOptimisticReorder', () => {
       { id: 'D', name: 'd', sort_order: 40 },
     ])
   })
+
+  // ── Dev-only invariant assertion ─────────────────────────────────────────
+  //
+  // Vitest sets `import.meta.env.DEV` to `true` by default, so the assertion
+  // in makeOptimisticReorder runs in this suite. In production builds Vite
+  // statically replaces `import.meta.env.DEV` with `false` and the assertion
+  // (and its helper) tree-shake out. The throw is a programmer-error signal
+  // for caller bugs that would otherwise silently corrupt the optimistic
+  // cache until the next refetch (see the helper's docstring).
+  describe('dev-only payload assertion', () => {
+    it('accepts a subset payload (cached ids absent from payload do NOT trigger the assertion)', () => {
+      // The contract documented at optimistic.ts:51-59 explicitly allows
+      // SUBSET permutations: only the dragged category's items appear in
+      // the payload while other categories' items stay in their slots.
+      // assignSortOrderSlots() in grouping.ts produces exactly these
+      // shapes for within-category DnD on /lists/:id. Locking this case
+      // here keeps the assertion from regressing into a stricter rule
+      // that breaks legitimate callers.
+      const { qc, key } = makeSortableClient([
+        { id: 'A', name: 'a', sort_order: 10 },
+        { id: 'B', name: 'b', sort_order: 20 },
+        { id: 'C', name: 'c', sort_order: 30 },
+        { id: 'D', name: 'd', sort_order: 40 },
+      ])
+      const helper = makeOptimisticReorder<SortableRow>(qc, key)
+      expect(() =>
+        helper.onMutate([
+          { id: 'B', sort_order: 30 },
+          { id: 'C', sort_order: 20 },
+        ]),
+      ).not.toThrow()
+    })
+
+    it('throws on a duplicate id in the payload', () => {
+      const { qc, key } = makeSortableClient([
+        { id: 'A', name: 'a', sort_order: 10 },
+        { id: 'B', name: 'b', sort_order: 20 },
+      ])
+      const helper = makeOptimisticReorder<SortableRow>(qc, key)
+      expect(() =>
+        helper.onMutate([
+          { id: 'A', sort_order: 20 },
+          { id: 'A', sort_order: 10 },
+        ]),
+      ).toThrow(/duplicate id "A"/)
+    })
+
+    it('throws when the payload references an id not in the cache', () => {
+      // Same condition as the spec's "missing cached id": an id present
+      // in the payload that has no row in the cache. The current
+      // map-and-spread code silently no-ops such ids; the assertion
+      // surfaces the caller bug instead.
+      const { qc, key } = makeSortableClient([
+        { id: 'A', name: 'a', sort_order: 10 },
+        { id: 'B', name: 'b', sort_order: 20 },
+      ])
+      const helper = makeOptimisticReorder<SortableRow>(qc, key)
+      expect(() =>
+        helper.onMutate([
+          { id: 'A', sort_order: 20 },
+          { id: 'X', sort_order: 10 },
+        ]),
+      ).toThrow(/payload id "X" is not in the cached list/)
+    })
+
+    it('throws when the payload sort_orders are not a permutation of the touched subset', () => {
+      // The exact silent-corruption case the helper's docstring warns
+      // about: payload covers the right id subset {A, C}, but uses
+      // sort_orders {5, 15} instead of a permutation of the subset's
+      // existing sort_orders {10, 30}. Without the assertion the cache
+      // ends up [B=20, A=5, C=15] → sorted [A=5, C=15, B=20], which
+      // diverges from any valid server state.
+      const { qc, key } = makeSortableClient([
+        { id: 'A', name: 'a', sort_order: 10 },
+        { id: 'B', name: 'b', sort_order: 20 },
+        { id: 'C', name: 'c', sort_order: 30 },
+      ])
+      const helper = makeOptimisticReorder<SortableRow>(qc, key)
+      expect(() =>
+        helper.onMutate([
+          { id: 'A', sort_order: 5 },
+          { id: 'C', sort_order: 15 },
+        ]),
+      ).toThrow(/not a permutation of the touched subset's existing sort_orders/)
+    })
+
+    it('leaves the cache untouched when the assertion throws (no partial write)', () => {
+      // The assertion runs after cancelQueries/snapshot but before
+      // setQueryData, so a thrown error must NOT mutate the cache.
+      // Locking this means dev errors don't leave the UI in a
+      // half-applied optimistic state.
+      const initial: SortableRow[] = [
+        { id: 'A', name: 'a', sort_order: 10 },
+        { id: 'B', name: 'b', sort_order: 20 },
+      ]
+      const { qc, key } = makeSortableClient(initial)
+      const helper = makeOptimisticReorder<SortableRow>(qc, key)
+      expect(() =>
+        helper.onMutate([
+          { id: 'A', sort_order: 20 },
+          { id: 'A', sort_order: 10 },
+        ]),
+      ).toThrow()
+      expect(qc.getQueryData<SortableRow[]>(key)).toEqual(initial)
+    })
+  })
 })
 
 describe('mutationErrorHandler (MutationCache observability, M-1)', () => {

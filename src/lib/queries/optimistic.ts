@@ -279,6 +279,93 @@ export function makeOptimisticBulkMove<TList extends { id: string }, TInput>(opt
 
 // ── Reorder mutation lifecycle ────────────────────────────────────────────────
 
+// Dev-only invariant check on the reorder payload. The helper accepts
+// SUBSET permutations (only the dragged category's rows for /lists/:id
+// within-category DnD), so we explicitly do NOT require the payload to
+// cover every cached row. What we do require:
+//
+//   1. No duplicate ids in the payload. A duplicate silently overwrites
+//      itself in the byId map (last write wins) and the first write is
+//      lost; the resulting cache state isn't a permutation of any valid
+//      server state.
+//   2. Every payload id must exist in the cache. An unknown id (typo,
+//      stale snapshot, wrong cache key) silently no-ops in the current
+//      map-and-spread code: cached rows keep their original sort_order
+//      and the visual order ends up wrong but the helper can't see it.
+//   3. The payload's sort_order multiset must equal the touched cache
+//      subset's existing sort_order multiset. This is the "permutation
+//      of an existing subset" invariant documented above: passing
+//      "arbitrary values" instead of a valid permutation corrupts the
+//      cache until the next refetch.
+//
+// Note on the spec language "no cached item omitted": that would block
+// the legitimate within-category DnD path, where the dragged category's
+// items are reordered while other categories' items stay in their slots.
+// `assignSortOrderSlots()` in grouping.ts is the canonical builder for
+// these subset payloads — by construction it returns a permutation of
+// the input subset's sort_orders, so the multiset check above is the
+// invariant the helper actually needs.
+//
+// Throw (not warn): a bad payload is always a caller bug, never a
+// runtime condition. Throwing in onMutate makes TanStack treat the
+// mutation as failed — onError still fires (with ctx=undefined since
+// onMutate never returned), which rolls back nothing (no optimistic
+// write happened) and surfaces the existing reorder toast. A stack
+// trace at the throw site points at the bad caller in seconds. The
+// alternative (console.warn) buries the signal in a busy dev console
+// and lets the corrupted optimistic state propagate until refetch.
+//
+// Wrapped in `if (import.meta.env.DEV)` so the helper, its closures,
+// and the if-branch tree-shake out of prod bundles via Vite's static
+// replacement of `import.meta.env.DEV` → `false`. Zero prod overhead.
+function assertValidReorderPayload<T extends { id: string; sort_order: number }>(
+  updates: { id: string; sort_order: number }[],
+  cached: T[] | undefined,
+): void {
+  // Empty payload is a documented no-op in bulkUpdateSortOrder; skip.
+  if (updates.length === 0) return
+  // No cache yet (no fetch ever happened) means there's no subset to
+  // validate against. Prod behavior is also a no-op here (the cache
+  // updater short-circuits on `!curr`).
+  if (!cached) return
+
+  const seen = new Set<string>()
+  for (const u of updates) {
+    if (seen.has(u.id)) {
+      throw new Error(
+        `makeOptimisticReorder: duplicate id "${u.id}" in payload. Each id must appear at most once.`,
+      )
+    }
+    seen.add(u.id)
+  }
+
+  const cachedById = new Map(cached.map((row) => [row.id, row.sort_order]))
+  for (const u of updates) {
+    if (!cachedById.has(u.id)) {
+      throw new Error(
+        `makeOptimisticReorder: payload id "${u.id}" is not in the cached list. ` +
+          'Either the cache was invalidated between snapshot and dispatch, ' +
+          'or the payload was built from a stale view.',
+      )
+    }
+  }
+
+  const payloadOrders = updates.map((u) => u.sort_order).sort((a, b) => a - b)
+  const subsetOrders = updates
+    .map((u) => cachedById.get(u.id) as number)
+    .sort((a, b) => a - b)
+  for (let i = 0; i < payloadOrders.length; i++) {
+    if (payloadOrders[i] !== subsetOrders[i]) {
+      throw new Error(
+        `makeOptimisticReorder: payload sort_order values [${payloadOrders.join(', ')}] ` +
+          `are not a permutation of the touched subset's existing sort_orders ` +
+          `[${subsetOrders.join(', ')}]. ` +
+          'Use assignSortOrderSlots() (src/lib/grouping.ts) to build safe payloads.',
+      )
+    }
+  }
+}
+
 export function makeOptimisticReorder<T extends { id: string; sort_order: number }>(
   qc: QueryClient,
   queryKey: QueryKey,
@@ -287,6 +374,7 @@ export function makeOptimisticReorder<T extends { id: string; sort_order: number
     onMutate: (updates: { id: string; sort_order: number }[]) => {
       qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<T[]>(queryKey)
+      if (import.meta.env.DEV) assertValidReorderPayload(updates, previous)
       const byId = new Map(updates.map((u) => [u.id, u.sort_order]))
       qc.setQueryData<T[]>(queryKey, (curr) => {
         if (!curr) return curr
