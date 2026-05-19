@@ -1,0 +1,41 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 5
+    groups:
+      react:
+        patterns:
+          - react
+          - react-dom
+          - "@types/react*"
+      test-tooling:
+        patterns:
+          - vitest
+          - jsdom
+          - "@testing-library/*"
+      build-tooling:
+        patterns:
+          - vite
+          - vite-plugin-pwa
+          - "@vitejs/*"
+          - typescript
+          - typescript-eslint
+          - eslint*
+          - prettier
+          - tailwindcss
+          - "@tailwindcss/*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:15"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 3
