@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "preview": "vite preview",
+    "security:check": "npm audit --audit-level=moderate && sh scripts/check-supply-chain-iocs.sh",
     "test": "vitest"
   },
   "engines": {
