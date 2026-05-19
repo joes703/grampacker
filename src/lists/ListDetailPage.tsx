@@ -246,13 +246,6 @@ function ListDetailInner({
     },
   })
 
-  // Counter that increments to programmatically focus LibraryPanel's search
-  // input from the empty-state "Add from gear" affordance at lg+. LibraryPanel
-  // watches the prop via useEffect with a skipInitialFocus ref, so list-
-  // switches (which remount this whole subtree via key=routeId in the
-  // wrapper) don't auto-focus.
-  const [focusSearchTrigger, setFocusSearchTrigger] = useState(0)
-
   const list = lists.find((l) => l.id === listId)
   // Inner overrides the wrapper's "Lists" default with the list name once
   // it resolves; falls back to "Lists" while the lists query is pending so
@@ -422,18 +415,6 @@ function ListDetailInner({
       id: (itemId) => itemId,
     }),
   })
-
-  // Empty-state "Add from gear" handler. lg+ focuses the desktop aside's
-  // LibraryPanel search input; below lg the aside is hidden so we open the
-  // mobile drawer instead. The breakpoint match mirrors the sidebar's
-  // `lg:flex` / `lg:hidden` rendering.
-  function handleAddFromInventory() {
-    if (window.matchMedia('(min-width: 1024px)').matches) {
-      setFocusSearchTrigger((t) => t + 1)
-    } else {
-      setDrawerOpen(true)
-    }
-  }
 
   const reorderItemsMut = useMutation({
     mutationFn: reorderListItems,
@@ -933,7 +914,6 @@ function ListDetailInner({
                   weightUnit={weightUnit}
                   onAdd={onLibraryAdd}
                   onRemove={onLibraryRemove}
-                  focusSearchTrigger={focusSearchTrigger}
                 />
               </div>
             </div>
@@ -1023,23 +1003,24 @@ function ListDetailInner({
 
           {/* Items grouped by category */}
           {listItems.length === 0 ? (
-            // Calm single-cell empty state. The button dispatches per
-            // viewport: lg+ focuses the always-mounted LibraryPanel
-            // search input in the desktop aside; below lg it opens the
-            // mobile picker drawer. The same "Add" affordance lives in
-            // the mobile bottom bar, so the cell is reassurance, not
-            // the sole entry point.
+            // Calm single-cell empty state. Desktop describes the
+            // always-mounted gear picker aside as the affordance. Mobile
+            // points at the bottom-bar Add button (same wording, same
+            // action) so a tap on the inline button opens the picker
+            // drawer too.
             <div className="rounded-xl border border-gray-200 bg-white p-6 print:hidden">
               <div className="flex items-start gap-3">
                 <Backpack size={20} className="mt-0.5 shrink-0 text-blue-600" />
                 <div className="min-w-0">
                   <h2 className="text-base font-semibold text-gray-900">Add gear to this list</h2>
-                  <p className="mt-1 text-sm text-gray-500">
-                    <span className="hidden lg:inline">Use the gear picker on the left, or tap </span>
-                    <span className="lg:hidden">Tap </span>
+                  <p className="mt-1 hidden lg:block text-sm text-gray-500">
+                    Use the gear picker on the left to pull items from your gear.
+                  </p>
+                  <p className="mt-1 lg:hidden text-sm text-gray-500">
+                    Tap{' '}
                     <button
                       type="button"
-                      onClick={handleAddFromInventory}
+                      onClick={() => setDrawerOpen(true)}
                       className="font-medium text-blue-600 underline-offset-2 hover:underline"
                     >
                       Add

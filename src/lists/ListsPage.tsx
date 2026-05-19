@@ -376,14 +376,12 @@ export default function ListsPage() {
         )
       })()}
 
-      {/* Share dialog. PrivacyButton's own popover anchors to its trigger
-          icon; embedding that inside a kebab menu would nest popovers and
-          fight the menu's outside-click dismissal. A plain Modal wrapping
-          PrivacyPanel keeps the toggle + URL-copy UI intact and avoids the
-          anchoring trap. The dialog reads the live List from the lists
-          cache (rather than the snapshot the kebab captured) so the
-          public-link toggle re-renders the panel's URL row optimistically
-          after every flip. */}
+      {/* Share dialog. A plain Modal wrapping PrivacyPanel — the kebab
+          menu would fight a nested popover for outside-click dismissal,
+          and PrivacyPanel doesn't need anchoring to make sense. The
+          dialog reads the live List from the lists cache (rather than
+          the snapshot the kebab captured) so the public-link toggle
+          re-renders the panel's URL row optimistically after every flip. */}
       {dialog?.type === 'share-list' && (() => {
         const live = lists.find((l) => l.id === dialog.list.id) ?? dialog.list
         return (

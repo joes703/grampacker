@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { groupByCategory } from '../lib/grouping'
@@ -12,28 +12,11 @@ type Props = {
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
   onRemove: (item: GearItem) => void
-  // Increment from a parent to programmatically focus the search input.
-  // Used by the empty-list onboarding affordance on /lists/:id at lg+.
-  // The skipInitialFocus ref guards the mount-time effect run so that
-  // navigating between lists (each list-detail is a fresh ListDetailInner
-  // instance, so a fresh LibraryPanel) doesn't auto-focus the search.
-  focusSearchTrigger?: number
 }
 
-export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove, focusSearchTrigger }: Props) {
+export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove }: Props) {
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState(new Set<string>())
-  const searchInputRef = useRef<HTMLInputElement>(null)
-  // Capture the focusSearchTrigger value at mount and compare on every
-  // effect run. A previous "skip flag mutated inside the effect" pattern
-  // broke under StrictMode's dev-only double-effect (first run mutates
-  // the flag, second run falls through). Read-only ref + value compare
-  // sidesteps it — both runs see initial===current and skip.
-  const initialFocusSearchTrigger = useRef(focusSearchTrigger)
-  useEffect(() => {
-    if (focusSearchTrigger === initialFocusSearchTrigger.current) return
-    searchInputRef.current?.focus()
-  }, [focusSearchTrigger])
 
   // Stable across renders: setCollapsed from useState is referentially
   // stable, and the closure captures only that. Stability matters because
@@ -95,7 +78,6 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
-            ref={searchInputRef}
             type="search"
             placeholder="Search gear…"
             value={search}
