@@ -26,14 +26,10 @@ vi.stubGlobal('localStorage', {
 
 // Helper that returns a Promise alongside its resolve/reject so tests can
 // drive `updateListItem` deterministically across `await` boundaries.
+// Uses Promise.withResolvers() (ES2024) instead of the older Promise +
+// definite-assignment-assertion dance.
 function deferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (err: unknown) => void
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-  return { promise, resolve, reject }
+  return Promise.withResolvers<T>()
 }
 
 // Default options used by most tests. Tests override what they care about.

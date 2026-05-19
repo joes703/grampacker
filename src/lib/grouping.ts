@@ -143,7 +143,7 @@ export function groupListItemsByCategory(
   categories: Category[],
   prior?: CategoryGroup<ListItemWithGear>[],
 ): CategoryGroup<ListItemWithGear>[] {
-  const sortedCats = [...categories].sort((a, b) => a.sort_order - b.sort_order)
+  const sortedCats = categories.toSorted((a, b) => a.sort_order - b.sort_order)
   return groupByCategory(items, sortedCats, (item) => item.gear_item.category_id, {
     keepEmpty: false,
     orphanPolicy: 'route-to-uncategorized',

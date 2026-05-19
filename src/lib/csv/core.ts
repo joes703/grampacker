@@ -24,7 +24,7 @@ function escapeCell(v: string | number | boolean | null | undefined): string {
   }
   // Wrap in quotes if the value contains a comma, quote, or newline.
   if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-    return `"${s.replace(/"/g, '""')}"`
+    return `"${s.replaceAll('"', '""')}"`
   }
   return s
 }

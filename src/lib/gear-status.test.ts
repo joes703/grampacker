@@ -15,7 +15,7 @@ import {
 
 describe('GEAR_STATUSES', () => {
   it('lists exactly the three values the DB CHECK constraint allows', () => {
-    expect([...GEAR_STATUSES].sort()).toEqual(['active', 'loaned_out', 'needs_repair'])
+    expect(GEAR_STATUSES.toSorted()).toEqual(['active', 'loaned_out', 'needs_repair'])
   })
 
   it('treats active as the default', () => {
@@ -97,8 +97,8 @@ describe('GEAR_STATUS_MENU_OPTIONS', () => {
   })
 
   it('covers every value in GEAR_STATUSES (no menu/DB drift)', () => {
-    expect(GEAR_STATUS_MENU_OPTIONS.map((o) => o.status).sort()).toEqual(
-      [...GEAR_STATUSES].sort(),
+    expect(GEAR_STATUS_MENU_OPTIONS.map((o) => o.status).toSorted()).toEqual(
+      GEAR_STATUSES.toSorted(),
     )
   })
 })
