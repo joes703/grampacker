@@ -1,7 +1,7 @@
 import { supabase } from '../supabase'
 import type { Category, GearItem, ListItem, ListItemWithGear, PublicListItem } from '../types'
 import type { ListImportRow } from '../csv'
-import { bulkUpdateSortOrder } from './optimistic'
+import { bulkUpdateSortOrder } from './bulk-reorder'
 import { resolveOrCreateCategories, resolveOrCreateGearForImport } from './import-helpers'
 import { GEAR_ITEM_AUTH_SELECT, GEAR_ITEM_PUBLIC_SELECT } from './projections'
 

@@ -1,40 +1,11 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
 import { showToast } from '../toast'
 
-// ── Bulk helpers ──────────────────────────────────────────────────────────────
-
-// Single-round-trip sort_order rewrite. Calls a SECURITY DEFINER RPC that
-// runs UPDATE … SET sort_order against a whitelisted table. Sidesteps the
-// PostgREST upsert path entirely: no INSERT … ON CONFLICT, no RLS WITH
-// CHECK against a partial row, no NOT NULL trap. The function enforces
-// ownership inline per table: categories, gear_items, and lists filter
-// on user_id = auth.uid(); list_items join lists and filter on
-// lists.user_id = auth.uid(). See migrations
-// 20260430000000_bulk_reorder_rpc.sql (function shape),
-// 20260501000000_bulk_reorder_rpc_ownership_check.sql (ownership check),
-// 20260502000000_add_gear_items_to_bulk_reorder.sql (gear_items branch),
-// and 20260503000000_add_lists_to_bulk_reorder.sql (lists branch).
-//
-// The TS-side union matches the SQL function's table whitelist. That keeps
-// misuse a compile error rather than a runtime exception.
-type ReorderableTable = 'categories' | 'list_items' | 'gear_items' | 'lists'
-
-export async function bulkUpdateSortOrder<T extends { id: string; sort_order: number }>(
-  table: ReorderableTable,
-  updates: T[],
-): Promise<void> {
-  if (updates.length === 0) return
-  // Keep the real Supabase client out of this module's import path. Most
-  // consumers import the optimistic cache helpers below, including pure unit
-  // tests that should not need VITE_SUPABASE_* just to evaluate the module.
-  const { supabase } = await import('../supabase')
-  const { error } = await supabase.rpc('bulk_update_sort_order', {
-    p_table: table,
-    p_ids: updates.map((u) => u.id),
-    p_orders: updates.map((u) => u.sort_order),
-  })
-  if (error) throw error
-}
+// This module holds only the pure TanStack Query cache lifecycle helpers
+// (insert / update / delete / bulk delete / bulk move / reorder). It must
+// stay free of any Supabase import so optimistic.test.ts can evaluate
+// the module without VITE_SUPABASE_* env vars. The Supabase-side RPC
+// helper for sort_order writes lives next door in ./bulk-reorder.ts.
 
 // ── Reorder mutation lifecycle ────────────────────────────────────────────────
 

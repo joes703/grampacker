@@ -1,7 +1,7 @@
 import { supabase } from '../supabase'
 import type { List, PublicList } from '../types'
 import { generateSlug } from '../slug'
-import { bulkUpdateSortOrder } from './optimistic'
+import { bulkUpdateSortOrder } from './bulk-reorder'
 
 // Typeguard for Postgres unique-violation errors propagated through
 // supabase.from(...) and supabase.rpc(...). PostgrestError carries the
