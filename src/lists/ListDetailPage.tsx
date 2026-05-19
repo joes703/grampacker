@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router'
+import { Link, useParams, useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   DndContext,
@@ -860,9 +860,24 @@ function ListDetailInner({
   }
 
   if (!list) {
+    // Terminal "missing list" state: deleted list, stale deep link, or RLS
+    // miss. MobilePrimaryNav suppresses itself on /lists/:id (the page is
+    // expected to render its own richer bar), and the mobile top-nav menu
+    // only exposes Help/Settings/Sign out. Without an in-content action
+    // here, a mobile user lands in a navigation dead-end. Render an empty
+    // state with a Back-to-lists link so there's always a way out.
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-gray-400">
-        List not found.
+      <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
+        <p className="text-base font-medium text-gray-700">List not found</p>
+        <p className="text-sm text-gray-500">
+          This list may have been deleted or the link is no longer valid.
+        </p>
+        <Link
+          to="/lists"
+          className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
+        >
+          Back to lists
+        </Link>
       </div>
     )
   }
