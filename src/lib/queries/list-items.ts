@@ -3,13 +3,14 @@ import type { Category, GearItem, ListItem, ListItemWithGear, PublicListItem } f
 import type { ListImportRow } from '../csv'
 import { bulkUpdateSortOrder } from './optimistic'
 import { resolveOrCreateCategories, resolveOrCreateGearForImport } from './import-helpers'
+import { GEAR_ITEM_AUTH_SELECT, GEAR_ITEM_PUBLIC_SELECT } from './projections'
 
 // Owner-scoped private read. See queries/index.ts for the convention.
 // Uses the list_items.user_id column added in 20260506000002.
 export async function fetchListItems(listId: string, userId: string): Promise<ListItemWithGear[]> {
   const { data, error } = await supabase
     .from('list_items')
-    .select('*, gear_item:gear_items(id, name, description, weight_grams, category_id, status)')
+    .select(`*, ${GEAR_ITEM_AUTH_SELECT}`)
     .eq('user_id', userId)
     .eq('list_id', listId)
     .order('sort_order', { ascending: true })
@@ -24,9 +25,7 @@ export async function fetchListItems(listId: string, userId: string): Promise<Li
 export async function fetchAllUserListItems(userId: string): Promise<ListItemWithGear[]> {
   const { data, error } = await supabase
     .from('list_items')
-    .select(
-      '*, gear_item:gear_items(id, name, description, weight_grams, category_id, status), list:lists!inner(user_id)',
-    )
+    .select(`*, ${GEAR_ITEM_AUTH_SELECT}, list:lists!inner(user_id)`)
     .eq('list.user_id', userId)
     .order('sort_order', { ascending: true })
   if (error) throw error
@@ -40,7 +39,9 @@ export async function fetchAllUserListItems(userId: string): Promise<ListItemWit
 export async function fetchSharedListItems(listId: string): Promise<PublicListItem[]> {
   const { data, error } = await supabase
     .from('list_items')
-    .select('id, gear_item_id, quantity, is_worn, is_consumable, sort_order, gear_item:gear_items(id, name, description, weight_grams, category_id)')
+    .select(
+      `id, gear_item_id, quantity, is_worn, is_consumable, sort_order, ${GEAR_ITEM_PUBLIC_SELECT}`,
+    )
     .eq('list_id', listId)
     .order('sort_order', { ascending: true })
   if (error) throw error
