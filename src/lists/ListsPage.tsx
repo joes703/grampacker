@@ -242,8 +242,9 @@ export default function ListsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Desktop page header. Mobile already has the "Lists" route title in
+          the top bar and New/Import actions in the bottom action bar. */}
+      <div className="hidden md:flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold text-gray-900">
           Lists
           <span className="ml-2 text-sm font-normal text-gray-500">{lists.length}</span>

@@ -298,14 +298,11 @@ export default function GearItemDialog({
               {categoryError && <p className="mt-1 text-xs text-red-600">{categoryError}</p>}
             </div>
           </div>
-          {/* Cost + Purchase date. Stacked full-width on mobile so neither
-              field clips inside the modal (native <input type="date">'s
-              intrinsic min-content can otherwise push the row past the
-              modal edge on small screens). Two-column row at sm+ where
-              there's space. min-w-0 on each column lets the inputs shrink
-              below their intrinsic width inside the flex parent. */}
-          <div className="flex flex-col gap-4 sm:flex-row">
-            <div className="min-w-0 sm:w-40 sm:shrink-0">
+          {/* Cost + Purchase date. Keep the same two-column mobile rhythm
+              as Weight + Category above, but force every grid child/input
+              to min-w-0 so native date controls cannot overflow the modal. */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="min-w-0">
               <label htmlFor="gi-cost" className="block text-sm font-medium text-gray-700 mb-1">
                 Cost (USD)
               </label>
@@ -322,11 +319,11 @@ export default function GearItemDialog({
                   placeholder=""
                   value={cost}
                   onChange={(e) => setCost(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 pl-6 pr-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full min-w-0 rounded-lg border border-gray-300 pl-6 pr-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0">
               <label htmlFor="gi-pdate" className="block text-sm font-medium text-gray-700 mb-1">
                 Purchase date
               </label>
@@ -335,7 +332,7 @@ export default function GearItemDialog({
                 type="date"
                 value={purchaseDate}
                 onChange={(e) => setPurchaseDate(e.target.value)}
-                className="block w-full min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="block w-full min-w-0 max-w-full appearance-none rounded-lg border border-gray-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>

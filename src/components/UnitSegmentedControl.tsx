@@ -49,13 +49,14 @@ export default function UnitSegmentedControl({ idPrefix = 'wuc', label, hint }: 
         />
         <label
           htmlFor={metricId}
-          className={`cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+          title="Metric"
+          className={`cursor-pointer rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
             weightUnit === 'g'
               ? 'bg-blue-600 text-white'
               : 'text-gray-600 hover:bg-gray-50'
           } peer-focus-visible/m:ring-2 peer-focus-visible/m:ring-blue-300`}
         >
-          Metric
+          g
         </label>
         <input
           type="radio"
@@ -67,13 +68,14 @@ export default function UnitSegmentedControl({ idPrefix = 'wuc', label, hint }: 
         />
         <label
           htmlFor={imperialId}
-          className={`cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+          title="Imperial"
+          className={`cursor-pointer rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
             weightUnit === 'oz'
               ? 'bg-blue-600 text-white'
               : 'text-gray-600 hover:bg-gray-50'
           } peer-focus-visible/i:ring-2 peer-focus-visible/i:ring-blue-300`}
         >
-          Imperial
+          oz
         </label>
       </div>
       {hint && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
