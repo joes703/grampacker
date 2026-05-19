@@ -1,6 +1,6 @@
 import { supabase } from '../supabase'
 import type { Category, PublicCategory } from '../types'
-import { bulkUpdateSortOrder } from './optimistic'
+import { bulkUpdateSortOrder } from './bulk-reorder'
 
 // Owner-scoped private read. See queries/index.ts for the convention.
 export async function fetchCategories(userId: string): Promise<Category[]> {

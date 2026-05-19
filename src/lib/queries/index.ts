@@ -27,8 +27,8 @@
 // of the cross-channel-leak defense.
 // ---------------------------------------------------------------------
 export { queryKeys } from './keys'
+export { bulkUpdateSortOrder } from './bulk-reorder'
 export {
-  bulkUpdateSortOrder,
   makeOptimisticReorder,
   makeOptimisticInsert,
   makeOptimisticUpdate,
