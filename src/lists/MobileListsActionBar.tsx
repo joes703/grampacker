@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Backpack, ListChecks, Plus, Settings2, Upload } from 'lucide-react'
 import MobileOptionsModal from '../components/MobileOptionsModal'
 import MobileBottomBar from '../components/MobileBottomBar'
+import { useSuppressMobilePrimaryNav } from '../layout/mobile-primary-nav-context'
 
 type Props = {
   /** Start the existing inline new-list flow in the page header. The bar
@@ -23,6 +24,7 @@ type Props = {
 //   - lg:hidden inside MobileBottomBar so desktop never renders this bar.
 //   - Renders only on /lists because it's mounted by ListsPage.
 export default function MobileListsActionBar({ onNewList, onImportCsv }: Props) {
+  useSuppressMobilePrimaryNav()
   const [optionsOpen, setOptionsOpen] = useState(false)
 
   return (

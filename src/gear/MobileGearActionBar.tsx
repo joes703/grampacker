@@ -3,6 +3,7 @@ import { Backpack, CheckSquare, ListChecks, Plus, Settings2 } from 'lucide-react
 import MobileOptionsModal from '../components/MobileOptionsModal'
 import MobileBottomBar from '../components/MobileBottomBar'
 import GearOptionsContent from './GearOptionsContent'
+import { useSuppressMobilePrimaryNav } from '../layout/mobile-primary-nav-context'
 
 type Props = {
   /** Open the canonical "New item" dialog. */
@@ -52,6 +53,7 @@ export default function MobileGearActionBar({
   onExpandAll,
   canCollapseExpand,
 }: Props) {
+  useSuppressMobilePrimaryNav()
   const [optionsOpen, setOptionsOpen] = useState(false)
 
   return (

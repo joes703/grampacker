@@ -1,20 +1,21 @@
 import { Backpack, ListChecks } from 'lucide-react'
 import { useLocation } from 'react-router'
 import MobileBottomBar from '../components/MobileBottomBar'
+import { useIsMobilePrimaryNavSuppressed } from './mobile-primary-nav-context'
 
+// Always-on mobile primary nav (Gear + Lists). Pages with a richer
+// bottom bar of their own (List Detail, Gear, Lists) call
+// useSuppressMobilePrimaryNav() from their bar component, registering
+// themselves with MobilePrimaryNavProvider. Suppression is keyed to that
+// runtime registration rather than to the current pathname, so terminal
+// states that skip mounting the rich bar (list not found, future
+// loading/error branches) still get the generic nav instead of leaving
+// the user with no way out.
 export default function MobilePrimaryNav() {
   const { pathname } = useLocation()
+  const suppressed = useIsMobilePrimaryNavSuppressed()
 
-  // List Detail and the Gear page have richer bottom bars that include
-  // these same primary destinations plus page-local actions. The Lists
-  // page itself has its own richer bar (MobileListsActionBar) too, so
-  // this generic primary nav now only surfaces on Settings/Help.
-  if (
-    /^\/lists\/[^/]+$/.test(pathname) ||
-    pathname === '/gear' ||
-    pathname === '/lists'
-  )
-    return null
+  if (suppressed) return null
 
   return (
     <MobileBottomBar

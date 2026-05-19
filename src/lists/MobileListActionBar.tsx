@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router'
 import { Backpack, ClipboardList, ListChecks, Plus, Settings2 } from 'lucide-react'
 import type { List } from '../lib/types'
 import { useSidebarDrawer } from '../layout/sidebar-drawer-context'
+import { useSuppressMobilePrimaryNav } from '../layout/mobile-primary-nav-context'
 import MobileOptionsModal from '../components/MobileOptionsModal'
 import MobileBottomBar from '../components/MobileBottomBar'
 import ListSettingsPanel from './ListSettingsPanel'
@@ -36,6 +37,7 @@ type Props = {
 //     ListSettingsPanel mutations are list-scoped and don't depend on
 //     the action bar's lifecycle.
 export default function MobileListActionBar({ list }: Props) {
+  useSuppressMobilePrimaryNav()
   const drawer = useSidebarDrawer()
   const [searchParams, setSearchParams] = useSearchParams()
   const isPackMode = searchParams.get('mode') === 'pack'
