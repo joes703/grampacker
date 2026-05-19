@@ -11,7 +11,6 @@ import {
   fetchLists,
   fetchAllUserListItems,
 } from '../lib/queries'
-import type { ListItemWithGear } from '../lib/types'
 import { gearItemsToCsv, listItemsToCsv } from '../lib/csv'
 import TypedConfirmDialog from '../components/TypedConfirmDialog'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
@@ -245,12 +244,7 @@ function DownloadAllData() {
       const files: Record<string, Uint8Array> = {}
       files['gear-library.csv'] = strToU8(gearItemsToCsv(gearItems, categories))
 
-      const itemsByListId = new Map<string, ListItemWithGear[]>()
-      for (const item of allItems) {
-        const arr = itemsByListId.get(item.list_id) ?? []
-        arr.push(item)
-        itemsByListId.set(item.list_id, arr)
-      }
+      const itemsByListId = Map.groupBy(allItems, (item) => item.list_id)
 
       const seen = new Map<string, number>()
       for (const list of lists) {

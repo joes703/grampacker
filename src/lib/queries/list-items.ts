@@ -105,7 +105,7 @@ function assertPublicListItemRow(row: unknown, index: number): void {
   }
   const r = row as Record<string, unknown>
   const keys = Object.keys(r).sort()
-  const want = [...PUBLIC_LIST_ITEM_KEYS].sort()
+  const want = PUBLIC_LIST_ITEM_KEYS.toSorted()
   if (keys.length !== want.length || keys.some((k, j) => k !== want[j])) {
     throw new Error(
       `Unexpected public list item response shape: row ${index} keys [${keys.join(', ')}] ` +
@@ -129,7 +129,7 @@ function assertPublicGearItem(g: unknown, index: number): void {
   }
   const gr = g as Record<string, unknown>
   const keys = Object.keys(gr).sort()
-  const want = [...PUBLIC_GEAR_ITEM_KEYS].sort()
+  const want = PUBLIC_GEAR_ITEM_KEYS.toSorted()
   if (keys.length !== want.length || keys.some((k, j) => k !== want[j])) {
     throw new Error(
       `Unexpected public list item response shape: row ${index} gear_item keys ` +

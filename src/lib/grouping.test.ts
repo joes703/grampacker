@@ -337,7 +337,7 @@ describe('groupByCategory (generic)', () => {
       { keepEmpty: true, orphanPolicy: 'drop' },
     )
     expect(withNull).toHaveLength(3)
-    const last = withNull[withNull.length - 1]!
+    const last = withNull.at(-1)!
     expect(last.category).toBeNull()
     expect(last.items).toHaveLength(1)
     expect(last.items[0]!.id).toBe('2')

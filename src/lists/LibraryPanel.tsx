@@ -49,7 +49,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
   // own memo so the sort only reruns when `categories` changes — not on
   // every search keystroke (which churns the filtered set).
   const sortedCats = useMemo(
-    () => [...categories].sort((a, b) => a.sort_order - b.sort_order),
+    () => categories.toSorted((a, b) => a.sort_order - b.sort_order),
     [categories],
   )
 
