@@ -12,6 +12,17 @@ export default defineConfig({
     // tests that actually touch the DOM pay the jsdom load tax.
     setupFiles: ['./vitest.setup.ts'],
   },
+  build: {
+    // Source code already requires ES2024+ runtime methods (Map.groupBy,
+    // Promise.withResolvers) which Safari shipped in 17.4 (Mar 2024). Setting
+    // the syntax target to es2025 says "anything older than that is dead in
+    // the water regardless of what esbuild emits, so don't bother transpiling
+    // syntax down." Bundle stays byte-identical to es2024 for current code
+    // (no ES2025-specific syntax in use yet) but new ES2025 syntax (import
+    // attributes, regex duplicate named groups) ships through if it's ever
+    // added. Bumps cleanly in lockstep with tsconfig.app.json's lib/target.
+    target: 'es2025',
+  },
   plugins: [
     react(),
     tailwindcss(),
