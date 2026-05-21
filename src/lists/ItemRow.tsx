@@ -12,6 +12,7 @@ import { makeDnDId } from '../lib/dnd-ids'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
+import SwipeableRow from '../components/SwipeableRow'
 import WeightInput from '../components/WeightInput'
 import GearStatusBadge from '../gear/GearStatusBadge'
 import GearStatusMenuItems from '../gear/GearStatusMenuItems'
@@ -281,6 +282,15 @@ export default function ItemRow({
     )
   }
 
+  // Swipe-to-remove is mobile-only and authed-only: onDelete is undefined on
+  // the read-only share view, so share rows never become swipeable. In the
+  // swipe case the padding/background move onto the swipe foreground so the
+  // revealed action reaches the row edge, and the outer row keeps only its
+  // separator border — crucially WITHOUT overflow-hidden, which would clip the
+  // desktop gutter grip (the grip isn't rendered on mobile, so the swipe
+  // wrapper owns its own overflow-hidden instead).
+  const mobileSwipe = isBelowLg && Boolean(onDelete)
+
   // Normal (edit / read-only) row: aligned columns matching the category header
   return (
     <div
@@ -294,16 +304,28 @@ export default function ItemRow({
       // stop scroll), while an immediate move scrolls the page and cancels the
       // pending drag via the tolerance constraint.
       {...rowDragListeners}
-      className="group relative flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-2 lg:py-0.5 text-sm"
+      className={`group relative flex items-center border-b border-gray-100 text-sm ${
+        mobileSwipe ? '' : 'gap-1.5 bg-white px-3 py-2 lg:py-0.5'
+      }`}
     >
       {dragHandle}
 
-      {isBelowLg ? (
-        /* Mobile branch (< lg) — name + single worn/consumable slot + qty +
-           weight, rendered as static spans. Description and kebab are
-           intentionally dropped: editing happens in the modal that opens on
-           row tap. Read-only rows (share view) render as a non-interactive
-           div instead of a button. */
+      {mobileSwipe ? (
+        /* Mobile authed row: swipe left to reveal Remove (full swipe removes
+           directly). Foreground carries the padding/bg so the action sits flush
+           to the trailing edge. onDelete is non-null here (mobileSwipe gate). */
+        <SwipeableRow onAction={onDelete!} label="Remove" allowFullSwipe>
+          <div className="flex flex-1 items-center gap-1 px-3 py-2">
+            <MobileRowBody
+              item={item}
+              name={name}
+              weightUnit={weightUnit}
+              onTap={onEditGearItem}
+            />
+          </div>
+        </SwipeableRow>
+      ) : isBelowLg ? (
+        /* Mobile read-only (share) row — no swipe, no kebab; tap is inert. */
         <div className="flex flex-1 items-center gap-1">
           <MobileRowBody
             item={item}
