@@ -34,11 +34,11 @@ grampacker uses three weight concepts:
 
 - **Base weight**: gear you carry, not including consumables or worn items.
 - **Consumables**: items like food, fuel, or water. These are tracked separately because their weight changes during a trip.
-- **Pack weight**: includes base weight and consumables. 
+- **Pack weight**: includes base weight and consumables.
 
 Worn items are things you wear instead of carry in your pack. They are not included in pack weight.
 
-You can turn on **Group worn items** from a list's **List options** button to move worn items into their own Worn section. This applies while editing the list, in Pack mode, and on public shared links. This is helpful when packing, since you usually won't put your worn items inside your pack. 
+You can turn on **Group worn items** from a list's **List options** button to move worn items into their own Worn section. This applies while editing the list, in Pack mode, and on public shared links. This is helpful when packing, since you usually won't put your worn items inside your pack.
 
 ## Building a list
 
@@ -87,7 +87,7 @@ Pack mode is intentionally simple so it is easy to use while packing.
 
 ### Ready checks
 
-Ready checks add a second checkbox to each item in Pack mode, so you can mark an item Ready before it goes into your pack. Useful when you want to inspect, charge, refill, or stage gear before packing it. I've made this optional in case you don't want it. 
+Ready checks add a second checkbox to each item in Pack mode, so you can mark an item Ready before it goes into your pack. Useful when you want to inspect, charge, refill, or stage gear before packing it. I've made this optional in case you don't want it.
 
 Turn it on from the **Ready checks** toggle in the Pack mode options row. Ready checks is a per-list setting, so each list can have it on or off independently. It stays off by default. Turning it off hides the Ready UI but keeps any per-item Ready marks intact for next time.
 
@@ -124,7 +124,7 @@ You can import gear or lists from CSV files.
 
 Lighterpack CSV exports should work as a starting point. You can also use your own spreadsheet if it has compatible columns. At minimum, your CSV needs a name column and a weight column.
 
-From Settings, you can export your account data as a zip file. The export includes your gear inventory and lists. This is a good way to backup your data. 
+From Settings, you can export your account data as a zip file. The export includes your gear inventory and lists. This is a good way to backup your data.
 
 ## Mobile and offline use
 
@@ -136,7 +136,7 @@ Packing checkmarks work offline and sync when you reconnect. Other edits, like c
 
 ## Account and privacy
 
-grampacker is free to use and does not show ads.
+grampacker is free to use and does not show ads.z
 
 Your private gear and lists are only available to your account. A list becomes publicly viewable only when you turn on its public link.
 
