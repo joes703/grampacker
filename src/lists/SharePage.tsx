@@ -125,14 +125,13 @@ export default function SharePage() {
       <OfflineBanner />
       <div className="mx-auto max-w-5xl px-4 py-10">
         {/* Header. Viewers don't have Settings access, so the share page
-            keeps its own units control — but rendered as the same
-            Metric / Imperial segmented control authed users see in
-            Settings rather than a tiny "g" / "oz" toggle. Writes through
-            the same useWeightUnit store, so the choice persists on this
-            device. */}
+            keeps its own units control. Rendered label-less: the g / oz
+            segmented chrome self-describes, and dropping the word keeps
+            it tidy inline with the list title. Writes through the same
+            useWeightUnit store, so the choice persists on this device. */}
         <div className="mb-6 flex flex-wrap items-center gap-3">
           <h1 className="flex-1 min-w-0 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
-          <UnitSegmentedControl idPrefix="share" label="Units" />
+          <UnitSegmentedControl idPrefix="share" />
         </div>
 
         {/* Notes + Weight summary — side by side on desktop, with Notes
