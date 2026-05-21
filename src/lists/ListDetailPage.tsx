@@ -6,7 +6,8 @@ import {
   DragOverlay,
   closestCenter,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -568,8 +569,17 @@ function ListDetailInner({
     },
   })
 
+  // Split mouse vs touch so each gets the activation that fits its input.
+  // MouseSensor: 5px drag threshold from the hover grip handle (desktop).
+  // TouchSensor: a short press-and-hold (delay) before a drag starts, so a
+  // quick tap still opens the edit modal and a vertical swipe still scrolls
+  // the page — only a deliberate hold begins a reorder. dnd-kit's own
+  // guidance is to use MouseSensor + TouchSensor (not PointerSensor) when
+  // mouse and touch need different activation. PointerSensor's flat 5px
+  // distance was hijacking touch scroll, which is what broke mobile reorder.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
