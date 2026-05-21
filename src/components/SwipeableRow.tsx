@@ -52,7 +52,15 @@ export default function SwipeableRow({
   // can recolor as feedback without reading a ref during render.
   const [armed, setArmed] = useState(false)
   const fgRef = useRef<HTMLDivElement>(null)
+  // Keep the live distance outside React state so pointer-up can settle from
+  // the final move value even if React has not flushed the last setState yet.
+  const dxRef = useRef(0)
   const g = useRef({ startX: 0, startY: 0, base: 0, claimed: false, bailed: false, width: 0 })
+
+  function setVisualDx(next: number) {
+    dxRef.current = next
+    setDx(next)
+  }
 
   function onPointerDown(e: React.PointerEvent) {
     if (e.pointerType === 'mouse') return
@@ -84,7 +92,8 @@ export default function SwipeableRow({
       fgRef.current?.setPointerCapture(e.pointerId)
     }
     const next = Math.min(0, Math.max(-s.width, s.base + ddx))
-    setDx(next)
+    e.preventDefault()
+    setVisualDx(next)
     setArmed(allowFullSwipe && s.width > 0 && -next >= s.width * FULL_SWIPE_RATIO)
   }
 
@@ -97,14 +106,14 @@ export default function SwipeableRow({
     if (fgRef.current?.hasPointerCapture(e.pointerId)) {
       fgRef.current.releasePointerCapture(e.pointerId)
     }
-    const dragged = -dx
+    const dragged = -dxRef.current
     if (allowFullSwipe && dragged >= s.width * FULL_SWIPE_RATIO) {
-      setDx(0)
+      setVisualDx(0)
       onAction()
     } else if (dragged >= ACTION_WIDTH * 0.6) {
-      setDx(-ACTION_WIDTH)
+      setVisualDx(-ACTION_WIDTH)
     } else {
-      setDx(0)
+      setVisualDx(0)
     }
   }
 
@@ -117,7 +126,7 @@ export default function SwipeableRow({
         <button
           type="button"
           onClick={() => {
-            setDx(0)
+            setVisualDx(0)
             onAction()
           }}
           aria-label={label}
@@ -131,7 +140,13 @@ export default function SwipeableRow({
       <div
         ref={fgRef}
         className="relative bg-white"
-        style={{ transform: `translateX(${dx}px)`, transition: dragging ? 'none' : 'transform 150ms ease' }}
+        style={{
+          transform: `translateX(${dx}px)`,
+          transition: dragging ? 'none' : 'transform 150ms ease',
+          // Allow normal vertical page scroll, but keep horizontal swipes in
+          // this component instead of letting the browser cancel pointer moves.
+          touchAction: 'pan-y',
+        }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={settle}
@@ -145,7 +160,7 @@ export default function SwipeableRow({
           <button
             type="button"
             aria-label="Close"
-            onClick={() => setDx(0)}
+            onClick={() => setVisualDx(0)}
             className="absolute inset-0"
           />
         )}
