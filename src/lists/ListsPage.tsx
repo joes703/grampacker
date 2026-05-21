@@ -7,7 +7,8 @@ import {
   DragOverlay,
   closestCenter,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -170,8 +171,14 @@ export default function ListsPage() {
     ...makeOptimisticReorder<List>(qc, queryKeys.lists()),
   })
 
+  // See ListDetailPage for the rationale. List cards keep their always-
+  // visible grip handle as the drag activator on every breakpoint, so on
+  // touch a long-press on the grip starts the reorder (MouseSensor handles
+  // the desktop mouse drag). Splitting mouse/touch here keeps this page on
+  // the same sensor set as the item-row pages.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
@@ -577,9 +584,10 @@ function SortableListRow(
       tabIndex={-1}
       aria-label="Drag to reorder list"
       // Touch-friendly hit target on mobile (h-9 w-9), tightens on lg+.
-      // `touch-none` keeps the pointer drag from racing the browser's
-      // scroll on touch devices; PointerSensor's 5px activation
-      // distance still gates accidental click-vs-drag misreads.
+      // `touch-none` keeps a drag that starts on the grip from racing the
+      // browser's scroll on touch devices; because the grip is a dedicated
+      // target (not the whole card) this doesn't cost normal list scrolling.
+      // TouchSensor's press-and-hold delay gates accidental drags.
       className="inline-flex h-9 w-9 lg:h-7 lg:w-7 shrink-0 items-center justify-center rounded text-gray-400 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
     >
       <GripVertical size={16} />

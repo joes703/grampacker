@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useSortable } from '@dnd-kit/sortable'
+import type { DraggableSyntheticListeners } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { CircleMinus, GripVertical, MoreVertical, Pencil, Shirt, Trash2, UtensilsCrossed } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
@@ -81,6 +82,13 @@ type Props = {
   // status sub-menu. Omitted on the share view, which can't mutate.
   onSetGearStatus?: (status: GearStatus) => void
   dragHandle?: ReactNode
+  // Touch reorder activator. On mobile the SortableItemRow wrapper passes the
+  // dnd-kit listeners here instead of rendering a grip handle, so a press-and-
+  // hold anywhere on the (single tap-target) mobile row begins a drag. Desktop
+  // leaves this undefined and keeps listeners on the hover grip handle. Spread
+  // on the normal-row container only; the pack-mode row omits it (drag is
+  // disabled in pack mode).
+  rowDragListeners?: DraggableSyntheticListeners
   outerRef?: (el: HTMLElement | null) => void
   outerStyle?: React.CSSProperties
 }
@@ -101,6 +109,7 @@ export default function ItemRow({
   onDeleteGearItem,
   onSetGearStatus,
   dragHandle,
+  rowDragListeners,
   outerRef,
   outerStyle,
 }: Props) {
@@ -277,6 +286,14 @@ export default function ItemRow({
     <div
       ref={outerRef}
       style={outerStyle}
+      // rowDragListeners is set on mobile only (see Props). We deliberately do
+      // NOT set touch-action: none here: that would kill vertical scrolling on
+      // the row. The TouchSensor's press-and-hold delay is what separates
+      // scroll from drag — a stationary hold past the delay activates the drag
+      // (after which dnd-kit's non-passive move listener preventDefaults to
+      // stop scroll), while an immediate move scrolls the page and cancels the
+      // pending drag via the tolerance constraint.
+      {...rowDragListeners}
       className="group relative flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-2 lg:py-0.5 text-sm"
     >
       {dragHandle}
@@ -523,23 +540,30 @@ export function SortableItemRow(props: Omit<Props, 'dragHandle' | 'outerRef' | '
     opacity: isDragging ? 0.4 : 1,
   }
 
-  const handle = (
-    <RowIconButton
-      ref={asButtonRef(setActivatorNodeRef)}
-      {...listeners}
-      {...attributes}
-      tabIndex={-1}
-      variant="dragHandle"
-      ariaLabel="Drag to reorder"
-      icon={<GripVertical size={14} />}
-      className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-    />
-  )
+  // Desktop drives reorder from the hover-revealed gutter grip. On mobile
+  // (isBelowLg) there is no hover, so instead of the grip the row itself is
+  // the long-press activator: the dnd-kit listeners go on the row container
+  // (via rowDragListeners) and the grip is not rendered. Pack mode disables
+  // drag entirely (its row layout omits the activator).
+  const handle =
+    props.isBelowLg || props.packMode ? undefined : (
+      <RowIconButton
+        ref={asButtonRef(setActivatorNodeRef)}
+        {...listeners}
+        {...attributes}
+        tabIndex={-1}
+        variant="dragHandle"
+        ariaLabel="Drag to reorder"
+        icon={<GripVertical size={14} />}
+        className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+      />
+    )
 
   return (
     <ItemRow
       {...props}
-      dragHandle={props.packMode ? undefined : handle}
+      dragHandle={handle}
+      rowDragListeners={props.isBelowLg && !props.packMode ? listeners : undefined}
       outerRef={setNodeRef}
       outerStyle={sortableStyle}
     />

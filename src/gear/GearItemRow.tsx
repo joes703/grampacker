@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useSortable } from '@dnd-kit/sortable'
+import type { DraggableSyntheticListeners } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import type { GearItem } from '../lib/types'
@@ -30,6 +31,11 @@ type Props = {
   onSetStatus: (status: GearStatus) => void
   // Drag plumbing — populated by SortableGearItemRow.
   dragHandle?: ReactNode
+  // Touch reorder activator. On mobile the wrapper passes the dnd-kit
+  // listeners here (instead of rendering a grip) so a press-and-hold on the
+  // single tap-target row begins a drag; desktop keeps the hover grip. Drag
+  // is disabled in select mode, so this is only set in normal mode.
+  rowDragListeners?: DraggableSyntheticListeners
   outerRef?: (el: HTMLElement | null) => void
   outerStyle?: React.CSSProperties
 }
@@ -46,6 +52,7 @@ export default function GearItemRow({
   onDelete,
   onSetStatus,
   dragHandle,
+  rowDragListeners,
   outerRef,
   outerStyle,
 }: Props) {
@@ -53,6 +60,10 @@ export default function GearItemRow({
     <div
       ref={outerRef}
       style={outerStyle}
+      // rowDragListeners is set on mobile only (see Props). No touch-action:
+      // none here — the TouchSensor press-and-hold delay separates scroll from
+      // drag, so the library can scroll the list until a hold activates a drag.
+      {...rowDragListeners}
       className={`group relative flex items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-2 lg:py-0.5 text-sm ${
         selected ? 'bg-blue-50' : 'hover:bg-gray-50'
       }`}
@@ -294,23 +305,29 @@ export function SortableGearItemRow(
     opacity: isDragging ? 0.4 : 1,
   }
 
-  const handle = props.selectMode ? undefined : (
-    <RowIconButton
-      ref={asButtonRef(setActivatorNodeRef)}
-      {...listeners}
-      {...attributes}
-      tabIndex={-1}
-      variant="dragHandle"
-      ariaLabel="Drag to reorder"
-      icon={<GripVertical size={14} />}
-      className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-    />
-  )
+  // Desktop uses the hover-revealed gutter grip. On mobile (isBelowLg) the
+  // row itself is the long-press activator (listeners go on the row via
+  // rowDragListeners) and the grip is not rendered. Select mode disables drag
+  // entirely, so neither activator is wired there.
+  const handle =
+    props.selectMode || props.isBelowLg ? undefined : (
+      <RowIconButton
+        ref={asButtonRef(setActivatorNodeRef)}
+        {...listeners}
+        {...attributes}
+        tabIndex={-1}
+        variant="dragHandle"
+        ariaLabel="Drag to reorder"
+        icon={<GripVertical size={14} />}
+        className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+      />
+    )
 
   return (
     <GearItemRow
       {...props}
       dragHandle={handle}
+      rowDragListeners={props.isBelowLg && !props.selectMode ? listeners : undefined}
       outerRef={setNodeRef}
       outerStyle={sortableStyle}
     />

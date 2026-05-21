@@ -4,7 +4,8 @@ import {
   DragOverlay,
   closestCenter,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type CollisionDetection,
@@ -403,8 +404,15 @@ export default function GearLibraryPage() {
   })
 
   // ── Drag and drop ─────────────────────────────────────────────────────────────
+  // See ListDetailPage for the rationale. MouseSensor drives the desktop
+  // hover grip (gear item rows) and the always-visible category-header grip;
+  // TouchSensor's press-and-hold drives touch reorder without stealing taps
+  // (open edit dialog) or vertical scroll. Category headers keep their
+  // dedicated visible grip on mobile, so long-press on that grip reorders
+  // categories; gear item rows use the row itself as the touch activator.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
