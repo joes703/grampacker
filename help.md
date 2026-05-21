@@ -4,21 +4,21 @@ grampacker helps you keep track of your backpacking gear, build packing lists, a
 
 ## How grampacker works
 
-grampacker is inventory-first: your gear lives in your gear inventory (the **Gear** page), and each list pulls from that inventory. Keeping one master list of gear means weights, categories, status, cost, and other details stay consistent across every trip.
+grampacker is inventory first: your gear lives in your gear inventory (the **Gear** page), and each list pulls from that inventory.
 
-On desktop, category sections in a list include an inline quick-add shortcut for fast keyboard planning — that shortcut creates new gear in your inventory and adds it to the current list in one step. On mobile, tap **Add** to choose existing gear from your inventory; create brand-new gear on the **Gear** page first, then add it to a list.
+Each list has a packing mode and a sharing mode. Packing mode lets you check off items as you pack. Sharing mode lets you share a read-only copy of your list with the public. Helpful for shakedowns and if you have an experienced hiker wants to make sure you aren't forgetting anything or bringing things you don't need.
 
 ## Basic concepts
 
 ### Gear inventory
 
-Your gear inventory is the master list of gear you own and the canonical place to create and edit full gear items. It's where weight, category, status, cost, and purchase date live, so each list inherits the same details and stays consistent across trips.
+Your gear inventory is the list of gear you own and the place to create and edit gear items. It's where weight, category, status, cost, and purchase date live.
 
 Open the **Gear** page to add gear, edit existing items, or import gear from a CSV. The desktop list view also exposes a quick-add shortcut that creates inventory gear inline.
 
 ### Packing lists
 
-A packing list is a trip-specific set of gear. You can create different lists for different trips, seasons, or styles of travel.
+A packing list is a trip specific set of gear. You can create different lists for different trips, seasons, or styles of travel.
 
 Items on a list come from your gear inventory. If you edit an item's name, description, category, or weight, that change updates the inventory too.
 
@@ -34,11 +34,11 @@ grampacker uses three weight concepts:
 
 - **Base weight**: gear you carry, not including consumables or worn items.
 - **Consumables**: items like food, fuel, or water. These are tracked separately because their weight changes during a trip.
-- **Worn items**: things you wear instead of carry in your pack.
+- **Pack weight**: includes base weight and consumables. 
 
-Pack weight includes base weight and consumables. Total weight includes pack weight plus worn items.
+Worn items are things you wear instead of carry in your pack. They are not included in pack weight.
 
-You can turn on **Group worn items** from a list's **List options** button to move worn items into their own Worn section. This applies while editing the list, in Pack mode, and on public shared links.
+You can turn on **Group worn items** from a list's **List options** button to move worn items into their own Worn section. This applies while editing the list, in Pack mode, and on public shared links. This is helpful when packing, since you usually won't put your worn items inside your pack. 
 
 ## Building a list
 
@@ -51,7 +51,7 @@ You can build a list in a few ways:
 
 On desktop, the **Add from gear** picker appears next to your list. Click a gear item to add it to the list. Click it again to remove it.
 
-On mobile, tap **Add** to open the gear picker. Search your gear, then tap items to add them. If you can't find the gear you want, create it on the **Gear** page first — then come back and add it to the list. Mobile list view doesn't create new gear directly; it's a picker over your gear inventory.
+On mobile, tap **Add** to open the gear picker. Search your gear, then tap items to add them. If you can't find the gear you want, create it on the **Gear** page first, then come back and add it to the list. Mobile list view doesn't create new gear directly; it's a picker over your gear inventory.
 
 On the **Gear** page, use Select to choose multiple items. From there you can move items to a category, delete them, or create a new list from the selection.
 
@@ -87,7 +87,7 @@ Pack mode is intentionally simple so it is easy to use while packing.
 
 ### Ready checks
 
-Ready checks add a second checkbox to each item in Pack mode, so you can mark an item Ready before it goes into your pack. Useful when you want to inspect, charge, refill, or stage gear before the final pack pass.
+Ready checks add a second checkbox to each item in Pack mode, so you can mark an item Ready before it goes into your pack. Useful when you want to inspect, charge, refill, or stage gear before packing it. I've made this optional in case you don't want it. 
 
 Turn it on from the **Ready checks** toggle in the Pack mode options row. Ready checks is a per-list setting, so each list can have it on or off independently. It stays off by default. Turning it off hides the Ready UI but keeps any per-item Ready marks intact for next time.
 
@@ -124,7 +124,7 @@ You can import gear or lists from CSV files.
 
 Lighterpack CSV exports should work as a starting point. You can also use your own spreadsheet if it has compatible columns. At minimum, your CSV needs a name column and a weight column.
 
-From Settings, you can export your account data as a zip file. The export includes your gear inventory and lists.
+From Settings, you can export your account data as a zip file. The export includes your gear inventory and lists. This is a good way to backup your data. 
 
 ## Mobile and offline use
 
