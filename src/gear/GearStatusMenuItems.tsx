@@ -1,5 +1,6 @@
 import { Check } from 'lucide-react'
 import { GEAR_STATUS_MENU_OPTIONS, type GearStatus } from '../lib/gear-status'
+import { ROW_MENU_ITEM_BASE } from '../components/RowMenuItem'
 
 type Props = {
   current: GearStatus
@@ -12,8 +13,8 @@ type Props = {
 // Clicking the currently-selected row is a no-op (avoids a wasted PATCH);
 // hosts are still expected to close the menu themselves on selection.
 //
-// Style matches the surrounding kebab MenuItem (px-3 py-1.5, text-sm,
-// gap-2). Width fills the parent so the menu chooses its own column width.
+// Style shares the row-menu base. Width fills the parent so the menu chooses
+// its own column width.
 export default function GearStatusMenuItems({ current, onSelect }: Props) {
   return (
     <>
@@ -29,7 +30,7 @@ export default function GearStatusMenuItems({ current, onSelect }: Props) {
             onClick={() => {
               if (!isCurrent) onSelect(opt.status)
             }}
-            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
+            className={`${ROW_MENU_ITEM_BASE} ${
               isCurrent ? 'text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-100'
             }`}
           >

@@ -37,7 +37,7 @@
 
 ## Row/table visual system
 
-- The flat row/table grammar (white surface, gray-50 section-divider headers, bordered table rows, touch-vs-pointer density, control target sizes) is centralized in `src/components/flat-table-styles.ts` (`FLAT_TABLE_SURFACE`, `FLAT_TABLE_HEADER`, `FLAT_TABLE_ROW`, `ROW_CONTROL_TARGET`). Compose layout-specific gap/padding/columns around these bases; don't re-hand-code the density/border/surface classes. The gear picker (`LibraryPanel`) is the reference implementation. Full rationale + the documented exceptions (ListsPage `divide-y` rows, popover menus, `PanelCard`) live in `docs/ui-density.md`.
+- The flat row/table grammar (white surface, gray-50 section-divider headers, bordered table rows, touch-vs-pointer density, control target sizes) is centralized in `src/components/flat-table-styles.ts` (`FLAT_TABLE_SURFACE`, `FLAT_TABLE_HEADER`, `FLAT_TABLE_ROW`, `ROW_CONTROL_TARGET`). Compose layout-specific gap/padding/columns around these bases; don't re-hand-code the density/border/surface classes. Row/category/list kebab actions use `src/components/RowMenuItem.tsx` for neutral/removal/danger tones. The gear picker (`LibraryPanel`) is the reference implementation. Full rationale + the documented exceptions (ListsPage `divide-y` rows, popover menus, `PanelCard`) live in `docs/ui-density.md`.
 
 ## UX patterns to preserve
 
