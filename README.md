@@ -27,4 +27,5 @@ Requires `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env`. Database mi
 - **`DECISIONS.md`**: short ADRs explaining *why* the app is shaped this way (cross-category DnD removed, RPC-based bulk writes, kebab-only row actions, etc.). Read when you wonder "why is this like this?"
 - **`SPEC.md`**: current behavior reference for resource limits, weight rollups, sharing mechanics, CSV format, and RLS patterns. Read when you need a precise answer to "what does this do?"
 - **`help.md`** / **`about.md`**: user-facing pages rendered at `/help` and `/about`.
+- **`docs/ui-density.md`**: row height, touch target, and flat table/row visual grammar rules for list, gear, picker, pack, and share surfaces.
 - **`docs/supply-chain-security.md`**: dependency, CI, and developer-machine security practices.

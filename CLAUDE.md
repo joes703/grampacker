@@ -37,6 +37,9 @@
 
 ## UX patterns to preserve
 
+- UI density rules live in `docs/ui-density.md`. Before changing row heights, category
+  header heights, row chevrons, kebabs, or drag-handle target sizes, read that file and
+  update all matching row-like surfaces together.
 - Single-row actions: kebab menu. Both gear page and list page. Items in order: Edit, [list-only: Remove from list], Delete from inventory (red).
 - Bulk actions: multi-select toolbar on gear page only. Includes Select all / Select none.
 - Edit happens in modals. Delete confirmations use the standardized "Delete from inventory" copy on both pages.
