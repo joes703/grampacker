@@ -425,14 +425,14 @@ export default function GearItemDialog({
               </div>
               {/* Remove from list — list-scoped membership action, sits in
                   the "On this list" section near quantity/worn/consumable
-                  rather than buried in the bottom destructive row. Neutral
-                  outline because it's not destructive: the gear item stays
-                  in the inventory. */}
+                  rather than buried in the bottom destructive row. Calm-red
+                  treatment (not the louder Delete-from-inventory red): it's a
+                  removal, but reversible — the gear item stays in inventory. */}
               {onRemoveFromList && (
                 <button
                   type="button"
                   onClick={onRemoveFromList}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
                 >
                   <CircleMinus size={14} />
                   Remove from list
