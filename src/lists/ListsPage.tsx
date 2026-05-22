@@ -583,12 +583,12 @@ function SortableListRow(
       {...attributes}
       tabIndex={-1}
       aria-label="Drag to reorder list"
-      // Touch-friendly hit target on mobile (h-9 w-9), tightens on lg+.
+      // Touch-friendly hit target on mobile (h-10 w-10), tightens on lg+.
       // `touch-none` keeps a drag that starts on the grip from racing the
       // browser's scroll on touch devices; because the grip is a dedicated
       // target (not the whole card) this doesn't cost normal list scrolling.
       // TouchSensor's press-and-hold delay gates accidental drags.
-      className="inline-flex h-9 w-9 lg:h-7 lg:w-7 shrink-0 items-center justify-center rounded text-gray-400 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
+      className="inline-flex h-10 w-10 lg:h-7 lg:w-7 shrink-0 items-center justify-center rounded text-gray-400 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
     >
       <GripVertical size={16} />
     </button>
@@ -692,7 +692,7 @@ function ListRow({
         aria-label="List options"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        className="inline-flex h-9 w-9 lg:h-7 lg:w-7 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        className="inline-flex h-10 w-10 lg:h-7 lg:w-7 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
       >
         <MoreVertical size={16} />
       </button>
