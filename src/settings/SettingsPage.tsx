@@ -16,6 +16,7 @@ import TypedConfirmDialog from '../components/TypedConfirmDialog'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import FormLabel from '../components/FormLabel'
 import PrimaryButton from '../components/PrimaryButton'
+import { TABLE_RADIUS, TABLE_STRONG_DIVIDER, TABLE_SURFACE_BG } from '../components/flat-table-styles'
 import { useDocumentTitle } from '../lib/use-document-title'
 
 export default function SettingsPage() {
@@ -72,8 +73,8 @@ function Section({
 }) {
   return (
     <section
-      className={`rounded-xl border bg-white p-5 ${
-        danger ? 'border-red-200' : 'border-gray-200'
+      className={`${TABLE_RADIUS} border ${TABLE_SURFACE_BG} p-5 ${
+        danger ? 'border-red-200' : TABLE_STRONG_DIVIDER
       }`}
     >
       <div className="flex items-start gap-2 mb-4">

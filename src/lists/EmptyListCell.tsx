@@ -1,4 +1,5 @@
 import { Backpack } from 'lucide-react'
+import { TABLE_BORDER, TABLE_RADIUS, TABLE_SURFACE_BG } from '../components/flat-table-styles'
 
 type Props = {
   /** Mobile-only Add affordance. Opens the gear-picker drawer. The same
@@ -13,7 +14,7 @@ type Props = {
 // opener as the bottom bar.
 export default function EmptyListCell({ onMobileAdd }: Props) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 print:hidden">
+    <div className={`${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} p-6 print:hidden`}>
       <div className="flex items-start gap-3">
         <Backpack size={20} className="mt-0.5 shrink-0 text-blue-600" />
         <div className="min-w-0">
