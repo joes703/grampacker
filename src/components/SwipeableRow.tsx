@@ -18,8 +18,12 @@ import { useRef, useState, type ReactNode } from 'react'
 // closes it instead of activating the row's own tap handler.
 type Props = {
   onAction: () => void
-  /** Action button text and its accessible name. */
+  /** Accessible name for the action button (and the visible text when no
+   *  icon is given). Always set so screen readers announce the action. */
   label: string
+  /** Optional visual: when provided, the panel shows this icon instead of the
+   *  label text. label still supplies the button's accessible name. */
+  icon?: ReactNode
   /** Tailwind bg/text classes for the revealed action panel. Default is a
    *  calm red (removal, but not as loud as a destructive delete). */
   actionClassName?: string
@@ -40,6 +44,7 @@ const FULL_SWIPE_RATIO = 0.5
 export default function SwipeableRow({
   onAction,
   label,
+  icon,
   actionClassName = 'bg-red-50 text-red-700',
   actionArmedClassName = 'bg-red-100 text-red-700',
   allowFullSwipe = false,
@@ -133,7 +138,7 @@ export default function SwipeableRow({
           tabIndex={open ? 0 : -1}
           className={`flex w-[88px] items-center justify-center text-sm font-medium ${armed ? actionArmedClassName : actionClassName}`}
         >
-          {label}
+          {icon ?? label}
         </button>
       </div>
       {/* Foreground row content; translates left to reveal the action. */}
