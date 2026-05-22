@@ -6,6 +6,7 @@ import type { GearStatus } from '../lib/gear-status'
 import type { ListItemPatch } from '../lib/queries'
 import { formatTotalWeight, type WeightUnit } from '../lib/weight'
 import { makeDnDId } from '../lib/dnd-ids'
+import { FLAT_TABLE_HEADER, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import ItemRow, { SortableItemRow } from './ItemRow'
 import AddItemRow from './AddItemRow'
 import { type AddItemData } from './use-quick-add-form'
@@ -205,7 +206,7 @@ function CategoryGroup({
           rhythm; lg:min-h-9 tightens to a denser pointer scan while still
           clearing the desktop chevron/controls. The chevron (authed) or the
           min-height alone (share view, no chevron) fills it. */}
-      <div className={`flex items-center py-0.5 bg-gray-50 border-b border-gray-100 min-h-11 lg:min-h-9 ${
+      <div className={`${FLAT_TABLE_HEADER} py-0.5 ${
         packMode ? 'gap-0.5 lg:gap-1.5 px-2 lg:px-3' : 'gap-1.5 px-3'
       }`}>
         {collapsible ? (
@@ -221,7 +222,7 @@ function CategoryGroup({
               aria-expanded={!collapsed}
               aria-controls={regionId}
               aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
-              className="inline-flex h-10 w-10 lg:h-7 lg:w-7 items-center justify-center rounded text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0 print:hidden"
+              className={`${ROW_CONTROL_TARGET} text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0 print:hidden`}
             >
               {collapsed ? (
                 <ChevronRight size={14} />

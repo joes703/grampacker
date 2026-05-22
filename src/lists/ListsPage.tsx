@@ -54,6 +54,7 @@ import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
+import { FLAT_TABLE_SURFACE, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
 import ListsEmptyState from './ListsEmptyState'
 import PrivacyPanel from './PrivacyPanel'
@@ -342,7 +343,7 @@ export default function ListsPage() {
             onDragCancel={handleDragCancel}
           >
             <SortableContext items={lists.map((l) => makeDnDId('list-card', l.id))} strategy={verticalListSortingStrategy}>
-              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+              <div className={`${FLAT_TABLE_SURFACE} rounded-xl`}>
                 <ul className="divide-y divide-gray-100">
                   {lists.map((list) => (
                     <SortableListRow
@@ -362,7 +363,7 @@ export default function ListsPage() {
                 // user can see what they're dragging. Wired to no-op
                 // handlers because the overlay is purely visual; the
                 // real row underneath still owns interaction.
-                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                <div className={`${FLAT_TABLE_SURFACE} rounded-xl shadow-lg`}>
                   <ul>
                     <ListRow
                       list={activeList}
@@ -583,12 +584,12 @@ function SortableListRow(
       {...attributes}
       tabIndex={-1}
       aria-label="Drag to reorder list"
-      // Touch-friendly hit target on mobile (h-10 w-10), tightens on lg+.
+      // ROW_CONTROL_TARGET = 40px touch / 28px pointer (see flat-table-styles).
       // `touch-none` keeps a drag that starts on the grip from racing the
       // browser's scroll on touch devices; because the grip is a dedicated
       // target (not the whole card) this doesn't cost normal list scrolling.
       // TouchSensor's press-and-hold delay gates accidental drags.
-      className="inline-flex h-10 w-10 lg:h-7 lg:w-7 shrink-0 items-center justify-center rounded text-gray-400 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
+      className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-400 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing`}
     >
       <GripVertical size={16} />
     </button>
@@ -634,6 +635,11 @@ function ListRow({
   // lift would re-introduce the card feel this refactor is replacing.
   // Hover bg is the same gray-50 every other interactive row in the app
   // uses (gear, list-detail, picker).
+  //
+  // Density (min-h-11 lg:min-h-8) matches FLAT_TABLE_ROW, but this is an
+  // intentional exception to that constant: separators come from the
+  // container's `divide-y`, so a per-row `border-b` (which FLAT_TABLE_ROW
+  // carries) would double the line between rows. Keep the density inline.
   const rowClass =
     'relative flex min-h-11 lg:min-h-8 items-center gap-2 px-3 py-2 hover:bg-gray-50'
 
@@ -692,7 +698,7 @@ function ListRow({
         aria-label="List options"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        className="inline-flex h-10 w-10 lg:h-7 lg:w-7 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-400 hover:bg-gray-100 hover:text-gray-600`}
       >
         <MoreVertical size={16} />
       </button>

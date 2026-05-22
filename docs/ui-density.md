@@ -49,6 +49,47 @@ Desktop / pointer:
 - The gear picker is the reference for the flat row language: simple headers, simple rows, and borders doing the separation.
 - List detail, pack mode, gear inventory, lists, and share views may have different columns, but should not introduce a different row/card visual system without a deliberate reason.
 
+## Shared Style Module
+
+The cross-surface invariants live in `src/components/flat-table-styles.ts` so a
+density or grammar change happens in one place instead of drifting across one-off
+Tailwind strings. The exports are *base fragments*: each call site composes its own
+gap / padding / column / hover / selected classes around them.
+
+- `FLAT_TABLE_SURFACE` — white table shell (`overflow-hidden border border-gray-200
+  bg-white`). The app background is gray-50 and section headers are gray-50, so a flat
+  table needs a white surface or its headers vanish into the page. A table/list shell,
+  not a decorative card: no shadow, no rounding (compose `rounded-xl` at the call site
+  for standalone panels like the picker or lists page).
+- `FLAT_TABLE_HEADER` — section/category header divider strip (`bg-gray-50` + bottom
+  border, `min-h-11 lg:min-h-9`).
+- `FLAT_TABLE_ROW` — item/list row (`min-h-11 lg:min-h-8` + bottom border). Rows
+  separated by a container `divide-y` must NOT use this (the per-row border-b would
+  double up) — see the ListsPage row exception below.
+- `ROW_CONTROL_TARGET` — chevron/kebab/drag-handle target box (`h-10 w-10 lg:h-7
+  lg:w-7`). Distinct from `RowIconButton`, the compact desktop-only inline icon button
+  (28x24) that never renders on mobile and so needs no touch box.
+
+### Surfaces consuming the module
+
+White table surface (`FLAT_TABLE_SURFACE`): list-detail item table, gear-inventory
+table, share grouped-items table, lists-page row list (+`rounded-xl`), and the gear
+picker desktop aside + mobile drawer (+`rounded-xl`).
+
+Header / row / control bases: list-detail + share + pack category headers
+(`CategoryGroup`), gear-inventory headers (`CategorySection`), gear-picker headers and
+rows (`LibraryPanel`), list/pack rows (`ItemRow`), gear rows (`GearItemRow`), and the
+chevrons / lists-page kebab + drag handle.
+
+### Intentional exceptions
+
+- **ListsPage rows** keep their density (`min-h-11 lg:min-h-8`) inline instead of using
+  `FLAT_TABLE_ROW`, because separators come from the `<ul>`'s `divide-y`; a per-row
+  `border-b` would double the line. Documented at the call site.
+- **Popover menus, `PanelCard`, and the weight/progress stat panels** also use
+  `border border-gray-200 bg-white` but are not flat row tables (floating menus, titled
+  cards, stat grids), so they do not consume `FLAT_TABLE_SURFACE`.
+
 ## Changing Density Later
 
 When changing row density, update all row-like surfaces together and verify with grep.
