@@ -333,7 +333,11 @@ function CategoryGroup({
               stubs branch on viewport to keep the total aligned under the
               Weight column. */}
           {!packMode && !adding && (
-            <div className="hidden lg:flex print:flex items-center gap-1.5 px-3 py-0.5 text-sm">
+            // Matches FLAT_TABLE_ROW density (min-h-11 lg:min-h-8) so this
+            // footer row is the same height as the item rows above it; can't
+            // use the constant directly because the row is display-gated
+            // (hidden lg:flex print:flex) and carries no bottom border.
+            <div className="hidden lg:flex print:flex min-h-11 lg:min-h-8 items-center gap-1.5 px-3 py-0.5 text-sm">
               {onAddItem ? (
                 <button
                   onClick={() => setAdding(true)}
