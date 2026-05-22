@@ -57,7 +57,6 @@ import { groupGearItemsByCategory, assignSortOrderSlots } from '../lib/grouping'
 import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
 import { showToast } from '../lib/toast'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
-import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import GearItemRow from './GearItemRow'
 import GearItemDialog from './GearItemDialog'
 import CreateListFromSelectionDialog from './CreateListFromSelectionDialog'
@@ -724,7 +723,7 @@ export default function GearLibraryPage() {
         const activeItem =
           activeParsed?.kind === 'gear-item' ? (allItemsById.get(activeParsed.id) ?? null) : null
         return (
-          <div className={FLAT_TABLE_SURFACE}>
+          <div className="flex flex-col gap-3">
           <DndContext
             sensors={sensors}
             collisionDetection={collisionDetection}

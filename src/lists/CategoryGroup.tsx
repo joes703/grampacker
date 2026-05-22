@@ -12,6 +12,7 @@ import {
   FLAT_TABLE_HEADER_COUNT,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_HEADER_TITLE_MUTED,
+  FLAT_TABLE_SURFACE,
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ItemRow, { SortableItemRow } from './ItemRow'
@@ -205,7 +206,10 @@ function CategoryGroup({
   }
 
   return (
-    <div>
+    // Each category renders as its own flat-table card (FLAT_TABLE_SURFACE);
+    // the page composes gaps between cards. The picker is the deliberate
+    // exception — it stays one continuous surface to avoid nested cards.
+    <div className={FLAT_TABLE_SURFACE}>
       {/* Header — also functions as the column header for Weight / Qty.
           In pack mode the header tightens on mobile so the Qty label stays
           aligned over the (newly tightened) pack-mode row's qty column.
