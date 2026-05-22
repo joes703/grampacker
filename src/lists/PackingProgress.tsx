@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { CheckSquare, RotateCcw, WifiOff } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { TABLE_BORDER, TABLE_RADIUS, TABLE_SURFACE_BG } from '../components/flat-table-styles'
 
 type Props = {
   total: number
@@ -55,7 +56,7 @@ export default function PackingProgress({
   const readyDone = readyChecks?.enabled === true && readyCount === total && total > 0
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className={`${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} p-4`}>
       {/* Packed header — count on the left, "All packed!" chip + Reset
           packed on the right. View toggles (Show unpacked only, Ready
           checks) live below in the options row so this row stays focused

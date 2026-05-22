@@ -93,8 +93,9 @@ gap / padding / column / hover / selected classes around them.
   (28x24) that never renders on mobile and so needs no touch box.
 - Shared chrome tokens (`TABLE_RADIUS`, `TABLE_BORDER`, `TABLE_SURFACE_BG`,
   `TABLE_HEADER_BG`, `TABLE_DIVIDER`, `TABLE_STRONG_DIVIDER`) are used by flat tables,
-  `PanelCard`, and compact detail tables so border/radius/tint changes flow through
-  without forcing every table to share the same row density.
+  list-detail panels, settings sections, `PanelCard`, and compact detail tables so
+  border/radius/tint changes flow through without forcing every table to share the same
+  row density.
 
 ### Surfaces consuming the module
 
