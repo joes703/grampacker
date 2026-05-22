@@ -343,7 +343,7 @@ export default function ListsPage() {
             onDragCancel={handleDragCancel}
           >
             <SortableContext items={lists.map((l) => makeDnDId('list-card', l.id))} strategy={verticalListSortingStrategy}>
-              <div className={`${FLAT_TABLE_SURFACE} rounded-xl`}>
+              <div className={FLAT_TABLE_SURFACE}>
                 <ul className="divide-y divide-gray-100">
                   {lists.map((list) => (
                     <SortableListRow
@@ -363,7 +363,7 @@ export default function ListsPage() {
                 // user can see what they're dragging. Wired to no-op
                 // handlers because the overlay is purely visual; the
                 // real row underneath still owns interaction.
-                <div className={`${FLAT_TABLE_SURFACE} rounded-xl shadow-lg`}>
+                <div className={`${FLAT_TABLE_SURFACE} shadow-lg`}>
                   <ul>
                     <ListRow
                       list={activeList}

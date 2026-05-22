@@ -11,11 +11,13 @@
 
 // White table shell. The app background is gray-50, and section headers are
 // gray-50 too, so a flat table needs a white surface or its headers vanish
-// into the page. This is a table/list shell, NOT a decorative card: no
-// shadow, no rounding here (compose `rounded-xl` at the call site if the
-// surface is a standalone panel like the picker or lists page). overflow-
-// hidden clips child row/header borders flush to the container edge.
-export const FLAT_TABLE_SURFACE = 'overflow-hidden border border-gray-200 bg-white'
+// into the page. This is a table/list shell, NOT a decorative card: rounded
+// corners + a hairline border, no shadow. overflow-hidden clips child
+// row/header borders flush to the rounded container edge. The corner radius
+// lives here so every flat table rounds identically — broad radius changes
+// happen in one place. A surface that must be square is an explicit
+// exception that overrides `rounded-none` at the call site.
+export const FLAT_TABLE_SURFACE = 'overflow-hidden rounded-xl border border-gray-200 bg-white'
 
 // Section / category header: a flat divider strip, not a card. Touch 44px /
 // pointer 36px (see docs/ui-density.md). Compose gap + horizontal padding
