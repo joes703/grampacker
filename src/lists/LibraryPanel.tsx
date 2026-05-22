@@ -190,7 +190,7 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
           Static label area below has no hover state so the chevron is the
           obvious affordance. The header strip's bg-gray-50 stays as a
           visual section divider; it just isn't clickable as a whole. */}
-      <div className="flex w-full items-center gap-1.5 px-3 py-0.5 bg-gray-50 border-b border-gray-100">
+      <div className="flex min-h-11 w-full items-center gap-1.5 px-3 py-0.5 bg-gray-50 border-b border-gray-100">
         <button
           type="button"
           onClick={() => onToggle(toggleKey)}
