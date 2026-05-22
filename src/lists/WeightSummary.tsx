@@ -5,6 +5,7 @@ import { computeWeightBreakdown, type WeightBreakdown } from '../lib/weight-brea
 import { formatTotalWeight } from '../lib/weight'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import {
+  FLAT_TABLE_EYEBROW,
   TABLE_BORDER,
   TABLE_DIVIDER,
   TABLE_HEADER_BG,
@@ -92,7 +93,7 @@ function Stat({
 }) {
   return (
     <div className="px-3 py-2 text-center">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+      <p className={FLAT_TABLE_EYEBROW}>{label}</p>
       <p className="mt-0.5 text-sm font-medium tabular-nums text-gray-900">
         {formatTotalWeight(grams, unit)}
       </p>
@@ -115,7 +116,7 @@ function BreakdownDisclosure({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className={`flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 ${TABLE_HEADER_BG} hover:bg-gray-100`}
+        className={`flex w-full items-center gap-1.5 px-3 py-2 text-left ${FLAT_TABLE_EYEBROW} ${TABLE_HEADER_BG} hover:bg-gray-100`}
       >
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <span>Weight breakdown</span>

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import {
+  FLAT_TABLE_EYEBROW,
   TABLE_BORDER,
   TABLE_HEADER_BG,
   TABLE_RADIUS,
@@ -13,7 +14,7 @@ export default function PanelCard({ title, children }: { title: string; children
   return (
     <div className={`${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} overflow-hidden flex flex-col`}>
       <div className={`px-3 py-2 border-b ${TABLE_STRONG_DIVIDER} ${TABLE_HEADER_BG}`}>
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</p>
+        <p className={FLAT_TABLE_EYEBROW}>{title}</p>
       </div>
       <div className="flex-1 flex flex-col">{children}</div>
     </div>
