@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { ListItemWithGear, Category } from '../lib/types'
 import { gramsToLbOzParts } from '../lib/weight'
 import { computeWeightBreakdown } from '../lib/weight-breakdown'
+import { TABLE_STRONG_DIVIDER } from '../components/flat-table-styles'
 
 type Props = {
   items: ListItemWithGear[]
@@ -48,7 +49,7 @@ export default function WeightTable({ items, categories }: Props) {
             </tr>
           ))}
         </tbody>
-        <tfoot className="divide-y divide-gray-100 border-t-2 border-gray-200">
+        <tfoot className={`divide-y divide-gray-100 border-t-2 ${TABLE_STRONG_DIVIDER}`}>
           <tr className="font-semibold">
             <td className={labelCell}>Base weight</td>
             <td className={valueCell}>{fmtG(baseGrams)}</td>
@@ -68,7 +69,7 @@ export default function WeightTable({ items, categories }: Props) {
               <td className={valueCell}>{fmtLbOz(wornGrams)}</td>
             </tr>
           )}
-          <tr className="font-semibold border-t-2 border-gray-200">
+          <tr className={`font-semibold border-t-2 ${TABLE_STRONG_DIVIDER}`}>
             <td className={labelCell}>Total pack weight</td>
             <td className={valueCell}>{fmtG(totalPackGrams)}</td>
             <td className={valueCell}>{fmtLbOz(totalPackGrams)}</td>

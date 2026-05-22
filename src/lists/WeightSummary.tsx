@@ -4,6 +4,13 @@ import type { Category, ListItemWithGear } from '../lib/types'
 import { computeWeightBreakdown, type WeightBreakdown } from '../lib/weight-breakdown'
 import { formatTotalWeight } from '../lib/weight'
 import { useWeightUnit } from '../lib/use-weight-unit'
+import {
+  TABLE_BORDER,
+  TABLE_DIVIDER,
+  TABLE_HEADER_BG,
+  TABLE_RADIUS,
+  TABLE_SURFACE_BG,
+} from '../components/flat-table-styles'
 import PanelCard from './PanelCard'
 import WeightTable from './WeightTable'
 
@@ -66,7 +73,7 @@ export default function WeightSummary({ items, categories }: Props) {
 function SummaryStrip({ breakdown }: { breakdown: WeightBreakdown }) {
   const { weightUnit } = useWeightUnit()
   return (
-    <div className="grid grid-cols-3 divide-x divide-gray-100 rounded-lg border border-gray-200 bg-white">
+    <div className={`grid grid-cols-3 divide-x divide-gray-100 ${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG}`}>
       <Stat label="Base" grams={breakdown.baseGrams} unit={weightUnit} />
       <Stat label="Consumable" grams={breakdown.consumableGrams} unit={weightUnit} />
       <Stat label="Pack total" grams={breakdown.totalPackGrams} unit={weightUnit} />
@@ -103,18 +110,18 @@ function BreakdownDisclosure({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+    <div className={`${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} overflow-hidden`}>
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hover:bg-gray-50"
+        className={`flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 ${TABLE_HEADER_BG} hover:bg-gray-100`}
       >
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <span>Weight breakdown</span>
       </button>
       {open && (
-        <div className="border-t border-gray-100 py-1">{children}</div>
+        <div className={`border-t ${TABLE_DIVIDER} py-1`}>{children}</div>
       )}
     </div>
   )

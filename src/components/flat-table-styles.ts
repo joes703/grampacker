@@ -9,6 +9,16 @@
 // sizing) so a density or grammar change happens in exactly one place
 // instead of drifting across one-off Tailwind strings.
 
+// Shared chrome tokens. Compact detail tables (WeightTable), PanelCard, and
+// the flat row tables use the same surface color, border color, subtle tint,
+// divider color, and radius even when their density/layout differs.
+export const TABLE_RADIUS = 'rounded-lg'
+export const TABLE_BORDER = 'border border-gray-200'
+export const TABLE_SURFACE_BG = 'bg-white'
+export const TABLE_HEADER_BG = 'bg-gray-50'
+export const TABLE_DIVIDER = 'border-gray-100'
+export const TABLE_STRONG_DIVIDER = 'border-gray-200'
+
 // White table shell. The app background is gray-50, and section headers are
 // gray-50 too, so a flat table needs a white surface or its headers vanish
 // into the page. This is a table/list shell, NOT a decorative card: rounded
@@ -17,13 +27,13 @@
 // lives here so every flat table rounds identically — broad radius changes
 // happen in one place. A surface that must be square is an explicit
 // exception that overrides `rounded-none` at the call site.
-export const FLAT_TABLE_SURFACE = 'overflow-hidden rounded-lg border border-gray-200 bg-white'
+export const FLAT_TABLE_SURFACE = `overflow-hidden ${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG}`
 
 // Section / category header: a flat divider strip, not a card. Touch 44px /
 // pointer 36px (see docs/ui-density.md). Compose gap + horizontal padding
 // (+ `w-full` where the header is a flex child that must fill its track).
 export const FLAT_TABLE_HEADER =
-  'flex min-h-11 lg:min-h-9 items-center bg-gray-50 border-b border-gray-100'
+  `flex min-h-11 lg:min-h-9 items-center ${TABLE_HEADER_BG} border-b ${TABLE_DIVIDER}`
 
 // Item / list row: a table row, not a mini card. Touch 44px / pointer 32px.
 // The bottom border does the separation. Compose gap / padding / hover /
@@ -32,7 +42,7 @@ export const FLAT_TABLE_HEADER =
 // NOTE: rows separated by a container-level `divide-y` (e.g. ListsPage)
 // should NOT use this — the per-row border-b would double up.
 export const FLAT_TABLE_ROW =
-  'flex min-h-11 lg:min-h-8 items-center border-b border-gray-100'
+  `flex min-h-11 lg:min-h-8 items-center border-b ${TABLE_DIVIDER}`
 
 // Explicit chevron / kebab / drag-handle target inside a row or header:
 // 40px touch / 28px pointer. Compose color + hover + `shrink-0` at the call

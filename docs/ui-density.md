@@ -70,6 +70,10 @@ gap / padding / column / hover / selected classes around them.
 - `ROW_CONTROL_TARGET` — chevron/kebab/drag-handle target box (`h-10 w-10 lg:h-7
   lg:w-7`). Distinct from `RowIconButton`, the compact desktop-only inline icon button
   (28x24) that never renders on mobile and so needs no touch box.
+- Shared chrome tokens (`TABLE_RADIUS`, `TABLE_BORDER`, `TABLE_SURFACE_BG`,
+  `TABLE_HEADER_BG`, `TABLE_DIVIDER`, `TABLE_STRONG_DIVIDER`) are used by flat tables,
+  `PanelCard`, and compact detail tables so border/radius/tint changes flow through
+  without forcing every table to share the same row density.
 
 ### Surfaces consuming the module
 
@@ -87,6 +91,9 @@ chevrons / lists-page kebab + drag handle.
 - **ListsPage rows** keep their density (`min-h-11 lg:min-h-8`) inline instead of using
   `FLAT_TABLE_ROW`, because separators come from the `<ul>`'s `divide-y`; a per-row
   `border-b` would double the line. Documented at the call site.
+- **WeightTable rows** are a compact density exception (`text-xs` with very tight
+  padding). They should not use `FLAT_TABLE_ROW`, but their surrounding summary surfaces
+  and divider colors should use the shared table chrome tokens.
 - **Popover menus, `PanelCard`, and the weight/progress stat panels** also use
   `border border-gray-200 bg-white` but are not flat row tables (floating menus, titled
   cards, stat grids), so they do not consume `FLAT_TABLE_SURFACE`.
