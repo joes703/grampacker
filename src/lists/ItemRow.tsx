@@ -637,6 +637,7 @@ function RowKebab({
           <MenuItem
             icon={<CircleMinus size={13} />}
             onClick={() => { close(); onRemoveFromList() }}
+            tone="removal"
           >
             Remove from list
           </MenuItem>
@@ -660,7 +661,7 @@ function RowKebab({
               <MenuItem
                 icon={<Trash2 size={13} />}
                 onClick={() => { close(); onDeleteFromInventory() }}
-                danger
+                tone="danger"
               >
                 Delete from inventory
               </MenuItem>
@@ -673,14 +674,23 @@ function RowKebab({
   )
 }
 
-function MenuItem({ icon, children, onClick, danger }: { icon: React.ReactNode; children: React.ReactNode; onClick: () => void; danger?: boolean }) {
+// Three tiers of menu action, mirroring the app-wide removal/deletion
+// language: neutral (edit, status, etc.), removal (calm red — "Remove from
+// list", reversible: gear stays in inventory), and danger (strong red +
+// red hover — "Delete from inventory", destructive, confirm required).
+type MenuTone = 'neutral' | 'removal' | 'danger'
+const MENU_TONE_CLASS: Record<MenuTone, string> = {
+  neutral: 'text-gray-700 hover:bg-gray-100',
+  removal: 'text-red-700 hover:bg-gray-100',
+  danger: 'text-red-600 hover:bg-red-50',
+}
+
+function MenuItem({ icon, children, onClick, tone = 'neutral' }: { icon: React.ReactNode; children: React.ReactNode; onClick: () => void; tone?: MenuTone }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
-        danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-100'
-      }`}
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${MENU_TONE_CLASS[tone]}`}
     >
       {icon}
       <span className="truncate">{children}</span>
