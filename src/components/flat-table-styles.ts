@@ -17,7 +17,7 @@
 // lives here so every flat table rounds identically — broad radius changes
 // happen in one place. A surface that must be square is an explicit
 // exception that overrides `rounded-none` at the call site.
-export const FLAT_TABLE_SURFACE = 'overflow-hidden rounded-xl border border-gray-200 bg-white'
+export const FLAT_TABLE_SURFACE = 'overflow-hidden rounded-lg border border-gray-200 bg-white'
 
 // Section / category header: a flat divider strip, not a card. Touch 44px /
 // pointer 36px (see docs/ui-density.md). Compose gap + horizontal padding
