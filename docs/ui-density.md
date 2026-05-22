@@ -46,10 +46,14 @@ Desktop / pointer:
 - Category headers are flat divider strips, not cards — but on the content views each
   whole category is wrapped in its own flat-table card (see "Surfaces consuming the
   module"). The header stays a `bg-gray-50` strip inside that card.
-- Category names preserve the user's capitalization and use normal header title
-  text (`text-sm font-medium text-gray-700`). Do not uppercase category names.
-- Counts use subdued tabular metadata text. True column labels (`Qty`, `Weight`,
-  `Price`, `Purchased`) use the tiny uppercase table-label treatment.
+- Label typography is two tiers, both centralized (see "Shared style module"):
+  - **Title** (`FLAT_TABLE_HEADER_TITLE`) — the one prominent section heading, used
+    only for category names. Preserves the user's capitalization; never uppercased.
+  - **Eyebrow** (`FLAT_TABLE_EYEBROW`) — every small uppercase micro-label: in-table
+    column labels (`Qty`, `Weight`, `Price`, `Purchased`), summary stat labels (`Base`,
+    `Consumable`), panel titles (`Notes`, `Weight summary`, `Add from gear`), and the
+    breakdown disclosure. One token so these don't drift in size/case/color.
+  - Counts use the subdued tabular `FLAT_TABLE_HEADER_COUNT` metadata text.
 - Item/list rows are table rows, not mini cards.
 - Use columns, icons, and content to express function instead of extra containers or gaps.
 - The gear picker is the reference for the flat row language: simple headers, simple rows, and borders doing the separation.
@@ -85,8 +89,10 @@ gap / padding / column / hover / selected classes around them.
 - `FLAT_TABLE_HEADER` — section/category header divider strip (`bg-gray-50` + bottom
   border, `min-h-11 lg:min-h-9`).
 - `FLAT_TABLE_HEADER_TITLE`, `FLAT_TABLE_HEADER_TITLE_MUTED`,
-  `FLAT_TABLE_HEADER_COUNT`, and `FLAT_TABLE_COLUMN_LABEL` — shared header
-  typography so category rows do not drift in capitalization, weight, or size.
+  `FLAT_TABLE_HEADER_COUNT`, and `FLAT_TABLE_EYEBROW` — shared title / count /
+  micro-label typography (see the two-tier rule under "Visual Grammar"). The eyebrow
+  is the single small-uppercase label used by both in-table column labels and the
+  summary panels, so they don't drift in capitalization, weight, or size.
 - `FLAT_TABLE_ROW` — item/list row (`min-h-11 lg:min-h-8` + bottom border). Rows
   separated by a container `divide-y` must NOT use this (the per-row border-b would
   double up) — see the ListsPage row exception below.

@@ -69,7 +69,7 @@ import {
 import { randomTempId } from '../lib/random-temp-id'
 import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
-import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
+import { FLAT_TABLE_EYEBROW, FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import ListDocumentToolbar from './ListDocumentToolbar'
 import EmptyListCell from './EmptyListCell'
@@ -916,7 +916,7 @@ function ListDetailInner({
                   pulling existing gear into this list. The Gear destination
                   is reached via the primary nav (top bar + mobile bottom bar). */}
               <div className="border-b border-gray-200 bg-gray-50 px-3 py-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <span className={FLAT_TABLE_EYEBROW}>
                   Add from gear
                 </span>
               </div>

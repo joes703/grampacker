@@ -40,12 +40,18 @@ export const FLAT_TABLE_SURFACE = `overflow-hidden ${TABLE_RADIUS} ${TABLE_BORDE
 export const FLAT_TABLE_HEADER =
   `flex min-h-11 lg:min-h-9 items-center ${TABLE_HEADER_BG} border-b ${TABLE_DIVIDER}`
 
-// Header typography. Category names preserve user-entered capitalization;
-// only column labels use uppercase treatment.
+// Header/label typography. Two tiers:
+//   - TITLE: the one prominent section heading (category names). Preserves
+//     user-entered capitalization, so it is never uppercased.
+//   - EYEBROW: every small uppercase micro-label — in-table column labels
+//     (Qty / Weight / Price / Purchased), summary stat labels (Base /
+//     Consumable), panel titles (Notes / Weight summary), and disclosure
+//     toggles. One token so these don't drift apart in size/case/color.
+// COUNT is the subdued tabular metadata count beside a title.
 export const FLAT_TABLE_HEADER_TITLE = 'text-sm font-medium text-gray-700'
 export const FLAT_TABLE_HEADER_TITLE_MUTED = 'text-sm font-medium text-gray-400'
 export const FLAT_TABLE_HEADER_COUNT = 'text-xs font-normal tabular-nums text-gray-400'
-export const FLAT_TABLE_COLUMN_LABEL =
+export const FLAT_TABLE_EYEBROW =
   'text-[10px] font-semibold uppercase tracking-wider text-gray-500'
 
 // Item / list row: a table row, not a mini card. Touch 44px / pointer 32px.

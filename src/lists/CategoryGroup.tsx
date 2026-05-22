@@ -7,7 +7,7 @@ import type { ListItemPatch } from '../lib/queries'
 import { formatTotalWeight, type WeightUnit } from '../lib/weight'
 import { makeDnDId } from '../lib/dnd-ids'
 import {
-  FLAT_TABLE_COLUMN_LABEL,
+  FLAT_TABLE_EYEBROW,
   FLAT_TABLE_HEADER,
   FLAT_TABLE_HEADER_COUNT,
   FLAT_TABLE_HEADER_TITLE,
@@ -277,10 +277,10 @@ function CategoryGroup({
             <div className="hidden lg:contents">
               <div className="shrink-0 w-7" />
               <div className="shrink-0 w-7" />
-              <div className={`shrink-0 w-12 text-right ${FLAT_TABLE_COLUMN_LABEL}`}>
+              <div className={`shrink-0 w-12 text-right ${FLAT_TABLE_EYEBROW}`}>
                 Qty
               </div>
-              <div className={`shrink-0 w-24 text-right ${FLAT_TABLE_COLUMN_LABEL}`}>
+              <div className={`shrink-0 w-24 text-right ${FLAT_TABLE_EYEBROW}`}>
                 Weight
               </div>
               {showKebabSlot && <div className="shrink-0 w-7" />}
@@ -289,10 +289,10 @@ function CategoryGroup({
                 and weight columns matching MobileRowBody. No kebab stub. */}
             <div className="lg:hidden flex items-center gap-2">
               <div className="shrink-0 w-6" />
-              <div className={`shrink-0 w-8 text-right ${FLAT_TABLE_COLUMN_LABEL}`}>
+              <div className={`shrink-0 w-8 text-right ${FLAT_TABLE_EYEBROW}`}>
                 Qty
               </div>
-              <div className={`shrink-0 w-20 text-right ${FLAT_TABLE_COLUMN_LABEL}`}>
+              <div className={`shrink-0 w-20 text-right ${FLAT_TABLE_EYEBROW}`}>
                 Weight
               </div>
             </div>
@@ -301,7 +301,7 @@ function CategoryGroup({
           <>
             <div className="shrink-0 w-6 lg:w-7" />
             <div className="shrink-0 w-6 lg:w-7" />
-            <div className={`shrink-0 w-10 text-right ${FLAT_TABLE_COLUMN_LABEL}`}>
+            <div className={`shrink-0 w-10 text-right ${FLAT_TABLE_EYEBROW}`}>
               Qty
             </div>
           </>
