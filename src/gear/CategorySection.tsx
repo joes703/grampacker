@@ -11,7 +11,13 @@ import { makeDnDId } from '../lib/dnd-ids'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import { SortableGearItemRow } from './GearItemRow'
 import RowIconButton from '../components/RowIconButton'
-import { FLAT_TABLE_HEADER, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import {
+  FLAT_TABLE_COLUMN_LABEL,
+  FLAT_TABLE_HEADER,
+  FLAT_TABLE_HEADER_COUNT,
+  FLAT_TABLE_HEADER_TITLE,
+  ROW_CONTROL_TARGET,
+} from '../components/flat-table-styles'
 
 type CategorySectionProps = {
   category: Category | null // null = Uncategorized
@@ -148,15 +154,15 @@ function CategorySectionInner(
                 setRenaming(true)
               }}
               title="Click to rename"
-              className="flex-1 min-w-0 rounded px-1 py-0.5 text-left text-sm font-medium text-gray-700 hover:bg-gray-200"
+              className={`flex-1 min-w-0 rounded px-1 py-0.5 text-left ${FLAT_TABLE_HEADER_TITLE} hover:bg-gray-200`}
             >
               <span className="truncate">{name}</span>
-              <span className="ml-1.5 text-xs font-normal tabular-nums text-gray-500">({items.length})</span>
+              <span className={`ml-1.5 ${FLAT_TABLE_HEADER_COUNT}`}>({items.length})</span>
             </button>
           ) : (
-            <span className="flex-1 text-sm font-medium text-gray-700 select-none">
+            <span className={`flex-1 select-none ${FLAT_TABLE_HEADER_TITLE}`}>
               {name}
-              <span className="ml-1.5 text-xs font-normal tabular-nums text-gray-500">({items.length})</span>
+              <span className={`ml-1.5 ${FLAT_TABLE_HEADER_COUNT}`}>({items.length})</span>
             </span>
           )
         )}
@@ -180,10 +186,10 @@ function CategorySectionInner(
                gate handles that — the row reshapes there: checkbox added,
                kebab removed, so labels would no longer match columns). */}
             {items.length > 0 && !collapsed && (
-              <div aria-hidden="true" className="hidden lg:contents text-xs text-gray-400">
-                <span className="shrink-0 w-20 text-right">Price</span>
-                <span className="shrink-0 w-24 text-right">Purchased</span>
-                <span className="shrink-0 w-24 text-right">Weight</span>
+              <div aria-hidden="true" className="hidden lg:contents">
+                <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_COLUMN_LABEL}`}>Price</span>
+                <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_COLUMN_LABEL}`}>Purchased</span>
+                <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_COLUMN_LABEL}`}>Weight</span>
                 {/* Uncategorized has no category-level kebab in the header,
                    but item rows still render a per-row kebab in non-select
                    mode. Without this spacer, the labels above would slide

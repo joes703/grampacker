@@ -6,7 +6,14 @@ import type { GearStatus } from '../lib/gear-status'
 import type { ListItemPatch } from '../lib/queries'
 import { formatTotalWeight, type WeightUnit } from '../lib/weight'
 import { makeDnDId } from '../lib/dnd-ids'
-import { FLAT_TABLE_HEADER, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import {
+  FLAT_TABLE_COLUMN_LABEL,
+  FLAT_TABLE_HEADER,
+  FLAT_TABLE_HEADER_COUNT,
+  FLAT_TABLE_HEADER_TITLE,
+  FLAT_TABLE_HEADER_TITLE_MUTED,
+  ROW_CONTROL_TARGET,
+} from '../components/flat-table-styles'
 import ItemRow, { SortableItemRow } from './ItemRow'
 import AddItemRow from './AddItemRow'
 import { type AddItemData } from './use-quick-add-form'
@@ -234,8 +241,8 @@ function CategoryGroup({
                 Chevron is the obvious affordance; the name remains
                 read-only here (rename happens via the modal, not by tapping
                 the header). */}
-            <span className={`truncate text-sm font-medium ${complete ? 'text-gray-400' : 'text-gray-700'}`}>{name}</span>
-            <span className="shrink-0 text-xs tabular-nums text-gray-400">
+            <span className={`truncate ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
+            <span className={`shrink-0 ${FLAT_TABLE_HEADER_COUNT}`}>
               {packMode ? (
                 <>
                   {/* Digital packed count is meaningless on a paper checklist
@@ -253,7 +260,7 @@ function CategoryGroup({
             )}
           </div>
         ) : (
-          <span className="flex-1 min-w-0 truncate text-sm font-medium text-gray-700">{name}</span>
+          <span className={`flex-1 min-w-0 truncate ${FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
         )}
         {!packMode ? (
           <>
@@ -262,10 +269,10 @@ function CategoryGroup({
             <div className="hidden lg:contents">
               <div className="shrink-0 w-7" />
               <div className="shrink-0 w-7" />
-              <div className="shrink-0 w-12 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              <div className={`shrink-0 w-12 text-right ${FLAT_TABLE_COLUMN_LABEL}`}>
                 Qty
               </div>
-              <div className="shrink-0 w-24 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              <div className={`shrink-0 w-24 text-right ${FLAT_TABLE_COLUMN_LABEL}`}>
                 Weight
               </div>
               {showKebabSlot && <div className="shrink-0 w-7" />}
@@ -274,10 +281,10 @@ function CategoryGroup({
                 and weight columns matching MobileRowBody. No kebab stub. */}
             <div className="lg:hidden flex items-center gap-2">
               <div className="shrink-0 w-6" />
-              <div className="shrink-0 w-8 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              <div className={`shrink-0 w-8 text-right ${FLAT_TABLE_COLUMN_LABEL}`}>
                 Qty
               </div>
-              <div className="shrink-0 w-20 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              <div className={`shrink-0 w-20 text-right ${FLAT_TABLE_COLUMN_LABEL}`}>
                 Weight
               </div>
             </div>
@@ -286,7 +293,7 @@ function CategoryGroup({
           <>
             <div className="shrink-0 w-6 lg:w-7" />
             <div className="shrink-0 w-6 lg:w-7" />
-            <div className="shrink-0 w-10 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            <div className={`shrink-0 w-10 text-right ${FLAT_TABLE_COLUMN_LABEL}`}>
               Qty
             </div>
           </>
