@@ -155,30 +155,34 @@ export default function SharePage() {
           )}
         </div>
 
-        {/* Items grouped by category — sections stacked flush (flat table
-            grammar); each category header carries its own divider border. */}
-        <div>
-          {grouped.map((group) => (
-            <CategoryGroup
-              key={group.category?.id ?? '__uncategorized__'}
-              name={group.category?.name ?? 'Uncategorized'}
-              items={group.items}
-              weightUnit={weightUnit}
-              isBelowLg={isBelowLg}
-              collapsible={false}
-              hideWorn={showWornGroup}
-            />
-          ))}
-          {showWornGroup && wornItems.length > 0 && (
-            <CategoryGroup
-              name="Worn"
-              items={wornItems}
-              weightUnit={weightUnit}
-              isBelowLg={isBelowLg}
-              collapsible={false}
-            />
-          )}
-        </div>
+        {/* Items grouped by category — sections stacked flush on a white
+            table surface. The shared category headers are gray dividers;
+            without this surface they blend into SharePage's gray page
+            background. */}
+        {items.length > 0 && (
+          <div className="overflow-hidden border border-gray-200 bg-white">
+            {grouped.map((group) => (
+              <CategoryGroup
+                key={group.category?.id ?? '__uncategorized__'}
+                name={group.category?.name ?? 'Uncategorized'}
+                items={group.items}
+                weightUnit={weightUnit}
+                isBelowLg={isBelowLg}
+                collapsible={false}
+                hideWorn={showWornGroup}
+              />
+            ))}
+            {showWornGroup && wornItems.length > 0 && (
+              <CategoryGroup
+                name="Worn"
+                items={wornItems}
+                weightUnit={weightUnit}
+                isBelowLg={isBelowLg}
+                collapsible={false}
+              />
+            )}
+          </div>
+        )}
 
         <div className="mt-8 text-center">
           <AboutLink className="text-xs text-gray-400 hover:text-gray-600" />
