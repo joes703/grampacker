@@ -314,7 +314,12 @@ export default function ItemRow({
         /* Mobile authed row: swipe left to reveal Remove (full swipe removes
            directly). Foreground carries the padding/bg so the action sits flush
            to the trailing edge. onDelete is non-null here (mobileSwipe gate). */
-        <SwipeableRow onAction={onDelete!} label="Remove" allowFullSwipe>
+        <SwipeableRow
+          onAction={onDelete!}
+          label="Remove from list"
+          icon={<CircleMinus size={22} />}
+          allowFullSwipe
+        >
           <div className="flex flex-1 items-center gap-1 px-3 py-2">
             <MobileRowBody
               item={item}
