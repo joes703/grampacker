@@ -18,6 +18,11 @@ export const TABLE_SURFACE_BG = 'bg-white'
 export const TABLE_HEADER_BG = 'bg-gray-50'
 export const TABLE_DIVIDER = 'border-gray-100'
 export const TABLE_STRONG_DIVIDER = 'border-gray-200'
+// `divide-*` color sibling of TABLE_DIVIDER, for row groups separated by a
+// container-level `divide-y` (e.g. WeightTable) rather than per-row borders.
+// Same gray as TABLE_DIVIDER; Tailwind just needs the divide- form spelled
+// out literally for the JIT scanner to emit it.
+export const TABLE_DIVIDER_LINE = 'divide-gray-100'
 
 // White table shell. The app background is gray-50, and section headers are
 // gray-50 too, so a flat table needs a white surface or its headers vanish
