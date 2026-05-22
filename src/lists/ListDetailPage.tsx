@@ -911,7 +911,7 @@ function ListDetailInner({
             className="hidden lg:flex w-80 shrink-0 flex-col sticky self-start print:hidden"
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
           >
-            <div className={`flex flex-col rounded-xl min-h-0 flex-1 ${FLAT_TABLE_SURFACE}`}>
+            <div className={`flex flex-col min-h-0 flex-1 ${FLAT_TABLE_SURFACE}`}>
               {/* Quiet section header — labels the panel as the picker for
                   pulling existing gear into this list. The Gear destination
                   is reached via the primary nav (top bar + mobile bottom bar). */}

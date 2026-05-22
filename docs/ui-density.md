@@ -56,11 +56,12 @@ density or grammar change happens in one place instead of drifting across one-of
 Tailwind strings. The exports are *base fragments*: each call site composes its own
 gap / padding / column / hover / selected classes around them.
 
-- `FLAT_TABLE_SURFACE` — white table shell (`overflow-hidden border border-gray-200
-  bg-white`). The app background is gray-50 and section headers are gray-50, so a flat
-  table needs a white surface or its headers vanish into the page. A table/list shell,
-  not a decorative card: no shadow, no rounding (compose `rounded-xl` at the call site
-  for standalone panels like the picker or lists page).
+- `FLAT_TABLE_SURFACE` — white table shell (`overflow-hidden rounded-xl border
+  border-gray-200 bg-white`). The app background is gray-50 and section headers are
+  gray-50, so a flat table needs a white surface or its headers vanish into the page. A
+  table/list shell, not a decorative card: rounded corners + a hairline border, no
+  shadow. The corner radius lives in the constant so every flat table rounds
+  identically; a surface that must be square overrides `rounded-none` at the call site.
 - `FLAT_TABLE_HEADER` — section/category header divider strip (`bg-gray-50` + bottom
   border, `min-h-11 lg:min-h-9`).
 - `FLAT_TABLE_ROW` — item/list row (`min-h-11 lg:min-h-8` + bottom border). Rows
@@ -72,9 +73,9 @@ gap / padding / column / hover / selected classes around them.
 
 ### Surfaces consuming the module
 
-White table surface (`FLAT_TABLE_SURFACE`): list-detail item table, gear-inventory
-table, share grouped-items table, lists-page row list (+`rounded-xl`), and the gear
-picker desktop aside + mobile drawer (+`rounded-xl`).
+White table surface (`FLAT_TABLE_SURFACE`, rounded corners included): list-detail item
+table, gear-inventory table, share grouped-items table, lists-page row list, and the
+gear picker desktop aside + mobile drawer. None compose their own radius.
 
 Header / row / control bases: list-detail + share + pack category headers
 (`CategoryGroup`), gear-inventory headers (`CategorySection`), gear-picker headers and
