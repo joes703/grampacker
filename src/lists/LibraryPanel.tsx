@@ -224,45 +224,45 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
           {items.map((item) => {
             const inList = listItemGearIds.has(item.id)
             return (
-              <div key={item.id} className="border-b border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => (inList ? onRemove(item) : onAdd(item))}
-                  title={inList ? 'Click to remove from list' : 'Click to add to list'}
-                  aria-label={inList ? `Remove ${item.name} from list` : `Add ${item.name} to list`}
-                  // Hover/focus background is uniform across in-list and
-                  // available rows; the in-list signal is carried entirely
-                  // by the dimmed name and weight text below. An earlier
-                  // pass added a soft-blue rest tint to in-list rows, but
-                  // toggling that bg class on click triggered a Chrome
-                  // compositor paint deferral (data flow correct, DOM
-                  // correct, but the parent rounded-xl + overflow-hidden
-                  // ancestor chain on the sidebar aside didn't invalidate
-                  // its layer until another event repainted). Dropping
-                  // the tint avoids the bug without browser-specific
-                  // paint hints; dimming alone is sufficient visual cue.
-                  className={`${FLAT_TABLE_ROW} w-full gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100`}
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => (inList ? onRemove(item) : onAdd(item))}
+                title={inList ? 'Click to remove from list' : 'Click to add to list'}
+                aria-label={inList ? `Remove ${item.name} from list` : `Add ${item.name} to list`}
+                // Hover/focus background is uniform across in-list and
+                // available rows; the in-list signal is carried entirely
+                // by the dimmed name and weight text below. An earlier
+                // pass added a soft-blue rest tint to in-list rows, but
+                // toggling that bg class on click triggered a Chrome
+                // compositor paint deferral (data flow correct, DOM
+                // correct, but the parent rounded table surface +
+                // overflow-hidden ancestor chain on the sidebar aside
+                // didn't invalidate its layer until another event
+                // repainted). Dropping the tint avoids the bug without
+                // browser-specific paint hints; dimming alone is
+                // sufficient visual cue.
+                className={`${FLAT_TABLE_ROW} w-full gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100`}
+              >
+                {/* Status badge — null-for-active means no leading
+                    whitespace on the common case; non-active rows pick
+                    up a subtle icon next to the name. */}
+                <GearStatusBadge status={item.status} compact className="shrink-0" />
+                <span
+                  className={`flex-1 min-w-0 truncate text-sm font-normal ${
+                    inList ? 'text-gray-400' : 'text-gray-900'
+                  }`}
                 >
-                  {/* Status badge — null-for-active means no leading
-                      whitespace on the common case; non-active rows pick
-                      up a subtle icon next to the name. */}
-                  <GearStatusBadge status={item.status} compact className="shrink-0" />
-                  <span
-                    className={`flex-1 min-w-0 truncate text-sm font-normal ${
-                      inList ? 'text-gray-400' : 'text-gray-900'
-                    }`}
-                  >
-                    {item.name}
-                  </span>
-                  <span
-                    className={`shrink-0 text-xs tabular-nums ${
-                      inList ? 'text-gray-300' : 'text-gray-500'
-                    }`}
-                  >
-                    {formatItemWeight(item.weight_grams, weightUnit)}
-                  </span>
-                </button>
-              </div>
+                  {item.name}
+                </span>
+                <span
+                  className={`shrink-0 text-xs tabular-nums ${
+                    inList ? 'text-gray-300' : 'text-gray-500'
+                  }`}
+                >
+                  {formatItemWeight(item.weight_grams, weightUnit)}
+                </span>
+              </button>
             )
           })}
         </div>
