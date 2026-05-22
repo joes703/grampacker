@@ -3,7 +3,13 @@ import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { groupByCategory } from '../lib/grouping'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
-import { FLAT_TABLE_HEADER, FLAT_TABLE_ROW, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import {
+  FLAT_TABLE_HEADER,
+  FLAT_TABLE_HEADER_COUNT,
+  FLAT_TABLE_HEADER_TITLE,
+  FLAT_TABLE_ROW,
+  ROW_CONTROL_TARGET,
+} from '../components/flat-table-styles'
 import GearStatusBadge from '../gear/GearStatusBadge'
 
 type Props = {
@@ -206,10 +212,10 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
             <ChevronDown size={13} />
           )}
         </button>
-        <span className="flex-1 truncate text-sm font-medium text-gray-700">
+        <span className={`flex-1 truncate ${FLAT_TABLE_HEADER_TITLE}`}>
           {name}
         </span>
-        <span className="shrink-0 text-xs tabular-nums text-gray-400">{items.length}</span>
+        <span className={`shrink-0 ${FLAT_TABLE_HEADER_COUNT}`}>{items.length}</span>
       </div>
 
       {/* Items — pure picker rows. Click toggles add/remove on the active list. */}

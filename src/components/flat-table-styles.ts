@@ -35,6 +35,14 @@ export const FLAT_TABLE_SURFACE = `overflow-hidden ${TABLE_RADIUS} ${TABLE_BORDE
 export const FLAT_TABLE_HEADER =
   `flex min-h-11 lg:min-h-9 items-center ${TABLE_HEADER_BG} border-b ${TABLE_DIVIDER}`
 
+// Header typography. Category names preserve user-entered capitalization;
+// only column labels use uppercase treatment.
+export const FLAT_TABLE_HEADER_TITLE = 'text-sm font-medium text-gray-700'
+export const FLAT_TABLE_HEADER_TITLE_MUTED = 'text-sm font-medium text-gray-400'
+export const FLAT_TABLE_HEADER_COUNT = 'text-xs font-normal tabular-nums text-gray-400'
+export const FLAT_TABLE_COLUMN_LABEL =
+  'text-[10px] font-semibold uppercase tracking-wider text-gray-500'
+
 // Item / list row: a table row, not a mini card. Touch 44px / pointer 32px.
 // The bottom border does the separation. Compose gap / padding / hover /
 // selected-tint / bg-white at the call site (rows differ: some are white,

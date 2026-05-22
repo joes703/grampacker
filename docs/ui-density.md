@@ -44,6 +44,10 @@ Desktop / pointer:
 ## Visual Grammar
 
 - Category headers are section dividers, not cards.
+- Category names preserve the user's capitalization and use normal header title
+  text (`text-sm font-medium text-gray-700`). Do not uppercase category names.
+- Counts use subdued tabular metadata text. True column labels (`Qty`, `Weight`,
+  `Price`, `Purchased`) use the tiny uppercase table-label treatment.
 - Item/list rows are table rows, not mini cards.
 - Use columns, icons, and content to express function instead of extra containers or gaps.
 - The gear picker is the reference for the flat row language: simple headers, simple rows, and borders doing the separation.
@@ -64,6 +68,9 @@ gap / padding / column / hover / selected classes around them.
   identically; a surface that must be square overrides `rounded-none` at the call site.
 - `FLAT_TABLE_HEADER` — section/category header divider strip (`bg-gray-50` + bottom
   border, `min-h-11 lg:min-h-9`).
+- `FLAT_TABLE_HEADER_TITLE`, `FLAT_TABLE_HEADER_TITLE_MUTED`,
+  `FLAT_TABLE_HEADER_COUNT`, and `FLAT_TABLE_COLUMN_LABEL` — shared header
+  typography so category rows do not drift in capitalization, weight, or size.
 - `FLAT_TABLE_ROW` — item/list row (`min-h-11 lg:min-h-8` + bottom border). Rows
   separated by a container `divide-y` must NOT use this (the per-row border-b would
   double up) — see the ListsPage row exception below.
