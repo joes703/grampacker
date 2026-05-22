@@ -1001,7 +1001,7 @@ function ListDetailInner({
             const activeItem =
               activeParsed?.kind === 'item' ? (listItemsById.get(activeParsed.id) ?? null) : null
             return (
-              <div className={FLAT_TABLE_SURFACE}>
+              <div className="flex flex-col gap-3">
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}

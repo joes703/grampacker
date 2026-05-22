@@ -17,6 +17,7 @@ import {
   FLAT_TABLE_HEADER,
   FLAT_TABLE_HEADER_COUNT,
   FLAT_TABLE_HEADER_TITLE,
+  FLAT_TABLE_SURFACE,
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 
@@ -95,10 +96,11 @@ function CategorySectionInner(
   const regionId = `gear-cat-region-${category?.id ?? 'uncategorized'}`
 
   return (
-    <div>
+    // Each category renders as its own flat-table card (FLAT_TABLE_SURFACE);
+    // GearLibraryPage composes the gaps between cards.
+    <div className={FLAT_TABLE_SURFACE}>
       {/* Category header — flat section divider (bg-gray-50 + bottom border),
-          matching the gear-picker reference grammar. No rounded card, no
-          section margin: consecutive sections read as one continuous table. */}
+          matching the gear-picker reference grammar. */}
       <div className={`${FLAT_TABLE_HEADER} gap-1 px-2 py-0.5`}>
         {/* Drag handle — only for real categories */}
         {!isUncategorized && dragHandleRef ? (

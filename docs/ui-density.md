@@ -43,7 +43,9 @@ Desktop / pointer:
 
 ## Visual Grammar
 
-- Category headers are section dividers, not cards.
+- Category headers are flat divider strips, not cards — but on the content views each
+  whole category is wrapped in its own flat-table card (see "Surfaces consuming the
+  module"). The header stays a `bg-gray-50` strip inside that card.
 - Category names preserve the user's capitalization and use normal header title
   text (`text-sm font-medium text-gray-700`). Do not uppercase category names.
 - Counts use subdued tabular metadata text. True column labels (`Qty`, `Weight`,
@@ -100,9 +102,18 @@ gap / padding / column / hover / selected classes around them.
 
 ### Surfaces consuming the module
 
-White table surface (`FLAT_TABLE_SURFACE`, rounded corners included): list-detail item
-table, gear-inventory table, share grouped-items table, lists-page row list, and the
-gear picker desktop aside + mobile drawer. None compose their own radius.
+White table surface (`FLAT_TABLE_SURFACE`, rounded corners included). Two layouts:
+
+- **Card per category** — list detail, gear inventory, and share wrap *each* category
+  (`CategoryGroup` / `CategorySection`) in its own surface card, and the page composes
+  the gaps with a `flex flex-col gap-3` column. This gives visible separation between
+  categories while every card stays consistent.
+- **Single continuous surface** — the lists-page row list and the gear picker (desktop
+  aside + mobile drawer) are one surface wrapping a flush list. The picker deliberately
+  does NOT use card-per-category: its categories live inside the aside/drawer surface,
+  so per-category cards would be nested cards (which we don't do).
+
+None compose their own radius.
 
 Header / row / control bases: list-detail + share + pack category headers
 (`CategoryGroup`), gear-inventory headers (`CategorySection`), gear-picker headers and
