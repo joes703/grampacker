@@ -205,7 +205,7 @@ function CategoryGroup({
           rhythm; lg:min-h-9 tightens to a denser pointer scan while still
           clearing the desktop chevron/controls. The chevron (authed) or the
           min-height alone (share view, no chevron) fills it. */}
-      <div className={`flex items-center rounded-lg py-0.5 bg-gray-100 mb-1 min-h-11 lg:min-h-9 ${
+      <div className={`flex items-center py-0.5 bg-gray-50 border-b border-gray-100 min-h-11 lg:min-h-9 ${
         packMode ? 'gap-0.5 lg:gap-1.5 px-2 lg:px-3' : 'gap-1.5 px-3'
       }`}>
         {collapsible ? (
@@ -294,7 +294,7 @@ function CategoryGroup({
 
       {/* Items + footer (footer is the row's "total" line, lined up under Weight) */}
       {!collapsed && (
-        <div id={regionId} className="pl-2">
+        <div id={regionId}>
           {sortable ? (
             // Per-category SortableContext — items reorder within their own
             // category only. Item ids registered here so each row's useSortable
@@ -315,14 +315,17 @@ function CategoryGroup({
           )}
 
           {/* Footer row — "+ Add new item" on the left at lg+, category
-              total on the right. The button is desktop-only: mobile uses
-              the top-bar "Add" + picker drawer flow and showing this row
-              there too would create two competing add affordances. A
-              spacer takes the flex-1 slot on mobile so the right-column
-              totals stay flush. Column stubs branch on viewport to keep
-              the total aligned under the Weight column. */}
+              total on the right. The whole row is hidden on mobile screens
+              (max-lg): it adds a per-section gap that breaks the flat table
+              rhythm, and the mobile UI already surfaces totals in the
+              top-bar summary. Kept for desktop (quick-add + subtotal) and
+              for print (print:flex), where the per-category total is part
+              of the paper checklist. The button stays desktop-only since
+              mobile uses the top-bar "Add" + picker drawer flow. Column
+              stubs branch on viewport to keep the total aligned under the
+              Weight column. */}
           {!packMode && !adding && (
-            <div className="flex items-center gap-1.5 px-3 py-0.5 text-sm">
+            <div className="hidden lg:flex print:flex items-center gap-1.5 px-3 py-0.5 text-sm">
               {onAddItem ? (
                 <button
                   onClick={() => setAdding(true)}

@@ -635,7 +635,7 @@ function ListRow({
   // Hover bg is the same gray-50 every other interactive row in the app
   // uses (gear, list-detail, picker).
   const rowClass =
-    'relative flex items-center gap-2 px-3 py-2 hover:bg-gray-50'
+    'relative flex min-h-11 lg:min-h-8 items-center gap-2 px-3 py-2 hover:bg-gray-50'
 
   // Renaming swaps the name link for an input. The kebab is hidden during
   // rename to keep the focused control unambiguous; Enter / Escape / blur
