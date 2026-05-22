@@ -190,7 +190,7 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
           Static label area below has no hover state so the chevron is the
           obvious affordance. The header strip's bg-gray-50 stays as a
           visual section divider; it just isn't clickable as a whole. */}
-      <div className="flex min-h-11 w-full items-center gap-1.5 px-3 py-0.5 bg-gray-50 border-b border-gray-100">
+      <div className="flex min-h-11 lg:min-h-9 w-full items-center gap-1.5 px-3 py-0.5 bg-gray-50 border-b border-gray-100">
         <button
           type="button"
           onClick={() => onToggle(toggleKey)}
@@ -234,7 +234,7 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                   // its layer until another event repainted). Dropping
                   // the tint avoids the bug without browser-specific
                   // paint hints; dimming alone is sufficient visual cue.
-                  className="flex min-h-11 w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
+                  className="flex min-h-11 lg:min-h-8 w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
                 >
                   {/* Status badge — null-for-active means no leading
                       whitespace on the common case; non-active rows pick
