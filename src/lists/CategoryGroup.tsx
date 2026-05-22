@@ -201,10 +201,11 @@ function CategoryGroup({
       {/* Header — also functions as the column header for Weight / Qty.
           In pack mode the header tightens on mobile so the Qty label stays
           aligned over the (newly tightened) pack-mode row's qty column.
-          min-h-11 (44px) matches the item rows so headers and rows share one
-          vertical rhythm across every surface; the chevron (authed) or the
+          min-h-11 (44px) on touch keeps headers and rows on one vertical
+          rhythm; lg:min-h-9 tightens to a denser pointer scan while still
+          clearing the desktop chevron/controls. The chevron (authed) or the
           min-height alone (share view, no chevron) fills it. */}
-      <div className={`flex items-center rounded-lg py-0.5 bg-gray-100 mb-1 min-h-11 ${
+      <div className={`flex items-center rounded-lg py-0.5 bg-gray-100 mb-1 min-h-11 lg:min-h-9 ${
         packMode ? 'gap-0.5 lg:gap-1.5 px-2 lg:px-3' : 'gap-1.5 px-3'
       }`}>
         {collapsible ? (
