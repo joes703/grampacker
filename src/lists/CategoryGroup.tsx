@@ -219,6 +219,10 @@ function CategoryGroup({
           min-height alone (share view, no chevron) fills it. */}
       <div className={`${FLAT_TABLE_HEADER} py-0.5 ${
         packMode ? 'gap-0.5 lg:gap-1.5 px-2 lg:px-3' : 'gap-1.5 px-3'
+      } ${
+        // Collapsed: the header is the card's only child, so its divider
+        // border-b would double with the card's bottom border. Drop it.
+        collapsed ? 'border-b-0' : ''
       }`}>
         {collapsible ? (
           // Chevron is the only interactive collapse target. Mobile mistaps
