@@ -12,6 +12,7 @@ import { makeDnDId } from '../lib/dnd-ids'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
+import { FLAT_TABLE_ROW } from '../components/flat-table-styles'
 import SwipeableRow from '../components/SwipeableRow'
 import WeightInput from '../components/WeightInput'
 import GearStatusBadge from '../gear/GearStatusBadge'
@@ -179,7 +180,7 @@ export default function ItemRow({
         // direct flex child (the label) so this gap is inert. Bumped
         // from gap-0.5 lg:gap-1.5 so the two checkboxes don't read as
         // a single cluster on touch.
-        className={`flex min-h-11 lg:min-h-8 items-center gap-2 lg:gap-2.5 border-b border-gray-100 px-2 lg:px-3 py-2 lg:py-0.5 text-sm transition-colors ${
+        className={`${FLAT_TABLE_ROW} gap-2 lg:gap-2.5 px-2 lg:px-3 py-2 lg:py-0.5 text-sm transition-colors ${
           // Calmer "done" treatment than a green tint — the gray background
           // pairs with the text-gray-400 line-through inside the label to
           // read as completed without celebrating. print:bg-transparent
@@ -304,7 +305,7 @@ export default function ItemRow({
       // stop scroll), while an immediate move scrolls the page and cancels the
       // pending drag via the tolerance constraint.
       {...rowDragListeners}
-      className={`group relative flex min-h-11 lg:min-h-8 items-center border-b border-gray-100 text-sm ${
+      className={`group relative ${FLAT_TABLE_ROW} text-sm ${
         mobileSwipe ? '' : 'gap-1.5 bg-white px-3 py-2 lg:py-0.5'
       }`}
     >

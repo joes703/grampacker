@@ -12,6 +12,7 @@ import { makeDnDId } from '../lib/dnd-ids'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
+import { FLAT_TABLE_ROW } from '../components/flat-table-styles'
 import GearStatusBadge from './GearStatusBadge'
 import GearStatusMenuItems from './GearStatusMenuItems'
 
@@ -64,7 +65,7 @@ export default function GearItemRow({
       // none here — the TouchSensor press-and-hold delay separates scroll from
       // drag, so the library can scroll the list until a hold activates a drag.
       {...rowDragListeners}
-      className={`group relative flex min-h-11 lg:min-h-8 items-center gap-1.5 border-b border-gray-100 bg-white px-3 py-2 lg:py-0.5 text-sm ${
+      className={`group relative ${FLAT_TABLE_ROW} gap-1.5 bg-white px-3 py-2 lg:py-0.5 text-sm ${
         selected ? 'bg-blue-50' : 'hover:bg-gray-50'
       }`}
     >

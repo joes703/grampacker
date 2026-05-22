@@ -10,6 +10,7 @@ import { useDocumentTitle } from '../lib/use-document-title'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
+import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import AboutLink from '../components/AboutLink'
 import OfflineBanner from '../components/OfflineBanner'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
@@ -160,7 +161,7 @@ export default function SharePage() {
             without this surface they blend into SharePage's gray page
             background. */}
         {items.length > 0 && (
-          <div className="overflow-hidden border border-gray-200 bg-white">
+          <div className={FLAT_TABLE_SURFACE}>
             {grouped.map((group) => (
               <CategoryGroup
                 key={group.category?.id ?? '__uncategorized__'}

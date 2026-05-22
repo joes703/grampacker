@@ -69,6 +69,7 @@ import {
 import { randomTempId } from '../lib/random-temp-id'
 import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
+import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import ListDocumentToolbar from './ListDocumentToolbar'
 import EmptyListCell from './EmptyListCell'
@@ -910,7 +911,7 @@ function ListDetailInner({
             className="hidden lg:flex w-80 shrink-0 flex-col sticky self-start print:hidden"
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
           >
-            <div className="flex flex-col rounded-xl border border-gray-200 bg-white overflow-hidden min-h-0 flex-1">
+            <div className={`flex flex-col rounded-xl min-h-0 flex-1 ${FLAT_TABLE_SURFACE}`}>
               {/* Quiet section header — labels the panel as the picker for
                   pulling existing gear into this list. The Gear destination
                   is reached via the primary nav (top bar + mobile bottom bar). */}
@@ -1000,7 +1001,7 @@ function ListDetailInner({
             const activeItem =
               activeParsed?.kind === 'item' ? (listItemsById.get(activeParsed.id) ?? null) : null
             return (
-              <div className="space-y-4">
+              <div className={FLAT_TABLE_SURFACE}>
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}

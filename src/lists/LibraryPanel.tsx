@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { groupByCategory } from '../lib/grouping'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
+import { FLAT_TABLE_HEADER, FLAT_TABLE_ROW, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import GearStatusBadge from '../gear/GearStatusBadge'
 
 type Props = {
@@ -190,14 +191,14 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
           Static label area below has no hover state so the chevron is the
           obvious affordance. The header strip's bg-gray-50 stays as a
           visual section divider; it just isn't clickable as a whole. */}
-      <div className="flex min-h-11 lg:min-h-9 w-full items-center gap-1.5 px-3 py-0.5 bg-gray-50 border-b border-gray-100">
+      <div className={`${FLAT_TABLE_HEADER} w-full gap-1.5 px-3 py-0.5`}>
         <button
           type="button"
           onClick={() => onToggle(toggleKey)}
           aria-expanded={!collapsed}
           aria-controls={regionId}
           aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
-          className="inline-flex h-10 w-10 lg:h-7 lg:w-7 items-center justify-center rounded text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0"
+          className={`${ROW_CONTROL_TARGET} text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0`}
         >
           {collapsed ? (
             <ChevronRight size={13} />
@@ -234,7 +235,7 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                   // its layer until another event repainted). Dropping
                   // the tint avoids the bug without browser-specific
                   // paint hints; dimming alone is sufficient visual cue.
-                  className="flex min-h-11 lg:min-h-8 w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
+                  className={`${FLAT_TABLE_ROW} w-full gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100`}
                 >
                   {/* Status badge — null-for-active means no leading
                       whitespace on the common case; non-active rows pick
