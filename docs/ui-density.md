@@ -53,6 +53,20 @@ Desktop / pointer:
 - The gear picker is the reference for the flat row language: simple headers, simple rows, and borders doing the separation.
 - List detail, pack mode, gear inventory, lists, and share views may have different columns, but should not introduce a different row/card visual system without a deliberate reason.
 
+## Row Menus
+
+Row and category kebab menus use `RowMenuItem` / `RowMenuSeparator` from
+`src/components/RowMenuItem.tsx`.
+
+- Neutral actions are gray.
+- Reversible membership actions use the `removal` tone: calm red text with a neutral
+  hover surface.
+- Destructive actions use the `danger` tone: red text and a red hover surface, usually
+  followed by a confirm dialog.
+
+Do not create a local `MenuItem` helper in row/list/category files unless the menu has a
+different interaction model.
+
 ## Shared Style Module
 
 The cross-surface invariants live in `src/components/flat-table-styles.ts` so a

@@ -12,6 +12,7 @@ import { makeDnDId } from '../lib/dnd-ids'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
+import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
 import { FLAT_TABLE_ROW } from '../components/flat-table-styles'
 import GearStatusBadge from './GearStatusBadge'
@@ -252,10 +253,10 @@ function GearRowKebab({
           className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
           style={{ top: menuPos.top, left: menuPos.left }}
         >
-          <MenuItem icon={<Pencil size={13} />} onClick={() => { close(); onEdit() }}>
+          <RowMenuItem icon={<Pencil size={13} />} onClick={() => { close(); onEdit() }}>
             Edit
-          </MenuItem>
-          <div className="my-1 border-t border-gray-100" />
+          </RowMenuItem>
+          <RowMenuSeparator />
           {/* Quick status — fast path that bypasses the full edit modal.
               Selecting the current status is a no-op inside the menu
               component; selecting a different status fires onSetStatus and
@@ -264,44 +265,18 @@ function GearRowKebab({
             current={status}
             onSelect={(s) => { close(); onSetStatus(s) }}
           />
-          <div className="my-1 border-t border-gray-100" />
-          <MenuItem
+          <RowMenuSeparator />
+          <RowMenuItem
             icon={<Trash2 size={13} />}
             onClick={() => { close(); onDelete() }}
-            danger
+            tone="danger"
           >
             Delete from inventory
-          </MenuItem>
+          </RowMenuItem>
         </div>,
         document.body,
       )}
     </>
-  )
-}
-
-
-function MenuItem({
-  icon,
-  children,
-  onClick,
-  danger,
-}: {
-  icon: React.ReactNode
-  children: React.ReactNode
-  onClick: () => void
-  danger?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
-        danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-100'
-      }`}
-    >
-      {icon}
-      <span className="truncate">{children}</span>
-    </button>
   )
 }
 

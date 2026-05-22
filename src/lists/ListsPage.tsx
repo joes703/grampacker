@@ -55,6 +55,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import { FLAT_TABLE_SURFACE, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
 import ListsEmptyState from './ListsEmptyState'
 import PrivacyPanel from './PrivacyPanel'
@@ -710,25 +711,25 @@ function ListRow({
           className="fixed z-50 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
           style={{ top: menuPos.top, left: menuPos.left }}
         >
-          <MenuItem
+          <RowMenuItem
             icon={<Pencil size={13} />}
             onClick={() => { close(); onStartRename() }}
           >
             Rename
-          </MenuItem>
-          <MenuItem icon={<Globe size={13} />} onClick={() => { close(); onShare() }}>
+          </RowMenuItem>
+          <RowMenuItem icon={<Globe size={13} />} onClick={() => { close(); onShare() }}>
             Share…
-          </MenuItem>
-          <MenuItem icon={<Download size={13} />} onClick={() => { close(); onExport() }}>
+          </RowMenuItem>
+          <RowMenuItem icon={<Download size={13} />} onClick={() => { close(); onExport() }}>
             Export CSV
-          </MenuItem>
-          <MenuItem icon={<CopyPlus size={13} />} onClick={() => { close(); onDuplicate() }}>
+          </RowMenuItem>
+          <RowMenuItem icon={<CopyPlus size={13} />} onClick={() => { close(); onDuplicate() }}>
             Duplicate
-          </MenuItem>
-          <div className="my-1 border-t border-gray-100" />
-          <MenuItem icon={<Trash2 size={13} />} onClick={() => { close(); onDelete() }} danger>
+          </RowMenuItem>
+          <RowMenuSeparator />
+          <RowMenuItem icon={<Trash2 size={13} />} onClick={() => { close(); onDelete() }} tone="danger">
             Delete
-          </MenuItem>
+          </RowMenuItem>
         </div>,
         document.body,
       )}
@@ -772,30 +773,4 @@ function formatRelativeDate(iso: string, now: number): string {
     return `${d} day${d === 1 ? '' : 's'} ago`
   }
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function MenuItem({
-  icon,
-  children,
-  onClick,
-  danger,
-}: {
-  icon: React.ReactNode
-  children: React.ReactNode
-  onClick: () => void
-  danger?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
-        danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-100'
-      }`}
-    >
-      {icon}
-      <span className="truncate">{children}</span>
-    </button>
-  )
 }

@@ -11,6 +11,7 @@ import { makeDnDId } from '../lib/dnd-ids'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import { SortableGearItemRow } from './GearItemRow'
 import RowIconButton from '../components/RowIconButton'
+import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import {
   FLAT_TABLE_COLUMN_LABEL,
   FLAT_TABLE_HEADER,
@@ -290,45 +291,21 @@ function CategoryKebab({
       {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
           ref={menuRef}
+          role="menu"
           className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
           style={{ top: menuPos.top, left: menuPos.left }}
         >
-          <MenuItem icon={<Pencil size={13} />} onClick={() => { close(); onRename() }}>
+          <RowMenuItem icon={<Pencil size={13} />} onClick={() => { close(); onRename() }}>
             Rename
-          </MenuItem>
-          <div className="my-1 border-t border-gray-100" />
-          <MenuItem icon={<Trash2 size={13} />} onClick={() => { close(); onDelete() }} danger>
+          </RowMenuItem>
+          <RowMenuSeparator />
+          <RowMenuItem icon={<Trash2 size={13} />} onClick={() => { close(); onDelete() }} tone="danger">
             Delete category
-          </MenuItem>
+          </RowMenuItem>
         </div>,
         document.body,
       )}
     </>
-  )
-}
-
-function MenuItem({
-  icon,
-  children,
-  onClick,
-  danger,
-}: {
-  icon: React.ReactNode
-  children: React.ReactNode
-  onClick: () => void
-  danger?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
-        danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-100'
-      }`}
-    >
-      {icon}
-      <span className="truncate">{children}</span>
-    </button>
   )
 }
 
