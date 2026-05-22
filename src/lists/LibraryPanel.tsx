@@ -234,7 +234,7 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                   // its layer until another event repainted). Dropping
                   // the tint avoids the bug without browser-specific
                   // paint hints; dimming alone is sufficient visual cue.
-                  className="flex w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
+                  className="flex min-h-11 w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
                 >
                   {/* Status badge — null-for-active means no leading
                       whitespace on the common case; non-active rows pick
