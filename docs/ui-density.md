@@ -56,7 +56,7 @@ density or grammar change happens in one place instead of drifting across one-of
 Tailwind strings. The exports are *base fragments*: each call site composes its own
 gap / padding / column / hover / selected classes around them.
 
-- `FLAT_TABLE_SURFACE` — white table shell (`overflow-hidden rounded-xl border
+- `FLAT_TABLE_SURFACE` — white table shell (`overflow-hidden rounded-lg border
   border-gray-200 bg-white`). The app background is gray-50 and section headers are
   gray-50, so a flat table needs a white surface or its headers vanish into the page. A
   table/list shell, not a decorative card: rounded corners + a hairline border, no
