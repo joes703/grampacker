@@ -155,8 +155,9 @@ export default function SharePage() {
           )}
         </div>
 
-        {/* Items grouped by category */}
-        <div className="space-y-4">
+        {/* Items grouped by category — sections stacked flush (flat table
+            grammar); each category header carries its own divider border. */}
+        <div>
           {grouped.map((group) => (
             <CategoryGroup
               key={group.category?.id ?? '__uncategorized__'}

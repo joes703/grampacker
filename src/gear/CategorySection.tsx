@@ -87,9 +87,11 @@ function CategorySectionInner(
   const regionId = `gear-cat-region-${category?.id ?? 'uncategorized'}`
 
   return (
-    <div className="mb-2">
-      {/* Category header */}
-      <div className="flex min-h-11 lg:min-h-9 items-center gap-1 rounded-lg px-2 py-0.5 bg-gray-100">
+    <div>
+      {/* Category header — flat section divider (bg-gray-50 + bottom border),
+          matching the gear-picker reference grammar. No rounded card, no
+          section margin: consecutive sections read as one continuous table. */}
+      <div className="flex min-h-11 lg:min-h-9 items-center gap-1 px-2 py-0.5 bg-gray-50 border-b border-gray-100">
         {/* Drag handle — only for real categories */}
         {!isUncategorized && dragHandleRef ? (
           <RowIconButton
@@ -224,7 +226,7 @@ function CategorySectionInner(
 
       {/* Items */}
       {!collapsed && (
-        <div id={regionId} className="mt-1 pl-2">
+        <div id={regionId}>
           {items.length === 0 ? (
             <p className="py-2 px-3 text-sm text-gray-400 italic">No items</p>
           ) : (
