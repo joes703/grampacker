@@ -12,6 +12,7 @@ import { makeDnDId } from '../lib/dnd-ids'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
+import SwipeableRow from '../components/SwipeableRow'
 import { FLAT_TABLE_ROW } from '../components/flat-table-styles'
 import GearStatusBadge from './GearStatusBadge'
 import GearStatusMenuItems from './GearStatusMenuItems'
@@ -57,6 +58,27 @@ export default function GearItemRow({
   outerRef,
   outerStyle,
 }: Props) {
+  const mobileSwipe = isBelowLg && !selectMode
+
+  const mobileBody = (
+    <div className="flex flex-1 items-center gap-2">
+      <button
+        type="button"
+        onClick={selectMode ? onToggleSelect : onEdit}
+        aria-label={selectMode ? (selected ? 'Deselect item' : 'Select item') : 'Edit item'}
+        className="flex flex-1 min-w-0 items-center gap-2 text-left"
+      >
+        {/* GearStatusBadge returns null for 'active' — non-active rows
+            pick up a small leading icon, active rows take no space. */}
+        <GearStatusBadge status={item.status} compact className="shrink-0 print:hidden" />
+        <span className="flex-1 min-w-0 truncate font-normal text-gray-900">{item.name}</span>
+        <span className="shrink-0 w-20 text-right tabular-nums text-gray-600">
+          {formatItemWeight(item.weight_grams, weightUnit)}
+        </span>
+      </button>
+    </div>
+  )
+
   return (
     <div
       ref={outerRef}
@@ -65,7 +87,9 @@ export default function GearItemRow({
       // none here — the TouchSensor press-and-hold delay separates scroll from
       // drag, so the library can scroll the list until a hold activates a drag.
       {...rowDragListeners}
-      className={`group relative ${FLAT_TABLE_ROW} gap-1.5 bg-white px-3 py-2 lg:py-0.5 text-sm ${
+      className={`group relative ${FLAT_TABLE_ROW} text-sm ${
+        mobileSwipe ? '' : 'gap-1.5 bg-white px-3 py-2 lg:py-0.5'
+      } ${
         selected ? 'bg-blue-50' : 'hover:bg-gray-50'
       }`}
     >
@@ -86,23 +110,26 @@ export default function GearItemRow({
            tap toggles selection in select mode, otherwise opens the edit
            dialog. The leading checkbox (rendered above when selectMode is
            on) is a sibling of the button, so a checkbox tap only fires
-           its own onChange — no double-toggle. */
-        <div className="flex flex-1 items-center gap-2">
-          <button
-            type="button"
-            onClick={selectMode ? onToggleSelect : onEdit}
-            aria-label={selectMode ? (selected ? 'Deselect item' : 'Select item') : 'Edit item'}
-            className="flex flex-1 min-w-0 items-center gap-2 text-left"
+           its own onChange — no double-toggle. In normal mode, a left
+           swipe reveals Delete from inventory and hands off to the same
+           confirm dialog as the kebab/edit-dialog delete path. */
+        mobileSwipe ? (
+          <SwipeableRow
+            onAction={onDelete}
+            label="Delete from inventory"
+            icon={<Trash2 size={22} />}
+            actionClassName="bg-red-600 text-white"
+            actionArmedClassName="bg-red-600 text-white"
           >
-            {/* GearStatusBadge returns null for 'active' — non-active rows
-                pick up a small leading icon, active rows take no space. */}
-            <GearStatusBadge status={item.status} compact className="shrink-0 print:hidden" />
-            <span className="flex-1 min-w-0 truncate font-normal text-gray-900">{item.name}</span>
-            <span className="shrink-0 w-20 text-right tabular-nums text-gray-600">
-              {formatItemWeight(item.weight_grams, weightUnit)}
-            </span>
-          </button>
-        </div>
+            <div className="flex flex-1 items-center gap-1.5 px-3 py-2">
+              {mobileBody}
+            </div>
+          </SwipeableRow>
+        ) : (
+          <div className="flex flex-1 items-center gap-1.5">
+            {mobileBody}
+          </div>
+        )
       ) : (
         /* Desktop branch (≥ lg) — name + description (2:3 cols), weight,
            and a kebab menu for Edit / Delete actions. The kebab pattern
