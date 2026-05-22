@@ -92,10 +92,11 @@ gap / padding / column / hover / selected classes around them.
   lg:w-7`). Distinct from `RowIconButton`, the compact desktop-only inline icon button
   (28x24) that never renders on mobile and so needs no touch box.
 - Shared chrome tokens (`TABLE_RADIUS`, `TABLE_BORDER`, `TABLE_SURFACE_BG`,
-  `TABLE_HEADER_BG`, `TABLE_DIVIDER`, `TABLE_STRONG_DIVIDER`) are used by flat tables,
-  list-detail panels, settings sections, `PanelCard`, and compact detail tables so
-  border/radius/tint changes flow through without forcing every table to share the same
-  row density.
+  `TABLE_HEADER_BG`, `TABLE_DIVIDER`, `TABLE_STRONG_DIVIDER`, and `TABLE_DIVIDER_LINE` —
+  the `divide-*` color sibling of `TABLE_DIVIDER` for `divide-y` row groups) are used by
+  flat tables, list-detail panels, settings sections, `PanelCard`, and compact detail
+  tables so border/radius/tint changes flow through without forcing every table to share
+  the same row density.
 
 ### Surfaces consuming the module
 
@@ -115,7 +116,9 @@ chevrons / lists-page kebab + drag handle.
   `border-b` would double the line. Documented at the call site.
 - **WeightTable rows** are a compact density exception (`text-xs` with very tight
   padding). They should not use `FLAT_TABLE_ROW`, but their surrounding summary surfaces
-  and divider colors should use the shared table chrome tokens.
+  and divider colors use the shared table chrome tokens: row groups separate with
+  `divide-y ${TABLE_DIVIDER_LINE}` and the total rules use `TABLE_STRONG_DIVIDER`, so the
+  table carries no one-off divider tints.
 - **Popover menus, `PanelCard`, and the weight/progress stat panels** also use
   `border border-gray-200 bg-white` but are not flat row tables (floating menus, titled
   cards, stat grids), so they do not consume `FLAT_TABLE_SURFACE`.
