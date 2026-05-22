@@ -52,7 +52,7 @@ export const FLAT_TABLE_HEADER_TITLE = 'text-sm font-medium text-gray-700'
 export const FLAT_TABLE_HEADER_TITLE_MUTED = 'text-sm font-medium text-gray-400'
 export const FLAT_TABLE_HEADER_COUNT = 'text-xs font-normal tabular-nums text-gray-400'
 export const FLAT_TABLE_EYEBROW =
-  'text-[10px] font-semibold uppercase tracking-wider text-gray-500'
+  'text-xs font-semibold uppercase tracking-wider text-gray-500'
 
 // Item / list row: a table row, not a mini card. Touch 44px / pointer 32px.
 // The bottom border does the separation. Compose gap / padding / hover /
