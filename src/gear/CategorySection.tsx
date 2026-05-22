@@ -101,7 +101,11 @@ function CategorySectionInner(
     <div className={FLAT_TABLE_SURFACE}>
       {/* Category header — flat section divider (bg-gray-50 + bottom border),
           matching the gear-picker reference grammar. */}
-      <div className={`${FLAT_TABLE_HEADER} gap-1 px-2 py-0.5`}>
+      <div className={`${FLAT_TABLE_HEADER} gap-1 px-2 py-0.5 ${
+        // Collapsed: header is the card's only child, so its divider border
+        // would double with the card's bottom border. Drop it.
+        collapsed ? 'border-b-0' : ''
+      }`}>
         {/* Drag handle — only for real categories */}
         {!isUncategorized && dragHandleRef ? (
           <RowIconButton
