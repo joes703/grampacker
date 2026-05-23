@@ -133,3 +133,28 @@ export const MARKDOWN_COMPACT_BODY_TEXT = 'text-sm'
 // h1 stays inline at the call site (text-base) because it's the only
 // site at that size and doesn't repeat.
 export const MARKDOWN_COMPACT_HEADING_TEXT = 'text-sm font-semibold'
+
+// ---------------------------------------------------------------------------
+// Panel control typography tokens
+// ---------------------------------------------------------------------------
+// Settings/control panel surfaces are conceptually distinct from flat row
+// surfaces (the row tokens above target list-detail / gear / picker / share
+// row chrome). The two tokens here cover the repeated patterns that live
+// inside panel-shaped surfaces (PrivacyPanel, ListSettingsPanel,
+// PackingProgress, NotesEditor, SharePage's notes block).
+
+// Panel toggle label. The text label sitting next to a ToggleSwitch inside
+// a control panel. Canonical color is text-gray-900 so active setting/
+// control labels read as primary panel content; helper/descriptive copy
+// next to them stays lighter. Earlier `PackingProgress` carried gray-700
+// for the same role; that drift is intentionally resolved to gray-900 here.
+export const PANEL_TOGGLE_LABEL = 'text-sm font-medium text-gray-900'
+
+// Panel empty-state placeholder. "No notes" / similar empty content shown
+// inside a notes-style panel surface (NotesEditor read state, SharePage
+// notes block). Italic + light gray so the placeholder reads as absent
+// content rather than active text. Distinct from row empty states
+// ("No items" in a category) which use FLAT_TABLE_BODY_TEXT + the row
+// surface's italic + color: the row pattern is one site (CategorySection)
+// and stays composed inline.
+export const PANEL_EMPTY_TEXT = 'text-sm italic text-gray-400'

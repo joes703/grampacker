@@ -2,7 +2,12 @@ import { useState } from 'react'
 import { RotateCcw, WifiOff } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToggleSwitch from '../components/ToggleSwitch'
-import { TABLE_BORDER, TABLE_RADIUS, TABLE_SURFACE_BG } from '../components/flat-table-styles'
+import {
+  PANEL_TOGGLE_LABEL,
+  TABLE_BORDER,
+  TABLE_RADIUS,
+  TABLE_SURFACE_BG,
+} from '../components/flat-table-styles'
 
 type Props = {
   total: number
@@ -125,13 +130,16 @@ export default function PackingProgress({
 
       {/* Show unpacked only: the active packing view filter. Local
           view state, stays here under the progress bars where the user
-          sees its effect. Compact label-left / switch-right row,
-          quieted to text-gray-700 so the progress counts above stay
-          the eye-anchor. The Ready checks toggle moved to List options
-          (ListSettingsPanel's Pack mode section) since it's a persisted
-          list setting, not a transient filter. */}
+          sees its effect. Compact label-left / switch-right row using
+          the shared PANEL_TOGGLE_LABEL token so this label reads at
+          the same primary-content weight as the Group worn / Ready
+          checks / Sharing toggles in List options (one canonical
+          control-label appearance instead of per-site gray-700 vs
+          gray-900 drift). The Ready checks toggle moved to List
+          options (ListSettingsPanel's Pack mode section) since it's a
+          persisted list setting, not a transient filter. */}
       <div className="mt-4 flex items-center gap-3 print:hidden">
-        <span className="text-sm font-medium text-gray-700">Show unpacked only</span>
+        <span className={PANEL_TOGGLE_LABEL}>Show unpacked only</span>
         <ToggleSwitch
           checked={showUnpackedOnly}
           onChange={onToggleShowUnpackedOnly}

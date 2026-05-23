@@ -4,6 +4,7 @@ import { Check, Copy } from 'lucide-react'
 import type { List } from '../lib/types'
 import { queryKeys, updateList, makeOptimisticUpdate } from '../lib/queries'
 import ToggleSwitch from '../components/ToggleSwitch'
+import { PANEL_TOGGLE_LABEL } from '../components/flat-table-styles'
 
 type Props = { list: List }
 
@@ -35,7 +36,7 @@ export default function PrivacyPanel({ list }: Props) {
   return (
     <>
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-900">Sharing</span>
+        <span className={PANEL_TOGGLE_LABEL}>Sharing</span>
         <ToggleSwitch
           checked={list.is_shared}
           onChange={() => toggleMut.mutate()}

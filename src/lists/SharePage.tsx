@@ -13,6 +13,7 @@ import CategoryGroup from './CategoryGroup'
 import AboutLink from '../components/AboutLink'
 import OfflineBanner from '../components/OfflineBanner'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
+import { PANEL_EMPTY_TEXT } from '../components/flat-table-styles'
 
 // Notes are rendered as Markdown on the public share view (typing markdown
 // in the authed NotesEditor textarea is the only authoring path). Lazy so
@@ -145,7 +146,7 @@ export default function SharePage() {
                 </Suspense>
               </div>
             ) : (
-              <p className="px-3 py-2 text-sm text-gray-400 italic min-h-[8rem]">No notes</p>
+              <p className={`px-3 py-2 min-h-[8rem] ${PANEL_EMPTY_TEXT}`}>No notes</p>
             )}
           </PanelCard>
           {items.length > 0 && (

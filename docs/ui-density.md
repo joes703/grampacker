@@ -146,6 +146,19 @@ same `text-sm`/`text-xs`); the tokens exist to make a future tuning pass cheap.
 - `MARKDOWN_COMPACT_HEADING_TEXT` — markdown notes heading typography (`h2`, `h3` inside
   `MarkdownContent`). The `h1` element stays inline at the call site (`text-base`)
   because it's the only site at that size and doesn't repeat.
+- `PANEL_TOGGLE_LABEL` — text label sitting next to a `ToggleSwitch` inside a control
+  panel (`PrivacyPanel` "Sharing", `ListSettingsPanel` "Group worn items" and "Ready
+  checks (pack mode)", `PackingProgress` "Show unpacked only"). Canonical color is
+  `text-gray-900` so active setting/control labels read as primary panel content; helper
+  or descriptive copy next to them stays lighter. An earlier `PackingProgress` site
+  carried `text-gray-700` for the same role; that drift is intentionally resolved to
+  `text-gray-900` by this token.
+- `PANEL_EMPTY_TEXT` — empty-state placeholder ("No notes") shown inside notes-style
+  panel surfaces (`NotesEditor` read state, `SharePage` notes block). Italic plus
+  `text-gray-400` so the placeholder reads as absent content rather than active text.
+  Distinct from row empty states ("No items" in a category), which use
+  `FLAT_TABLE_BODY_TEXT` + the row surface's italic + color — that pattern is one site
+  (`CategorySection`) and stays composed inline.
 
 Out of scope (intentional): modal titles, primary CTAs, auth pages, button toolbars,
 form fields, and other surfaces that are not row/table/panel chrome. Strings used only
