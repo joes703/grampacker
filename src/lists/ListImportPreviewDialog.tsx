@@ -3,6 +3,7 @@ import type { ListImportRow } from '../lib/csv'
 import { formatItemWeight } from '../lib/weight'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
+import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 
 type Props = {
   rows: ListImportRow[]
@@ -34,7 +35,7 @@ export default function ListImportPreviewDialog({ rows, saving, onConfirm, onClo
             {consumCount > 0 && ` ${consumCount} consumable.`}
           </p>
         </div>
-        <button type="button" onClick={onClose} className="ml-4 text-gray-400 hover:text-gray-600">
+        <button type="button" onClick={onClose} aria-label="Close" className={`${ROW_CONTROL_TARGET} ml-4 text-gray-400 hover:text-gray-600`}>
           <X size={18} />
         </button>
       </div>

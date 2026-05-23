@@ -3,6 +3,7 @@ import type { GearCsvRow } from '../lib/csv'
 import { formatItemWeight } from '../lib/weight'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
+import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 
 type Props = {
   rows: GearCsvRow[]
@@ -24,7 +25,7 @@ export default function GearImportPreviewDialog({ rows, saving, onConfirm, onClo
         <h2 className="text-base font-semibold text-gray-900">
           Import {rows.length} item{rows.length !== 1 ? 's' : ''}
         </h2>
-        <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
+        <button type="button" onClick={onClose} aria-label="Close" className={`${ROW_CONTROL_TARGET} text-gray-400 hover:text-gray-600`}>
           <X size={18} />
         </button>
       </div>

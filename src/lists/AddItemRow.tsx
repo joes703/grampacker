@@ -54,7 +54,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
   return (
     <div
       onBlur={handleRowBlur}
-      className="flex items-center gap-1.5 border-b border-gray-100 bg-blue-50/40 px-3 py-0.5 text-sm"
+      className="flex min-h-11 lg:min-h-8 items-center gap-1.5 border-b border-gray-100 bg-blue-50/40 px-3 py-0.5 text-sm"
     >
       <div className="flex-1 min-w-0 flex items-center gap-3">
         <label className="flex-[2] min-w-0">
