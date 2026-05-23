@@ -35,7 +35,7 @@ export default function PrivacyPanel({ list }: Props) {
   return (
     <>
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-900">Public link</span>
+        <span className="text-sm font-medium text-gray-900">Sharing</span>
         <ToggleSwitch
           checked={list.is_shared}
           onChange={() => toggleMut.mutate()}

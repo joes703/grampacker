@@ -27,25 +27,20 @@ import { useRequireSession } from '../auth/use-require-session'
 import {
   queryKeys,
   fetchLists,
-  fetchListItems,
   fetchGearItems,
   fetchCategories,
   createList,
-  updateList,
-  deleteList,
-  duplicateList,
   reorderLists,
   importCsvRowsToList,
   makeOptimisticReorder,
   makeOptimisticInsert,
-  makeOptimisticUpdate,
-  makeOptimisticDelete,
 } from '../lib/queries'
+import { useCurrentListActions } from './use-current-list-actions'
 import { assignSortOrderSlots } from '../lib/grouping'
 import { asButtonRef } from '../lib/dnd'
 import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
 import type { List } from '../lib/types'
-import { parseListCsv, listItemsToCsv, downloadCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
+import { parseListCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useNow } from '../lib/use-now'
@@ -137,36 +132,12 @@ export default function ListsPage() {
     },
   })
 
-  const renameMut = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => updateList(id, { name }),
-    ...makeOptimisticUpdate<List, { id: string; name: string }>({
-      qc,
-      queryKey: queryKeys.lists(),
-      id: ({ id }) => id,
-      apply: (item, { name }) => ({
-        ...item,
-        name,
-        updated_at: new Date().toISOString(),
-      }),
-    }),
-  })
-
-  const duplicateMut = useMutation({
-    mutationFn: (target: List) => duplicateList(target, userId, lists.length),
-    onSuccess: (created) => {
-      qc.invalidateQueries({ queryKey: queryKeys.lists() })
-      navigate(`/lists/${created.id}`)
-    },
-  })
-
-  const deleteListMut = useMutation({
-    mutationFn: deleteList,
-    ...makeOptimisticDelete<List, string>({
-      qc,
-      queryKey: queryKeys.lists(),
-      id: (id) => id,
-    }),
-  })
+  // Current-list lifecycle actions (rename / duplicate / delete /
+  // exportCsv). Shared with ListSettingsPanel via useCurrentListActions
+  // so both surfaces invoke the same handlers - one canonical code
+  // path, multiple entry points (card kebab here, List options
+  // popover/modal there).
+  const { renameMut, duplicateMut, deleteListMut, exportCsv } = useCurrentListActions(userId)
 
   const reorderListsMut = useMutation({
     mutationFn: reorderLists,
@@ -231,14 +202,6 @@ export default function ListsPage() {
     },
   })
 
-  async function handleExport(list: List) {
-    const items = await qc.fetchQuery({
-      queryKey: queryKeys.listItems(list.id),
-      queryFn: () => fetchListItems(list.id, userId),
-    })
-    const csv = listItemsToCsv(items, categories)
-    downloadCsv(`${list.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`, csv)
-  }
 
   // Bail out cleanly if the session went null mid-render (logout). Hooks
   // above already ran, so this is safe.
@@ -330,7 +293,7 @@ export default function ListsPage() {
             setDialog(null)
           },
           onCancelRename: () => setDialog(null),
-          onExport: () => handleExport(list),
+          onExport: () => exportCsv(list),
           onDuplicate: () => duplicateMut.mutate(list),
           onShare: () => setDialog({ type: 'share-list', list }),
           onDelete: () => setDialog({ type: 'confirm-delete', list }),
