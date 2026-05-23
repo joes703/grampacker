@@ -20,13 +20,27 @@ type RowMenuItemProps = {
   children: ReactNode
   onClick: () => void
   tone?: RowMenuTone
+  /** Set false when the surrounding container is NOT an ARIA menu
+   *  (e.g. a settings/options panel that mixes buttons and inputs).
+   *  Default true keeps the kebab popovers' menu semantics intact;
+   *  setting false drops the role="menuitem" attribute so the button
+   *  reads as a plain button to assistive tech. This avoids invalid
+   *  ARIA when the container can hold non-menuitem children (a text
+   *  input for inline rename, etc.). */
+  inMenu?: boolean
 }
 
-export function RowMenuItem({ icon, children, onClick, tone = 'neutral' }: RowMenuItemProps) {
+export function RowMenuItem({
+  icon,
+  children,
+  onClick,
+  tone = 'neutral',
+  inMenu = true,
+}: RowMenuItemProps) {
   return (
     <button
       type="button"
-      role="menuitem"
+      role={inMenu ? 'menuitem' : undefined}
       onClick={onClick}
       className={`${ROW_MENU_ITEM_BASE} ${ROW_MENU_TONE_CLASS[tone]}`}
     >
