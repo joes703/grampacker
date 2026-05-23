@@ -189,10 +189,11 @@ each call site uses the correct component:
   travel together. The full-width `justify-between` pattern is only acceptable when the
   container itself is already narrow (a popover, a modal, or a settings list column).
 
-- **`UnitSegmentedControl` is a compact value selector**, not a large toggle pill. Outer
-  `rounded-md` with a small `p-0.5`, inner segments `rounded-sm` with `px-2 py-0.5`. If
-  it starts looking like a button group with chunky radius, it'll compete visually with
-  PillToggle and switches — keep it visibly smaller and flatter than either.
+- **`UnitSegmentedControl` is a compact value selector**, not a mode toggle. It should
+  be readable and touchable (`text-sm`, modest padding, equal-width segments), but flatter
+  than action buttons and Pack's PillToggle (`rounded-md` shell, small inner radius). If
+  it starts looking like a chunky pill button, it'll compete visually with Pack; if it
+  shrinks to tiny text, it stops feeling like a real control.
 
 - **`PillToggle` is reserved for page/list mode buttons**, currently Pack only. It's
   intentionally chunkier than `UnitSegmentedControl` because it represents "the whole
