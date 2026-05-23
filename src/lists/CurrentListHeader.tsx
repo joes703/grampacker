@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Pencil } from 'lucide-react'
 import type { List } from '../lib/types'
-import { queryKeys, updateList, makeOptimisticUpdate } from '../lib/queries'
+import { useRequireSession } from '../auth/use-require-session'
 import InlineTitle from './InlineTitle'
+import { useCurrentListActions } from './use-current-list-actions'
 
 type Props = {
   list: List
@@ -16,22 +16,13 @@ type Props = {
 // List switching does NOT happen here — that's owned by the Lists page and
 // the Lists nav destination. This header only identifies the current list
 // and exposes rename via the pencil affordance. Click anywhere else on the
-// component is inert by design.
+// component is inert by design. The rename mutation comes from the shared
+// useCurrentListActions hook so the /lists card kebab, the in-list List
+// options panel, and this pencil all route through the same handler.
 export default function CurrentListHeader({ list }: Props) {
-  const qc = useQueryClient()
-  const renameMut = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => updateList(id, { name }),
-    ...makeOptimisticUpdate<List, { id: string; name: string }>({
-      qc,
-      queryKey: queryKeys.lists(),
-      id: ({ id }) => id,
-      apply: (item, { name }) => ({
-        ...item,
-        name,
-        updated_at: new Date().toISOString(),
-      }),
-    }),
-  })
+  const auth = useRequireSession()
+  const userId = auth?.userId ?? ''
+  const { renameMut } = useCurrentListActions(userId)
   const [editing, setEditing] = useState(false)
   // Counter the pencil increments to push InlineTitle into edit mode. The
   // counter idiom matches LibraryPanel's focusSearchTrigger.
