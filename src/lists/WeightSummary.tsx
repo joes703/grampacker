@@ -5,6 +5,7 @@ import { computeWeightBreakdown, type WeightBreakdown } from '../lib/weight-brea
 import { formatTotalWeight } from '../lib/weight'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import {
+  COMPACT_PANEL_META_TEXT,
   FLAT_TABLE_EYEBROW,
   TABLE_BORDER,
   TABLE_DIVIDER,
@@ -94,7 +95,7 @@ function Stat({
   return (
     <div className="px-3 py-2 text-center">
       <p className={FLAT_TABLE_EYEBROW}>{label}</p>
-      <p className="mt-0.5 text-sm font-medium tabular-nums text-gray-900">
+      <p className={`mt-0.5 ${COMPACT_PANEL_META_TEXT} text-gray-900`}>
         {formatTotalWeight(grams, unit)}
       </p>
     </div>

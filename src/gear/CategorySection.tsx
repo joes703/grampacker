@@ -13,6 +13,7 @@ import { SortableGearItemRow } from './GearItemRow'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import {
+  FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
   FLAT_TABLE_HEADER,
   FLAT_TABLE_HEADER_COUNT,
@@ -150,7 +151,7 @@ function CategorySectionInner(
                 setRenaming(false)
               }
             }}
-            className="flex-1 rounded border border-blue-400 bg-white px-1.5 py-0.5 text-sm font-medium focus:outline-none"
+            className={`flex-1 rounded border border-blue-400 bg-white px-1.5 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-medium focus:outline-none`}
           />
         ) : (
           category && !selectMode ? (
@@ -242,7 +243,7 @@ function CategorySectionInner(
       {!collapsed && (
         <div id={regionId}>
           {items.length === 0 ? (
-            <p className="py-2 px-3 text-sm text-gray-400 italic">No items</p>
+            <p className={`py-2 px-3 ${FLAT_TABLE_BODY_TEXT} text-gray-400 italic`}>No items</p>
           ) : (
             // Per-category SortableContext — items reorder within their own
             // category only. Each row's useSortable resolves to this list.

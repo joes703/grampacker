@@ -2,7 +2,11 @@ import { useMemo } from 'react'
 import type { ListItemWithGear, Category } from '../lib/types'
 import { gramsToLbOzParts } from '../lib/weight'
 import { computeWeightBreakdown } from '../lib/weight-breakdown'
-import { TABLE_DIVIDER_LINE, TABLE_STRONG_DIVIDER } from '../components/flat-table-styles'
+import {
+  COMPACT_PANEL_BODY_TEXT,
+  TABLE_DIVIDER_LINE,
+  TABLE_STRONG_DIVIDER,
+} from '../components/flat-table-styles'
 
 type Props = {
   items: ListItemWithGear[]
@@ -39,7 +43,7 @@ export default function WeightTable({ items, categories }: Props) {
   const valueCell = 'py-px px-2 text-right tabular-nums'
 
   return (
-    <table className="w-full text-xs text-gray-700">
+    <table className={`w-full ${COMPACT_PANEL_BODY_TEXT} text-gray-700`}>
         <tbody className={`divide-y ${TABLE_DIVIDER_LINE}`}>
           {catRows.map((row) => (
             <tr key={row.id}>

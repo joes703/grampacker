@@ -1,6 +1,7 @@
 import { Shirt, UtensilsCrossed, XCircle } from 'lucide-react'
 import RowIconButton from '../components/RowIconButton'
 import WeightInput from '../components/WeightInput'
+import { FLAT_TABLE_BODY_TEXT } from '../components/flat-table-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
 
 type Props = {
@@ -54,7 +55,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
   return (
     <div
       onBlur={handleRowBlur}
-      className="flex min-h-11 lg:min-h-8 items-center gap-1.5 border-b border-gray-100 bg-blue-50/40 px-3 py-0.5 text-sm"
+      className={`flex min-h-11 lg:min-h-8 items-center gap-1.5 border-b border-gray-100 bg-blue-50/40 px-3 py-0.5 ${FLAT_TABLE_BODY_TEXT}`}
     >
       <div className="flex-1 min-w-0 flex items-center gap-3">
         <label className="flex-[2] min-w-0">
@@ -66,7 +67,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
             onChange={(e) => setName(e.target.value)}
             onKeyDown={handleKey}
             maxLength={256}
-            className="w-full rounded border border-blue-400 px-1 py-0.5 text-sm font-normal focus:outline-none"
+            className={`w-full rounded border border-blue-400 px-1 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-normal focus:outline-none`}
           />
         </label>
         <label className="flex-[3] min-w-0">
@@ -77,7 +78,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
             onChange={(e) => setDescription(e.target.value)}
             onKeyDown={handleKey}
             maxLength={2000}
-            className="w-full rounded border border-gray-200 px-1 py-0.5 text-sm font-normal focus:outline-none focus:border-blue-400"
+            className={`w-full rounded border border-gray-200 px-1 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-normal focus:outline-none focus:border-blue-400`}
           />
         </label>
       </div>

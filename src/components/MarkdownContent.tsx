@@ -6,6 +6,10 @@
 // urlTransform (javascript:/data: blocked).
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import {
+  MARKDOWN_COMPACT_BODY_TEXT,
+  MARKDOWN_COMPACT_HEADING_TEXT,
+} from './flat-table-styles'
 
 // Compact element styling for inline markdown surfaces (notes cards,
 // description blocks). Tighter spacing than MarkdownPage's page-shaped
@@ -17,19 +21,19 @@ const components: Components = {
     <h1 className="mt-3 mb-2 text-base font-semibold text-gray-900">{children}</h1>
   ),
   h2: ({ children }) => (
-    <h2 className="mt-3 mb-1.5 text-sm font-semibold text-gray-900">{children}</h2>
+    <h2 className={`mt-3 mb-1.5 ${MARKDOWN_COMPACT_HEADING_TEXT} text-gray-900`}>{children}</h2>
   ),
   h3: ({ children }) => (
-    <h3 className="mt-2 mb-1 text-sm font-semibold text-gray-700">{children}</h3>
+    <h3 className={`mt-2 mb-1 ${MARKDOWN_COMPACT_HEADING_TEXT} text-gray-700`}>{children}</h3>
   ),
   p: ({ children }) => (
-    <p className="mb-2 text-sm text-gray-700 leading-relaxed">{children}</p>
+    <p className={`mb-2 ${MARKDOWN_COMPACT_BODY_TEXT} text-gray-700 leading-relaxed`}>{children}</p>
   ),
   ul: ({ children }) => (
-    <ul className="mb-2 ml-5 list-disc space-y-0.5 text-sm text-gray-700">{children}</ul>
+    <ul className={`mb-2 ml-5 list-disc space-y-0.5 ${MARKDOWN_COMPACT_BODY_TEXT} text-gray-700`}>{children}</ul>
   ),
   ol: ({ children }) => (
-    <ol className="mb-2 ml-5 list-decimal space-y-0.5 text-sm text-gray-700">{children}</ol>
+    <ol className={`mb-2 ml-5 list-decimal space-y-0.5 ${MARKDOWN_COMPACT_BODY_TEXT} text-gray-700`}>{children}</ol>
   ),
   li: ({ children }) => <li className="leading-relaxed">{children}</li>,
   a: ({ href, children }) => {
@@ -53,7 +57,7 @@ const components: Components = {
   ),
   hr: () => <hr className="my-3 border-gray-200" />,
   blockquote: ({ children }) => (
-    <blockquote className="my-2 border-l-2 border-gray-300 pl-3 text-sm italic text-gray-600">
+    <blockquote className={`my-2 border-l-2 border-gray-300 pl-3 ${MARKDOWN_COMPACT_BODY_TEXT} italic text-gray-600`}>
       {children}
     </blockquote>
   ),
