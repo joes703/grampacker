@@ -71,6 +71,7 @@ import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
 import { FLAT_TABLE_EYEBROW, FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
+import MobilePackToggle from './MobilePackToggle'
 import ListDocumentToolbar from './ListDocumentToolbar'
 import EmptyListCell from './EmptyListCell'
 import PrintListHeader from './PrintListHeader'
@@ -167,9 +168,9 @@ function ListDetailInner({
   // refresh-stable, and back/forward navigable. Anything other than the
   // exact string 'pack' (missing, garbage, typo) falls back to edit mode
   // silently. The toggle UI lives in ListDocumentToolbar at md+ and in
-  // MobileListActionBar at <lg; this hook owns both the read and the
-  // write. Public share view at /r/:slug is a different page and never
-  // sees this parameter.
+  // MobilePackToggle at <lg (a list-page control, not bottom-bar nav);
+  // this hook owns both the read and the write. Public share view at
+  // /r/:slug is a different page and never sees this parameter.
   const [searchParams, setSearchParams] = useSearchParams()
   const mode: Mode = searchParams.get('mode') === 'pack' ? 'pack' : 'edit'
   function togglePackMode() {
@@ -901,6 +902,13 @@ function ListDetailInner({
     <div className="flex flex-col gap-4 print:pb-0">
       <PrintListHeader list={list} listItems={listItems} categories={categories} />
 
+      {/* Mobile pack-mode toggle. Pack is a mode of THIS list, not a
+          global destination, so it lives on the list page rather than in
+          the mobile bottom bar (which now stays uniform Gear/Lists/Add/
+          Options across every page). Desktop's equivalent toggle is in
+          ListDocumentToolbar below. */}
+      <MobilePackToggle packMode={mode === 'pack'} onTogglePackMode={togglePackMode} />
+
       {/* Two-column grid (sidebar collapses in pack mode). The visibility
           condition is `mode !== 'pack'` — derived directly, not stored. */}
       <div className="flex gap-4 items-start">
@@ -1212,7 +1220,9 @@ function ListDetailInner({
         />
       )}
 
-      {/* Mobile-only bottom action bar — hosts Add, Pack, Options. lg:hidden
+      {/* Mobile-only bottom action bar — uniform Gear / Lists / Add /
+          Options shape. Pack mode is no longer a slot here; the
+          MobilePackToggle above carries that on this page. lg:hidden
           inside the bar itself, so desktop never renders it. */}
       <MobileListActionBar list={list} />
 

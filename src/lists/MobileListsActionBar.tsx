@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { Backpack, ListChecks, Plus, Settings2, Upload } from 'lucide-react'
+import { useLocation } from 'react-router'
+import { Plus, Settings2, Upload } from 'lucide-react'
 import MobileOptionsModal from '../components/MobileOptionsModal'
 import MobileBottomBar from '../components/MobileBottomBar'
 import { useSuppressMobilePrimaryNav } from '../layout/mobile-primary-nav-context'
+import { buildMobileDestinationItems } from '../layout/mobile-nav-destinations'
 
 type Props = {
   /** Start the existing inline new-list flow in the page header. The bar
@@ -14,17 +16,19 @@ type Props = {
   onImportCsv: () => void
 }
 
-// Mobile-only bottom action bar for the Lists page. Same layout model as
-// MobileListActionBar (List Detail) and MobileGearActionBar (Gear page):
-// the first two slots are destination links, the right slots are page-local
-// actions, rare actions live behind Options. Import CSV is moved into the
-// Options modal so it doesn't compete with the primary "New" affordance.
+// Mobile-only bottom action bar for the Lists page. Standardized 4-slot
+// shape (Gear / Lists / Add / Options) shared with every other mobile
+// bar. The first two destination slots come from
+// buildMobileDestinationItems; Add and Options carry page-specific
+// behavior. Import CSV lives behind Options so it doesn't compete with
+// the primary "Add" affordance.
 //
 // Visibility:
 //   - lg:hidden inside MobileBottomBar so desktop never renders this bar.
 //   - Renders only on /lists because it's mounted by ListsPage.
 export default function MobileListsActionBar({ onNewList, onImportCsv }: Props) {
   useSuppressMobilePrimaryNav()
+  const { pathname } = useLocation()
   const [optionsOpen, setOptionsOpen] = useState(false)
 
   return (
@@ -32,24 +36,10 @@ export default function MobileListsActionBar({ onNewList, onImportCsv }: Props) 
       <MobileBottomBar
         label="Lists navigation and actions"
         items={[
-          {
-            type: 'link',
-            to: '/gear',
-            label: 'Gear',
-            icon: <Backpack size={18} />,
-            ariaLabel: 'Gear',
-          },
-          {
-            type: 'link',
-            to: '/lists',
-            label: 'Lists',
-            icon: <ListChecks size={18} />,
-            ariaLabel: 'Lists',
-            active: true,
-          },
+          ...buildMobileDestinationItems(pathname),
           {
             type: 'button',
-            label: 'New',
+            label: 'Add',
             icon: <Plus size={18} />,
             onClick: onNewList,
             ariaLabel: 'New list',

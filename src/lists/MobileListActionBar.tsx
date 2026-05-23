@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { useSearchParams } from 'react-router'
-import { Backpack, ClipboardList, ListChecks, Plus, Settings2 } from 'lucide-react'
+import { useLocation } from 'react-router'
+import { Plus, Settings2 } from 'lucide-react'
 import type { List } from '../lib/types'
 import { useSidebarDrawer } from '../layout/sidebar-drawer-context'
 import { useSuppressMobilePrimaryNav } from '../layout/mobile-primary-nav-context'
+import { buildMobileDestinationItems } from '../layout/mobile-nav-destinations'
 import MobileOptionsModal from '../components/MobileOptionsModal'
 import MobileBottomBar from '../components/MobileBottomBar'
 import ListSettingsPanel from './ListSettingsPanel'
@@ -11,69 +12,37 @@ import ListSettingsPanel from './ListSettingsPanel'
 type Props = {
   /** Resolved list for the current route. When null (lists query still
    *  cold-loading), the Options button stays disabled because the modal
-   *  body needs a List row to wire mutations to. Pack and Add are URL-/
-   *  context-driven and remain enabled. */
+   *  body needs a List row to wire mutations to. Add is drawer-driven
+   *  and remains enabled. */
   list: List | null
 }
 
-// Mobile-only bottom action bar for List Detail. Hosts the three primary
-// list actions (Add, Pack, Options) so the top bar can stay focused on
-// orientation: list name + selector + global menu. Hidden at lg+ where
-// every action has an inline desktop equivalent (Pack pill,
-// ListSettingsButton popover, the always-mounted LibraryPanel aside).
+// Mobile-only bottom action bar for List Detail. Standardized 4-slot
+// shape (Gear / Lists / Add / Options) shared with every other mobile
+// bar so users see the same buttons in the same places everywhere.
+//
+// Pack mode used to live as a fifth slot here, but pack is URL state on
+// a list (?mode=pack), not a separate destination — it would have
+// forced either a 5-slot inconsistent shape or a confusing
+// always-grayed Add in pack mode. The Pack toggle now lives inline on
+// the list page itself (MobilePackToggle), which also keeps Add
+// available mid-pack so the "I forgot water filter" flow is one tap.
 //
 // Visibility: this component is only rendered by ListDetailPage's authed
 // branch, so it's automatically scoped away from Gear, Lists, Settings,
-// Help, and the public /r/:slug share view. Pack mode
-// keeps it visible — Add stays useful for mid-pack additions and Options
-// is the same modal, so there's no surprise.
-//
-// State distribution:
-//   - Pack toggle reads/writes ?mode=pack on the URL (single source of
-//     truth used elsewhere on the page).
-//   - Drawer (gear picker) open/close lives in the SidebarDrawerProvider
-//     context, same one NavBar used previously.
-//   - List options modal is owned here so NavBar can stay clean. The
-//     ListSettingsPanel mutations are list-scoped and don't depend on
-//     the action bar's lifecycle.
+// Help, and the public /r/:slug share view.
 export default function MobileListActionBar({ list }: Props) {
   useSuppressMobilePrimaryNav()
+  const { pathname } = useLocation()
   const drawer = useSidebarDrawer()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const isPackMode = searchParams.get('mode') === 'pack'
   const [settingsOpen, setSettingsOpen] = useState(false)
-
-  function togglePackMode() {
-    setSearchParams(
-      (prev) => {
-        const np = new URLSearchParams(prev)
-        if (isPackMode) np.delete('mode')
-        else np.set('mode', 'pack')
-        return np
-      },
-      { replace: false },
-    )
-  }
 
   return (
     <>
       <MobileBottomBar
         label="List navigation and actions"
         items={[
-          {
-            type: 'link',
-            to: '/gear',
-            label: 'Gear',
-            icon: <Backpack size={18} />,
-            ariaLabel: 'Gear',
-          },
-          {
-            type: 'link',
-            to: '/lists',
-            label: 'Lists',
-            icon: <ListChecks size={18} />,
-            ariaLabel: 'Lists',
-          },
+          ...buildMobileDestinationItems(pathname),
           {
             type: 'button',
             label: 'Add',
@@ -81,15 +50,6 @@ export default function MobileListActionBar({ list }: Props) {
             onClick: () => drawer.setOpen(true),
             disabled: !drawer.available,
             ariaLabel: 'Add gear to list',
-          },
-          {
-            type: 'button',
-            label: 'Pack',
-            icon: <ClipboardList size={18} />,
-            onClick: togglePackMode,
-            active: isPackMode,
-            ariaLabel: 'Pack mode',
-            ariaPressed: isPackMode,
           },
           {
             type: 'button',

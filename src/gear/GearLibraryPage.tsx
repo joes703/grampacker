@@ -658,11 +658,34 @@ export default function GearLibraryPage() {
             </div>
           )}
 
-          {/* Right cluster — New item + Select + Options. Desktop-only;
-              mobile users reach the equivalents from MobileGearActionBar.
-              md:ml-auto pushes the cluster to the right edge of the
-              header row. */}
-          <div className="hidden md:flex items-center gap-2 md:ml-auto">
+          {/* Select pill — visible on every viewport. Frequent enough on
+              mobile (bulk Move / Delete / Create List From Selection) that
+              hiding it behind the Options modal would degrade discovery;
+              also doesn't belong on the universal mobile bottom bar since
+              it's gear-specific. md:ml-auto pushes it (and the desktop
+              cluster) to the right edge of the header row; on mobile it
+              sits inline next to search. */}
+          {selectMode ? (
+            <button
+              onClick={exitSelectMode}
+              className="md:ml-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+          ) : (
+            <button
+              onClick={() => setSelectMode(true)}
+              className="md:ml-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Select
+            </button>
+          )}
+
+          {/* Right cluster — New item + Options. Desktop-only; mobile
+              reaches the same actions from MobileGearActionBar's Add slot
+              and Options modal. Select is lifted out so it stays
+              discoverable on every viewport. */}
+          <div className="hidden md:flex items-center gap-2">
             <button
               onClick={() => setDialog({ type: 'create-item' })}
               className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
@@ -670,21 +693,6 @@ export default function GearLibraryPage() {
               <Plus size={14} />
               New item
             </button>
-            {selectMode ? (
-              <button
-                onClick={exitSelectMode}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            ) : (
-              <button
-                onClick={() => setSelectMode(true)}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Select
-              </button>
-            )}
             <GearOptionsButton
               onNewCategory={() => setDialog({ type: 'add-category' })}
               onImport={() => setDialog({ type: 'import-explainer' })}
@@ -952,12 +960,13 @@ export default function GearLibraryPage() {
         />
       )}
 
-      {/* Mobile bottom action bar — New / Select / Options. lg:hidden
-          inside the component itself, so desktop never renders it. */}
+      {/* Mobile bottom action bar — uniform Gear / Lists / Add / Options
+          shape shared with every other mobile bar. Select lives on the
+          page header now (visible on all viewports) so it stays
+          discoverable without taking a bottom-bar slot. lg:hidden inside
+          the component itself, so desktop never renders. */}
       <MobileGearActionBar
         onNewItem={() => setDialog({ type: 'create-item' })}
-        selectMode={selectMode}
-        onToggleSelectMode={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
         onNewCategory={() => setDialog({ type: 'add-category' })}
         onImport={() => setDialog({ type: 'import-explainer' })}
         onExport={handleExport}
