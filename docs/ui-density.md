@@ -14,8 +14,8 @@ Mobile / touch:
 
 Desktop / pointer:
 
-- Item rows use a 32px minimum height: `lg:min-h-8`.
-- Category and section headers use a 36px minimum height: `lg:min-h-9`.
+- Item rows use a 28px minimum height: `lg:min-h-7`.
+- Category and section headers use a 32px minimum height: `lg:min-h-8`.
 
 Current row-like surfaces that should follow this rule:
 
@@ -38,8 +38,90 @@ Mobile / touch:
 
 Desktop / pointer:
 
-- Explicit row/header controls use a 28px square target: `lg:h-7 lg:w-7`.
+- Explicit row/header controls use a 28px square target: `lg:h-7 lg:w-7`. The
+  target fills the new 28px desktop row exactly, so a hover-revealed control
+  cannot push the row taller than `DESKTOP_ROW_HEIGHT`.
 - Desktop-only inline icon buttons may use the compact `RowIconButton` sizing when they do not render on mobile.
+
+## Density Layer
+
+The numbers above are sourced from named tokens in
+`src/components/flat-table-styles.ts`, not from inline Tailwind strings. A density
+tuning happens by changing the token value once; every consumer picks it up. Call
+sites should not carry `min-h-*` / `h-10 w-10` / `lg:h-7 lg:w-7` decisions inline.
+
+Tokens:
+
+- `MOBILE_ROW_HEIGHT` (`min-h-11`) / `DESKTOP_ROW_HEIGHT` (`lg:min-h-7`).
+- `MOBILE_HEADER_HEIGHT` (`min-h-11`) / `DESKTOP_HEADER_HEIGHT` (`lg:min-h-8`).
+- `MOBILE_ROW_CONTROL_TARGET` (`h-10 w-10`) /
+  `DESKTOP_ROW_CONTROL_TARGET` (`lg:h-7 lg:w-7`).
+- `FLAT_TABLE_ROW_PADDING` (`px-2 lg:px-3 py-2 lg:py-0`) — canonical row padding
+  for main item/list rows. Mobile gets the px-2 ramp so the row sits closer to
+  the surface edge for touch hit areas; desktop drops py-0 so `min-h-7` actually
+  reaches the 28px target instead of vertical padding pushing the row taller.
+- `FLAT_TABLE_HEADER_PADDING` (`px-3 py-0`) — canonical header padding. Vertical
+  py-0 because `MOBILE_HEADER_HEIGHT` / `DESKTOP_HEADER_HEIGHT` own the band
+  height; horizontal px-3 is uniform mobile-to-desktop because both touch and
+  pointer want some inset from the surface edge for the chevron/kebab targets.
+
+`FLAT_TABLE_ROW`, `FLAT_TABLE_HEADER`, and `ROW_CONTROL_TARGET` compose from
+those tokens, so the base classes that everything else consumes only ever know
+about the named density tokens. Surfaces that can't use `FLAT_TABLE_ROW` because
+of a per-row border conflict (ListsPage's `divide-y` exception, AddItemRow,
+CategoryGroup's print/desktop footer) still consume `MOBILE_ROW_HEIGHT` and
+`DESKTOP_ROW_HEIGHT` directly so they track density changes.
+
+### Padding variants consumers may keep inline
+
+Not every row pattern fits the canonical `FLAT_TABLE_ROW_PADDING`. Documented
+variants:
+
+- **Normal `ItemRow` / `GearItemRow`** — `px-3 py-2 lg:py-0`. Mobile uses px-3
+  (not px-2) because the non-pack mobile layout has fewer columns and a uniform
+  inset reads cleaner than the px-2 ramp. Desktop reaches `lg:py-0` so the row
+  still tightens to 28px.
+- **`LibraryPanel` picker rows** — `px-3 py-0`. The picker drawer is narrower
+  than the main list and the row has only name + weight; a uniform px-3 inset
+  is preferred over the px-2 mobile ramp.
+- **`AddItemRow`** — `px-3 py-0`. Desktop-only edit affordance with several
+  inputs that prefer the canonical inset.
+- **`CategorySection` header** — `gap-1 px-2 py-0`. The header has an extra
+  drag-handle column on the left and a per-category kebab on the right, so the
+  tighter horizontal padding gives those controls room without forcing the
+  strip to wrap.
+- **`CategoryGroup` pack-mode header** — `gap-0.5 lg:gap-1.5 px-2 lg:px-3 py-0`.
+  Pack mode squeezes additional column slots into the header strip, so px-2 on
+  mobile gives them room before ramping to the canonical px-3 on desktop.
+
+### Controls and inputs inside the desktop row
+
+The desktop row is 28px. Anything inside it must not push that height past 28px
+or the row will resize and break alignment with the column header above. Audited:
+
+- `RowIconButton` purpleToggle/orangeToggle/dragHandle/quick-actions — 28x24 by
+  design, fits inside 28px.
+- `ROW_CONTROL_TARGET` chevron/kebab/drag-handle target — `lg:h-7 lg:w-7`
+  exactly fills the row.
+- ItemRow inline inputs (qty, weight) — `text-[13px]` body + `border` + `px-1
+  py-0.5` ≈ 19-20px. Comfortably inside 28px.
+- AddItemRow inline inputs — same dimensions as ItemRow inputs.
+- PackModeCheckbox / status badge — sized below 28px.
+
+If a new control would push the row taller, prefer adjusting the control to
+fit; only as a last resort introduce a per-row exception (and document it
+here).
+
+## WeightTable Exception
+
+`WeightTable` is a deliberately tighter compact-summary table and does NOT
+consume the row density tokens above. Its rows use `py-px` (1px vertical
+padding) and `COMPACT_PANEL_BODY_TEXT` body type, so they read as a dense
+financial-table grid rather than a list of scannable items. The surrounding
+chrome tokens (`TABLE_BORDER`, `TABLE_DIVIDER_LINE`, `TABLE_STRONG_DIVIDER`,
+`TABLE_RADIUS`) still apply so the summary surface matches the rest of the
+visual grammar; only the row density diverges. Do not use `FLAT_TABLE_ROW` /
+`MOBILE_ROW_HEIGHT` / `DESKTOP_ROW_HEIGHT` for `WeightTable` rows.
 
 ## Visual Grammar
 
@@ -87,18 +169,20 @@ gap / padding / column / hover / selected classes around them.
   shadow. The corner radius lives in the constant so every flat table rounds
   identically; a surface that must be square overrides `rounded-none` at the call site.
 - `FLAT_TABLE_HEADER` — section/category header divider strip (`bg-gray-50` + bottom
-  border, `min-h-11 lg:min-h-9`).
+  border, heights from `MOBILE_HEADER_HEIGHT` / `DESKTOP_HEADER_HEIGHT`).
 - `FLAT_TABLE_HEADER_TITLE`, `FLAT_TABLE_HEADER_TITLE_MUTED`,
   `FLAT_TABLE_HEADER_COUNT`, and `FLAT_TABLE_EYEBROW` — shared title / count /
   micro-label typography (see the two-tier rule under "Visual Grammar"). The eyebrow
   is the single small-uppercase label used by both in-table column labels and the
   summary panels, so they don't drift in capitalization, weight, or size.
-- `FLAT_TABLE_ROW` — item/list row (`min-h-11 lg:min-h-8` + bottom border). Rows
-  separated by a container `divide-y` must NOT use this (the per-row border-b would
-  double up) — see the ListsPage row exception below.
-- `ROW_CONTROL_TARGET` — chevron/kebab/drag-handle target box (`h-10 w-10 lg:h-7
-  lg:w-7`). Distinct from `RowIconButton`, the compact desktop-only inline icon button
-  (28x24) that never renders on mobile and so needs no touch box.
+- `FLAT_TABLE_ROW` — item/list row (heights from `MOBILE_ROW_HEIGHT` /
+  `DESKTOP_ROW_HEIGHT` + bottom border). Rows separated by a container `divide-y`
+  must NOT use this (the per-row border-b would double up) — see the ListsPage row
+  exception below.
+- `ROW_CONTROL_TARGET` — chevron/kebab/drag-handle target box (sourced from
+  `MOBILE_ROW_CONTROL_TARGET` / `DESKTOP_ROW_CONTROL_TARGET`). Distinct from
+  `RowIconButton`, the compact desktop-only inline icon button (28x24) that never
+  renders on mobile and so needs no touch box.
 - Shared chrome tokens (`TABLE_RADIUS`, `TABLE_BORDER`, `TABLE_SURFACE_BG`,
   `TABLE_HEADER_BG`, `TABLE_DIVIDER`, `TABLE_STRONG_DIVIDER`, and `TABLE_DIVIDER_LINE` —
   the `divide-*` color sibling of `TABLE_DIVIDER` for `divide-y` row groups) are used by
@@ -273,15 +357,17 @@ each call site uses the correct component:
 
 ## Changing Density Later
 
-When changing row density, update all row-like surfaces together and verify with grep.
-The important classes to audit are:
+Density values live in the named tokens at the top of
+`src/components/flat-table-styles.ts`. Adjust the token, not the call sites. After
+a token edit, verify with grep that no surface re-introduced an inline density
+class:
 
-- `min-h-11`
-- `lg:min-h-8`
-- `lg:min-h-9`
-- `h-10 w-10`
-- `lg:h-7 lg:w-7`
+- `min-h-11` — appears outside the density tokens only as a documented exception
+  (the `MobileMenu` hamburger button, which is global nav, not a row surface).
+- `lg:min-h-` followed by any digit — should only appear inside
+  `flat-table-styles.ts`.
+- `h-10 w-10` / `lg:h-7 lg:w-7` — same expectation.
 
-After a density change, verify mobile and desktop separately. In particular, check the
-gear picker drawer because it is lazy-loaded and can appear stale until the PWA/browser
-session fully reloads.
+After a density change, verify mobile and desktop separately. In particular, check
+the gear picker drawer because it is lazy-loaded and can appear stale until the
+PWA/browser session fully reloads.

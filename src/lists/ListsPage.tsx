@@ -48,7 +48,12 @@ import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
-import { FLAT_TABLE_SURFACE, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import {
+  DESKTOP_ROW_HEIGHT,
+  FLAT_TABLE_SURFACE,
+  MOBILE_ROW_HEIGHT,
+  ROW_CONTROL_TARGET,
+} from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
 import ListsEmptyState from './ListsEmptyState'
@@ -600,12 +605,16 @@ function ListRow({
   // Hover bg is the same gray-50 every other interactive row in the app
   // uses (gear, list-detail, picker).
   //
-  // Density (min-h-11 lg:min-h-8) matches FLAT_TABLE_ROW, but this is an
-  // intentional exception to that constant: separators come from the
-  // container's `divide-y`, so a per-row `border-b` (which FLAT_TABLE_ROW
-  // carries) would double the line between rows. Keep the density inline.
+  // Density routes through MOBILE_ROW_HEIGHT / DESKTOP_ROW_HEIGHT instead
+  // of FLAT_TABLE_ROW because separators come from the container's
+  // `divide-y` — a per-row `border-b` (which FLAT_TABLE_ROW carries) would
+  // double the line between rows. py-2 stays inline: this row has more
+  // chrome per line (name + date + count + kebab) than item rows, so the
+  // extra vertical padding gives that chrome room to breathe; on desktop
+  // the px-3 py-2 + content tends to push the row past the min-h-7 floor
+  // anyway, so the height token mostly tracks the layer for future tuning.
   const rowClass =
-    'relative flex min-h-11 lg:min-h-8 items-center gap-2 px-3 py-2 hover:bg-gray-50'
+    `relative flex ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} items-center gap-2 px-3 py-2 hover:bg-gray-50`
 
   // Renaming swaps the name link for an input. The kebab is hidden during
   // rename to keep the focused control unambiguous; Enter / Escape / blur

@@ -1,7 +1,11 @@
 import { Shirt, UtensilsCrossed, XCircle } from 'lucide-react'
 import RowIconButton from '../components/RowIconButton'
 import WeightInput from '../components/WeightInput'
-import { FLAT_TABLE_BODY_TEXT } from '../components/flat-table-styles'
+import {
+  DESKTOP_ROW_HEIGHT,
+  FLAT_TABLE_BODY_TEXT,
+  MOBILE_ROW_HEIGHT,
+} from '../components/flat-table-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
 
 type Props = {
@@ -55,7 +59,12 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
   return (
     <div
       onBlur={handleRowBlur}
-      className={`flex min-h-11 lg:min-h-8 items-center gap-1.5 border-b border-gray-100 bg-blue-50/40 px-3 py-0.5 ${FLAT_TABLE_BODY_TEXT}`}
+      // Draft input row aligns with the surrounding item rows via the shared
+      // density tokens (height tracks the desktop tightening automatically).
+      // Horizontal padding stays px-3 inline because this is a desktop-only
+      // edit affordance and the row has several inputs that prefer the
+      // canonical inset over the px-2 mobile ramp.
+      className={`flex ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} items-center gap-1.5 border-b border-gray-100 bg-blue-50/40 px-3 py-0 ${FLAT_TABLE_BODY_TEXT}`}
     >
       <div className="flex-1 min-w-0 flex items-center gap-3">
         <label className="flex-[2] min-w-0">

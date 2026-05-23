@@ -92,8 +92,12 @@ export default function GearItemRow({
       // none here — the TouchSensor press-and-hold delay separates scroll from
       // drag, so the library can scroll the list until a hold activates a drag.
       {...rowDragListeners}
+      // px-3 mobile is intentional (not the canonical px-2 mobile ramp) — the
+      // gear-inventory row has fewer columns than pack mode and reads better
+      // with a uniform inset. lg:py-0 lets min-h-7 (28px) own the height on
+      // desktop so the new density actually applies.
       className={`group relative ${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${
-        mobileSwipe ? '' : 'gap-1.5 bg-white px-3 py-2 lg:py-0.5'
+        mobileSwipe ? '' : 'gap-1.5 bg-white px-3 py-2 lg:py-0'
       } ${
         selected ? 'bg-blue-50' : 'hover:bg-gray-50'
       }`}

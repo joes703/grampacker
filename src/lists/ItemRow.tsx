@@ -17,6 +17,7 @@ import {
   FLAT_TABLE_BODY_TEXT_MUTED,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_ROW,
+  FLAT_TABLE_ROW_PADDING,
 } from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
@@ -186,7 +187,7 @@ export default function ItemRow({
         // direct flex child (the label) so this gap is inert. Bumped
         // from gap-0.5 lg:gap-1.5 so the two checkboxes don't read as
         // a single cluster on touch.
-        className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} gap-2 lg:gap-2.5 px-2 lg:px-3 py-2 lg:py-0.5 transition-colors ${
+        className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${FLAT_TABLE_ROW_PADDING} gap-2 lg:gap-2.5 transition-colors ${
           // Calmer "done" treatment than a green tint — the gray background
           // pairs with the text-gray-400 line-through inside the label to
           // read as completed without celebrating. print:bg-transparent
@@ -311,8 +312,13 @@ export default function ItemRow({
       // stop scroll), while an immediate move scrolls the page and cancels the
       // pending drag via the tolerance constraint.
       {...rowDragListeners}
+      // Non-pack normal row keeps px-3 mobile inline (not the canonical
+      // FLAT_TABLE_ROW_PADDING px-2 mobile ramp) because the mobile read
+      // body has fewer columns than pack mode, so a uniform px-3 inset
+      // reads better than the tighter px-2. Desktop drops py-0 alongside
+      // the new min-h-7 so the row reaches the 28px target.
       className={`group relative ${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${
-        mobileSwipe ? '' : 'gap-1.5 bg-white px-3 py-2 lg:py-0.5'
+        mobileSwipe ? '' : 'gap-1.5 bg-white px-3 py-2 lg:py-0'
       }`}
     >
       {dragHandle}

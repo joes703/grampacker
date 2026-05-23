@@ -24,6 +24,60 @@ export const TABLE_STRONG_DIVIDER = 'border-gray-200'
 // out literally for the JIT scanner to emit it.
 export const TABLE_DIVIDER_LINE = 'divide-gray-100'
 
+// ---------------------------------------------------------------------------
+// Density layer
+// ---------------------------------------------------------------------------
+// Explicit density tokens for row/header heights, control target sizes, and
+// canonical row/header padding. Composed into FLAT_TABLE_ROW / FLAT_TABLE_HEADER
+// / ROW_CONTROL_TARGET below so a density tuning happens here, not in scattered
+// call-site Tailwind strings. See docs/ui-density.md for the rationale.
+//
+// Mobile sizes are tuned for touch (44px row floor / 40px control target);
+// desktop sizes shrink toward LighterPack-style density (28px row, 32px
+// header, 28px control). Mobile must stay unchanged whenever desktop is
+// tuned — pointer scans tolerate denser body type than touch reading.
+//
+// `WeightTable` remains a deliberately tighter compact-summary table and
+// does NOT consume these row tokens; see docs/ui-density.md "Intentional
+// exceptions".
+
+// Row height. Mobile 44px touch target; desktop 28px scanline. Lowered from
+// the previous lg:min-h-8 (32px) so the row reads at the LighterPack-ish
+// density tier where the eye scans columns more than it reads sentences.
+export const MOBILE_ROW_HEIGHT = 'min-h-11'
+export const DESKTOP_ROW_HEIGHT = 'lg:min-h-7'
+
+// Header height. Mobile matches the row floor; desktop 32px, intentionally
+// 4px taller than the desktop row so the section divider still reads as a
+// distinct strip without bulking up to a card-like band. Tightened from
+// the prior 36px header in tandem with the row drop.
+export const MOBILE_HEADER_HEIGHT = 'min-h-11'
+export const DESKTOP_HEADER_HEIGHT = 'lg:min-h-8'
+
+// Explicit chevron / kebab / drag-handle target box. Mobile 40px square
+// (the minimum comfortable phone target); desktop 28px (exactly fills the
+// new row height so a hover-revealed control doesn't push the row taller).
+// Distinct from RowIconButton, the compact desktop-only inline icon button
+// (28x24) that never renders on mobile and so needs no touch box.
+export const MOBILE_ROW_CONTROL_TARGET = 'h-10 w-10'
+export const DESKTOP_ROW_CONTROL_TARGET = 'lg:h-7 lg:w-7'
+
+// Canonical row padding for main list/item rows. Mobile px-2 + py-2 gives
+// breathing room around touch-sized controls; desktop px-3 + py-0 lets
+// min-h-7 set the height and items-center handle vertical centering, so the
+// row genuinely tightens to 28px on desktop instead of padding pushing it
+// past min-h. Picker rows (LibraryPanel) and draft/footer rows that use a
+// flush px-3 mobile pattern keep that padding inline as documented variants.
+export const FLAT_TABLE_ROW_PADDING = 'px-2 lg:px-3 py-2 lg:py-0'
+
+// Canonical header padding. Horizontal px-3 is uniform across viewports
+// (touch and pointer both want some inset from the surface edge for the
+// chevron/kebab targets); vertical py-0 because min-h-11 / lg:min-h-8 owns
+// the height and items-center centers the title. Headers with denser
+// horizontal layout (CategorySection's gap-1 px-2) or pack-mode (px-2 mobile
+// ramping to px-3) keep their horizontal padding inline.
+export const FLAT_TABLE_HEADER_PADDING = 'px-3 py-0'
+
 // White table shell. The app background is gray-50, and section headers are
 // gray-50 too, so a flat table needs a white surface or its headers vanish
 // into the page. This is a table/list shell, NOT a decorative card: rounded
@@ -34,11 +88,12 @@ export const TABLE_DIVIDER_LINE = 'divide-gray-100'
 // exception that overrides `rounded-none` at the call site.
 export const FLAT_TABLE_SURFACE = `overflow-hidden ${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG}`
 
-// Section / category header: a flat divider strip, not a card. Touch 44px /
-// pointer 36px (see docs/ui-density.md). Compose gap + horizontal padding
-// (+ `w-full` where the header is a flex child that must fill its track).
+// Section / category header: a flat divider strip, not a card. Heights flow
+// from the density tokens above. Compose gap + horizontal padding (or
+// FLAT_TABLE_HEADER_PADDING for the canonical pattern) + `w-full` where the
+// header is a flex child that must fill its track.
 export const FLAT_TABLE_HEADER =
-  `flex min-h-11 lg:min-h-9 items-center ${TABLE_HEADER_BG} border-b ${TABLE_DIVIDER}`
+  `flex ${MOBILE_HEADER_HEIGHT} ${DESKTOP_HEADER_HEIGHT} items-center ${TABLE_HEADER_BG} border-b ${TABLE_DIVIDER}`
 
 // Header/label typography. Two tiers:
 //   - TITLE: the one prominent section heading (category names). Preserves
@@ -54,21 +109,22 @@ export const FLAT_TABLE_HEADER_COUNT = 'text-xs font-normal tabular-nums text-gr
 export const FLAT_TABLE_EYEBROW =
   'text-xs font-semibold uppercase tracking-wider text-gray-500'
 
-// Item / list row: a table row, not a mini card. Touch 44px / pointer 32px.
-// The bottom border does the separation. Compose gap / padding / hover /
-// selected-tint / bg-white at the call site (rows differ: some are white,
-// some carry a selected tint, the mobile swipe row moves padding inward).
+// Item / list row: a table row, not a mini card. Heights flow from the
+// density tokens above (44px touch floor, 28px desktop). The bottom border
+// does the separation. Compose gap / padding (or FLAT_TABLE_ROW_PADDING for
+// the canonical pattern) / hover / selected-tint / bg-white at the call site.
 // NOTE: rows separated by a container-level `divide-y` (e.g. ListsPage)
-// should NOT use this — the per-row border-b would double up.
+// should NOT use this — the per-row border-b would double up. Those rows
+// should still consume MOBILE_ROW_HEIGHT / DESKTOP_ROW_HEIGHT directly so
+// they track density changes.
 export const FLAT_TABLE_ROW =
-  `flex min-h-11 lg:min-h-8 items-center border-b ${TABLE_DIVIDER}`
+  `flex ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} items-center border-b ${TABLE_DIVIDER}`
 
-// Explicit chevron / kebab / drag-handle target inside a row or header:
-// 40px touch / 28px pointer. Compose color + hover + `shrink-0` at the call
-// site. Distinct from RowIconButton, which is the compact desktop-only inline
-// icon button (28x24) that never renders on mobile and so needs no touch box.
+// Explicit chevron / kebab / drag-handle target inside a row or header.
+// Heights flow from the density tokens above (40px touch, 28px pointer).
+// Compose color + hover + `shrink-0` at the call site.
 export const ROW_CONTROL_TARGET =
-  'inline-flex h-10 w-10 lg:h-7 lg:w-7 items-center justify-center rounded'
+  `inline-flex ${MOBILE_ROW_CONTROL_TARGET} ${DESKTOP_ROW_CONTROL_TARGET} items-center justify-center rounded`
 
 // ---------------------------------------------------------------------------
 // Body typography tokens

@@ -102,7 +102,14 @@ function CategorySectionInner(
     <div className={FLAT_TABLE_SURFACE}>
       {/* Category header — flat section divider (bg-gray-50 + bottom border),
           matching the gear-picker reference grammar. */}
-      <div className={`${FLAT_TABLE_HEADER} gap-1 px-2 py-0.5 ${
+      <div className={`${FLAT_TABLE_HEADER} gap-1 px-2 py-0 ${
+        // gap-1 + px-2 is a deliberate tighter variant than the canonical
+        // FLAT_TABLE_HEADER_PADDING (gap-1.5 + px-3): this header carries an
+        // extra drag-handle column on the left and a per-category kebab on
+        // the right, so the tighter horizontal padding gives those controls
+        // room without forcing the strip to wrap. Vertical py-0 lets the
+        // shared header height (FLAT_TABLE_HEADER) own the band height.
+        //
         // Collapsed: header is the card's only child, so its divider border
         // would double with the card's bottom border. Drop it.
         collapsed ? 'border-b-0' : ''
