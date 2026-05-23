@@ -127,11 +127,16 @@ export default function ListSettingsPanel({ list }: Props) {
       <PrivacyPanel list={list} />
 
       {/* Actions section. The -mx-3 spans the popover's p-3 padding so
-          the divider and menu items go edge-to-edge while RowMenuItem's
+          the divider and action rows go edge-to-edge while RowMenuItem's
           own px-3 keeps the visible content inset where the toggles
-          above sit. */}
+          above sit.
+          No role="menu" here: when renaming, the Rename row swaps for
+          a text input, which is not a valid ARIA menu child. This
+          surface is a settings panel, not a keyboard-navigable menu,
+          so each action is a plain button (inMenu={false}). The card
+          kebabs in ListsPage keep menu semantics where they belong. */}
       <div className="-mx-3 border-t border-gray-100 pt-1">
-        <div className="space-y-0.5" role="menu" aria-label="List actions">
+        <div className="space-y-0.5">
           {renaming ? (
             <div className="px-3 py-0.5">
               <input
@@ -150,20 +155,33 @@ export default function ListSettingsPanel({ list }: Props) {
               />
             </div>
           ) : (
-            <RowMenuItem icon={<Pencil size={13} />} onClick={startRename}>
+            <RowMenuItem
+              icon={<Pencil size={13} />}
+              onClick={startRename}
+              inMenu={false}
+            >
               Rename
             </RowMenuItem>
           )}
-          <RowMenuItem icon={<Copy size={13} />} onClick={() => duplicateMut.mutate(list)}>
+          <RowMenuItem
+            icon={<Copy size={13} />}
+            onClick={() => duplicateMut.mutate(list)}
+            inMenu={false}
+          >
             Duplicate
           </RowMenuItem>
-          <RowMenuItem icon={<Download size={13} />} onClick={() => exportCsv(list)}>
+          <RowMenuItem
+            icon={<Download size={13} />}
+            onClick={() => exportCsv(list)}
+            inMenu={false}
+          >
             Export CSV
           </RowMenuItem>
           <RowMenuItem
             icon={<Trash2 size={13} />}
             tone="danger"
             onClick={() => setConfirmingDelete(true)}
+            inMenu={false}
           >
             Delete list
           </RowMenuItem>
