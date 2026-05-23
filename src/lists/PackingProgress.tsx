@@ -123,31 +123,31 @@ export default function PackingProgress({
       )}
 
       {/* Options block — Pack Mode view toggles grouped under the
-          progress bars. Renders as label + ToggleSwitch rows so binary
-          on/off controls everywhere in the app share one visual
-          treatment (the same switch is used in List options' Group
-          worn items and Sharing). Both toggles stay enabled offline:
-          Show unpacked only is local view state, and Ready checks's
-          mutation is the same per-list write whose offline/online
-          semantics are owned by the page mutation. */}
-      <div className="mt-4 space-y-2 print:hidden">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-900">Show unpacked only</span>
-          <ToggleSwitch
-            checked={showUnpackedOnly}
-            onChange={onToggleShowUnpackedOnly}
-            ariaLabel="Show unpacked only"
-          />
-        </div>
+          progress bars. Rendered as a shrink-to-content grid (label
+          column + switch column, both `max-content`) so each switch
+          sits right next to its label rather than pinned to the far
+          right of the wide progress panel. Switches still align
+          vertically with each other because both rows share the same
+          two grid columns. Behavior unchanged: Show unpacked only is
+          local view state, Ready checks writes ready_checks_enabled
+          via the same page mutation, both toggles stay enabled
+          offline. */}
+      <div className="mt-4 grid grid-cols-[max-content_max-content] gap-x-3 gap-y-2 items-center print:hidden">
+        <span className="text-sm font-medium text-gray-900">Show unpacked only</span>
+        <ToggleSwitch
+          checked={showUnpackedOnly}
+          onChange={onToggleShowUnpackedOnly}
+          ariaLabel="Show unpacked only"
+        />
         {readyChecks && (
-          <div className="flex items-center justify-between">
+          <>
             <span className="text-sm font-medium text-gray-900">Ready checks</span>
             <ToggleSwitch
               checked={readyChecks.enabled}
               onChange={readyChecks.onToggleEnabled}
               ariaLabel="Ready checks"
             />
-          </div>
+          </>
         )}
       </div>
 
