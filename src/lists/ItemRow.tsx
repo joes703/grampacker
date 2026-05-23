@@ -12,7 +12,12 @@ import { makeDnDId } from '../lib/dnd-ids'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
-import { FLAT_TABLE_ROW } from '../components/flat-table-styles'
+import {
+  FLAT_TABLE_BODY_TEXT,
+  FLAT_TABLE_BODY_TEXT_MUTED,
+  FLAT_TABLE_NUMERIC_TEXT,
+  FLAT_TABLE_ROW,
+} from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
 import WeightInput from '../components/WeightInput'
@@ -181,7 +186,7 @@ export default function ItemRow({
         // direct flex child (the label) so this gap is inert. Bumped
         // from gap-0.5 lg:gap-1.5 so the two checkboxes don't read as
         // a single cluster on touch.
-        className={`${FLAT_TABLE_ROW} gap-2 lg:gap-2.5 px-2 lg:px-3 py-2 lg:py-0.5 text-sm transition-colors ${
+        className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} gap-2 lg:gap-2.5 px-2 lg:px-3 py-2 lg:py-0.5 transition-colors ${
           // Calmer "done" treatment than a green tint — the gray background
           // pairs with the text-gray-400 line-through inside the label to
           // read as completed without celebrating. print:bg-transparent
@@ -262,7 +267,7 @@ export default function ItemRow({
             </div>
             <div className="hidden lg:block lg:flex-[3] min-w-0">
               <span
-                className={`block w-full truncate text-sm font-normal ${
+                className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT} font-normal ${
                   item.is_packed ? 'text-gray-300 line-through print:text-gray-600 print:no-underline' : 'text-gray-500'
                 }`}
               >
@@ -277,7 +282,7 @@ export default function ItemRow({
         <span className="shrink-0 w-6 lg:w-7 inline-flex items-center justify-center">
           {item.is_consumable && <ConsumableIcon />}
         </span>
-        <span className="shrink-0 w-10 text-right tabular-nums text-xs text-gray-500">
+        <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
           {item.quantity}
         </span>
       </div>
@@ -306,7 +311,7 @@ export default function ItemRow({
       // stop scroll), while an immediate move scrolls the page and cancels the
       // pending drag via the tolerance constraint.
       {...rowDragListeners}
-      className={`group relative ${FLAT_TABLE_ROW} text-sm ${
+      className={`group relative ${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${
         mobileSwipe ? '' : 'gap-1.5 bg-white px-3 py-2 lg:py-0.5'
       }`}
     >
@@ -369,10 +374,10 @@ export default function ItemRow({
                 value={description}
                 placeholder="Add description"
                 onSave={onSaveDescription}
-                className="block w-full truncate text-sm font-normal text-gray-500"
+                className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}
               />
             ) : (
-              <span className="block w-full truncate text-sm font-normal text-gray-500">{description}</span>
+              <span className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}>{description}</span>
             )}
           </div>
         </div>

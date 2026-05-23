@@ -69,3 +69,67 @@ export const FLAT_TABLE_ROW =
 // icon button (28x24) that never renders on mobile and so needs no touch box.
 export const ROW_CONTROL_TARGET =
   'inline-flex h-10 w-10 lg:h-7 lg:w-7 items-center justify-center rounded'
+
+// ---------------------------------------------------------------------------
+// Body typography tokens
+// ---------------------------------------------------------------------------
+// Centralized so future desktop/mobile font-size experiments (for example
+// tuning desktop body down to 13px) happen in one place instead of being
+// chased across call sites. Today all tokens are unified across viewports;
+// the contract is "always reach the token from row/table/panel surfaces,
+// never re-derive the size inline". Heading-and-label typography is the
+// existing FLAT_TABLE_HEADER_TITLE / FLAT_TABLE_EYEBROW pair above; the
+// tokens here cover row body content, compact panels, and markdown notes.
+//
+// Out of scope (intentional): modal titles, primary CTAs, auth pages, and
+// other surfaces that are not row/table/panel chrome. Strings used only
+// once anywhere in the codebase also stay inline — these tokens exist for
+// repeated patterns, not for every literal text-* class.
+
+// Body text on flat row surfaces. Used by ItemRow / GearItemRow /
+// LibraryPanel rows / CategoryGroup footer / AddItemRow / CategorySection
+// rename + empty states. Call sites compose `font-normal` or other
+// weights + color separately when needed.
+export const FLAT_TABLE_BODY_TEXT = 'text-sm'
+
+// Muted body variant for descriptions and secondary copy on rows. The
+// `font-normal text-gray-500` treatment is the established pattern for
+// item/gear descriptions in the share/owner read paths; kept as one
+// token so descriptions don't drift in weight or color. Rows that flip
+// the color reactively (e.g. ItemRow's is_packed strikethrough) keep
+// the inline color override and compose FLAT_TABLE_BODY_TEXT + font-normal
+// instead.
+export const FLAT_TABLE_BODY_TEXT_MUTED = 'text-sm font-normal text-gray-500'
+
+// Compact metadata text. Used for small qty/weight chips and tiny labels
+// inside rows where the chip would otherwise overpower the body text.
+export const FLAT_TABLE_META_TEXT = 'text-xs'
+
+// Tabular-nums variant of FLAT_TABLE_META_TEXT for column-aligned numeric
+// chips on rows (qty / weight right rails). Same size as META_TEXT today;
+// kept as a separate token because future tuning of numeric vs text
+// metadata might diverge.
+export const FLAT_TABLE_NUMERIC_TEXT = 'text-xs tabular-nums'
+
+// Compact stat panel body text (WeightTable cells). Denser than flat
+// row body text because these panels are summary surfaces, not list
+// rows. Same value as FLAT_TABLE_META_TEXT today but a distinct token:
+// the surfaces are conceptually different and may tune independently.
+export const COMPACT_PANEL_BODY_TEXT = 'text-xs'
+
+// Stat panel value typography (WeightSummary stat values and similar
+// emphasis values inside compact panels). Medium weight + tabular-nums
+// so values read as numbers, not body text. Call sites add the color
+// (most use text-gray-900 to anchor the value).
+export const COMPACT_PANEL_META_TEXT = 'text-sm font-medium tabular-nums'
+
+// Markdown notes body text (p, ul, ol, blockquote inside MarkdownContent).
+// Same size as FLAT_TABLE_BODY_TEXT today; kept separate so notes can
+// diverge for readability (e.g. wider line-height, larger font) if a
+// future tuning pass calls for it.
+export const MARKDOWN_COMPACT_BODY_TEXT = 'text-sm'
+
+// Markdown notes heading typography (h2, h3 inside MarkdownContent).
+// h1 stays inline at the call site (text-base) because it's the only
+// site at that size and doesn't repeat.
+export const MARKDOWN_COMPACT_HEADING_TEXT = 'text-sm font-semibold'

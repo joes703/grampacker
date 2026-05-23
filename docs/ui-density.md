@@ -106,6 +106,52 @@ gap / padding / column / hover / selected classes around them.
   tables so border/radius/tint changes flow through without forcing every table to share
   the same row density.
 
+### Typography Tokens
+
+Heading-and-label typography is the two-tier `FLAT_TABLE_HEADER_TITLE` / `FLAT_TABLE_EYEBROW`
+pair above. The body/meta/numeric tokens below cover row body content, compact panels, and
+markdown notes — they live alongside the chrome tokens in
+`src/components/flat-table-styles.ts` so a desktop/mobile font-size experiment happens in
+one place instead of being chased across one-off Tailwind strings.
+
+The contract is "always reach the token from row/table/panel surfaces, never re-derive the
+size inline." Today all tokens are unified across viewports (mobile and desktop see the
+same `text-sm`/`text-xs`); the tokens exist to make a future tuning pass cheap.
+
+- `FLAT_TABLE_BODY_TEXT` — body text on flat row surfaces. Item rows, picker rows, footer
+  rows, rename inputs, empty-state primary copy. Call sites compose `font-normal` or other
+  weights + color separately when needed.
+- `FLAT_TABLE_BODY_TEXT_MUTED` — muted body variant for descriptions and secondary copy on
+  rows. `text-sm font-normal text-gray-500`. Used for item descriptions in share/owner
+  read paths. Rows that flip color reactively (e.g. `ItemRow`'s `is_packed` strikethrough)
+  keep their inline color override and compose `FLAT_TABLE_BODY_TEXT` + `font-normal`
+  instead.
+- `FLAT_TABLE_META_TEXT` — compact metadata text. Small qty/weight chips and tiny labels
+  inside rows where a body-text chip would overpower the surrounding content.
+- `FLAT_TABLE_NUMERIC_TEXT` — tabular-nums variant of `FLAT_TABLE_META_TEXT` for
+  column-aligned numeric chips (qty / weight right rails). Same size as `META_TEXT` today
+  but kept separate because future tuning of numeric vs text metadata might diverge.
+- `COMPACT_PANEL_BODY_TEXT` — compact stat panel body text (`WeightTable` cells). Denser
+  than flat-row body text because these panels are summary surfaces, not list rows. Same
+  value as `FLAT_TABLE_META_TEXT` today but a distinct token: the surfaces are
+  conceptually different and may tune independently.
+- `COMPACT_PANEL_META_TEXT` — stat-panel value typography (`WeightSummary` stat values
+  and similar emphasis values inside compact panels). `text-sm font-medium tabular-nums`
+  so values read as numbers, not body text. Call sites add the color (most use
+  `text-gray-900` to anchor the value).
+- `MARKDOWN_COMPACT_BODY_TEXT` — markdown notes body text (`p`, `ul`, `ol`, `blockquote`
+  inside `MarkdownContent`). Same size as `FLAT_TABLE_BODY_TEXT` today; kept separate so
+  notes can diverge for readability (wider line-height, larger font) if a future tuning
+  pass calls for it.
+- `MARKDOWN_COMPACT_HEADING_TEXT` — markdown notes heading typography (`h2`, `h3` inside
+  `MarkdownContent`). The `h1` element stays inline at the call site (`text-base`)
+  because it's the only site at that size and doesn't repeat.
+
+Out of scope (intentional): modal titles, primary CTAs, auth pages, button toolbars,
+form fields, and other surfaces that are not row/table/panel chrome. Strings used only
+once anywhere in the codebase also stay inline — these tokens exist for repeated patterns,
+not for every literal `text-*` class.
+
 ### Surfaces consuming the module
 
 White table surface (`FLAT_TABLE_SURFACE`, rounded corners included). Two layouts:

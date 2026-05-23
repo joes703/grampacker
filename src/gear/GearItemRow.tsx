@@ -14,7 +14,11 @@ import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
-import { FLAT_TABLE_ROW } from '../components/flat-table-styles'
+import {
+  FLAT_TABLE_BODY_TEXT,
+  FLAT_TABLE_BODY_TEXT_MUTED,
+  FLAT_TABLE_ROW,
+} from '../components/flat-table-styles'
 import GearStatusBadge from './GearStatusBadge'
 import GearStatusMenuItems from './GearStatusMenuItems'
 
@@ -88,7 +92,7 @@ export default function GearItemRow({
       // none here — the TouchSensor press-and-hold delay separates scroll from
       // drag, so the library can scroll the list until a hold activates a drag.
       {...rowDragListeners}
-      className={`group relative ${FLAT_TABLE_ROW} text-sm ${
+      className={`group relative ${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${
         mobileSwipe ? '' : 'gap-1.5 bg-white px-3 py-2 lg:py-0.5'
       } ${
         selected ? 'bg-blue-50' : 'hover:bg-gray-50'
@@ -155,7 +159,7 @@ export default function GearItemRow({
                   value={item.description ?? ''}
                   placeholder="Add description"
                   onSave={(v) => onInlineSave({ description: v })}
-                  className="block w-full truncate text-sm font-normal text-gray-500"
+                  className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}
                 />
               </div>
             )}

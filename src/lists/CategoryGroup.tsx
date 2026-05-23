@@ -7,6 +7,7 @@ import type { ListItemPatch } from '../lib/queries'
 import { formatTotalWeight, type WeightUnit } from '../lib/weight'
 import { makeDnDId } from '../lib/dnd-ids'
 import {
+  FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
   FLAT_TABLE_HEADER,
   FLAT_TABLE_HEADER_COUNT,
@@ -345,7 +346,7 @@ function CategoryGroup({
             // footer row is the same height as the item rows above it; can't
             // use the constant directly because the row is display-gated
             // (hidden lg:flex print:flex) and carries no bottom border.
-            <div className="hidden lg:flex print:flex min-h-11 lg:min-h-8 items-center gap-1.5 px-3 py-0.5 text-sm">
+            <div className={`hidden lg:flex print:flex min-h-11 lg:min-h-8 items-center gap-1.5 px-3 py-0.5 ${FLAT_TABLE_BODY_TEXT}`}>
               {onAddItem ? (
                 <button
                   onClick={() => setAdding(true)}

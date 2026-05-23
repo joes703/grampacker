@@ -4,9 +4,12 @@ import type { GearItem, Category } from '../lib/types'
 import { groupByCategory } from '../lib/grouping'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 import {
+  FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_HEADER,
   FLAT_TABLE_HEADER_COUNT,
   FLAT_TABLE_HEADER_TITLE,
+  FLAT_TABLE_META_TEXT,
+  FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_ROW,
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
@@ -89,7 +92,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
             placeholder="Search gear…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={`w-full rounded-lg border border-gray-300 pl-8 pr-3 py-1.5 ${FLAT_TABLE_BODY_TEXT} focus:outline-none focus:ring-2 focus:ring-blue-500`}
           />
         </div>
       </div>
@@ -153,9 +156,9 @@ function EmptyState({
   body: string
 }) {
   return (
-    <div className="p-4 text-center text-sm text-gray-500">
+    <div className={`p-4 text-center ${FLAT_TABLE_BODY_TEXT} text-gray-500`}>
       <p className="font-medium text-gray-700">{heading}</p>
-      <p className="mt-1 text-xs text-gray-500">{body}</p>
+      <p className={`mt-1 ${FLAT_TABLE_META_TEXT} text-gray-500`}>{body}</p>
     </div>
   )
 }
@@ -249,14 +252,14 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                     up a subtle icon next to the name. */}
                 <GearStatusBadge status={item.status} compact className="shrink-0" />
                 <span
-                  className={`flex-1 min-w-0 truncate text-sm font-normal ${
+                  className={`flex-1 min-w-0 truncate ${FLAT_TABLE_BODY_TEXT} font-normal ${
                     inList ? 'text-gray-400' : 'text-gray-900'
                   }`}
                 >
                   {item.name}
                 </span>
                 <span
-                  className={`shrink-0 text-xs tabular-nums ${
+                  className={`shrink-0 ${FLAT_TABLE_NUMERIC_TEXT} ${
                     inList ? 'text-gray-300' : 'text-gray-500'
                   }`}
                 >
