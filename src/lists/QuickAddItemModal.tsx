@@ -3,6 +3,7 @@ import { Minus, Plus, Shirt, UtensilsCrossed, X } from 'lucide-react'
 import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
+import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import WeightInput from '../components/WeightInput'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
@@ -66,7 +67,7 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-gray-400 hover:text-gray-600"
+            className={`${ROW_CONTROL_TARGET} text-gray-400 hover:text-gray-600`}
             aria-label="Close"
           >
             <X size={18} />

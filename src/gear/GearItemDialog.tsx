@@ -3,6 +3,7 @@ import { Check, CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } fr
 import type { Category, GearItem } from '../lib/types'
 import { DEFAULT_GEAR_STATUS, type GearStatus } from '../lib/gear-status'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
+import { FLAT_TABLE_EYEBROW, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
@@ -175,7 +176,7 @@ export default function GearItemDialog({
             never disappears as the user scrolls the form. */}
         <div className="flex items-center justify-between px-6 pt-6 pb-3 shrink-0">
           <h2 className="text-base font-semibold text-gray-900">{heading}</h2>
-          <button type="button" onClick={onClose} className="rounded p-1 text-gray-400 hover:text-gray-600">
+          <button type="button" onClick={onClose} aria-label="Close" className={`${ROW_CONTROL_TARGET} text-gray-400 hover:text-gray-600`}>
             <X size={18} />
           </button>
         </div>
@@ -361,7 +362,7 @@ export default function GearItemDialog({
               doesn't render and the dialog stays as it was. */}
           {listContext && (
             <div className="border-t border-gray-200 pt-4 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <p className={FLAT_TABLE_EYEBROW}>
                 On this list
               </p>
               <div>
