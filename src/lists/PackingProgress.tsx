@@ -23,14 +23,15 @@ type Props = {
   // doesn't strand the user waiting for an offline transition.
   syncBlocked?: boolean
   onRetrySync?: () => void
-  // Ready Checks block. Always supplied so the bottom options row can
-  // render the toggle; the Ready progress bar + Reset Ready only render
-  // when `enabled`. The toggle flips ready_checks_enabled via the page-
-  // level mutation passed as onToggleEnabled.
+  // Ready Checks block. The toggle for ready_checks_enabled lives in
+  // List options (ListSettingsPanel) because it's a list-level pack-mode
+  // setting, not a transient view filter. This component only reads
+  // `enabled` to gate the second progress bar + Reset Ready button, and
+  // calls `onResetReady` when the user confirms a reset. Prop is
+  // optional only because the share view never renders Reset.
   readyChecks?: {
     ready: number
     enabled: boolean
-    onToggleEnabled: () => void
     onResetReady: () => void
   }
 }
@@ -122,33 +123,20 @@ export default function PackingProgress({
         </div>
       )}
 
-      {/* Options block — Pack Mode view toggles grouped under the
-          progress bars. Rendered as a shrink-to-content grid (label
-          column + switch column, both `max-content`) so each switch
-          sits right next to its label rather than pinned to the far
-          right of the wide progress panel. Switches still align
-          vertically with each other because both rows share the same
-          two grid columns. Behavior unchanged: Show unpacked only is
-          local view state, Ready checks writes ready_checks_enabled
-          via the same page mutation, both toggles stay enabled
-          offline. */}
-      <div className="mt-4 grid grid-cols-[max-content_max-content] gap-x-3 gap-y-2 items-center print:hidden">
+      {/* Show unpacked only: the active packing view filter. Local
+          view state, stays here under the progress bars where the user
+          sees its effect. Compact label-left / switch-right row,
+          quieted to text-gray-700 so the progress counts above stay
+          the eye-anchor. The Ready checks toggle moved to List options
+          (ListSettingsPanel's Pack mode section) since it's a persisted
+          list setting, not a transient filter. */}
+      <div className="mt-4 flex items-center gap-3 print:hidden">
         <span className="text-sm font-medium text-gray-700">Show unpacked only</span>
         <ToggleSwitch
           checked={showUnpackedOnly}
           onChange={onToggleShowUnpackedOnly}
           ariaLabel="Show unpacked only"
         />
-        {readyChecks && (
-          <>
-            <span className="text-sm font-medium text-gray-700">Ready checks</span>
-            <ToggleSwitch
-              checked={readyChecks.enabled}
-              onChange={readyChecks.onToggleEnabled}
-              ariaLabel="Ready checks"
-            />
-          </>
-        )}
       </div>
 
       {(offline || pendingSyncCount > 0 || syncing) && (

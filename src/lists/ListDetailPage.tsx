@@ -437,26 +437,6 @@ function ListDetailInner({
     }),
   })
 
-  // Per-list Ready Checks toggle. Lives in Pack Mode (PackingProgress's
-  // options row) because users encounter the feature there. Optimistic on
-  // the lists cache so the second progress bar + per-row checkbox column
-  // appear/disappear immediately; server-write reconciles on settle.
-  // Toggling off preserves existing is_ready values on rows — disabling
-  // is a UI hide, not a data wipe, matching how group_worn behaves.
-  const readyChecksToggleMut = useMutation({
-    mutationFn: (enabled: boolean) => updateList(listId, { ready_checks_enabled: enabled }),
-    ...makeOptimisticUpdate<List, boolean>({
-      qc,
-      queryKey: queryKeys.lists(),
-      id: () => listId,
-      apply: (item, enabled) => ({
-        ...item,
-        ready_checks_enabled: enabled,
-        updated_at: new Date().toISOString(),
-      }),
-    }),
-  })
-
   // Editing gear from a list writes to gear_items so the change propagates
   // to the gear library and every list that uses the same item. The
   // ['list-items', *] fan-out is what closes B-2: without it, an immediate
@@ -972,7 +952,6 @@ function ListDetailInner({
                 readyChecks={{
                   ready: listItems.filter((i) => i.is_ready).length,
                   enabled: list.ready_checks_enabled,
-                  onToggleEnabled: () => readyChecksToggleMut.mutate(!list.ready_checks_enabled),
                   onResetReady: resetReady,
                 }}
               />
