@@ -115,8 +115,20 @@ markdown notes — they live alongside the chrome tokens in
 one place instead of being chased across one-off Tailwind strings.
 
 The contract is "always reach the token from row/table/panel surfaces, never re-derive the
-size inline." Today all tokens are unified across viewports (mobile and desktop see the
-same `text-sm`/`text-xs`); the tokens exist to make a future tuning pass cheap.
+size inline."
+
+**Desktop scale: 13px.** Every body/meta/panel/markdown token below adds an
+`lg:text-[13px]` override on top of its mobile size. The shared 13px tier sits between
+Tailwind's `text-xs` (12px) and `text-sm` (14px): denser than `text-sm` for desktop
+scanning, larger than `text-xs` for comfortable reading. The result is a single desktop
+body tier across rows, compact panels, and notes — row body text and its numeric chips
+read at the same size on desktop instead of the previous 12 / 14 split.
+
+**Mobile stays at `text-sm` / `text-xs`** unchanged; the 13px override applies only at
+`lg` and above because pointer scans tolerate denser body type than touch reading. Tailwind
+v4's JIT scanner picks up the `lg:text-[13px]` arbitrary-value class from the literal
+strings in `flat-table-styles.ts`, so it ships in the generated CSS without any extra
+content-path config.
 
 - `FLAT_TABLE_BODY_TEXT` — body text on flat row surfaces. Item rows, picker rows, footer
   rows, rename inputs, empty-state primary copy. Call sites compose `font-normal` or other

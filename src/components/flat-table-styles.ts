@@ -73,13 +73,24 @@ export const ROW_CONTROL_TARGET =
 // ---------------------------------------------------------------------------
 // Body typography tokens
 // ---------------------------------------------------------------------------
-// Centralized so future desktop/mobile font-size experiments (for example
-// tuning desktop body down to 13px) happen in one place instead of being
-// chased across call sites. Today all tokens are unified across viewports;
-// the contract is "always reach the token from row/table/panel surfaces,
-// never re-derive the size inline". Heading-and-label typography is the
-// existing FLAT_TABLE_HEADER_TITLE / FLAT_TABLE_EYEBROW pair above; the
-// tokens here cover row body content, compact panels, and markdown notes.
+// Centralized so desktop/mobile font-size experiments happen in one place
+// instead of being chased across call sites. Heading-and-label typography
+// is the existing FLAT_TABLE_HEADER_TITLE / FLAT_TABLE_EYEBROW pair above;
+// the tokens here cover row body content, compact panels, and markdown notes.
+//
+// Desktop scale: 13px (lg:text-[13px]). This is a deliberate tier below
+// Tailwind's text-sm (14px) and above text-xs (12px), giving denser desktop
+// scans without the eye-strain of text-xs. The arbitrary-value class is
+// safe for Tailwind v4's JIT scanner — the literal appears statically in
+// this file so the class lands in the generated CSS. The shared 13px scale
+// raises some compact text-xs surfaces (META / NUMERIC / COMPACT_PANEL_BODY)
+// up to 13px on desktop AND brings text-sm body surfaces down to 13px, so
+// the row body and its numeric chips read at the same size — a single
+// desktop body tier instead of the previous 12 / 14 split.
+//
+// Mobile stays at text-sm (14px) / text-xs (12px) unchanged. The shared
+// 13px tier is desktop-only because pointer scans tolerate denser body
+// type than touch reading.
 //
 // Out of scope (intentional): modal titles, primary CTAs, auth pages, and
 // other surfaces that are not row/table/panel chrome. Strings used only
@@ -90,7 +101,7 @@ export const ROW_CONTROL_TARGET =
 // LibraryPanel rows / CategoryGroup footer / AddItemRow / CategorySection
 // rename + empty states. Call sites compose `font-normal` or other
 // weights + color separately when needed.
-export const FLAT_TABLE_BODY_TEXT = 'text-sm'
+export const FLAT_TABLE_BODY_TEXT = 'text-sm lg:text-[13px]'
 
 // Muted body variant for descriptions and secondary copy on rows. The
 // `font-normal text-gray-500` treatment is the established pattern for
@@ -99,40 +110,44 @@ export const FLAT_TABLE_BODY_TEXT = 'text-sm'
 // the color reactively (e.g. ItemRow's is_packed strikethrough) keep
 // the inline color override and compose FLAT_TABLE_BODY_TEXT + font-normal
 // instead.
-export const FLAT_TABLE_BODY_TEXT_MUTED = 'text-sm font-normal text-gray-500'
+export const FLAT_TABLE_BODY_TEXT_MUTED = 'text-sm lg:text-[13px] font-normal text-gray-500'
 
 // Compact metadata text. Used for small qty/weight chips and tiny labels
-// inside rows where the chip would otherwise overpower the body text.
-export const FLAT_TABLE_META_TEXT = 'text-xs'
+// inside rows where the chip would otherwise overpower the body text on
+// mobile. Desktop bumps to 13px so meta and body read at the same scale
+// for column-aligned scanning.
+export const FLAT_TABLE_META_TEXT = 'text-xs lg:text-[13px]'
 
 // Tabular-nums variant of FLAT_TABLE_META_TEXT for column-aligned numeric
-// chips on rows (qty / weight right rails). Same size as META_TEXT today;
+// chips on rows (qty / weight right rails). Same size scale as META_TEXT;
 // kept as a separate token because future tuning of numeric vs text
 // metadata might diverge.
-export const FLAT_TABLE_NUMERIC_TEXT = 'text-xs tabular-nums'
+export const FLAT_TABLE_NUMERIC_TEXT = 'text-xs lg:text-[13px] tabular-nums'
 
 // Compact stat panel body text (WeightTable cells). Denser than flat
-// row body text because these panels are summary surfaces, not list
-// rows. Same value as FLAT_TABLE_META_TEXT today but a distinct token:
-// the surfaces are conceptually different and may tune independently.
-export const COMPACT_PANEL_BODY_TEXT = 'text-xs'
+// row body text on mobile because these panels are summary surfaces,
+// not list rows. Desktop aligns to the shared 13px tier so summary
+// panels read at the same body scale as the rows they summarize.
+export const COMPACT_PANEL_BODY_TEXT = 'text-xs lg:text-[13px]'
 
 // Stat panel value typography (WeightSummary stat values and similar
 // emphasis values inside compact panels). Medium weight + tabular-nums
 // so values read as numbers, not body text. Call sites add the color
 // (most use text-gray-900 to anchor the value).
-export const COMPACT_PANEL_META_TEXT = 'text-sm font-medium tabular-nums'
+export const COMPACT_PANEL_META_TEXT = 'text-sm lg:text-[13px] font-medium tabular-nums'
 
 // Markdown notes body text (p, ul, ol, blockquote inside MarkdownContent).
-// Same size as FLAT_TABLE_BODY_TEXT today; kept separate so notes can
-// diverge for readability (e.g. wider line-height, larger font) if a
-// future tuning pass calls for it.
-export const MARKDOWN_COMPACT_BODY_TEXT = 'text-sm'
+// Desktop matches the shared 13px body tier so notes read at the same
+// scale as the surrounding row/table surfaces; mobile stays at text-sm
+// for comfortable reading width.
+export const MARKDOWN_COMPACT_BODY_TEXT = 'text-sm lg:text-[13px]'
 
 // Markdown notes heading typography (h2, h3 inside MarkdownContent).
-// h1 stays inline at the call site (text-base) because it's the only
-// site at that size and doesn't repeat.
-export const MARKDOWN_COMPACT_HEADING_TEXT = 'text-sm font-semibold'
+// Same size as the body on desktop (13px), differentiated by font-semibold
+// weight. h1 stays inline at the call site (text-base) because it's the
+// only site at that size and is the one heading meant to read as larger
+// than body within compact notes.
+export const MARKDOWN_COMPACT_HEADING_TEXT = 'text-sm lg:text-[13px] font-semibold'
 
 // ---------------------------------------------------------------------------
 // Panel control typography tokens
@@ -148,7 +163,8 @@ export const MARKDOWN_COMPACT_HEADING_TEXT = 'text-sm font-semibold'
 // control labels read as primary panel content; helper/descriptive copy
 // next to them stays lighter. Earlier `PackingProgress` carried gray-700
 // for the same role; that drift is intentionally resolved to gray-900 here.
-export const PANEL_TOGGLE_LABEL = 'text-sm font-medium text-gray-900'
+// Desktop matches the shared 13px tier with the rest of panel body text.
+export const PANEL_TOGGLE_LABEL = 'text-sm lg:text-[13px] font-medium text-gray-900'
 
 // Panel empty-state placeholder. "No notes" / similar empty content shown
 // inside a notes-style panel surface (NotesEditor read state, SharePage
@@ -157,4 +173,4 @@ export const PANEL_TOGGLE_LABEL = 'text-sm font-medium text-gray-900'
 // ("No items" in a category) which use FLAT_TABLE_BODY_TEXT + the row
 // surface's italic + color: the row pattern is one site (CategorySection)
 // and stays composed inline.
-export const PANEL_EMPTY_TEXT = 'text-sm italic text-gray-400'
+export const PANEL_EMPTY_TEXT = 'text-sm lg:text-[13px] italic text-gray-400'
