@@ -8,6 +8,7 @@ import { useRequireSession } from '../auth/use-require-session'
 import { RowMenuItem } from '../components/RowMenuItem'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToggleSwitch from '../components/ToggleSwitch'
+import { PANEL_TOGGLE_LABEL } from '../components/flat-table-styles'
 import PrivacyPanel from './PrivacyPanel'
 import { useCurrentListActions } from './use-current-list-actions'
 
@@ -109,7 +110,7 @@ export default function ListSettingsPanel({ list }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-900">Group worn items</span>
+        <span className={PANEL_TOGGLE_LABEL}>Group worn items</span>
         <ToggleSwitch
           checked={list.group_worn}
           onChange={() => groupWornMut.mutate()}
@@ -117,7 +118,7 @@ export default function ListSettingsPanel({ list }: Props) {
         />
       </div>
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-900">Ready checks (pack mode)</span>
+        <span className={PANEL_TOGGLE_LABEL}>Ready checks (pack mode)</span>
         <ToggleSwitch
           checked={list.ready_checks_enabled}
           onChange={() => readyChecksMut.mutate()}

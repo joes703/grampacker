@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { PANEL_EMPTY_TEXT } from '../components/flat-table-styles'
 
 // react-markdown + remark-gfm is ~46 KB gzip. Owner Notes panels rarely
 // switch into render-with-content state on first paint (often empty for
@@ -60,7 +61,7 @@ function NotesRead({ initial }: { initial: string }) {
           <MarkdownContent content={initial} />
         </Suspense>
       ) : (
-        <p className="text-sm italic text-gray-400">No notes</p>
+        <p className={PANEL_EMPTY_TEXT}>No notes</p>
       )}
     </div>
   )
