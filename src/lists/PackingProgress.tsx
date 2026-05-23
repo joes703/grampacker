@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { CheckSquare, RotateCcw, WifiOff } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
+import PillToggle from '../components/PillToggle'
 import { TABLE_BORDER, TABLE_RADIUS, TABLE_SURFACE_BG } from '../components/flat-table-styles'
 
 type Props = {
@@ -125,34 +126,22 @@ export default function PackingProgress({
           from the progress/reset rows above. `flex-wrap` lets the two
           pills stack on narrow viewports without crowding. */}
       <div className="mt-3 flex items-center gap-2 flex-wrap print:hidden">
-        <button
-          type="button"
+        <PillToggle
+          active={showUnpackedOnly}
           onClick={onToggleShowUnpackedOnly}
-          aria-pressed={showUnpackedOnly}
+          label="Show unpacked only"
+          size="sm"
           title={showUnpackedOnly ? 'Showing unpacked only. Click to show all.' : 'Show unpacked only'}
-          className={`rounded-lg border px-3 py-1 text-xs font-medium ${
-            showUnpackedOnly
-              ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-              : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-          }`}
-        >
-          Show unpacked only
-        </button>
+        />
         {readyChecks && (
-          <button
-            type="button"
+          <PillToggle
+            active={readyChecks.enabled}
             onClick={readyChecks.onToggleEnabled}
-            aria-pressed={readyChecks.enabled}
+            label="Ready checks"
+            icon={<CheckSquare size={12} aria-hidden />}
+            size="sm"
             title={readyChecks.enabled ? 'Ready checks on. Click to turn off.' : 'Turn on Ready checks'}
-            className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-xs font-medium ${
-              readyChecks.enabled
-                ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <CheckSquare size={12} aria-hidden />
-            Ready checks
-          </button>
+          />
         )}
       </div>
 
