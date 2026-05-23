@@ -1,16 +1,15 @@
 import { useState } from 'react'
-import { Backpack, CheckSquare, ListChecks, Plus, Settings2 } from 'lucide-react'
+import { useLocation } from 'react-router'
+import { Plus, Settings2 } from 'lucide-react'
 import MobileOptionsModal from '../components/MobileOptionsModal'
 import MobileBottomBar from '../components/MobileBottomBar'
 import GearOptionsContent from './GearOptionsContent'
 import { useSuppressMobilePrimaryNav } from '../layout/mobile-primary-nav-context'
+import { buildMobileDestinationItems } from '../layout/mobile-nav-destinations'
 
 type Props = {
   /** Open the canonical "New item" dialog. */
   onNewItem: () => void
-  /** Toggle selection mode. Active state styles the Select pill blue. */
-  selectMode: boolean
-  onToggleSelectMode: () => void
   /** Gear Options modal handlers — rare/utility actions. */
   onNewCategory: () => void
   onImport: () => void
@@ -21,30 +20,24 @@ type Props = {
   canCollapseExpand: boolean
 }
 
-// Mobile-only bottom action bar for the Gear page. Mirrors the layout
-// model used by MobileListActionBar on List Detail: top bar holds
-// orientation (route heading + global menu), content holds browse/filter
-// (search + chips), and the three primary actions live at the bottom
-// (New, Select, Options). Rare actions (New category, Import, Export,
-// Collapse/Expand all) hide behind the Options modal so the content
-// header stays uncluttered. The Options body is GearOptionsContent —
-// shared with GearOptionsButton's desktop popover so both surfaces
-// stay in lockstep without duplicated row markup.
+// Mobile-only bottom action bar for the Gear page. Standardized 4-slot
+// shape (Gear / Lists / Add / Options) shared with every other mobile
+// bar so users see consistent geography across the app.
+//
+// The Select toggle used to live here as a fifth slot, but that broke
+// the uniform shape and was the gear-only outlier on the bar. Select is
+// now a pill on the gear page header instead — same visibility, better
+// discovery on every viewport, no bar inconsistency. Rare/utility
+// actions (New category, Import, Export, Collapse/Expand all) stay
+// behind Options. The Options body is GearOptionsContent — shared with
+// GearOptionsButton's desktop popover so both surfaces stay in lockstep
+// without duplicated row markup.
 //
 // Visibility:
-//   - lg:hidden so desktop's inline toolbar continues to own the
-//     equivalent affordances. The bar also hides in print.
-//   - Renders only on /gear because it's mounted by GearLibraryPage; no
-//     route gating needed.
-//
-// Selection-mode behavior:
-//   - The Select button is a toggle: tapping enters select mode (blue
-//     active style), tapping again exits. Bulk actions (move, delete,
-//     create list from selection) still live in BulkActionsToolbar.
+//   - lg:hidden inside MobileBottomBar so desktop never renders.
+//   - Renders only on /gear because it's mounted by GearLibraryPage.
 export default function MobileGearActionBar({
   onNewItem,
-  selectMode,
-  onToggleSelectMode,
   onNewCategory,
   onImport,
   onExport,
@@ -54,6 +47,7 @@ export default function MobileGearActionBar({
   canCollapseExpand,
 }: Props) {
   useSuppressMobilePrimaryNav()
+  const { pathname } = useLocation()
   const [optionsOpen, setOptionsOpen] = useState(false)
 
   return (
@@ -61,35 +55,13 @@ export default function MobileGearActionBar({
       <MobileBottomBar
         label="Gear navigation and actions"
         items={[
-          {
-            type: 'link',
-            to: '/gear',
-            label: 'Gear',
-            icon: <Backpack size={18} />,
-            ariaLabel: 'Gear',
-          },
-          {
-            type: 'link',
-            to: '/lists',
-            label: 'Lists',
-            icon: <ListChecks size={18} />,
-            ariaLabel: 'Lists',
-          },
+          ...buildMobileDestinationItems(pathname),
           {
             type: 'button',
-            label: 'New',
+            label: 'Add',
             icon: <Plus size={18} />,
             onClick: onNewItem,
             ariaLabel: 'New gear item',
-          },
-          {
-            type: 'button',
-            label: 'Select',
-            icon: <CheckSquare size={18} />,
-            onClick: onToggleSelectMode,
-            active: selectMode,
-            ariaLabel: selectMode ? 'Exit selection mode' : 'Enter selection mode',
-            ariaPressed: selectMode,
           },
           {
             type: 'button',
