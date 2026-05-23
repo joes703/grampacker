@@ -443,12 +443,12 @@ export default function ItemRow({
             onClick={() => setEditingQty(true)}
             title="Click to edit quantity"
             aria-label={`Quantity ${item.quantity} for ${name}, click to edit`}
-            className="shrink-0 w-12 text-right tabular-nums text-gray-600 hover:text-blue-600"
+            className={`shrink-0 w-12 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600 hover:text-blue-600`}
           >
             {item.quantity}
           </button>
         ) : (
-          <span className="shrink-0 w-12 text-right tabular-nums text-gray-600">
+          <span className={`shrink-0 w-12 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
             {item.quantity}
           </span>
         )}
@@ -472,12 +472,12 @@ export default function ItemRow({
             onClick={() => setEditingWeight(true)}
             title="Click to edit weight"
             aria-label={`Weight ${formatItemWeight(itemWeight, weightUnit)} for ${name}, click to edit`}
-            className="shrink-0 w-24 text-right tabular-nums text-gray-600 hover:text-blue-600"
+            className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600 hover:text-blue-600`}
           >
             {formatItemWeight(itemWeight, weightUnit)}
           </button>
         ) : (
-          <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
+          <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
             {formatItemWeight(itemWeight, weightUnit)}
           </span>
         )}
@@ -531,10 +531,10 @@ function MobileRowBody({
       <span className="shrink-0 w-6 inline-flex items-center justify-center">
         {item.is_worn ? <WornIcon /> : item.is_consumable ? <ConsumableIcon /> : null}
       </span>
-      <span className="shrink-0 w-8 text-right tabular-nums text-gray-600">
+      <span className={`shrink-0 w-8 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
         {item.quantity}
       </span>
-      <span className="shrink-0 w-20 text-right tabular-nums text-gray-600">
+      <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
         {formatItemWeight(itemWeight, weightUnit)}
       </span>
     </>

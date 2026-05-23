@@ -15,6 +15,7 @@ import {
   FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_HEADER_TITLE_MUTED,
+  FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_SURFACE,
   MOBILE_ROW_HEIGHT,
   ROW_CONTROL_TARGET,
@@ -368,7 +369,7 @@ function CategoryGroup({
                 <div className="shrink-0 w-7" />
                 <div className="shrink-0 w-7" />
                 <div className="shrink-0 w-12" />
-                <div className="shrink-0 w-24 text-right tabular-nums font-semibold text-gray-700">
+                <div className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
                   {items.length > 0 ? formatTotalWeight(totalGrams, weightUnit) : ''}
                 </div>
                 {showKebabSlot && <div className="shrink-0 w-7" />}
@@ -376,7 +377,7 @@ function CategoryGroup({
               <div className="lg:hidden flex items-center gap-2">
                 <div className="shrink-0 w-6" />
                 <div className="shrink-0 w-8" />
-                <div className="shrink-0 w-20 text-right tabular-nums font-semibold text-gray-700">
+                <div className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
                   {items.length > 0 ? formatTotalWeight(totalGrams, weightUnit) : ''}
                 </div>
               </div>
