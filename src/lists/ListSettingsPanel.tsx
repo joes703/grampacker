@@ -6,16 +6,18 @@ import PrivacyPanel from './PrivacyPanel'
 
 type Props = { list: List }
 
-// Current-list settings panel. Three sections:
-//   1. Group worn items - toggle that moves worn items into their own
-//      grouped section across every view (edit, pack, public share).
-//   2. Pack mode - settings that change pack-mode behavior on this list
-//      (currently Ready checks, the per-list "second progress bar +
-//      Ready checkbox column" feature). PackingProgress reads the same
-//      list.ready_checks_enabled value to render the Ready UI when on.
-//   3. Sharing - public/private toggle + copy-link affordance.
-//      PrivacyPanel owns the toggle mutation and clipboard interaction;
-//      this panel provides the section framing.
+// Current-list settings panel. A flat stack of toggle rows, one
+// per setting:
+//   - Group worn items: moves worn items into their own grouped
+//     section across every view (edit, pack, public share).
+//   - Ready checks (pack mode): enables the per-list "second progress
+//     bar + Ready checkbox column" feature in Pack mode.
+//   - Public link: PrivacyPanel's inline body (toggle + url + Copy when
+//     public).
+//
+// Each row is a single line: label left, switch right. No section
+// headings, no helper paragraphs - labels are short enough to stand on
+// their own.
 //
 // Mounted inside ListSettingsButton's popover at md+ and inside a Modal
 // on mobile via MobileListActionBar's Options slot.
@@ -48,44 +50,24 @@ export default function ListSettingsPanel({ list }: Props) {
   })
 
   return (
-    <div className="space-y-4">
-      <section>
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-900">Group worn items</span>
-          <ToggleSwitch
-            checked={list.group_worn}
-            onChange={() => groupWornMut.mutate()}
-            ariaLabel="Group worn items"
-          />
-        </div>
-        <p className="mt-1 text-xs text-gray-500">
-          Show worn items in their own section.
-        </p>
-      </section>
-
-      <div className="border-t border-gray-100" />
-
-      <section>
-        <h3 className="text-sm font-semibold text-gray-900">Pack mode</h3>
-        <div className="mt-2 flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-900">Ready checks</span>
-          <ToggleSwitch
-            checked={list.ready_checks_enabled}
-            onChange={() => readyChecksMut.mutate()}
-            ariaLabel="Ready checks"
-          />
-        </div>
-      </section>
-
-      <div className="border-t border-gray-100" />
-
-      <section>
-        <h3 className="text-sm font-semibold text-gray-900">Sharing</h3>
-        <p className="mt-1 mb-2 text-xs text-gray-500">
-          Anyone with the link can view this list.
-        </p>
-        <PrivacyPanel list={list} />
-      </section>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-gray-900">Group worn items</span>
+        <ToggleSwitch
+          checked={list.group_worn}
+          onChange={() => groupWornMut.mutate()}
+          ariaLabel="Group worn items"
+        />
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-gray-900">Ready checks (pack mode)</span>
+        <ToggleSwitch
+          checked={list.ready_checks_enabled}
+          onChange={() => readyChecksMut.mutate()}
+          ariaLabel="Ready checks (pack mode)"
+        />
+      </div>
+      <PrivacyPanel list={list} />
     </div>
   )
 }
