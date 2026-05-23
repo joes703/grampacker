@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
+import { Pencil } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -197,6 +198,10 @@ function ListDetailInner({
   // full items array. Lifted here because both PackingProgress (the toggle)
   // and CategoryGroup (the filter consumer) live as children of this page.
   const [showUnpackedOnly, setShowUnpackedOnly] = useState(false)
+  // Notes panel edit mode. Lifted here so PanelCard.headerAction can
+  // render the pencil button conditionally (read mode only) without
+  // exposing NotesEditor's internal state up through a callback.
+  const [notesEditing, setNotesEditing] = useState(false)
   // "Group worn" is per-list and persisted on lists.group_worn — derived
   // below from the resolved list row, not local state. Applies in both
   // normal and pack mode, and is honored on /r/<slug>.
@@ -969,11 +974,28 @@ function ListDetailInner({
               PanelCard table. */}
           {mode !== 'pack' && (
             <div className={`print:hidden grid gap-4 ${listItems.length > 0 ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
-              <PanelCard title="Notes">
+              <PanelCard
+                title="Notes"
+                headerAction={
+                  !notesEditing && (
+                    <button
+                      type="button"
+                      onClick={() => setNotesEditing(true)}
+                      aria-label="Edit notes"
+                      title="Edit notes"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )
+                }
+              >
                 <NotesEditor
                   key={list.id}
                   initial={list.description ?? ''}
                   onSave={(v) => notesMut.mutate(v)}
+                  editing={notesEditing}
+                  onEditingChange={setNotesEditing}
                 />
               </PanelCard>
               <WeightSummary items={listItems} categories={categories} />
