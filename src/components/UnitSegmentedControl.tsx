@@ -33,11 +33,15 @@ export default function UnitSegmentedControl({ idPrefix = 'wuc', label, hint }: 
           {label}
         </div>
       )}
+      {/* Compact inline value selector. Smaller radius (rounded-md /
+          rounded-sm) and tighter padding than PillToggle so it reads
+          as a value picker, not another big toggle. Selected segment
+          stays bg-blue-600 / white for clear active state. */}
       <div
         role="radiogroup"
         aria-labelledby={label ? `${idPrefix}-label` : undefined}
         aria-label={label ? undefined : 'Weight units'}
-        className="inline-flex rounded-lg border border-gray-300 bg-white p-0.5"
+        className="inline-flex rounded-md border border-gray-300 bg-white p-0.5"
       >
         <input
           type="radio"
@@ -50,7 +54,7 @@ export default function UnitSegmentedControl({ idPrefix = 'wuc', label, hint }: 
         <label
           htmlFor={metricId}
           title="Metric"
-          className={`cursor-pointer rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+          className={`cursor-pointer rounded-sm px-2 py-0.5 text-xs font-semibold transition-colors ${
             weightUnit === 'g'
               ? 'bg-blue-600 text-white'
               : 'text-gray-600 hover:bg-gray-50'
@@ -69,7 +73,7 @@ export default function UnitSegmentedControl({ idPrefix = 'wuc', label, hint }: 
         <label
           htmlFor={imperialId}
           title="Imperial"
-          className={`cursor-pointer rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+          className={`cursor-pointer rounded-sm px-2 py-0.5 text-xs font-semibold transition-colors ${
             weightUnit === 'oz'
               ? 'bg-blue-600 text-white'
               : 'text-gray-600 hover:bg-gray-50'
