@@ -7,6 +7,7 @@ import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_HEADER,
   FLAT_TABLE_HEADER_COUNT,
+  FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_META_TEXT,
   FLAT_TABLE_NUMERIC_TEXT,
@@ -200,7 +201,7 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
           Static label area below has no hover state so the chevron is the
           obvious affordance. The header strip's bg-gray-50 stays as a
           visual section divider; it just isn't clickable as a whole. */}
-      <div className={`${FLAT_TABLE_HEADER} w-full gap-1.5 px-3 py-0.5`}>
+      <div className={`${FLAT_TABLE_HEADER} ${FLAT_TABLE_HEADER_PADDING} w-full gap-1.5`}>
         <button
           type="button"
           onClick={() => onToggle(toggleKey)}
@@ -245,7 +246,12 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                 // repainted). Dropping the tint avoids the bug without
                 // browser-specific paint hints; dimming alone is
                 // sufficient visual cue.
-                className={`${FLAT_TABLE_ROW} w-full gap-2 px-3 py-0.5 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100`}
+                // Picker rows keep px-3 mobile inline (not the canonical
+                // FLAT_TABLE_ROW_PADDING px-2 ramp): the picker drawer is
+                // narrower than the main list, and the row has only name +
+                // weight, so the uniform px-3 inset reads cleaner. py-0
+                // lets the row's min-h-7 (28px) own the desktop height.
+                className={`${FLAT_TABLE_ROW} w-full gap-2 px-3 py-0 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100`}
               >
                 {/* Status badge — null-for-active means no leading
                     whitespace on the common case; non-active rows pick

@@ -7,13 +7,16 @@ import type { ListItemPatch } from '../lib/queries'
 import { formatTotalWeight, type WeightUnit } from '../lib/weight'
 import { makeDnDId } from '../lib/dnd-ids'
 import {
+  DESKTOP_ROW_HEIGHT,
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
   FLAT_TABLE_HEADER,
   FLAT_TABLE_HEADER_COUNT,
+  FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_HEADER_TITLE_MUTED,
   FLAT_TABLE_SURFACE,
+  MOBILE_ROW_HEIGHT,
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ItemRow, { SortableItemRow } from './ItemRow'
@@ -214,12 +217,17 @@ function CategoryGroup({
       {/* Header — also functions as the column header for Weight / Qty.
           In pack mode the header tightens on mobile so the Qty label stays
           aligned over the (newly tightened) pack-mode row's qty column.
-          min-h-11 (44px) on touch keeps headers and rows on one vertical
-          rhythm; lg:min-h-9 tightens to a denser pointer scan while still
-          clearing the desktop chevron/controls. The chevron (authed) or the
+          Height comes from FLAT_TABLE_HEADER (mobile 44px touch floor /
+          desktop 32px scanline, sourced from MOBILE_HEADER_HEIGHT and
+          DESKTOP_HEADER_HEIGHT in flat-table-styles.ts), so a density
+          retune flows through the token. The chevron (authed) or the
           min-height alone (share view, no chevron) fills it. */}
-      <div className={`${FLAT_TABLE_HEADER} py-0.5 ${
-        packMode ? 'gap-0.5 lg:gap-1.5 px-2 lg:px-3' : 'gap-1.5 px-3'
+      <div className={`${FLAT_TABLE_HEADER} ${
+        // Non-pack uses FLAT_TABLE_HEADER_PADDING's canonical px-3 py-0; pack
+        // mode tightens to px-2 on mobile (extra column slots squeeze the
+        // header and need every spare pixel) and ramps to px-3 on desktop
+        // alongside the canonical horizontal padding.
+        packMode ? 'gap-0.5 lg:gap-1.5 px-2 lg:px-3 py-0' : `gap-1.5 ${FLAT_TABLE_HEADER_PADDING}`
       } ${
         // Collapsed: the header is the card's only child, so its divider
         // border-b would double with the card's bottom border. Drop it.
@@ -342,11 +350,11 @@ function CategoryGroup({
               stubs branch on viewport to keep the total aligned under the
               Weight column. */}
           {!packMode && !adding && (
-            // Matches FLAT_TABLE_ROW density (min-h-11 lg:min-h-8) so this
-            // footer row is the same height as the item rows above it; can't
-            // use the constant directly because the row is display-gated
-            // (hidden lg:flex print:flex) and carries no bottom border.
-            <div className={`hidden lg:flex print:flex min-h-11 lg:min-h-8 items-center gap-1.5 px-3 py-0.5 ${FLAT_TABLE_BODY_TEXT}`}>
+            // Matches FLAT_TABLE_ROW density via the shared height tokens so
+            // this footer row tracks any future density change automatically;
+            // can't use FLAT_TABLE_ROW directly because the row is display-
+            // gated (hidden lg:flex print:flex) and carries no bottom border.
+            <div className={`hidden lg:flex print:flex ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} items-center gap-1.5 px-3 py-0 ${FLAT_TABLE_BODY_TEXT}`}>
               {onAddItem ? (
                 <button
                   onClick={() => setAdding(true)}
