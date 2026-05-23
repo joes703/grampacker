@@ -174,11 +174,13 @@ export const FLAT_TABLE_BODY_TEXT_MUTED = 'text-sm lg:text-[13px] font-normal te
 // for column-aligned scanning.
 export const FLAT_TABLE_META_TEXT = 'text-xs lg:text-[13px]'
 
-// Tabular-nums variant of FLAT_TABLE_META_TEXT for column-aligned numeric
-// chips on rows (qty / weight right rails). Same size scale as META_TEXT;
-// kept as a separate token because future tuning of numeric vs text
-// metadata might diverge.
-export const FLAT_TABLE_NUMERIC_TEXT = 'text-xs lg:text-[13px] tabular-nums'
+// Numeric value cells on rows (qty / weight / cost / purchase date right
+// rails). font-mono + tabular-nums so mixed weight strings like
+// "1 lb 4.0 oz", "15.2 oz", and "800 g" line up across rows in the same
+// column. font-mono is applied to value DISPLAYS only — do NOT use this
+// token on labels, item names, category names, descriptions, notes,
+// action buttons, or panel labels. Same size scale as META_TEXT today.
+export const FLAT_TABLE_NUMERIC_TEXT = 'text-xs lg:text-[13px] font-mono tabular-nums'
 
 // Compact stat panel body text (WeightTable cells). Denser than flat
 // row body text on mobile because these panels are summary surfaces,
@@ -187,10 +189,13 @@ export const FLAT_TABLE_NUMERIC_TEXT = 'text-xs lg:text-[13px] tabular-nums'
 export const COMPACT_PANEL_BODY_TEXT = 'text-xs lg:text-[13px]'
 
 // Stat panel value typography (WeightSummary stat values and similar
-// emphasis values inside compact panels). Medium weight + tabular-nums
-// so values read as numbers, not body text. Call sites add the color
-// (most use text-gray-900 to anchor the value).
-export const COMPACT_PANEL_META_TEXT = 'text-sm lg:text-[13px] font-medium tabular-nums'
+// emphasis values inside compact panels). Medium weight + font-mono +
+// tabular-nums so the three-stat strip (Base / Consumable / Pack total)
+// reads as a column of aligned weight values, not body text. Call sites
+// add the color (most use text-gray-900 to anchor the value). Like
+// FLAT_TABLE_NUMERIC_TEXT, this is for value displays only — never apply
+// to surrounding labels (which use FLAT_TABLE_EYEBROW).
+export const COMPACT_PANEL_META_TEXT = 'text-sm lg:text-[13px] font-medium font-mono tabular-nums'
 
 // Markdown notes body text (p, ul, ol, blockquote inside MarkdownContent).
 // Desktop matches the shared 13px body tier so notes read at the same

@@ -40,7 +40,12 @@ export default function WeightTable({ items, categories }: Props) {
   const { catRows, baseGrams, consumableGrams, wornGrams, totalPackGrams } = breakdown
 
   const labelCell = 'py-px pl-3 pr-2'
-  const valueCell = 'py-px px-2 text-right tabular-nums'
+  // font-mono + tabular-nums so mixed weight strings ("1 lb 4.0 oz", "15.2 oz",
+  // "800 g") align column-wise. Labels stay proportional. Matches the
+  // FLAT_TABLE_NUMERIC_TEXT contract for row value cells; this surface keeps
+  // its layout (py-px, px-2, text-right) inline since the WeightTable cell
+  // pattern only lives here.
+  const valueCell = 'py-px px-2 text-right font-mono tabular-nums'
 
   return (
     <table className={`w-full ${COMPACT_PANEL_BODY_TEXT} text-gray-700`}>

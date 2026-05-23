@@ -224,17 +224,23 @@ content-path config.
   instead.
 - `FLAT_TABLE_META_TEXT` — compact metadata text. Small qty/weight chips and tiny labels
   inside rows where a body-text chip would overpower the surrounding content.
-- `FLAT_TABLE_NUMERIC_TEXT` — tabular-nums variant of `FLAT_TABLE_META_TEXT` for
-  column-aligned numeric chips (qty / weight right rails). Same size as `META_TEXT` today
-  but kept separate because future tuning of numeric vs text metadata might diverge.
+- `FLAT_TABLE_NUMERIC_TEXT` — `font-mono` + `tabular-nums` variant for
+  column-aligned numeric value cells on rows (qty / weight / cost / purchase
+  date right rails). Mono makes mixed weight strings like "1 lb 4.0 oz",
+  "15.2 oz", and "800 g" line up column-wise across rows. Apply to value
+  DISPLAYS only — never to labels, item names, category names, descriptions,
+  notes, action buttons, or panel labels. Inline numeric edit inputs (qty /
+  weight edit fields) stay proportional + tabular-nums because mono is a
+  value-display convention, not a typing-form convention.
 - `COMPACT_PANEL_BODY_TEXT` — compact stat panel body text (`WeightTable` cells). Denser
   than flat-row body text because these panels are summary surfaces, not list rows. Same
   value as `FLAT_TABLE_META_TEXT` today but a distinct token: the surfaces are
   conceptually different and may tune independently.
 - `COMPACT_PANEL_META_TEXT` — stat-panel value typography (`WeightSummary` stat values
-  and similar emphasis values inside compact panels). `text-sm font-medium tabular-nums`
-  so values read as numbers, not body text. Call sites add the color (most use
-  `text-gray-900` to anchor the value).
+  and similar emphasis values inside compact panels). Composes `font-medium font-mono
+  tabular-nums` for the same value-alignment reason as `FLAT_TABLE_NUMERIC_TEXT`: the
+  three-stat strip (Base / Consumable / Pack total) reads as a column of aligned weight
+  values. Call sites add the color (most use `text-gray-900` to anchor the value).
 - `MARKDOWN_COMPACT_BODY_TEXT` — markdown notes body text (`p`, `ul`, `ol`, `blockquote`
   inside `MarkdownContent`). Same size as `FLAT_TABLE_BODY_TEXT` today; kept separate so
   notes can diverge for readability (wider line-height, larger font) if a future tuning

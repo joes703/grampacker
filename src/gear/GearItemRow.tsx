@@ -17,6 +17,7 @@ import SwipeableRow from '../components/SwipeableRow'
 import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_BODY_TEXT_MUTED,
+  FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_ROW,
 } from '../components/flat-table-styles'
 import GearStatusBadge from './GearStatusBadge'
@@ -77,7 +78,7 @@ export default function GearItemRow({
             pick up a small leading icon, active rows take no space. */}
         <GearStatusBadge status={item.status} compact className="shrink-0 print:hidden" />
         <span className="flex-1 min-w-0 truncate font-normal text-gray-900">{item.name}</span>
-        <span className="shrink-0 w-20 text-right tabular-nums text-gray-600">
+        <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
           {formatItemWeight(item.weight_grams, weightUnit)}
         </span>
       </button>
@@ -168,13 +169,13 @@ export default function GearItemRow({
               </div>
             )}
           </div>
-          <span className="shrink-0 w-20 text-right tabular-nums text-gray-500">
+          <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
             {formatCost(item.cost)}
           </span>
-          <span className="shrink-0 w-24 text-right tabular-nums text-gray-500">
+          <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
             {formatPurchaseDate(item.purchase_date)}
           </span>
-          <span className="shrink-0 w-24 text-right tabular-nums text-gray-600">
+          <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
             {formatItemWeight(item.weight_grams, weightUnit)}
           </span>
           {!selectMode && (
