@@ -48,7 +48,6 @@ import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
-import PrimaryButton from '../components/PrimaryButton'
 import { FLAT_TABLE_SURFACE, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
@@ -66,6 +65,9 @@ type DialogState =
   | { type: 'share-list'; list: List }
   | { type: 'import-preview'; rows: ListImportRow[]; filename: string }
   | { type: 'import-error'; message: string }
+
+const LIST_HEADER_ACTION_CLASS =
+  'inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50'
 
 export default function ListsPage() {
   useDocumentTitle('Lists')
@@ -238,25 +240,23 @@ export default function ListsPage() {
             />
           ) : (
             <>
-              {/* Import CSV is a secondary path — demoted to a neutral
-                  outline button so it doesn't compete with the primary
-                  "New list" affordance. A header kebab would be a better
-                  long-term home for this; that move belongs with the
-                  upcoming Lists page row refactor (audit phase 2). */}
+              {/* List-management actions stay neutral here. A bright blue
+                  primary button overpowered the otherwise flat gray/white
+                  list manager. */}
               <button
                 onClick={openImportPicker}
                 title="Import a CSV as a new list"
-                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className={LIST_HEADER_ACTION_CLASS}
               >
                 <Upload size={14} /> Import CSV
               </button>
-              <PrimaryButton
+              <button
+                type="button"
                 onClick={() => setDialog({ type: 'creating', draft: '' })}
-                size="sm"
-                className="gap-1.5"
+                className={LIST_HEADER_ACTION_CLASS}
               >
                 <Plus size={14} /> New list
-              </PrimaryButton>
+              </button>
             </>
           )}
         </div>
@@ -468,14 +468,14 @@ function NewListInline({
         }}
         className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
-      <PrimaryButton
+      <button
+        type="button"
         onClick={onSubmit}
         disabled={!draft.trim() || saving}
-        size="sm"
-        className="gap-1.5"
+        className={`${LIST_HEADER_ACTION_CLASS} disabled:cursor-not-allowed disabled:opacity-50`}
       >
         <Plus size={14} /> Create
-      </PrimaryButton>
+      </button>
       <button
         onClick={onCancel}
         aria-label="Cancel"
