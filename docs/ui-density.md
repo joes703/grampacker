@@ -142,24 +142,23 @@ chevrons / lists-page kebab + drag handle.
 
 ## Toggle Taxonomy
 
-Five distinct on/off (or one-of-N) paradigms live in this app. They are visually different
-on purpose — collapsing them into one component would lose meaningful distinctions. When
-adding a new toggle, pick the paradigm that matches the semantic, not the one that looks
-closest.
+Four families plus nav active-state. Visual distinction across families is intentional;
+visual consistency within a family is enforced by reusing the shared component. Pick by
+what the control does, not which one looks closest.
+
+- **`ToggleSwitch`** (`src/components/ToggleSwitch.tsx`) — iOS-style sliding switch. The
+  default for **binary on/off controls anywhere in the app**, including settings panels
+  (Group worn items, the public-link toggle in Sharing) AND in-content view toggles
+  (Show unpacked only, Ready checks inside PackingProgress). One switch shape everywhere
+  so the user sees the same control regardless of whether the state is persistent or
+  local view state.
 
 - **`PillToggle`** (`src/components/PillToggle.tsx`) — rounded border, fills with blue-50/
-  blue-700 when active. For **mode and view toggles on the content surface**. Two sizes:
-  - `md`: page-level mode toggle (Pack mode in the list toolbar, on both desktop and mobile).
-  - `sm`: inline view/filter inside a panel (Show unpacked only, Ready checks inside
-    PackingProgress).
-
-  This is the only pill-shape toggle. Do not hand-roll `rounded-lg border px-3 py-1 …` for
-  a new on/off button; reuse the component.
-
-- **`ToggleSwitch`** (`src/components/ToggleSwitch.tsx`) — iOS-style sliding switch. For
-  **persistent settings in a settings panel** (Group worn items, the public-link toggle in
-  Sharing). Communicates "this is a preference I've set", which is a different semantic
-  from "this is a view I'm currently looking at."
+  blue-700 when active. Reserved for **page/list mode toggles**. Currently the only
+  consumer is Pack mode (desktop ListDocumentToolbar + MobilePackToggle). Mode = "the
+  whole surface behaves differently while this is on"; binary settings inside that surface
+  do NOT belong here. If you find yourself adding a second PillToggle for a non-mode
+  binary, it's a ToggleSwitch instead.
 
 - **`RowIconButton`** with `purpleToggle` / `orangeToggle` variants
   (`src/components/RowIconButton.tsx`) — 28×24 inline icon-only button, hover-revealed
@@ -171,12 +170,11 @@ closest.
   a future `SegmentedControl` only if a second use case appears.
 
 - **`MobileBottomBar`** item with `active: true` — text color shift only, no border or
-  fill. For **nav active-state** (you-are-here highlighting). Not a control toggle.
+  fill. **Nav active-state**, not a control. Don't reach for it as a toggle.
 
-When in doubt: if the underlying state lives in a settings table column, `ToggleSwitch`.
-If it's a UI mode that affects what's currently rendered, `PillToggle`. If it's a flag on
-a row, `RowIconButton`. Visual consistency within a paradigm is enforced by reusing the
-shared component; visual distinction across paradigms is intentional.
+The simple rule when in doubt: binary on/off → `ToggleSwitch`. Pick-one-of-N →
+`UnitSegmentedControl`. Per-row tag → `RowIconButton`. Pack-mode-style "this whole view
+flips" → `PillToggle`. Anything else is a normal button.
 
 ## Changing Density Later
 

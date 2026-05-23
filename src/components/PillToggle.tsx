@@ -1,20 +1,12 @@
 import { type ReactNode } from 'react'
 
-type Size = 'sm' | 'md'
-
 type Props = {
   active: boolean
   onClick: () => void
   /** Visible button text. */
   label: string
-  /** Optional leading icon. Caller controls icon sizing — semantically
-   *  different icons (ClipboardList 14 vs CheckSquare 12) stay each
-   *  surface's call. */
+  /** Optional leading icon. Caller controls icon sizing. */
   icon?: ReactNode
-  /** md: page-level mode toggle (e.g. Pack mode in the list toolbar).
-   *  sm: inline view/filter inside a panel (e.g. Show unpacked only,
-   *      Ready checks inside PackingProgress). */
-  size?: Size
   /** Accessible name override. Falls back to the visible label. */
   ariaLabel?: string
   /** Tooltip. The pill's state is conveyed by color + aria-pressed; the
@@ -27,25 +19,16 @@ type Props = {
 }
 
 // Pill-shaped toggle button. Rounded border, fills with blue-50/blue-700
-// when active, gray border + muted text when idle. The visible affordance
-// for mode and view toggles on the content surface.
+// when active, gray border + muted text when idle.
 //
-// Toggle taxonomy (see docs/ui-density.md "Toggle Taxonomy"):
-//   - PillToggle ........... mode/view toggles on content (this one)
-//   - ToggleSwitch ......... persistent settings in a settings panel
-//   - RowIconButton ........ per-row tag flags (Worn, Consumable)
-//   - UnitSegmentedControl . mutually exclusive option selection
-//   - MobileBottomBar item . nav active-state
+// Reserved for page/list mode toggles. Currently the only consumer is
+// the Pack mode pill (desktop ListDocumentToolbar + MobilePackToggle).
+// Binary on/off settings and in-content view toggles use ToggleSwitch
+// instead — see docs/ui-density.md "Toggle Taxonomy" for the rule.
 //
-// State semantics: aria-pressed carries the on/off meaning for assistive
-// tech. The blue active fill carries it visually. The label itself stays
-// the same in both states (callers pass static label text); flipping
-// label copy is a per-site decision, not built in here.
-const SIZE_CLASSES: Record<Size, string> = {
-  md: 'gap-1.5 px-3 py-1.5 text-sm',
-  sm: 'gap-1 px-3 py-1 text-xs',
-}
-
+// Sizing is fixed (no `size` prop) since one consumer doesn't need
+// variation. Reintroduce a size variant when a second consumer arrives.
+const PILL_CLASSES = 'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium'
 const ACTIVE_CLASSES = 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
 const IDLE_CLASSES = 'border-gray-300 text-gray-600 hover:bg-gray-50'
 const DISABLED_CLASSES = 'disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent'
@@ -55,7 +38,6 @@ export default function PillToggle({
   onClick,
   label,
   icon,
-  size = 'md',
   ariaLabel,
   title,
   disabled = false,
@@ -69,7 +51,7 @@ export default function PillToggle({
       aria-pressed={active}
       aria-label={ariaLabel}
       title={title}
-      className={`inline-flex items-center rounded-lg border font-medium ${SIZE_CLASSES[size]} ${active ? ACTIVE_CLASSES : IDLE_CLASSES} ${DISABLED_CLASSES} ${className}`.trim()}
+      className={`${PILL_CLASSES} ${active ? ACTIVE_CLASSES : IDLE_CLASSES} ${DISABLED_CLASSES} ${className}`.trim()}
     >
       {icon}
       <span>{label}</span>

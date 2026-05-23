@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { CheckSquare, RotateCcw, WifiOff } from 'lucide-react'
+import { RotateCcw, WifiOff } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
-import PillToggle from '../components/PillToggle'
+import ToggleSwitch from '../components/ToggleSwitch'
 import { TABLE_BORDER, TABLE_RADIUS, TABLE_SURFACE_BG } from '../components/flat-table-styles'
 
 type Props = {
@@ -122,26 +122,32 @@ export default function PackingProgress({
         </div>
       )}
 
-      {/* Options row — Pack Mode view toggles grouped together, separated
-          from the progress/reset rows above. `flex-wrap` lets the two
-          pills stack on narrow viewports without crowding. */}
-      <div className="mt-3 flex items-center gap-2 flex-wrap print:hidden">
-        <PillToggle
-          active={showUnpackedOnly}
-          onClick={onToggleShowUnpackedOnly}
-          label="Show unpacked only"
-          size="sm"
-          title={showUnpackedOnly ? 'Showing unpacked only. Click to show all.' : 'Show unpacked only'}
-        />
-        {readyChecks && (
-          <PillToggle
-            active={readyChecks.enabled}
-            onClick={readyChecks.onToggleEnabled}
-            label="Ready checks"
-            icon={<CheckSquare size={12} aria-hidden />}
-            size="sm"
-            title={readyChecks.enabled ? 'Ready checks on. Click to turn off.' : 'Turn on Ready checks'}
+      {/* Options block — Pack Mode view toggles grouped under the
+          progress bars. Renders as label + ToggleSwitch rows so binary
+          on/off controls everywhere in the app share one visual
+          treatment (the same switch is used in List options' Group
+          worn items and Sharing). Both toggles stay enabled offline:
+          Show unpacked only is local view state, and Ready checks's
+          mutation is the same per-list write whose offline/online
+          semantics are owned by the page mutation. */}
+      <div className="mt-4 space-y-2 print:hidden">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-900">Show unpacked only</span>
+          <ToggleSwitch
+            checked={showUnpackedOnly}
+            onChange={onToggleShowUnpackedOnly}
+            ariaLabel="Show unpacked only"
           />
+        </div>
+        {readyChecks && (
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-900">Ready checks</span>
+            <ToggleSwitch
+              checked={readyChecks.enabled}
+              onChange={readyChecks.onToggleEnabled}
+              ariaLabel="Ready checks"
+            />
+          </div>
         )}
       </div>
 
