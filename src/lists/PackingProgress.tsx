@@ -133,7 +133,7 @@ export default function PackingProgress({
           via the same page mutation, both toggles stay enabled
           offline. */}
       <div className="mt-4 grid grid-cols-[max-content_max-content] gap-x-3 gap-y-2 items-center print:hidden">
-        <span className="text-sm font-medium text-gray-900">Show unpacked only</span>
+        <span className="text-sm font-medium text-gray-700">Show unpacked only</span>
         <ToggleSwitch
           checked={showUnpackedOnly}
           onChange={onToggleShowUnpackedOnly}
@@ -141,7 +141,7 @@ export default function PackingProgress({
         />
         {readyChecks && (
           <>
-            <span className="text-sm font-medium text-gray-900">Ready checks</span>
+            <span className="text-sm font-medium text-gray-700">Ready checks</span>
             <ToggleSwitch
               checked={readyChecks.enabled}
               onChange={readyChecks.onToggleEnabled}
