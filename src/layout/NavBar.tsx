@@ -1,12 +1,12 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Backpack, HelpCircle, LogOut, Settings } from 'lucide-react'
+import { Backpack, HelpCircle, ListChecks, LogOut, Settings } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import { supabase } from '../lib/supabase'
 import { queryKeys, fetchLists } from '../lib/queries'
 import { useIsMobile } from '../lib/use-breakpoint'
+import { readLastListPath } from '../lib/last-list-path'
 import MobileMenu from './MobileMenu'
-import ListsNavDropdown from './ListsNavDropdown'
 import CurrentListHeader from '../lists/CurrentListHeader'
 
 // Per-route slot resolution. Mounted only inside AppShell, which is gated by
@@ -37,11 +37,12 @@ function resolveRoute(pathname: string): RouteContext {
 //   - Brand on md+.
 //   - Route heading slot — static labels on /lists, /gear, /settings, /help;
 //     CurrentListHeader on /lists/:id at <md (mobile keeps the list name in
-//     the top bar). At md+ on /lists/:id the slot is empty — the desktop
-//     list-detail page body owns the list toolbar (CurrentListHeader +
-//     List options + Pack pill) so the global nav stays clean and stable.
-//     List switching happens through the Lists destination, not from the
-//     list title in either layout.
+//     the top bar). At md+ on /lists/:id the global slot says "Lists" while
+//     the page body owns the specific list title and toolbar
+//     (CurrentListHeader + List options + Pack pill).
+//     Desktop list switching lives in DesktopListsPanel on /lists/:id; the
+//     global nav Lists item is just a return-to-workspace affordance.
+//     Mobile Lists in the bottom bar still goes to the /lists page.
 //   - Persistent secondary cluster on md+: Gear, Lists, Help, Settings, Sign out.
 //   - MobileMenu on <md exposes only Help, Settings, Sign out — Gear and
 //     Lists are already pinned to the mobile bottom bar on every authed
@@ -76,10 +77,11 @@ export default function NavBar() {
           {/* Persistent global navigation on md+. Gear + Lists sit alongside
               Help/Settings/Sign out so the two primary destinations are
               always reachable. Gear is first because it's the source/library
-              that lists are built from. The Lists pill is a dropdown
-              (ListsNavDropdown) for fast list switching; the per-page title
-              (CurrentListHeader) only identifies the current list, never
-              switches it. */}
+              that lists are built from. Lists is a return-to-workspace
+              button: clicking it lands on the last opened list path (so
+              workflows resume where the user left off), or /lists when no
+              last list exists. List switching itself lives in
+              DesktopListsPanel on /lists/:id, not in this nav item. */}
           <div className="hidden md:flex items-center gap-1 pl-2">
             <NavLink
               to="/gear"
@@ -91,7 +93,31 @@ export default function NavBar() {
               <Backpack size={14} />
               <span className="sr-only lg:not-sr-only">Gear</span>
             </NavLink>
-            <ListsNavDropdown />
+            {/* NavLink with to="/lists" gives the same pill styling and the
+                same active behavior the previous dropdown carried (active on
+                /lists and any /lists/:id, courtesy of NavLink's default
+                prefix match). onClick intercepts to send the user to the
+                last opened list path when present, so the pill behaves as a
+                return-to-workspace shortcut rather than a route to the card
+                page. Falling through to the default NavLink target (/lists)
+                handles the first-visit / no-cached-path case. */}
+            <NavLink
+              to="/lists"
+              title="Lists"
+              onClick={(e) => {
+                const lastPath = readLastListPath()
+                if (lastPath) {
+                  e.preventDefault()
+                  navigate(lastPath)
+                }
+              }}
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
+              }
+            >
+              <ListChecks size={14} />
+              <span className="sr-only lg:not-sr-only">Lists</span>
+            </NavLink>
             <NavLink
               to="/help"
               title="Help"
@@ -135,11 +161,13 @@ export default function NavBar() {
   )
 }
 
-// Route-specific heading slot. /lists/:id renders CurrentListHeader at
-// <md only — desktop list-detail moves the list title into the page body.
-// Other routes render a static text heading at all sizes. Loading state
-// on /lists/:id shows a neutral placeholder so the bar's height stays
-// stable.
+// Route-specific heading slot. On /lists/:id: mobile renders
+// CurrentListHeader (the specific list name in the top bar), while desktop
+// renders the workspace label "Lists" so the global heading matches the
+// active Lists nav pill — the specific list title lives in the page body's
+// CurrentListHeader on desktop. Other routes render a static text heading
+// at all sizes. Loading state on mobile /lists/:id shows a neutral
+// placeholder so the bar's height stays stable.
 function RouteHeading({ route }: { route: RouteContext }) {
   const auth = useRequireSession()
   const userId = auth?.userId ?? ''
@@ -154,12 +182,12 @@ function RouteHeading({ route }: { route: RouteContext }) {
   })
 
   if (route.kind === 'list-detail') {
-    // Desktop list-detail anchors the list title in the page body's
-    // toolbar (ListDetailPage's CurrentListHeader). Skip mounting it here
-    // on desktop entirely — a plain CSS `md:hidden` would still mount the
-    // component and surface the inline-rename input in the desktop DOM
-    // even though it's invisible.
-    if (!isMobile) return <div className="flex-1 min-w-0" />
+    // Desktop list-detail anchors the specific list title in the page body's
+    // toolbar (ListDetailPage's CurrentListHeader), while the global heading
+    // still identifies the section like every other top-nav destination.
+    // Mobile keeps the actual list name in the top bar because the page body
+    // toolbar is not visible there.
+    if (!isMobile) return <StaticHeading>Lists</StaticHeading>
     const list = lists.find((l) => l.id === route.listId)
     if (!list) {
       // Either the lists query is still loading, or the URL points at a
@@ -175,7 +203,7 @@ function RouteHeading({ route }: { route: RouteContext }) {
   }
 
   if (route.kind === 'all-lists') return <StaticHeading>Lists</StaticHeading>
-  if (route.kind === 'gear') return <StaticHeading>Gear</StaticHeading>
+  if (route.kind === 'gear') return <StaticHeading>Gear Inventory</StaticHeading>
   if (route.kind === 'settings') return <StaticHeading>Settings</StaticHeading>
   if (route.kind === 'help') return <StaticHeading>Help</StaticHeading>
   return <div className="flex-1 min-w-0" />

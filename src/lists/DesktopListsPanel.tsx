@@ -266,7 +266,6 @@ export default function DesktopListsPanel({ userId, lists, currentListId, classN
           competing with the gear search field below. */}
       <div className="relative flex items-center gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2">
         <span className={FLAT_TABLE_EYEBROW}>Lists</span>
-        <span className="ml-auto text-xs font-normal tabular-nums text-gray-400">{lists.length}</span>
         <button
           ref={headerMenuTriggerRef}
           type="button"
@@ -279,7 +278,7 @@ export default function DesktopListsPanel({ userId, lists, currentListId, classN
           aria-label="New list or import CSV"
           aria-haspopup="menu"
           aria-expanded={headerMenuOpen}
-          className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:bg-gray-200/60 hover:text-gray-800`}
+          className={`ml-auto ${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:bg-gray-200/60 hover:text-gray-800`}
         >
           <Plus size={14} />
         </button>
