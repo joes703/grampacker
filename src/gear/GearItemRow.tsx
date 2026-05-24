@@ -318,10 +318,12 @@ export function SortableGearItemRow(
     opacity: isDragging ? 0.4 : 1,
   }
 
-  // Desktop uses the hover-revealed gutter grip. On mobile (isBelowLg) the
+  // Desktop uses a compact in-row grip. Keep it inside the flat-table
+  // surface: those surfaces use overflow-hidden for rounded corners, so an
+  // outside-left gutter handle would be clipped. On mobile (isBelowLg) the
   // row itself is the long-press activator (listeners go on the row via
-  // rowDragListeners) and the grip is not rendered. Select mode disables drag
-  // entirely, so neither activator is wired there.
+  // rowDragListeners) and the grip is not rendered. Select mode disables
+  // drag entirely, so neither activator is wired there.
   const handle =
     props.selectMode || props.isBelowLg ? undefined : (
       <RowIconButton
@@ -332,7 +334,7 @@ export function SortableGearItemRow(
         variant="dragHandle"
         ariaLabel="Drag to reorder"
         icon={<GripVertical size={14} />}
-        className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+        className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
       />
     )
 
