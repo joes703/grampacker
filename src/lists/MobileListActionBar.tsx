@@ -26,9 +26,10 @@ type Props = {
   packMode: boolean
 }
 
-// Mobile-only bottom action bar for List Detail. Standardized 4-slot
-// shape (Gear / Lists / Add / Options) shared with every other mobile
-// bar so users see the same buttons in the same places everywhere.
+// Mobile-only bottom action bar for List Detail. Normal list mode uses
+// the shared 4-slot shape (Gear / Lists / Add / Options). Pack mode
+// intentionally drops Options because pack-specific controls live in
+// PackingProgress, leaving Gear / Lists / Add.
 //
 // Pack mode used to live as a fifth slot here, but pack is URL state on
 // a list (?mode=pack), not a separate destination — it would have
