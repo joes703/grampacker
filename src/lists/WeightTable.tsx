@@ -17,10 +17,26 @@ function fmtG(grams: number): string {
   return `${grams} g`
 }
 
-function fmtLbOz(grams: number): string {
+function LbOzValue({ grams }: { grams: number }) {
   const { lb, oz } = gramsToLbOzParts(grams)
-  if (lb > 0) return `${lb} lb ${oz.toFixed(1)} oz`
-  return `${oz.toFixed(1)} oz`
+
+  return (
+    <span className="inline-grid grid-cols-[3ch_2ch_5ch_2ch] justify-end gap-x-1">
+      {lb > 0 ? (
+        <>
+          <span className="text-right">{lb}</span>
+          <span className="text-left">lb</span>
+        </>
+      ) : (
+        <>
+          <span />
+          <span />
+        </>
+      )}
+      <span className="text-right">{oz.toFixed(1)}</span>
+      <span className="text-left">oz</span>
+    </span>
+  )
 }
 
 export default function WeightTable({ items, categories }: Props) {
@@ -54,7 +70,7 @@ export default function WeightTable({ items, categories }: Props) {
             <tr key={row.id}>
               <td className={labelCell}>{row.name}</td>
               <td className={valueCell}>{fmtG(row.grams)}</td>
-              <td className={valueCell}>{fmtLbOz(row.grams)}</td>
+              <td className={valueCell}><LbOzValue grams={row.grams} /></td>
             </tr>
           ))}
         </tbody>
@@ -62,26 +78,26 @@ export default function WeightTable({ items, categories }: Props) {
           <tr className="font-semibold">
             <td className={labelCell}>Base weight</td>
             <td className={valueCell}>{fmtG(baseGrams)}</td>
-            <td className={valueCell}>{fmtLbOz(baseGrams)}</td>
+            <td className={valueCell}><LbOzValue grams={baseGrams} /></td>
           </tr>
           {consumableGrams > 0 && (
             <tr>
               <td className={labelCell}>Consumables</td>
               <td className={valueCell}>{fmtG(consumableGrams)}</td>
-              <td className={valueCell}>{fmtLbOz(consumableGrams)}</td>
+              <td className={valueCell}><LbOzValue grams={consumableGrams} /></td>
             </tr>
           )}
           {wornGrams > 0 && (
             <tr className="text-gray-400">
               <td className={labelCell}>Worn (not added)</td>
               <td className={valueCell}>{fmtG(wornGrams)}</td>
-              <td className={valueCell}>{fmtLbOz(wornGrams)}</td>
+              <td className={valueCell}><LbOzValue grams={wornGrams} /></td>
             </tr>
           )}
           <tr className={`font-semibold border-t-2 ${TABLE_STRONG_DIVIDER}`}>
             <td className={labelCell}>Total pack weight</td>
             <td className={valueCell}>{fmtG(totalPackGrams)}</td>
-            <td className={valueCell}>{fmtLbOz(totalPackGrams)}</td>
+            <td className={valueCell}><LbOzValue grams={totalPackGrams} /></td>
           </tr>
         </tfoot>
     </table>
