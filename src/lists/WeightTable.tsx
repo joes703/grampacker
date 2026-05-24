@@ -1,12 +1,12 @@
 import { useMemo } from 'react'
 import type { ListItemWithGear, Category } from '../lib/types'
-import { gramsToLbOzParts } from '../lib/weight'
 import { computeWeightBreakdown } from '../lib/weight-breakdown'
 import {
   COMPACT_PANEL_BODY_TEXT,
   TABLE_DIVIDER_LINE,
   TABLE_STRONG_DIVIDER,
 } from '../components/flat-table-styles'
+import TotalWeightValue from '../components/TotalWeightValue'
 
 type Props = {
   items: ListItemWithGear[]
@@ -15,28 +15,6 @@ type Props = {
 
 function fmtG(grams: number): string {
   return `${grams} g`
-}
-
-function LbOzValue({ grams }: { grams: number }) {
-  const { lb, oz } = gramsToLbOzParts(grams)
-
-  return (
-    <span className="inline-grid grid-cols-[3ch_2ch_5ch_2ch] justify-end gap-x-1">
-      {lb > 0 ? (
-        <>
-          <span className="text-right">{lb}</span>
-          <span className="text-left">lb</span>
-        </>
-      ) : (
-        <>
-          <span />
-          <span />
-        </>
-      )}
-      <span className="text-right">{oz.toFixed(1)}</span>
-      <span className="text-left">oz</span>
-    </span>
-  )
 }
 
 export default function WeightTable({ items, categories }: Props) {
@@ -61,7 +39,7 @@ export default function WeightTable({ items, categories }: Props) {
   // FLAT_TABLE_NUMERIC_TEXT contract for row value cells; this surface keeps
   // its layout (py-px, px-2, text-right) inline since the WeightTable cell
   // pattern only lives here.
-  const valueCell = 'py-px px-2 text-right font-mono tabular-nums'
+  const valueCell = 'py-px px-2 text-right text-xs font-mono tabular-nums'
 
   return (
     <table className={`w-full ${COMPACT_PANEL_BODY_TEXT} text-gray-700`}>
@@ -70,7 +48,7 @@ export default function WeightTable({ items, categories }: Props) {
             <tr key={row.id}>
               <td className={labelCell}>{row.name}</td>
               <td className={valueCell}>{fmtG(row.grams)}</td>
-              <td className={valueCell}><LbOzValue grams={row.grams} /></td>
+              <td className={valueCell}><TotalWeightValue grams={row.grams} unit="oz" /></td>
             </tr>
           ))}
         </tbody>
@@ -78,26 +56,26 @@ export default function WeightTable({ items, categories }: Props) {
           <tr className="font-semibold">
             <td className={labelCell}>Base weight</td>
             <td className={valueCell}>{fmtG(baseGrams)}</td>
-            <td className={valueCell}><LbOzValue grams={baseGrams} /></td>
+            <td className={valueCell}><TotalWeightValue grams={baseGrams} unit="oz" /></td>
           </tr>
           {consumableGrams > 0 && (
             <tr>
               <td className={labelCell}>Consumables</td>
               <td className={valueCell}>{fmtG(consumableGrams)}</td>
-              <td className={valueCell}><LbOzValue grams={consumableGrams} /></td>
+              <td className={valueCell}><TotalWeightValue grams={consumableGrams} unit="oz" /></td>
             </tr>
           )}
           {wornGrams > 0 && (
             <tr className="text-gray-400">
               <td className={labelCell}>Worn (not added)</td>
               <td className={valueCell}>{fmtG(wornGrams)}</td>
-              <td className={valueCell}><LbOzValue grams={wornGrams} /></td>
+              <td className={valueCell}><TotalWeightValue grams={wornGrams} unit="oz" /></td>
             </tr>
           )}
           <tr className={`font-semibold border-t-2 ${TABLE_STRONG_DIVIDER}`}>
             <td className={labelCell}>Total pack weight</td>
             <td className={valueCell}>{fmtG(totalPackGrams)}</td>
-            <td className={valueCell}><LbOzValue grams={totalPackGrams} /></td>
+            <td className={valueCell}><TotalWeightValue grams={totalPackGrams} unit="oz" /></td>
           </tr>
         </tfoot>
     </table>

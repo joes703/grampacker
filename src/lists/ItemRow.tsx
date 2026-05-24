@@ -16,6 +16,7 @@ import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_BODY_TEXT_MUTED,
   FLAT_TABLE_NUMERIC_TEXT,
+  FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
 } from '../components/flat-table-styles'
@@ -283,7 +284,7 @@ export default function ItemRow({
         <span className="shrink-0 w-6 lg:w-7 inline-flex items-center justify-center">
           {item.is_consumable && <ConsumableIcon />}
         </span>
-        <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
+        <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
           {item.quantity}
         </span>
       </div>
@@ -443,12 +444,12 @@ export default function ItemRow({
             onClick={() => setEditingQty(true)}
             title="Click to edit quantity"
             aria-label={`Quantity ${item.quantity} for ${name}, click to edit`}
-            className={`shrink-0 w-12 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600 hover:text-blue-600`}
+            className={`shrink-0 w-12 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600 hover:text-blue-600`}
           >
             {item.quantity}
           </button>
         ) : (
-          <span className={`shrink-0 w-12 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
+          <span className={`shrink-0 w-12 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
             {item.quantity}
           </span>
         )}
@@ -531,7 +532,7 @@ function MobileRowBody({
       <span className="shrink-0 w-6 inline-flex items-center justify-center">
         {item.is_worn ? <WornIcon /> : item.is_consumable ? <ConsumableIcon /> : null}
       </span>
-      <span className={`shrink-0 w-8 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
+      <span className={`shrink-0 w-8 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
         {item.quantity}
       </span>
       <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>

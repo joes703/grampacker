@@ -4,7 +4,7 @@ import { Check, ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import type { ListItemPatch } from '../lib/queries'
-import { formatTotalWeight, type WeightUnit } from '../lib/weight'
+import type { WeightUnit } from '../lib/weight'
 import { makeDnDId } from '../lib/dnd-ids'
 import {
   DESKTOP_ROW_HEIGHT,
@@ -23,6 +23,7 @@ import {
 import ItemRow, { SortableItemRow } from './ItemRow'
 import AddItemRow from './AddItemRow'
 import { type AddItemData } from './use-quick-add-form'
+import TotalWeightValue from '../components/TotalWeightValue'
 
 // Single source of truth for a category section. Used by both the
 // authenticated list detail view and the public share view.
@@ -370,7 +371,7 @@ function CategoryGroup({
                 <div className="shrink-0 w-7" />
                 <div className="shrink-0 w-12" />
                 <div className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
-                  {items.length > 0 ? formatTotalWeight(totalGrams, weightUnit) : ''}
+                  {items.length > 0 ? <TotalWeightValue grams={totalGrams} unit={weightUnit} /> : ''}
                 </div>
                 {showKebabSlot && <div className="shrink-0 w-7" />}
               </div>
@@ -378,7 +379,7 @@ function CategoryGroup({
                 <div className="shrink-0 w-6" />
                 <div className="shrink-0 w-8" />
                 <div className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
-                  {items.length > 0 ? formatTotalWeight(totalGrams, weightUnit) : ''}
+                  {items.length > 0 ? <TotalWeightValue grams={totalGrams} unit={weightUnit} /> : ''}
                 </div>
               </div>
             </div>

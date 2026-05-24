@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { Category, ListItemWithGear } from '../lib/types'
 import { computeWeightBreakdown, type WeightBreakdown } from '../lib/weight-breakdown'
-import { formatTotalWeight } from '../lib/weight'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import {
   COMPACT_PANEL_META_TEXT,
@@ -13,6 +12,7 @@ import {
   TABLE_RADIUS,
   TABLE_SURFACE_BG,
 } from '../components/flat-table-styles'
+import TotalWeightValue from '../components/TotalWeightValue'
 import PanelCard from './PanelCard'
 import WeightTable from './WeightTable'
 
@@ -96,7 +96,7 @@ function Stat({
     <div className="px-3 py-2 text-center">
       <p className={FLAT_TABLE_EYEBROW}>{label}</p>
       <p className={`mt-0.5 ${COMPACT_PANEL_META_TEXT} text-gray-900`}>
-        {formatTotalWeight(grams, unit)}
+        <TotalWeightValue grams={grams} unit={unit} />
       </p>
     </div>
   )
