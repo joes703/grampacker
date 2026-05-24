@@ -582,11 +582,11 @@ export function SortableItemRow(props: Omit<Props, 'dragHandle' | 'outerRef' | '
     opacity: isDragging ? 0.4 : 1,
   }
 
-  // Desktop drives reorder from the hover-revealed gutter grip. On mobile
-  // (isBelowLg) there is no hover, so instead of the grip the row itself is
-  // the long-press activator: the dnd-kit listeners go on the row container
-  // (via rowDragListeners) and the grip is not rendered. Pack mode disables
-  // drag entirely (its row layout omits the activator).
+  // Desktop drives reorder from a compact in-row grip. This used to sit in
+  // the outside-left gutter, but flat table surfaces intentionally use
+  // overflow-hidden for rounded corners, which clips out-of-surface handles.
+  // Mobile has no hover affordance, so the row itself remains the long-press
+  // activator via rowDragListeners. Pack mode disables drag entirely.
   const handle =
     props.isBelowLg || props.packMode ? undefined : (
       <RowIconButton
@@ -597,7 +597,7 @@ export function SortableItemRow(props: Omit<Props, 'dragHandle' | 'outerRef' | '
         variant="dragHandle"
         ariaLabel="Drag to reorder"
         icon={<GripVertical size={14} />}
-        className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+        className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
       />
     )
 
