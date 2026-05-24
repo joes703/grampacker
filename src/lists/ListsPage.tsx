@@ -18,11 +18,9 @@ import {
   SortableContext,
   arrayMove,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { CopyPlus, Download, Globe, GripVertical, MoreVertical, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { CopyPlus, Download, Globe, MoreVertical, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import {
   queryKeys,
@@ -37,8 +35,8 @@ import {
 } from '../lib/queries'
 import { useCurrentListActions } from './use-current-list-actions'
 import { assignSortOrderSlots } from '../lib/grouping'
-import { asButtonRef } from '../lib/dnd'
 import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
+import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
 import type { List } from '../lib/types'
 import { parseListCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
@@ -52,6 +50,7 @@ import {
   DESKTOP_ROW_HEIGHT,
   FLAT_TABLE_SURFACE,
   MOBILE_ROW_HEIGHT,
+  POPOVER_SURFACE,
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
@@ -517,59 +516,28 @@ type ListRowProps = {
   dragHandle?: React.ReactNode
 }
 
-// Sortable wrapper for the row list. Calls useSortable, wires the row's
-// outer ref + transform style + drag-handle button, and forwards everything
-// else to ListRow. Disabled while the row's rename input is open so the
-// user can type without accidental drags, and while a previous reorder
-// mutation is in flight to prevent the rollback-clobber race when two
-// reorders overlap.
+// Sortable wrapper for the row list. Wires the row's outer ref + transform
+// style + drag-handle button via the shared useListCardSortable hook (see
+// list-card-sortable.tsx) and forwards everything else to ListRow.
+// Disabled while the row's rename input is open so the user can type
+// without accidental drags, and while a previous reorder mutation is in
+// flight to prevent the rollback-clobber race when two reorders overlap.
+// gripIconSize=16 preserves the historic card-page row's grip size; the
+// denser DesktopListsPanel row uses the hook's default 14.
 function SortableListRow(
   props: Omit<ListRowProps, 'outerRef' | 'outerStyle' | 'dragHandle'> & { reorderPending?: boolean },
 ) {
-  const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: makeDnDId('list-card', props.list.id),
+  const { outerRef, outerStyle, dragHandle } = useListCardSortable({
+    listId: props.list.id,
     disabled: props.renaming || props.reorderPending,
+    gripIconSize: 16,
   })
-
-  const sortableStyle: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  }
-
-  const handle = (
-    <button
-      ref={asButtonRef(setActivatorNodeRef)}
-      type="button"
-      {...listeners}
-      {...attributes}
-      tabIndex={-1}
-      aria-label="Drag to reorder list"
-      // ROW_CONTROL_TARGET = 40px touch / 28px pointer (see flat-table-styles).
-      // `touch-none` keeps a drag that starts on the grip from racing the
-      // browser's scroll on touch devices; because the grip is a dedicated
-      // target (not the whole card) this doesn't cost normal list scrolling.
-      // TouchSensor's press-and-hold delay gates accidental drags.
-      className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-400 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing`}
-    >
-      <GripVertical size={16} />
-    </button>
-  )
-
   return (
     <ListRow
       {...props}
-      outerRef={setNodeRef}
-      outerStyle={sortableStyle}
-      dragHandle={handle}
+      outerRef={outerRef}
+      outerStyle={outerStyle}
+      dragHandle={dragHandle}
     />
   )
 }
@@ -634,7 +602,7 @@ function ListRow({
             if (e.key === 'Escape') onCancelRename()
           }}
           onBlur={onSubmitRename}
-          className="flex-1 min-w-0 rounded border border-blue-400 px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className={`flex-1 min-w-0 ${LIST_RENAME_INPUT_CLASS}`}
         />
       </li>
     )
@@ -680,7 +648,7 @@ function ListRow({
         <div
           ref={menuRef}
           role="menu"
-          className="fixed z-50 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+          className={`fixed z-50 w-44 py-1 ${POPOVER_SURFACE}`}
           style={{ top: menuPos.top, left: menuPos.left }}
         >
           <RowMenuItem

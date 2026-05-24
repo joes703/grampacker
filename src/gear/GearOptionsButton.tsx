@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Settings2 } from 'lucide-react'
 import { usePortalPopover } from '../lib/use-portal-popover'
+import { POPOVER_SURFACE } from '../components/flat-table-styles'
 import GearOptionsContent from './GearOptionsContent'
 
 type Props = {
@@ -57,7 +58,7 @@ export default function GearOptionsButton(props: Props) {
       {open && pos && createPortal(
         <div
           ref={popoverRef}
-          className="fixed z-50 w-64 rounded-lg border border-gray-200 bg-white p-2 shadow-lg"
+          className={`fixed z-50 w-64 p-2 ${POPOVER_SURFACE}`}
           style={{ top: pos.top, right: pos.right }}
         >
           <GearOptionsContent {...props} onAction={() => setPos(null)} />

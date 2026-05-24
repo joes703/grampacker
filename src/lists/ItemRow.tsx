@@ -19,6 +19,7 @@ import {
   FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
+  POPOVER_SURFACE,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
@@ -646,7 +647,7 @@ function RowKebab({
         <div
           ref={menuRef}
           role="menu"
-          className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+          className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
           style={{ top: menuPos.top, left: menuPos.left }}
         >
           <RowMenuItem

@@ -111,10 +111,14 @@ export async function reorderLists(updates: { id: string; sort_order: number }[]
 // Create a new list and immediately populate it with the given gear items.
 // Used by the "Create list from selection" flow in the gear library.
 //
-// Phase 8 (M3a): one SECURITY DEFINER RPC replaces the previous
-// createList + bulk list_items insert pair. Two RTT -> one. Slug retry
-// stays client-side via withSlugRetry; the RPC takes p_slug and the
-// 23505 propagates through supabase.rpc()'s PostgrestError.
+// Phase 8 (M3a): one RPC replaces the previous createList + bulk
+// list_items insert pair. Two RTT -> one. Slug retry stays client-side
+// via withSlugRetry; the RPC takes p_slug and the 23505 propagates
+// through supabase.rpc()'s PostgrestError. The function is SECURITY
+// INVOKER as of 20260514202025_reduce_security_definer (was DEFINER
+// when introduced); ownership is enforced by the inline auth.uid()
+// check on p_user_id plus RLS on lists/list_items running under the
+// invoker.
 //
 // Atomicity is now visible: previously the parent list could persist
 // even if the bulk list_items insert failed (cap trigger, FK on a stale
@@ -142,13 +146,16 @@ export async function createListFromSelection(
   })
 }
 
-// Phase 8 (M3b): one SECURITY DEFINER RPC replaces the previous
-// 3-call chain (lists insert + list_items SELECT + bulk list_items
-// insert). Three RTT -> one. The "(copy)" name suffix and per-row
-// field copying happen inside the RPC; this function passes only the
-// source id, slug, and sort_order. The `source: List` parameter shape
-// is preserved for caller compatibility; passing the whole row is
-// harmless even though only `source.id` is read here.
+// Phase 8 (M3b): one RPC replaces the previous 3-call chain (lists
+// insert + list_items SELECT + bulk list_items insert). Three RTT ->
+// one. The "(copy)" name suffix and per-row field copying happen
+// inside the RPC; this function passes only the source id, slug, and
+// sort_order. The `source: List` parameter shape is preserved for
+// caller compatibility; passing the whole row is harmless even though
+// only `source.id` is read here. SECURITY INVOKER as of
+// 20260514202025_reduce_security_definer (was DEFINER when
+// introduced); ownership is enforced by the inline auth.uid() check on
+// p_user_id plus RLS on lists/list_items running under the invoker.
 export async function duplicateList(source: List, userId: string, sortOrder: number): Promise<List> {
   return withSlugRetry(async (slug) => {
     const { data, error } = await supabase.rpc('duplicate_list', {
