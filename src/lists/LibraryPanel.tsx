@@ -2,7 +2,7 @@ import { memo, useCallback, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { groupByCategory } from '../lib/grouping'
-import { formatItemWeight, type WeightUnit } from '../lib/weight'
+import type { WeightUnit } from '../lib/weight'
 import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_HEADER,
@@ -14,6 +14,7 @@ import {
   FLAT_TABLE_ROW,
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
+import ItemWeightValue from '../components/ItemWeightValue'
 import GearStatusBadge from '../gear/GearStatusBadge'
 
 type Props = {
@@ -269,7 +270,7 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                     inList ? 'text-gray-300' : 'text-gray-500'
                   }`}
                 >
-                  {formatItemWeight(item.weight_grams, weightUnit)}
+                  <ItemWeightValue grams={item.weight_grams} unit={weightUnit} />
                 </span>
               </button>
             )
