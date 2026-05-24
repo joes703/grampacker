@@ -443,6 +443,22 @@ function ListDetailInner({
     }),
   })
 
+  // Toggling the per-list "Add ready checks" flag. The control lives inline
+  // at the top of PackingProgress now that List options is hidden in pack
+  // mode; ListSettingsPanel used to own this mutation but the panel itself
+  // never renders in pack mode, so the mutation moves up here next to
+  // notesMut / reorder paths. Optimistic flip mirrors the prior shape
+  // exactly so the ToggleSwitch reflects the change immediately.
+  const readyChecksMut = useMutation({
+    mutationFn: () => updateList(listId, { ready_checks_enabled: !(list?.ready_checks_enabled ?? false) }),
+    ...makeOptimisticUpdate<List, void>({
+      qc,
+      queryKey: queryKeys.lists(),
+      id: () => listId,
+      apply: (item) => ({ ...item, ready_checks_enabled: !item.ready_checks_enabled }),
+    }),
+  })
+
   // Editing gear from a list writes to gear_items so the change propagates
   // to the gear library and every list that uses the same item. The
   // ['list-items', *] fan-out is what closes B-2: without it, an immediate
@@ -972,6 +988,7 @@ function ListDetailInner({
                   ready: listItems.filter((i) => i.is_ready).length,
                   enabled: list.ready_checks_enabled,
                   onResetReady: resetReady,
+                  onToggleEnabled: () => readyChecksMut.mutate(),
                 }}
               />
             </div>
@@ -1235,11 +1252,13 @@ function ListDetailInner({
         />
       )}
 
-      {/* Mobile-only bottom action bar — uniform Gear / Lists / Add /
-          Options shape. Pack mode is no longer a slot here; the
-          MobilePackToggle above carries that on this page. lg:hidden
-          inside the bar itself, so desktop never renders it. */}
-      <MobileListActionBar list={list} />
+      {/* Mobile-only bottom action bar. Gear / Lists / Add / Options
+          in normal mode; Options is dropped in pack mode (pack-mode
+          controls live inline in PackingProgress, and List options is
+          list-admin not needed mid-pack). MobilePackToggle above
+          carries the Pack toggle itself. lg:hidden inside the bar
+          itself, so desktop never renders it. */}
+      <MobileListActionBar list={list} packMode={mode === 'pack'} />
 
     </div>
   )
