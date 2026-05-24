@@ -2,13 +2,17 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 // Integration test for the bulk reorder helpers. All four go through a
-// SECURITY DEFINER RPC (bulk_update_sort_order) that runs UPDATE … SET
+// SECURITY INVOKER RPC (bulk_update_sort_order) that runs UPDATE … SET
 // sort_order against a whitelisted table — no INSERT path, no RLS WITH
 // CHECK on a partial row, no NOT NULL trap. See migrations
 // 20260430000000_bulk_reorder_rpc.sql (function shape),
 // 20260501000000_bulk_reorder_rpc_ownership_check.sql (inline ownership),
 // 20260502000000_add_gear_items_to_bulk_reorder.sql (gear_items branch),
-// and 20260503000000_add_lists_to_bulk_reorder.sql (lists branch).
+// 20260503000000_add_lists_to_bulk_reorder.sql (lists branch),
+// 20260514202025_reduce_security_definer.sql (SECURITY INVOKER + static
+// UPDATEs), and 20260524140830_sort_order_no_op_preserves_updated_at.sql
+// (no-op filter on unchanged sort_order + sort-order-only-aware
+// set_updated_at trigger).
 // Hits the real Supabase project from .env; requires TEST_USER_EMAIL +
 // TEST_USER_PASSWORD set. Skips otherwise so the regular `npm run test`
 // invocation stays usable.
@@ -132,6 +136,10 @@ d('bulk reorder helpers preserve untouched columns', () => {
       expect(after.category_id).toBe(before.category_id)
       expect(after.user_id).toBe(before.user_id)
       expect(after.created_at).toBe(before.created_at)
+      // Reorder is structural metadata, not a content edit — the
+      // set_updated_at trigger (or the RPC's no-op filter, depending on
+      // which row gets touched) must preserve updated_at.
+      expect(after.updated_at).toBe(before.updated_at)
     } finally {
       await reorderGearItems([{ id: before.id, sort_order: before.sort_order }])
     }
@@ -168,6 +176,9 @@ d('bulk reorder helpers preserve untouched columns', () => {
       expect(after.is_shared).toBe(before.is_shared)
       expect(after.user_id).toBe(before.user_id)
       expect(after.created_at).toBe(before.created_at)
+      // /lists "Updated just now" regression guard: a reorder must not
+      // bump lists.updated_at, because the lists page renders that field.
+      expect(after.updated_at).toBe(before.updated_at)
     } finally {
       await reorderLists([{ id: before.id, sort_order: before.sort_order }])
     }
@@ -205,6 +216,9 @@ d('bulk reorder helpers preserve untouched columns', () => {
       expect(after.gear_item_id).toBe(before.gear_item_id)
       expect(after.list_id).toBe(before.list_id)
       expect(after.created_at).toBe(before.created_at)
+      // list_items.updated_at is not currently rendered by the app, but
+      // the contract is the same: reorder-only changes do not bump it.
+      expect(after.updated_at).toBe(before.updated_at)
     } finally {
       await reorderListItems([{ id: before.id, sort_order: before.sort_order }])
     }

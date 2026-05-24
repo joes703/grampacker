@@ -73,7 +73,8 @@ describe('bulk reorder payload shape', () => {
     // wrappers don't widen the SQL payload. The RPC accepts ONLY
     // p_table / p_ids / p_orders. Catching a regression here prevents a
     // future refactor from accidentally forwarding e.g. `name` into the
-    // SECURITY DEFINER call's params.
+    // RPC call's params (the function is SECURITY INVOKER since
+    // 20260514202025_reduce_security_definer).
     await reorderCategories([
       // @ts-expect-error -- the helper accepts T extends {id, sort_order}
       // but the wrappers are narrowed. Cast through to simulate a caller
