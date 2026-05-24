@@ -6,7 +6,7 @@ grampacker helps you keep track of your backpacking gear, build packing lists, a
 
 grampacker is inventory first: your gear lives in your gear inventory (the **Gear** page), and each list pulls from that inventory.
 
-Each list has a packing mode and a sharing mode. Packing mode lets you check off items as you pack. Sharing mode lets you share a read-only copy of your list with the public. Helpful for shakedowns and if you have an experienced hiker wants to make sure you aren't forgetting anything or bringing things you don't need.
+Each list has a packing mode and a sharing mode. Packing mode lets you check off items as you pack. Sharing mode lets you share a read-only copy of your list with the public. Helpful for shakedowns and if an experienced hiker wants to make sure you aren't forgetting anything or bringing things you don't need.
 
 ## Basic concepts
 
@@ -21,6 +21,8 @@ Open the **Gear** page to add gear, edit existing items, or import gear from a C
 A packing list is a trip specific set of gear. You can create different lists for different trips, seasons, or styles of travel.
 
 Items on a list come from your gear inventory. If you edit an item's name, description, category, or weight, that change updates the inventory too.
+
+On desktop, the compact **Lists** panel next to a list is the fastest place to switch, create, import, reorder, rename, duplicate, export, or delete lists. On mobile, use the **Lists** page for the same list management workflow.
 
 ### Categories
 
@@ -81,15 +83,15 @@ Pack mode includes controls to:
 
 - **Show unpacked only** — filter packed items out of view as you work.
 - **Reset packed** — clear all packed checkmarks for this list.
-- **Ready checks** — turn on a second checkbox per item (see below).
+- **Add ready checks** — turn on a second checkbox per item (see below).
 
 Pack mode is intentionally simple so it is easy to use while packing.
 
 ### Ready checks
 
-Ready checks add a second checkbox to each item in Pack mode, so you can mark an item Ready before it goes into your pack. Useful when you want to inspect, charge, refill, or stage gear before packing it. I've made this optional in case you don't want it.
+Ready checks add a second checkbox to each item in Pack mode, so you can mark an item Ready before it goes into your pack. Useful when you want to inspect, charge, refill, or stage gear before packing it.
 
-Turn it on from the **Ready checks** toggle in the Pack mode options row. Ready checks is a per-list setting, so each list can have it on or off independently. It stays off by default. Turning it off hides the Ready UI but keeps any per-item Ready marks intact for next time.
+Turn it on from the **Add ready checks** toggle in the Pack mode progress panel. Ready checks is a per-list setting, so each list can have it on or off independently. It stays off by default. Turning it off hides the Ready UI but keeps any per-item Ready marks intact for next time.
 
 When Ready checks are on, every row in Pack mode gets a Ready checkbox (amber) before the Packed checkbox (blue). The two states are independent: you can mark an item Ready without marking it Packed, and an item is only fully packed when its Packed checkbox is checked.
 
@@ -103,14 +105,15 @@ The **List options** button (in the list toolbar on desktop, in the bottom actio
 
 - **Group worn items** moves worn items into their own section at the bottom of the list. Applies while editing, in Pack mode, and on public share links.
 - **Sharing** turns on a public read-only link for the list and provides the URL to copy. Anyone with the link can view the list.
+- List actions like rename, duplicate, export CSV, and delete are also available from **List options**. On desktop, the same actions are available from the compact **Lists** panel.
 
-Pack mode controls like Ready checks and Show unpacked only live in Pack mode itself.
+Pack mode controls like Add ready checks and Show unpacked only live in Pack mode itself.
 
 ## Sharing a list
 
 You can create a public read-only link for a list.
 
-Open **List options**, turn on the public link under the Sharing section, and copy the URL. Anyone with the link can view the list without an account. Each row on the **Lists** page also has a **Share** action in its menu if you want to manage public links from there.
+Open **List options**, turn on the public link under the Sharing section, and copy the URL. Anyone with the link can view the list without an account.
 
 Public links are read-only. Other people cannot edit your list.
 
@@ -136,7 +139,7 @@ Packing checkmarks work offline and sync when you reconnect. Other edits, like c
 
 ## Account and privacy
 
-grampacker is free to use and does not show ads.z
+grampacker is free to use and does not show ads.
 
 Your private gear and lists are only available to your account. A list becomes publicly viewable only when you turn on its public link.
 
