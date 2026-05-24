@@ -242,3 +242,21 @@ export const PANEL_TOGGLE_LABEL = 'text-sm lg:text-[13px] font-medium text-gray-
 // surface's italic + color: the row pattern is one site (CategorySection)
 // and stays composed inline.
 export const PANEL_EMPTY_TEXT = 'text-sm lg:text-[13px] italic text-gray-400'
+
+// ---------------------------------------------------------------------------
+// Popover surface
+// ---------------------------------------------------------------------------
+// Floating popover/menu chrome: rounded card with a hairline border, white
+// fill, and a soft drop shadow. Used by every kebab/portal menu, the
+// MobileMenu trigger menu, and the List options / Gear options popovers.
+//
+// Deliberately NOT folded into FLAT_TABLE_SURFACE — popovers are different
+// chrome (fixed/floating, shadowed, no overflow-hidden clipping). Both the
+// table surface AND the popover surface share the border tone + radius +
+// fill so the global chrome language stays unified, but they vary on
+// shadow + clipping intentionally. See docs/ui-density.md "Popover surface".
+//
+// Call sites compose this with `fixed z-50 w-XX` and a body padding
+// (`py-1` for menu-row popovers; `p-2` / `p-3` for embedded-panel popovers
+// like List options).
+export const POPOVER_SURFACE = `${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} shadow-lg`

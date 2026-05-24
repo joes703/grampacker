@@ -17,11 +17,9 @@ import {
   SortableContext,
   arrayMove,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { CopyPlus, Download, GripVertical, MoreVertical, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { CopyPlus, Download, MoreVertical, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import {
   queryKeys,
   fetchGearItems,
@@ -34,8 +32,8 @@ import {
 } from '../lib/queries'
 import { useCurrentListActions } from './use-current-list-actions'
 import { assignSortOrderSlots } from '../lib/grouping'
-import { asButtonRef } from '../lib/dnd'
 import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
+import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
 import { parseListCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
@@ -46,11 +44,13 @@ import {
   FLAT_TABLE_EYEBROW,
   FLAT_TABLE_ROW,
   FLAT_TABLE_SURFACE,
+  POPOVER_SURFACE,
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
+import { pickListAfterDelete } from './pick-list-after-delete'
 import type { List } from '../lib/types'
 
 // Desktop-only Lists panel for /lists/:id. Sits above the gear picker in
@@ -206,34 +206,16 @@ export default function DesktopListsPanel({ userId, lists, currentListId, classN
 
   // Delete-current-list navigation. When the deleted list is the one
   // currently open, the optimistic delete strips it from the cache and the
-  // route falls onto the "List not found" terminal state. Pick a sensible
-  // landing spot before issuing the mutation so the user lands somewhere
-  // useful instead.
-  //
-  // Resolution order:
-  //   1. next visible list in current sort order
-  //   2. previous visible list in current sort order
-  //   3. /lists (the no-lists fallback)
-  //
-  // TODO: when desktop list management fully replaces the card page, the
-  // no-lists desktop fallback should become an in-workspace empty state
-  // (right-rail panel) instead of bouncing to /lists. The card page is
-  // the only surface that currently renders the "create your first list"
-  // empty UI, so /lists is the right destination until that lands.
+  // route falls onto the "List not found" terminal state. Resolve the
+  // landing path before issuing the mutation so the user lands somewhere
+  // useful instead. pickListAfterDelete is a pure helper with its own
+  // unit-test coverage; see pick-list-after-delete.ts for the rule.
   function deleteListWithNavigation(target: List) {
-    const isCurrent = target.id === currentListId
-    let nextPath = '/lists'
-    if (isCurrent) {
-      const idx = lists.findIndex((l) => l.id === target.id)
-      const next = idx >= 0 ? lists[idx + 1] : undefined
-      const prev = idx > 0 ? lists[idx - 1] : undefined
-      const successor = next ?? prev
-      if (successor) nextPath = `/lists/${successor.id}`
-    }
+    const nextPath = pickListAfterDelete(lists, target.id, currentListId)
     setDialog(null)
     deleteListMut.mutate(target.id, {
       onSuccess: () => {
-        if (isCurrent) navigate(nextPath)
+        if (nextPath) navigate(nextPath)
       },
     })
   }
@@ -287,7 +269,7 @@ export default function DesktopListsPanel({ userId, lists, currentListId, classN
             <div
               ref={headerMenuRef}
               role="menu"
-              className="fixed z-50 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+              className={`fixed z-50 w-44 py-1 ${POPOVER_SURFACE}`}
               style={{ top: headerMenuPos.top, left: headerMenuPos.left }}
             >
               <RowMenuItem
@@ -514,54 +496,28 @@ type ListPanelRowProps = {
   dragHandle?: React.ReactNode
 }
 
-// useSortable wrapper. Disabled while renaming or while a prior reorder is
-// in flight (the latter avoids the rollback-clobber race that two
-// overlapping reorders can hit).
+// Sortable wrapper for the panel row. Wires the outer ref + transform
+// style + drag-handle button via the shared useListCardSortable hook
+// (see list-card-sortable.tsx) and forwards everything else to
+// ListPanelRow. Disabled while renaming or while a prior reorder is in
+// flight (the latter avoids the rollback-clobber race that two
+// overlapping reorders can hit). The hook places the grip inside the row
+// (not in the gutter outside the clipped FLAT_TABLE_SURFACE) so it
+// remains visible. gripIconSize defaults to 14 for this denser surface;
+// the ListsPage card-page row passes 16 explicitly.
 function SortableListRow(
   props: Omit<ListPanelRowProps, 'outerRef' | 'outerStyle' | 'dragHandle'> & { reorderPending?: boolean },
 ) {
-  const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: makeDnDId('list-card', props.list.id),
+  const { outerRef, outerStyle, dragHandle } = useListCardSortable({
+    listId: props.list.id,
     disabled: props.renaming || props.reorderPending,
   })
-
-  const sortableStyle: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  }
-
-  // Drag handle sits inside the row (not in the gutter outside the clipped
-  // FLAT_TABLE_SURFACE) so it remains visible — a previous out-of-surface
-  // gutter handle got clipped by the surface's overflow-hidden.
-  const handle = (
-    <button
-      ref={asButtonRef(setActivatorNodeRef)}
-      type="button"
-      {...listeners}
-      {...attributes}
-      tabIndex={-1}
-      aria-label="Drag to reorder list"
-      className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-400 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing`}
-    >
-      <GripVertical size={14} />
-    </button>
-  )
-
   return (
     <ListPanelRow
       {...props}
-      outerRef={setNodeRef}
-      outerStyle={sortableStyle}
-      dragHandle={handle}
+      outerRef={outerRef}
+      outerStyle={outerStyle}
+      dragHandle={dragHandle}
     />
   )
 }
@@ -618,7 +574,7 @@ function ListPanelRow({
             if (e.key === 'Escape') onCancelRename()
           }}
           onBlur={onSubmitRename}
-          className="min-w-0 flex-1 rounded border border-blue-400 px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className={`min-w-0 flex-1 ${LIST_RENAME_INPUT_CLASS}`}
         />
       </li>
     )
@@ -668,7 +624,7 @@ function ListPanelRow({
           <div
             ref={menuRef}
             role="menu"
-            className="fixed z-50 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+            className={`fixed z-50 w-44 py-1 ${POPOVER_SURFACE}`}
             style={{ top: menuPos.top, left: menuPos.left }}
           >
             <RowMenuItem

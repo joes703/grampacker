@@ -19,6 +19,7 @@ import {
   FLAT_TABLE_HEADER_COUNT,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_SURFACE,
+  POPOVER_SURFACE,
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 
@@ -306,7 +307,7 @@ function CategoryKebab({
         <div
           ref={menuRef}
           role="menu"
-          className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+          className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
           style={{ top: menuPos.top, left: menuPos.left }}
         >
           <RowMenuItem icon={<Pencil size={13} />} onClick={() => { close(); onRename() }}>

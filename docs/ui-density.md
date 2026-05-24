@@ -168,6 +168,14 @@ gap / padding / column / hover / selected classes around them.
   table/list shell, not a decorative card: rounded corners + a hairline border, no
   shadow. The corner radius lives in the constant so every flat table rounds
   identically; a surface that must be square overrides `rounded-none` at the call site.
+- `POPOVER_SURFACE` — floating popover/menu shell (`rounded-lg border border-gray-200
+  bg-white shadow-lg`). Used by every kebab/portal menu, the `MobileMenu` trigger menu,
+  and the embedded-panel popovers (`ListSettingsButton`, `GearOptionsButton`).
+  Deliberately separate from `FLAT_TABLE_SURFACE` because popovers carry a soft drop
+  shadow and do NOT use `overflow-hidden` (they float, they don't clip child borders).
+  Both surfaces share `TABLE_RADIUS` + `TABLE_BORDER` + `TABLE_SURFACE_BG` so the global
+  chrome language stays unified. Call sites compose `fixed z-50 w-XX` and a body
+  padding (`py-1` for menu-row popovers; `p-2` / `p-3` for embedded-panel popovers).
 - `FLAT_TABLE_HEADER` — section/category header divider strip (`bg-gray-50` + bottom
   border, heights from `MOBILE_HEADER_HEIGHT` / `DESKTOP_HEADER_HEIGHT`).
 - `FLAT_TABLE_HEADER_TITLE`, `FLAT_TABLE_HEADER_TITLE_MUTED`,
@@ -297,9 +305,13 @@ chevrons / lists-page kebab + drag handle.
   and divider colors use the shared table chrome tokens: row groups separate with
   `divide-y ${TABLE_DIVIDER_LINE}` and the total rules use `TABLE_STRONG_DIVIDER`, so the
   table carries no one-off divider tints.
-- **Popover menus, `PanelCard`, and the weight/progress stat panels** also use
-  `border border-gray-200 bg-white` but are not flat row tables (floating menus, titled
-  cards, stat grids), so they do not consume `FLAT_TABLE_SURFACE`.
+- **Popover menus** use `POPOVER_SURFACE` (rounded card + hairline border + white fill +
+  drop shadow) instead of `FLAT_TABLE_SURFACE`. Same border tone, radius, and fill — but
+  popovers float, carry a shadow, and never use `overflow-hidden`. Both tokens compose
+  from the shared `TABLE_RADIUS` / `TABLE_BORDER` / `TABLE_SURFACE_BG` chrome so a
+  cross-surface chrome change still happens in one place. `PanelCard` and the
+  weight/progress stat panels carry their own chrome (titled cards / stat grids) and
+  consume neither surface token.
 
 ## Toggle Taxonomy
 

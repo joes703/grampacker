@@ -546,10 +546,13 @@ function ListDetailInner({
   // Add, not missing by accident.
   //
   // The add_gear_item_with_list_item RPC matches that contract exactly: one
-  // SECURITY DEFINER round-trip that inserts both rows atomically, with
-  // cost/purchase_date fixed at null. Pure cache-invalidate on success; the
-  // RPC return value (gear_item_id, list_item_id) is unused because the
-  // invalidate refetches both queries.
+  // round-trip that inserts both rows atomically, with cost/purchase_date
+  // fixed at null. SECURITY INVOKER as of 20260514202025_reduce_security_definer
+  // (was DEFINER when introduced); ownership is enforced by the inline
+  // auth.uid() check on p_user_id plus RLS on gear_items/list_items running
+  // under the invoker. Pure cache-invalidate on success; the RPC return value
+  // (gear_item_id, list_item_id) is unused because the invalidate refetches
+  // both queries.
   const addNewItemMut = useMutation({
     mutationFn: async ({ categoryId, data }: { categoryId: string | null; data: AddItemData }) => {
       const { error } = await supabase.rpc('add_gear_item_with_list_item', {

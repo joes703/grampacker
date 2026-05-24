@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router'
 import { HelpCircle, LogOut, Menu, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
+import { MOBILE_ROW_CONTROL_TARGET, POPOVER_SURFACE } from '../components/flat-table-styles'
 
 // Mobile (<md) global menu — Help, Settings, Sign out only. Mounted at
 // the NavBar top level on every authed route. The primary destinations
@@ -47,7 +48,7 @@ export default function MobileMenu() {
         onClick={() => (open ? close() : openMenu())}
         aria-label="More options"
         aria-expanded={open}
-        className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
+        className={`md:hidden inline-flex ${MOBILE_ROW_CONTROL_TARGET} items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100`}
       >
         <Menu size={20} />
       </button>
@@ -55,7 +56,7 @@ export default function MobileMenu() {
       {open && menuPos && 'right' in menuPos && createPortal(
         <div
           ref={menuRef}
-          className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+          className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
           style={{ top: menuPos.top, right: menuPos.right }}
         >
           {/* Global section — Help, Settings, Sign out. Gear and Lists

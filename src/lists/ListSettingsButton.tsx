@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Settings2 } from 'lucide-react'
 import type { List } from '../lib/types'
 import { usePortalPopover } from '../lib/use-portal-popover'
+import { POPOVER_SURFACE } from '../components/flat-table-styles'
 import ListSettingsPanel from './ListSettingsPanel'
 
 type Props = { list: List }
@@ -49,7 +50,7 @@ export default function ListSettingsButton({ list }: Props) {
       {open && pos && createPortal(
         <div
           ref={popoverRef}
-          className="fixed z-50 w-80 rounded-lg border border-gray-200 bg-white p-3 shadow-lg"
+          className={`fixed z-50 w-80 p-3 ${POPOVER_SURFACE}`}
           style={{ top: pos.top, right: pos.right }}
         >
           <ListSettingsPanel list={list} />

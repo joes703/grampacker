@@ -20,6 +20,7 @@ import {
   FLAT_TABLE_BODY_TEXT_MUTED,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_ROW,
+  POPOVER_SURFACE,
 } from '../components/flat-table-styles'
 import GearStatusBadge from './GearStatusBadge'
 import GearStatusMenuItems from './GearStatusMenuItems'
@@ -260,7 +261,7 @@ function GearRowKebab({
         <div
           ref={menuRef}
           role="menu"
-          className="fixed z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+          className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
           style={{ top: menuPos.top, left: menuPos.left }}
         >
           <RowMenuItem icon={<Pencil size={13} />} onClick={() => { close(); onEdit() }}>
