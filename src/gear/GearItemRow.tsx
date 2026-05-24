@@ -6,11 +6,12 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import type { GearItem } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
-import { formatItemWeight, type WeightUnit } from '../lib/weight'
+import type { WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
 import { makeDnDId } from '../lib/dnd-ids'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
+import ItemWeightValue from '../components/ItemWeightValue'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
@@ -79,7 +80,7 @@ export default function GearItemRow({
         <GearStatusBadge status={item.status} compact className="shrink-0 print:hidden" />
         <span className="flex-1 min-w-0 truncate font-normal text-gray-900">{item.name}</span>
         <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
-          {formatItemWeight(item.weight_grams, weightUnit)}
+          <ItemWeightValue grams={item.weight_grams} unit={weightUnit} />
         </span>
       </button>
     </div>
@@ -176,7 +177,7 @@ export default function GearItemRow({
             {formatPurchaseDate(item.purchase_date)}
           </span>
           <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
-            {formatItemWeight(item.weight_grams, weightUnit)}
+            <ItemWeightValue grams={item.weight_grams} unit={weightUnit} />
           </span>
           {!selectMode && (
             <GearRowKebab

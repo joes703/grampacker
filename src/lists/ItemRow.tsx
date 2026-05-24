@@ -20,6 +20,7 @@ import {
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
 } from '../components/flat-table-styles'
+import ItemWeightValue from '../components/ItemWeightValue'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
 import WeightInput from '../components/WeightInput'
@@ -475,11 +476,11 @@ export default function ItemRow({
             aria-label={`Weight ${formatItemWeight(itemWeight, weightUnit)} for ${name}, click to edit`}
             className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600 hover:text-blue-600`}
           >
-            {formatItemWeight(itemWeight, weightUnit)}
+            <ItemWeightValue grams={itemWeight} unit={weightUnit} />
           </button>
         ) : (
           <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
-            {formatItemWeight(itemWeight, weightUnit)}
+            <ItemWeightValue grams={itemWeight} unit={weightUnit} />
           </span>
         )}
 
@@ -536,7 +537,7 @@ function MobileRowBody({
         {item.quantity}
       </span>
       <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
-        {formatItemWeight(itemWeight, weightUnit)}
+        <ItemWeightValue grams={itemWeight} unit={weightUnit} />
       </span>
     </>
   )
