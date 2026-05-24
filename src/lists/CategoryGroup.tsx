@@ -349,8 +349,9 @@ function CategoryGroup({
               for print (print:flex), where the per-category total is part
               of the paper checklist. The button stays desktop-only since
               mobile uses the top-bar "Add" + picker drawer flow. Column
-              stubs branch on viewport to keep the total aligned under the
-              Weight column. */}
+              stubs branch on viewport to keep the total's right edge aligned
+              with the Weight column while giving compound lb+oz values room
+              to extend left into the empty Qty rail. */}
           {!packMode && !adding && (
             // Matches FLAT_TABLE_ROW density via the shared height tokens so
             // this footer row tracks any future density change automatically;
@@ -369,16 +370,14 @@ function CategoryGroup({
               <div className="hidden lg:contents">
                 <div className="shrink-0 w-7" />
                 <div className="shrink-0 w-7" />
-                <div className="shrink-0 w-12" />
-                <div className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
+                <div className={`shrink-0 w-[9.375rem] text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
                   {items.length > 0 ? <TotalWeightValue grams={totalGrams} unit={weightUnit} /> : ''}
                 </div>
                 {showKebabSlot && <div className="shrink-0 w-7" />}
               </div>
               <div className="lg:hidden flex items-center gap-2">
                 <div className="shrink-0 w-6" />
-                <div className="shrink-0 w-8" />
-                <div className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
+                <div className={`shrink-0 w-[7.5rem] text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
                   {items.length > 0 ? <TotalWeightValue grams={totalGrams} unit={weightUnit} /> : ''}
                 </div>
               </div>
