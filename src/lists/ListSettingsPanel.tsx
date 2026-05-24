@@ -20,11 +20,16 @@ type Props = { list: List }
 //
 // Toggles:
 //   - Group worn items: moves worn items into their own grouped
-//     section across every view.
-//   - Ready checks (pack mode): per-list "second progress bar + Ready
-//     checkbox column" feature.
+//     section across every view. Stays here because it affects normal
+//     list organization too, not just pack mode.
 //   - Sharing: PrivacyPanel's inline body (toggle + url + Copy when
 //     public).
+//
+// "Add ready checks" used to live here as a third toggle, but it is a
+// pack-mode-only feature and the panel itself is hidden in pack mode
+// (see ListDocumentToolbar / MobileListActionBar). The toggle now lives
+// inline at the top of PackingProgress, the one surface where the user
+// is actually in pack mode and can see/use the second progress bar.
 //
 // Actions reuse the shared useCurrentListActions hook so the /lists
 // card kebab and this panel call the same renameMut/duplicateMut/
@@ -37,7 +42,8 @@ type Props = { list: List }
 // Same renameMut runs in either path.
 //
 // Mounted inside ListSettingsButton's popover at md+ and inside a
-// Modal on mobile via MobileListActionBar's Options slot.
+// Modal on mobile via MobileListActionBar's Options slot. Both mount
+// points are themselves suppressed in pack mode.
 export default function ListSettingsPanel({ list }: Props) {
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -51,18 +57,6 @@ export default function ListSettingsPanel({ list }: Props) {
       queryKey: queryKeys.lists(),
       id: () => list.id,
       apply: (item) => ({ ...item, group_worn: !item.group_worn }),
-    }),
-  })
-
-  // Ready checks lives here (not in PackingProgress) because it's a
-  // list-level pack-mode setting, not a transient view filter.
-  const readyChecksMut = useMutation({
-    mutationFn: () => updateList(list.id, { ready_checks_enabled: !list.ready_checks_enabled }),
-    ...makeOptimisticUpdate<List, void>({
-      qc,
-      queryKey: queryKeys.lists(),
-      id: () => list.id,
-      apply: (item) => ({ ...item, ready_checks_enabled: !item.ready_checks_enabled }),
     }),
   })
 
@@ -115,14 +109,6 @@ export default function ListSettingsPanel({ list }: Props) {
           checked={list.group_worn}
           onChange={() => groupWornMut.mutate()}
           ariaLabel="Group worn items"
-        />
-      </div>
-      <div className="flex items-center justify-between">
-        <span className={PANEL_TOGGLE_LABEL}>Ready checks (pack mode)</span>
-        <ToggleSwitch
-          checked={list.ready_checks_enabled}
-          onChange={() => readyChecksMut.mutate()}
-          ariaLabel="Ready checks (pack mode)"
         />
       </div>
       <PrivacyPanel list={list} />

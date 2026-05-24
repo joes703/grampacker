@@ -28,16 +28,19 @@ type Props = {
   // doesn't strand the user waiting for an offline transition.
   syncBlocked?: boolean
   onRetrySync?: () => void
-  // Ready Checks block. The toggle for ready_checks_enabled lives in
-  // List options (ListSettingsPanel) because it's a list-level pack-mode
-  // setting, not a transient view filter. This component only reads
-  // `enabled` to gate the second progress bar + Reset Ready button, and
-  // calls `onResetReady` when the user confirms a reset. Prop is
-  // optional only because the share view never renders Reset.
-  readyChecks?: {
+  // Ready Checks block. The "Add ready checks" toggle lives inline at the
+  // top of this panel — it's the only place pack-mode options live now
+  // that List options is hidden in pack mode. `enabled` still drives the
+  // second progress bar + Reset Ready button; toggling persists via
+  // `onToggleEnabled` (writes ready_checks_enabled on the lists row).
+  // Prop is required because PackingProgress only renders for the owner
+  // in pack mode — the share view (which never wires reset/toggle) does
+  // not render this component.
+  readyChecks: {
     ready: number
     enabled: boolean
     onResetReady: () => void
+    onToggleEnabled: () => void
   }
 }
 
@@ -58,16 +61,49 @@ export default function PackingProgress({
   const done = packed === total && total > 0
   const [confirmingReset, setConfirmingReset] = useState(false)
   const [confirmingResetReady, setConfirmingResetReady] = useState(false)
-  const readyCount = readyChecks?.ready ?? 0
+  const readyCount = readyChecks.ready
   const readyPct = total === 0 ? 0 : Math.round((readyCount / total) * 100)
-  const readyDone = readyChecks?.enabled === true && readyCount === total && total > 0
+  const readyDone = readyChecks.enabled && readyCount === total && total > 0
 
   return (
     <div className={`${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} p-4`}>
+      {/* Pack-mode controls. Compact inline cluster of label-and-switch
+          pairs (each label sits adjacent to its switch so they read as
+          one control), gap-x-5 between clusters, flex-wrap so mobile
+          stacks the two when the panel is narrow. The cluster is anchored
+          left, not stretched edge-to-edge — the switches were never meant
+          to fight each other across a wide desktop panel.
+          Show unpacked only: local view state.
+          Add ready checks: persists ready_checks_enabled. This is the
+          only surface that toggles this setting now that List options
+          is suppressed in pack mode. */}
+      <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-2 print:hidden">
+        {/* Each label-and-switch pair sits inside a flex cluster so the
+            label reads as adjacent to its control. ToggleSwitch renders
+            a <button> (not an <input>), so wrapping in a <label> would
+            trip jsx-a11y/label-has-associated-control without giving the
+            user any extra a11y benefit — the switch already carries its
+            own ariaLabel. */}
+        <div className="flex items-center gap-2">
+          <span className={PANEL_TOGGLE_LABEL}>Show unpacked only</span>
+          <ToggleSwitch
+            checked={showUnpackedOnly}
+            onChange={onToggleShowUnpackedOnly}
+            ariaLabel="Show unpacked only"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={PANEL_TOGGLE_LABEL}>Add ready checks</span>
+          <ToggleSwitch
+            checked={readyChecks.enabled}
+            onChange={readyChecks.onToggleEnabled}
+            ariaLabel="Add ready checks"
+          />
+        </div>
+      </div>
+
       {/* Packed header — count on the left, "All packed!" chip + Reset
-          packed on the right. View toggles (Show unpacked only, Ready
-          checks) live below in the options row so this row stays focused
-          on the Packed progress + its reset action. */}
+          packed on the right. */}
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <span className="text-sm font-medium tabular-nums text-gray-700">
           {packed} / {total} packed
@@ -96,7 +132,7 @@ export default function PackingProgress({
         />
       </div>
 
-      {readyChecks?.enabled && (
+      {readyChecks.enabled && (
         <div className="mt-3">
           <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
             <span className="text-sm font-medium tabular-nums text-gray-700">
@@ -127,25 +163,6 @@ export default function PackingProgress({
           </div>
         </div>
       )}
-
-      {/* Show unpacked only: the active packing view filter. Local
-          view state, stays here under the progress bars where the user
-          sees its effect. Compact label-left / switch-right row using
-          the shared PANEL_TOGGLE_LABEL token so this label reads at
-          the same primary-content weight as the Group worn / Ready
-          checks / Sharing toggles in List options (one canonical
-          control-label appearance instead of per-site gray-700 vs
-          gray-900 drift). The Ready checks toggle moved to List
-          options (ListSettingsPanel's Pack mode section) since it's a
-          persisted list setting, not a transient filter. */}
-      <div className="mt-4 flex items-center gap-3 print:hidden">
-        <span className={PANEL_TOGGLE_LABEL}>Show unpacked only</span>
-        <ToggleSwitch
-          checked={showUnpackedOnly}
-          onChange={onToggleShowUnpackedOnly}
-          ariaLabel="Show unpacked only"
-        />
-      </div>
 
       {(offline || pendingSyncCount > 0 || syncing) && (
         <div
@@ -188,7 +205,7 @@ export default function PackingProgress({
           }}
         />
       )}
-      {confirmingResetReady && readyChecks && (
+      {confirmingResetReady && (
         <ConfirmDialog
           title="Reset ready?"
           message="All items will be marked not ready. This won't change packed checkmarks, your inventory, weights, or quantities."

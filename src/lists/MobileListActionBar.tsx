@@ -9,12 +9,21 @@ import MobileOptionsModal from '../components/MobileOptionsModal'
 import MobileBottomBar from '../components/MobileBottomBar'
 import ListSettingsPanel from './ListSettingsPanel'
 
+type MobileBottomBarItem = Parameters<typeof MobileBottomBar>[0]['items'][number]
+
 type Props = {
   /** Resolved list for the current route. When null (lists query still
    *  cold-loading), the Options button stays disabled because the modal
    *  body needs a List row to wire mutations to. Add is drawer-driven
    *  and remains enabled. */
   list: List | null
+  /** Pack mode suppresses the Options slot. Pack-mode controls live
+   *  inline at the top of PackingProgress; the rest of List options
+   *  (Group worn, Sharing, lifecycle actions) is list-admin not needed
+   *  during a pack pass. The bar shrinks from 4 slots to 3 in pack mode
+   *  — same pattern as how Add stays available mid-pack even though Pack
+   *  isn't a destination slot. */
+  packMode: boolean
 }
 
 // Mobile-only bottom action bar for List Detail. Standardized 4-slot
@@ -31,38 +40,39 @@ type Props = {
 // Visibility: this component is only rendered by ListDetailPage's authed
 // branch, so it's automatically scoped away from Gear, Lists, Settings,
 // Help, and the public /r/:slug share view.
-export default function MobileListActionBar({ list }: Props) {
+export default function MobileListActionBar({ list, packMode }: Props) {
   useSuppressMobilePrimaryNav()
   const { pathname } = useLocation()
   const drawer = useSidebarDrawer()
   const [settingsOpen, setSettingsOpen] = useState(false)
 
+  const items: MobileBottomBarItem[] = [
+    ...buildMobileDestinationItems(pathname),
+    {
+      type: 'button',
+      label: 'Add',
+      icon: <Plus size={18} />,
+      onClick: () => drawer.setOpen(true),
+      disabled: !drawer.available,
+      ariaLabel: 'Add gear to list',
+    },
+  ]
+  if (!packMode) {
+    items.push({
+      type: 'button',
+      label: 'Options',
+      icon: <Settings2 size={18} />,
+      onClick: () => setSettingsOpen(true),
+      disabled: !list,
+      ariaLabel: 'List options',
+    })
+  }
+
   return (
     <>
-      <MobileBottomBar
-        label="List navigation and actions"
-        items={[
-          ...buildMobileDestinationItems(pathname),
-          {
-            type: 'button',
-            label: 'Add',
-            icon: <Plus size={18} />,
-            onClick: () => drawer.setOpen(true),
-            disabled: !drawer.available,
-            ariaLabel: 'Add gear to list',
-          },
-          {
-            type: 'button',
-            label: 'Options',
-            icon: <Settings2 size={18} />,
-            onClick: () => setSettingsOpen(true),
-            disabled: !list,
-            ariaLabel: 'List options',
-          },
-        ]}
-      />
+      <MobileBottomBar label="List navigation and actions" items={items} />
 
-      {list && (
+      {list && !packMode && (
         <MobileOptionsModal
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
