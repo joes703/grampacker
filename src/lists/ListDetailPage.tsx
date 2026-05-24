@@ -70,6 +70,7 @@ import {
 import { randomTempId } from '../lib/random-temp-id'
 import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
+import DesktopListsPanel from './DesktopListsPanel'
 import { FLAT_TABLE_EYEBROW, FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import MobilePackToggle from './MobilePackToggle'
@@ -897,13 +898,26 @@ function ListDetailInner({
       {/* Two-column grid (sidebar collapses in pack mode). The visibility
           condition is `mode !== 'pack'` — derived directly, not stored. */}
       <div className="flex gap-4 items-start">
-        {/* LEFT column — gear library picker. Hidden in pack mode on desktop
-            so the user can focus on packing. List management lives on /lists. */}
+        {/* LEFT column — Lists switcher above the gear library picker.
+            Hidden in pack mode on desktop so the user can focus on packing.
+            DesktopListsPanel is the primary desktop workflow for list
+            switching/management; /lists remains the mobile management page
+            and a desktop fallback (e.g. when no lists exist). */}
         {mode !== 'pack' && (
           <aside
-            className="hidden lg:flex w-80 shrink-0 flex-col sticky self-start print:hidden"
+            className="hidden lg:flex w-80 shrink-0 flex-col gap-3 sticky self-start print:hidden"
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
           >
+            {/* shrink-0 + max-h-72 keeps the lists switcher compact even
+                with many lists: the panel scrolls internally beyond that
+                cap and the gear picker below always has room. */}
+            <DesktopListsPanel
+              userId={userId}
+              lists={lists}
+              currentListId={listId}
+              className="shrink-0 max-h-72"
+            />
+
             <div className={`flex flex-col min-h-0 flex-1 ${FLAT_TABLE_SURFACE}`}>
               {/* Quiet section header — labels the panel as the picker for
                   pulling existing gear into this list. The Gear destination
