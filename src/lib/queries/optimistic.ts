@@ -54,6 +54,20 @@ import { showToast } from '../toast'
 //   server truth) is rare in practice (the app uses staleTime: 30s, so
 //   most reorders have no in-flight fetch) and self-healing (onSettled
 //   below invalidates the key and triggers a fresh fetch regardless).
+//
+// Corollary — the same-tick rule extends to where the cache is observed,
+// not just where it is written. The component that renders the
+// SortableContext MUST own the useQuery subscription for the cached
+// array it sorts. Receiving the array via a prop drilled from a parent
+// observer can split the two state updates (the local setActiveId
+// from onDragEnd, and the prop-drilled new order from the parent's
+// re-render) across React 18 commits: the local commit lands first
+// against the still-old DOM order (dnd-kit's drop animation snaps the
+// row back), then the prop commit lands (the row jumps to the new
+// position). This is the same visible symptom as the awaited-cancel
+// race; the cause is cross-component subscription rather than an
+// awaited promise. See DesktopListsPanel's own useQuery for the
+// in-codebase example.
 // ── Single-row optimistic CRUD ────────────────────────────────────────────────
 //
 // makeOptimisticInsert / makeOptimisticUpdate / makeOptimisticDelete cover

@@ -24,6 +24,7 @@ import {
   queryKeys,
   fetchGearItems,
   fetchCategories,
+  fetchLists,
   createList,
   reorderLists,
   importCsvRowsToList,
@@ -75,6 +76,14 @@ import type { List } from '../lib/types'
 
 type Props = {
   userId: string
+  // Initial seed for the local lists subscription. Lets the parent's
+  // useQuery render the first paint without a flash; once mounted, the
+  // panel subscribes to the lists cache itself (see useQuery below) and
+  // that subscription is the source of truth. Required for DnD: the
+  // panel's setActiveId state and the lists cache update MUST land in
+  // the same React commit so dnd-kit's drop animation measures rects
+  // against the new DOM order. See the useQuery comment below for the
+  // race-class rationale.
   lists: List[]
   currentListId: string
   // Wraps the panel's outer FLAT_TABLE_SURFACE element. Lets the caller
@@ -93,7 +102,12 @@ type DialogState =
   | { type: 'import-preview'; rows: ListImportRow[]; filename: string }
   | { type: 'import-error'; message: string }
 
-export default function DesktopListsPanel({ userId, lists, currentListId, className }: Props) {
+export default function DesktopListsPanel({
+  userId,
+  lists: listsSeed,
+  currentListId,
+  className,
+}: Props) {
   const navigate = useNavigate()
   const qc = useQueryClient()
 
@@ -101,6 +115,31 @@ export default function DesktopListsPanel({ userId, lists, currentListId, classN
   // and the in-list List options popover, so rename/duplicate/export/delete
   // semantics stay identical across surfaces.
   const { renameMut, duplicateMut, deleteListMut, exportCsv } = useCurrentListActions(userId)
+
+  // Subscribe to the lists cache from THIS component instead of relying on
+  // the prop drilled from ListDetailPage. The parent still subscribes (it
+  // needs lists to resolve the current list and to seed our initialData
+  // here), so this is a second observer on the same key — TanStack Query
+  // dedupes the fetch, both observers see identical data.
+  //
+  // Why this matters for DnD: handleDragEnd does two things in one tick —
+  // setActiveId(null) (local state) and reorderListsMut.mutate(...) (writes
+  // the cache via setQueryData). When the SortableContext's `items` prop
+  // came from a prop-drilled `lists` whose subscription lives two
+  // components up, React 18's batching could split the two updates across
+  // commits: the local setActiveId landed first (drop animation runs
+  // against the still-old DOM order — snap-back), then the prop-drilled
+  // new lists landed in a second commit (the row jumps). Same race class
+  // as the awaited cancelQueries fix (see optimistic.ts:35 and commit
+  // 703a936), just caused by cross-component subscription instead of an
+  // awaited promise. With the subscription here, both updates flow
+  // through the same component's hooks and batch into one commit, so the
+  // DOM is in new order before dnd-kit measures the drop rect.
+  const { data: lists = listsSeed } = useQuery({
+    queryKey: queryKeys.lists(),
+    queryFn: () => fetchLists(userId),
+    initialData: listsSeed,
+  })
 
   // gearItems / categories are needed for CSV import (importCsvRowsToList
   // resolves names against existing inventory). They're already cached by
