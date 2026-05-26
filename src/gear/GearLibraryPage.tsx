@@ -55,6 +55,7 @@ import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useToggleSet } from '../lib/use-toggle-set'
 import { groupGearItemsByCategory, assignSortOrderSlots } from '../lib/grouping'
+import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
 import { showToast } from '../lib/toast'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
@@ -96,9 +97,25 @@ export default function GearLibraryPage() {
   const navigate = useNavigate()
 
   // ── Queries ──────────────────────────────────────────────────────────────────
-  const { data: categories = [] } = useQuery({
+  // Categories: subscription + reorder state machine in one hook. The page-
+  // level handleDragEnd delegates the `kind === 'category'` branch to
+  // catDragEnd; the hook self-gates so the call is safe regardless of which
+  // kind actually dropped. The buildUpdates override preserves this
+  // surface's historical full-renumber payload shape (0..N-1) rather than
+  // permuting existing slots. See src/lib/use-reorderable.ts for the
+  // same-tick-subscription rationale.
+  const {
+    items: categories,
+    reorderPending: catReorderPending,
+    handleDragStart: catDragStart,
+    handleDragCancel: catDragCancel,
+    handleDragEnd: catDragEnd,
+  } = useReorderable<Category>({
     queryKey: queryKeys.categories(),
     queryFn: () => fetchCategories(userId),
+    mutationFn: reorderCategories,
+    dndKind: 'category',
+    buildUpdates: (reordered) => reordered.map((c, i) => ({ id: c.id, sort_order: i })),
   })
   const { data: allItems = [], isLoading } = useQuery({
     queryKey: queryKeys.gearItems(),
@@ -203,11 +220,6 @@ export default function GearLibraryPage() {
       invalidateKeys: [queryKeys.gearItems(), ['list-items']],
       id: (id) => id,
     }),
-  })
-
-  const reorderCats = useMutation({
-    mutationFn: reorderCategories,
-    ...makeOptimisticReorder<Category>(qc, queryKeys.categories()),
   })
 
   const addItem = useMutation({
@@ -438,23 +450,37 @@ export default function GearLibraryPage() {
     ...makeOptimisticReorder<GearItem>(qc, queryKeys.gearItems()),
   })
 
+  // The page tracks its OWN activeId for the gear-item DragOverlay clone
+  // (the DragOverlay below only renders gear-item rows; categories don't
+  // have a clone). The categories useReorderable hook tracks an independent
+  // activeId internally for its own state machine; we forward the lifecycle
+  // events to it so it stays in sync even though its activeItem isn't
+  // consumed at this surface.
   function handleDragStart(e: DragStartEvent) {
     setActiveId(String(e.active.id))
+    catDragStart(e)
   }
 
   function handleDragCancel() {
     setActiveId(null)
+    catDragCancel()
   }
 
-  // Single page-level drag handler. Two cases only:
-  //   1. Reorder categories themselves (drag a category up/down).
-  //   2. Reorder items within their existing category.
-  // Cross-category drops are deliberately rejected — recategorizing a gear
-  // item happens exclusively via the item edit modal (or the multi-select
-  // bulk-move toolbar). A drop whose destination differs from the source
-  // category is ignored (item snaps back); the visual auto-shift during
-  // drag still works because items live in a single page-wide
-  // SortableContext.
+  // Page-level drag handler. Two cases:
+  //   1. Reorder categories themselves — delegated to the categories
+  //      useReorderable hook (`catDragEnd`). The hook owns parse/validate/
+  //      arrayMove/buildUpdates/mutate. We early-return on kind=='category'
+  //      so the gear-item branch below doesn't also fire against a
+  //      category id.
+  //   2. Reorder items within their existing category — stays page-level
+  //      because the algebra is slice-based (filter to category, then
+  //      arrayMove). The useReorderable hook is flat-only by design; a
+  //      future second-pass extraction may take a groupBy option, but the
+  //      shape isn't proven yet (see CLAUDE.md / DECISIONS.md ADR 11).
+  //
+  // Cross-category gear-item drops are deliberately rejected (item snaps
+  // back); recategorizing happens via the edit modal or the multi-select
+  // bulk-move toolbar (per ADR 1).
   function handleDragEnd(e: DragEndEvent) {
     setActiveId(null)
     const { active, over } = e
@@ -467,30 +493,7 @@ export default function GearLibraryPage() {
 
     // Case 1 — category reorder.
     if (activeParsed.kind === 'category') {
-      const oldIndex = categories.findIndex((c) => c.id === activeParsed.id)
-      if (oldIndex === -1) return
-
-      // Resolve over to a target category id. The collisionDetection above
-      // restricts droppables to category-only when active is a category, so
-      // overParsed.kind is always 'category' here. The else branch (over
-      // resolved to a gear-item) is kept as a defence; if it ever fires,
-      // map back to the parent category via category_id.
-      let destCatId: string | null
-      if (overParsed.kind === 'category') {
-        destCatId = overParsed.id
-      } else if (overParsed.kind === 'gear-item') {
-        const overItem = allItemsById.get(overParsed.id)
-        destCatId = overItem?.category_id ?? null
-      } else {
-        return
-      }
-      // Uncategorized is not a real category row — no reorder target.
-      if (destCatId === null) return
-      const newIndex = categories.findIndex((c) => c.id === destCatId)
-      if (newIndex === -1 || newIndex === oldIndex) return
-
-      const reordered = arrayMove(categories, oldIndex, newIndex)
-      reorderCats.mutate(reordered.map((c, i) => ({ id: c.id, sort_order: i })))
+      catDragEnd(e)
       return
     }
 
@@ -770,7 +773,7 @@ export default function GearLibraryPage() {
                     key={group.category.id}
                     id={group.category.id}
                     category={group.category}
-                    reorderPending={reorderCats.isPending}
+                    reorderPending={catReorderPending}
                     {...commonProps}
                   />
                 )

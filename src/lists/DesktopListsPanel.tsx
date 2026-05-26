@@ -10,12 +10,9 @@ import {
   MouseSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
 } from '@dnd-kit/core'
 import {
   SortableContext,
-  arrayMove,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
@@ -28,12 +25,11 @@ import {
   createList,
   reorderLists,
   importCsvRowsToList,
-  makeOptimisticReorder,
   makeOptimisticInsert,
 } from '../lib/queries'
 import { useCurrentListActions } from './use-current-list-actions'
-import { assignSortOrderSlots } from '../lib/grouping'
-import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
+import { useReorderable } from '../lib/use-reorderable'
+import { makeDnDId } from '../lib/dnd-ids'
 import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
 import { parseListCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
@@ -116,29 +112,28 @@ export default function DesktopListsPanel({
   // semantics stay identical across surfaces.
   const { renameMut, duplicateMut, deleteListMut, exportCsv } = useCurrentListActions(userId)
 
-  // Subscribe to the lists cache from THIS component instead of relying on
-  // the prop drilled from ListDetailPage. The parent still subscribes (it
-  // needs lists to resolve the current list and to seed our initialData
-  // here), so this is a second observer on the same key — TanStack Query
-  // dedupes the fetch, both observers see identical data.
-  //
-  // Why this matters for DnD: handleDragEnd does two things in one tick —
-  // setActiveId(null) (local state) and reorderListsMut.mutate(...) (writes
-  // the cache via setQueryData). When the SortableContext's `items` prop
-  // came from a prop-drilled `lists` whose subscription lives two
-  // components up, React 18's batching could split the two updates across
-  // commits: the local setActiveId landed first (drop animation runs
-  // against the still-old DOM order — snap-back), then the prop-drilled
-  // new lists landed in a second commit (the row jumps). Same race class
-  // as the awaited cancelQueries fix (see optimistic.ts:35 and commit
-  // 703a936), just caused by cross-component subscription instead of an
-  // awaited promise. With the subscription here, both updates flow
-  // through the same component's hooks and batch into one commit, so the
-  // DOM is in new order before dnd-kit measures the drop rect.
-  const { data: lists = listsSeed } = useQuery({
+  // The reorder state machine — useQuery on ['lists'], useMutation on
+  // reorderLists with makeOptimisticReorder, activeId, and the
+  // handleDragStart/Cancel/End shape — lives in useReorderable. The hook
+  // owning the lists subscription is the structural fix for the
+  // cross-component snap-back race (commit b8624ec); see
+  // src/lib/use-reorderable.ts for the full rationale.
+  const {
+    items: lists,
+    activeItem: activeList,
+    reorderPending,
+    handleDragStart,
+    handleDragCancel,
+    handleDragEnd,
+  } = useReorderable<List>({
     queryKey: queryKeys.lists(),
     queryFn: () => fetchLists(userId),
     initialData: listsSeed,
+    mutationFn: reorderLists,
+    dndKind: 'list-card',
+    // bulk_update_sort_order preserves updated_at on sort_order-only
+    // writes (migration 20260524140830), so reordering does NOT bump
+    // the /lists "Updated …" timestamps. Same path as ListsPage.
   })
 
   // gearItems / categories are needed for CSV import (importCsvRowsToList
@@ -200,11 +195,6 @@ export default function DesktopListsPanel({
     },
   })
 
-  const reorderListsMut = useMutation({
-    mutationFn: reorderLists,
-    ...makeOptimisticReorder<List>(qc, queryKeys.lists()),
-  })
-
   // Desktop-only panel, so MouseSensor + KeyboardSensor is enough. No
   // TouchSensor: the surrounding aside is `hidden lg:flex`, and bringing it
   // to mobile would mean separate UX work (a card surface is the mobile
@@ -215,33 +205,6 @@ export default function DesktopListsPanel({
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
-
-  const [activeId, setActiveId] = useState<string | null>(null)
-
-  function handleDragStart(e: DragStartEvent) {
-    setActiveId(String(e.active.id))
-  }
-  function handleDragCancel() {
-    setActiveId(null)
-  }
-  function handleDragEnd(e: DragEndEvent) {
-    setActiveId(null)
-    const { active, over } = e
-    if (!over) return
-    if (active.id === over.id) return
-    const activeParsed = parseDnDId(String(active.id))
-    const overParsed = parseDnDId(String(over.id))
-    if (!activeParsed || !overParsed) return
-    if (activeParsed.kind !== 'list-card' || overParsed.kind !== 'list-card') return
-    const oldIndex = lists.findIndex((l) => l.id === activeParsed.id)
-    const newIndex = lists.findIndex((l) => l.id === overParsed.id)
-    if (oldIndex === -1 || newIndex === -1) return
-    const reordered = arrayMove(lists, oldIndex, newIndex)
-    // bulk_update_sort_order now preserves updated_at on sort_order-only
-    // writes (migration 20260524140830), so reordering does NOT bump the
-    // /lists "Updated …" timestamps. See ListsPage for the same path.
-    reorderListsMut.mutate(assignSortOrderSlots(reordered))
-  }
 
   // Delete-current-list navigation. When the deleted list is the one
   // currently open, the optimistic delete strips it from the cache and the
@@ -274,10 +237,6 @@ export default function DesktopListsPanel({
     menuRef: headerMenuRef,
     menuPos: headerMenuPos,
   } = useAnchoredMenu({ variant: 'right-flush', menuWidth: 176 })
-
-  const activeParsed = activeId ? parseDnDId(activeId) : null
-  const activeList =
-    activeParsed?.kind === 'list-card' ? lists.find((l) => l.id === activeParsed.id) : null
 
   return (
     <div className={`flex flex-col ${FLAT_TABLE_SURFACE} ${className ?? ''}`}>
@@ -389,7 +348,7 @@ export default function DesktopListsPanel({
                   renameDraft={
                     dialog?.type === 'renaming' && dialog.list.id === list.id ? dialog.draft : ''
                   }
-                  reorderPending={reorderListsMut.isPending}
+                  reorderPending={reorderPending}
                   onRenameDraftChange={(v) => setDialog({ type: 'renaming', list, draft: v })}
                   onStartRename={() => setDialog({ type: 'renaming', list, draft: list.name })}
                   onSubmitRename={() => {

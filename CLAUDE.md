@@ -49,6 +49,7 @@
 - Edit happens in modals. Delete confirmations use the standardized "Delete from inventory" copy on both pages.
 - Category moves happen in the edit modal, NOT in the kebab. This is deliberate: moves are rare enough that the modal friction is acceptable, and we avoid having two paths for the same operation.
 - All five popovers (HamburgerMenu, PrivacyButton, ItemRow's RowKebab, GearItemRow's GearRowKebab, ListsPage's per-card RowKebab) use the `usePortalPopover` hook for dismiss behavior. Do not reimplement mousedown/scroll/resize/escape listeners inline.
+- Flat reorder surfaces (ListsPage, DesktopListsPanel, GearLibraryPage categories) use the `useReorderable` hook in `src/lib/use-reorderable.ts`. The hook owns the `useQuery` subscription for the sortable cache, the `useMutation` with `makeOptimisticReorder`, the `activeId` state, and the `handleDragStart/Cancel/End` shape; the page wires `DndContext` with its own sensors, `SortableContext` with `items` from the hook, and `DragOverlay`. Using the hook structurally enforces the same-tick cache-subscription rule documented in `optimistic.ts` (the b8624ec snap-back race class). Nested-reorder surfaces (within-category list items on `/lists/:id`; within-category gear items on `/gear`) still hand-roll DnD because their algebra is slice-based; the narrated rule still applies there — keep the `useQuery` in the same component as the `DndContext`.
 
 ## Working style
 
