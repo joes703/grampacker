@@ -42,6 +42,7 @@ import {
   makeOptimisticReorder,
   makeOptimisticInsert,
   makeOptimisticUpdate,
+  makeOptimisticUpdateWithFanout,
   makeOptimisticDelete,
   makeOptimisticBulkDelete,
   makeOptimisticBulkMove,
@@ -235,56 +236,34 @@ export default function GearLibraryPage() {
     }),
   })
 
-  // Hand-rolled because we need optimistic fan-out into every list-items
-  // cache that references this gear (lists embed gear via join — without
-  // the fan-out, an immediate reorder after a category change reads stale
-  // embedded category_id and writes corrupted sort_order). Helper extraction
-  // is a future commit once the shape proves stable.
+  // Gear edits fan out into every active list-items cache that embeds the
+  // patched gear via the gear_item join — without the fan-out, an immediate
+  // reorder after a category change would read stale embedded category_id
+  // and write corrupted sort_order. The fields that need fan-out are the
+  // ones embedded by GEAR_ITEM_AUTH_SELECT (name, description, weight_grams,
+  // category_id, status). makeOptimisticUpdateWithFanout owns the
+  // cancel-snapshot-write-rollback-settle lifecycle across both caches; the
+  // join shape (FK match, embed property) stays here as the caller-authored
+  // matchJoined / applyJoined.
   const editItem = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateGearItem>[1] }) =>
       updateGearItem(id, patch),
-    onMutate: ({ id, patch }) => {
-      qc.cancelQueries({ queryKey: queryKeys.gearItems() })
-      const previousGear = qc.getQueryData<GearItem[]>(queryKeys.gearItems())
-      qc.setQueryData<GearItem[]>(queryKeys.gearItems(), (curr) =>
-        curr ? curr.map((g) => (g.id === id ? { ...g, ...patch } : g)) : curr,
-      )
-
-      const affected = qc.getQueryCache()
-        .findAll({ queryKey: ['list-items'] })
-        .filter((q) => (q.state.data as ListItemWithGear[] | undefined)?.some((i) => i.gear_item_id === id))
-      const listSnapshots: { key: QueryKey; data: ListItemWithGear[] | undefined }[] = []
-      for (const q of affected) {
-        const key = q.queryKey
-        qc.cancelQueries({ queryKey: key })
-        listSnapshots.push({ key, data: qc.getQueryData<ListItemWithGear[]>(key) })
-        qc.setQueryData<ListItemWithGear[]>(key, (curr) =>
-          curr?.map((item) =>
-            item.gear_item_id === id
-              ? { ...item, gear_item: { ...item.gear_item, ...patch } }
-              : item,
-          ),
-        )
-      }
-
-      return { previousGear, listSnapshots }
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.previousGear) qc.setQueryData(queryKeys.gearItems(), ctx.previousGear)
-      if (ctx?.listSnapshots) {
-        for (const { key, data } of ctx.listSnapshots) {
-          qc.setQueryData(key, data)
-        }
-      }
-    },
-    onSettled: (_data, _err, _vars, ctx) => {
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      if (ctx?.listSnapshots) {
-        for (const { key } of ctx.listSnapshots) {
-          qc.invalidateQueries({ queryKey: key })
-        }
-      }
-    },
+    ...makeOptimisticUpdateWithFanout<
+      GearItem,
+      ListItemWithGear,
+      { id: string; patch: Parameters<typeof updateGearItem>[1] }
+    >({
+      qc,
+      queryKey: queryKeys.gearItems(),
+      fanoutQueryKeyPrefix: ['list-items'],
+      id: ({ id }) => id,
+      applyPrimary: (gear, { patch }) => ({ ...gear, ...patch }),
+      matchJoined: (item, { id }) => item.gear_item_id === id,
+      applyJoined: (item, { patch }) => ({
+        ...item,
+        gear_item: { ...item.gear_item, ...patch },
+      }),
+    }),
   })
 
   const removeItem = useMutation({
