@@ -11,12 +11,9 @@ import {
   TouchSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
 } from '@dnd-kit/core'
 import {
   SortableContext,
-  arrayMove,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
@@ -30,12 +27,11 @@ import {
   createList,
   reorderLists,
   importCsvRowsToList,
-  makeOptimisticReorder,
   makeOptimisticInsert,
 } from '../lib/queries'
 import { useCurrentListActions } from './use-current-list-actions'
-import { assignSortOrderSlots } from '../lib/grouping'
-import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
+import { useReorderable } from '../lib/use-reorderable'
+import { makeDnDId } from '../lib/dnd-ids'
 import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
 import type { List } from '../lib/types'
 import { parseListCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
@@ -92,9 +88,24 @@ export default function ListsPage() {
   // race-window behavior.
   const userId = auth?.userId ?? ''
 
-  const { data: lists = [], isLoading: listsLoading } = useQuery({
+  // The reorder state machine — useQuery on ['lists'], reorder mutation,
+  // activeId, and handleDragStart/Cancel/End — lives in useReorderable.
+  // The page keeps DndContext / SortableContext / DragOverlay JSX
+  // ownership and surface-specific sensors. See
+  // src/lib/use-reorderable.ts for the same-tick-subscription rationale.
+  const {
+    items: lists,
+    isLoading: listsLoading,
+    activeItem: activeList,
+    reorderPending,
+    handleDragStart,
+    handleDragCancel,
+    handleDragEnd,
+  } = useReorderable<List>({
     queryKey: queryKeys.lists(),
     queryFn: () => fetchLists(userId),
+    mutationFn: reorderLists,
+    dndKind: 'list-card',
   })
   // Gear/categories needed by importCsvRowsToList. They're already cached when
   // the user navigates here from elsewhere; otherwise the query runs in the
@@ -145,11 +156,6 @@ export default function ListsPage() {
   // popover/modal there).
   const { renameMut, duplicateMut, deleteListMut, exportCsv } = useCurrentListActions(userId)
 
-  const reorderListsMut = useMutation({
-    mutationFn: reorderLists,
-    ...makeOptimisticReorder<List>(qc, queryKeys.lists()),
-  })
-
   // See ListDetailPage for the rationale. List cards keep their always-
   // visible grip handle as the drag activator on every breakpoint, so on
   // touch a long-press on the grip starts the reorder (MouseSensor handles
@@ -160,36 +166,6 @@ export default function ListsPage() {
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
-
-  const [activeId, setActiveId] = useState<string | null>(null)
-
-  function handleDragStart(e: DragStartEvent) {
-    setActiveId(String(e.active.id))
-  }
-
-  function handleDragCancel() {
-    setActiveId(null)
-  }
-
-  // Row-level reorder. Rows are stacked vertically inside a single
-  // container, so verticalListSortingStrategy is the right collision
-  // model — predicts target purely by Y axis. The DnD kind is still
-  // `list-card` (an internal identifier); only the visual shape changed.
-  function handleDragEnd(e: DragEndEvent) {
-    setActiveId(null)
-    const { active, over } = e
-    if (!over) return
-    if (active.id === over.id) return
-    const activeParsed = parseDnDId(String(active.id))
-    const overParsed = parseDnDId(String(over.id))
-    if (!activeParsed || !overParsed) return
-    if (activeParsed.kind !== 'list-card' || overParsed.kind !== 'list-card') return
-    const oldIndex = lists.findIndex((l) => l.id === activeParsed.id)
-    const newIndex = lists.findIndex((l) => l.id === overParsed.id)
-    if (oldIndex === -1 || newIndex === -1) return
-    const reordered = arrayMove(lists, oldIndex, newIndex)
-    reorderListsMut.mutate(assignSortOrderSlots(reordered))
-  }
 
   // Same shape as ListDetailInner's importMut: createList then populate, then
   // navigate into the new list so imported items are immediately visible.
@@ -282,9 +258,6 @@ export default function ListsPage() {
       {listsLoading ? (
         <p className="text-sm text-gray-400">Loading…</p>
       ) : (() => {
-        const activeParsed = activeId ? parseDnDId(activeId) : null
-        const activeList =
-          activeParsed?.kind === 'list-card' ? lists.find((l) => l.id === activeParsed.id) : null
         const rowHandlers = (list: List) => ({
           renaming: dialog?.type === 'renaming' && dialog.list.id === list.id,
           renameDraft: dialog?.type === 'renaming' && dialog.list.id === list.id ? dialog.draft : '',
@@ -318,7 +291,7 @@ export default function ListsPage() {
                       key={list.id}
                       list={list}
                       now={now}
-                      reorderPending={reorderListsMut.isPending}
+                      reorderPending={reorderPending}
                       {...rowHandlers(list)}
                     />
                   ))}

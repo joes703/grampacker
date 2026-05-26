@@ -66,8 +66,18 @@ import { showToast } from '../toast'
 // row back), then the prop commit lands (the row jumps to the new
 // position). This is the same visible symptom as the awaited-cancel
 // race; the cause is cross-component subscription rather than an
-// awaited promise. See DesktopListsPanel's own useQuery for the
-// in-codebase example.
+// awaited promise.
+//
+// useReorderable in src/lib/use-reorderable.ts enforces this rule
+// structurally for the flat-reorder surfaces that use it (ListsPage,
+// DesktopListsPanel, and GearLibraryPage categories as of this writing):
+// the hook owns the useQuery, so a page consuming hook.items cannot
+// substitute a parent-prop array without changing what the
+// SortableContext renders. For surfaces that still hand-roll DnD
+// orchestration (today: within-category item reorder on /lists/:id and
+// within-category gear-item reorder on /gear), the rule stays narrated
+// and must be honored manually — keep the cache useQuery in the same
+// component as the DndContext that uses it.
 // ── Single-row optimistic CRUD ────────────────────────────────────────────────
 //
 // makeOptimisticInsert / makeOptimisticUpdate / makeOptimisticDelete cover
