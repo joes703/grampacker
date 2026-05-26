@@ -1,8 +1,7 @@
-import { ClipboardList } from 'lucide-react'
 import type { List } from '../lib/types'
 import CurrentListHeader from './CurrentListHeader'
 import ListSettingsButton from './ListSettingsButton'
-import PillToggle from '../components/PillToggle'
+import PackToggle from './PackToggle'
 
 type Props = {
   list: List
@@ -26,14 +25,7 @@ export default function ListDocumentToolbar({ list, packMode, onTogglePackMode }
     <div className="hidden md:flex items-center gap-2 print:hidden">
       <CurrentListHeader list={list} />
       <div className="ml-auto flex items-center gap-2">
-        <PillToggle
-          active={packMode}
-          onClick={onTogglePackMode}
-          label="Pack"
-          icon={<ClipboardList size={14} />}
-          ariaLabel="Pack mode"
-          title={packMode ? 'Pack mode: on' : 'Pack mode: off'}
-        />
+        <PackToggle active={packMode} onClick={onTogglePackMode} />
         {!packMode && <ListSettingsButton list={list} />}
       </div>
     </div>
