@@ -14,8 +14,13 @@ import {
 // drift between them.
 
 describe('GEAR_STATUSES', () => {
-  it('lists exactly the three values the DB CHECK constraint allows', () => {
-    expect(GEAR_STATUSES.toSorted()).toEqual(['active', 'loaned_out', 'needs_repair'])
+  it('lists exactly the values the DB CHECK constraint allows', () => {
+    expect(GEAR_STATUSES.toSorted()).toEqual([
+      'active',
+      'loaned_out',
+      'need_to_buy',
+      'needs_repair',
+    ])
   })
 
   it('treats active as the default', () => {
@@ -44,6 +49,7 @@ describe('coerceGearStatus', () => {
   it('returns the value when valid', () => {
     expect(coerceGearStatus('needs_repair')).toBe('needs_repair')
     expect(coerceGearStatus('loaned_out')).toBe('loaned_out')
+    expect(coerceGearStatus('need_to_buy')).toBe('need_to_buy')
   })
 
   it('falls back to the default for missing or unrecognized inputs', () => {
@@ -60,7 +66,7 @@ describe('gearStatusVisual', () => {
   })
 
   it('returns a label, icon, and tailwind classes for each non-default status', () => {
-    for (const s of ['needs_repair', 'loaned_out'] as const) {
+    for (const s of ['needs_repair', 'loaned_out', 'need_to_buy'] as const) {
       const v = gearStatusVisual(s)
       expect(v).not.toBeNull()
       expect(typeof v!.label).toBe('string')
@@ -74,21 +80,30 @@ describe('gearStatusVisual', () => {
   it('uses the user-facing labels from the spec', () => {
     expect(gearStatusVisual('needs_repair')?.label).toBe('Needs repair')
     expect(gearStatusVisual('loaned_out')?.label).toBe('Loaned out')
+    expect(gearStatusVisual('need_to_buy')?.label).toBe('Need to buy')
+  })
+
+  it('uses the unavailable badge color for statuses where the item is not on hand', () => {
+    expect(gearStatusVisual('need_to_buy')?.badgeClass).toBe(
+      gearStatusVisual('loaned_out')?.badgeClass,
+    )
   })
 })
 
 describe('GEAR_STATUS_MENU_OPTIONS', () => {
-  it('lists all three statuses in canonical order with labels and icons', () => {
-    expect(GEAR_STATUS_MENU_OPTIONS).toHaveLength(3)
+  it('lists all statuses in canonical order with labels and icons', () => {
+    expect(GEAR_STATUS_MENU_OPTIONS).toHaveLength(4)
     expect(GEAR_STATUS_MENU_OPTIONS.map((o) => o.status)).toEqual([
       'active',
       'needs_repair',
       'loaned_out',
+      'need_to_buy',
     ])
     expect(GEAR_STATUS_MENU_OPTIONS.map((o) => o.label)).toEqual([
       'Active',
       'Needs repair',
       'Loaned out',
+      'Need to buy',
     ])
     for (const opt of GEAR_STATUS_MENU_OPTIONS) {
       // icon is a lucide component (forwarded ref → function/object).

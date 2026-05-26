@@ -7,9 +7,9 @@ type Props = {
   onSelect: (status: GearStatus) => void
 }
 
-// Three menu rows ("Active", "Needs repair", "Loaned out") for use inside
-// an existing row kebab/popover. Each row shows the status's own icon on
-// the left and a trailing checkmark on the currently-selected status.
+// Status menu rows for use inside an existing row kebab/popover. Each row
+// shows the status's own icon on the left and a trailing checkmark on the
+// currently-selected status.
 // Clicking the currently-selected row is a no-op (avoids a wasted PATCH);
 // hosts are still expected to close the menu themselves on selection.
 //

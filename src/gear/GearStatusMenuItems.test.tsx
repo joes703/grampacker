@@ -15,6 +15,7 @@ describe('GearStatusMenuItems', () => {
     expect(getByRole('menuitemradio', { name: 'Active' })).toBeTruthy()
     expect(getByRole('menuitemradio', { name: 'Needs repair' })).toBeTruthy()
     expect(getByRole('menuitemradio', { name: 'Loaned out' })).toBeTruthy()
+    expect(getByRole('menuitemradio', { name: 'Need to buy' })).toBeTruthy()
   })
 
   it('marks only the current status as checked', () => {
@@ -24,6 +25,7 @@ describe('GearStatusMenuItems', () => {
     expect(getByRole('menuitemradio', { name: 'Active' }).getAttribute('aria-checked')).toBe('false')
     expect(getByRole('menuitemradio', { name: 'Needs repair' }).getAttribute('aria-checked')).toBe('true')
     expect(getByRole('menuitemradio', { name: 'Loaned out' }).getAttribute('aria-checked')).toBe('false')
+    expect(getByRole('menuitemradio', { name: 'Need to buy' }).getAttribute('aria-checked')).toBe('false')
   })
 
   it('fires onSelect with the chosen status when a non-current option is clicked', () => {
