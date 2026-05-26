@@ -4,7 +4,7 @@
 // inherit private columns when the authenticated one widens.
 //
 //   AUTH   includes `status` (advisory inventory metadata: active,
-//          needs_repair, loaned_out). Surfaced to the gear owner only.
+//          needs_repair, loaned_out, need_to_buy). Surfaced to the gear owner only.
 //   PUBLIC omits `status` and every owner-only column (user_id,
 //          sort_order, cost, purchase_date). Locked by
 //          shared-projections.test.ts per SECURITY.md "Public read

@@ -34,6 +34,16 @@ describe('GearStatusBadge', () => {
     expect(container.textContent).toContain('Loaned out')
   })
 
+  it('renders the label and unavailable treatment for need_to_buy', () => {
+    const { getByLabelText, container } = render(<GearStatusBadge status="need_to_buy" />)
+    const badge = getByLabelText('Need to buy')
+    expect(badge).toBeTruthy()
+    expect(badge.className).toContain('bg-rose-50')
+    expect(badge.className).toContain('text-rose-800')
+    expect(badge.className).toContain('ring-rose-200')
+    expect(container.textContent).toContain('Need to buy')
+  })
+
   it('hides the text label in compact mode but keeps the accessible name', () => {
     const { getByLabelText, container } = render(
       <GearStatusBadge status="needs_repair" compact />,

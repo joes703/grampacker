@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheck, Wrench, type LucideIcon } from 'lucide-react'
+import { CircleAlert, CircleCheck, ShoppingCart, Wrench, type LucideIcon } from 'lucide-react'
 import {
   LOANED_OUT_BADGE_CLASS,
   NEEDS_REPAIR_BADGE_CLASS,
@@ -11,7 +11,7 @@ import {
 // only (gear library, gear picker, private list rows) and are explicitly
 // excluded from public share projections.
 
-export const GEAR_STATUSES = ['active', 'needs_repair', 'loaned_out'] as const
+export const GEAR_STATUSES = ['active', 'needs_repair', 'loaned_out', 'need_to_buy'] as const
 
 export type GearStatus = (typeof GEAR_STATUSES)[number]
 
@@ -48,6 +48,11 @@ const VISUALS: Record<Exclude<GearStatus, 'active'>, GearStatusVisual> = {
     icon: CircleAlert,
     badgeClass: LOANED_OUT_BADGE_CLASS,
   },
+  need_to_buy: {
+    label: 'Need to buy',
+    icon: ShoppingCart,
+    badgeClass: LOANED_OUT_BADGE_CLASS,
+  },
 }
 
 // Returns the visual descriptor for a non-default status, or null when the
@@ -61,7 +66,7 @@ export function gearStatusVisual(status: GearStatus): GearStatusVisual | null {
 // Menu-row metadata: every status (including 'active') gets a label and
 // icon for the row-kebab quick-set menu. Distinct from gearStatusVisual,
 // which intentionally returns null for 'active' so badges stay quiet.
-// Ordered ['active', 'needs_repair', 'loaned_out'] to match GEAR_STATUSES
+// Ordered ['active', 'needs_repair', 'loaned_out', 'need_to_buy'] to match GEAR_STATUSES
 // — single source of truth for menu rendering order.
 export type GearStatusMenuOption = {
   status: GearStatus
@@ -73,4 +78,5 @@ export const GEAR_STATUS_MENU_OPTIONS: readonly GearStatusMenuOption[] = [
   { status: 'active', label: 'Active', icon: CircleCheck },
   { status: 'needs_repair', label: 'Needs repair', icon: Wrench },
   { status: 'loaned_out', label: 'Loaned out', icon: CircleAlert },
+  { status: 'need_to_buy', label: 'Need to buy', icon: ShoppingCart },
 ] as const

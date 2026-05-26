@@ -353,6 +353,7 @@ export default function GearItemDialog({
               <option value="active">Active</option>
               <option value="needs_repair">Needs repair</option>
               <option value="loaned_out">Loaned out</option>
+              <option value="need_to_buy">Need to buy</option>
             </select>
           </div>
 

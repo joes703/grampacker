@@ -265,7 +265,7 @@ describe('fetchSharedListItems (public share view list_items projection)', () =>
     expect(gearCols).not.toContain('sort_order')
     expect(gearCols).not.toContain('cost')
     expect(gearCols).not.toContain('purchase_date')
-    // status is advisory inventory metadata (needs_repair, loaned_out).
+    // status is advisory inventory metadata (needs_repair, loaned_out, need_to_buy).
     // Surfaced in private views only; share viewers must not see it.
     expect(gearCols).not.toContain('status')
     // is_ready lives on list_items (not gear_items), but assert absence
