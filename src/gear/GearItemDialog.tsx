@@ -216,7 +216,7 @@ export default function GearItemDialog({
             />
           </div>
           <div className="flex gap-4">
-            <div className="w-40">
+            <div className="w-40 min-w-0">
               <FormLabel htmlFor="gi-weight">
                 Weight
               </FormLabel>
@@ -228,7 +228,7 @@ export default function GearItemDialog({
                 inputClassName="flex-1 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <FormLabel htmlFor="gi-cat">
                 Category
               </FormLabel>
@@ -254,7 +254,7 @@ export default function GearItemDialog({
                 {onCreateCategory && <option value="__new_category__">+ New category</option>}
               </select>
               {newCategoryOpen && (
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
                   <input
                     type="text"
                     autoFocus
@@ -273,7 +273,7 @@ export default function GearItemDialog({
                         setCategoryError(null)
                       }
                     }}
-                    className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <PrimaryButton
                     type="button"
