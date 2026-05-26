@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { INLINE_EDIT_FOCUS_RING } from '../components/flat-table-styles'
 
 type Props = {
   name: string
@@ -95,7 +96,7 @@ export default function InlineTitle({ name, onSave, editTrigger, onEditingChange
             if (e.key === 'Escape') cancel()
           }}
           aria-invalid={error !== null}
-          className="w-full rounded border border-blue-400 bg-white px-2 py-0.5 text-xl font-semibold text-gray-900 focus:outline-none"
+          className={`w-full rounded border border-blue-400 bg-white px-2 py-0.5 text-xl font-semibold text-gray-900 ${INLINE_EDIT_FOCUS_RING}`}
         />
         {error && (
           // Positioned below the bar so it doesn't push the topbar's

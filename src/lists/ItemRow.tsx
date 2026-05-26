@@ -19,6 +19,7 @@ import {
   FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
+  INLINE_EDIT_FOCUS_RING,
   POPOVER_SURFACE,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
@@ -399,8 +400,8 @@ export default function ItemRow({
             variant="purpleToggle"
             active={item.is_worn}
             onClick={() => onUpdate({ is_worn: !item.is_worn, is_consumable: false })}
-            title={item.is_worn ? 'Worn. Click to clear.' : 'Mark as worn'}
-            ariaLabel={item.is_worn ? 'Worn. Click to clear.' : 'Mark as worn'}
+            title={item.is_worn ? 'Worn. Clear worn status.' : 'Mark as worn'}
+            ariaLabel={item.is_worn ? 'Worn. Clear worn status.' : 'Mark as worn'}
             icon={<Shirt size={14} />}
           />
         ) : (
@@ -415,8 +416,8 @@ export default function ItemRow({
             variant="orangeToggle"
             active={item.is_consumable}
             onClick={() => onUpdate({ is_consumable: !item.is_consumable, is_worn: false })}
-            title={item.is_consumable ? 'Consumable. Click to clear.' : 'Mark as consumable'}
-            ariaLabel={item.is_consumable ? 'Consumable. Click to clear.' : 'Mark as consumable'}
+            title={item.is_consumable ? 'Consumable. Clear consumable status.' : 'Mark as consumable'}
+            ariaLabel={item.is_consumable ? 'Consumable. Clear consumable status.' : 'Mark as consumable'}
             icon={<UtensilsCrossed size={14} />}
           />
         ) : (
@@ -439,13 +440,13 @@ export default function ItemRow({
               if (e.key === 'Enter') commitQty()
               if (e.key === 'Escape') { setQtyDraft(String(item.quantity)); setEditingQty(false) }
             }}
-            className="shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
+            className={`shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums ${INLINE_EDIT_FOCUS_RING}`}
           />
         ) : editable ? (
           <button
             onClick={() => setEditingQty(true)}
-            title="Click to edit quantity"
-            aria-label={`Quantity ${item.quantity} for ${name}, click to edit`}
+            title="Edit quantity"
+            aria-label={`Edit quantity ${item.quantity} for ${name}`}
             className={`shrink-0 w-12 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600 hover:text-blue-600`}
           >
             {item.quantity}
@@ -468,13 +469,13 @@ export default function ItemRow({
               if (e.key === 'Escape') { setWeightDraftGrams(itemWeight); setEditingWeight(false) }
             }}
             className="shrink-0 w-24"
-            inputClassName="flex-1 min-w-0 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
+            inputClassName={`flex-1 min-w-0 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums ${INLINE_EDIT_FOCUS_RING}`}
           />
         ) : onSaveWeight ? (
           <button
             onClick={() => setEditingWeight(true)}
-            title="Click to edit weight"
-            aria-label={`Weight ${formatItemWeight(itemWeight, weightUnit)} for ${name}, click to edit`}
+            title="Edit weight"
+            aria-label={`Edit weight ${formatItemWeight(itemWeight, weightUnit)} for ${name}`}
             className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600 hover:text-blue-600`}
           >
             <ItemWeightValue grams={itemWeight} unit={weightUnit} />
