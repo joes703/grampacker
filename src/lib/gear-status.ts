@@ -1,4 +1,4 @@
-import { CircleCheck, PackageX, Wrench, type LucideIcon } from 'lucide-react'
+import { CircleAlert, CircleCheck, Wrench, type LucideIcon } from 'lucide-react'
 import {
   LOANED_OUT_BADGE_CLASS,
   NEEDS_REPAIR_BADGE_CLASS,
@@ -45,7 +45,7 @@ const VISUALS: Record<Exclude<GearStatus, 'active'>, GearStatusVisual> = {
   },
   loaned_out: {
     label: 'Loaned out',
-    icon: PackageX,
+    icon: CircleAlert,
     badgeClass: LOANED_OUT_BADGE_CLASS,
   },
 }
@@ -72,5 +72,5 @@ export type GearStatusMenuOption = {
 export const GEAR_STATUS_MENU_OPTIONS: readonly GearStatusMenuOption[] = [
   { status: 'active', label: 'Active', icon: CircleCheck },
   { status: 'needs_repair', label: 'Needs repair', icon: Wrench },
-  { status: 'loaned_out', label: 'Loaned out', icon: PackageX },
+  { status: 'loaned_out', label: 'Loaned out', icon: CircleAlert },
 ] as const
