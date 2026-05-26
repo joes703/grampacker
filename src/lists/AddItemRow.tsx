@@ -4,6 +4,7 @@ import WeightInput from '../components/WeightInput'
 import {
   DESKTOP_ROW_HEIGHT,
   FLAT_TABLE_BODY_TEXT,
+  INLINE_EDIT_FOCUS_RING,
   MOBILE_ROW_HEIGHT,
 } from '../components/flat-table-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
@@ -76,7 +77,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
             onChange={(e) => setName(e.target.value)}
             onKeyDown={handleKey}
             maxLength={256}
-            className={`w-full rounded border border-blue-400 px-1 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-normal focus:outline-none`}
+            className={`w-full rounded border border-blue-400 px-1 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-normal ${INLINE_EDIT_FOCUS_RING}`}
           />
         </label>
         <label className="flex-[3] min-w-0">
@@ -87,7 +88,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
             onChange={(e) => setDescription(e.target.value)}
             onKeyDown={handleKey}
             maxLength={2000}
-            className={`w-full rounded border border-gray-200 px-1 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-normal focus:outline-none focus:border-blue-400`}
+            className={`w-full rounded border border-gray-200 px-1 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-normal focus:border-blue-400 ${INLINE_EDIT_FOCUS_RING}`}
           />
         </label>
       </div>
@@ -119,7 +120,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
         onChange={(e) => setQuantity(e.target.value)}
         onKeyDown={handleKey}
         aria-label="Quantity"
-        className="shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
+        className={`shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums ${INLINE_EDIT_FOCUS_RING}`}
       />
       <WeightInput
         grams={weightGrams}
@@ -127,7 +128,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
         onKeyDown={handleKey}
         ariaLabel="Weight"
         className="shrink-0 w-24"
-        inputClassName="flex-1 min-w-0 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums focus:outline-none"
+        inputClassName={`flex-1 min-w-0 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums ${INLINE_EDIT_FOCUS_RING}`}
       />
 
       <RowIconButton

@@ -168,6 +168,11 @@ export const FLAT_TABLE_BODY_TEXT = 'text-sm lg:text-[13px]'
 // instead.
 export const FLAT_TABLE_BODY_TEXT_MUTED = 'text-sm lg:text-[13px] font-normal text-gray-500'
 
+// Focus indicator for active inline-edit controls. These controls already use
+// a blue border to mean "editing", so keyboard focus needs a separate ring.
+export const INLINE_EDIT_FOCUS_RING =
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1'
+
 // Compact metadata text. Used for small qty/weight chips and tiny labels
 // inside rows where the chip would otherwise overpower the body text on
 // mobile. Desktop bumps to 13px so meta and body read at the same scale

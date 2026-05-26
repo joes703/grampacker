@@ -223,7 +223,7 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
         <span className={`shrink-0 ${FLAT_TABLE_HEADER_COUNT}`}>{items.length}</span>
       </div>
 
-      {/* Items — pure picker rows. Click toggles add/remove on the active list. */}
+      {/* Items - pure picker rows. Activate to add/remove on the active list. */}
       {!collapsed && (
         <div id={regionId}>
           {items.map((item) => {
@@ -233,7 +233,7 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                 key={item.id}
                 type="button"
                 onClick={() => (inList ? onRemove(item) : onAdd(item))}
-                title={inList ? 'Click to remove from list' : 'Click to add to list'}
+                title={inList ? 'Remove from list' : 'Add to list'}
                 aria-label={inList ? `Remove ${item.name} from list` : `Add ${item.name} to list`}
                 // Hover/focus background is uniform across in-list and
                 // available rows; the in-list signal is carried entirely

@@ -38,6 +38,10 @@ function formatDraft(grams: number, unit: WeightUnit): string {
   return gramsToOz(grams).toFixed(1)
 }
 
+function unitName(unit: WeightUnit): string {
+  return unit === 'g' ? 'grams' : 'ounces'
+}
+
 export default function WeightInput({
   grams,
   onChange,
@@ -95,6 +99,8 @@ export default function WeightInput({
     onBlur?.()
   }
 
+  const nextUnit: WeightUnit = unit === 'g' ? 'oz' : 'g'
+
   return (
     <div className={`flex items-stretch gap-1 ${className}`} onBlur={handleBlur}>
       <input
@@ -117,9 +123,9 @@ export default function WeightInput({
         // Keyboard users can still tab to the toggle and press Space/Enter.
         onMouseDown={(e) => e.preventDefault()}
         onClick={toggleUnit}
-        title={`Switch to ${unit === 'g' ? 'oz' : 'g'}`}
-        aria-label={`Currently ${unit}, click to switch units`}
-        className="shrink-0 inline-flex items-center justify-center rounded border border-gray-300 px-2 text-xs font-medium text-gray-600 hover:bg-gray-50"
+        title={`Entering ${unitName(unit)}. Switch to ${unitName(nextUnit)}.`}
+        aria-label={`Entering ${unitName(unit)}, switch to ${unitName(nextUnit)}`}
+        className="shrink-0 inline-flex min-w-11 items-center justify-center rounded border border-blue-200 bg-blue-50 px-2 text-xs font-semibold tabular-nums text-blue-800 hover:border-blue-300 hover:bg-blue-100"
       >
         {unit}
       </button>

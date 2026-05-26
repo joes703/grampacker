@@ -43,7 +43,7 @@ export default function GearImportPreviewDialog({ rows, saving, onConfirm, onClo
               <tr key={i} className="hover:bg-gray-50">
                 <td className="px-4 py-1.5 font-normal text-gray-900 max-w-[180px] truncate">{row.name}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{formatItemWeight(row.weight_grams, 'g')}</td>
-                <td className="px-3 py-1.5 text-gray-500">{row.category || '—'}</td>
+                <td className="px-3 py-1.5 text-gray-500">{row.category || '--'}</td>
               </tr>
             ))}
           </tbody>

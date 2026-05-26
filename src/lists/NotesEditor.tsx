@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
-import { PANEL_EMPTY_TEXT } from '../components/flat-table-styles'
+import { INLINE_EDIT_FOCUS_RING, PANEL_EMPTY_TEXT } from '../components/flat-table-styles'
 
 // react-markdown + remark-gfm is ~46 KB gzip. Owner Notes panels rarely
 // switch into render-with-content state on first paint (often empty for
@@ -106,7 +106,7 @@ function NotesEdit({
         maxLength={2000}
         placeholder="Add notes about this packing list. Markdown supported."
         onChange={(e) => setDraft(e.target.value)}
-        className="flex-1 min-h-[8rem] w-full resize-none px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none"
+        className={`flex-1 min-h-[8rem] w-full resize-none px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 ${INLINE_EDIT_FOCUS_RING}`}
       />
       <div className="flex justify-end gap-2 border-t border-gray-100 px-3 py-2">
         <button

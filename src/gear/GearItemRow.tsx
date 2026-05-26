@@ -195,14 +195,14 @@ export default function GearItemRow({
 }
 
 // Cost is currency, formatted with commas + two decimals. Null renders
-// as an em dash, never $0.00 — unknown is unknown. en-US locale matches
+// as "--", never $0.00: unknown is unknown. en-US locale matches
 // our USD-only treatment (see GearItem.cost docstring).
 const COST_FORMATTER = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
 })
 function formatCost(cost: number | null): string {
-  if (cost === null) return '—'
+  if (cost === null) return '--'
   return COST_FORMATTER.format(cost)
 }
 
@@ -222,9 +222,9 @@ const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   day: 'numeric',
 })
 function formatPurchaseDate(date: string | null): string {
-  if (date === null) return '—'
+  if (date === null) return '--'
   const d = new Date(`${date}T00:00:00`)
-  if (isNaN(d.getTime())) return '—'
+  if (isNaN(d.getTime())) return '--'
   return DATE_FORMATTER.format(d)
 }
 

@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
+import { INLINE_EDIT_FOCUS_RING } from './flat-table-styles'
 
 type Props = {
   value: string
   placeholder?: string
   onSave: (v: string) => void
   className?: string
-  /** Click-to-edit title hint shown on hover */
+  /** Edit title hint shown on hover */
   title?: string
 }
 
@@ -14,7 +15,7 @@ export default function InlineText({
   placeholder,
   onSave,
   className = '',
-  title = 'Click to edit',
+  title = 'Edit',
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
@@ -49,7 +50,7 @@ export default function InlineText({
           if (e.key === 'Enter') save()
           if (e.key === 'Escape') { setDraft(value); setEditing(false) }
         }}
-        className={`rounded border border-blue-400 px-1 py-0.5 text-sm focus:outline-none ${className}`}
+        className={`rounded border border-blue-400 px-1 py-0.5 text-sm ${INLINE_EDIT_FOCUS_RING} ${className}`}
       />
     )
   }

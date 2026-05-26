@@ -19,6 +19,7 @@ import {
   FLAT_TABLE_HEADER_COUNT,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_SURFACE,
+  INLINE_EDIT_FOCUS_RING,
   POPOVER_SURFACE,
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
@@ -159,7 +160,7 @@ function CategorySectionInner(
                 setRenaming(false)
               }
             }}
-            className={`flex-1 rounded border border-blue-400 bg-white px-1.5 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-medium focus:outline-none`}
+            className={`flex-1 rounded border border-blue-400 bg-white px-1.5 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-medium ${INLINE_EDIT_FOCUS_RING}`}
           />
         ) : (
           category && !selectMode ? (
@@ -169,7 +170,7 @@ function CategorySectionInner(
                 setRenameDraft(category.name)
                 setRenaming(true)
               }}
-              title="Click to rename"
+              title="Rename category"
               className={`flex-1 min-w-0 rounded px-1 py-0.5 text-left ${FLAT_TABLE_HEADER_TITLE} hover:bg-gray-200`}
             >
               <span className="truncate">{name}</span>

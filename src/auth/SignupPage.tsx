@@ -66,7 +66,7 @@ export default function SignupPage() {
           </>
         ) : (
           <>
-            <h1 className="text-xl font-semibold text-gray-900 mb-6">Create account</h1>
+            <h1 className="text-xl font-semibold text-gray-900 mb-6">Sign up</h1>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <FormLabel htmlFor="email">
@@ -103,7 +103,7 @@ export default function SignupPage() {
                 disabled={loading}
                 fullWidth
               >
-                {loading ? 'Creating account…' : 'Create account'}
+                {loading ? 'Signing up…' : 'Sign up'}
               </PrimaryButton>
             </form>
             <p className="mt-6 text-center text-sm text-gray-600">

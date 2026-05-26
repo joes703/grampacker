@@ -47,7 +47,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm bg-white rounded-xl shadow-sm border border-gray-200 p-8">
         <div className="mb-6">
-          <p className="text-2xl font-semibold text-gray-900">Grampacker</p>
+          <p className="text-2xl font-semibold text-gray-900">grampacker</p>
           <p className="mt-2 text-sm text-gray-600">
             A backpacking gear list, weight tracker, and packing tool.
           </p>
@@ -103,7 +103,7 @@ export default function LoginPage() {
         <p className="mt-6 text-center text-sm text-gray-600">
           No account?{' '}
           <Link to="/register" className="text-blue-600 hover:underline">
-            Create one
+            Sign up
           </Link>
         </p>
       </div>

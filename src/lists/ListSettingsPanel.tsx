@@ -8,7 +8,7 @@ import { useRequireSession } from '../auth/use-require-session'
 import { RowMenuItem } from '../components/RowMenuItem'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToggleSwitch from '../components/ToggleSwitch'
-import { PANEL_TOGGLE_LABEL } from '../components/flat-table-styles'
+import { INLINE_EDIT_FOCUS_RING, PANEL_TOGGLE_LABEL } from '../components/flat-table-styles'
 import PrivacyPanel from './PrivacyPanel'
 import { useCurrentListActions } from './use-current-list-actions'
 
@@ -138,7 +138,7 @@ export default function ListSettingsPanel({ list }: Props) {
                 onBlur={commitRename}
                 maxLength={120}
                 aria-label="List name"
-                className="w-full rounded border border-blue-400 px-2 py-1 text-sm focus:outline-none"
+                className={`w-full rounded border border-blue-400 px-2 py-1 text-sm ${INLINE_EDIT_FOCUS_RING}`}
               />
             </div>
           ) : (
