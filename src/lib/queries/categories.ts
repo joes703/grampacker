@@ -29,6 +29,27 @@ export async function fetchSharedListCategories(categoryIds: string[]): Promise<
   return data
 }
 
+// Next sort_order slot for a newly-created category. Robust to gaps:
+// deleteCategory does NOT compact remaining rows, so the existing
+// sequence is sparse whenever a delete has happened, and naive
+// length-based slot picking (the original convention everywhere a
+// category was created) collides with an existing row. Reads order by
+// (sort_order, name), so the collision either ties or rearranges
+// silently.
+//
+// `offset` is for batched callers (CSV import): pass 0 for the first
+// new category in a single client-side gesture, 1 for the next, etc.,
+// so they walk off the end of the existing max without recomputing it
+// against partially-inserted state.
+export function nextCategorySortOrder(
+  existing: Pick<Category, 'sort_order'>[],
+  offset = 0,
+): number {
+  let max = -1
+  for (const c of existing) if (c.sort_order > max) max = c.sort_order
+  return max + 1 + offset
+}
+
 export async function createCategory(
   userId: string,
   name: string,

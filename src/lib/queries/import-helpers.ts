@@ -1,7 +1,7 @@
 import { supabase } from '../supabase'
 import { DEFAULT_GEAR_STATUS, type GearStatus } from '../gear-status'
 import type { Category, GearItem } from '../types'
-import { createCategory } from './categories'
+import { createCategory, nextCategorySortOrder } from './categories'
 
 // Shared CSV-import helpers used by both list-import (importCsvRowsToList)
 // and gear-only-import (importGearItems). The two paths differ only in
@@ -32,12 +32,22 @@ export async function resolveOrCreateCategories(
 ): Promise<Map<string, string>> {
   const catByName = new Map(existingCategories.map((c) => [c.name.toLowerCase(), c.id]))
   const uniqueCatNames = [...new Set(rows.map((r) => r.category.trim()).filter(Boolean))]
+  // Walk off the end of the existing max sort_order, not the existing
+  // count. Deletes leave gaps (categories.deleteCategory does not
+  // compact), so `existing.length` would tie an existing row whenever a
+  // category had been deleted. `nextCategorySortOrder` snapshots the max
+  // once; we increment a local counter per insert so a batch of new
+  // categories gets a strictly-ascending block past the existing tail.
+  let newCount = 0
   for (const name of uniqueCatNames) {
     if (!catByName.has(name.toLowerCase())) {
-      // catByName.size already reflects existing + previously-created-in-this-loop,
-      // so it IS the next sort_order slot. Don't add existingCategories.length again.
-      const created = await createCategory(userId, name, catByName.size)
+      const created = await createCategory(
+        userId,
+        name,
+        nextCategorySortOrder(existingCategories, newCount),
+      )
       catByName.set(name.toLowerCase(), created.id)
+      newCount++
     }
   }
   return catByName

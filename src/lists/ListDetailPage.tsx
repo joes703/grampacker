@@ -27,6 +27,7 @@ import {
   fetchGearItems,
   fetchCategories,
   createCategory,
+  nextCategorySortOrder,
   addGearItemToList,
   updateListItem,
   deleteListItem,
@@ -332,7 +333,7 @@ function ListDetailInner({
   // ── Mutations ──────────────────────────────────────────────────────────────
 
   const addCategoryMut = useMutation({
-    mutationFn: (name: string) => createCategory(userId, name, categories.length),
+    mutationFn: (name: string) => createCategory(userId, name, nextCategorySortOrder(categories)),
     ...makeOptimisticInsert<Category, string>({
       qc,
       queryKey: queryKeys.categories(),
@@ -340,7 +341,7 @@ function ListDetailInner({
         id: `temp-${randomTempId()}`,
         user_id: userId,
         name,
-        sort_order: categories.length,
+        sort_order: nextCategorySortOrder(categories),
         is_default: false,
         created_at: new Date().toISOString(),
       }),
