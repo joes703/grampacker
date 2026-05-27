@@ -61,6 +61,7 @@ export {
   fetchLists,
   fetchSharedList,
   createList,
+  nextListSortOrder,
   updateList,
   deleteList,
   reorderLists,

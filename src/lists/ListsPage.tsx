@@ -25,6 +25,7 @@ import {
   fetchGearItems,
   fetchCategories,
   createList,
+  nextListSortOrder,
   reorderLists,
   importCsvRowsToList,
   makeOptimisticInsert,
@@ -131,7 +132,7 @@ export default function ListsPage() {
   })
 
   const createListMut = useMutation({
-    mutationFn: (name: string) => createList(userId, name, lists.length),
+    mutationFn: (name: string) => createList(userId, name, nextListSortOrder(lists)),
     ...makeOptimisticInsert<List, string>({
       qc,
       queryKey: queryKeys.lists(),
@@ -139,7 +140,7 @@ export default function ListsPage() {
       // row carrying its own generated slug. Helper emits DB-valid
       // uuid + 6-char slug so an accidental persist would fail soft
       // (silent no-op) instead of hitting a 23514 / 22P02.
-      optimistic: (name) => optimisticListPlaceholder({ name, userId, sortOrder: lists.length }),
+      optimistic: (name) => optimisticListPlaceholder({ name, userId, sortOrder: nextListSortOrder(lists) }),
     }),
     // Helper provides onSettled (invalidate); onSuccess runs first to
     // close the create dialog and navigate to the new list.
@@ -171,7 +172,7 @@ export default function ListsPage() {
   // navigate into the new list so imported items are immediately visible.
   const importMut = useMutation({
     mutationFn: async ({ name, rows }: { name: string; rows: ListImportRow[] }) => {
-      const newList = await createList(userId, name, lists.length)
+      const newList = await createList(userId, name, nextListSortOrder(lists))
       await importCsvRowsToList(newList.id, userId, rows, gearItems, categories)
       return newList
     },

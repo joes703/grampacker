@@ -10,6 +10,7 @@ import {
   fetchCategories,
   makeOptimisticUpdate,
   makeOptimisticDelete,
+  nextListSortOrder,
 } from '../lib/queries'
 import { listItemsToCsv, downloadCsv } from '../lib/csv'
 import type { List, Category } from '../lib/types'
@@ -51,7 +52,7 @@ export function useCurrentListActions(userId: string) {
   const duplicateMut = useMutation({
     mutationFn: (target: List) => {
       const currentLists = qc.getQueryData<List[]>(queryKeys.lists()) ?? []
-      return duplicateList(target, userId, currentLists.length)
+      return duplicateList(target, userId, nextListSortOrder(currentLists))
     },
     onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: queryKeys.lists() })

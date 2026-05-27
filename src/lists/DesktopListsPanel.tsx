@@ -23,6 +23,7 @@ import {
   fetchCategories,
   fetchLists,
   createList,
+  nextListSortOrder,
   reorderLists,
   importCsvRowsToList,
   makeOptimisticInsert,
@@ -166,11 +167,11 @@ export default function DesktopListsPanel({
   // ListsPage.createListMut so the user-visible behavior is the same whether
   // the new list is started from /lists or from this panel.
   const createListMut = useMutation({
-    mutationFn: (name: string) => createList(userId, name, lists.length),
+    mutationFn: (name: string) => createList(userId, name, nextListSortOrder(lists)),
     ...makeOptimisticInsert<List, string>({
       qc,
       queryKey: queryKeys.lists(),
-      optimistic: (name) => optimisticListPlaceholder({ name, userId, sortOrder: lists.length }),
+      optimistic: (name) => optimisticListPlaceholder({ name, userId, sortOrder: nextListSortOrder(lists) }),
     }),
     onSuccess: (created) => {
       setDialog(null)
@@ -182,7 +183,7 @@ export default function DesktopListsPanel({
   // list. Same shape ListsPage uses so a CSV imported here behaves identically.
   const importMut = useMutation({
     mutationFn: async ({ name, rows }: { name: string; rows: ListImportRow[] }) => {
-      const newList = await createList(userId, name, lists.length)
+      const newList = await createList(userId, name, nextListSortOrder(lists))
       await importCsvRowsToList(newList.id, userId, rows, gearItems, categories)
       return newList
     },
