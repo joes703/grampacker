@@ -590,7 +590,7 @@ function ListRow({
           than wrapping the row. */}
       <Link
         to={`/lists/${list.id}`}
-        className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 focus:outline-none focus:underline"
+        className="min-w-0 flex-1 truncate rounded text-sm font-medium text-gray-900 focus:outline-none focus:underline focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1"
         aria-label={`Open ${list.name}`}
       >
         {list.name}
