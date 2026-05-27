@@ -41,6 +41,7 @@ export {
   fetchCategories,
   fetchSharedListCategories,
   createCategory,
+  nextCategorySortOrder,
   updateCategory,
   deleteCategory,
   reorderCategories,

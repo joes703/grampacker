@@ -31,9 +31,17 @@ vi.mock('../supabase', () => ({
 }))
 
 const createCategorySpy = vi.hoisted(() => vi.fn())
-vi.mock('./categories', () => ({
-  createCategory: createCategorySpy,
-}))
+vi.mock('./categories', async (importOriginal) => {
+  // Keep nextCategorySortOrder (and any other pure helper) wired to the
+  // real export so the sparse-order math under test is the same code the
+  // app runs. Only createCategory is stubbed so the test can assert the
+  // sortOrder argument the helper computed.
+  const actual = await importOriginal<typeof import('./categories')>()
+  return {
+    ...actual,
+    createCategory: createCategorySpy,
+  }
+})
 
 import { resolveOrCreateGearForImport, resolveOrCreateCategories } from './import-helpers'
 import type { Category, GearItem } from '../types'
@@ -250,12 +258,14 @@ describe('resolveOrCreateGearForImport', () => {
 })
 
 describe('resolveOrCreateCategories', () => {
-  it('assigns contiguous sort_order to newly-created categories starting from existingCategories.length', async () => {
+  it('assigns sort_order at max(existing.sort_order) + 1, then increments per new category', async () => {
     // Regression: previous code did `existingCategories.length + catByName.size`
     // but catByName was already seeded with existingCategories.length entries,
     // so the first new category got 2*existingCategories.length and every
-    // subsequent new category shifted further off. New categories should
-    // slot in at the next available position: existing.length, existing.length+1, ...
+    // subsequent new category shifted further off. The first-pass fix used
+    // catByName.size, which still ties when existing sort_orders are sparse
+    // (deleteCategory does not compact). New categories should slot in past
+    // the existing max: max+1, max+2, ...
     const existingCategories: Category[] = [
       makeCategory({ id: 'cat-1', name: 'Shelter', sort_order: 0 }),
       makeCategory({ id: 'cat-2', name: 'Sleep', sort_order: 1 }),
@@ -275,8 +285,30 @@ describe('resolveOrCreateCategories', () => {
     )
 
     expect(createCategorySpy).toHaveBeenCalledTimes(2)
-    expect(createCategorySpy.mock.calls[0]?.[2]).toBe(3) // existing.length
-    expect(createCategorySpy.mock.calls[1]?.[2]).toBe(4) // existing.length + 1
+    expect(createCategorySpy.mock.calls[0]?.[2]).toBe(3) // max(0,1,2) + 1
+    expect(createCategorySpy.mock.calls[1]?.[2]).toBe(4) // max + 2
+  })
+
+  it('skips past sparse sort_order gaps left by prior deletes', async () => {
+    // Original sequence had 4 categories at sort_orders 0, 1, 2, 3. The
+    // one at sort_order 1 was deleted without compacting, leaving rows at
+    // 0, 2, 3 — length 3 but max 3. A length-based slot would tie with
+    // the existing sort_order=3 row, then ascending sort would order by
+    // name to break the tie, scrambling the user's intended ordering.
+    const existingCategories: Category[] = [
+      makeCategory({ id: 'cat-a', name: 'Shelter', sort_order: 0 }),
+      makeCategory({ id: 'cat-c', name: 'Cooking', sort_order: 2 }),
+      makeCategory({ id: 'cat-d', name: 'Hydration', sort_order: 3 }),
+    ]
+    let nextId = 1
+    createCategorySpy.mockImplementation((_userId: string, name: string, sortOrder: number) =>
+      Promise.resolve(makeCategory({ id: `new-${nextId++}`, name, sort_order: sortOrder })),
+    )
+
+    await resolveOrCreateCategories('u-1', [{ category: 'Electronics' }], existingCategories)
+
+    expect(createCategorySpy).toHaveBeenCalledTimes(1)
+    expect(createCategorySpy.mock.calls[0]?.[2]).toBe(4) // max(0,2,3) + 1, not length 3
   })
 
   it('returns a name->id map covering both pre-existing and new categories', async () => {

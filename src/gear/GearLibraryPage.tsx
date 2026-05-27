@@ -28,6 +28,7 @@ import {
   fetchGearItems,
   fetchLists,
   createCategory,
+  nextCategorySortOrder,
   updateCategory,
   deleteCategory,
   reorderCategories,
@@ -181,7 +182,7 @@ export default function GearLibraryPage() {
   }
   const addCategory = useMutation({
     mutationFn: (name: string) =>
-      createCategory(userId, name, categories.length),
+      createCategory(userId, name, nextCategorySortOrder(categories)),
     ...makeOptimisticInsert<Category, string>({
       qc,
       queryKey: queryKeys.categories(),
@@ -191,7 +192,7 @@ export default function GearLibraryPage() {
         id: `temp-${randomTempId()}`,
         user_id: userId,
         name,
-        sort_order: categories.length,
+        sort_order: nextCategorySortOrder(categories),
         is_default: false,
         created_at: new Date().toISOString(),
       }),
