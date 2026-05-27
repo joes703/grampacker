@@ -57,26 +57,27 @@ export async function fetchSharedListItems(listId: string): Promise<PublicListIt
   return data
 }
 
-// Expected key sets for the public share response. Kept narrow on
-// purpose: the assert below rejects extra keys, so a future PostgREST
-// upgrade that widens the projection (or a developer who edits
-// GEAR_ITEM_PUBLIC_SELECT without updating PublicListItem in types.ts)
-// fails the share page at the boundary instead of silently leaking.
-const PUBLIC_LIST_ITEM_KEYS: readonly string[] = [
-  'id',
-  'gear_item_id',
-  'quantity',
-  'is_worn',
-  'is_consumable',
-  'sort_order',
-  'gear_item',
+// Forbidden columns on the public share response. Defense-in-depth
+// against a leaked private field from a broken SELECT, an RLS rule that
+// returned more than expected, or a developer who appended a column to
+// GEAR_ITEM_PUBLIC_SELECT without thinking. SECURITY.md's "Public read
+// column allowlist" is the source of truth; this is the runtime mirror.
+const FORBIDDEN_LIST_ITEM_KEYS: readonly string[] = [
+  'is_packed',
+  'is_ready',
+  'user_id',
+  'list_id',
+  'created_at',
+  'updated_at',
 ]
-const PUBLIC_GEAR_ITEM_KEYS: readonly string[] = [
-  'id',
-  'name',
-  'description',
-  'weight_grams',
-  'category_id',
+const FORBIDDEN_GEAR_ITEM_KEYS: readonly string[] = [
+  'user_id',
+  'status',
+  'cost',
+  'purchase_date',
+  'sort_order',
+  'created_at',
+  'updated_at',
 ]
 
 function shapeError(index: number, field: string, expected: string): Error {
@@ -85,9 +86,23 @@ function shapeError(index: number, field: string, expected: string): Error {
   )
 }
 
+function forbiddenKeyError(index: number, scope: string, key: string): Error {
+  return new Error(
+    `Unexpected public list item response shape: row ${index} ${scope} carries forbidden key "${key}"`,
+  )
+}
+
 // Type-narrowing assertion: callers can use `data` as PublicListItem[]
 // after this returns. Error messages name the row index and the field,
 // never values, so a thrown error never echoes user data into logs.
+//
+// Required keys are covered by the per-field `typeof` checks below
+// (missing → undefined → wrong type → throw). Private-column leaks are
+// caught by an explicit blocklist. Extra benign keys (e.g. an
+// internal `_etag` or `__typename` added by a future PostgREST upgrade)
+// pass through so a transitive dep bump does not brick every share
+// page; the wire allowlist test in shared-projections.test.ts is what
+// keeps the SELECT honest.
 function assertPublicListItems(data: unknown): asserts data is PublicListItem[] {
   if (!Array.isArray(data)) {
     throw new Error('Unexpected public list item response shape: payload is not an array')
@@ -104,13 +119,8 @@ function assertPublicListItemRow(row: unknown, index: number): void {
     )
   }
   const r = row as Record<string, unknown>
-  const keys = Object.keys(r).sort()
-  const want = PUBLIC_LIST_ITEM_KEYS.toSorted()
-  if (keys.length !== want.length || keys.some((k, j) => k !== want[j])) {
-    throw new Error(
-      `Unexpected public list item response shape: row ${index} keys [${keys.join(', ')}] ` +
-        `do not match expected [${want.join(', ')}]`,
-    )
+  for (const forbidden of FORBIDDEN_LIST_ITEM_KEYS) {
+    if (forbidden in r) throw forbiddenKeyError(index, 'list_item', forbidden)
   }
   if (typeof r.id !== 'string') throw shapeError(index, 'id', 'string')
   if (typeof r.gear_item_id !== 'string') throw shapeError(index, 'gear_item_id', 'string')
@@ -128,13 +138,8 @@ function assertPublicGearItem(g: unknown, index: number): void {
     )
   }
   const gr = g as Record<string, unknown>
-  const keys = Object.keys(gr).sort()
-  const want = PUBLIC_GEAR_ITEM_KEYS.toSorted()
-  if (keys.length !== want.length || keys.some((k, j) => k !== want[j])) {
-    throw new Error(
-      `Unexpected public list item response shape: row ${index} gear_item keys ` +
-        `[${keys.join(', ')}] do not match expected [${want.join(', ')}]`,
-    )
+  for (const forbidden of FORBIDDEN_GEAR_ITEM_KEYS) {
+    if (forbidden in gr) throw forbiddenKeyError(index, 'gear_item', forbidden)
   }
   if (typeof gr.id !== 'string') throw shapeError(index, 'gear_item.id', 'string')
   if (typeof gr.name !== 'string') throw shapeError(index, 'gear_item.name', 'string')

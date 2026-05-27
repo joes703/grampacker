@@ -351,7 +351,7 @@ describe('fetchSharedListItems runtime shape guard', () => {
     const tampered = { ...row, gear_item: { ...row.gear_item, status: 'active' } }
     mockState.nextList = { data: [tampered], error: null }
     await expect(fetchSharedListItems('list-1')).rejects.toThrow(
-      /gear_item keys.*do not match expected/,
+      /gear_item carries forbidden key "status"/,
     )
   })
 
@@ -360,7 +360,7 @@ describe('fetchSharedListItems runtime shape guard', () => {
     const tampered = { ...row, gear_item: { ...row.gear_item, cost: 199.99 } }
     mockState.nextList = { data: [tampered], error: null }
     await expect(fetchSharedListItems('list-1')).rejects.toThrow(
-      /gear_item keys.*do not match expected/,
+      /gear_item carries forbidden key "cost"/,
     )
   })
 
@@ -368,7 +368,7 @@ describe('fetchSharedListItems runtime shape guard', () => {
     const tampered = { ...validPublicRow(), is_packed: true }
     mockState.nextList = { data: [tampered], error: null }
     await expect(fetchSharedListItems('list-1')).rejects.toThrow(
-      /row 0 keys.*do not match expected/,
+      /list_item carries forbidden key "is_packed"/,
     )
   })
 
@@ -376,8 +376,16 @@ describe('fetchSharedListItems runtime shape guard', () => {
     const tampered = { ...validPublicRow(), user_id: 'owner-1' }
     mockState.nextList = { data: [tampered], error: null }
     await expect(fetchSharedListItems('list-1')).rejects.toThrow(
-      /row 0 keys.*do not match expected/,
+      /list_item carries forbidden key "user_id"/,
     )
+  })
+
+  it('tolerates a benign extra key not on the forbidden list (e.g. a PostgREST internal field)', async () => {
+    const tampered = { ...validPublicRow(), _etag: 'abc123' }
+    mockState.nextList = { data: [tampered], error: null }
+    const result = await fetchSharedListItems('list-1')
+    expect(result).toHaveLength(1)
+    expect(result[0]?.gear_item.name).toBe('Tent')
   })
 
   it('throws when a primitive field is the wrong type (quantity as string)', async () => {
