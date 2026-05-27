@@ -29,6 +29,7 @@ import {
   fetchLists,
   createCategory,
   nextCategorySortOrder,
+  nextGearItemSortOrder,
   updateCategory,
   deleteCategory,
   reorderCategories,
@@ -225,7 +226,7 @@ export default function GearLibraryPage() {
 
   const addItem = useMutation({
     mutationFn: (data: Parameters<typeof createGearItem>[1]) =>
-      createGearItem(userId, data, allItems.length),
+      createGearItem(userId, data, nextGearItemSortOrder(allItems)),
     ...makeOptimisticInsert<GearItem, Parameters<typeof createGearItem>[1]>({
       qc,
       queryKey: queryKeys.gearItems(),
@@ -241,7 +242,7 @@ export default function GearLibraryPage() {
           cost: data.cost,
           purchase_date: data.purchase_date,
           status: data.status,
-          sort_order: allItems.length,
+          sort_order: nextGearItemSortOrder(allItems),
           created_at: now,
           updated_at: now,
         }
@@ -391,7 +392,7 @@ export default function GearLibraryPage() {
   })
 
   const importItems = useMutation({
-    mutationFn: (rows: GearCsvRow[]) => importGearItems(userId, rows, categories, allItems, allItems.length),
+    mutationFn: (rows: GearCsvRow[]) => importGearItems(userId, rows, categories, allItems),
     onSuccess: () => { invalidateBoth(); setDialog(null) },
   })
 

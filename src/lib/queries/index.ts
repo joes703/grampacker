@@ -49,6 +49,7 @@ export {
 export {
   fetchGearItems,
   createGearItem,
+  nextGearItemSortOrder,
   updateGearItem,
   deleteGearItem,
   bulkDeleteGearItems,

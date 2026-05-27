@@ -16,6 +16,22 @@ export async function fetchGearItems(userId: string): Promise<GearItem[]> {
   return data
 }
 
+// Next sort_order slot for a newly-created gear item. Same rationale as
+// nextCategorySortOrder: deleteGearItem (and bulkDeleteGearItems) do not
+// compact, so the existing sequence is sparse after any delete, and
+// length-based slot picking ties with an existing row. The (sort_order,
+// name) read order then silently reshuffles the user's gear library.
+// `offset` is for batched callers (CSV import): pass 0 for the first new
+// row, 1 for the next, etc.
+export function nextGearItemSortOrder(
+  existing: Pick<GearItem, 'sort_order'>[],
+  offset = 0,
+): number {
+  let max = -1
+  for (const g of existing) if (g.sort_order > max) max = g.sort_order
+  return max + 1 + offset
+}
+
 export async function createGearItem(
   userId: string,
   data: Pick<
@@ -85,7 +101,6 @@ export async function importGearItems(
   rows: GearCsvRow[],
   existingCategories: Category[],
   existingGearItems: GearItem[],
-  currentItemCount: number,
 ): Promise<{ newCount: number; matchedCount: number }> {
   const catByName = await resolveOrCreateCategories(userId, rows, existingCategories)
   const { newCount, matchedCount } = await resolveOrCreateGearForImport({
@@ -93,7 +108,7 @@ export async function importGearItems(
     rows,
     existingGearItems,
     catByName,
-    startSortOrder: currentItemCount,
+    startSortOrder: nextGearItemSortOrder(existingGearItems),
   })
   return { newCount, matchedCount }
 }

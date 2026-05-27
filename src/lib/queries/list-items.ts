@@ -2,6 +2,7 @@ import { supabase } from '../supabase'
 import type { Category, GearItem, ListItem, ListItemWithGear, PublicListItem } from '../types'
 import type { ListImportRow } from '../csv'
 import { bulkUpdateSortOrder } from './bulk-reorder'
+import { nextGearItemSortOrder } from './gear'
 import { resolveOrCreateCategories, resolveOrCreateGearForImport } from './import-helpers'
 import { GEAR_ITEM_AUTH_SELECT, GEAR_ITEM_PUBLIC_SELECT } from './projections'
 
@@ -233,7 +234,6 @@ export async function importCsvRowsToList(
   rows: ListImportRow[],
   existingGearItems: GearItem[],
   existingCategories: Category[],
-  currentListItemCount: number,
 ): Promise<void> {
   const catByName = await resolveOrCreateCategories(userId, rows, existingCategories)
   const { gearIdByRow } = await resolveOrCreateGearForImport({
@@ -241,9 +241,14 @@ export async function importCsvRowsToList(
     rows,
     existingGearItems,
     catByName,
-    startSortOrder: existingGearItems.length,
+    startSortOrder: nextGearItemSortOrder(existingGearItems),
   })
 
+  // The list was just created in the calling flow, so it has no
+  // pre-existing items; list_item sort_order starts at 0 for the first
+  // imported row. If this helper ever grows to support importing into an
+  // existing list, swap to nextListItemSortOrder against the existing
+  // list_items here.
   const listItemRows = rows
     .map((row, i) => {
       const gearId = gearIdByRow[i]
@@ -255,7 +260,7 @@ export async function importCsvRowsToList(
         quantity: row.quantity,
         is_worn: row.is_worn,
         is_consumable: row.is_consumable,
-        sort_order: currentListItemCount + i,
+        sort_order: i,
       }
     })
     .filter((r): r is NonNullable<typeof r> => r !== null)

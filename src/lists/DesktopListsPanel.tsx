@@ -183,7 +183,7 @@ export default function DesktopListsPanel({
   const importMut = useMutation({
     mutationFn: async ({ name, rows }: { name: string; rows: ListImportRow[] }) => {
       const newList = await createList(userId, name, lists.length)
-      await importCsvRowsToList(newList.id, userId, rows, gearItems, categories, 0)
+      await importCsvRowsToList(newList.id, userId, rows, gearItems, categories)
       return newList
     },
     onSuccess: (newList) => {
