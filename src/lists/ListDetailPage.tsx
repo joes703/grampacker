@@ -647,12 +647,27 @@ function ListDetailInner({
     reorderItemsMut.mutate(assignSortOrderSlots(reordered))
   }
 
+  // Per-reset in-flight refs. resetPacked and resetReady write different
+  // fields, so they could run in parallel — but each path captures a
+  // whole-row snapshot in `previous` and rolls back the whole row on
+  // failure. If one reset's rollback fires while the other is mid-flight,
+  // it stomps the other's optimistic clear (or the other's already-
+  // committed-on-the-server clear if its invalidate hasn't refetched
+  // yet). Refusing a second concurrent invocation per path keeps the
+  // rollback snapshot single-owner. A reset behind a ConfirmDialog is
+  // rare enough that a no-op second press is acceptable; the alternative
+  // is a partial-field rollback, which is more invasive.
+  const resettingPackedRef = useRef(false)
+  const resettingReadyRef = useRef(false)
+
   async function resetPacked() {
     // Defense-in-depth offline guard. The PackingProgress button is also
     // disabled when offline so this path shouldn't be reachable, but a
     // bypassed UI state (e.g. a stale render between offline event and
     // re-render) shouldn't fire a doomed mutation.
     if (typeof navigator !== 'undefined' && !navigator.onLine) return
+    if (resettingPackedRef.current) return
+    resettingPackedRef.current = true
     // Invalidate any in-flight sync loop AND drop the pending queue
     // before clearing the server. clearPackedQueueForReset bumps the
     // hook's sync generation so the loop's pre/post-await aborted()
@@ -673,6 +688,7 @@ function ListDetailInner({
       throw err
     } finally {
       qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+      resettingPackedRef.current = false
     }
   }
 
@@ -684,6 +700,8 @@ function ListDetailInner({
   // post-await aborted() check trips before its next per-item callback.
   async function resetReady() {
     if (typeof navigator !== 'undefined' && !navigator.onLine) return
+    if (resettingReadyRef.current) return
+    resettingReadyRef.current = true
     clearReadyQueueForReset()
     await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
     const previous = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
@@ -697,6 +715,7 @@ function ListDetailInner({
       throw err
     } finally {
       qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+      resettingReadyRef.current = false
     }
   }
 
