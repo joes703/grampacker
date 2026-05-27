@@ -26,7 +26,7 @@ export default function SharePage() {
   const { weightUnit } = useWeightUnit()
   const isBelowLg = useIsBelowLg()
 
-  const { data: list, isLoading: listLoading } = useQuery({
+  const { data: list, isLoading: listLoading, isError: listError } = useQuery({
     queryKey: ['shared-list', slug],
     queryFn: () => fetchSharedList(slug!),
     enabled: Boolean(slug),
@@ -61,6 +61,21 @@ export default function SharePage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <p className="text-sm text-gray-400">Loading…</p>
+      </div>
+    )
+  }
+
+  // Real outage (network, 5xx, RLS misconfig) is distinct from a bad
+  // slug: fetchSharedList only returns null for PGRST116 ("no row from
+  // .single()"). Showing "List not found" for a transient error would
+  // mislead the viewer into thinking the owner stopped sharing.
+  if (listError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-base font-medium text-gray-700">Couldn't load list</p>
+          <p className="mt-1 text-sm text-gray-400">Check your connection and try again.</p>
+        </div>
       </div>
     )
   }

@@ -55,6 +55,13 @@ export async function fetchLists(userId: string): Promise<List[]> {
 // timestamps. See SECURITY.md "Public read paths" for the allowlist.
 // group_worn is included so the share view honors the owner's worn-grouping
 // preference (see PublicList in types.ts).
+//
+// PGRST116 (`.single()` returned 0 rows) is the legitimate "this slug
+// isn't a shared list" signal and maps to `null` so the share page can
+// render its friendly "List not found" copy. Any other error (network,
+// 5xx, an RLS misconfiguration that would otherwise silently masquerade
+// as not-found) propagates so TanStack Query exposes the failure and the
+// share page distinguishes a real outage from a bad link.
 export async function fetchSharedList(slug: string): Promise<PublicList | null> {
   const { data, error } = await supabase
     .from('lists')
@@ -62,7 +69,10 @@ export async function fetchSharedList(slug: string): Promise<PublicList | null> 
     .eq('slug', slug)
     .eq('is_shared', true)
     .single()
-  if (error) return null
+  if (error) {
+    if (error.code === 'PGRST116') return null
+    throw error
+  }
   return data
 }
 
