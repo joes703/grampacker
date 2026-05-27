@@ -145,6 +145,21 @@ describe('usePortalPopover', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  it('does not close when the scroll target is INSIDE the popover content (regression)', () => {
+    // Regression: scroll inside an internally-scrollable popover (e.g. a long
+    // kebab menu overflowing a short viewport) previously dismissed the popover,
+    // making the bottom items unreachable. Capture-phase scrolls on contentRef
+    // descendants should be ignored — only ancestor scrolls dismiss.
+    const onClose = vi.fn()
+    const { getByTestId } = render(<Harness isOpen={true} onClose={onClose} />)
+
+    act(() => {
+      getByTestId('content').dispatchEvent(new Event('scroll', { bubbles: true }))
+    })
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('closes on window resize when closeOnResize is true (default)', () => {
     const onClose = vi.fn()
     render(<Harness isOpen={true} onClose={onClose} />)

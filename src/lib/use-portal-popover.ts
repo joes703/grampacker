@@ -60,7 +60,17 @@ export function usePortalPopover(opts: {
       if (contentRef.current?.contains(target)) return
       onCloseRef.current()
     }
-    function handleDismiss() {
+    function handleScroll(e: Event) {
+      // Scrolls INSIDE the popover content (e.g. an internally-scrollable
+      // menu reaching for its bottom item) must not dismiss. Only ancestor
+      // scrolls should — those mean the popover's anchor moved and the
+      // position snapshot is stale. Window-target scrolls (e.target === window)
+      // are not Nodes; treat those as outside-content and dismiss.
+      const target = e.target
+      if (target instanceof Node && contentRef.current?.contains(target)) return
+      onCloseRef.current()
+    }
+    function handleResize() {
       onCloseRef.current()
     }
     function handleKeyDown(e: KeyboardEvent) {
@@ -73,14 +83,14 @@ export function usePortalPopover(opts: {
     }
 
     document.addEventListener('mousedown', handleMouseDown)
-    if (closeOnScroll) window.addEventListener('scroll', handleDismiss, true)
-    if (closeOnResize) window.addEventListener('resize', handleDismiss)
+    if (closeOnScroll) window.addEventListener('scroll', handleScroll, true)
+    if (closeOnResize) window.addEventListener('resize', handleResize)
     if (closeOnEscape) document.addEventListener('keydown', handleKeyDown)
 
     return () => {
       document.removeEventListener('mousedown', handleMouseDown)
-      if (closeOnScroll) window.removeEventListener('scroll', handleDismiss, true)
-      if (closeOnResize) window.removeEventListener('resize', handleDismiss)
+      if (closeOnScroll) window.removeEventListener('scroll', handleScroll, true)
+      if (closeOnResize) window.removeEventListener('resize', handleResize)
       if (closeOnEscape) document.removeEventListener('keydown', handleKeyDown)
     }
   }, [isOpen, triggerRef, contentRef, closeOnScroll, closeOnResize, closeOnEscape])
