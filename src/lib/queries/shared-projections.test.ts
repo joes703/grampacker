@@ -23,7 +23,7 @@ const mockState = vi.hoisted(() => ({
   // Response for the next call. Tests overwrite per case. `single` is
   // what `.single()` resolves to; `list` is what the awaited builder
   // resolves to when no `.single()` is chained.
-  nextSingle: { data: null as unknown, error: null as { message: string } | null },
+  nextSingle: { data: null as unknown, error: null as { message: string; code?: string } | null },
   nextList: { data: [] as unknown[], error: null as { message: string } | null },
 }))
 
@@ -182,13 +182,24 @@ describe('fetchSharedList (public share view list projection)', () => {
     )
   })
 
-  it('returns null on a Supabase error (e.g. unknown slug)', async () => {
+  it('returns null on PGRST116 (unknown or unshared slug)', async () => {
     mockState.nextSingle = {
       data: null,
-      error: { message: 'no rows' },
+      error: { code: 'PGRST116', message: 'no rows' },
     }
     const result = await fetchSharedList('missing')
     expect(result).toBeNull()
+  })
+
+  it('throws on a non-PGRST116 Supabase error so the page can surface "Couldn\'t load"', async () => {
+    mockState.nextSingle = {
+      data: null,
+      error: { code: '500', message: 'gateway timeout' },
+    }
+    await expect(fetchSharedList('abc123')).rejects.toMatchObject({
+      code: '500',
+      message: 'gateway timeout',
+    })
   })
 })
 
