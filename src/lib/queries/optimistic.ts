@@ -423,23 +423,28 @@ export function makeOptimisticUpdateWithFanout<
 // Wrapped in `if (import.meta.env.DEV)` so the helper, its closures,
 // and the if-branch tree-shake out of prod bundles via Vite's static
 // replacement of `import.meta.env.DEV` → `false`. Zero prod overhead.
-function assertValidReorderPayload<T extends { id: string; sort_order: number }>(
+//
+// Pure validator: returns null if the payload is structurally sound, or an
+// error message describing the violation. Used both by the DEV branch
+// (throws a plain Error — surfaces the bug loudly in tests/dev) AND by
+// the prod safety branch (logs + throws a tagged sentinel error onError
+// recognizes, so the user sees onSettled's refetch instead of a corrupted
+// optimistic cache).
+function validateReorderPayload<T extends { id: string; sort_order: number }>(
   updates: { id: string; sort_order: number }[],
   cached: T[] | undefined,
-): void {
+): string | null {
   // Empty payload is a documented no-op in bulkUpdateSortOrder; skip.
-  if (updates.length === 0) return
+  if (updates.length === 0) return null
   // No cache yet (no fetch ever happened) means there's no subset to
   // validate against. Prod behavior is also a no-op here (the cache
   // updater short-circuits on `!curr`).
-  if (!cached) return
+  if (!cached) return null
 
   const seen = new Set<string>()
   for (const u of updates) {
     if (seen.has(u.id)) {
-      throw new Error(
-        `makeOptimisticReorder: duplicate id "${u.id}" in payload. Each id must appear at most once.`,
-      )
+      return `makeOptimisticReorder: duplicate id "${u.id}" in payload. Each id must appear at most once.`
     }
     seen.add(u.id)
   }
@@ -447,10 +452,10 @@ function assertValidReorderPayload<T extends { id: string; sort_order: number }>
   const cachedById = new Map(cached.map((row) => [row.id, row.sort_order]))
   for (const u of updates) {
     if (!cachedById.has(u.id)) {
-      throw new Error(
+      return (
         `makeOptimisticReorder: payload id "${u.id}" is not in the cached list. ` +
-          'Either the cache was invalidated between snapshot and dispatch, ' +
-          'or the payload was built from a stale view.',
+        'Either the cache was invalidated between snapshot and dispatch, ' +
+        'or the payload was built from a stale view.'
       )
     }
   }
@@ -461,13 +466,25 @@ function assertValidReorderPayload<T extends { id: string; sort_order: number }>
     .sort((a, b) => a - b)
   for (let i = 0; i < payloadOrders.length; i++) {
     if (payloadOrders[i] !== subsetOrders[i]) {
-      throw new Error(
+      return (
         `makeOptimisticReorder: payload sort_order values [${payloadOrders.join(', ')}] ` +
-          `are not a permutation of the touched subset's existing sort_orders ` +
-          `[${subsetOrders.join(', ')}]. ` +
-          'Use assignSortOrderSlots() (src/lib/grouping.ts) to build safe payloads.',
+        `are not a permutation of the touched subset's existing sort_orders ` +
+        `[${subsetOrders.join(', ')}]. ` +
+        'Use assignSortOrderSlots() (src/lib/grouping.ts) to build safe payloads.'
       )
     }
+  }
+  return null
+}
+
+// Tag for a thrown error from onMutate that means "payload validation
+// failed in prod — don't show the generic reorder-save toast in onError,
+// just let onSettled's invalidate refetch authoritative server truth."
+// Exported only via the `name` check; not a public API.
+class OptimisticReorderValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'OptimisticReorderValidationError'
   }
 }
 
@@ -479,7 +496,21 @@ export function makeOptimisticReorder<T extends { id: string; sort_order: number
     onMutate: (updates: { id: string; sort_order: number }[]) => {
       qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<T[]>(queryKey)
-      if (import.meta.env.DEV) assertValidReorderPayload(updates, previous)
+
+      // Validate the payload before writing the cache. DEV throws (loud
+      // stack trace, surfaces the bug in development and tests). PROD
+      // detects, logs, and aborts with a tagged error onError recognizes:
+      // no rollback toast, no cache write, just onSettled's invalidate to
+      // pull authoritative server truth. Silent corruption (the prior
+      // behavior in prod, since the assertion was DEV-only) is worse than
+      // a brief snap-to-server-truth.
+      const validationError = validateReorderPayload(updates, previous)
+      if (validationError) {
+        if (import.meta.env.DEV) throw new Error(validationError)
+        console.error('makeOptimisticReorder validation failed:', validationError, { updates })
+        throw new OptimisticReorderValidationError(validationError)
+      }
+
       const byId = new Map(updates.map((u) => [u.id, u.sort_order]))
       qc.setQueryData<T[]>(queryKey, (curr) => {
         if (!curr) return curr
@@ -490,10 +521,16 @@ export function makeOptimisticReorder<T extends { id: string; sort_order: number
       return { previous }
     },
     onError: (
-      _err: unknown,
+      err: unknown,
       _vars: unknown,
       ctx: { previous: T[] | undefined } | undefined,
     ) => {
+      // Prod validation aborts come through here. ctx is undefined (onMutate
+      // threw before returning) and there's nothing to roll back (the cache
+      // write never happened). onSettled below will refetch authoritative
+      // server truth; skip the user-facing toast.
+      if (err instanceof OptimisticReorderValidationError) return
+
       if (ctx?.previous) qc.setQueryData(queryKey, ctx.previous)
       // The rollback is otherwise silent: items just snap back to their
       // original positions. Without a toast, users on a flaky connection
