@@ -29,6 +29,7 @@ import {
   createCategory,
   nextCategorySortOrder,
   nextGearItemSortOrder,
+  nextListItemSortOrder,
   addGearItemToList,
   updateListItem,
   deleteListItem,
@@ -351,7 +352,7 @@ function ListDetailInner({
 
   const addMut = useMutation({
     mutationFn: (item: GearItem) =>
-      addGearItemToList(listId, userId, item.id, listItems.length),
+      addGearItemToList(listId, userId, item.id, nextListItemSortOrder(listItems)),
     ...makeOptimisticInsert<ListItemWithGear, GearItem>({
       qc,
       queryKey: queryKeys.listItems(listId),
@@ -377,7 +378,7 @@ function ListDetailInner({
           is_consumable: false,
           is_packed: false,
           is_ready: false,
-          sort_order: listItems.length,
+          sort_order: nextListItemSortOrder(listItems),
           created_at: now,
           updated_at: now,
         }
@@ -565,7 +566,7 @@ function ListDetailInner({
         p_category_id: categoryId,
         p_gear_sort_order: nextGearItemSortOrder(gearItems),
         p_list_id: listId,
-        p_list_item_sort_order: listItems.length,
+        p_list_item_sort_order: nextListItemSortOrder(listItems),
         p_quantity: data.quantity,
         p_is_worn: data.is_worn,
         p_is_consumable: data.is_consumable,

@@ -6,6 +6,22 @@ import { nextGearItemSortOrder } from './gear'
 import { resolveOrCreateCategories, resolveOrCreateGearForImport } from './import-helpers'
 import { GEAR_ITEM_AUTH_SELECT, GEAR_ITEM_PUBLIC_SELECT } from './projections'
 
+// Next sort_order slot for a newly-created list_item, scoped to its
+// list. Same sparse-order rationale as nextCategorySortOrder /
+// nextGearItemSortOrder: deleting a list_item does not compact survivors,
+// so length-based slot picking ties with an existing row after any
+// delete and the (sort_order, name) read order silently reshuffles the
+// list. Pass the cached list_items array for the current list; the helper
+// only reads sort_order so a Pick is enough.
+export function nextListItemSortOrder(
+  existing: Pick<ListItem, 'sort_order'>[],
+  offset = 0,
+): number {
+  let max = -1
+  for (const li of existing) if (li.sort_order > max) max = li.sort_order
+  return max + 1 + offset
+}
+
 // Owner-scoped private read. See queries/index.ts for the convention.
 // Uses the list_items.user_id column added in 20260506000002.
 export async function fetchListItems(listId: string, userId: string): Promise<ListItemWithGear[]> {
