@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -576,6 +576,15 @@ function ListDetailInner({
     },
   })
 
+  // Guards against the inline Quick Add row firing twice when the user
+  // commits the same draft rapidly (Enter then blur, or two Enter presses).
+  // Each press fires a fresh add_gear_item_with_list_item RPC; without a
+  // gate the second succeeds and creates a duplicate gear_item +
+  // list_item. addNewItemMut.isPending lives on a fresh useMutation result
+  // each render, so reading it through a [] -deps useCallback closure is
+  // stale; a ref is the stable handle.
+  const addingNewItemRef = useRef(false)
+
   // Split mouse vs touch so each gets the activation that fits its input.
   // MouseSensor: 5px drag threshold from the hover grip handle (desktop).
   // TouchSensor: a short press-and-hold (delay) before a drag starts, so a
@@ -778,7 +787,12 @@ function ListDetailInner({
   // mutation-ref convention.
   const onAddNewItem = useCallback(
     (categoryId: string | null, data: AddItemData) => {
-      addNewItemMut.mutate({ categoryId, data })
+      if (addingNewItemRef.current) return
+      addingNewItemRef.current = true
+      addNewItemMut.mutate(
+        { categoryId, data },
+        { onSettled: () => { addingNewItemRef.current = false } },
+      )
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- addNewItemMut: see addMut note
     [],
