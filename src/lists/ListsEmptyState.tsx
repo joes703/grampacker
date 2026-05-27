@@ -77,7 +77,7 @@ export default function ListsEmptyState() {
   const importMut = useMutation({
     mutationFn: async ({ name, rows }: { name: string; rows: ListImportRow[] }) => {
       const newList = await createList(userId, name, 0)
-      await importCsvRowsToList(newList.id, userId, rows, gearItems, categories, 0)
+      await importCsvRowsToList(newList.id, userId, rows, gearItems, categories)
       return newList
     },
     onSuccess: (newList) => {
