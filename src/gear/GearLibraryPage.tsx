@@ -779,7 +779,7 @@ export default function GearLibraryPage() {
                 )
               })}
             </SortableContext>
-            <DragOverlay>
+            <DragOverlay dropAnimation={null}>
               {activeItem ? (
                 <GearItemRow
                   item={activeItem}
