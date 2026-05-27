@@ -52,6 +52,11 @@ export function downloadCsv(filename: string, content: string): void {
 
 // Minimal RFC-4180-compliant CSV parser (no external dependency).
 export function parseCsv(text: string): Record<string, string>[] {
+  // Strip a leading UTF-8 BOM (U+FEFF). Excel, Numbers, and many
+  // Windows tools prefix UTF-8 CSV exports with a BOM; without this
+  // the first header cell becomes "﻿item name" and misses every
+  // case-insensitive alias lookup downstream.
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1)
   const [headerLine, ...dataLines] = splitLines(text)
   if (!headerLine || dataLines.length === 0) return []
 
