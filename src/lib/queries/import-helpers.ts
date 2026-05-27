@@ -34,7 +34,9 @@ export async function resolveOrCreateCategories(
   const uniqueCatNames = [...new Set(rows.map((r) => r.category.trim()).filter(Boolean))]
   for (const name of uniqueCatNames) {
     if (!catByName.has(name.toLowerCase())) {
-      const created = await createCategory(userId, name, existingCategories.length + catByName.size)
+      // catByName.size already reflects existing + previously-created-in-this-loop,
+      // so it IS the next sort_order slot. Don't add existingCategories.length again.
+      const created = await createCategory(userId, name, catByName.size)
       catByName.set(name.toLowerCase(), created.id)
     }
   }

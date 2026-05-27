@@ -23,19 +23,38 @@ vi.mock('../supabase', () => ({
       },
     }),
   },
-  // resolveOrCreateCategories isn't on the test path (we pass a fully
-  // populated catByName), but createCategory is imported at the top of
-  // import-helpers.ts via './categories'. That module also imports from
-  // '../supabase' — covered by this mock. No further stubbing needed.
+  // resolveOrCreateCategories isn't on the gear-resolution test path
+  // (we pass a fully populated catByName there), but it IS exercised by
+  // its own describe block below — which stubs createCategory via the
+  // vi.mock('./categories', ...) call below to capture sort_order args
+  // directly. The supabase mock above is reused only for gear inserts.
 }))
 
-import { resolveOrCreateGearForImport } from './import-helpers'
-import type { GearItem } from '../types'
+const createCategorySpy = vi.hoisted(() => vi.fn())
+vi.mock('./categories', () => ({
+  createCategory: createCategorySpy,
+}))
+
+import { resolveOrCreateGearForImport, resolveOrCreateCategories } from './import-helpers'
+import type { Category, GearItem } from '../types'
 
 beforeEach(() => {
   mockState.insertCalls.length = 0
   mockState.nextInsertReturn = { data: [], error: null }
+  createCategorySpy.mockReset()
 })
+
+function makeCategory(overrides: Partial<Category>): Category {
+  return {
+    id: 'cat-default',
+    user_id: 'u-1',
+    name: 'Default',
+    sort_order: 0,
+    is_default: false,
+    created_at: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
 
 function makeGearItem(overrides: Partial<GearItem>): GearItem {
   return {
@@ -227,5 +246,72 @@ describe('resolveOrCreateGearForImport', () => {
     expect(result.newCount).toBe(0)
     expect(result.matchedCount).toBe(0)
     expect(mockState.insertCalls).toHaveLength(0)
+  })
+})
+
+describe('resolveOrCreateCategories', () => {
+  it('assigns contiguous sort_order to newly-created categories starting from existingCategories.length', async () => {
+    // Regression: previous code did `existingCategories.length + catByName.size`
+    // but catByName was already seeded with existingCategories.length entries,
+    // so the first new category got 2*existingCategories.length and every
+    // subsequent new category shifted further off. New categories should
+    // slot in at the next available position: existing.length, existing.length+1, ...
+    const existingCategories: Category[] = [
+      makeCategory({ id: 'cat-1', name: 'Shelter', sort_order: 0 }),
+      makeCategory({ id: 'cat-2', name: 'Sleep', sort_order: 1 }),
+      makeCategory({ id: 'cat-3', name: 'Cooking', sort_order: 2 }),
+    ]
+    let nextId = 1
+    createCategorySpy.mockImplementation((userId: string, name: string, sortOrder: number) =>
+      Promise.resolve(
+        makeCategory({ id: `new-${nextId++}`, user_id: userId, name, sort_order: sortOrder }),
+      ),
+    )
+
+    await resolveOrCreateCategories(
+      'u-1',
+      [{ category: 'Hydration' }, { category: 'Electronics' }],
+      existingCategories,
+    )
+
+    expect(createCategorySpy).toHaveBeenCalledTimes(2)
+    expect(createCategorySpy.mock.calls[0]?.[2]).toBe(3) // existing.length
+    expect(createCategorySpy.mock.calls[1]?.[2]).toBe(4) // existing.length + 1
+  })
+
+  it('returns a name->id map covering both pre-existing and new categories', async () => {
+    const existingCategories: Category[] = [
+      makeCategory({ id: 'cat-1', name: 'Shelter' }),
+    ]
+    createCategorySpy.mockImplementation((_userId: string, name: string, sortOrder: number) =>
+      Promise.resolve(makeCategory({ id: 'new-1', name, sort_order: sortOrder })),
+    )
+
+    const result = await resolveOrCreateCategories(
+      'u-1',
+      [{ category: 'Shelter' }, { category: 'Hydration' }],
+      existingCategories,
+    )
+
+    expect(result.get('shelter')).toBe('cat-1')
+    expect(result.get('hydration')).toBe('new-1')
+    // Only Hydration was new; Shelter matched existing.
+    expect(createCategorySpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts sort_order at 0 when there are no existing categories', async () => {
+    let nextId = 1
+    createCategorySpy.mockImplementation((_userId: string, name: string, sortOrder: number) =>
+      Promise.resolve(makeCategory({ id: `new-${nextId++}`, name, sort_order: sortOrder })),
+    )
+
+    await resolveOrCreateCategories(
+      'u-1',
+      [{ category: 'Shelter' }, { category: 'Sleep' }],
+      [],
+    )
+
+    expect(createCategorySpy.mock.calls[0]?.[2]).toBe(0)
+    expect(createCategorySpy.mock.calls[1]?.[2]).toBe(1)
   })
 })
