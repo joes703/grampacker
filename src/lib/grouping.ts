@@ -16,14 +16,14 @@ type GroupByCategoryOptions<T> = {
 // affecting field values. Render-affecting fields for ListItemWithGear are
 // the per-list trip fields (sort_order, quantity, is_packed, is_ready,
 // is_worn, is_consumable) plus the embedded gear_item's id + weight_grams
-// + name + description. Description must be in the comparator because
-// desktop ItemRow renders and edits it — excluding it would let memo skip
-// the re-render after a description edit and leave stale text on screen.
-// is_ready is in here for the same reason: pack-mode rows render its
-// checkbox state, so omitting it would let an is_ready-only update slip
-// past the structural-stability layer and reuse the prior items array,
-// leaving the Ready checkbox visually stuck. Timestamps and other
-// non-rendered gear_item fields stay out.
+// + name + description + status. Description must be in the comparator
+// because desktop ItemRow renders and edits it — excluding it would let
+// memo skip the re-render after a description edit and leave stale text
+// on screen. is_ready and status are in here for the same reason:
+// pack-mode rows render the Ready checkbox and ItemRow renders
+// GearStatusBadge from gear_item.status, so a status-only fanout update
+// must invalidate the items reference. Timestamps and other non-rendered
+// gear_item fields stay out.
 function listItemsArrayEqual(a: ListItemWithGear[], b: ListItemWithGear[]): boolean {
   if (a === b) return true
   if (a.length !== b.length) return false
@@ -42,6 +42,7 @@ function listItemsArrayEqual(a: ListItemWithGear[], b: ListItemWithGear[]): bool
     if (x.gear_item.weight_grams !== y.gear_item.weight_grams) return false
     if (x.gear_item.name !== y.gear_item.name) return false
     if (x.gear_item.description !== y.gear_item.description) return false
+    if (x.gear_item.status !== y.gear_item.status) return false
   }
   return true
 }

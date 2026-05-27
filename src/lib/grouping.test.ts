@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { groupListItemsByCategory, groupGearItemsByCategory, groupByCategory } from './grouping'
 import type { Category, GearItem, ListItemWithGear } from './types'
+import type { GearStatus } from './gear-status'
 
 function listItem(overrides: {
   id: string
@@ -14,6 +15,7 @@ function listItem(overrides: {
   sort_order?: number
   name?: string
   description?: string | null
+  status?: GearStatus
 }): ListItemWithGear {
   return {
     id: overrides.id,
@@ -34,7 +36,7 @@ function listItem(overrides: {
       description: overrides.description ?? null,
       weight_grams: overrides.weight_grams ?? 100,
       category_id: overrides.category_id,
-      status: 'active',
+      status: overrides.status ?? 'active',
     },
   }
 }
@@ -152,6 +154,23 @@ describe('groupListItemsByCategory', () => {
 
     expect(second).not.toBe(first)
     expect(second[0]!.items).not.toBe(first[0]!.items)
+  })
+
+  it('rebuilds when gear_item.status changes (regression: ItemRow renders GearStatusBadge from status)', () => {
+    // Regression: listItemsArrayEqual previously omitted gear_item.status
+    // even though status is in GEAR_ITEM_AUTH_SELECT and rendered by
+    // GearStatusBadge on every ItemRow. A status-only fanout update from
+    // the gear closet would leave the badge visually stuck until another
+    // invalidation hit the cache.
+    const items1 = [listItem({ id: 'a', category_id: 'cat-shelter', status: 'active' })]
+    const first = groupListItemsByCategory(items1, [shelter])
+
+    const items2 = [listItem({ id: 'a', category_id: 'cat-shelter', status: 'need_to_buy' })]
+    const second = groupListItemsByCategory(items2, [shelter], first)
+
+    expect(second).not.toBe(first)
+    expect(second[0]!.items).not.toBe(first[0]!.items)
+    expect(second[0]!.items[0]!.gear_item.status).toBe('need_to_buy')
   })
 })
 
