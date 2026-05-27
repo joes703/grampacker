@@ -298,7 +298,7 @@ export default function ListsPage() {
                 </ul>
               </div>
             </SortableContext>
-            <DragOverlay>
+            <DragOverlay dropAnimation={null}>
               {activeList ? (
                 // Overlay clone — a static row with a soft shadow so the
                 // user can see what they're dragging. Wired to no-op

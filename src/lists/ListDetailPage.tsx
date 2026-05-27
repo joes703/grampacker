@@ -1093,7 +1093,7 @@ function ListDetailInner({
                         onAddItem={onAddNewItem}
                       />
                     ))}
-                  <DragOverlay>
+                  <DragOverlay dropAnimation={null}>
                     {activeItem ? (
                       <ItemRow item={activeItem} weightUnit={weightUnit} isBelowLg={isBelowLg} />
                     ) : null}

@@ -367,7 +367,7 @@ export default function DesktopListsPanel({
               ))}
             </ul>
           </SortableContext>
-          <DragOverlay>
+          <DragOverlay dropAnimation={null}>
             {activeList ? (
               <div className={`${FLAT_TABLE_SURFACE} shadow-lg`}>
                 <ul>
