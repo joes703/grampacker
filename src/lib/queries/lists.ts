@@ -38,6 +38,21 @@ async function withSlugRetry<T>(insert: (slug: string) => Promise<T>, max = 5): 
   throw lastErr ?? new Error('slug generation: exhausted retries')
 }
 
+// Next sort_order slot for a newly-created list. Same sparse-order
+// rationale as the per-table helpers in categories.ts / gear.ts /
+// list-items.ts: deleteList does not compact survivors, so length-based
+// slot picking ties with an existing row whenever a delete has happened,
+// and the (sort_order, name) read order silently reshuffles the lists
+// index.
+export function nextListSortOrder(
+  existing: Pick<List, 'sort_order'>[],
+  offset = 0,
+): number {
+  let max = -1
+  for (const l of existing) if (l.sort_order > max) max = l.sort_order
+  return max + 1 + offset
+}
+
 // Owner-scoped private read. See queries/index.ts for the convention.
 export async function fetchLists(userId: string): Promise<List[]> {
   const { data, error } = await supabase

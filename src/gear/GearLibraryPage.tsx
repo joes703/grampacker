@@ -40,6 +40,7 @@ import {
   bulkMoveToCategoryGearItems,
   reorderGearItems,
   createListFromSelection,
+  nextListSortOrder,
   importGearItems,
   makeOptimisticReorder,
   makeOptimisticInsert,
@@ -381,7 +382,7 @@ export default function GearLibraryPage() {
 
   const createListFromSelectionMut = useMutation({
     mutationFn: ({ name, description, ids }: { name: string; description: string | null; ids: string[] }) =>
-      createListFromSelection(userId, name, description, ids, lists.length),
+      createListFromSelection(userId, name, description, ids, nextListSortOrder(lists)),
     onSuccess: (newList) => {
       qc.invalidateQueries({ queryKey: queryKeys.lists() })
       qc.invalidateQueries({ queryKey: queryKeys.listItems(newList.id) })
