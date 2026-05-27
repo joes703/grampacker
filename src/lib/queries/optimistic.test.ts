@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { QueryClient, type Mutation } from '@tanstack/react-query'
+
+vi.mock('../toast', () => ({
+  showToast: vi.fn(),
+}))
+
 import {
   makeOptimisticBulkDelete,
   makeOptimisticBulkMove,
@@ -9,6 +14,7 @@ import {
   makeOptimisticDelete,
   makeOptimisticReorder,
 } from './optimistic'
+import { showToast } from '../toast'
 import { mutationErrorHandler } from '../mutation-error-handler'
 
 type Row = { id: string; name: string; category_id: string | null }
@@ -488,6 +494,95 @@ describe('makeOptimisticReorder', () => {
         ]),
       ).toThrow()
       expect(qc.getQueryData<SortableRow[]>(key)).toEqual(initial)
+    })
+  })
+
+  // ── Production safety branch ─────────────────────────────────────────────
+  //
+  // The DEV assertion is tree-shaken out in production builds; without a
+  // prod-side defense, a malformed payload would silently write `undefined`
+  // into sort_order via the non-null assertion in the cache updater. The
+  // prod branch detects + logs + throws a tagged error that onError
+  // recognizes (no rollback toast). onSettled's invalidate then pulls
+  // authoritative server truth.
+  describe('production safety branch', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs()
+      vi.mocked(showToast).mockReset()
+    })
+
+    it('does not write the cache and throws a recognizable validation error in prod', () => {
+      vi.stubEnv('DEV', false)
+      const initial: SortableRow[] = [
+        { id: 'A', name: 'a', sort_order: 10 },
+        { id: 'B', name: 'b', sort_order: 20 },
+      ]
+      const { qc, key } = makeSortableClient(initial)
+      const helper = makeOptimisticReorder<SortableRow>(qc, key)
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      let caught: unknown
+      try {
+        helper.onMutate([
+          { id: 'A', sort_order: 20 },
+          { id: 'A', sort_order: 10 },
+        ])
+      } catch (e) {
+        caught = e
+      }
+
+      expect(caught).toBeInstanceOf(Error)
+      expect((caught as Error).name).toBe('OptimisticReorderValidationError')
+      expect(qc.getQueryData<SortableRow[]>(key)).toEqual(initial)
+      expect(consoleErrorSpy).toHaveBeenCalled()
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('onError treats the validation error as silent (no rollback toast)', () => {
+      // The tagged error is the signal: cache wasn't written, nothing to
+      // roll back; the user shouldn't see a generic "couldn't save" toast
+      // for a programmer-error case they didn't cause. onSettled's
+      // invalidate (not asserted here) handles the cache refresh.
+      vi.stubEnv('DEV', false)
+      const { qc, key } = makeSortableClient([
+        { id: 'A', name: 'a', sort_order: 10 },
+        { id: 'B', name: 'b', sort_order: 20 },
+      ])
+      const helper = makeOptimisticReorder<SortableRow>(qc, key)
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      let caught: unknown
+      try {
+        helper.onMutate([{ id: 'A', sort_order: 20 }, { id: 'A', sort_order: 10 }])
+      } catch (e) {
+        caught = e
+      }
+      // Simulate TanStack's onError handoff: ctx is undefined because
+      // onMutate threw before returning.
+      helper.onError(caught, [], undefined)
+
+      expect(showToast).not.toHaveBeenCalled()
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('onError still shows the toast for non-validation errors (server-side failures)', () => {
+      // Regression guard: the silent branch must only trigger for the
+      // validation sentinel. A real network/server failure must still
+      // surface to the user.
+      const { qc, key } = makeSortableClient([
+        { id: 'A', name: 'a', sort_order: 10 },
+        { id: 'B', name: 'b', sort_order: 20 },
+      ])
+      const helper = makeOptimisticReorder<SortableRow>(qc, key)
+      const ctx = helper.onMutate([
+        { id: 'A', sort_order: 20 },
+        { id: 'B', sort_order: 10 },
+      ])
+      helper.onError(new Error('network 500'), [], ctx)
+      expect(showToast).toHaveBeenCalledWith(
+        expect.stringMatching(/save the new order/i),
+        expect.objectContaining({ type: 'error' }),
+      )
     })
   })
 })
