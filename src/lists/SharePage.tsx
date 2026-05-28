@@ -33,7 +33,7 @@ export default function SharePage() {
   })
   useDocumentTitle(list?.name ?? null)
 
-  const { data: items = [], isLoading: itemsLoading } = useQuery({
+  const { data: items = [], isLoading: itemsLoading, isError: itemsError } = useQuery({
     queryKey: ['shared-list-items', list?.id],
     // Safe non-null: `enabled: Boolean(list?.id)` gates the queryFn so it
     // only runs after fetchSharedList resolved with a real list.
@@ -51,7 +51,7 @@ export default function SharePage() {
     [items],
   )
 
-  const { data: categories = [] } = useQuery({
+  const { data: categories = [], isError: categoriesError } = useQuery({
     queryKey: ['shared-list-categories', list?.id, categoryIds.toSorted().join(',')],
     queryFn: () => fetchSharedListCategories(categoryIds),
     enabled: Boolean(list?.id) && categoryIds.length > 0,
@@ -65,11 +65,14 @@ export default function SharePage() {
     )
   }
 
-  // Real outage (network, 5xx, RLS misconfig) is distinct from a bad
-  // slug: fetchSharedList only returns null for PGRST116 ("no row from
+  // Real outage (network, 5xx, RLS misconfig, runtime shape-guard
+  // throw in fetchSharedListItems) is distinct from a bad slug:
+  // fetchSharedList only returns null for PGRST116 ("no row from
   // .single()"). Showing "List not found" for a transient error would
-  // mislead the viewer into thinking the owner stopped sharing.
-  if (listError) {
+  // mislead the viewer into thinking the owner stopped sharing — and
+  // an items/categories fetch failure rendering as an empty list would
+  // do the same in reverse.
+  if (listError || itemsError || categoriesError) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
