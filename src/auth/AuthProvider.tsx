@@ -55,74 +55,86 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // src/lib/sw-cache.ts and vite.config.ts for the surrounding model.
   const lastUserIdRef = useRef<string | null | undefined>(undefined)
 
-  function reconcileUserId(nextUserId: string | null) {
-    const prev = lastUserIdRef.current
-    if (prev === undefined) {
-      // First reconciliation since mount. The SW cache content
-      // belongs to whichever user we're booting as; just seed the ref.
-      lastUserIdRef.current = nextUserId
-      return
-    }
-    if (prev === nextUserId) return
-    // Identity changed (sign-out, sign-in as a different user, or a
-    // stale session reconciliation). Clear the URL-keyed REST cache so
-    // no row JSON from the previous user can be served to the next one.
-    // Fire-and-forget; failures are silent inside the helper.
-    //
-    // If we're offline, the cache clear must wait until reconnect: a
-    // local clear is technically possible (caches.delete is offline-
-    // safe), but wiping the only data the user can still see while
-    // disconnected degrades UX to "no data" until a real network
-    // response lands. Crucially, do NOT advance lastUserIdRef in the
-    // offline branch — the next online auth event (or the 'online'
-    // edge listener below) must still see prev !== next so it fires
-    // the clear. Advancing the ref here was the bug: it masked the
-    // identity change and the cache served the prior user's rows
-    // after reconnect.
-    if (!isOnline()) return
-    lastUserIdRef.current = nextUserId
-    void clearSupabaseRestCache()
-  }
-
   useEffect(() => {
     let ignored = false
 
-    supabase.auth.getSession()
-      .then(({ data: { session }, error }) => {
+    // Reconcile the active user id and, on identity change, wipe the
+    // URL-keyed SW REST cache BEFORE callers commit the new session
+    // to React state. The cache clear runs even when offline: the
+    // workbox `supabase-rest` runtime cache holds row JSON
+    // KEY'd BY URL (auth lives in the Authorization header, not the
+    // URL), so a different user signing in inside the same tab
+    // would otherwise be served the previous user's cached data —
+    // either while offline (reads land on the SW) or on reconnect
+    // (React Query's refetchOnReconnect races StaleWhileRevalidate
+    // and the cached response wins). Awaiting the clear here gates
+    // every downstream `setSession` so no useQuery scoped to the
+    // new user's id can mount until the cache is gone. caches.delete
+    // is a local operation; the latency cost is a few ms.
+    //
+    // First call after mount (prev === undefined) just seeds the ref;
+    // the cache content belongs to whoever we're booting as. Same-
+    // identity calls are no-ops.
+    async function reconcileUserId(nextUserId: string | null) {
+      const prev = lastUserIdRef.current
+      if (prev === undefined) {
+        lastUserIdRef.current = nextUserId
+        return
+      }
+      if (prev === nextUserId) return
+      try {
+        await clearSupabaseRestCache()
+      } catch {
+        // helper is silent-on-failure internally; if it threw despite
+        // that, still advance the ref so a steady-state same-identity
+        // event afterwards doesn't re-fire the clear in an infinite
+        // loop.
+      }
+      lastUserIdRef.current = nextUserId
+    }
+
+    async function loadInitialSession() {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
         if (ignored) return
         if (session) {
           writeOfflineSession(session)
+          await reconcileUserId(session.user.id)
+          if (ignored) return
           setSession(session)
-          reconcileUserId(session.user.id)
         } else if (error && !isOnline()) {
           const offline = readOfflineSession()
+          await reconcileUserId(offline?.user.id ?? null)
+          if (ignored) return
           setSession(offline)
-          reconcileUserId(offline?.user.id ?? null)
         } else {
           clearOfflineSession()
+          await reconcileUserId(null)
+          if (ignored) return
           setSession(null)
-          reconcileUserId(null)
         }
-        setLoading(false)
-      })
-      .catch(() => {
+      } catch {
         if (ignored) return
         if (!isOnline()) {
           const offline = readOfflineSession()
-          setSession(offline)
-          reconcileUserId(offline?.user.id ?? null)
+          await reconcileUserId(offline?.user.id ?? null)
+          if (!ignored) setSession(offline)
         }
-        setLoading(false)
-      })
+      } finally {
+        if (!ignored) setLoading(false)
+      }
+    }
+    void loadInitialSession()
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (ignored) return
       if (session) {
         writeOfflineSession(session)
+        await reconcileUserId(session.user.id)
+        if (ignored) return
         setSession(session)
-        reconcileUserId(session.user.id)
         return
       }
 
@@ -137,30 +149,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       clearOfflineSession()
+      await reconcileUserId(null)
+      if (ignored) return
       setSession(null)
-      reconcileUserId(null)
     })
 
-    // Defense-in-depth for the offline-user-switch case. Supabase emits
-    // SIGNED_IN cross-tab via localStorage, which may fire while this
-    // tab is offline — reconcileUserId then leaves lastUserIdRef
-    // pointing at the previous user, waiting for an online auth event
-    // to fire the cache clear. But if the new session's token is
-    // still valid after reconnect, supabase emits no further event,
-    // and the SW cache stays primed with the prior user's rows. The
-    // 'online' edge re-asks supabase what the current session is and
-    // reconciles, which clears the cache if the identity differs.
-    function onWindowOnline() {
+    // Defense-in-depth for the offline-user-switch case. If supabase
+    // doesn't fire a fresh auth event after reconnect (e.g. the new
+    // user's token is still valid), the 'online' edge re-runs
+    // reconciliation against the current session. The primary clear
+    // already happens at the offline auth event (above) since the
+    // online guard was removed; this is belt-and-braces for cases
+    // where that event was somehow missed.
+    async function onWindowOnline() {
       if (ignored) return
-      supabase.auth.getSession()
-        .then(({ data: { session: current } }) => {
-          if (ignored) return
-          reconcileUserId(current?.user?.id ?? null)
-        })
-        .catch(() => {
-          // getSession can fail if supabase's storage adapter is in a
-          // weird state; the next real auth event will reconcile.
-        })
+      try {
+        const { data: { session: current } } = await supabase.auth.getSession()
+        if (ignored) return
+        await reconcileUserId(current?.user?.id ?? null)
+      } catch {
+        // next auth event will reconcile
+      }
     }
     window.addEventListener('online', onWindowOnline)
 

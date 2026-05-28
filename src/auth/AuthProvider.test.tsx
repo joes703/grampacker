@@ -195,52 +195,96 @@ describe('AuthProvider cross-user SW cache clear', () => {
     expect(mockState.clearSupabaseRestCache).toHaveBeenCalledTimes(1)
   })
 
-  it('clears the SW cache on the online edge after an offline user-switch (audit regression)', async () => {
+  it('clears the SW cache immediately on an offline user-switch, before setSession commits the new identity (audit regression)', async () => {
     // Audit scenario: User A signed in. Tab goes offline. Supabase
-    // cross-tab fires SIGNED_IN for User B while still offline. On
-    // reconnect, supabase may not emit a fresh auth event because
-    // B's token is still valid — so the 'online' edge listener must
-    // run reconciliation against the current session and clear the
-    // SW cache. The prior implementation advanced lastUserIdRef
-    // during the offline event, so the online edge saw prev === next
-    // and never cleared, serving A's row JSON to B from the SW cache.
+    // cross-tab fires SIGNED_IN for User B while still offline. The
+    // SW `supabase-rest` cache is URL-keyed and would otherwise
+    // serve A's cached row JSON to B — both while still offline
+    // (reads land on the SW) and on reconnect (React Query's
+    // refetchOnReconnect races StaleWhileRevalidate). The fix
+    // clears the cache during the offline event, AWAITED before
+    // setSession, so no useQuery scoped to B can mount until the
+    // cache is gone.
     mockState.getSession.mockResolvedValueOnce({
       data: { session: makeSession('user-a') },
       error: null,
     })
 
-    render(
+    const { getByTestId } = render(
       <AuthProvider>
         <Harness />
       </AuthProvider>,
     )
     await act(async () => {})
     expect(mockState.clearSupabaseRestCache).not.toHaveBeenCalled()
+    expect(getByTestId('auth').dataset.userId).toBe('user-a')
 
     const listener = mockState.onAuthStateChange.mock.calls[0]?.[0] as
-      | ((event: 'SIGNED_IN', session: Session | null) => void)
+      | ((event: 'SIGNED_IN', session: Session | null) => Promise<void> | void)
       | undefined
 
-    // User-switch while offline: fire SIGNED_IN for B with navigator.onLine=false.
+    // User-switch while offline: clear must fire NOW, not on reconnect.
     setNavigatorOnline(false)
     await act(async () => {
-      listener?.('SIGNED_IN', makeSession('user-b'))
-    })
-    expect(mockState.clearSupabaseRestCache).not.toHaveBeenCalled()
-
-    // Reconnect: supabase doesn't fire any event (B's token still
-    // valid). The 'online' edge listener triggers and reconciles via
-    // getSession, which returns B's current session.
-    mockState.getSession.mockResolvedValueOnce({
-      data: { session: makeSession('user-b') },
-      error: null,
-    })
-    setNavigatorOnline(true)
-    await act(async () => {
-      window.dispatchEvent(new Event('online'))
+      await listener?.('SIGNED_IN', makeSession('user-b'))
     })
 
     expect(mockState.clearSupabaseRestCache).toHaveBeenCalledTimes(1)
+    expect(getByTestId('auth').dataset.userId).toBe('user-b')
+  })
+
+  it('awaits the SW cache clear before committing the new identity to state', async () => {
+    // Regression for the timing requirement: setSession must NOT
+    // complete until clearSupabaseRestCache resolves. Without this
+    // gating, React Query's refetchOnReconnect could mount a
+    // useQuery scoped to the new userId and hit the SW
+    // StaleWhileRevalidate cache before the clear finished.
+    mockState.getSession.mockResolvedValueOnce({
+      data: { session: makeSession('user-a') },
+      error: null,
+    })
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    )
+    await act(async () => {})
+
+    const listener = mockState.onAuthStateChange.mock.calls[0]?.[0] as
+      | ((event: 'SIGNED_IN', session: Session | null) => Promise<void> | void)
+      | undefined
+
+    // Hold the cache clear in-flight so we can observe the gating.
+    let resolveClear!: () => void
+    mockState.clearSupabaseRestCache.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveClear = resolve
+      }),
+    )
+
+    // Fire the auth event WITHOUT awaiting inside act so the gate
+    // remains open until we resolve the clear.
+    let handlerDone = false
+    void Promise.resolve(listener?.('SIGNED_IN', makeSession('user-b')))
+      .then(() => { handlerDone = true })
+
+    // Yield microtasks: the clear is in flight, the ref/state have
+    // NOT advanced yet.
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(handlerDone).toBe(false)
+    expect(mockState.clearSupabaseRestCache).toHaveBeenCalledTimes(1)
+
+    // Release the clear. setSession runs after.
+    await act(async () => {
+      resolveClear()
+      // Yield enough microtasks for the awaited chain to complete.
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(handlerDone).toBe(true)
   })
 
   it('does NOT clear the SW cache on the online edge when identity is unchanged', async () => {
