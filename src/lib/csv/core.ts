@@ -51,80 +51,87 @@ export function downloadCsv(filename: string, content: string): void {
 }
 
 // Minimal RFC-4180-compliant CSV parser (no external dependency).
+//
+// Single-pass state machine. The prior implementation split the input
+// into lines first, then parsed each line into cells with a separate
+// state machine; the two passes both had to agree on quote semantics
+// and `splitLines` didn't recognize the `""` escape as an escape (it
+// just toggled inQuote on every `"` and relied on the toggles netting
+// out). That worked for well-formed input but kept two implementations
+// in lockstep, with no enforcement of the invariant. Folding the
+// passes into one state machine collapses the duplication: cells emit
+// on `,` and rows emit on `\n` / `\r\n` only when outside a quoted
+// field, and `""` inside a quoted field is the literal `"` per RFC.
 export function parseCsv(text: string): Record<string, string>[] {
   // Strip a leading UTF-8 BOM (U+FEFF). Excel, Numbers, and many
   // Windows tools prefix UTF-8 CSV exports with a BOM; without this
   // the first header cell becomes "﻿item name" and misses every
   // case-insensitive alias lookup downstream.
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1)
-  const [headerLine, ...dataLines] = splitLines(text)
-  if (!headerLine || dataLines.length === 0) return []
+  if (text.length === 0) return []
 
-  const headers = parseRow(headerLine).map((h) => h.trim().toLowerCase())
-  const result: Record<string, string>[] = []
-
-  for (const line of dataLines) {
-    if (!line.trim()) continue
-    const cells = parseRow(line)
-    const row: Record<string, string> = {}
-    headers.forEach((h, j) => {
-      row[h] = (cells[j] ?? '').trim()
-    })
-    result.push(row)
-  }
-
-  return result
-}
-
-function splitLines(text: string): string[] {
-  // Split on \r\n or \n, but not inside quoted fields
-  const lines: string[] = []
-  let cur = ''
+  const rows: string[][] = []
+  let row: string[] = []
+  let cell = ''
   let inQuote = false
+
   for (let i = 0; i < text.length; i++) {
     const ch = text[i]
-    if (ch === '"') {
-      inQuote = !inQuote
-      cur += ch
-    } else if (!inQuote && (ch === '\n' || (ch === '\r' && text[i + 1] === '\n'))) {
-      lines.push(cur)
-      cur = ''
-      if (ch === '\r') i++ // skip \n after \r
-    } else {
-      cur += ch
-    }
-  }
-  if (cur) lines.push(cur)
-  return lines
-}
-
-function parseRow(line: string): string[] {
-  const cells: string[] = []
-  let cur = ''
-  let inQuote = false
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]
     if (inQuote) {
-      if (ch === '"' && line[i + 1] === '"') {
-        cur += '"'
-        i++
-      } else if (ch === '"') {
-        inQuote = false
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          // RFC-4180 escape: doubled quote inside a quoted field is one literal quote.
+          cell += '"'
+          i++
+        } else {
+          // Field-closing quote.
+          inQuote = false
+        }
       } else {
-        cur += ch
+        cell += ch
       }
     } else {
       if (ch === '"') {
         inQuote = true
       } else if (ch === ',') {
-        cells.push(cur)
-        cur = ''
+        row.push(cell)
+        cell = ''
+      } else if (ch === '\n' || ch === '\r') {
+        row.push(cell)
+        rows.push(row)
+        row = []
+        cell = ''
+        if (ch === '\r' && text[i + 1] === '\n') i++
       } else {
-        cur += ch
+        cell += ch
       }
     }
   }
-  cells.push(cur)
-  return cells
+  // Flush the trailing cell/row. A file that ends without a terminating
+  // newline still yields its final row; an empty trailing line (the
+  // input ended in \n) leaves cell='' and row=[] so we skip pushing.
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell)
+    rows.push(row)
+  }
+
+  const [headerRow, ...dataRows] = rows
+  if (!headerRow || dataRows.length === 0) return []
+  const headers = headerRow.map((h) => h.trim().toLowerCase())
+
+  const result: Record<string, string>[] = []
+  for (const cells of dataRows) {
+    // Skip a row that's structurally blank (all cells trim to '').
+    // Matches the prior parser's "skip blank data lines" behavior so a
+    // trailing newline or a stray empty line between rows doesn't insert
+    // an empty record.
+    if (cells.every((c) => c.trim() === '')) continue
+    const r: Record<string, string> = {}
+    headers.forEach((h, j) => {
+      r[h] = (cells[j] ?? '').trim()
+    })
+    result.push(r)
+  }
+
+  return result
 }
