@@ -33,6 +33,10 @@
   "overrides": {
     "vite-plugin-pwa": {
       "vite": "$vite"
+    },
+    "workbox-build": {
+      "glob": "^13.0.0",
+      "source-map": "^0.7.6"
     }
   },
   "devDependencies": {
