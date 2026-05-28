@@ -82,6 +82,7 @@ describe('offline check queue (packed)', () => {
         itemId: 'item-1',
         patch: { is_packed: false },
         updated_at: new Date('2026-01-01T00:00:01.000Z').getTime(),
+        failedAttempts: 0,
       },
     ])
   })
@@ -112,6 +113,7 @@ describe('offline check queue (packed)', () => {
         itemId: 'item-1',
         patch: { is_packed: true },
         updated_at: 1,
+        failedAttempts: 0,
       },
     ]
 
@@ -129,8 +131,8 @@ describe('offline check queue (packed)', () => {
   it('returns the same items reference when pending values match existing state', () => {
     const items = [item('item-1', { is_packed: false }), item('item-2', { is_packed: true })]
     const pending: PendingCheckState[] = [
-      { userId: USER_ID, listId: LIST_ID, itemId: 'item-1', patch: { is_packed: false }, updated_at: 1 },
-      { userId: USER_ID, listId: LIST_ID, itemId: 'item-2', patch: { is_packed: true }, updated_at: 2 },
+      { userId: USER_ID, listId: LIST_ID, itemId: 'item-1', patch: { is_packed: false }, updated_at: 1, failedAttempts: 0 },
+      { userId: USER_ID, listId: LIST_ID, itemId: 'item-2', patch: { is_packed: true }, updated_at: 2, failedAttempts: 0 },
     ]
     expect(applyPendingPackedStates(items, pending)).toBe(items)
   })
@@ -243,6 +245,7 @@ describe('offline check queue (ready)', () => {
         itemId: 'item-1',
         patch: { is_ready: true },
         updated_at: 1,
+        failedAttempts: 0,
       },
     ]
     const next = applyPendingReadyStates(items, pending)
@@ -255,8 +258,8 @@ describe('offline check queue (ready)', () => {
     // not flip is_ready on its item.
     const items = [item('item-1', { is_ready: false }), item('item-2', { is_ready: false })]
     const pending: PendingCheckState[] = [
-      { userId: USER_ID, listId: LIST_ID, itemId: 'item-1', patch: { is_ready: true }, updated_at: 1 },
-      { userId: USER_ID, listId: LIST_ID, itemId: 'item-2', patch: { is_packed: true }, updated_at: 2 },
+      { userId: USER_ID, listId: LIST_ID, itemId: 'item-1', patch: { is_ready: true }, updated_at: 1, failedAttempts: 0 },
+      { userId: USER_ID, listId: LIST_ID, itemId: 'item-2', patch: { is_packed: true }, updated_at: 2, failedAttempts: 0 },
     ]
     const next = applyPendingReadyStates(items, pending)
     expect(next[0]?.is_ready).toBe(true)

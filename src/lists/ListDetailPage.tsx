@@ -255,6 +255,12 @@ function ListDetailInner({
     onSyncError: () => {
       showToast("Couldn't sync packing checkmarks. Try Retry, or we'll try again next time you reconnect.", { type: 'error' })
     },
+    onItemsDropped: (count) => {
+      const msg = count === 1
+        ? "Couldn't sync 1 packing change. Refresh to see the latest state."
+        : `Couldn't sync ${count} packing changes. Refresh to see the latest state.`
+      showToast(msg, { type: 'error' })
+    },
   })
 
   const list = lists.find((l) => l.id === listId)

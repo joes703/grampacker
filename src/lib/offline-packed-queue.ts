@@ -37,6 +37,15 @@ export type PendingCheckState = {
   itemId: string
   patch: PendingPatch
   updated_at: number
+  // Count of consecutive sync attempts that have thrown for THIS entry,
+  // since the last fresh user toggle. The sync loop bumps this on
+  // failure and drops the entry from the queue once it crosses
+  // MAX_FAILED_ATTEMPTS (defined alongside the loop). A fresh user
+  // toggle resets to 0 — that's a new intent and the doom counter
+  // shouldn't carry over from a stale prior attempt. Optional in the
+  // stored shape so pre-existing localStorage entries read with a
+  // default of 0.
+  failedAttempts: number
 }
 
 // Back-compat alias. Older call sites referenced PendingPackedState by
@@ -62,13 +71,23 @@ function isPendingPatch(value: unknown): value is PendingPatch {
 function isPendingCheckState(value: unknown): value is PendingCheckState {
   if (!value || typeof value !== 'object') return false
   const row = value as Record<string, unknown>
-  return (
-    typeof row.userId === 'string' &&
-    typeof row.listId === 'string' &&
-    typeof row.itemId === 'string' &&
-    typeof row.updated_at === 'number' &&
-    isPendingPatch(row.patch)
-  )
+  if (
+    typeof row.userId !== 'string' ||
+    typeof row.listId !== 'string' ||
+    typeof row.itemId !== 'string' ||
+    typeof row.updated_at !== 'number' ||
+    !isPendingPatch(row.patch)
+  ) return false
+  // failedAttempts is optional in stored entries written before the
+  // retry-cap mechanism shipped; non-numeric values are also tolerated
+  // (a malformed write would otherwise drop the whole entry). Caller
+  // normalizes via coerceFailedAttempts.
+  return true
+}
+
+function coerceFailedAttempts(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return 0
+  return Math.floor(value)
 }
 
 function migrateV1IfPresent(): StoredPending | null {
@@ -109,6 +128,7 @@ function migrateV1IfPresent(): StoredPending | null {
         itemId: row.itemId,
         patch: { is_packed: row.is_packed },
         updated_at: row.updated_at,
+        failedAttempts: 0,
       }
     }
   }
@@ -146,7 +166,10 @@ function readStored(): StoredPending {
         pruned = true
         continue
       }
-      out[key] = value
+      // Normalize so the rest of the codebase never sees a missing or
+      // bad failedAttempts. Pre-existing v2 entries written before the
+      // retry-cap shipped land here.
+      out[key] = { ...value, failedAttempts: coerceFailedAttempts((value as Record<string, unknown>).failedAttempts) }
     }
     if (pruned) writeStored(out)
     return out
@@ -193,12 +216,15 @@ export function queuePendingCheck(
   // Merge with any existing entry so a Ready toggle followed by a Packed
   // toggle (offline) ends up as one entry with both fields. The newer
   // updated_at wins so cross-tab sort order stays monotonic.
+  // A fresh user toggle is a NEW intent — reset failedAttempts to 0 so
+  // a previously-doomed entry gets the full retry budget on the new try.
   const merged: PendingCheckState = {
     userId,
     listId,
     itemId,
     patch: { ...existing?.patch, ...patch },
     updated_at: Date.now(),
+    failedAttempts: 0,
   }
   entries[key] = merged
   writeStored(entries)
@@ -235,6 +261,27 @@ export function removePendingChecks(userId: string, listId: string, itemIds: str
 
 // Back-compat alias.
 export const removePendingPackedStates = removePendingChecks
+
+// Bump the failed-attempt counter for a single pending entry and return
+// the new count. Returning the count (rather than re-reading from
+// storage in the caller) avoids a read+write race when multiple sync
+// runs interleave. updated_at is intentionally NOT bumped — the entry
+// stays at its original position so the queue doesn't drift into
+// round-robin behavior when one entry keeps failing.
+export function incrementFailedAttempts(
+  userId: string,
+  listId: string,
+  itemId: string,
+): number {
+  const entries = readStored()
+  const key = storageKey(userId, listId, itemId)
+  const existing = entries[key]
+  if (!existing) return 0
+  const next = existing.failedAttempts + 1
+  entries[key] = { ...existing, failedAttempts: next }
+  writeStored(entries)
+  return next
+}
 
 // Drop a single field from every pending entry for this user/list. Used by
 // Reset Packed / Reset Ready so a reset of one field doesn't clobber the
