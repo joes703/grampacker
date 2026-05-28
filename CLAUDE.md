@@ -84,6 +84,7 @@
 ## Deferred upgrades
 
 - vitest 4 → 5: blocked on 5.0.0 GA. As of 2026-05-28, `npm view vitest dist-tags` shows `latest: 4.1.7`, `beta: 5.0.0-beta.3`. Not putting the test runner on a beta. Revisit when `latest` advances to 5.x (or when a stable `rc` ships and you trust the RC line).
+- dnd-kit classic (`@dnd-kit/core` 6 / `@dnd-kit/sortable` 10 / `@dnd-kit/utilities` 3) → `@dnd-kit/react`: blocked on `@dnd-kit/react` reaching 1.0 (or a stable RC). As of 2026-05-28, `npm view @dnd-kit/react dist-tags` shows `latest: 0.4.0`, `beta: 0.5.0-beta-20260518131345`. Pre-1.0 with active churn — the maintainer hasn't frozen the API. The classic line is frozen but stable, no security issues, clean under `npm ci`. Migration is not a drop-in swap (new package names, new hook APIs); usage spans 7 files anchored by `src/lib/use-reorderable.ts`, so we want one migration pass against a stable target, not two against shifting 0.x minors. Revisit when `latest` advances to 1.x.
 
 ## Disabled lint coverage
 
