@@ -125,6 +125,15 @@ export function useOfflinePackedSync({
   // when the underlying state machine is otherwise unchanged.
   const [packingSyncBlocked, setPackingSyncBlocked] = useState(false)
   const packingSyncBlockedRef = useRef(false)
+  // Under-cap leftover gate. After a sync run that made progress but
+  // left at least one entry with failedAttempts < MAX_FAILED_ATTEMPTS,
+  // the queue still changes via setPendingCheckStates (the synced
+  // entries are gone) — which would otherwise re-trigger the effect
+  // and immediately auto-retry the failing leftovers in the same
+  // reconnect. Bumping this ref bails the effect's guard so leftovers
+  // wait for an explicit trigger (Retry click, fresh user toggle, or
+  // an offline->online reconnect). Cleared by every such trigger.
+  const packingSyncAutoRetryPausedRef = useRef(false)
   const [packingSyncRetryNonce, setPackingSyncRetryNonce] = useState(0)
   const packingSyncInFlight = useRef(false)
   // See the file header for the reset/sync race contract.
@@ -147,18 +156,30 @@ export function useOfflinePackedSync({
   const markSyncBlocked = useCallback((blocked: boolean) => {
     packingSyncBlockedRef.current = blocked
     setPackingSyncBlocked(blocked)
+    // Any caller clearing the block also implicitly resumes auto-retry.
+    // Queue/retry/reset paths all funnel through this, so the pause ref
+    // tracks `blocked` going false uniformly.
+    if (!blocked) packingSyncAutoRetryPausedRef.current = false
   }, [])
 
   // Offline transition clears any prior sync-blocked state so the next
-  // reconnect (or Retry click) attempts a fresh sync.
+  // reconnect (or Retry click) attempts a fresh sync. The online-edge
+  // also clears the under-cap pause: a reconnect is an explicit trigger
+  // for leftovers from a prior partial run to re-attempt.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- offline transition is the natural trigger for clearing the blocker; alternative idioms (online-edge detection via a ref, or a route-level event handler) buy nothing here
     if (!online) markSyncBlocked(false)
+    else packingSyncAutoRetryPausedRef.current = false
   }, [online, markSyncBlocked])
 
   useEffect(() => {
     if (!online) return
-    if (packingSyncBlockedRef.current || pendingCheckStates.length === 0 || packingSyncInFlight.current) return
+    if (
+      packingSyncBlockedRef.current ||
+      packingSyncAutoRetryPausedRef.current ||
+      pendingCheckStates.length === 0 ||
+      packingSyncInFlight.current
+    ) return
     let cancelled = false
 
     async function syncPendingChecks() {
@@ -199,13 +220,21 @@ export function useOfflinePackedSync({
         }
         if (aborted()) return
         removePendingChecks(userId, listId, [...syncedIds, ...droppedIds])
-        setPendingCheckStates(readPendingCheckStates(userId, listId))
+        const remaining = readPendingCheckStates(userId, listId)
+        setPendingCheckStates(remaining)
         const madeProgress = syncedIds.length > 0 || droppedIds.length > 0
         if (droppedIds.length > 0) {
           onItemsDroppedRef.current?.(droppedIds.length)
         }
         if (madeProgress) {
           onSyncCompleteRef.current?.()
+          // Under-cap leftovers must NOT auto-retry on the
+          // setPendingCheckStates-driven re-fire of this effect. They
+          // wait for the next explicit trigger (Retry click, fresh
+          // toggle, or reconnect edge). Without this gate, one
+          // reconnect can burn multiple failedAttempts in a row for an
+          // entry that just transiently failed alongside a successor.
+          if (remaining.length > 0) packingSyncAutoRetryPausedRef.current = true
         } else if (attempted > 0) {
           // Every attempted entry is still in the queue waiting for the
           // next reconnect. Surface the global Retry banner so the user
