@@ -302,6 +302,117 @@ describe('useOfflinePackedSync', () => {
     expect(result.current.pendingReadyStates.map((p) => p.itemId)).toEqual(['item-2'])
   })
 
+  it('a failing entry at the head of the queue does NOT block successors (head-of-line fix)', async () => {
+    // Per-entry try/catch: a failing head entry must not prevent the
+    // loop from attempting (and syncing) entries behind it in the same
+    // run. The pre-fix loop bailed out of the for-of on the first
+    // throw, marking the whole sync blocked and leaving every
+    // subsequent toggle to wait until the head entry succeeded (or the
+    // user manually retried, which retried the same head and failed
+    // the same way).
+    const onItemSynced = vi.fn()
+    const updateListItem = vi.fn(async (itemId: string) => {
+      if (itemId === 'item-1') throw new Error('transient')
+    })
+    const { result, rerender } = renderHook(
+      ({ online }: { online: boolean }) =>
+        useOfflinePackedSync(defaultOptions({ online, updateListItem, onItemSynced })),
+      { initialProps: { online: false } },
+    )
+
+    act(() => {
+      result.current.queueOfflinePackedState('item-1', true)
+      result.current.queueOfflinePackedState('item-2', true)
+    })
+    rerender({ online: true })
+
+    // item-2 syncs on the very first run despite item-1 failing.
+    await waitFor(() => expect(onItemSynced).toHaveBeenCalledWith('item-2', { is_packed: true }))
+    expect(onItemSynced).not.toHaveBeenCalledWith('item-1', { is_packed: true })
+    // item-2 is gone from the queue; item-1 remains with a non-zero
+    // failedAttempts counter. (The exact counter value depends on how
+    // many auto-retry cycles fired before the loop marked blocked;
+    // asserting > 0 is enough for the head-of-line invariant.)
+    await waitFor(() => expect(result.current.pendingPackedStates.map((p) => p.itemId)).toEqual(['item-1']))
+    expect((result.current.pendingPackedStates[0]?.failedAttempts ?? 0) >= 1).toBe(true)
+  })
+
+  it('drops a permanently-failing entry after MAX_FAILED_ATTEMPTS and fires onItemsDropped', async () => {
+    // A doomed entry (e.g. its gear row was deleted from another
+    // device) must not trap the queue. After 3 attempts the loop drops
+    // it and surfaces onItemsDropped(1) so the caller can warn the
+    // user; the queue empties and subsequent toggles sync normally.
+    const onItemsDropped = vi.fn()
+    const onSyncComplete = vi.fn()
+    const updateListItem = vi.fn(async () => {
+      throw new Error('doomed')
+    })
+    const { result, rerender } = renderHook(
+      ({ online }: { online: boolean }) =>
+        useOfflinePackedSync(defaultOptions({ online, updateListItem, onItemsDropped, onSyncComplete })),
+      { initialProps: { online: false } },
+    )
+
+    act(() => {
+      result.current.queueOfflinePackedState('item-1', true)
+    })
+    rerender({ online: true })
+
+    // Attempt 1: blocked banner because nothing got through and it's
+    // still under the cap.
+    await waitFor(() => expect(result.current.packingSyncBlocked).toBe(true))
+    expect(result.current.pendingPackedStates[0]?.failedAttempts).toBe(1)
+
+    // Attempt 2 via Retry: still under the cap.
+    act(() => {
+      result.current.retrySync()
+    })
+    // Wait for the post-loop setState to land — call count alone fires
+    // before the catch block + setPendingCheckStates runs.
+    await waitFor(() => expect(result.current.pendingPackedStates[0]?.failedAttempts).toBe(2))
+    expect(updateListItem).toHaveBeenCalledTimes(2)
+    expect(onItemsDropped).not.toHaveBeenCalled()
+
+    // Attempt 3 via Retry: crosses MAX_FAILED_ATTEMPTS, entry drops.
+    act(() => {
+      result.current.retrySync()
+    })
+    await waitFor(() => expect(onItemsDropped).toHaveBeenCalledWith(1))
+    expect(result.current.pendingPackedStates).toEqual([])
+    // Progress was made (one entry dropped), so the global Retry banner is cleared.
+    expect(result.current.packingSyncBlocked).toBe(false)
+    expect(onSyncComplete).toHaveBeenCalledTimes(1)
+  })
+
+  it('resets failedAttempts to 0 when the user queues a fresh toggle for the same item', async () => {
+    // A fresh user toggle is a new intent — the doom counter from a
+    // prior failed attempt must NOT carry over and shorten the new
+    // entry's retry budget.
+    const onItemsDropped = vi.fn()
+    const updateListItem = vi.fn(async () => {
+      throw new Error('boom')
+    })
+    const { result, rerender } = renderHook(
+      ({ online }: { online: boolean }) =>
+        useOfflinePackedSync(defaultOptions({ online, updateListItem, onItemsDropped })),
+      { initialProps: { online: false } },
+    )
+
+    act(() => {
+      result.current.queueOfflinePackedState('item-1', true)
+    })
+    rerender({ online: true })
+    await waitFor(() => expect(result.current.pendingPackedStates[0]?.failedAttempts).toBe(1))
+
+    // User toggles the same item again offline (or just to a new value).
+    // failedAttempts must reset.
+    act(() => {
+      result.current.queueOfflinePackedState('item-1', false)
+    })
+    await waitFor(() => expect(result.current.pendingPackedStates[0]?.failedAttempts).toBe(0))
+    expect(onItemsDropped).not.toHaveBeenCalled()
+  })
+
   it('flushes ready + packed for the same item in one PATCH', async () => {
     const onItemSynced = vi.fn()
     const updateListItem = vi.fn(async () => {})

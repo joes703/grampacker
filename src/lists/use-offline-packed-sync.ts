@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   dropFieldFromPendingChecks,
+  incrementFailedAttempts,
   queuePendingPackedState,
   queuePendingReadyState,
   readPendingCheckStates,
@@ -9,6 +10,14 @@ import {
   type PendingCheckState,
   type PendingPatch,
 } from '../lib/offline-packed-queue'
+
+// Drop an entry from the queue once it has thrown this many times in a
+// row. Bounded retry stops one permanently-doomed entry (e.g. its gear
+// row was deleted from another device) from blocking every entry behind
+// it FIFO. 3 is balanced for this app: tolerates a transient
+// reconnect/server hiccup or two, but doesn't trap the queue for long
+// when an entry is genuinely unsync-able.
+const MAX_FAILED_ATTEMPTS = 3
 
 // State machine for the pack-mode offline check queue (both is_packed and
 // is_ready). One queue, one sync loop, one set of generation-based
@@ -52,11 +61,24 @@ export type OfflinePackedSyncOptions = {
   // its TanStack cache here for immediate UI feedback during a partial-
   // failure scenario; subsequent invalidations refresh authoritative state.
   onItemSynced?: (itemId: string, patch: PendingPatch) => void
-  // Fires after the whole queue is drained (success path). Caller
-  // typically invalidates the list-items query.
+  // Fires after a sync run that made forward progress (at least one
+  // entry synced or one entry dropped after hitting the retry cap).
+  // Caller typically invalidates the list-items query. The queue may
+  // still contain entries that are mid-retry; those re-attempt on the
+  // next reconnect or Retry.
   onSyncComplete?: () => void
-  // Fires after a sync attempt errors. Caller typically surfaces a toast.
+  // Fires when every attempted entry in this run threw without any
+  // forward progress — the canonical "global outage" signal. Drives
+  // the Retry banner. Caller typically surfaces a "couldn't sync,
+  // retry" toast.
   onSyncError?: (error: unknown) => void
+  // Fires after a sync run when one or more entries were dropped from
+  // the queue because they crossed MAX_FAILED_ATTEMPTS. Count is the
+  // number dropped in this run. Caller typically surfaces a low-drama
+  // toast ("Couldn't sync N packing changes. Refresh to see the
+  // latest state.") and recommends a refresh — the queue won't retry
+  // those entries again so the cache may be stale until next refetch.
+  onItemsDropped?: (count: number) => void
 }
 
 export type OfflinePackedSyncResult = {
@@ -86,6 +108,7 @@ export function useOfflinePackedSync({
   onItemSynced,
   onSyncComplete,
   onSyncError,
+  onItemsDropped,
 }: OfflinePackedSyncOptions): OfflinePackedSyncResult {
   const [pendingCheckStates, setPendingCheckStates] = useState<PendingCheckState[]>(() =>
     readPendingCheckStates(userId, listId),
@@ -113,10 +136,12 @@ export function useOfflinePackedSync({
   const onItemSyncedRef = useRef(onItemSynced)
   const onSyncCompleteRef = useRef(onSyncComplete)
   const onSyncErrorRef = useRef(onSyncError)
+  const onItemsDroppedRef = useRef(onItemsDropped)
   const updateListItemRef = useRef(updateListItem)
   useEffect(() => { onItemSyncedRef.current = onItemSynced })
   useEffect(() => { onSyncCompleteRef.current = onSyncComplete })
   useEffect(() => { onSyncErrorRef.current = onSyncError })
+  useEffect(() => { onItemsDroppedRef.current = onItemsDropped })
   useEffect(() => { updateListItemRef.current = updateListItem })
 
   const markSyncBlocked = useCallback((blocked: boolean) => {
@@ -141,30 +166,52 @@ export function useOfflinePackedSync({
       const generation = syncGeneration.current
       setPackingSyncing(true)
       const syncedIds: string[] = []
+      const droppedIds: string[] = []
+      let attempted = 0
+      let lastErr: unknown = null
       function aborted() {
         return cancelled || syncGeneration.current !== generation
       }
       try {
+        // Per-entry try/catch: a single failing entry must not block
+        // entries behind it. Successes commit and dropped entries get
+        // removed; entries still under the retry cap stay in the queue
+        // for the next reconnect or Retry.
         for (const entry of pendingCheckStates) {
           if (aborted()) return
-          // Forward the merged patch verbatim — one network call covers
-          // both fields if both were toggled offline for this item.
-          await updateListItemRef.current(entry.itemId, entry.patch)
-          if (aborted()) return
-          onItemSyncedRef.current?.(entry.itemId, entry.patch)
-          syncedIds.push(entry.itemId)
+          attempted++
+          try {
+            // Forward the merged patch verbatim — one network call
+            // covers both fields if both were toggled offline for this
+            // item.
+            await updateListItemRef.current(entry.itemId, entry.patch)
+            if (aborted()) return
+            onItemSyncedRef.current?.(entry.itemId, entry.patch)
+            syncedIds.push(entry.itemId)
+          } catch (err) {
+            lastErr = err
+            // incrementFailedAttempts returns the new count so we don't
+            // re-read storage and race a concurrent fresh-toggle reset.
+            const count = incrementFailedAttempts(userId, listId, entry.itemId)
+            if (count >= MAX_FAILED_ATTEMPTS) droppedIds.push(entry.itemId)
+            // else: leave in queue for the next attempt
+          }
         }
-        removePendingChecks(userId, listId, syncedIds)
-        if (!aborted()) {
-          setPendingCheckStates(readPendingCheckStates(userId, listId))
+        if (aborted()) return
+        removePendingChecks(userId, listId, [...syncedIds, ...droppedIds])
+        setPendingCheckStates(readPendingCheckStates(userId, listId))
+        const madeProgress = syncedIds.length > 0 || droppedIds.length > 0
+        if (droppedIds.length > 0) {
+          onItemsDroppedRef.current?.(droppedIds.length)
+        }
+        if (madeProgress) {
           onSyncCompleteRef.current?.()
-        }
-      } catch (err) {
-        removePendingChecks(userId, listId, syncedIds)
-        if (!aborted()) {
-          setPendingCheckStates(readPendingCheckStates(userId, listId))
+        } else if (attempted > 0) {
+          // Every attempted entry is still in the queue waiting for the
+          // next reconnect. Surface the global Retry banner so the user
+          // can force another pass without queueing a new toggle.
           markSyncBlocked(true)
-          onSyncErrorRef.current?.(err)
+          onSyncErrorRef.current?.(lastErr)
         }
       } finally {
         // Unconditional clear: leaving packingSyncing=true after the
