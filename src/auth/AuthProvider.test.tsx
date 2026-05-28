@@ -8,6 +8,7 @@ const mockState = vi.hoisted(() => ({
   getSession: vi.fn(),
   onAuthStateChange: vi.fn(),
   unsubscribe: vi.fn(),
+  clearSupabaseRestCache: vi.fn(),
 }))
 
 vi.mock('../lib/supabase', () => ({
@@ -17,6 +18,10 @@ vi.mock('../lib/supabase', () => ({
       onAuthStateChange: mockState.onAuthStateChange,
     },
   },
+}))
+
+vi.mock('../lib/sw-cache', () => ({
+  clearSupabaseRestCache: mockState.clearSupabaseRestCache,
 }))
 
 const OFFLINE_SESSION_KEY = 'grampacker:last-auth-session'
@@ -61,6 +66,8 @@ beforeEach(() => {
   mockState.getSession.mockReset()
   mockState.onAuthStateChange.mockReset()
   mockState.unsubscribe.mockReset()
+  mockState.clearSupabaseRestCache.mockReset()
+  mockState.clearSupabaseRestCache.mockResolvedValue(undefined)
   mockState.onAuthStateChange.mockReturnValue({
     data: { subscription: { unsubscribe: mockState.unsubscribe } },
   })
@@ -160,5 +167,104 @@ describe('AuthProvider offline session fallback', () => {
     expect(getByTestId('auth').dataset.loading).toBe('no')
     expect(getByTestId('auth').dataset.userId).toBe('')
     expect(localStorage.getItem(OFFLINE_SESSION_KEY)).toBeNull()
+  })
+})
+
+describe('AuthProvider cross-user SW cache clear', () => {
+  it('clears the SW cache on an online user-switch (sign-in as a different user in the same tab)', async () => {
+    mockState.getSession.mockResolvedValue({ data: { session: makeSession('user-a') }, error: null })
+
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    )
+    await act(async () => {})
+    // Mount-time seeding does NOT clear (the cache content belongs to whoever we booted as).
+    expect(mockState.clearSupabaseRestCache).not.toHaveBeenCalled()
+
+    const listener = mockState.onAuthStateChange.mock.calls[0]?.[0] as
+      | ((event: 'SIGNED_IN', session: Session | null) => void)
+      | undefined
+    expect(listener).toBeDefined()
+
+    await act(async () => {
+      listener?.('SIGNED_IN', makeSession('user-b'))
+    })
+
+    expect(mockState.clearSupabaseRestCache).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears the SW cache on the online edge after an offline user-switch (audit regression)', async () => {
+    // Audit scenario: User A signed in. Tab goes offline. Supabase
+    // cross-tab fires SIGNED_IN for User B while still offline. On
+    // reconnect, supabase may not emit a fresh auth event because
+    // B's token is still valid — so the 'online' edge listener must
+    // run reconciliation against the current session and clear the
+    // SW cache. The prior implementation advanced lastUserIdRef
+    // during the offline event, so the online edge saw prev === next
+    // and never cleared, serving A's row JSON to B from the SW cache.
+    mockState.getSession.mockResolvedValueOnce({
+      data: { session: makeSession('user-a') },
+      error: null,
+    })
+
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    )
+    await act(async () => {})
+    expect(mockState.clearSupabaseRestCache).not.toHaveBeenCalled()
+
+    const listener = mockState.onAuthStateChange.mock.calls[0]?.[0] as
+      | ((event: 'SIGNED_IN', session: Session | null) => void)
+      | undefined
+
+    // User-switch while offline: fire SIGNED_IN for B with navigator.onLine=false.
+    setNavigatorOnline(false)
+    await act(async () => {
+      listener?.('SIGNED_IN', makeSession('user-b'))
+    })
+    expect(mockState.clearSupabaseRestCache).not.toHaveBeenCalled()
+
+    // Reconnect: supabase doesn't fire any event (B's token still
+    // valid). The 'online' edge listener triggers and reconciles via
+    // getSession, which returns B's current session.
+    mockState.getSession.mockResolvedValueOnce({
+      data: { session: makeSession('user-b') },
+      error: null,
+    })
+    setNavigatorOnline(true)
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+    })
+
+    expect(mockState.clearSupabaseRestCache).toHaveBeenCalledTimes(1)
+  })
+
+  it('does NOT clear the SW cache on the online edge when identity is unchanged', async () => {
+    mockState.getSession.mockResolvedValueOnce({
+      data: { session: makeSession('user-a') },
+      error: null,
+    })
+
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    )
+    await act(async () => {})
+
+    // Reconnect with the same user — no clear.
+    mockState.getSession.mockResolvedValueOnce({
+      data: { session: makeSession('user-a') },
+      error: null,
+    })
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+    })
+
+    expect(mockState.clearSupabaseRestCache).not.toHaveBeenCalled()
   })
 })
