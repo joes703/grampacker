@@ -22,8 +22,13 @@ function escapeCell(v: string | number | boolean | null | undefined): string {
   if (s.length > 0 && /^[=+\-@\t\r]/.test(s)) {
     s = `'${s}`
   }
-  // Wrap in quotes if the value contains a comma, quote, or newline.
-  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+  // Wrap in quotes if the value contains a comma, quote, or any
+  // newline character. Bare \r must be quoted alongside \n now that
+  // parseCsv's single-pass state machine treats a lone \r as a row
+  // break (it consumes \r\n as one terminator, but a standalone \r is
+  // still a break). Without this, toCsv({ note: 'a\rb' }) emits an
+  // unquoted CR that parseCsv reads as a second row.
+  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
     return `"${s.replaceAll('"', '""')}"`
   }
   return s
