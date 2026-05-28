@@ -85,6 +85,6 @@
 
 - vitest 4 → 5: blocked on 5.0.0 GA. As of 2026-05-28, `npm view vitest dist-tags` shows `latest: 4.1.7`, `beta: 5.0.0-beta.3`. Not putting the test runner on a beta. Revisit when `latest` advances to 5.x (or when a stable `rc` ships and you trust the RC line).
 
-## Known peer-dependency mismatches
+## Disabled lint coverage
 
-- `eslint-plugin-jsx-a11y@6.10.2` declares peer `eslint: ^3 || ^4 || ^5 || ^6 || ^7 || ^8 || ^9` but we run eslint 10. Runtime works — `npm run lint` was verified clean on the 9 → 10 bump. `npm install` will warn `ERESOLVE overriding peer dependency`; that's expected, do not pin eslint back to 9 to silence it. Tracked upstream: open PRs [#1081](https://github.com/jsx-eslint/eslint-plugin-jsx-a11y/pull/1081) and [#1079](https://github.com/jsx-eslint/eslint-plugin-jsx-a11y/pull/1079). Once a release lands with `^10` in the peer range, the warning will clear on next install.
+- `eslint-plugin-jsx-a11y` is intentionally disabled while the project runs ESLint 10. Version 6.10.2 only declares support through ESLint 9 and breaks `npm ci` under npm's peer-dependency resolver. Revisit once a release lands with ESLint 10 in its peer range; until then, do not re-add the plugin or `jsx-a11y` flat config.
