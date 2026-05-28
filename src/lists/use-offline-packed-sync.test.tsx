@@ -302,14 +302,14 @@ describe('useOfflinePackedSync', () => {
     expect(result.current.pendingReadyStates.map((p) => p.itemId)).toEqual(['item-2'])
   })
 
-  it('a failing entry at the head of the queue does NOT block successors (head-of-line fix)', async () => {
-    // Per-entry try/catch: a failing head entry must not prevent the
-    // loop from attempting (and syncing) entries behind it in the same
-    // run. The pre-fix loop bailed out of the for-of on the first
-    // throw, marking the whole sync blocked and leaving every
-    // subsequent toggle to wait until the head entry succeeded (or the
-    // user manually retried, which retried the same head and failed
-    // the same way).
+  it('a failing entry at the head of the queue does NOT block successors AND does not auto-retry within the same reconnect (head-of-line fix)', async () => {
+    // Two invariants in one regression: (1) a failing head entry must
+    // not prevent the loop from attempting (and syncing) entries
+    // behind it in the same run; (2) the under-cap leftover must NOT
+    // auto-retry on the setPendingCheckStates-driven effect re-fire
+    // — one reconnect consumes exactly one attempt per under-cap
+    // entry, so a transiently-failing entry doesn't burn its retry
+    // budget in a single network hiccup.
     const onItemSynced = vi.fn()
     const updateListItem = vi.fn(async (itemId: string) => {
       if (itemId === 'item-1') throw new Error('transient')
@@ -329,12 +329,15 @@ describe('useOfflinePackedSync', () => {
     // item-2 syncs on the very first run despite item-1 failing.
     await waitFor(() => expect(onItemSynced).toHaveBeenCalledWith('item-2', { is_packed: true }))
     expect(onItemSynced).not.toHaveBeenCalledWith('item-1', { is_packed: true })
-    // item-2 is gone from the queue; item-1 remains with a non-zero
-    // failedAttempts counter. (The exact counter value depends on how
-    // many auto-retry cycles fired before the loop marked blocked;
-    // asserting > 0 is enough for the head-of-line invariant.)
+    // item-2 is gone from the queue; item-1 remains with failedAttempts
+    // EXACTLY 1 — no immediate auto-retry on the partial-progress
+    // effect re-fire.
     await waitFor(() => expect(result.current.pendingPackedStates.map((p) => p.itemId)).toEqual(['item-1']))
-    expect((result.current.pendingPackedStates[0]?.failedAttempts ?? 0) >= 1).toBe(true)
+    expect(result.current.pendingPackedStates[0]?.failedAttempts).toBe(1)
+    // Exactly two updateListItem calls: one for each entry, no retries.
+    expect(updateListItem).toHaveBeenCalledTimes(2)
+    // Partial progress: no global Retry banner.
+    expect(result.current.packingSyncBlocked).toBe(false)
   })
 
   it('drops a permanently-failing entry after MAX_FAILED_ATTEMPTS and fires onItemsDropped', async () => {
