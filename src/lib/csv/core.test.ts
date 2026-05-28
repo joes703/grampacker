@@ -89,4 +89,13 @@ describe('parseCsv', () => {
     const csv = toCsv([original])
     expect(parseCsv(csv)).toEqual([original])
   })
+
+  it('round-trips a value containing a bare carriage return', () => {
+    // parseCsv treats a lone \r as a row break; toCsv must quote any
+    // cell containing one so the round-trip doesn't split the value
+    // across two rows.
+    const original = { name: 'Note', body: 'before\rafter' }
+    const csv = toCsv([original])
+    expect(parseCsv(csv)).toEqual([original])
+  })
 })
