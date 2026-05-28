@@ -81,9 +81,8 @@ export default function PackingProgress({
         {/* Each label-and-switch pair sits inside a flex cluster so the
             label reads as adjacent to its control. ToggleSwitch renders
             a <button> (not an <input>), so wrapping in a <label> would
-            trip jsx-a11y/label-has-associated-control without giving the
-            user any extra a11y benefit — the switch already carries its
-            own ariaLabel. */}
+            be semantically wrong. The switch already carries its own
+            ariaLabel. */}
         <div className="flex items-center gap-2">
           <span className={PANEL_TOGGLE_LABEL}>Show unpacked only</span>
           <ToggleSwitch

@@ -1178,13 +1178,14 @@ function ListDetailInner({
 
       {/* Mobile gear-library drawer — mirrors the desktop left aside.
           Slides in from the LEFT, dismissed by overlay tap, the close
-          button, or a left-drag. Stays open across multiple add/remove
+          button, or Escape. Stays open across multiple add/remove
           actions so the user can build up a list quickly.
 
           JS-gated by isBelowLg so desktop genuinely doesn't mount the
           drawer; React.lazy on the wrapper means desktop also never
-          fetches the vaul chunk. Combined with the H5 Phase-3 carry-over,
-          this is what actually moves vaul out of the main bundle. */}
+          fetches the Radix Dialog chunk. Combined with the H5 Phase-3
+          carry-over, this is what actually moves the drawer code out
+          of the main bundle. */}
       {isBelowLg && (
         <div className="print:hidden">
           <Suspense fallback={null}>
