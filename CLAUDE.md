@@ -72,7 +72,7 @@
 ## Supply chain
 
 - Use `npm ci` for deploy/CI installs, not `npm install`. `npm ci` installs exactly from `package-lock.json` and fails closed on drift; `npm install` can mutate the lockfile mid-deploy.
-- Cloudflare Pages' install command lives in the dashboard, not in any repo file. The repo cannot enforce it. Manually confirm in Cloudflare → Pages → grampacker → Settings → Builds & deployments that "Install command" is `npm ci`.
+- Cloudflare Pages Build System v3 does not expose an "Install command" UI field; it auto-detects from the lockfile. With `package-lock.json` present the deploy runs `npm clean-install` (the long form of `npm ci`). Verified in the build log on 2026-05-28: `Installing project dependencies: npm clean-install --progress=false`. If the lockfile is ever deleted or renamed, the auto-detection falls back to `npm install`, which would silently allow drift; keep `package-lock.json` checked in.
 - Do not use `git add -A` or `git add .`. Stage exact files by path. See `feedback_explicit_git_add` memory for the incident history.
 - Do not add `ignore-scripts=true` to `.npmrc` without testing a clean install + build first and explicitly accepting the tradeoff. `fsevents` (Vite's macOS file-watcher) currently uses an install script; flipping the flag silently degrades dev file-watching on macOS.
 - If GitHub Actions workflows are added later:
