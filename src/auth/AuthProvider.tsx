@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { clearSupabaseRestCache } from '../lib/sw-cache'
@@ -54,27 +55,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // (the cache content belongs to whichever user we're booting as). See
   // src/lib/sw-cache.ts and vite.config.ts for the surrounding model.
   const lastUserIdRef = useRef<string | null | undefined>(undefined)
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     let ignored = false
 
-    // Reconcile the active user id and, on identity change, wipe the
-    // URL-keyed SW REST cache BEFORE callers commit the new session
-    // to React state. The cache clear runs even when offline: the
-    // workbox `supabase-rest` runtime cache holds row JSON
-    // KEY'd BY URL (auth lives in the Authorization header, not the
-    // URL), so a different user signing in inside the same tab
-    // would otherwise be served the previous user's cached data —
-    // either while offline (reads land on the SW) or on reconnect
-    // (React Query's refetchOnReconnect races StaleWhileRevalidate
-    // and the cached response wins). Awaiting the clear here gates
-    // every downstream `setSession` so no useQuery scoped to the
-    // new user's id can mount until the cache is gone. caches.delete
-    // is a local operation; the latency cost is a few ms.
+    // Reconcile the active user id and, on identity change (including
+    // sign-out, where nextUserId is null), wipe BOTH caches that can
+    // hold the previous user's rows BEFORE callers commit the new
+    // session to React state:
+    //
+    //   1. The URL-keyed SW REST cache. The workbox `supabase-rest`
+    //      runtime cache holds row JSON KEY'd BY URL (auth lives in
+    //      the Authorization header, not the URL), so a different user
+    //      signing in inside the same tab would otherwise be served
+    //      the previous user's cached data — either while offline
+    //      (reads land on the SW) or on reconnect (React Query's
+    //      refetchOnReconnect races StaleWhileRevalidate and the
+    //      cached response wins). This clear runs even when offline.
+    //
+    //   2. The in-memory React Query cache. Most query keys
+    //      (['gear-items'], ['lists'], ['list-items', id], ...) are
+    //      NOT user-scoped, and the global 30s staleTime means a query
+    //      that re-mounts right after an account switch would be served
+    //      the previous user's data from memory without a refetch. The
+    //      SW clear above does not touch this layer. queryClient.clear()
+    //      drops every cached query and observer; the next mount starts
+    //      from a cold cache and fetches under the new identity.
+    //
+    // Both clears are awaited here so they gate every downstream
+    // `setSession`: no useQuery can read either cache under the new
+    // identity until both are gone. caches.delete and clear() are local
+    // operations; the latency cost is a few ms.
     //
     // First call after mount (prev === undefined) just seeds the ref;
-    // the cache content belongs to whoever we're booting as. Same-
-    // identity calls are no-ops.
+    // the cache content belongs to whoever we're booting as, so we do
+    // NOT clear (that would throw away the boot user's warm cache).
+    // Same-identity calls are no-ops.
     async function reconcileUserId(nextUserId: string | null) {
       const prev = lastUserIdRef.current
       if (prev === undefined) {
@@ -90,6 +107,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // event afterwards doesn't re-fire the clear in an infinite
         // loop.
       }
+      // Drop the in-memory React Query cache too. Synchronous, but kept
+      // after the awaited SW clear so the ordering reads as "both caches
+      // gone, then commit the session".
+      queryClient.clear()
       lastUserIdRef.current = nextUserId
     }
 
@@ -178,7 +199,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       subscription.unsubscribe()
       window.removeEventListener('online', onWindowOnline)
     }
-  }, [])
+    // queryClient is a stable instance from QueryClientProvider; listed
+    // to satisfy exhaustive-deps without causing the effect to re-run.
+  }, [queryClient])
 
   return <AuthContext.Provider value={{ session, loading }}>{children}</AuthContext.Provider>
 }
