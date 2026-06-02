@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { useQueryClient } from '@tanstack/react-query'
-import { Download, KeyRound, Scale, Trash2 } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Download, Fingerprint, KeyRound, Scale, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../lib/supabase'
+import { isPasskeySupported, passkeyErrorMessage } from '../lib/passkey'
 import {
   queryKeys,
   fetchCategories,
@@ -30,6 +31,14 @@ export default function SettingsPage() {
 
       <Section title="Account" subtitle={email} icon={<KeyRound size={16} />}>
         <ChangePasswordForm />
+      </Section>
+
+      <Section
+        title="Passkeys"
+        subtitle="Sign in with biometrics or a security key instead of a password"
+        icon={<Fingerprint size={16} />}
+      >
+        <PasskeysSection />
       </Section>
 
       {/* Weight units — canonical control for the global display
@@ -192,6 +201,222 @@ function ChangePasswordForm() {
         {busy ? 'Updating…' : 'Change password'}
       </PrimaryButton>
     </form>
+  )
+}
+
+// ── Passkeys ────────────────────────────────────────────────────────────────
+
+// Element type of the passkey list, derived from the SDK return type so it
+// can't drift from auth-js (avoids importing a possibly-unexported name).
+type Passkey = NonNullable<
+  Awaited<ReturnType<typeof supabase.auth.passkey.list>>['data']
+>[number]
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+function PasskeysSection() {
+  const qc = useQueryClient()
+  const [adding, setAdding] = useState(false)
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  // The list (a server call) works anywhere; only creating a passkey needs a
+  // WebAuthn-capable browser, so we gate just the "Add" button on support.
+  const canCreate = isPasskeySupported()
+
+  const {
+    data: passkeys,
+    isPending,
+    isError,
+  } = useQuery({
+    queryKey: queryKeys.passkeys(),
+    queryFn: async (): Promise<Passkey[]> => {
+      const { data, error } = await supabase.auth.passkey.list()
+      if (error) throw error
+      return data ?? []
+    },
+  })
+
+  const reload = () => qc.invalidateQueries({ queryKey: queryKeys.passkeys() })
+
+  async function addPasskey() {
+    setMsg(null)
+    setAdding(true)
+    try {
+      // registerPasskey runs the full create() ceremony against the current
+      // session; a cancelled prompt maps to null (shown as nothing).
+      const { error } = await supabase.auth.registerPasskey()
+      if (error) {
+        const text = passkeyErrorMessage(error)
+        if (text) setMsg({ kind: 'err', text })
+        return
+      }
+      setMsg({ kind: 'ok', text: 'Passkey added.' })
+      await reload()
+    } catch (err) {
+      const text = passkeyErrorMessage(err)
+      if (text) setMsg({ kind: 'err', text })
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {isPending ? (
+        <p className="text-sm text-gray-500">Loading…</p>
+      ) : isError ? (
+        <p className="text-sm text-red-600">Could not load your passkeys.</p>
+      ) : passkeys.length === 0 ? (
+        <p className="text-sm text-gray-500">
+          You don't have any passkeys yet. Add one to sign in without your password.
+        </p>
+      ) : (
+        <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+          {passkeys.map((pk) => (
+            <PasskeyRow key={pk.id} passkey={pk} onChanged={reload} onError={(text) => setMsg({ kind: 'err', text })} />
+          ))}
+        </ul>
+      )}
+
+      {msg && (
+        <p className={`text-sm ${msg.kind === 'ok' ? 'text-green-600' : 'text-red-600'}`}>{msg.text}</p>
+      )}
+
+      {canCreate ? (
+        <PrimaryButton onClick={addPasskey} disabled={adding}>
+          {adding ? 'Waiting for passkey…' : 'Add a passkey'}
+        </PrimaryButton>
+      ) : (
+        <p className="text-xs text-gray-500">This browser can't create passkeys.</p>
+      )}
+    </div>
+  )
+}
+
+function PasskeyRow({
+  passkey,
+  onChanged,
+  onError,
+}: {
+  passkey: Passkey
+  onChanged: () => void | Promise<void>
+  onError: (text: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(passkey.friendly_name ?? '')
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  async function saveName() {
+    setBusy(true)
+    const { error } = await supabase.auth.passkey.update({
+      passkeyId: passkey.id,
+      friendlyName: draft.trim() || 'Passkey',
+    })
+    setBusy(false)
+    if (error) {
+      onError('Could not rename passkey.')
+      return
+    }
+    setEditing(false)
+    await onChanged()
+  }
+
+  async function remove() {
+    setBusy(true)
+    const { error } = await supabase.auth.passkey.delete({ passkeyId: passkey.id })
+    setBusy(false)
+    if (error) {
+      onError('Could not remove passkey.')
+      return
+    }
+    await onChanged()
+  }
+
+  return (
+    <li className="flex items-center justify-between gap-3 px-3 py-2.5">
+      <div className="min-w-0">
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            maxLength={120}
+            className="w-full rounded-lg border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        ) : (
+          <p className="truncate text-sm font-medium text-gray-900">
+            {passkey.friendly_name || 'Passkey'}
+          </p>
+        )}
+        <p className="mt-0.5 text-xs text-gray-500">
+          Added {formatDate(passkey.created_at)}
+          {passkey.last_used_at ? ` · Last used ${formatDate(passkey.last_used_at)}` : ''}
+        </p>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
+        {editing ? (
+          <>
+            <PrimaryButton size="sm" onClick={saveName} disabled={busy}>
+              Save
+            </PrimaryButton>
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(false)
+                setDraft(passkey.friendly_name ?? '')
+              }}
+              disabled={busy}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </>
+        ) : confirmingRemove ? (
+          <>
+            <button
+              type="button"
+              onClick={remove}
+              disabled={busy}
+              className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+            >
+              {busy ? 'Removing…' : 'Confirm remove'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmingRemove(false)}
+              disabled={busy}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Rename
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmingRemove(true)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+            >
+              Remove
+            </button>
+          </>
+        )}
+      </div>
+    </li>
   )
 }
 

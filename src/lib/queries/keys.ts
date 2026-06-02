@@ -7,4 +7,5 @@ export const queryKeys = {
   gearItems: () => ['gear-items'] as const,
   lists: () => ['lists'] as const,
   listItems: (listId: string) => ['list-items', listId] as const,
+  passkeys: () => ['passkeys'] as const,
 }
