@@ -17,6 +17,29 @@ function errorName(err: unknown): string | undefined {
   return err instanceof Error ? err.name : undefined
 }
 
+// Supabase/auth-js surfaces passkey failures on `error.code` (distinct from
+// the WebAuthn DOMException `name`). See the Passkeys guide "Error codes".
+function errorCode(err: unknown): string | undefined {
+  if (err && typeof err === 'object' && 'code' in err) {
+    const code = (err as { code: unknown }).code
+    if (typeof code === 'string') return code
+  }
+  return undefined
+}
+
+const CODE_MESSAGES: Record<string, string> = {
+  too_many_passkeys: "You've reached the maximum number of passkeys for your account.",
+  webauthn_credential_exists: 'This device already has a passkey for your account.',
+  webauthn_credential_not_found: "That passkey isn't registered to an account here.",
+  webauthn_challenge_expired: 'The passkey request timed out. Please try again.',
+  webauthn_challenge_not_found: 'Something went wrong with the passkey. Please try again.',
+  webauthn_verification_failed: "We couldn't verify that passkey. Please try again.",
+  passkey_disabled: "Passkey sign-in isn't available right now.",
+  email_not_confirmed: 'Confirm your email address before using a passkey.',
+  phone_not_confirmed: 'Confirm your phone number before using a passkey.',
+  user_banned: "This account can't be used to sign in.",
+}
+
 // True when WebAuthn / passkeys are usable in this browser. Gate the passkey
 // UI on this so unsupported environments only ever see email + password. We
 // check PublicKeyCredential (WebAuthn) plus the credentials container; we
@@ -29,7 +52,11 @@ export function isPasskeySupported(): boolean {
     typeof window.PublicKeyCredential === 'function' &&
     typeof navigator !== 'undefined' &&
     navigator.credentials != null &&
-    typeof navigator.credentials.get === 'function'
+    // Both are required: get() drives sign-in, create() drives registration.
+    // auth-js's own browserSupportsWebAuthn() gate checks both, so checking
+    // only get() could show "Add a passkey" where registration then fails.
+    typeof navigator.credentials.get === 'function' &&
+    typeof navigator.credentials.create === 'function'
   )
 }
 
@@ -45,6 +72,9 @@ export function isPasskeyCancellation(err: unknown): boolean {
 // `error` from a { data, error } result.
 export function passkeyErrorMessage(err: unknown): string | null {
   if (isPasskeyCancellation(err)) return null
+  // Supabase server error codes take precedence over the WebAuthn name.
+  const code = errorCode(err)
+  if (code && CODE_MESSAGES[code]) return CODE_MESSAGES[code]
   switch (errorName(err)) {
     case 'InvalidStateError':
       // create(): this authenticator already holds a credential for the account.

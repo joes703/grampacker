@@ -222,6 +222,8 @@ function formatDate(iso: string): string {
 
 function PasskeysSection() {
   const qc = useQueryClient()
+  const { session } = useAuth()
+  const userId = session?.user.id
   const [adding, setAdding] = useState(false)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   // The list (a server call) works anywhere; only creating a passkey needs a
@@ -233,7 +235,10 @@ function PasskeysSection() {
     isPending,
     isError,
   } = useQuery({
-    queryKey: queryKeys.passkeys(),
+    // Key by user id so a same-tab account switch can't show the previous
+    // user's passkeys from cache under the global 30s staleTime.
+    queryKey: queryKeys.passkeys(userId ?? ''),
+    enabled: !!userId,
     queryFn: async (): Promise<Passkey[]> => {
       const { data, error } = await supabase.auth.passkey.list()
       if (error) throw error
@@ -241,7 +246,7 @@ function PasskeysSection() {
     },
   })
 
-  const reload = () => qc.invalidateQueries({ queryKey: queryKeys.passkeys() })
+  const reload = () => qc.invalidateQueries({ queryKey: queryKeys.passkeys(userId ?? '') })
 
   async function addPasskey() {
     setMsg(null)
@@ -401,7 +406,13 @@ function PasskeyRow({
           <>
             <button
               type="button"
-              onClick={() => setEditing(true)}
+              onClick={() => {
+                // Seed the draft from the current name each time, not the
+                // initial mount value — otherwise a second rename reopens with
+                // the pre-rename text after the list refetches.
+                setDraft(passkey.friendly_name ?? '')
+                setEditing(true)
+              }}
               className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               Rename
