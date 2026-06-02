@@ -1,10 +1,11 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, Fingerprint, KeyRound, Scale, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../lib/supabase'
 import { isPasskeySupported, passkeyErrorMessage } from '../lib/passkey'
+import { dismissPasskeyNudge } from '../components/PasskeyNudge'
 import {
   queryKeys,
   fetchCategories,
@@ -24,6 +25,15 @@ export default function SettingsPage() {
   useDocumentTitle('Settings')
   const { session } = useAuth()
   const email = session?.user.email ?? ''
+  const { hash } = useLocation()
+
+  // Deep link from the post-sign-in passkey nudge ("Add passkey" →
+  // /settings#passkeys). SPA navigation doesn't trigger the browser's
+  // native hash scroll, so bring the Passkeys section into view ourselves.
+  useEffect(() => {
+    if (hash !== '#passkeys') return
+    document.getElementById('passkeys')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [hash])
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
@@ -34,6 +44,7 @@ export default function SettingsPage() {
       </Section>
 
       <Section
+        id="passkeys"
         title="Passkeys"
         subtitle="Sign in with biometrics or a security key instead of a password"
         icon={<Fingerprint size={16} />}
@@ -68,12 +79,14 @@ export default function SettingsPage() {
 // ── Sections ───────────────────────────────────────────────────────────────────
 
 function Section({
+  id,
   title,
   subtitle,
   icon,
   danger,
   children,
 }: {
+  id?: string
   title: string
   subtitle?: string
   icon: React.ReactNode
@@ -82,7 +95,10 @@ function Section({
 }) {
   return (
     <section
-      className={`${TABLE_RADIUS} border ${TABLE_SURFACE_BG} p-5 ${
+      id={id}
+      // scroll-mt offsets the smooth-scroll target so the sticky NavBar
+      // doesn't overlap the section heading when deep-linked via #passkeys.
+      className={`scroll-mt-20 ${TABLE_RADIUS} border ${TABLE_SURFACE_BG} p-5 ${
         danger ? 'border-red-200' : TABLE_STRONG_DIVIDER
       }`}
     >
@@ -261,6 +277,9 @@ function PasskeysSection() {
         return
       }
       setMsg({ kind: 'ok', text: 'Passkey added.' })
+      // They now have a passkey: never show the post-sign-in nudge again
+      // for this account (point 7 of the nudge spec).
+      if (userId) dismissPasskeyNudge(userId)
       await reload()
     } catch (err) {
       const text = passkeyErrorMessage(err)

@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router'
 import { Fingerprint } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { isPasskeySupported, passkeyErrorMessage } from '../lib/passkey'
+import { markPasskeyNudgePending } from '../components/PasskeyNudge'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useAuth } from './AuthProvider'
 import AboutLink from '../components/AboutLink'
@@ -45,6 +46,9 @@ export default function LoginPage() {
       // if they signed up but never confirmed.
       setError('Invalid email or password.')
     } else {
+      // One-shot signal for the authenticated shell to offer a passkey.
+      // Only on password sign-in: a passkey sign-in needs no such nudge.
+      markPasskeyNudgePending()
       navigate('/')
     }
   }
