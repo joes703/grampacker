@@ -36,9 +36,15 @@ function consumePasskeyNudgePending(): boolean {
 // Called by LoginPage on a successful email/password sign-in so the shell
 // shows the nudge once. Passkey sign-in deliberately does NOT call this —
 // someone who just used a passkey has no reason to be nudged to add one.
+//
+// Resets the module-level consume memo so a SECOND sign-in within the same
+// page load (e.g. sign out, then sign back in without a full reload) is
+// evaluated fresh. Without this, consumePasskeyNudgePending() would return
+// the first sign-in's cached verdict and the shell would ignore the new flag.
 export function markPasskeyNudgePending() {
   try {
     sessionStorage.setItem(PENDING_KEY, '1')
+    consumedPending = null
   } catch {
     // best-effort: if sessionStorage is unavailable the nudge simply
     // doesn't appear, which is a harmless degradation.

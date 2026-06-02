@@ -156,4 +156,23 @@ describe('PasskeyNudge helpers', () => {
     mod.dismissPasskeyNudge('user-9')
     expect(localStorage.getItem(dismissedKey('user-9'))).toBe('1')
   })
+
+  it('re-arms the nudge for a second sign-in in the same page load', async () => {
+    // First sign-in: the nudge shows and consumes the one-shot flag, leaving
+    // the module-level memo marked as "consumed".
+    const { mod } = await renderNudge()
+    await screen.findByText(COPY)
+    expect(sessionStorage.getItem(PENDING_KEY)).toBeNull()
+    cleanup()
+
+    // Second sign-in without a full reload: LoginPage marks pending again.
+    // This must reset the memo, not just rewrite the flag.
+    mod.markPasskeyNudgePending()
+    expect(sessionStorage.getItem(PENDING_KEY)).toBe('1')
+
+    // Same module instance (no resetModules mid-test): the nudge consumes
+    // the re-armed flag and shows again.
+    await renderNudge()
+    expect(await screen.findByText(COPY)).toBeTruthy()
+  })
 })
