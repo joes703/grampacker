@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { gearItemsToCsv, listItemsToCsv, parseCsv, parseGearCsv, parseListCsv } from './csv'
+import {
+  gearItemsToCsv,
+  listItemsToCsv,
+  parseCsv,
+  parseGearCsv,
+  parseListCsv,
+  MAX_CSV_ROWS,
+} from './csv'
 import type { Category, GearItem, ListItemWithGear } from './types'
 
 // Smoke test: representative gear-list rows should round-trip through
@@ -399,5 +406,39 @@ describe('csv parser edge cases (T-6)', () => {
     const csv = 'Item Name,weight\n'
     const parsed = parseGearCsv(csv)
     expect(parsed).toBe('File appears empty or has no data rows.')
+  })
+})
+
+// A 2 MB file (the byte cap in use-csv-file-input) can hold far more rows
+// than any realistic library/list. Both adapters reject over-cap files with
+// an error string BEFORE building the per-row preview/insert payload, so a
+// pathological row count can't jank the (un-virtualized) preview table.
+describe('csv parsed-row cap (MAX_CSV_ROWS)', () => {
+  const gearCsv = (dataRowCount: number) =>
+    'Item Name,weight\n' +
+    Array.from({ length: dataRowCount }, (_, i) => `Item ${i},100`).join('\n')
+
+  it('accepts a file with exactly MAX_CSV_ROWS data rows', () => {
+    const parsed = parseGearCsv(gearCsv(MAX_CSV_ROWS))
+    expect(Array.isArray(parsed)).toBe(true)
+    expect((parsed as unknown[]).length).toBe(MAX_CSV_ROWS)
+  })
+
+  it('rejects a gear file with more than MAX_CSV_ROWS data rows', () => {
+    const parsed = parseGearCsv(gearCsv(MAX_CSV_ROWS + 1))
+    expect(typeof parsed).toBe('string')
+    expect(parsed).toContain('too many to import')
+  })
+
+  it('rejects a list file with more than MAX_CSV_ROWS data rows', () => {
+    const parsed = parseListCsv(gearCsv(MAX_CSV_ROWS + 1))
+    expect(typeof parsed).toBe('string')
+    expect(parsed).toContain('too many to import')
+  })
+
+  it('does not count blank rows toward the cap (parseCsv drops them first)', () => {
+    // MAX_CSV_ROWS real rows + a trailing blank line is still under the cap.
+    const parsed = parseGearCsv(gearCsv(MAX_CSV_ROWS) + '\n\n')
+    expect(Array.isArray(parsed)).toBe(true)
   })
 })

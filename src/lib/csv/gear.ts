@@ -1,5 +1,5 @@
 import type { GearItem, Category } from '../types'
-import { toCsv, parseCsv } from './core'
+import { toCsv, parseCsv, MAX_CSV_ROWS } from './core'
 import { toGrams } from './units'
 
 export type GearCsvRow = {
@@ -47,6 +47,9 @@ export function parseGearCsv(text: string): GearCsvRow[] | string {
   const rows = parseCsv(text)
   const [sample] = rows
   if (!sample) return 'File appears empty or has no data rows.'
+  if (rows.length > MAX_CSV_ROWS) {
+    return `This file has more than ${MAX_CSV_ROWS.toLocaleString('en-US')} rows, which is too many to import at once. Split it into smaller files and import them one at a time.`
+  }
 
   const keys = Object.keys(sample)
 

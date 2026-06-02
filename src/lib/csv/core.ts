@@ -3,6 +3,16 @@
 // escape, but knows NOTHING about gear-library or list-import column
 // shapes. The format-specific adapters live in ./gear and ./list.
 
+// Hard cap on parsed DATA rows (header excluded; blank rows are already
+// dropped by parseCsv). Bounds both the in-memory parsed array and the
+// import preview tables, which render one DOM node per row with no
+// virtualization. The 2 MB byte cap in use-csv-file-input can still hold
+// far more rows than any realistic gear library or packing list, so this
+// rejects pathological inputs before they jank the tab. Sits well above
+// the DB per-user caps (500 gear items, 300 list items/list) so it never
+// blocks a legitimate import; it's a DoS/DOM bound, not a business rule.
+export const MAX_CSV_ROWS = 2000
+
 function escapeCell(v: string | number | boolean | null | undefined): string {
   let s = v === null || v === undefined ? '' : String(v)
   // Formula-injection neutralization. Excel, Google Sheets, and Numbers
