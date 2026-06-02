@@ -43,7 +43,15 @@ vi.mock('./categories', async (importOriginal) => {
   }
 })
 
-import { resolveOrCreateGearForImport, resolveOrCreateCategories } from './import-helpers'
+import {
+  resolveOrCreateGearForImport,
+  resolveOrCreateCategories,
+  countNewGearForImport,
+  assertGearImportWithinCap,
+  assertListImportWithinCaps,
+  GEAR_ITEM_CAP,
+  LIST_ITEM_CAP,
+} from './import-helpers'
 import type { Category, GearItem } from '../types'
 
 beforeEach(() => {
@@ -345,5 +353,115 @@ describe('resolveOrCreateCategories', () => {
 
     expect(createCategorySpy.mock.calls[0]?.[2]).toBe(0)
     expect(createCategorySpy.mock.calls[1]?.[2]).toBe(1)
+  })
+})
+
+describe('countNewGearForImport', () => {
+  it('counts rows that do not match existing gear as new', () => {
+    const n = countNewGearForImport(
+      [
+        { name: 'Headlamp', weight_grams: 50, category: 'Electronics' },
+        { name: 'Tent', weight_grams: 1300, category: 'Shelter' },
+      ],
+      [makeGearItem({ id: 'g-1', name: 'Headlamp', weight_grams: 50, category_id: 'cat-elec' })],
+      [makeCategory({ id: 'cat-elec', name: 'Electronics' })],
+    )
+    // Headlamp matches existing (0 new); Tent is new (1).
+    expect(n).toBe(1)
+  })
+
+  it('does not count rows that match existing gear by (category, name, weight)', () => {
+    const n = countNewGearForImport(
+      [{ name: 'headlamp', weight_grams: 50, category: 'Electronics' }],
+      [makeGearItem({ id: 'g-1', name: 'Headlamp', weight_grams: 50, category_id: 'cat-elec' })],
+      [makeCategory({ id: 'cat-elec', name: 'Electronics' })],
+    )
+    expect(n).toBe(0)
+  })
+
+  it('counts a row in a not-yet-existing category as new (cannot match existing gear)', () => {
+    const n = countNewGearForImport(
+      [{ name: 'Headlamp', weight_grams: 50, category: 'BrandNewCategory' }],
+      [makeGearItem({ id: 'g-1', name: 'Headlamp', weight_grams: 50, category_id: 'cat-elec' })],
+      [makeCategory({ id: 'cat-elec', name: 'Electronics' })],
+    )
+    expect(n).toBe(1)
+  })
+
+  it('ignores rows with empty names', () => {
+    const n = countNewGearForImport(
+      [{ name: '   ', weight_grams: 50, category: 'Electronics' }],
+      [],
+      [],
+    )
+    expect(n).toBe(0)
+  })
+})
+
+describe('assertGearImportWithinCap', () => {
+  const existing = (count: number): GearItem[] =>
+    Array.from({ length: count }, (_, i) => makeGearItem({ id: `g-${i}`, name: `Item ${i}`, weight_grams: i }))
+
+  it('does not throw when the import stays within GEAR_ITEM_CAP', () => {
+    expect(() =>
+      assertGearImportWithinCap(
+        [{ name: 'New', weight_grams: 1, category: '' }],
+        existing(GEAR_ITEM_CAP - 1),
+        [],
+      ),
+    ).not.toThrow()
+  })
+
+  it('throws when new gear would exceed GEAR_ITEM_CAP', () => {
+    expect(() =>
+      assertGearImportWithinCap(
+        [{ name: 'New', weight_grams: 9999, category: '' }],
+        existing(GEAR_ITEM_CAP),
+        [],
+      ),
+    ).toThrow(new RegExp(`${GEAR_ITEM_CAP}-item inventory limit`))
+  })
+
+  it('does NOT throw when an over-cap-count re-import is all matches (0 new gear)', () => {
+    // Re-importing your own full library must not be falsely rejected:
+    // every row matches existing gear, so newGearCount is 0.
+    const rows = Array.from({ length: GEAR_ITEM_CAP }, (_, i) => ({
+      name: `Item ${i}`,
+      weight_grams: i,
+      category: '',
+    }))
+    expect(() => assertGearImportWithinCap(rows, existing(GEAR_ITEM_CAP), [])).not.toThrow()
+  })
+})
+
+describe('assertListImportWithinCaps', () => {
+  it('throws when the row count exceeds LIST_ITEM_CAP', () => {
+    const rows = Array.from({ length: LIST_ITEM_CAP + 1 }, (_, i) => ({
+      name: `Item ${i}`,
+      weight_grams: i,
+      category: '',
+    }))
+    expect(() => assertListImportWithinCaps(rows, [], [])).toThrow(
+      new RegExp(`at most ${LIST_ITEM_CAP} items`),
+    )
+  })
+
+  it('does not throw at exactly LIST_ITEM_CAP importable rows within the inventory cap', () => {
+    const rows = Array.from({ length: LIST_ITEM_CAP }, (_, i) => ({
+      name: `Item ${i}`,
+      weight_grams: i,
+      category: '',
+    }))
+    expect(() => assertListImportWithinCaps(rows, [], [])).not.toThrow()
+  })
+
+  it('also enforces the inventory cap (new gear) for list imports', () => {
+    const existing = Array.from({ length: GEAR_ITEM_CAP }, (_, i) =>
+      makeGearItem({ id: `g-${i}`, name: `Have ${i}`, weight_grams: i }),
+    )
+    // One importable row, but it would be the (CAP+1)th gear item.
+    expect(() =>
+      assertListImportWithinCaps([{ name: 'Brand New', weight_grams: 99999, category: '' }], existing, []),
+    ).toThrow(new RegExp(`${GEAR_ITEM_CAP}-item inventory limit`))
   })
 })

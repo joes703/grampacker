@@ -28,6 +28,7 @@ import {
   nextListSortOrder,
   reorderLists,
   importCsvRowsToList,
+  assertListImportWithinCaps,
   makeOptimisticInsert,
 } from '../lib/queries'
 import { useCurrentListActions } from './use-current-list-actions'
@@ -172,6 +173,9 @@ export default function ListsPage() {
   // navigate into the new list so imported items are immediately visible.
   const importMut = useMutation({
     mutationFn: async ({ name, rows }: { name: string; rows: ListImportRow[] }) => {
+      // Preflight the per-list and inventory caps BEFORE creating the list,
+      // so a rejected over-cap import leaves no orphan list or categories.
+      assertListImportWithinCaps(rows, gearItems, categories)
       const newList = await createList(userId, name, nextListSortOrder(lists))
       await importCsvRowsToList(newList.id, userId, rows, gearItems, categories)
       return newList
@@ -183,6 +187,11 @@ export default function ListsPage() {
       setDialog(null)
       navigate(`/lists/${newList.id}`)
     },
+    onError: (err) =>
+      setDialog({
+        type: 'import-error',
+        message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
+      }),
   })
 
 

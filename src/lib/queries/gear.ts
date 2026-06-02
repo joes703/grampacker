@@ -1,7 +1,11 @@
 import { supabase } from '../supabase'
 import type { Category, GearItem } from '../types'
 import type { GearCsvRow } from '../csv'
-import { resolveOrCreateCategories, resolveOrCreateGearForImport } from './import-helpers'
+import {
+  resolveOrCreateCategories,
+  resolveOrCreateGearForImport,
+  assertGearImportWithinCap,
+} from './import-helpers'
 import { bulkUpdateSortOrder } from './bulk-reorder'
 
 // Owner-scoped private read. See queries/index.ts for the convention.
@@ -102,6 +106,11 @@ export async function importGearItems(
   existingCategories: Category[],
   existingGearItems: GearItem[],
 ): Promise<{ newCount: number; matchedCount: number }> {
+  // Preflight the inventory cap BEFORE creating any categories, so a
+  // rejected over-cap import leaves no orphan categories behind. The DB
+  // trigger remains authoritative; this just turns a generic post-write
+  // failure into a specific, friendly message.
+  assertGearImportWithinCap(rows, existingGearItems, existingCategories)
   const catByName = await resolveOrCreateCategories(userId, rows, existingCategories)
   const { newCount, matchedCount } = await resolveOrCreateGearForImport({
     userId,

@@ -26,6 +26,7 @@ import {
   nextListSortOrder,
   reorderLists,
   importCsvRowsToList,
+  assertListImportWithinCaps,
   makeOptimisticInsert,
 } from '../lib/queries'
 import { useCurrentListActions } from './use-current-list-actions'
@@ -183,6 +184,9 @@ export default function DesktopListsPanel({
   // list. Same shape ListsPage uses so a CSV imported here behaves identically.
   const importMut = useMutation({
     mutationFn: async ({ name, rows }: { name: string; rows: ListImportRow[] }) => {
+      // Preflight the per-list and inventory caps BEFORE creating the list,
+      // so a rejected over-cap import leaves no orphan list or categories.
+      assertListImportWithinCaps(rows, gearItems, categories)
       const newList = await createList(userId, name, nextListSortOrder(lists))
       await importCsvRowsToList(newList.id, userId, rows, gearItems, categories)
       return newList
@@ -194,6 +198,11 @@ export default function DesktopListsPanel({
       setDialog(null)
       navigate(`/lists/${newList.id}`)
     },
+    onError: (err) =>
+      setDialog({
+        type: 'import-error',
+        message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
+      }),
   })
 
   // Desktop-only panel, so MouseSensor + KeyboardSensor is enough. No

@@ -9,6 +9,7 @@ import {
   fetchGearItems,
   fetchCategories,
   importCsvRowsToList,
+  assertListImportWithinCaps,
   makeOptimisticInsert,
 } from '../lib/queries'
 import type { List } from '../lib/types'
@@ -76,6 +77,9 @@ export default function ListsEmptyState() {
   // navigate to the new list on success.
   const importMut = useMutation({
     mutationFn: async ({ name, rows }: { name: string; rows: ListImportRow[] }) => {
+      // Preflight the per-list and inventory caps BEFORE creating the list,
+      // so a rejected over-cap import leaves no orphan list or categories.
+      assertListImportWithinCaps(rows, gearItems, categories)
       const newList = await createList(userId, name, 0)
       await importCsvRowsToList(newList.id, userId, rows, gearItems, categories)
       return newList
