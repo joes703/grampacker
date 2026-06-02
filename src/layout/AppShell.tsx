@@ -9,6 +9,7 @@ import GearLibraryPage from '../gear/GearLibraryPage'
 import ListsPage from '../lists/ListsPage'
 import ListDetailPage from '../lists/ListDetailPage'
 import OfflineBanner from '../components/OfflineBanner'
+import PasskeyNudge from '../components/PasskeyNudge'
 
 // Settings and Help are rarely visited and don't need to ship in the main
 // bundle. ListsPage/ListDetailPage/GearLibraryPage stay eager — they are
@@ -31,6 +32,7 @@ export default function AppShell() {
       <MobilePrimaryNavProvider>
         <div className="min-h-screen bg-gray-50">
           <OfflineBanner />
+          <PasskeyNudge />
           <NavBar />
           <main className="mx-auto max-w-7xl px-4 pt-4 lg:pt-8 pb-20 lg:pb-8">
             <Suspense fallback={null}>
