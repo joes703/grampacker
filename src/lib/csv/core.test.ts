@@ -99,3 +99,52 @@ describe('parseCsv', () => {
     expect(parseCsv(csv)).toEqual([original])
   })
 })
+
+describe('toCsv formula-injection escaping', () => {
+  // SECURITY: Excel, Google Sheets, and Numbers evaluate a cell whose
+  // first character is one of = + - @ \t \r as a formula. escapeCell
+  // neutralizes this by prepending a single apostrophe ("treat as
+  // text"). These tests pin the guard char-by-char so a regression in
+  // the /^[=+\-@\t\r]/ regex (a one-char edit, e.g. dropping a metachar)
+  // fails loudly instead of silently re-opening the injection vector.
+
+  // The header is the first '\r\n'-delimited line; the data row follows.
+  const dataRow = (csv: string) => csv.split('\r\n')[1]
+
+  it.each([
+    ['equals', '=SUM(A1:A2)', "'=SUM(A1:A2)"],
+    ['plus', '+1+1', "'+1+1"],
+    ['minus', '-2+3', "'-2+3"],
+    ['at', '@SUM(1)', "'@SUM(1)"],
+  ])('prefixes a leading %s with an apostrophe', (_label, input, expected) => {
+    expect(dataRow(toCsv([{ name: input }]))).toBe(expected)
+  })
+
+  it('prefixes a leading tab without additional quoting (tab is not comma/quote/newline)', () => {
+    // A leading \t triggers the apostrophe prefix. The cell does not
+    // contain a comma/quote/newline, so it is NOT additionally quoted.
+    expect(dataRow(toCsv([{ name: '\tcmd' }]))).toBe("'\tcmd")
+  })
+
+  it('prefixes a leading carriage return AND quotes the cell (bare \\r forces quoting)', () => {
+    // A leading \r triggers the apostrophe prefix; the cell then
+    // contains a \r, so escapeCell also wraps it in quotes.
+    expect(dataRow(toCsv([{ name: '\rcmd' }]))).toBe('"\'\rcmd"')
+  })
+
+  it('does NOT escape a benign value', () => {
+    expect(dataRow(toCsv([{ name: 'Tent' }]))).toBe('Tent')
+  })
+
+  it('does NOT escape a dangerous char that is not in the leading position', () => {
+    // Only the first character matters to spreadsheet formula parsers,
+    // so "a=b" is safe and must round-trip unescaped.
+    expect(dataRow(toCsv([{ name: 'a=b' }]))).toBe('a=b')
+  })
+
+  it('escapes a leading dangerous char in numeric-looking string fields too', () => {
+    // Negative numbers serialized as strings start with '-' and would
+    // be read as the formula "-2" by a spreadsheet; the guard applies.
+    expect(dataRow(toCsv([{ qty: '-5' }]))).toBe("'-5")
+  })
+})

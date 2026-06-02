@@ -395,6 +395,14 @@ export default function GearLibraryPage() {
   const importItems = useMutation({
     mutationFn: (rows: GearCsvRow[]) => importGearItems(userId, rows, categories, allItems),
     onSuccess: () => { invalidateBoth(); setDialog(null) },
+    // Surface failures (e.g. the inventory-cap preflight) in the existing
+    // import-error dialog instead of leaving the preview open with no
+    // feedback. Without this only the global console.warn handler fires.
+    onError: (err) =>
+      setDialog({
+        type: 'import-error',
+        message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
+      }),
   })
 
   // ── Drag and drop ─────────────────────────────────────────────────────────────

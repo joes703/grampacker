@@ -8,7 +8,7 @@
 // barrel, to avoid circular module resolution and to keep dependency
 // direction one-way.
 
-export { toCsv, downloadCsv, parseCsv } from './core'
+export { toCsv, downloadCsv, parseCsv, MAX_CSV_ROWS } from './core'
 export { gearItemsToCsv, parseGearCsv } from './gear'
 export type { GearCsvRow } from './gear'
 export { listItemsToCsv, parseListCsv, nameFromCsvFilename } from './list'

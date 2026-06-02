@@ -22,6 +22,89 @@ export function gearKey(categoryId: string | null, name: string, weight_grams: n
   return `${categoryId ?? ''}:${name.trim().normalize('NFC').toLowerCase()}:${weight_grams}`
 }
 
+// Per-user / per-list resource caps. The DB triggers are the source of
+// truth (check_gear_item_limit in 20260425000001, check_list_item_limit
+// in 20260425000002); these mirror them so the import paths can preflight
+// and surface a specific, friendly message BEFORE writing anything.
+// Without the preflight an over-cap bulk insert aborts at the trigger
+// with a generic error AFTER resolveOrCreateCategories has already
+// committed new categories (orphaning them) and, for list import, after
+// the new list row was created (orphaning it). These constants are for
+// UX only; they do not replace the authoritative DB enforcement.
+export const GEAR_ITEM_CAP = 500
+export const LIST_ITEM_CAP = 300
+
+// Dedup key for the preflight counter. Mirrors gearKey's name handling
+// (trim + NFC + lowercase) but keys the category by NAME rather than id,
+// so it can run before any not-yet-created category has an id. Category
+// names are unique per user (resolveOrCreateCategories collapses by
+// lowercased name), so this is equivalent to the id-based key the real
+// import dedup uses.
+function importDedupKey(categoryNameLower: string, name: string, weight_grams: number): string {
+  return `${categoryNameLower}:${name.trim().normalize('NFC').toLowerCase()}:${weight_grams}`
+}
+
+// How many NEW gear items an import would create, computed WITHOUT any
+// writes (mirrors resolveOrCreateGearForImport's dedup). Rows whose
+// (category, name, weight) matches existing gear, and rows with empty
+// names, create nothing. A row referencing a not-yet-existing category
+// can never match existing gear, so it always counts as new. Used by the
+// cap preflight; the real import still does the authoritative dedup.
+export function countNewGearForImport(
+  rows: { name: string; category: string; weight_grams: number }[],
+  existingGearItems: GearItem[],
+  existingCategories: Category[],
+): number {
+  // Match resolveOrCreateCategories' lookup: existing category names are
+  // keyed lowercased (no trim); row categories are trimmed then lowercased.
+  const catNameById = new Map(existingCategories.map((c) => [c.id, c.name.toLowerCase()]))
+  const existingKeys = new Set(
+    existingGearItems.map((g) =>
+      importDedupKey(g.category_id ? (catNameById.get(g.category_id) ?? '') : '', g.name, g.weight_grams),
+    ),
+  )
+  let newCount = 0
+  for (const row of rows) {
+    if (!row.name.trim()) continue
+    const key = importDedupKey(row.category.trim().toLowerCase(), row.name, row.weight_grams)
+    if (!existingKeys.has(key)) newCount++
+  }
+  return newCount
+}
+
+// Throws a friendly Error if importing `rows` would push the inventory
+// over GEAR_ITEM_CAP. Call BEFORE any write (categories included) so a
+// rejected import leaves nothing behind.
+export function assertGearImportWithinCap(
+  rows: { name: string; category: string; weight_grams: number }[],
+  existingGearItems: GearItem[],
+  existingCategories: Category[],
+): void {
+  const newGear = countNewGearForImport(rows, existingGearItems, existingCategories)
+  if (existingGearItems.length + newGear > GEAR_ITEM_CAP) {
+    throw new Error(
+      `This import would add ${newGear} new gear item${newGear === 1 ? '' : 's'} to your ${existingGearItems.length} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Remove some items or split the file into smaller batches.`,
+    )
+  }
+}
+
+// Throws a friendly Error if importing `rows` into a new list would
+// exceed the per-list item cap or the inventory cap. Call BEFORE the new
+// list is created so a rejected import leaves no orphan list/categories.
+export function assertListImportWithinCaps(
+  rows: { name: string; category: string; weight_grams: number }[],
+  existingGearItems: GearItem[],
+  existingCategories: Category[],
+): void {
+  const importable = rows.filter((r) => r.name.trim().length > 0).length
+  if (importable > LIST_ITEM_CAP) {
+    throw new Error(
+      `A single list can hold at most ${LIST_ITEM_CAP} items; this file has ${importable}. Split it across multiple lists.`,
+    )
+  }
+  assertGearImportWithinCap(rows, existingGearItems, existingCategories)
+}
+
 // Resolve/create categories referenced by the import rows. Returns a
 // lowercase-name → category-id map covering both pre-existing categories
 // and any newly-created ones.

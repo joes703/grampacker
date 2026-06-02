@@ -18,12 +18,13 @@
 // plus any other user's transitively-readable shared rows.
 //
 // See SECURITY.md "Query-level owner scoping" for the full rationale
-// and the policy-level reason the public policies have no `TO` clause.
+// and the policy-level reason authenticated reads can match shared rows
+// (each *_auth_select policy is `auth.uid() = user_id OR is_shared`).
 //
 // New private helpers must follow this pattern. Public-read helpers
 // (`fetchSharedList`, `fetchSharedListItems`, `fetchSharedListCategories`)
 // intentionally don't filter by user_id; they rely on the
-// *_public_select_* policies, and that asymmetry is the whole point
+// *_anon_select policies, and that asymmetry is the whole point
 // of the cross-channel-leak defense.
 // ---------------------------------------------------------------------
 export { queryKeys } from './keys'
@@ -82,4 +83,11 @@ export {
   nextListItemSortOrder,
 } from './list-items'
 export type { ListItemPatch } from './list-items'
+export {
+  GEAR_ITEM_CAP,
+  LIST_ITEM_CAP,
+  countNewGearForImport,
+  assertGearImportWithinCap,
+  assertListImportWithinCaps,
+} from './import-helpers'
 export { GEAR_ITEM_AUTH_SELECT, GEAR_ITEM_PUBLIC_SELECT } from './projections'
