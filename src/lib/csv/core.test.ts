@@ -120,7 +120,7 @@ describe('toCsv formula-injection escaping', () => {
     expect(dataRow(toCsv([{ name: input }]))).toBe(expected)
   })
 
-  it('prefixes a leading tab, then quotes the resulting cell (contains a control char)', () => {
+  it('prefixes a leading tab without additional quoting (tab is not comma/quote/newline)', () => {
     // A leading \t triggers the apostrophe prefix. The cell does not
     // contain a comma/quote/newline, so it is NOT additionally quoted.
     expect(dataRow(toCsv([{ name: '\tcmd' }]))).toBe("'\tcmd")
