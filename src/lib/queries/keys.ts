@@ -7,4 +7,8 @@ export const queryKeys = {
   gearItems: () => ['gear-items'] as const,
   lists: () => ['lists'] as const,
   listItems: (listId: string) => ['list-items', listId] as const,
+  // User-scoped so a same-tab account switch can't surface the previous
+  // user's passkey metadata from cache (the global 30s staleTime would
+  // otherwise serve it without a refetch).
+  passkeys: (userId: string) => ['passkeys', userId] as const,
 }
