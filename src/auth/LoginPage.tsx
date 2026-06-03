@@ -84,10 +84,6 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-gray-600">
             A backpacking gear list, weight tracker, and packing tool.
           </p>
-          <p className="mt-2 text-sm text-gray-600">
-            Build trip-specific lists from your gear inventory and check items off in packing
-            mode.
-          </p>
         </div>
         <h1 className="text-xl font-semibold text-gray-900 mb-6">Sign in</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
