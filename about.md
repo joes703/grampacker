@@ -8,4 +8,4 @@ grampacker is a personal project. It is free to use, with no ads or data harvest
 
 **Contact**
 
-For bugs or feature ideas: hello [at] grampacker [dot] app
+For bugs or feature ideas: hello [at] grampacker [dot] app.
