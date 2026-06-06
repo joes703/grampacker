@@ -10,10 +10,11 @@ import type { ListItemWithGear } from './types'
 //   key:   `${userId}:${listId}:${itemId}`
 //   value: { userId, listId, itemId, patch: { is_packed?, is_ready? }, updated_at }
 //
-// The legacy v1 (is_packed-only) store was migrated on read until its
-// entries aged out past the 30-day TTL (last possible live entry expired
-// 2026-06-15). The migration path was removed afterward; a cold read with
-// no v2 key simply starts fresh.
+// The legacy v1 (is_packed-only) store was migrated to v2 on read. That
+// migration path was removed on 2026-06-06. v1 entries carried a 30-day
+// TTL whose last possible live entry expired 2026-06-15, so removal landed
+// a little ahead of full expiry by owner decision; any v1 key still present
+// is now ignored. A cold read with no v2 key simply starts fresh.
 
 const STORAGE_KEY = 'grampacker:pending-checks:v2'
 
