@@ -60,7 +60,7 @@ export default function ListSettingsPanel({ list }: Props) {
     }),
   })
 
-  const { renameMut, duplicateMut, deleteListMut, exportCsv } = useCurrentListActions(userId)
+  const { renameMut, duplicateMut, deleteListMut, exportCsv, draftMut } = useCurrentListActions(userId)
 
   // Inline rename state. Mirrors InlineTitle's keyboard semantics
   // (Enter saves, Escape cancels, blur saves) but stays scoped to this
@@ -103,6 +103,14 @@ export default function ListSettingsPanel({ list }: Props) {
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className={PANEL_TOGGLE_LABEL}>Draft</span>
+        <ToggleSwitch
+          checked={list.is_draft}
+          onChange={() => draftMut.mutate(list)}
+          ariaLabel="Draft"
+        />
+      </div>
       <div className="flex items-center justify-between">
         <span className={PANEL_TOGGLE_LABEL}>Group worn items</span>
         <ToggleSwitch
