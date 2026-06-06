@@ -13,6 +13,7 @@ import {
   nextListSortOrder,
 } from '../lib/queries'
 import { listItemsToCsv, downloadCsv } from '../lib/csv'
+import { showToast } from '../lib/toast'
 import type { List, Category } from '../lib/types'
 
 // Shared current-list actions hook. Both the /lists card kebab
@@ -91,21 +92,27 @@ export function useCurrentListActions(userId: string) {
 
   const exportCsv = useCallback(
     async (list: List) => {
-      const [items, categories] = await Promise.all([
-        qc.fetchQuery({
-          queryKey: queryKeys.listItems(list.id),
-          queryFn: () => fetchListItems(list.id, userId),
-        }),
-        qc.fetchQuery({
-          queryKey: queryKeys.categories(),
-          queryFn: () => fetchCategories(userId),
-        }) as Promise<Category[]>,
-      ])
-      const csv = listItemsToCsv(items, categories)
-      downloadCsv(
-        `${list.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`,
-        csv,
-      )
+      try {
+        const [items, categories] = await Promise.all([
+          qc.fetchQuery({
+            queryKey: queryKeys.listItems(list.id),
+            queryFn: () => fetchListItems(list.id, userId),
+          }),
+          qc.fetchQuery({
+            queryKey: queryKeys.categories(),
+            queryFn: () => fetchCategories(userId),
+          }) as Promise<Category[]>,
+        ])
+        const csv = listItemsToCsv(items, categories)
+        downloadCsv(
+          `${list.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`,
+          csv,
+        )
+      } catch {
+        // Non-optimistic action with no snap-back: surface feedback and consume
+        // so the fire-and-forget call sites cannot reject.
+        showToast("Couldn't export the list. Please try again.", { type: 'error' })
+      }
     },
     [qc, userId],
   )

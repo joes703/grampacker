@@ -14,7 +14,10 @@ vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
 vi.mock('../lib/queries', async (orig) => ({
   ...(await orig<typeof import('../lib/queries')>()),
   duplicateList: vi.fn(),
+  fetchListItems: vi.fn(),
+  fetchCategories: vi.fn(),
 }))
+vi.mock('../lib/csv', () => ({ listItemsToCsv: vi.fn(() => 'csv'), downloadCsv: vi.fn() }))
 
 const LIST: List = {
   id: 'l1',
@@ -50,5 +53,20 @@ describe('useCurrentListActions - duplicate failure feedback', () => {
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith("Couldn't duplicate that list. Please try again.", { type: 'error' }),
     )
+  })
+})
+
+describe('useCurrentListActions - exportCsv failure feedback', () => {
+  beforeEach(() => { vi.mocked(showToast).mockClear() })
+  afterEach(() => cleanup())
+
+  it('toasts and does not download when the fetch rejects', async () => {
+    const { fetchListItems } = await import('../lib/queries')
+    const { downloadCsv } = await import('../lib/csv')
+    vi.mocked(fetchListItems).mockRejectedValue(new Error('offline'))
+    const { result } = renderHook(() => useCurrentListActions('u1'), { wrapper })
+    await act(async () => { await result.current.exportCsv(LIST) })
+    expect(showToast).toHaveBeenCalledWith("Couldn't export the list. Please try again.", { type: 'error' })
+    expect(downloadCsv).not.toHaveBeenCalled()
   })
 })
