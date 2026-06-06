@@ -73,6 +73,7 @@ export function useCurrentListActions(userId: string) {
       const currentLists = qc.getQueryData<List[]>(queryKeys.lists()) ?? []
       return duplicateList(target, userId, nextListSortOrder(currentLists))
     },
+    meta: { errorToast: "Couldn't duplicate that list. Please try again." },
     onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: queryKeys.lists() })
       navigate(`/lists/${created.id}`)

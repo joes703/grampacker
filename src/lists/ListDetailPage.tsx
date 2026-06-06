@@ -579,6 +579,7 @@ function ListDetailInner({
       })
       if (error) throw error
     },
+    meta: { errorToast: "Couldn't add that item. Please try again." },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
       qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
