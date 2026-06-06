@@ -17,6 +17,11 @@ export type List = {
   // column). Default false. NOT exposed on PublicList — share viewers
   // never see pack-mode state.
   ready_checks_enabled: boolean
+  // Draft (still being built) vs complete. Completeness LABEL only - never
+  // locks editing, independent of is_shared. Default true for new lists
+  // (DB default); existing lists were backfilled false. Exposed on PublicList
+  // so the share view can render a "work in progress" banner.
+  is_draft: boolean
   created_at: string
   updated_at: string
 }
@@ -87,7 +92,7 @@ export type GearItem = {
 // for the allowlist rationale. SharePage maps these to the full types at the
 // boundary before passing items/categories to shared components.
 
-export type PublicList = Pick<List, 'id' | 'name' | 'description' | 'group_worn'>
+export type PublicList = Pick<List, 'id' | 'name' | 'description' | 'group_worn' | 'is_draft'>
 
 export type PublicGearItem = Pick<
   GearItem,

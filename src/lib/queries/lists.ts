@@ -80,7 +80,7 @@ export async function fetchLists(userId: string): Promise<List[]> {
 export async function fetchSharedList(slug: string): Promise<PublicList | null> {
   const { data, error } = await supabase
     .from('lists')
-    .select('id, name, description, group_worn')
+    .select('id, name, description, group_worn, is_draft')
     .eq('slug', slug)
     .eq('is_shared', true)
     .single()
@@ -117,7 +117,7 @@ export async function createList(
 export async function updateList(
   id: string,
   patch: Partial<
-    Pick<List, 'name' | 'description' | 'is_shared' | 'group_worn' | 'ready_checks_enabled'>
+    Pick<List, 'name' | 'description' | 'is_shared' | 'group_worn' | 'ready_checks_enabled' | 'is_draft'>
   >,
 ): Promise<void> {
   const { error } = await supabase.from('lists').update(patch).eq('id', id)
