@@ -65,3 +65,22 @@ describe('SharePage draft banner', () => {
     expect(screen.queryByText('Work in progress')).toBeNull()
   })
 })
+
+describe('SharePage error and not-found states', () => {
+  it('shows "Couldn\'t load list" when the list fetch rejects', async () => {
+    // retry:false (set in renderShareView) means the rejection surfaces on
+    // the first attempt, flipping listError true -> the error branch renders.
+    vi.mocked(fetchSharedList).mockRejectedValueOnce(new Error('gateway timeout'))
+    renderShareView()
+    expect(await screen.findByText("Couldn't load list")).toBeTruthy()
+  })
+
+  it('shows "List not found" when the list fetch resolves null (unknown/unshared slug)', async () => {
+    // A successful fetch that returns null is the unknown-or-unshared-slug
+    // case (fetchSharedList maps PGRST116 to null). The page distinguishes
+    // this from a transient error: !list -> "List not found", not "Couldn't load".
+    vi.mocked(fetchSharedList).mockResolvedValueOnce(null)
+    renderShareView()
+    expect(await screen.findByText('List not found')).toBeTruthy()
+  })
+})
