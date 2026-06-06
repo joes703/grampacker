@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { INLINE_EDIT_FOCUS_RING } from '../components/flat-table-styles'
+import { MAX_NAME_LENGTH } from '../lib/caps'
 
 type Props = {
   name: string
@@ -85,7 +86,7 @@ export default function InlineTitle({ name, onSave, editTrigger, onEditingChange
         <input
           ref={inputRef}
           value={draft}
-          maxLength={256}
+          maxLength={MAX_NAME_LENGTH}
           onChange={(e) => {
             setDraft(e.target.value)
             if (error) setError(null)

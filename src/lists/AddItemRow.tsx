@@ -8,6 +8,7 @@ import {
   MOBILE_ROW_HEIGHT,
 } from '../components/flat-table-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
+import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
 
 type Props = {
   onSubmit: (data: AddItemData) => void
@@ -76,7 +77,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
             placeholder="Item name"
             onChange={(e) => setName(e.target.value)}
             onKeyDown={handleKey}
-            maxLength={256}
+            maxLength={MAX_NAME_LENGTH}
             className={`w-full rounded border border-blue-400 px-1 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-normal ${INLINE_EDIT_FOCUS_RING}`}
           />
         </label>
@@ -87,7 +88,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
             placeholder="Description (optional)"
             onChange={(e) => setDescription(e.target.value)}
             onKeyDown={handleKey}
-            maxLength={2000}
+            maxLength={MAX_DESC_LENGTH}
             className={`w-full rounded border border-gray-200 px-1 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-normal focus:border-blue-400 ${INLINE_EDIT_FOCUS_RING}`}
           />
         </label>
@@ -115,7 +116,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
       <input
         type="number"
         min={1}
-        max={9999}
+        max={MAX_LIST_ITEM_QUANTITY}
         value={quantity}
         onChange={(e) => setQuantity(e.target.value)}
         onKeyDown={handleKey}

@@ -29,6 +29,7 @@ import WeightInput from '../components/WeightInput'
 import GearStatusBadge from '../gear/GearStatusBadge'
 import GearStatusMenuItems from '../gear/GearStatusMenuItems'
 import { WornIcon, ConsumableIcon } from './list-item-flags'
+import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY } from '../lib/caps'
 import PackModeCheckbox from './PackModeCheckbox'
 
 // Single source of truth for a list item row. Used by both the authenticated
@@ -158,14 +159,14 @@ export default function ItemRow({
   }, [editingQty])
 
   function commitWeight() {
-    const clamped = Math.max(0, Math.min(weightDraftGrams, 100000))
+    const clamped = Math.max(0, Math.min(weightDraftGrams, MAX_ITEM_WEIGHT_GRAMS))
     if (clamped !== itemWeight && onSaveWeight) onSaveWeight(clamped)
     setEditingWeight(false)
   }
 
   function commitQty() {
     const parsed = parseInt(qtyDraft, 10)
-    const clamped = isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, 9999)
+    const clamped = isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, MAX_LIST_ITEM_QUANTITY)
     if (clamped !== item.quantity && onUpdate) onUpdate({ quantity: clamped })
     setEditingQty(false)
   }
@@ -432,7 +433,7 @@ export default function ItemRow({
             ref={qtyInputRef}
             type="number"
             min={1}
-            max={9999}
+            max={MAX_LIST_ITEM_QUANTITY}
             value={qtyDraft}
             onChange={(e) => setQtyDraft(e.target.value)}
             onBlur={commitQty}

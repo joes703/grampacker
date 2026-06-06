@@ -1,4 +1,5 @@
 import { ListPlus, X } from 'lucide-react'
+import { LIST_ITEM_CAP } from '../lib/caps'
 
 type Props = {
   selectedCount: number
@@ -25,9 +26,10 @@ type Props = {
 //
 // With zero items selected the action buttons render disabled rather than
 // hidden — the user can see the available actions before making a
-// selection. The 300-item cap warning matches the per-list limit enforced
-// server-side; it appears (with a red badge) only when selectedCount > 300,
-// and Create list disables once that cap is exceeded.
+// selection. The LIST_ITEM_CAP cap warning matches the per-list limit
+// enforced server-side; it appears (with a red badge) only when
+// selectedCount > LIST_ITEM_CAP, and Create list disables once that cap
+// is exceeded.
 //
 // The Select-all / Select-none control is one-at-a-time: it shows "Select
 // none" only when every selectable item is already selected (and there's
@@ -47,7 +49,7 @@ export default function BulkActionsToolbar({
   onMoveToCategory,
   onDelete,
 }: Props) {
-  const overListCap = selectedCount > 300
+  const overListCap = selectedCount > LIST_ITEM_CAP
   const allSelected = selectableTotal > 0 && selectedCount >= selectableTotal
   const noneSelected = selectedCount === 0
 
@@ -74,7 +76,7 @@ export default function BulkActionsToolbar({
             }`}
           >
             {selectedCount} selected
-            {overListCap && ' · max 300 per list'}
+            {overListCap && ` · max ${LIST_ITEM_CAP} per list`}
           </span>
           {allSelected ? (
             <button onClick={onDeselectAll} className="text-sm text-gray-500 hover:underline">
@@ -105,7 +107,7 @@ export default function BulkActionsToolbar({
           <button
             onClick={onCreateList}
             disabled={noneSelected || overListCap}
-            title={overListCap ? `Lists can hold at most 300 items (you've selected ${selectedCount})` : undefined}
+            title={overListCap ? `Lists can hold at most ${LIST_ITEM_CAP} items (you've selected ${selectedCount})` : undefined}
             className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
           >
             <ListPlus size={14} /> Create list

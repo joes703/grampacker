@@ -1,6 +1,7 @@
 import type { Category, ListItemWithGear } from '../types'
 import { toCsv, parseCsv, MAX_CSV_ROWS } from './core'
 import { toGrams } from './units'
+import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH } from '../caps'
 
 export type ListImportRow = {
   name: string
@@ -59,11 +60,11 @@ export function parseListCsv(text: string): ListImportRow[] | string {
       // by clearing both. The user can re-flag the right one in the UI.
       const bothSet = isWorn && isConsumable
       return {
-        name:         (row[nameKey] ?? '').trim().slice(0, 256),
+        name:         (row[nameKey] ?? '').trim().slice(0, MAX_NAME_LENGTH),
         description:  descKey ? (row[descKey] || null) : null,
         weight_grams: toGrams(row[weightKey] ?? '0', unit),
         category:     catKey ? (row[catKey] ?? '') : '',
-        quantity:     isNaN(rawQty) || rawQty < 1 ? 1 : Math.min(rawQty, 9999),
+        quantity:     isNaN(rawQty) || rawQty < 1 ? 1 : Math.min(rawQty, MAX_LIST_ITEM_QUANTITY),
         is_worn:      bothSet ? false : isWorn,
         is_consumable: bothSet ? false : isConsumable,
       }

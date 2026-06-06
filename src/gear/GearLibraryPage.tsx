@@ -51,6 +51,7 @@ import {
   makeOptimisticBulkMove,
 } from '../lib/queries'
 import type { Category, GearItem, ListItemWithGear } from '../lib/types'
+import { MAX_CATEGORY_NAME } from '../lib/caps'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
 import { randomTempId } from '../lib/random-temp-id'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
@@ -622,7 +623,7 @@ export default function GearLibraryPage() {
                 autoFocus
                 type="text"
                 placeholder="Category name"
-                maxLength={128}
+                maxLength={MAX_CATEGORY_NAME}
                 value={newCategoryName}
                 onChange={(e) => setNewCategoryName(e.target.value)}
                 onKeyDown={(e) => {
