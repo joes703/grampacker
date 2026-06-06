@@ -215,7 +215,9 @@ columns it copies and already *omits* `is_shared` (so duplicates reset to
 private). `is_draft` follows the same rule: "status fields reset, shape fields
 inherit." Because the insert omits `is_draft`, the new row takes the table
 default (`true` = draft) automatically. We document this explicitly and pin it
-with a test so it cannot regress silently if the default ever changes.
+with a source-level regression test (asserting no `duplicate_list` definition
+references `is_draft`), since the table-default behavior itself is server-side
+and is not exercised by the Supabase-mocking unit suite.
 
 **Reason:** matches the established `is_shared`-on-duplicate behavior and the
 new-list default; a fork you are about to modify should not inherit a stale
@@ -281,9 +283,12 @@ invalidation past the actual data flow).
     projection; the change must go through them deliberately.
   - `updateList` round-trips `is_draft`.
   - `SharePage` renders the banner when `is_draft` is true and omits it when
-    false.
-  - Duplication yields a draft: assert a duplicated list has `is_draft === true`
-    (decision 8), so the reliance on the table default is pinned.
+    false (integration test mocking the public queries).
+  - Duplicate-default guard: a source-level regression test asserts no
+    `duplicate_list` definition threads `is_draft`, so duplicates keep inheriting
+    the table default (`true` = draft). The end-to-end server behavior is checked
+    manually (duplicate a complete list, confirm the copy is a draft), since the
+    unit suite mocks Supabase and cannot exercise the real default.
 
 ## Open questions
 

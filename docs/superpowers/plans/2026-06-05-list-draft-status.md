@@ -81,10 +81,45 @@ alter table public.lists
 Run: `cat supabase/migrations/20260605000000_add_is_draft_to_lists.sql`
 Expected: the two `alter table` statements in order (add column default false, then set default true), and no change to `duplicate_list`.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Write the duplicate-default regression guard test**
+
+The table-default behavior (duplicates inherit `is_draft = true`) is server-side and not exercised by the Supabase-mocking unit suite. The honest automatable guard is a source-level test: it fails if any migration that (re)defines `duplicate_list` ever references `is_draft`. Default Vitest env is node, so `fs` is available - no jsdom pragma.
+
+Create `src/lib/queries/duplicate-list-draft.test.ts`:
+
+```ts
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+
+// Decision 8: a duplicated list must inherit the table default for is_draft
+// (true = draft), NOT the source's status. duplicate_list copies an explicit
+// column list and must never thread is_draft - if it did, duplicates would
+// carry the source's status instead of resetting to draft. This guard fails if
+// any migration that (re)defines duplicate_list references is_draft.
+describe('duplicate_list draft-default guard', () => {
+  it('no duplicate_list definition threads is_draft', () => {
+    const dir = join(process.cwd(), 'supabase/migrations')
+    const offenders = readdirSync(dir)
+      .filter((f) => f.endsWith('.sql'))
+      .filter((f) => {
+        const sql = readFileSync(join(dir, f), 'utf8')
+        return /function\s+public\.duplicate_list/.test(sql) && sql.includes('is_draft')
+      })
+    expect(offenders).toEqual([])
+  })
+})
+```
+
+- [ ] **Step 4: Run the guard test**
+
+Run: `npx vitest run src/lib/queries/duplicate-list-draft.test.ts`
+Expected: PASS (no `duplicate_list` definition references `is_draft`; the Task 1 migration touches only the `lists` table).
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260605000000_add_is_draft_to_lists.sql
+git add supabase/migrations/20260605000000_add_is_draft_to_lists.sql src/lib/queries/duplicate-list-draft.test.ts
 git commit -m "feat(lists): add is_draft column with new-lists-draft default
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -138,7 +173,7 @@ Change the key-set assertion (sorted, `is_draft` inserted before `name`):
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run src/lib/queries/shared-projections.test.ts`
-Expected: FAIL - `fetchSharedList` still selects `'id, name, description, group_worn'`, so the `cols` assertion mismatches and the key set lacks `is_draft`.
+Expected: FAIL - `fetchSharedList` still selects `'id, name, description, group_worn'`, so the select-string (`cols`) assertion mismatches. (The key-set assertion already passes: the mock returns the object supplied in step 1, which now includes `is_draft`. The select-string assertion is the RED.)
 
 - [ ] **Step 3: Add `is_draft` to the `List` type**
 
@@ -216,15 +251,58 @@ In `src/lib/optimistic-list-placeholder.ts`, add `is_draft: true` to the returne
 Run: `npx vitest run src/lib/queries/shared-projections.test.ts`
 Expected: PASS - `fetchSharedList` now selects `is_draft` and the mock returns it, satisfying both assertions.
 
-- [ ] **Step 9: Run the build**
+- [ ] **Step 9: Write the `updateList` round-trip test**
+
+The spec promises `updateList` round-trips `is_draft`. This pins the runtime behavior (the patch is forwarded to Supabase); the compile-time whitelist widening from step 6 is enforced separately by `npm run build` in step 11. Self-contained `../supabase` mock via `vi.hoisted` (so the factory can reference the spy). No jsdom pragma - default node env.
+
+Create `src/lib/queries/lists.test.ts`:
+
+```ts
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+// Capture the patch passed to supabase.from('lists').update(patch).eq('id', id).
+// vi.hoisted lets the (hoisted) vi.mock factory reference the spy safely.
+const { updateSpy } = vi.hoisted(() => ({ updateSpy: vi.fn() }))
+
+vi.mock('../supabase', () => ({
+  supabase: {
+    from: () => ({
+      update: (patch: unknown) => {
+        updateSpy(patch)
+        return { eq: () => Promise.resolve({ error: null }) }
+      },
+    }),
+  },
+}))
+
+import { updateList } from './lists'
+
+afterEach(() => {
+  updateSpy.mockClear()
+})
+
+describe('updateList', () => {
+  it('forwards is_draft in the update patch', async () => {
+    await updateList('list-1', { is_draft: false })
+    expect(updateSpy).toHaveBeenCalledWith({ is_draft: false })
+  })
+})
+```
+
+- [ ] **Step 10: Run the `updateList` test to verify it passes**
+
+Run: `npx vitest run src/lib/queries/lists.test.ts`
+Expected: PASS - `updateList('list-1', { is_draft: false })` calls `.update({ is_draft: false })`.
+
+- [ ] **Step 11: Run the build**
 
 Run: `npm run build`
-Expected: PASS. (The required new `List.is_draft` field forces `optimisticListPlaceholder` to set it - which step 7 did - so the build is the guard that no other `List` constructor was missed.)
+Expected: PASS. (The required new `List.is_draft` field forces `optimisticListPlaceholder` to set it - which step 7 did - so the build is the guard that no other `List` constructor was missed. It also enforces the `updateList` whitelist widening: passing `{ is_draft }` would be a type error without step 6.)
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
-git add src/lib/types.ts src/lib/queries/lists.ts src/lib/optimistic-list-placeholder.ts src/lib/queries/shared-projections.test.ts
+git add src/lib/types.ts src/lib/queries/lists.ts src/lib/optimistic-list-placeholder.ts src/lib/queries/shared-projections.test.ts src/lib/queries/lists.test.ts
 git commit -m "feat(lists): thread is_draft through types, query, and public projection
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -449,19 +527,85 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 6: Render `DraftBanner` on the public share view
 
 **Files:**
-- Modify: `src/lists/SharePage.tsx:22` (imports) and `src/lists/SharePage.tsx:151-154` (header area)
+- Test: `src/lists/SharePage.test.tsx`
+- Modify: `src/lists/SharePage.tsx:15` (import) and `src/lists/SharePage.tsx:145-151` (header area)
 
-The only logic added to `SharePage` is one conditional; the banner's own rendering is unit-tested in Task 5. `list.is_draft` is available now that `PublicList` includes it (Task 2).
+The spec requires a behavioral test that `SharePage` shows the banner for a draft and omits it for a complete list. We mock `../lib/queries` (just the three public fetchers - importActual would load the real Supabase client, which throws without env) and drive the component through the router.
 
-- [ ] **Step 1: Import `DraftBanner`**
+- [ ] **Step 1: Write the failing test**
 
-In `src/lists/SharePage.tsx`, add to the import block near the other local imports (after the `MarkdownContent` lazy import on line 22 is fine, place a static import among the component imports, e.g. after the `UnitSegmentedControl` import on line 15):
+Create `src/lists/SharePage.test.tsx`:
+
+```tsx
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter, Route, Routes } from 'react-router'
+
+// Mock only the three public fetchers SharePage calls. Do NOT importActual -
+// the real ../lib/queries pulls in the Supabase client, which throws at import
+// without env vars. No co-rendered child imports other ../lib/queries exports.
+vi.mock('../lib/queries', () => ({
+  fetchSharedList: vi.fn(),
+  fetchSharedListItems: vi.fn(async () => []),
+  fetchSharedListCategories: vi.fn(async () => []),
+}))
+
+import { fetchSharedList } from '../lib/queries'
+import SharePage from './SharePage'
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
+
+const baseList = { id: 'list-1', name: 'Trip', description: null, group_worn: false }
+
+function renderShareView() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={['/r/abc123']}>
+        <Routes>
+          <Route path="/r/:slug" element={<SharePage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+describe('SharePage draft banner', () => {
+  it('shows the work-in-progress banner when the shared list is a draft', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue({ ...baseList, is_draft: true })
+    renderShareView()
+    expect(await screen.findByText('Work in progress')).toBeTruthy()
+  })
+
+  it('omits the banner when the shared list is complete', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue({ ...baseList, is_draft: false })
+    renderShareView()
+    // Wait for the list to load (title renders), then assert no banner.
+    expect(await screen.findByText('Trip')).toBeTruthy()
+    expect(screen.queryByText('Work in progress')).toBeNull()
+  })
+})
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `npx vitest run src/lists/SharePage.test.tsx`
+Expected: FAIL on the first case - `SharePage` does not render `DraftBanner` yet, so "Work in progress" is never found. (The second case already passes - there is no banner either way yet.)
+
+- [ ] **Step 3: Import `DraftBanner`**
+
+In `src/lists/SharePage.tsx`, add a static import among the component imports (e.g. right after the `UnitSegmentedControl` import on line 15):
 
 ```tsx
 import DraftBanner from './DraftBanner'
 ```
 
-- [ ] **Step 2: Render the banner above the title block when draft**
+- [ ] **Step 4: Render the banner above the title block when draft**
 
 In `src/lists/SharePage.tsx`, inside the `<div className="mx-auto max-w-5xl px-4 py-10">` (line 145), immediately before the header `<div className="mb-6 flex flex-wrap items-center gap-3">` (line 151), add:
 
@@ -469,19 +613,24 @@ In `src/lists/SharePage.tsx`, inside the `<div className="mx-auto max-w-5xl px-4
         {list.is_draft && <DraftBanner />}
 ```
 
-- [ ] **Step 3: Run the build**
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `npx vitest run src/lists/SharePage.test.tsx`
+Expected: PASS - banner present for the draft, absent for the complete list.
+
+- [ ] **Step 6: Run the build**
 
 Run: `npm run build`
 Expected: PASS. (`list` is `PublicList`, which now has `is_draft`.)
 
-- [ ] **Step 4: Manual verification**
+- [ ] **Step 7: Manual verification**
 
 Run: `npm run dev`, open a shared draft list at `/r/<slug>`, confirm the "Work in progress" banner appears above the title; mark the list complete (or set `is_draft=false`) and confirm the banner disappears on reload. (Share view is read-only and not optimistic, so a normal reload is sufficient.)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/lists/SharePage.tsx
+git add src/lists/SharePage.tsx src/lists/SharePage.test.tsx
 git commit -m "feat(lists): show work-in-progress banner on shared draft lists
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -710,12 +859,17 @@ Expected: PASS, including the updated `shared-projections.test.ts`, `DraftBadge.
 Run: `npm run build`
 Expected: PASS (`tsc -b && vite build`).
 
-- [ ] **Step 3: Confirm `duplicate_list` was not touched and duplicates default to draft**
+- [ ] **Step 3: Confirm duplicates default to draft (decision 8)**
+
+The automated guard from Task 1 already pins this; re-run it and eyeball the source:
+
+Run: `npx vitest run src/lib/queries/duplicate-list-draft.test.ts`
+Expected: PASS - no `duplicate_list` definition references `is_draft`.
 
 Run: `rg -n "is_draft" supabase/migrations/`
-Expected: `is_draft` appears ONLY in `20260605000000_add_is_draft_to_lists.sql`, NOT in any `duplicate_list` definition. This confirms decision 8: a duplicate inherits the table default (`true` = draft).
+Expected: `is_draft` appears ONLY in `20260605000000_add_is_draft_to_lists.sql`, NOT in any `duplicate_list` definition.
 
-Then manually: duplicate a complete list via the kebab/settings "Duplicate" action and confirm the copy shows a "Draft" pill.
+Then manually (the only way to exercise the real server default, which the mocked unit suite can't): duplicate a complete list via the kebab/settings "Duplicate" action and confirm the copy shows a "Draft" pill.
 
 - [ ] **Step 4: Grep that every owner list surface renders the pill**
 
@@ -741,12 +895,13 @@ Run: `npm run dev` and verify:
 - Decision 3 (default draft new / complete existing): Task 1 (add-false-then-default-true), Task 2 step 7 (`optimisticListPlaceholder: is_draft true`).
 - Decision 4 (prominent on every owner surface): Task 7 (cards), Task 8 (rail), Task 9 (header); Task 11 step 4 greps all three.
 - Decision 5 (asymmetric header control + matrix): Task 9 (clickable pill in draft state only), Task 10 (settings is the revert path).
-- Decision 5b (banner only in draft state): Task 5 (component), Task 6 (gated render).
+- Decision 5b (banner only in draft state): Task 5 (component unit test), Task 6 (gated render + SharePage show/omit integration test).
 - Decision 6 (independent of `is_shared`): nothing couples them; Task 11 step 5 verifies.
 - Decision 7 (wording: "Draft" pill, "Mark list complete", banner sentence): Task 4 (pill text), Task 9 (`aria-label`/`title` "Mark list complete"), Task 5 (banner copy).
-- Decision 8 (duplicate always draft): Task 1 (RPC untouched), Task 11 step 3 (grep + manual).
+- Decision 8 (duplicate always draft): Task 1 (RPC untouched + source-level guard test), Task 11 step 3 (re-run guard + grep + manual server check).
 - Data-flow/caching rule (`['lists']` only, no `['list-items']`): Task 3 comment + `makeOptimisticUpdate` on `queryKeys.lists()`.
 - Public projection widening reviewed in the pinned test: Task 2 steps 1-2, 8.
+- Spec Verification tests all present: `updateList` round-trips `is_draft` (Task 2 steps 9-10), `SharePage` show/omit (Task 6 steps 1-5), duplicate-default guard (Task 1 steps 3-4).
 
 **Placeholder scan:** none - every code step shows complete code; every command has expected output.
 
