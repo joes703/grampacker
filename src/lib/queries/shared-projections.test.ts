@@ -68,6 +68,7 @@ import { fetchSharedList } from './lists'
 import { fetchSharedListItems, fetchListItems, fetchAllUserListItems } from './list-items'
 import { fetchSharedListCategories } from './categories'
 import { GEAR_ITEM_AUTH_SELECT, GEAR_ITEM_PUBLIC_SELECT } from './projections'
+import { patchAffectsListItemsView } from '../../lists/list-items-fan-out'
 
 // Helper: parse the column list inside the `gear_item:gear_items(...)`
 // nested join substring and return a trimmed, sorted array. Lets tests
@@ -147,6 +148,45 @@ describe('gear-item projection constants', () => {
     expect(GEAR_ITEM_AUTH_SELECT).not.toContain('purchase_date')
     expect(GEAR_ITEM_AUTH_SELECT).not.toContain('user_id')
     expect(GEAR_ITEM_AUTH_SELECT).not.toContain('*')
+  })
+})
+
+// The list_items.gear_item join (GEAR_ITEM_AUTH_SELECT) and the private
+// EMBEDDED_GEAR_FIELDS set inside list-items-fan-out.ts must stay in sync:
+// EMBEDDED_GEAR_FIELDS is exactly the set of gear_items columns a gear-edit
+// patch can change that the list view actually renders. patchAffectsListItemsView
+// is the public gate that consumes that set to decide whether a gear mutation
+// must fan out across the ['list-items', *] caches. If a column is added to
+// the auth join but NOT to EMBEDDED_GEAR_FIELDS, a patch touching it would
+// (wrongly) skip the fan-out and leave the list-detail row stale.
+//
+// We test the sync BEHAVIORALLY through patchAffectsListItemsView rather than
+// exporting the private const: for every gear column in the auth select except
+// `id` (the join key, never the target of an edit and intentionally absent
+// from the embedded set), a single-field patch must report "affects view".
+// A field NOT in the select (sort_order, cost) must report false. The column
+// list is extracted from the select string via gearColumnList so this test
+// self-updates if the select widens - a new auth column with no matching
+// embedded field fails the loop, catching add-a-column drift.
+describe('EMBEDDED_GEAR_FIELDS stays in sync with GEAR_ITEM_AUTH_SELECT', () => {
+  it('treats every auth-select gear column (except id) as affecting the list view', () => {
+    const embeddable = gearColumnList(GEAR_ITEM_AUTH_SELECT).filter((c) => c !== 'id')
+    // Guard: the loop is meaningless if extraction yielded nothing.
+    expect(embeddable.length).toBeGreaterThan(0)
+    for (const col of embeddable) {
+      expect(patchAffectsListItemsView({ [col]: 'x' })).toBe(true)
+    }
+  })
+
+  it('treats gear columns NOT in the auth select as not affecting the list view', () => {
+    // sort_order and cost are real gear_items columns deliberately kept out
+    // of the join (sort_order is list-ordering-irrelevant; cost is library-
+    // only). A patch touching only these must skip the list-items fan-out.
+    expect(patchAffectsListItemsView({ sort_order: 3 })).toBe(false)
+    expect(patchAffectsListItemsView({ cost: 12.5 })).toBe(false)
+    // id is in the select but is the join key, never edited; it is not an
+    // embedded field, so a patch touching only id does not affect the view.
+    expect(patchAffectsListItemsView({ id: 'g-1' })).toBe(false)
   })
 })
 

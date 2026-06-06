@@ -166,6 +166,35 @@ describe('csv round-trip', () => {
     })
   })
 
+  it('clears BOTH flags when a row marks itself worn AND consumable (worn_xor_consumable)', () => {
+    // worn_xor_consumable is a DB CHECK constraint: a list_item can be at
+    // most one of worn/consumable. A CSV row that sets both would fail the
+    // insert, so parseListCsv silently normalizes by clearing both. The two
+    // single-flag control rows prove the clearing is specific to the
+    // both-set case and not a blanket suppression of either flag.
+    const csv = [
+      'Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable',
+      'Both flags,Shelter,,1,100,gram,,0,Worn,Consumable',
+      'Only worn,Clothing,,1,200,gram,,0,Worn,',
+      'Only consumable,Food,,1,50,gram,,0,,Consumable',
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed).toHaveLength(3)
+    // Both truthy -> both cleared.
+    expect(parsed[0]).toMatchObject({
+      name: 'Both flags', is_worn: false, is_consumable: false,
+    })
+    // Control: worn-only stays worn, consumable false.
+    expect(parsed[1]).toMatchObject({
+      name: 'Only worn', is_worn: true, is_consumable: false,
+    })
+    // Control: consumable-only stays consumable, worn false.
+    expect(parsed[2]).toMatchObject({
+      name: 'Only consumable', is_worn: false, is_consumable: true,
+    })
+  })
+
   it('parses HikerHerd-style headers (notes for description, mixed case)', () => {
     const csv = [
       'Name,Category,Notes,Quantity,Weight,Unit,Worn,Consumable',
