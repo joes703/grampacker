@@ -1,7 +1,7 @@
 import type { GearItem, Category } from '../types'
 import { toCsv, parseCsv, MAX_CSV_ROWS } from './core'
 import { toGrams } from './units'
-import { MAX_NAME_LENGTH } from '../queries/caps'
+import { MAX_NAME_LENGTH } from '../caps'
 
 export type GearCsvRow = {
   name: string

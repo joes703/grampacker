@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/queries/caps'
+import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
 
 // Shared state machine for the List Detail "Quick Add" flow. Both the
 // desktop inline AddItemRow and the mobile QuickAddItemModal consume this

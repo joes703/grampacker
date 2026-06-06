@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type Ref } from 'react'
 import { gramsToOz, ozToGrams, getWeightUnit, type WeightUnit } from '../lib/weight'
-import { MAX_ITEM_WEIGHT_GRAMS } from '../lib/queries/caps'
+import { MAX_ITEM_WEIGHT_GRAMS } from '../lib/caps'
 
 // Number input + g/oz unit toggle. Storage is always integer grams; the
 // component converts at the input boundary. The initial unit follows the

@@ -7,7 +7,7 @@ import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import WeightInput from '../components/WeightInput'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
-import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/queries/caps'
+import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
 
 type Props = {
   onSubmit: (data: AddItemData) => void

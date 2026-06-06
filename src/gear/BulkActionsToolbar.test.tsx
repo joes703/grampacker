@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import BulkActionsToolbar from './BulkActionsToolbar'
-import { LIST_ITEM_CAP } from '../lib/queries/caps'
+import { LIST_ITEM_CAP } from '../lib/caps'
 
 afterEach(() => {
   cleanup()

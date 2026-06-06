@@ -4,7 +4,7 @@ import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
-import { LIST_CAP, LIST_ITEM_CAP, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/queries/caps'
+import { LIST_CAP, LIST_ITEM_CAP, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
 
 type Props = {
   selectedCount: number

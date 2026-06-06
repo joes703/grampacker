@@ -14,7 +14,7 @@
 // Used by both gear.parseGearCsv and list.parseListCsv. Lives outside
 // either to avoid circular imports and to keep the dependency
 // direction one-way (gear/list -> units, never the reverse).
-import { MAX_ITEM_WEIGHT_GRAMS } from '../queries/caps'
+import { MAX_ITEM_WEIGHT_GRAMS } from '../caps'
 
 export function toGrams(value: string, unit: string): number {
   const n = parseFloat(value)

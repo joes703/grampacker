@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { INLINE_EDIT_FOCUS_RING } from '../components/flat-table-styles'
-import { MAX_NAME_LENGTH } from '../lib/queries/caps'
+import { MAX_NAME_LENGTH } from '../lib/caps'
 
 type Props = {
   name: string

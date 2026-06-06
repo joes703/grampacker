@@ -51,7 +51,7 @@ import {
   makeOptimisticBulkMove,
 } from '../lib/queries'
 import type { Category, GearItem, ListItemWithGear } from '../lib/types'
-import { MAX_CATEGORY_NAME } from '../lib/queries/caps'
+import { MAX_CATEGORY_NAME } from '../lib/caps'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
 import { randomTempId } from '../lib/random-temp-id'
 import { useCsvFileInput } from '../lib/use-csv-file-input'

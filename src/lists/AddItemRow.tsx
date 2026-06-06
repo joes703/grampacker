@@ -8,7 +8,7 @@ import {
   MOBILE_ROW_HEIGHT,
 } from '../components/flat-table-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
-import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/queries/caps'
+import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
 
 type Props = {
   onSubmit: (data: AddItemData) => void

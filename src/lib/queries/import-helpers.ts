@@ -32,8 +32,8 @@ export function gearKey(categoryId: string | null, name: string, weight_grams: n
 // aborts at the trigger with a generic error AFTER resolveOrCreateCategories
 // has already committed new categories (orphaning them) and, for list
 // import, after the new list row was created (orphaning it).
-export { GEAR_ITEM_CAP, LIST_ITEM_CAP } from './caps'
-import { GEAR_ITEM_CAP, LIST_ITEM_CAP, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from './caps'
+export { GEAR_ITEM_CAP, LIST_ITEM_CAP } from '../caps'
+import { GEAR_ITEM_CAP, LIST_ITEM_CAP, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../caps'
 
 // Dedup key for the preflight counter. Mirrors gearKey's name handling
 // (trim + NFC + lowercase) but keys the category by NAME rather than id,

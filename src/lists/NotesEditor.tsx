@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { INLINE_EDIT_FOCUS_RING, PANEL_EMPTY_TEXT } from '../components/flat-table-styles'
-import { MAX_DESC_LENGTH } from '../lib/queries/caps'
+import { MAX_DESC_LENGTH } from '../lib/caps'
 
 // react-markdown + remark-gfm is ~46 KB gzip. Owner Notes panels rarely
 // switch into render-with-content state on first paint (often empty for

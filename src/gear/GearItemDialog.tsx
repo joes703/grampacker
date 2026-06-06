@@ -8,7 +8,7 @@ import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import WeightInput from '../components/WeightInput'
-import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH, MAX_CATEGORY_NAME } from '../lib/queries/caps'
+import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH, MAX_CATEGORY_NAME } from '../lib/caps'
 
 export type GearPatch = {
   name: string

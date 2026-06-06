@@ -1,5 +1,5 @@
 import { ListPlus, X } from 'lucide-react'
-import { LIST_ITEM_CAP } from '../lib/queries/caps'
+import { LIST_ITEM_CAP } from '../lib/caps'
 
 type Props = {
   selectedCount: number

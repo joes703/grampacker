@@ -1,7 +1,7 @@
 import type { Category, ListItemWithGear } from '../types'
 import { toCsv, parseCsv, MAX_CSV_ROWS } from './core'
 import { toGrams } from './units'
-import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH } from '../queries/caps'
+import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH } from '../caps'
 
 export type ListImportRow = {
   name: string

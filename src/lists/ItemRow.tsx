@@ -29,7 +29,7 @@ import WeightInput from '../components/WeightInput'
 import GearStatusBadge from '../gear/GearStatusBadge'
 import GearStatusMenuItems from '../gear/GearStatusMenuItems'
 import { WornIcon, ConsumableIcon } from './list-item-flags'
-import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY } from '../lib/queries/caps'
+import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY } from '../lib/caps'
 import PackModeCheckbox from './PackModeCheckbox'
 
 // Single source of truth for a list item row. Used by both the authenticated
