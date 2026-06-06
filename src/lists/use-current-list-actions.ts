@@ -6,14 +6,17 @@ import {
   updateList,
   duplicateList,
   deleteList,
+  createList,
   fetchListItems,
   fetchCategories,
   makeOptimisticUpdate,
   makeOptimisticDelete,
+  makeOptimisticInsert,
   nextListSortOrder,
 } from '../lib/queries'
 import { listItemsToCsv, downloadCsv } from '../lib/csv'
 import { showToast } from '../lib/toast'
+import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import type { List, Category } from '../lib/types'
 
 // Shared current-list actions hook. Both the /lists card kebab
@@ -69,6 +72,30 @@ export function useCurrentListActions(userId: string) {
     }),
   })
 
+  // Create a new list. Mirrors ListsPage's createListMut byte-for-byte on
+  // the data path: read the live ['lists'] cache at mutation time (same
+  // pattern as duplicateMut) to compute the append sort_order, optimistic
+  // insert a placeholder, then navigate into the server-authoritative row.
+  // Dialog-closing is intentionally NOT done here - it stays caller-owned,
+  // so the page passes { onSuccess: () => setDialog(null) } to .mutate. The
+  // optimistic-insert helper owns onSettled (invalidate); this onSuccess
+  // runs first to navigate to the new list.
+  const createListMut = useMutation({
+    mutationFn: (name: string) => {
+      const currentLists = qc.getQueryData<List[]>(queryKeys.lists()) ?? []
+      return createList(userId, name, nextListSortOrder(currentLists))
+    },
+    ...makeOptimisticInsert<List, string>({
+      qc,
+      queryKey: queryKeys.lists(),
+      optimistic: (name) => {
+        const currentLists = qc.getQueryData<List[]>(queryKeys.lists()) ?? []
+        return optimisticListPlaceholder({ name, userId, sortOrder: nextListSortOrder(currentLists) })
+      },
+    }),
+    onSuccess: (created) => navigate(`/lists/${created.id}`),
+  })
+
   const duplicateMut = useMutation({
     mutationFn: (target: List) => {
       const currentLists = qc.getQueryData<List[]>(queryKeys.lists()) ?? []
@@ -117,5 +144,5 @@ export function useCurrentListActions(userId: string) {
     [qc, userId],
   )
 
-  return { renameMut, duplicateMut, deleteListMut, exportCsv, draftMut }
+  return { createListMut, renameMut, duplicateMut, deleteListMut, exportCsv, draftMut }
 }
