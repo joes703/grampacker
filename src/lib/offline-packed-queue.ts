@@ -10,11 +10,12 @@ import type { ListItemWithGear } from './types'
 //   key:   `${userId}:${listId}:${itemId}`
 //   value: { userId, listId, itemId, patch: { is_packed?, is_ready? }, updated_at }
 //
-// v1 (is_packed-only, key 'grampacker:pending-packed:v1') is migrated on
-// first read of v2; the old key is then removed so we never read it again.
+// The legacy v1 (is_packed-only) store was migrated on read until its
+// entries aged out past the 30-day TTL (last possible live entry expired
+// 2026-06-15). The migration path was removed afterward; a cold read with
+// no v2 key simply starts fresh.
 
 const STORAGE_KEY = 'grampacker:pending-checks:v2'
-const STORAGE_KEY_V1 = 'grampacker:pending-packed:v1'
 
 // Entries older than this are dropped at next read. Bounded growth on
 // shared devices where a logged-out user's pending entries would
@@ -86,52 +87,6 @@ function coerceFailedAttempts(value: unknown): number {
   return Math.floor(value)
 }
 
-function migrateV1IfPresent(): StoredPending | null {
-  if (typeof localStorage === 'undefined') return null
-  let raw: string | null = null
-  try {
-    raw = localStorage.getItem(STORAGE_KEY_V1)
-  } catch {
-    return null
-  }
-  if (!raw) return null
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    // Malformed v1 — drop it on the floor; v2 will start fresh.
-    try { localStorage.removeItem(STORAGE_KEY_V1) } catch { /* ignore */ }
-    return null
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    try { localStorage.removeItem(STORAGE_KEY_V1) } catch { /* ignore */ }
-    return null
-  }
-  const out: StoredPending = {}
-  for (const [key, value] of Object.entries(parsed)) {
-    if (!value || typeof value !== 'object') continue
-    const row = value as Record<string, unknown>
-    if (
-      typeof row.userId === 'string' &&
-      typeof row.listId === 'string' &&
-      typeof row.itemId === 'string' &&
-      typeof row.is_packed === 'boolean' &&
-      typeof row.updated_at === 'number'
-    ) {
-      out[key] = {
-        userId: row.userId,
-        listId: row.listId,
-        itemId: row.itemId,
-        patch: { is_packed: row.is_packed },
-        updated_at: row.updated_at,
-        failedAttempts: 0,
-      }
-    }
-  }
-  try { localStorage.removeItem(STORAGE_KEY_V1) } catch { /* ignore */ }
-  return out
-}
-
 function readStored(): StoredPending {
   if (typeof localStorage === 'undefined') return {}
   let raw: string | null
@@ -140,13 +95,8 @@ function readStored(): StoredPending {
   } catch {
     return {}
   }
-  // No v2 yet — try to migrate v1.
-  if (!raw) {
-    const migrated = migrateV1IfPresent()
-    if (!migrated || Object.keys(migrated).length === 0) return {}
-    writeStored(migrated)
-    return migrated
-  }
+  // No v2 key yet (or it was removed) - nothing pending.
+  if (!raw) return {}
   try {
     const parsed = JSON.parse(raw) as unknown
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}

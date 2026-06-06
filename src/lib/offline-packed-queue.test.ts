@@ -12,7 +12,6 @@ import {
 import type { ListItemWithGear } from './types'
 
 const STORAGE_KEY = 'grampacker:pending-checks:v2'
-const STORAGE_KEY_V1 = 'grampacker:pending-packed:v1'
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 const USER_ID = 'user-1'
@@ -298,30 +297,30 @@ describe('dropFieldFromPendingChecks (reset/sync race contract)', () => {
   })
 })
 
-describe('v1 -> v2 migration', () => {
+describe('empty storage', () => {
   beforeEach(() => {
     storage.clear()
   })
 
-  it('reads a v1 payload, converts to v2 patch shape, and removes the v1 key', () => {
-    const now = Date.now()
-    const v1 = {
+  it('returns no pending entries when there is no v2 key', () => {
+    expect(readPendingCheckStates(USER_ID, LIST_ID)).toEqual([])
+    // A cold read must not create any storage key.
+    expect(storage.get(STORAGE_KEY)).toBeUndefined()
+  })
+
+  it('ignores a leftover legacy v1 key (migration path removed)', () => {
+    storage.set('grampacker:pending-packed:v1', JSON.stringify({
       'user-1:list-1:item-1': {
         userId: USER_ID,
         listId: LIST_ID,
         itemId: 'item-1',
         is_packed: true,
-        updated_at: now,
+        updated_at: Date.now(),
       },
-    }
-    storage.set(STORAGE_KEY_V1, JSON.stringify(v1))
-
-    const pending = readPendingCheckStates(USER_ID, LIST_ID)
-    expect(pending).toHaveLength(1)
-    expect(pending[0]?.patch).toEqual({ is_packed: true })
-
-    // v1 key removed, v2 key populated.
-    expect(storage.get(STORAGE_KEY_V1)).toBeUndefined()
-    expect(storage.get(STORAGE_KEY)).toBeDefined()
+    }))
+    // The v1 payload is neither migrated into pending nor cleaned up; the
+    // queue behaves as if no pending state exists.
+    expect(readPendingCheckStates(USER_ID, LIST_ID)).toEqual([])
+    expect(storage.get(STORAGE_KEY)).toBeUndefined()
   })
 })
