@@ -692,14 +692,17 @@ function ListDetailInner({
     )
     try {
       await resetPackedForList(listId)
-    } catch (err) {
+    } catch {
       // Restore only is_packed=true on the ids we cleared. Any concurrent
       // resetReady write on those same rows survives because we never
       // touch is_ready here.
       qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
         curr ? curr.map((i) => (wasPackedIds.has(i.id) ? { ...i, is_packed: true } : i)) : curr,
       )
-      throw err
+      // Non-optimistic action: surface the failure and CONSUME it. onReset() is
+      // called fire-and-forget from PackingProgress (() => void), so rethrowing
+      // would be an unhandled rejection.
+      showToast("Couldn't reset packed items. Please try again.", { type: 'error' })
     } finally {
       qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
     }
@@ -724,11 +727,11 @@ function ListDetailInner({
     )
     try {
       await resetReadyForList(listId)
-    } catch (err) {
+    } catch {
       qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
         curr ? curr.map((i) => (wasReadyIds.has(i.id) ? { ...i, is_ready: true } : i)) : curr,
       )
-      throw err
+      showToast("Couldn't reset ready checks. Please try again.", { type: 'error' })
     } finally {
       qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
     }
