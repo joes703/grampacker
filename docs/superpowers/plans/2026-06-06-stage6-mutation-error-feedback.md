@@ -1,4 +1,4 @@
-# Stage 6 — Non-optimistic Mutation/Action Failure Feedback Implementation Plan
+# Stage 6 - Non-optimistic Mutation/Action Failure Feedback Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -8,7 +8,7 @@
 1. **`useMutation` sites** opt into a toast declaratively via `meta: { errorToast: "..." }`. The already-extracted global `mutationErrorHandler` (wired into the app's single `MutationCache`) reads that meta and shows the toast. This keeps the two god-file mutation sites a **one-line, logic-free** change (no `onError` closure, no render harness needed) and puts the tested behavior in a small isolated module.
 2. **Non-mutation async actions** (`exportCsv`, `resetPacked`, `resetReady`) wrap their body in `try/catch`, `showToast` on failure, and **consume** the error (no rethrow), so their fire-and-forget call sites can never reject.
 
-**Why this split:** It satisfies three hard constraints simultaneously — TDD (the handler + the hook are unit-testable), surgical (additive lines only), and **no god-file refactor** (no extraction from `ListDetailPage.tsx` / `GearLibraryPage.tsx`).
+**Why this split:** It satisfies three hard constraints simultaneously - TDD (the handler + the hook are unit-testable), surgical (additive lines only), and **no god-file refactor** (no extraction from `ListDetailPage.tsx` / `GearLibraryPage.tsx`).
 
 **Tech Stack:** React 19, TanStack Query v5 (`MutationCache`, `meta`, `Register` augmentation), `src/lib/toast.ts` (`showToast`), Vitest + `@testing-library/react` (`renderHook`), jsdom.
 
@@ -20,14 +20,14 @@
 
 | File | Responsibility | Change |
 |---|---|---|
-| `src/lib/mutation-error-handler.ts` | Global mutation error handler | Add `Register` meta augmentation + `meta.errorToast` → `showToast` |
-| `src/lib/mutation-error-handler.test.ts` | Handler unit test | **New** — covers meta→toast behavior |
+| `src/lib/mutation-error-handler.ts` | Global mutation error handler | Add `Register` meta augmentation + `meta.errorToast` -> `showToast` |
+| `src/lib/mutation-error-handler.test.ts` | Handler unit test | **New** - covers meta->toast behavior |
 | `src/gear/GearLibraryPage.tsx` | Gear page (god-file) | One `meta:` line on `createListFromSelectionMut` |
-| `src/lists/ListDetailPage.tsx` | List workspace (god-file) | One `meta:` line on `addNewItemMut`; `resetPacked`/`resetReady` catch → toast+consume |
+| `src/lists/ListDetailPage.tsx` | List workspace (god-file) | One `meta:` line on `addNewItemMut`; `resetPacked`/`resetReady` catch -> toast+consume |
 | `src/lists/use-current-list-actions.ts` | Shared list actions hook | `meta:` on `duplicateMut`; `exportCsv` try/catch+toast+consume; import `showToast` |
-| `src/lists/use-current-list-actions.test.ts` | Hook unit test | **New** — duplicate (meta path) + exportCsv (direct) |
+| `src/lists/use-current-list-actions.test.ts` | Hook unit test | **New** - duplicate (meta path) + exportCsv (direct) |
 | `CLAUDE.md` | Project instructions | New convention subsection (3 bullets) |
-| `SPEC.md` | Behavior reference | Update "Toast notifications → Current usage" |
+| `SPEC.md` | Behavior reference | Update "Toast notifications -> Current usage" |
 
 ---
 
@@ -87,7 +87,7 @@ describe('mutationErrorHandler', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run src/lib/mutation-error-handler.test.ts`
-Expected: FAIL — `showToast` not called (handler doesn't read meta yet).
+Expected: FAIL - `showToast` not called (handler doesn't read meta yet).
 
 - [ ] **Step 3: Implement meta support**
 
@@ -144,9 +144,9 @@ git commit -m "feat(mutations): honor meta.errorToast in the global error handle
 - Modify: `src/lists/use-current-list-actions.ts` (`duplicateMut`, C-04)
 - Create: `src/lists/use-current-list-actions.test.ts` (duplicate end-to-end test)
 
-- [ ] **Step 1: Write the failing test (duplicate → toast via the real handler)**
+- [ ] **Step 1: Write the failing test (duplicate -> toast via the real handler)**
 
-Create `src/lists/use-current-list-actions.test.ts`. This wires the REAL `mutationErrorHandler` into the QueryClient so the test exercises the full meta→toast path:
+Create `src/lists/use-current-list-actions.test.ts`. This wires the REAL `mutationErrorHandler` into the QueryClient so the test exercises the full meta->toast path:
 
 ```tsx
 // @vitest-environment jsdom
@@ -181,7 +181,7 @@ function wrapper({ children }: { children: ReactNode }) {
   return createElement(QueryClientProvider, { client: qc }, createElement(MemoryRouter, null, children))
 }
 
-describe('useCurrentListActions — duplicate failure feedback', () => {
+describe('useCurrentListActions - duplicate failure feedback', () => {
   beforeEach(() => { vi.mocked(showToast).mockClear() })
   afterEach(() => cleanup())
 
@@ -201,11 +201,11 @@ describe('useCurrentListActions — duplicate failure feedback', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run src/lists/use-current-list-actions.test.ts`
-Expected: FAIL — no toast (duplicateMut has no `meta` yet).
+Expected: FAIL - no toast (duplicateMut has no `meta` yet).
 
 - [ ] **Step 3: Add `meta.errorToast` to all three mutations**
 
-`src/lists/use-current-list-actions.ts` — `duplicateMut` (currently `useMutation({ mutationFn, onSuccess })`), add a `meta` property:
+`src/lists/use-current-list-actions.ts` - `duplicateMut` (currently `useMutation({ mutationFn, onSuccess })`), add a `meta` property:
 ```ts
   const duplicateMut = useMutation({
     mutationFn: (target: List) => {
@@ -220,12 +220,12 @@ Expected: FAIL — no toast (duplicateMut has no `meta` yet).
   })
 ```
 
-`src/gear/GearLibraryPage.tsx` — `createListFromSelectionMut`, add `meta` above `onSuccess`:
+`src/gear/GearLibraryPage.tsx` - `createListFromSelectionMut`, add `meta` above `onSuccess`:
 ```ts
     meta: { errorToast: "Couldn't create the list. Please try again." },
 ```
 
-`src/lists/ListDetailPage.tsx` — `addNewItemMut`, add `meta` above `onSuccess`:
+`src/lists/ListDetailPage.tsx` - `addNewItemMut`, add `meta` above `onSuccess`:
 ```ts
     meta: { errorToast: "Couldn't add that item. Please try again." },
 ```
@@ -251,7 +251,7 @@ git commit -m "fix(mutations): surface failure toast on duplicate, quick-add, an
 
 ---
 
-## Task 3: `exportCsv` — try/catch + toast + consume (C-21)
+## Task 3: `exportCsv` - try/catch + toast + consume (C-21)
 
 **Files:**
 - Modify: `src/lists/use-current-list-actions.ts`
@@ -266,7 +266,7 @@ import { downloadCsv } from '../lib/csv'
 // add to the top-level mocks:
 vi.mock('../lib/csv', () => ({ listItemsToCsv: vi.fn(() => 'csv'), downloadCsv: vi.fn() }))
 
-describe('useCurrentListActions — exportCsv failure feedback', () => {
+describe('useCurrentListActions - exportCsv failure feedback', () => {
   beforeEach(() => { vi.mocked(showToast).mockClear(); vi.mocked(downloadCsv).mockClear() })
   afterEach(() => cleanup())
 
@@ -288,7 +288,7 @@ describe('useCurrentListActions — exportCsv failure feedback', () => {
 - [ ] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run src/lists/use-current-list-actions.test.ts`
-Expected: FAIL — the rejection currently propagates (no catch); `showToast` not called.
+Expected: FAIL - the rejection currently propagates (no catch); `showToast` not called.
 
 - [ ] **Step 3: Wrap `exportCsv` in try/catch**
 
@@ -343,7 +343,7 @@ git commit -m "fix(lists): surface export-CSV failures and stop the fire-and-for
 
 ---
 
-## Task 4: `resetPacked` / `resetReady` — toast + consume (C-01)
+## Task 4: `resetPacked` / `resetReady` - toast + consume (C-01)
 
 **Files:**
 - Modify: `src/lists/ListDetailPage.tsx`
@@ -363,7 +363,7 @@ In `resetPacked`, the `catch (err) { ... throw err }` becomes (keep the `qc.setQ
         curr ? curr.map((i) => (wasPackedIds.has(i.id) ? { ...i, is_packed: true } : i)) : curr,
       )
       // Non-optimistic action: surface the failure and CONSUME it. Rethrowing
-      // here would be an unhandled rejection — onReset() is called
+      // here would be an unhandled rejection - onReset() is called
       // fire-and-forget from PackingProgress (() => void contract).
       showToast("Couldn't reset packed items. Please try again.", { type: 'error' })
     } finally {
@@ -377,12 +377,12 @@ Same change in `resetReady`: keep the `wasReadyIds` rollback `setQueryData`, rep
 ```ts
       showToast("Couldn't reset ready checks. Please try again.", { type: 'error' })
 ```
-(`showToast` is already imported in `ListDetailPage.tsx` — verify line ~61.)
+(`showToast` is already imported in `ListDetailPage.tsx` - verify line ~61.)
 
 - [ ] **Step 3: Build**
 
 Run: `npm run build`
-Expected: clean. (`err` is no longer referenced — using bare `catch {}` avoids an unused-var lint error; confirm `npm run lint` is clean too.)
+Expected: clean. (`err` is no longer referenced - using bare `catch {}` avoids an unused-var lint error; confirm `npm run lint` is clean too.)
 
 - [ ] **Step 4: Run the full suite**
 
@@ -429,7 +429,7 @@ Add a new subsection (place it immediately after the "## Cache invalidation rule
   `() => Promise<void>` and be awaited+caught at the call site.
 ```
 
-- [ ] **Step 2: Update `SPEC.md` "Toast notifications → Current usage"**
+- [ ] **Step 2: Update `SPEC.md` "Toast notifications -> Current usage"**
 
 Find the "**Current usage.**" bullet under "## Toast notifications" and replace it with:
 
@@ -463,14 +463,14 @@ git commit -m "docs: codify non-optimistic mutation/action failure-feedback conv
 
 ## Final verification (after all tasks)
 
-- [ ] `npx vitest run` — full suite green (expect the prior 379 passed + the new handler/hook tests; 4 integration tests still skipped).
-- [ ] `npm run build` — clean (`tsc -b && vite build`).
-- [ ] `npm run lint` — clean (watch for unused `err` in the reset catches).
+- [ ] `npx vitest run` - full suite green (expect the prior 379 passed + the new handler/hook tests; 4 integration tests still skipped).
+- [ ] `npm run build` - clean (`tsc -b && vite build`).
+- [ ] `npm run lint` - clean (watch for unused `err` in the reset catches).
 - [ ] Grep sanity: `grep -rn "errorToast" src/` shows exactly the handler + the three mutation sites.
-- [ ] Manual (per CLAUDE.md hard-refresh discipline, on the Cloudflare preview): force a failure (offline) on duplicate, Quick Add, create-from-selection, export, and reset — each shows an error toast and no console unhandled-rejection.
+- [ ] Manual (per CLAUDE.md hard-refresh discipline, on the Cloudflare preview): force a failure (offline) on duplicate, Quick Add, create-from-selection, export, and reset - each shows an error toast and no console unhandled-rejection.
 
 ## Self-review notes (author)
 
-- **Spec coverage:** C-01 (Task 4), C-02 + C-03 + C-04 (Tasks 1–2), C-21 (Task 3), convention (Task 5) — all five findings + the convention are covered.
+- **Spec coverage:** C-01 (Task 4), C-02 + C-03 + C-04 (Tasks 1-2), C-21 (Task 3), convention (Task 5) - all five findings + the convention are covered.
 - **Type consistency:** `meta.errorToast` is typed via the `Register` augmentation in Task 1 and consumed identically in Tasks 2. `showToast(message, { type: 'error' })` signature matches `src/lib/toast.ts`.
 - **Known testability limit:** Task 4 (resets) has no unit test because the functions are god-file-inline and a render harness is out of scope; this is intentional and flagged. Everything else is unit-tested.
