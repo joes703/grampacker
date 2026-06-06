@@ -48,10 +48,6 @@ export type PendingCheckState = {
   failedAttempts: number
 }
 
-// Back-compat alias. Older call sites referenced PendingPackedState by
-// name — keep the export so a future refactor can rename gradually.
-export type PendingPackedState = PendingCheckState
-
 type StoredPending = Record<string, PendingCheckState>
 
 function storageKey(userId: string, listId: string, itemId: string): string {
@@ -200,10 +196,6 @@ export function readPendingCheckStates(userId: string, listId: string): PendingC
     .sort((a, b) => a.updated_at - b.updated_at)
 }
 
-// Back-compat: older callers read the packed-only view by this name.
-// Kept as a thin alias so a rename can happen in a follow-up commit.
-export const readPendingPackedStates = readPendingCheckStates
-
 export function queuePendingCheck(
   userId: string,
   listId: string,
@@ -258,9 +250,6 @@ export function removePendingChecks(userId: string, listId: string, itemIds: str
   }
   writeStored(entries)
 }
-
-// Back-compat alias.
-export const removePendingPackedStates = removePendingChecks
 
 // Bump the failed-attempt counter for a single pending entry and return
 // the new count. Returning the count (rather than re-reading from
@@ -372,6 +361,3 @@ export function subscribeToPendingCheckStates(
   window.addEventListener('storage', onStorage)
   return () => window.removeEventListener('storage', onStorage)
 }
-
-// Back-compat alias.
-export const subscribeToPendingPackedStates = subscribeToPendingCheckStates
