@@ -1,6 +1,7 @@
 import type { GearItem, Category } from '../types'
 import { toCsv, parseCsv, MAX_CSV_ROWS } from './core'
 import { toGrams } from './units'
+import { MAX_NAME_LENGTH } from '../queries/caps'
 
 export type GearCsvRow = {
   name: string
@@ -74,7 +75,7 @@ export function parseGearCsv(text: string): GearCsvRow[] | string {
     .map((row) => {
       const unit = unitKey ? (row[unitKey] ?? 'g') : 'g'
       return {
-        name:         (row[nameKey] ?? '').trim().slice(0, 256),
+        name:         (row[nameKey] ?? '').trim().slice(0, MAX_NAME_LENGTH),
         description:  descKey ? (row[descKey] || null) : null,
         weight_grams: toGrams(row[weightKey] ?? '0', unit),
         category:     catKey ? (row[catKey] ?? '') : '',

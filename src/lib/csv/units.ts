@@ -4,8 +4,8 @@
 //   null (the import pipeline filters empty-name rows but tolerates
 //   zero weights, so a zero-grams row is a valid "weight unknown"
 //   signal rather than a parse failure).
-// - clamps to 100000 grams (loose upper bound matching the gear_items
-//   weight_grams CHECK constraint; without this an over-cap row aborts
+// - clamps to MAX_ITEM_WEIGHT_GRAMS (loose upper bound matching the
+//   gear_items weight_grams CHECK constraint; without this an over-cap row aborts
 //   the bulk insert with Postgres 22003 numeric_value_out_of_range,
 //   killing the whole batch).
 // - defaults to grams on unknown unit (CSV import tolerance: a typo
@@ -13,7 +13,9 @@
 //
 // Used by both gear.parseGearCsv and list.parseListCsv. Lives outside
 // either to avoid circular imports and to keep the dependency
-// direction one-way (gear/list → units, never the reverse).
+// direction one-way (gear/list -> units, never the reverse).
+import { MAX_ITEM_WEIGHT_GRAMS } from '../queries/caps'
+
 export function toGrams(value: string, unit: string): number {
   const n = parseFloat(value)
   if (isNaN(n) || n < 0) return 0
@@ -45,5 +47,5 @@ export function toGrams(value: string, unit: string): number {
       // explicit instead of hidden under `default`.
       grams = n
   }
-  return Math.min(Math.round(grams), 100000)
+  return Math.min(Math.round(grams), MAX_ITEM_WEIGHT_GRAMS)
 }

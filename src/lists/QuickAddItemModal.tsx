@@ -7,6 +7,7 @@ import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import WeightInput from '../components/WeightInput'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
+import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/queries/caps'
 
 type Props = {
   onSubmit: (data: AddItemData) => void
@@ -83,7 +84,7 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
               id="qa-name"
               type="text"
               required
-              maxLength={256}
+              maxLength={MAX_NAME_LENGTH}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -97,7 +98,7 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
             </FormLabel>
             <textarea
               id="qa-desc"
-              maxLength={2000}
+              maxLength={MAX_DESC_LENGTH}
               rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -137,15 +138,15 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
                   type="number"
                   inputMode="numeric"
                   min={1}
-                  max={9999}
+                  max={MAX_LIST_ITEM_QUANTITY}
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
                   className="h-11 w-16 rounded-lg border border-gray-300 px-2 text-center text-base tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <button
                   type="button"
-                  onClick={() => setQuantity(String(Math.min(9999, qtyNum + 1)))}
-                  disabled={qtyNum >= 9999}
+                  onClick={() => setQuantity(String(Math.min(MAX_LIST_ITEM_QUANTITY, qtyNum + 1)))}
+                  disabled={qtyNum >= MAX_LIST_ITEM_QUANTITY}
                   aria-label="Increase quantity"
                   className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >

@@ -22,17 +22,18 @@ export function gearKey(categoryId: string | null, name: string, weight_grams: n
   return `${categoryId ?? ''}:${name.trim().normalize('NFC').toLowerCase()}:${weight_grams}`
 }
 
-// Per-user / per-list resource caps. The DB triggers are the source of
-// truth (check_gear_item_limit in 20260425000001, check_list_item_limit
-// in 20260425000002); these mirror them so the import paths can preflight
-// and surface a specific, friendly message BEFORE writing anything.
-// Without the preflight an over-cap bulk insert aborts at the trigger
-// with a generic error AFTER resolveOrCreateCategories has already
-// committed new categories (orphaning them) and, for list import, after
-// the new list row was created (orphaning it). These constants are for
-// UX only; they do not replace the authoritative DB enforcement.
-export const GEAR_ITEM_CAP = 500
-export const LIST_ITEM_CAP = 300
+// Per-user / per-list resource caps. Canonical definitions live in
+// ./caps; re-exported here so existing import-path callers (and the
+// queries barrel) keep their import sites unchanged. The DB triggers
+// remain the source of truth (check_gear_item_limit in 20260425000001,
+// check_list_item_limit in 20260425000002); these mirror them so the
+// import paths can preflight and surface a specific, friendly message
+// BEFORE writing anything. Without the preflight an over-cap bulk insert
+// aborts at the trigger with a generic error AFTER resolveOrCreateCategories
+// has already committed new categories (orphaning them) and, for list
+// import, after the new list row was created (orphaning it).
+export { GEAR_ITEM_CAP, LIST_ITEM_CAP } from './caps'
+import { GEAR_ITEM_CAP, LIST_ITEM_CAP, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from './caps'
 
 // Dedup key for the preflight counter. Mirrors gearKey's name handling
 // (trim + NFC + lowercase) but keys the category by NAME rather than id,
@@ -210,8 +211,8 @@ export async function resolveOrCreateGearForImport({
       queueIndices.push(newGearRows.length)
       newGearRows.push({
         user_id: userId,
-        name: trimmedName.slice(0, 256),
-        description: row.description ? row.description.slice(0, 2000) : null,
+        name: trimmedName.slice(0, MAX_NAME_LENGTH),
+        description: row.description ? row.description.slice(0, MAX_DESC_LENGTH) : null,
         weight_grams: row.weight_grams,
         category_id: categoryId,
         cost: row.cost ?? null,

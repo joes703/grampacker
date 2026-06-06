@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { INLINE_EDIT_FOCUS_RING, PANEL_EMPTY_TEXT } from '../components/flat-table-styles'
+import { MAX_DESC_LENGTH } from '../lib/queries/caps'
 
 // react-markdown + remark-gfm is ~46 KB gzip. Owner Notes panels rarely
 // switch into render-with-content state on first paint (often empty for
@@ -103,7 +104,7 @@ function NotesEdit({
       <textarea
         ref={textareaRef}
         value={draft}
-        maxLength={2000}
+        maxLength={MAX_DESC_LENGTH}
         placeholder="Add notes about this packing list. Markdown supported."
         onChange={(e) => setDraft(e.target.value)}
         className={`flex-1 min-h-[8rem] w-full resize-none px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 ${INLINE_EDIT_FOCUS_RING}`}

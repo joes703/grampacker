@@ -4,6 +4,7 @@ import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import { LIST_CAP, LIST_ITEM_CAP, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/queries/caps'
 
 type Props = {
   selectedCount: number
@@ -23,8 +24,8 @@ export default function CreateListFromSelectionDialog({
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
 
-  const listCapHit = existingListCount >= 100
-  const itemCapHit = selectedCount > 300
+  const listCapHit = existingListCount >= LIST_CAP
+  const itemCapHit = selectedCount > LIST_ITEM_CAP
   const blocked = listCapHit || itemCapHit
   const trimmed = name.trim()
   const canSubmit = !blocked && !saving && trimmed.length > 0
@@ -47,12 +48,12 @@ export default function CreateListFromSelectionDialog({
 
           {listCapHit && (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              You've reached the 100-list limit. Delete an existing list before creating a new one.
+              You've reached the {LIST_CAP}-list limit. Delete an existing list before creating a new one.
             </p>
           )}
           {itemCapHit && (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              Lists can hold at most 300 items. You've selected {selectedCount}. Reduce the selection and try again.
+              Lists can hold at most {LIST_ITEM_CAP} items. You've selected {selectedCount}. Reduce the selection and try again.
             </p>
           )}
 
@@ -65,7 +66,7 @@ export default function CreateListFromSelectionDialog({
               autoFocus
               type="text"
               required
-              maxLength={256}
+              maxLength={MAX_NAME_LENGTH}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -78,7 +79,7 @@ export default function CreateListFromSelectionDialog({
             </FormLabel>
             <textarea
               id="cls-desc"
-              maxLength={2000}
+              maxLength={MAX_DESC_LENGTH}
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}

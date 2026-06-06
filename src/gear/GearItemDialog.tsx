@@ -8,6 +8,7 @@ import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import WeightInput from '../components/WeightInput'
+import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH, MAX_CATEGORY_NAME } from '../lib/queries/caps'
 
 export type GearPatch = {
   name: string
@@ -102,7 +103,7 @@ export default function GearItemDialog({
     const gearPatch: GearPatch = {
       name: name.trim(),
       description: description.trim() || null,
-      weight_grams: Math.max(0, Math.min(weightGrams, 100000)),
+      weight_grams: Math.max(0, Math.min(weightGrams, MAX_ITEM_WEIGHT_GRAMS)),
       category_id: categoryId,
       // Blank / NaN / negative → null, never 0. Same rule as parseCost
       // in csv.ts so manual entry and CSV import agree.
@@ -116,7 +117,7 @@ export default function GearItemDialog({
     }
     const listPatch: ListContextPatch | null = listContext
       ? {
-          quantity: Math.max(1, Math.min(9999, Math.round(quantity) || 1)),
+          quantity: Math.max(1, Math.min(MAX_LIST_ITEM_QUANTITY, Math.round(quantity) || 1)),
           is_worn: worn,
           is_consumable: consumable,
         }
@@ -195,7 +196,7 @@ export default function GearItemDialog({
               id="gi-name"
               type="text"
               required
-              maxLength={256}
+              maxLength={MAX_NAME_LENGTH}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -208,7 +209,7 @@ export default function GearItemDialog({
             </FormLabel>
             <textarea
               id="gi-desc"
-              maxLength={2000}
+              maxLength={MAX_DESC_LENGTH}
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -259,7 +260,7 @@ export default function GearItemDialog({
                     type="text"
                     autoFocus
                     placeholder="Category name"
-                    maxLength={128}
+                    maxLength={MAX_CATEGORY_NAME}
                     value={newCategoryName}
                     onChange={(e) => setNewCategoryName(e.target.value)}
                     onKeyDown={(e) => {
@@ -385,17 +386,17 @@ export default function GearItemDialog({
                     type="number"
                     inputMode="numeric"
                     min={1}
-                    max={9999}
+                    max={MAX_LIST_ITEM_QUANTITY}
                     value={quantity}
                     onChange={(e) =>
-                      setQuantity(Math.max(1, Math.min(9999, parseInt(e.target.value, 10) || 1)))
+                      setQuantity(Math.max(1, Math.min(MAX_LIST_ITEM_QUANTITY, parseInt(e.target.value, 10) || 1)))
                     }
                     className="w-16 h-11 rounded-lg border border-gray-300 px-2 text-center text-base tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <button
                     type="button"
-                    onClick={() => setQuantity((q) => Math.min(9999, q + 1))}
-                    disabled={quantity >= 9999}
+                    onClick={() => setQuantity((q) => Math.min(MAX_LIST_ITEM_QUANTITY, q + 1))}
+                    disabled={quantity >= MAX_LIST_ITEM_QUANTITY}
                     aria-label="Increase quantity"
                     className="inline-flex w-11 h-11 items-center justify-center rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
