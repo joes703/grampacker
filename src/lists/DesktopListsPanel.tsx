@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
-import { useQuery } from '@tanstack/react-query'
 import {
   DndContext,
   DragOverlay,
@@ -19,8 +18,6 @@ import {
 import { CopyPlus, Download, MoreVertical, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import {
   queryKeys,
-  fetchGearItems,
-  fetchCategories,
   fetchLists,
   reorderLists,
 } from '../lib/queries'
@@ -135,20 +132,6 @@ export default function DesktopListsPanel({
     // the /lists "Updated …" timestamps. Same path as ListsPage.
   })
 
-  // gearItems / categories caches feed useListImportMutation, which reads them
-  // from the query cache at mutation time. These subscriptions keep the caches
-  // warm (importCsvRowsToList resolves names against existing inventory).
-  // They're already cached by ListDetailPage's parent queries, so these are
-  // effectively free reference-fetches; no `data` binding is read here - the
-  // hook owns the reads.
-  useQuery({
-    queryKey: queryKeys.gearItems(),
-    queryFn: () => fetchGearItems(userId),
-  })
-  useQuery({
-    queryKey: queryKeys.categories(),
-    queryFn: () => fetchCategories(userId),
-  })
 
   const [dialog, setDialog] = useState<DialogState | null>(null)
 

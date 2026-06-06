@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router'
-import { useQuery } from '@tanstack/react-query'
 import {
   DndContext,
   DragOverlay,
@@ -22,8 +21,6 @@ import { useRequireSession } from '../auth/use-require-session'
 import {
   queryKeys,
   fetchLists,
-  fetchGearItems,
-  fetchCategories,
   reorderLists,
 } from '../lib/queries'
 import { useCurrentListActions } from './use-current-list-actions'
@@ -102,21 +99,6 @@ export default function ListsPage() {
     queryFn: () => fetchLists(userId),
     mutationFn: reorderLists,
     dndKind: 'list-card',
-  })
-  // Gear/categories caches feed useListImportMutation, which reads them from
-  // the query cache at mutation time. These subscriptions keep the caches
-  // warm so an import confirmed from a cold page asserts caps against real
-  // inventory rather than empty arrays; they're already cached when the user
-  // navigates here from elsewhere, otherwise they resolve in the background
-  // before the user can confirm an import. No `data` binding is read here -
-  // the hook owns the reads.
-  useQuery({
-    queryKey: queryKeys.gearItems(),
-    queryFn: () => fetchGearItems(userId),
-  })
-  useQuery({
-    queryKey: queryKeys.categories(),
-    queryFn: () => fetchCategories(userId),
   })
 
   const [dialog, setDialog] = useState<DialogState | null>(null)
