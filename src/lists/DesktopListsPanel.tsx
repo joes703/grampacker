@@ -37,6 +37,7 @@ import { parseListCsv, nameFromCsvFilename, type ListImportRow } from '../lib/cs
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
+import DraftBadge from '../components/DraftBadge'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import {
   FLAT_TABLE_BODY_TEXT,
@@ -609,6 +610,7 @@ function ListPanelRow({
       >
         {list.name}
       </Link>
+      {list.is_draft && <DraftBadge className="ml-2 shrink-0" />}
 
       <button
         ref={triggerRef}
