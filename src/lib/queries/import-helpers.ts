@@ -23,7 +23,7 @@ export function gearKey(categoryId: string | null, name: string, weight_grams: n
 }
 
 // Per-user / per-list resource caps. Canonical definitions live in
-// ./caps; re-exported here so existing import-path callers (and the
+// ../caps; re-exported here so existing import-path callers (and the
 // queries barrel) keep their import sites unchanged. The DB triggers
 // remain the source of truth (check_gear_item_limit in 20260425000001,
 // check_list_item_limit in 20260425000002); these mirror them so the
