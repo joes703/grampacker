@@ -1,4 +1,14 @@
 import type { Mutation } from '@tanstack/react-query'
+import { showToast } from './toast'
+
+// Opt-in per-mutation failure feedback. A non-optimistic mutation (no visible
+// snap-back to act as the error signal) sets `meta: { errorToast: "..." }`;
+// this handler turns that into a toast. Optimistic mutations leave it unset.
+declare module '@tanstack/react-query' {
+  interface Register {
+    mutationMeta: { errorToast?: string }
+  }
+}
 
 // Global default error handler for every useMutation in the app. Wired
 // into the QueryClient via `mutationCache: new MutationCache({ onError:
@@ -46,4 +56,8 @@ export function mutationErrorHandler(
     code,
     mutationKey: mutation.options.mutationKey,
   })
+  const errorToast = mutation.options.meta?.errorToast
+  if (typeof errorToast === 'string') {
+    showToast(errorToast, { type: 'error' })
+  }
 }
