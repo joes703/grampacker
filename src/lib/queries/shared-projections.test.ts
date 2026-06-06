@@ -158,6 +158,7 @@ describe('fetchSharedList (public share view list projection)', () => {
         name: 'Trip',
         description: 'Notes',
         group_worn: false,
+        is_draft: true,
       },
       error: null,
     }
@@ -168,7 +169,7 @@ describe('fetchSharedList (public share view list projection)', () => {
     expect(mockState.calls[0]?.table).toBe('lists')
     const cols = mockState.calls[0]?.selectCols ?? ''
     // Explicit allowlist matches SECURITY.md "Public read column allowlist".
-    expect(cols).toBe('id, name, description, group_worn')
+    expect(cols).toBe('id, name, description, group_worn, is_draft')
     // Defense in depth: no wildcard or forbidden columns.
     expect(cols).not.toContain('*')
     for (const forbidden of FORBIDDEN_PUBLIC_COLUMNS) {
@@ -178,7 +179,7 @@ describe('fetchSharedList (public share view list projection)', () => {
     // requested; this also pins the PublicList key set).
     expect(result).not.toBeNull()
     expect(Object.keys(result!).sort()).toEqual(
-      ['description', 'group_worn', 'id', 'name'],
+      ['description', 'group_worn', 'id', 'is_draft', 'name'],
     )
   })
 

@@ -37,6 +37,7 @@ import { makeDnDId } from '../lib/dnd-ids'
 import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
 import type { List } from '../lib/types'
 import { parseListCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
+import DraftBadge from '../components/DraftBadge'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useNow } from '../lib/use-now'
@@ -605,6 +606,7 @@ function ListRow({
       >
         {list.name}
       </Link>
+      {list.is_draft && <DraftBadge className="ml-2 shrink-0" />}
 
       <RowMeta list={list} now={now} />
 

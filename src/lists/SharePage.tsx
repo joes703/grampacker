@@ -13,6 +13,7 @@ import CategoryGroup from './CategoryGroup'
 import AboutLink from '../components/AboutLink'
 import OfflineBanner from '../components/OfflineBanner'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
+import DraftBanner from './DraftBanner'
 import { PANEL_EMPTY_TEXT } from '../components/flat-table-styles'
 
 // Notes are rendered as Markdown on the public share view (typing markdown
@@ -148,6 +149,7 @@ export default function SharePage() {
             segmented chrome self-describes, and dropping the word keeps
             it tidy inline with the list title. Writes through the same
             useWeightUnit store, so the choice persists on this device. */}
+        {list.is_draft && <DraftBanner />}
         <div className="mb-6 flex flex-wrap items-center gap-3">
           <h1 className="flex-1 min-w-0 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
           <UnitSegmentedControl idPrefix="share" />

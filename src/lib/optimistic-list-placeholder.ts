@@ -40,6 +40,7 @@ export function optimisticListPlaceholder(args: {
     is_shared: false,
     group_worn: false,
     ready_checks_enabled: false,
+    is_draft: true,
     created_at: now,
     updated_at: now,
   }

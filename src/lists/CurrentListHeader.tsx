@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import type { List } from '../lib/types'
 import { useRequireSession } from '../auth/use-require-session'
+import DraftBadge from '../components/DraftBadge'
 import InlineTitle from './InlineTitle'
 import { useCurrentListActions } from './use-current-list-actions'
 
@@ -22,7 +23,7 @@ type Props = {
 export default function CurrentListHeader({ list }: Props) {
   const auth = useRequireSession()
   const userId = auth?.userId ?? ''
-  const { renameMut } = useCurrentListActions(userId)
+  const { renameMut, draftMut } = useCurrentListActions(userId)
   const [editing, setEditing] = useState(false)
   // Counter the pencil increments to push InlineTitle into edit mode. The
   // counter idiom matches LibraryPanel's focusSearchTrigger.
@@ -30,13 +31,26 @@ export default function CurrentListHeader({ list }: Props) {
 
   return (
     <div className="group flex flex-1 min-w-0 items-center">
-      <InlineTitle
-        key={list.id}
-        name={list.name}
-        onSave={(v) => renameMut.mutate({ id: list.id, name: v })}
-        editTrigger={editTrigger}
-        onEditingChange={setEditing}
-      />
+      <div className="flex flex-1 min-w-0 items-center gap-2">
+        <InlineTitle
+          key={list.id}
+          name={list.name}
+          onSave={(v) => renameMut.mutate({ id: list.id, name: v })}
+          editTrigger={editTrigger}
+          onEditingChange={setEditing}
+        />
+        {!editing && list.is_draft && (
+          <button
+            type="button"
+            onClick={() => draftMut.mutate(list)}
+            aria-label="Mark list complete"
+            title="Mark list complete"
+            className="shrink-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            <DraftBadge />
+          </button>
+        )}
+      </div>
       {!editing && (
         <button
           type="button"

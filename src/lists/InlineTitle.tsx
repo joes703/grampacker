@@ -114,8 +114,6 @@ export default function InlineTitle({ name, onSave, editTrigger, onEditingChange
   // Plain heading — no inner button, no click-to-edit. Rename entry
   // comes from the sibling pencil affordance in CurrentListHeader.
   return (
-    <h1 className="flex-1 min-w-0 truncate px-2 py-0.5 text-xl font-semibold text-gray-900">
-      {name}
-    </h1>
+    <h1 className="min-w-0 truncate px-2 py-0.5 text-xl font-semibold text-gray-900">{name}</h1>
   )
 }

@@ -49,6 +49,25 @@ export function useCurrentListActions(userId: string) {
     }),
   })
 
+  // Toggle a list between draft (still being built) and complete. Label
+  // only - never locks editing. Optimistic on the ['lists'] cache; is_draft
+  // does not affect list_items, so no ['list-items'] invalidation. Shared by
+  // CurrentListHeader (the clickable "Mark list complete" pill) and
+  // ListSettingsPanel (the Draft toggle).
+  const draftMut = useMutation({
+    mutationFn: (target: List) => updateList(target.id, { is_draft: !target.is_draft }),
+    ...makeOptimisticUpdate<List, List>({
+      qc,
+      queryKey: queryKeys.lists(),
+      id: (target) => target.id,
+      apply: (item) => ({
+        ...item,
+        is_draft: !item.is_draft,
+        updated_at: new Date().toISOString(),
+      }),
+    }),
+  })
+
   const duplicateMut = useMutation({
     mutationFn: (target: List) => {
       const currentLists = qc.getQueryData<List[]>(queryKeys.lists()) ?? []
@@ -90,5 +109,5 @@ export function useCurrentListActions(userId: string) {
     [qc, userId],
   )
 
-  return { renameMut, duplicateMut, deleteListMut, exportCsv }
+  return { renameMut, duplicateMut, deleteListMut, exportCsv, draftMut }
 }
