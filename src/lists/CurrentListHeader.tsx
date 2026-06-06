@@ -31,24 +31,26 @@ export default function CurrentListHeader({ list }: Props) {
 
   return (
     <div className="group flex flex-1 min-w-0 items-center">
-      <InlineTitle
-        key={list.id}
-        name={list.name}
-        onSave={(v) => renameMut.mutate({ id: list.id, name: v })}
-        editTrigger={editTrigger}
-        onEditingChange={setEditing}
-      />
-      {list.is_draft && (
-        <button
-          type="button"
-          onClick={() => draftMut.mutate(list)}
-          aria-label="Mark list complete"
-          title="Mark list complete"
-          className="ml-2 shrink-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-        >
-          <DraftBadge />
-        </button>
-      )}
+      <div className="flex flex-1 min-w-0 items-center gap-2">
+        <InlineTitle
+          key={list.id}
+          name={list.name}
+          onSave={(v) => renameMut.mutate({ id: list.id, name: v })}
+          editTrigger={editTrigger}
+          onEditingChange={setEditing}
+        />
+        {!editing && list.is_draft && (
+          <button
+            type="button"
+            onClick={() => draftMut.mutate(list)}
+            aria-label="Mark list complete"
+            title="Mark list complete"
+            className="shrink-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            <DraftBadge />
+          </button>
+        )}
+      </div>
       {!editing && (
         <button
           type="button"
