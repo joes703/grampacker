@@ -35,6 +35,25 @@
 - Mutations that only write to `list_items` invalidate `['list-items']` only.
 - Don't widen invalidation defensively. Wider invalidation = unnecessary network traffic. If unsure whether an invalidation is needed, trace the actual data flow before adding it.
 
+## Mutation & async-action failure feedback
+
+- **Optimistic mutation with a visible rollback:** the snap-back IS the failure
+  signal; do NOT add a toast (existing documented policy for
+  `makeOptimisticUpdate`/fan-out rollbacks). The one exception already in place
+  is `makeOptimisticReorder`, whose rollback is otherwise invisible.
+- **Non-optimistic `useMutation`:** opt into explicit feedback with
+  `meta: { errorToast: "Couldn't ... Please try again." }`. The global
+  `mutationErrorHandler` (`src/lib/mutation-error-handler.ts`) turns that into an
+  error toast. Don't hand-roll an `onError` toast when the meta covers it.
+- **Non-optimistic async action that is NOT a mutation** (a `useCallback` like
+  `exportCsv`, or a raw async like `resetPacked`/`resetReady`): wrap the body in
+  `try/catch`, `showToast(..., { type: 'error' })` on failure, and CONSUME the
+  error (no rethrow). A toast-then-rethrow still leaves an unhandled rejection.
+- **Fire-and-forget rejected promises are prohibited.** If an async handler is
+  invoked without `await`/`.catch` (e.g. `onClick={() => doThing()}`), it must
+  catch internally and surface feedback, or its contract must become
+  `() => Promise<void>` and be awaited+caught at the call site.
+
 ## Row/table visual system
 
 - The flat row/table grammar (white surface, gray-50 section-divider headers, bordered table rows, touch-vs-pointer density, control target sizes) is centralized in `src/components/flat-table-styles.ts` (`FLAT_TABLE_SURFACE`, `FLAT_TABLE_HEADER`, `FLAT_TABLE_ROW`, `ROW_CONTROL_TARGET`). Compose layout-specific gap/padding/columns around these bases; don't re-hand-code the density/border/surface classes. Row/category/list kebab actions use `src/components/RowMenuItem.tsx` for neutral/removal/danger tones. The gear picker (`LibraryPanel`) is the reference implementation. Full rationale + the documented exceptions (ListsPage `divide-y` rows, popover menus, `PanelCard`) live in `docs/ui-density.md`.

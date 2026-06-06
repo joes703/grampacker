@@ -225,7 +225,15 @@ The app uses a custom toast system for non-blocking notifications. Implementatio
 - **Manual dismiss.** Each toast renders an X close button (`aria-label="Dismiss notification"`). Tapping it removes the toast immediately.
 - **Type variants.** `info` (white background, `Info` icon, neutral), `error` (red-50 background, `TriangleAlert` icon, red accent), `success` (green-50 background, `CheckCircle2` icon, green accent). Selected via the `type` field on `showToast`'s options.
 - **Accessibility.** The viewport carries `role="status"` and `aria-live="polite"` so additive new toasts announce to screen readers without interrupting the current SR output.
-- **Current usage.** Only `makeOptimisticReorder.onError` (reorder failures across all four reorderable surfaces). Most mutation failures continue to surface inline at their call sites or via silent optimistic rollback. The global `MutationCache.onError` in `App.tsx` documents the policy on what gets a toast.
+- **Current usage.** Reorder failures across all four reorderable surfaces
+  (`makeOptimisticReorder.onError`). Plus the non-optimistic actions that have no
+  snap-back to signal failure: gear delete / move-to-category, Quick Add, list
+  duplicate, and create-list-from-selection (the last three via
+  `meta.errorToast` routed through the global `mutationErrorHandler`), and
+  `exportCsv` / reset-packed / reset-ready (direct `try/catch` + toast).
+  Optimistic mutations still rely on silent rollback; the global
+  `MutationCache.onError` in `App.tsx` (the `mutationErrorHandler`) documents the
+  policy and now also emits the `meta.errorToast` toast when a mutation opts in.
 - **API.** `showToast(message, options?)` exported from `src/lib/toast.ts`. Options: `{ duration?: number; type?: 'info' | 'error' | 'success' }`. Plus `dismissToast(id)` for manual removal and `subscribe(listener)` for the viewport's `useSyncExternalStore` integration.
 
 ---
