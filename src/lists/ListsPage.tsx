@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, useNavigate } from 'react-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router'
+import { useQuery } from '@tanstack/react-query'
 import {
   DndContext,
   DragOverlay,
@@ -24,14 +24,10 @@ import {
   fetchLists,
   fetchGearItems,
   fetchCategories,
-  createList,
-  nextListSortOrder,
   reorderLists,
-  importCsvRowsToList,
-  assertListImportWithinCaps,
-  makeOptimisticInsert,
 } from '../lib/queries'
 import { useCurrentListActions } from './use-current-list-actions'
+import { useListImportMutation } from './use-list-import-mutation'
 import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId } from '../lib/dnd-ids'
 import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
@@ -41,7 +37,6 @@ import DraftBadge from '../components/DraftBadge'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useNow } from '../lib/use-now'
-import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
@@ -75,8 +70,6 @@ const LIST_HEADER_ACTION_CLASS =
 export default function ListsPage() {
   useDocumentTitle('Lists')
   const auth = useRequireSession()
-  const navigate = useNavigate()
-  const qc = useQueryClient()
   // Page-level clock for the per-card "X min ago" displays. One interval
   // for the whole grid; cards consume it via a `now` prop. M9 fix.
   const now = useNow(60_000)
@@ -110,14 +103,18 @@ export default function ListsPage() {
     mutationFn: reorderLists,
     dndKind: 'list-card',
   })
-  // Gear/categories needed by importCsvRowsToList. They're already cached when
-  // the user navigates here from elsewhere; otherwise the query runs in the
-  // background and resolves before the user can confirm an import.
-  const { data: gearItems = [] } = useQuery({
+  // Gear/categories caches feed useListImportMutation, which reads them from
+  // the query cache at mutation time. These subscriptions keep the caches
+  // warm so an import confirmed from a cold page asserts caps against real
+  // inventory rather than empty arrays; they're already cached when the user
+  // navigates here from elsewhere, otherwise they resolve in the background
+  // before the user can confirm an import. No `data` binding is read here -
+  // the hook owns the reads.
+  useQuery({
     queryKey: queryKeys.gearItems(),
     queryFn: () => fetchGearItems(userId),
   })
-  const { data: categories = [] } = useQuery({
+  useQuery({
     queryKey: queryKeys.categories(),
     queryFn: () => fetchCategories(userId),
   })
@@ -133,31 +130,14 @@ export default function ListsPage() {
     onError: (message) => setDialog({ type: 'import-error', message }),
   })
 
-  const createListMut = useMutation({
-    mutationFn: (name: string) => createList(userId, name, nextListSortOrder(lists)),
-    ...makeOptimisticInsert<List, string>({
-      qc,
-      queryKey: queryKeys.lists(),
-      // The settled refetch replaces the placeholder with the server
-      // row carrying its own generated slug. Helper emits DB-valid
-      // uuid + 6-char slug so an accidental persist would fail soft
-      // (silent no-op) instead of hitting a 23514 / 22P02.
-      optimistic: (name) => optimisticListPlaceholder({ name, userId, sortOrder: nextListSortOrder(lists) }),
-    }),
-    // Helper provides onSettled (invalidate); onSuccess runs first to
-    // close the create dialog and navigate to the new list.
-    onSuccess: (created) => {
-      setDialog(null)
-      navigate(`/lists/${created.id}`)
-    },
-  })
-
-  // Current-list lifecycle actions (rename / duplicate / delete /
+  // Current-list lifecycle actions (create / rename / duplicate / delete /
   // exportCsv). Shared with ListSettingsPanel via useCurrentListActions
   // so both surfaces invoke the same handlers - one canonical code
   // path, multiple entry points (card kebab here, List options
-  // popover/modal there).
-  const { renameMut, duplicateMut, deleteListMut, exportCsv } = useCurrentListActions(userId)
+  // popover/modal there). createListMut navigates on success; this page
+  // owns closing the create dialog via the call-site onSuccess.
+  const { createListMut, renameMut, duplicateMut, deleteListMut, exportCsv } =
+    useCurrentListActions(userId)
 
   // See ListDetailPage for the rationale. List cards keep their always-
   // visible grip handle as the drag activator on every breakpoint, so on
@@ -170,30 +150,11 @@ export default function ListsPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  // Same shape as ListDetailInner's importMut: createList then populate, then
-  // navigate into the new list so imported items are immediately visible.
-  const importMut = useMutation({
-    mutationFn: async ({ name, rows }: { name: string; rows: ListImportRow[] }) => {
-      // Preflight the per-list and inventory caps BEFORE creating the list,
-      // so a rejected over-cap import leaves no orphan list or categories.
-      assertListImportWithinCaps(rows, gearItems, categories)
-      const newList = await createList(userId, name, nextListSortOrder(lists))
-      await importCsvRowsToList(newList.id, userId, rows, gearItems, categories)
-      return newList
-    },
-    onSuccess: (newList) => {
-      qc.invalidateQueries({ queryKey: queryKeys.lists() })
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      qc.invalidateQueries({ queryKey: queryKeys.categories() })
-      setDialog(null)
-      navigate(`/lists/${newList.id}`)
-    },
-    onError: (err) =>
-      setDialog({
-        type: 'import-error',
-        message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
-      }),
-  })
+  // CSV-import-into-a-new-list. Shared hook owns the preflight/create/populate
+  // data path plus the success invalidate+navigate; this page owns closing the
+  // dialog on success and routing failures into the import-error dialog via the
+  // call-site onSuccess/onError below.
+  const importMut = useListImportMutation(userId)
 
 
   // Bail out cleanly if the session went null mid-render (logout). Hooks
@@ -223,7 +184,7 @@ export default function ListsPage() {
               onChange={(v) => setDialog({ type: 'creating', draft: v })}
               onSubmit={() => {
                 const trimmed = dialog.draft.trim()
-                if (trimmed) createListMut.mutate(trimmed)
+                if (trimmed) createListMut.mutate(trimmed, { onSuccess: () => setDialog(null) })
                 else setDialog(null)
               }}
               onCancel={() => setDialog(null)}
@@ -392,7 +353,17 @@ export default function ListsPage() {
           rows={dialog.rows}
           saving={importMut.isPending}
           onConfirm={() =>
-            importMut.mutate({ name: nameFromCsvFilename(dialog.filename), rows: dialog.rows })
+            importMut.mutate(
+              { name: nameFromCsvFilename(dialog.filename), rows: dialog.rows },
+              {
+                onSuccess: () => setDialog(null),
+                onError: (err) =>
+                  setDialog({
+                    type: 'import-error',
+                    message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
+                  }),
+              },
+            )
           }
           onClose={() => setDialog(null)}
         />
