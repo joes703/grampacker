@@ -188,6 +188,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Tests needed:** Assert `need_to_buy` and `loaned_out` produce different `badgeClass`.
 - **Safe for autonomous repair:** yes (mechanical; color choice is a trivial aesthetic pick, not a domain decision).
 - **Corroborating tracks:** 5 (F-01).
+- **Resolution (2026-06-06): WON'T FIX.** The audit missed that `gear-status.test.ts:86-90` documents the shared rose as deliberate: `loaned_out` and `need_to_buy` both mean "item not on hand" and intentionally share the "unavailable" color, with the icon (ShoppingCart vs CircleAlert) and label carrying the distinction. Owner confirmed the grouping is intended, so this is a false positive, not polish drift. The "trivial aesthetic pick" classification was wrong - it reverses a tested design choice.
 
 ---
 
@@ -417,7 +418,7 @@ None beyond CONCERNS.md.
 | **categories** | 6 cols, no updated_at | match | `fetchSharedListCategories` explicit (no runtime guard) | not locked for runtime guard | reads id/name/sort_order/is_default | SECURITY.md:95 correct | M-test/track-6 F3 |
 | **profiles** | 3 cols | no type (intentional) | not queried | n/a | n/a | n/a | clean |
 | **sharing/PublicList** | group_worn, is_draft present | PublicList correct | matches type | locked | SharePage renders both | SECURITY.md:92 stale; SPEC incomplete | C-06, C-20 |
-| **GearStatus** | `need_to_buy` via 20260526173748 | type correct | n/a | n/a | renders need_to_buy badge (wrong color) | gear-status.ts comment pins wrong migration | C-11, C-17 |
+| **GearStatus** | `need_to_buy` via 20260526173748 | type correct | n/a | n/a | renders need_to_buy badge (shared rose - intentional, see C-11 Resolution) | gear-status.ts comment pins wrong migration | C-11 (won't fix), C-17 |
 | **CSV export** | n/a | n/a | n/a | 12-col round-trip in core.test | gearItemsToCsv emits 12 | SPEC says "10 for both" | C-09 |
 | **EMBEDDED_GEAR_FIELDS** | n/a | mirrors AUTH projection | hand-maintained set | NOT sync-tested vs projection | fan-out decision | - | M-test-3 |
 | **supply chain** | n/a | n/a | n/a | n/a | n/a | CLAUDE.md warning vs `.npmrc` | C-10 |
@@ -476,12 +477,10 @@ Dependency-ordered, each stage independently reviewable. **Plan only - do not ex
 - **Tests required:** existing suite passes; `grep` confirms removal.
 - **Risk:** low. **TDD/subagent:** no.
 
-### Stage 5 - Badge color + need_to_buy distinction
-- **Scope:** Add `NEED_TO_BUY_BADGE_CLASS`, wire in `gear-status.ts`.
-- **Finding IDs:** C-11.
-- **Invariants:** `loaned_out` styling unchanged.
-- **Tests required:** assert distinct `badgeClass` values.
-- **Risk:** low. **TDD/subagent:** light TDD.
+### Stage 5 - Badge color + need_to_buy distinction - WON'T FIX (2026-06-06)
+- **Scope:** ~~Add `NEED_TO_BUY_BADGE_CLASS`, wire in `gear-status.ts`.~~ Dropped.
+- **Finding IDs:** C-11 (closed as a false positive - see the finding's Resolution note).
+- **Reason:** The shared "not on hand" rose is a deliberate, tested design choice; making the two statuses distinct would reverse it. Icon + label already differentiate them.
 
 ### Stage 6 - Non-optimistic mutation error feedback (the silent-failure batch) - (done) DONE (PR #29, 2026-06-06)
 
