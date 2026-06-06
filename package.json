@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "preview": "vite preview",
-    "security:check": "npm audit --audit-level=moderate && npm audit signatures && sh scripts/check-supply-chain-iocs.sh",
+    "security:lockfile": "node scripts/check-lockfile-sources.mjs",
+    "security:check": "npm run security:lockfile && npm audit --audit-level=moderate --min-release-age=0 && npm audit signatures --min-release-age=0 && sh scripts/check-supply-chain-iocs.sh",
     "test": "vitest"
   },
   "engines": {

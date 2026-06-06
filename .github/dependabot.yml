@@ -7,6 +7,10 @@ updates:
       day: monday
       time: "09:00"
       timezone: America/Los_Angeles
+    cooldown:
+      default-days: 7
+      include:
+        - "*"
     open-pull-requests-limit: 5
     groups:
       react:
