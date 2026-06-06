@@ -7,17 +7,51 @@ import { createElement, type ReactNode } from 'react'
 import { mutationErrorHandler } from '../lib/mutation-error-handler'
 import { useCurrentListActions } from './use-current-list-actions'
 import { showToast } from '../lib/toast'
-import { duplicateList } from '../lib/queries'
 import type { List } from '../lib/types'
 
-vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
-vi.mock('../lib/queries', async (orig) => ({
-  ...(await orig<typeof import('../lib/queries')>()),
+// Hoisted spies so both the mock factories and the test bodies share the same
+// fn instances. (vi.mock is hoisted above imports; vi.hoisted lets the
+// factories close over these.)
+const q = vi.hoisted(() => ({
+  updateList: vi.fn(),
   duplicateList: vi.fn(),
+  deleteList: vi.fn(),
   fetchListItems: vi.fn(),
   fetchCategories: vi.fn(),
+  nextListSortOrder: vi.fn(() => 0),
 }))
-vi.mock('../lib/csv', () => ({ listItemsToCsv: vi.fn(() => 'csv'), downloadCsv: vi.fn() }))
+const csv = vi.hoisted(() => ({
+  listItemsToCsv: vi.fn(() => 'csv'),
+  downloadCsv: vi.fn(),
+}))
+
+vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
+
+// COMPLETE mock of the queries barrel. A partial mock (spreading the real
+// module via importOriginal) would evaluate `../lib/queries`, which pulls in
+// bulk-reorder -> supabase.ts and throws "Missing required environment
+// variable: VITE_SUPABASE_URL" under CI (no .env). Mock every symbol
+// useCurrentListActions imports so the real barrel is never loaded.
+vi.mock('../lib/queries', () => ({
+  queryKeys: {
+    lists: () => ['lists'],
+    listItems: (id: string) => ['list-items', id],
+    categories: () => ['categories'],
+  },
+  updateList: q.updateList,
+  duplicateList: q.duplicateList,
+  deleteList: q.deleteList,
+  fetchListItems: q.fetchListItems,
+  fetchCategories: q.fetchCategories,
+  // The optimistic-update factories are only spread into useMutation options;
+  // returning empty options is enough for these tests (the mutations under
+  // test are non-optimistic).
+  makeOptimisticUpdate: vi.fn(() => ({})),
+  makeOptimisticDelete: vi.fn(() => ({})),
+  nextListSortOrder: q.nextListSortOrder,
+}))
+
+vi.mock('../lib/csv', () => ({ listItemsToCsv: csv.listItemsToCsv, downloadCsv: csv.downloadCsv }))
 
 const LIST: List = {
   id: 'l1',
@@ -47,7 +81,7 @@ describe('useCurrentListActions - duplicate failure feedback', () => {
   afterEach(() => cleanup())
 
   it('toasts when duplicateList rejects', async () => {
-    vi.mocked(duplicateList).mockRejectedValueOnce(new Error('nope'))
+    q.duplicateList.mockRejectedValueOnce(new Error('nope'))
     const { result } = renderHook(() => useCurrentListActions('u1'), { wrapper })
     act(() => { result.current.duplicateMut.mutate(LIST) })
     await waitFor(() =>
@@ -57,16 +91,17 @@ describe('useCurrentListActions - duplicate failure feedback', () => {
 })
 
 describe('useCurrentListActions - exportCsv failure feedback', () => {
-  beforeEach(() => { vi.mocked(showToast).mockClear() })
+  beforeEach(() => {
+    vi.mocked(showToast).mockClear()
+    csv.downloadCsv.mockClear()
+  })
   afterEach(() => cleanup())
 
   it('toasts and does not download when the fetch rejects', async () => {
-    const { fetchListItems } = await import('../lib/queries')
-    const { downloadCsv } = await import('../lib/csv')
-    vi.mocked(fetchListItems).mockRejectedValue(new Error('offline'))
+    q.fetchListItems.mockRejectedValue(new Error('offline'))
     const { result } = renderHook(() => useCurrentListActions('u1'), { wrapper })
     await act(async () => { await result.current.exportCsv(LIST) })
     expect(showToast).toHaveBeenCalledWith("Couldn't export the list. Please try again.", { type: 'error' })
-    expect(downloadCsv).not.toHaveBeenCalled()
+    expect(csv.downloadCsv).not.toHaveBeenCalled()
   })
 })
