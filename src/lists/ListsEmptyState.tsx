@@ -58,6 +58,9 @@ export default function ListsEmptyState() {
   )
 
   const createMut = useMutation({
+    // sort_order 0 is correct here: this empty state only renders when
+    // lists.length === 0, where nextListSortOrder([]) === 0, so the new
+    // list is the first one.
     mutationFn: (n: string) => createList(userId, n, 0),
     ...makeOptimisticInsert<List, string>({
       qc,
@@ -118,7 +121,7 @@ export default function ListsEmptyState() {
       <div className="w-full max-w-md text-center">
         <h2 className="text-xl font-semibold text-gray-900">Create your first list</h2>
         <p className="mt-2 text-sm text-gray-500">
-          Lists let you build packs from your gear library and track total weight.
+          Lists let you build packing lists from your gear library and track total weight.
         </p>
         <div className="mt-6 flex gap-2">
           <input
