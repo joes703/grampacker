@@ -5,11 +5,11 @@ import {
 } from './row-indicator-styles'
 
 // Inventory-level advisory metadata on gear_items.status. Values are pinned
-// to the DB CHECK constraint in migration 20260516000000 — keep this list
+// to the DB CHECK constraint in migration 20260526173748 - keep this list
 // and the constraint in lockstep. 'active' is the default and renders no
-// visible treatment; the other two surface a small badge in private views
-// only (gear library, gear picker, private list rows) and are explicitly
-// excluded from public share projections.
+// visible treatment; the remaining three surface a small badge in private
+// views only (gear library, gear picker, private list rows) and are
+// explicitly excluded from public share projections.
 
 export const GEAR_STATUSES = ['active', 'needs_repair', 'loaned_out', 'need_to_buy'] as const
 

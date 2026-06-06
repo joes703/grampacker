@@ -89,9 +89,9 @@ Sharing is per-list and opt-in (see `DECISIONS.md` ADR 8 for the rationale). Eac
 
 **Public read column allowlist.** Even though RLS gates which *rows* the public can see, the queries themselves use explicit column lists rather than `select('*')` so the wire response never contains owner-only metadata. The allowlist by table:
 
-- **`lists`** (via `fetchSharedList`): `id`, `name`, `description`. Excluded: `user_id`, `slug` (the viewer already has it via the URL), `is_shared` (always true given RLS gating), `sort_order` (per-user list ordering, irrelevant to viewer), `created_at`, `updated_at`.
-- **`list_items`** (via `fetchSharedListItems`): `id`, `gear_item_id`, `quantity`, `is_worn`, `is_consumable`, `sort_order`. Excluded: `list_id` (viewer already has the parent list's id), `is_packed` (owner's packing state, personal workflow data), `created_at`, `updated_at`.
-- **`gear_items`** (via the `list_items` join): `id`, `name`, `description`, `weight_grams`, `category_id`. Excluded: `user_id`, `sort_order`, `created_at`, `updated_at`.
+- **`lists`** (via `fetchSharedList`): `id`, `name`, `description`, `group_worn`, `is_draft`. Excluded: `user_id`, `slug` (the viewer already has it via the URL), `is_shared` (always true given RLS gating), `sort_order` (per-user list ordering, irrelevant to viewer), `ready_checks_enabled`, `created_at`, `updated_at`. `group_worn` and `is_draft` are deliberately public: the share view honors group-worn grouping and shows the draft banner.
+- **`list_items`** (via `fetchSharedListItems`): `id`, `gear_item_id`, `quantity`, `is_worn`, `is_consumable`, `sort_order`. Excluded: `list_id` (viewer already has the parent list's id), `is_packed` (owner's packing state, personal workflow data), `is_ready`, `user_id`, `created_at`, `updated_at`.
+- **`gear_items`** (via the `list_items` join): `id`, `name`, `description`, `weight_grams`, `category_id`. Excluded: `user_id`, `sort_order`, `cost`, `purchase_date`, `status`, `created_at`, `updated_at`.
 - **`categories`** (via `fetchSharedListCategories`): `id`, `name`, `sort_order`. Excluded: `user_id`, `is_default`, `created_at`.
 
 The `Public*` types in `src/lib/types.ts` (PublicList, PublicListItem, PublicGearItem, PublicCategory) make the wire shape explicit at the type level. SharePage maps these narrow types to the full types at one boundary point so the shared rendering components (CategoryGroup, WeightTable, ItemRow) can keep their unified type signatures across authed and share-view contexts.

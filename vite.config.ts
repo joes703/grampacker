@@ -117,7 +117,7 @@ export default defineConfig({
       manifest: {
         name: 'grampacker',
         short_name: 'grampacker',
-        description: 'Backpacking gear and packing list manager',
+        description: 'A backpacking gear list, weight tracker, and packing tool.',
         start_url: '/',
         display: 'standalone',
         background_color: '#ffffff',

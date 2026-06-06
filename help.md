@@ -6,7 +6,7 @@ grampacker helps you keep track of your backpacking gear, build packing lists, a
 
 grampacker is inventory first: your gear lives in your gear inventory (the **Gear** page), and each list pulls from that inventory.
 
-Each list has a packing mode and a sharing mode. Packing mode lets you check off items as you pack. Sharing mode lets you share a read-only copy of your list with the public. Helpful for shakedowns and if an experienced hiker wants to make sure you aren't forgetting anything or bringing things you don't need.
+Each list has a Pack mode, and you can share a list via a public link. Pack mode lets you check off items as you pack. Sharing a list gives others a read-only copy of it. Helpful for shakedowns and if an experienced hiker wants to make sure you aren't forgetting anything or bringing things you don't need.
 
 ## Basic concepts
 
@@ -18,7 +18,7 @@ Open the **Gear** page to add gear, edit existing items, or import gear from a C
 
 ### Packing lists
 
-A packing list is a trip specific set of gear. You can create different lists for different trips, seasons, or styles of travel.
+A packing list is a trip-specific set of gear. You can create different lists for different trips, seasons, or styles of travel.
 
 Items on a list come from your gear inventory. If you edit an item's name, description, category, or weight, that change updates the inventory too.
 

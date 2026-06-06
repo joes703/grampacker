@@ -76,6 +76,7 @@ See `DECISIONS.md` ADR 8 for the per-list opt-in rationale.
 Read-only, no auth. Field exclusions vs. the authenticated view:
 
 - **Visible:** list name, description, items grouped by category, weight table, weight unit toggle.
+- **Per-list visible** (in the wire response): `id`, `name`, `description`, `group_worn` (drives the Worn grouping in the share view), `is_draft` (drives the "Work in progress" banner).
 - **Per-item visible** (in the wire response): `id` (used as React key), `gear_item_id`, `quantity`, `is_worn`, `is_consumable`, `sort_order`, plus the joined `gear_item.{id, name, description, weight_grams, category_id}`.
 - **Per-category visible**: `id`, `name`, `sort_order`.
 - **Excluded** (not in the wire response): `is_packed` (personal packing state), `list_id` (viewer already has it), owner `user_id` on every table, `slug` echo on the list, `is_shared` on the list, `is_default` on categories, `created_at` / `updated_at` on every table. Enforced via explicit `select(...)` column lists in the public query helpers, not just RLS. See `SECURITY.md` "Public read column allowlist".
@@ -131,17 +132,17 @@ For bulk partial-column writes that have to bypass RLS WITH CHECK on the INSERT 
 
 ## CSV format
 
-Used for gear-library and per-list export/import. The format is a small, hand-rolled RFC-4180-style CSV (`src/lib/csv/`); no external CSV library. The export format is **drop-in compatible with Lighterpack**: same 10-column header and same value conventions, so a grampacker CSV can be re-imported into Lighterpack without manual header massaging. Importing Lighterpack, HikerHerd, Packstack, or hand-edited CSVs into grampacker works thanks to the parser's case-insensitive column-alias lookup, the spelled-out unit recognition, and the boolean-value tolerance described under "Import" below.
+Used for gear-library and per-list export/import. The format is a small, hand-rolled RFC-4180-style CSV (`src/lib/csv/`); no external CSV library. The export format is **drop-in compatible with Lighterpack**: it leads with the 10 Lighterpack columns in the same order and uses the same value conventions, so a grampacker CSV can be re-imported into Lighterpack without manual header massaging (Lighterpack ignores any columns it doesn't recognize). Importing Lighterpack, HikerHerd, Packstack, or hand-edited CSVs into grampacker works thanks to the parser's case-insensitive column-alias lookup, the spelled-out unit recognition, and the boolean-value tolerance described under "Import" below.
 
 ### Export columns
 
-Both export paths emit the same 10-column header in this exact order:
+The 10 Lighterpack-compatible columns, in this exact order:
 
     Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable
 
-**Gear-library export** (`gear-library.csv`): no list-item context, so per-row `qty=1`, `worn=""`, `consumable=""`.
+**Gear-library export** (`gear-library.csv`, `gearItemsToCsv`): emits 12 columns - the 10 Lighterpack columns above plus two grampacker-specific extension columns, `cost` and `purchase_date`, appended after `consumable`. Lighterpack ignores the two extra columns on re-import. No list-item context, so per-row `qty=1`, `worn=""`, `consumable=""`.
 
-**List export** (`<sanitized-list-name>.csv`): full per-row data. `qty` is the list_item quantity. `worn` is the literal `Worn` when true, empty when false. `consumable` is the literal `Consumable` when true, empty when false. `is_packed` is excluded; Lighterpack has no equivalent and it's per-user runtime checklist state.
+**List export** (`<sanitized-list-name>.csv`): emits the 10 Lighterpack-compatible columns. Full per-row data. `qty` is the list_item quantity. `worn` is the literal `Worn` when true, empty when false. `consumable` is the literal `Consumable` when true, empty when false. `is_packed` is excluded; Lighterpack has no equivalent and it's per-user runtime checklist state.
 
 **Both paths**, every row: `weight` is the gear-item weight in grams as an integer (no unit suffix in the value). `unit` is the literal string `gram` (lowercase, full word, Lighterpack's convention). `url` is empty (grampacker doesn't store URLs). `price` is `0` (Lighterpack's default for unset prices; emitted numerically, not as empty).
 

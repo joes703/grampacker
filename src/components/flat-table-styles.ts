@@ -33,16 +33,16 @@ export const TABLE_DIVIDER_LINE = 'divide-gray-100'
 // call-site Tailwind strings. See docs/ui-density.md for the rationale.
 //
 // Mobile sizes are tuned for touch (44px row floor / 40px control target);
-// desktop sizes shrink toward LighterPack-style density (28px row, 32px
+// desktop sizes shrink toward Lighterpack-style density (28px row, 32px
 // header, 28px control). Mobile must stay unchanged whenever desktop is
-// tuned — pointer scans tolerate denser body type than touch reading.
+// tuned - pointer scans tolerate denser body type than touch reading.
 //
 // `WeightTable` remains a deliberately tighter compact-summary table and
 // does NOT consume these row tokens; see docs/ui-density.md "Intentional
 // exceptions".
 
 // Row height. Mobile 44px touch target; desktop 28px scanline. Lowered from
-// the previous lg:min-h-8 (32px) so the row reads at the LighterPack-ish
+// the previous lg:min-h-8 (32px) so the row reads at the Lighterpack-ish
 // density tier where the eye scans columns more than it reads sentences.
 export const MOBILE_ROW_HEIGHT = 'min-h-11'
 export const DESKTOP_ROW_HEIGHT = 'lg:min-h-7'

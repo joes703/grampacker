@@ -22,14 +22,14 @@ declare module '@tanstack/react-query' {
 // failures are recoverable (optimistic snap-back, user can retry), and
 // reserving console.error for genuinely non-recoverable cases keeps the
 // signal-to-noise ratio honest. A future Sentry/PostHog/etc. integration
-// would wrap this call site — the structured payload is already the
+// would wrap this call site - the structured payload is already the
 // shape a reporter wants.
 //
 // Most mutation failures are surfaced inline at their call site (e.g.,
 // GearItemDialog's transactional save shows the error in the dialog) or
 // are silent optimistic rollbacks where the user sees the snap-back. We
 // deliberately do NOT route every mutation failure through the toast
-// system from here — that would spam users with toasts for transient
+// system from here - that would spam users with toasts for transient
 // network failures and background refetch errors. The toast system
 // exists (src/lib/toast.ts) and is used selectively by
 // makeOptimisticReorder.onError where the rollback is otherwise silent
@@ -37,7 +37,7 @@ declare module '@tanstack/react-query' {
 // failure mode warrants a toast on a case-by-case basis.
 //
 // Extracted from the App.tsx inline arrow so the same function is
-// consumed by both the production QueryClient and the unit test —
+// consumed by both the production QueryClient and the unit test -
 // duplicating the handler in the test would only test the copy.
 export function mutationErrorHandler(
   error: unknown,
