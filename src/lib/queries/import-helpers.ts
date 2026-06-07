@@ -8,19 +8,11 @@ import { createCategory, nextCategorySortOrder } from './categories'
 // whether they go on to insert list_items afterwards; gear resolution and
 // dedup are identical.
 
-// Composite dedup key: a CSV row matches an existing gear item when its
-// category + lowercase name + weight all agree. Same shape used to seed the
-// existing-gear map and to look up each row.
-//
-// Unicode normalization: NFC before lowercase so visually identical names
-// that happen to be encoded differently (e.g. "café" with a precomposed
-// `é` vs. "café" composed as `e` + combining acute) compare equal.
-// Without this, a re-import from a tool that emits NFD created duplicate
-// gear rows for the same item. NFC + toLowerCase (not toLocaleLowerCase)
-// stays locale-independent so the key is identical in every runtime.
-export function gearKey(categoryId: string | null, name: string, weight_grams: number): string {
-  return `${categoryId ?? ''}:${name.trim().normalize('NFC').toLowerCase()}:${weight_grams}`
-}
+// gearKey now lives in the Supabase-free sort-keys module so the pure
+// import planner can use it without a cycle. Re-exported here for
+// back-compat with existing import sites.
+export { gearKey } from './sort-keys'
+import { gearKey } from './sort-keys'
 
 // Per-user / per-list resource caps. Canonical definitions live in
 // ../caps; re-exported here so existing import-path callers (and the
