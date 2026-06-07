@@ -105,7 +105,7 @@ export default function DesktopListsPanel({
   // and the in-list List options popover, so create/rename/duplicate/export/
   // delete semantics stay identical across surfaces. createListMut navigates
   // on success; this panel owns closing the create dialog at the call site.
-  const { createListMut, renameMut, duplicateMut, deleteListMut, exportCsv } =
+  const { createListMut, submitCreateList, renameMut, duplicateMut, deleteListMut, exportCsv } =
     useCurrentListActions(userId)
 
   // The reorder state machine — useQuery on ['lists'], useMutation on
@@ -273,7 +273,7 @@ export default function DesktopListsPanel({
           onChange={(v) => setDialog({ type: 'creating', draft: v })}
           onSubmit={() => {
             const trimmed = dialog.draft.trim()
-            if (trimmed) createListMut.mutate(trimmed, { onSuccess: () => setDialog(null) })
+            if (trimmed) submitCreateList(trimmed, { onSuccess: () => setDialog(null) })
             else setDialog(null)
           }}
           onCancel={() => setDialog(null)}

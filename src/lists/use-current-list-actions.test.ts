@@ -169,7 +169,7 @@ describe('useCurrentListActions - createListMut', () => {
     ]
     act(() => { lastQc.setQueryData(['lists'], seeded) })
 
-    act(() => { result.current.createListMut.mutate('New') })
+    act(() => { result.current.submitCreateList('New') })
 
     await waitFor(() => expect(q.createList).toHaveBeenCalled())
     // The optimistic placeholder was built with sort_order 2...
@@ -186,7 +186,7 @@ describe('useCurrentListActions - createListMut', () => {
   it('does not navigate when createList rejects', async () => {
     q.createList.mockRejectedValueOnce(new Error('nope'))
     const { result } = renderHook(() => useCurrentListActions('u1'), { wrapper })
-    act(() => { result.current.createListMut.mutate('New') })
+    act(() => { result.current.submitCreateList('New') })
     await waitFor(() => expect(result.current.createListMut.isError).toBe(true))
     expect(navigateSpy).not.toHaveBeenCalled()
   })

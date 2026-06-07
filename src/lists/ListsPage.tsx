@@ -118,7 +118,7 @@ export default function ListsPage() {
   // path, multiple entry points (card kebab here, List options
   // popover/modal there). createListMut navigates on success; this page
   // owns closing the create dialog via the call-site onSuccess.
-  const { createListMut, renameMut, duplicateMut, deleteListMut, exportCsv } =
+  const { createListMut, submitCreateList, renameMut, duplicateMut, deleteListMut, exportCsv } =
     useCurrentListActions(userId)
 
   // See ListDetailPage for the rationale. List cards keep their always-
@@ -166,7 +166,7 @@ export default function ListsPage() {
               onChange={(v) => setDialog({ type: 'creating', draft: v })}
               onSubmit={() => {
                 const trimmed = dialog.draft.trim()
-                if (trimmed) createListMut.mutate(trimmed, { onSuccess: () => setDialog(null) })
+                if (trimmed) submitCreateList(trimmed, { onSuccess: () => setDialog(null) })
                 else setDialog(null)
               }}
               onCancel={() => setDialog(null)}
