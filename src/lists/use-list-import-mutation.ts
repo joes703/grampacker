@@ -2,10 +2,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import {
   queryKeys,
-  createList,
   nextListSortOrder,
-  importCsvRowsToList,
-  assertListImportWithinCaps,
+  importListFromCsv,
   fetchLists,
   fetchGearItems,
   fetchCategories,
@@ -14,16 +12,15 @@ import type { ListImportRow } from '../lib/csv'
 import type { List, GearItem, Category } from '../lib/types'
 
 // CSV-import-into-a-new-list mutation, shared by the lists surfaces
-// (ListsPage card view and DesktopListsPanel in Phase 2). Reproduces the
-// prior ListsPage importMut data flow exactly:
+// (ListsPage card view and DesktopListsPanel in Phase 2). The data flow:
 //
-//   1. Preflight the per-list and inventory caps BEFORE any write, so a
-//      rejected over-cap import leaves no orphan list or categories. This
-//      ordering is load-bearing: assertListImportWithinCaps must run before
-//      createList.
-//   2. Create the list (append sort_order read from the live ['lists'] cache).
-//   3. Populate it from the CSV rows.
-//   4. On success, invalidate the three affected caches and navigate into
+//   1. Resolve the live lists/gear/categories so the import dedups, caps,
+//      and sort_order are computed against real inventory (never []).
+//   2. Hand off to importListFromCsv, which preflights the per-list and
+//      inventory caps and then commits the new list + categories + gear +
+//      items in a single atomic RPC (Stage 10 / C-05). A rejected over-cap
+//      import or a late DB failure leaves no orphan rows behind.
+//   3. On success, invalidate the three affected caches and navigate into
 //      the new list so imported items are immediately visible.
 //
 // Lists/gear/categories are resolved via fetchQuery (NOT getQueryData), so the
@@ -49,12 +46,10 @@ export function useListImportMutation(userId: string) {
         qc.fetchQuery<GearItem[]>({ queryKey: queryKeys.gearItems(), queryFn: () => fetchGearItems(userId) }),
         qc.fetchQuery<Category[]>({ queryKey: queryKeys.categories(), queryFn: () => fetchCategories(userId) }),
       ])
-      // Preflight the caps BEFORE creating the list so a rejected over-cap
-      // import leaves no orphan list or categories behind.
-      assertListImportWithinCaps(rows, gearItems, categories)
-      const newList = await createList(userId, name, nextListSortOrder(lists))
-      await importCsvRowsToList(newList.id, userId, rows, gearItems, categories)
-      return newList
+      // importListFromCsv runs the cap preflight BEFORE the RPC and commits the
+      // list + categories + gear + items atomically, so a rejected or failed
+      // import leaves no orphan list/categories/gear behind.
+      return importListFromCsv(userId, name, rows, gearItems, categories, nextListSortOrder(lists))
     },
     onSuccess: (newList) => {
       qc.invalidateQueries({ queryKey: queryKeys.lists() })

@@ -1,9 +1,11 @@
 import { supabase } from '../supabase'
-import type { Category, GearItem, ListItem, ListItemWithGear, PublicListItem } from '../types'
+import type { Category, GearItem, ListItem, ListItemWithGear, List, PublicListItem } from '../types'
 import type { ListImportRow } from '../csv'
 import { bulkUpdateSortOrder } from './bulk-reorder'
-import { nextGearItemSortOrder } from './gear'
-import { resolveOrCreateCategories, resolveOrCreateGearForImport } from './import-helpers'
+import { buildListImportPlan } from './import-plan'
+import { createListWithImportedItems } from './lists'
+import { assertListImportWithinCaps } from './import-helpers'
+import { randomTempId } from '../random-temp-id'
 import { GEAR_ITEM_AUTH_SELECT, GEAR_ITEM_PUBLIC_SELECT } from './projections'
 
 // Next sort_order slot for a newly-created list_item, scoped to its
@@ -237,51 +239,23 @@ export async function resetReadyForList(listId: string): Promise<void> {
 
 // ── CSV list import ───────────────────────────────────────────────────────────
 
-// Imports CSV rows into a freshly-created list. Gear resolution goes through
-// the shared resolveOrCreateGearForImport helper: rows whose (category +
-// name + weight) matches an existing gear item link the new list_item to
-// that gear without inserting a duplicate. Within-CSV duplicates create
-// separate gear items (typing two rows means two items). Per-row CSV
-// fields (quantity, is_worn, is_consumable) are written through to the
-// list_item insert verbatim.
-export async function importCsvRowsToList(
-  listId: string,
+// Atomic CSV-into-a-new-list import (Stage 10 / C-05). Replaces the old
+// createList + multi-write populate pair. The cap preflight runs BEFORE the RPC
+// so a rejected over-cap import never touches the DB (the DB triggers remain
+// authoritative; this just yields a friendly, specific message). The pure TS
+// planner resolves which categories/gear to create and the list_items to
+// attach (dedup against the existing library only; within-CSV duplicates
+// create separate gear); the RPC commits the whole plan in one transaction,
+// so a late failure leaves no orphan list/categories/gear.
+export async function importListFromCsv(
   userId: string,
+  name: string,
   rows: ListImportRow[],
   existingGearItems: GearItem[],
   existingCategories: Category[],
-): Promise<void> {
-  const catByName = await resolveOrCreateCategories(userId, rows, existingCategories)
-  const { gearIdByRow } = await resolveOrCreateGearForImport({
-    userId,
-    rows,
-    existingGearItems,
-    catByName,
-    startSortOrder: nextGearItemSortOrder(existingGearItems),
-  })
-
-  // The list was just created in the calling flow, so it has no
-  // pre-existing items; list_item sort_order starts at 0 for the first
-  // imported row. If this helper ever grows to support importing into an
-  // existing list, swap to nextListItemSortOrder against the existing
-  // list_items here.
-  const listItemRows = rows
-    .map((row, i) => {
-      const gearId = gearIdByRow[i]
-      if (!gearId) return null
-      return {
-        user_id: userId,
-        list_id: listId,
-        gear_item_id: gearId,
-        quantity: row.quantity,
-        is_worn: row.is_worn,
-        is_consumable: row.is_consumable,
-        sort_order: i,
-      }
-    })
-    .filter((r): r is NonNullable<typeof r> => r !== null)
-
-  if (listItemRows.length === 0) return
-  const { error } = await supabase.from('list_items').insert(listItemRows)
-  if (error) throw error
+  sortOrder: number,
+): Promise<List> {
+  assertListImportWithinCaps(rows, existingGearItems, existingCategories)
+  const plan = buildListImportPlan(rows, existingGearItems, existingCategories, randomTempId)
+  return createListWithImportedItems(userId, name, sortOrder, plan)
 }

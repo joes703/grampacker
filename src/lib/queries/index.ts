@@ -68,6 +68,7 @@ export {
   reorderLists,
   createListFromSelection,
   duplicateList,
+  createListWithImportedItems,
 } from './lists'
 export {
   fetchListItems,
@@ -79,7 +80,7 @@ export {
   reorderListItems,
   resetPackedForList,
   resetReadyForList,
-  importCsvRowsToList,
+  importListFromCsv,
   nextListItemSortOrder,
 } from './list-items'
 export type { ListItemPatch } from './list-items'

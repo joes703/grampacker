@@ -4,9 +4,9 @@ import { createCategory } from './categories'
 import { planNewCategories, planGearResolution } from './import-plan'
 import { randomTempId } from '../random-temp-id'
 
-// Shared CSV-import helpers used by both list-import (importCsvRowsToList)
+// Shared CSV-import helpers used by both list-import (importListFromCsv)
 // and gear-only-import (importGearItems). The two paths differ only in
-// whether they go on to insert list_items afterwards; gear resolution and
+// whether they go on to attach list_items afterwards; gear resolution and
 // dedup are identical.
 
 // gearKey now lives in the Supabase-free sort-keys module so the pure

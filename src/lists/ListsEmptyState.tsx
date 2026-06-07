@@ -8,8 +8,7 @@ import {
   createList,
   fetchGearItems,
   fetchCategories,
-  importCsvRowsToList,
-  assertListImportWithinCaps,
+  importListFromCsv,
   makeOptimisticInsert,
 } from '../lib/queries'
 import type { List } from '../lib/types'
@@ -34,8 +33,8 @@ export default function ListsEmptyState() {
   const [importPreview, setImportPreview] = useState<{ rows: ListImportRow[]; filename: string } | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
 
-  // Gear/categories are needed by importCsvRowsToList to dedupe by name.
-  // For a brand-new user both queries will return empty arrays; that's fine.
+  // Gear/categories are needed by importListFromCsv to dedupe by name and
+  // preflight caps. For a brand-new user both queries return empty arrays.
   const { data: gearItems = [] } = useQuery({
     queryKey: queryKeys.gearItems(),
     queryFn: () => fetchGearItems(userId),
@@ -80,12 +79,11 @@ export default function ListsEmptyState() {
   // navigate to the new list on success.
   const importMut = useMutation({
     mutationFn: async ({ name, rows }: { name: string; rows: ListImportRow[] }) => {
-      // Preflight the per-list and inventory caps BEFORE creating the list,
-      // so a rejected over-cap import leaves no orphan list or categories.
-      assertListImportWithinCaps(rows, gearItems, categories)
-      const newList = await createList(userId, name, 0)
-      await importCsvRowsToList(newList.id, userId, rows, gearItems, categories)
-      return newList
+      // sort_order 0 is correct here: this empty state only renders when
+      // lists.length === 0. importListFromCsv preflights the caps and commits
+      // the new list + categories + gear + items atomically, so a rejected
+      // over-cap import or a late DB failure leaves no orphan rows behind.
+      return importListFromCsv(userId, name, rows, gearItems, categories, 0)
     },
     onSuccess: (newList) => {
       qc.invalidateQueries({ queryKey: queryKeys.lists() })
