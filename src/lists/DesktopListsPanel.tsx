@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   DndContext,
   DragOverlay,
@@ -19,23 +18,16 @@ import {
 import { CopyPlus, Download, MoreVertical, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import {
   queryKeys,
-  fetchGearItems,
-  fetchCategories,
   fetchLists,
-  createList,
-  nextListSortOrder,
   reorderLists,
-  importCsvRowsToList,
-  assertListImportWithinCaps,
-  makeOptimisticInsert,
 } from '../lib/queries'
 import { useCurrentListActions } from './use-current-list-actions'
+import { useListImportMutation } from './use-list-import-mutation'
 import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId } from '../lib/dnd-ids'
 import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
 import { parseListCsv, nameFromCsvFilename, type ListImportRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
-import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import DraftBadge from '../components/DraftBadge'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
@@ -108,12 +100,13 @@ export default function DesktopListsPanel({
   className,
 }: Props) {
   const navigate = useNavigate()
-  const qc = useQueryClient()
 
   // Shared current-list actions. Same code path used by ListsPage card kebab
-  // and the in-list List options popover, so rename/duplicate/export/delete
-  // semantics stay identical across surfaces.
-  const { renameMut, duplicateMut, deleteListMut, exportCsv } = useCurrentListActions(userId)
+  // and the in-list List options popover, so create/rename/duplicate/export/
+  // delete semantics stay identical across surfaces. createListMut navigates
+  // on success; this panel owns closing the create dialog at the call site.
+  const { createListMut, submitCreateList, renameMut, duplicateMut, deleteListMut, exportCsv } =
+    useCurrentListActions(userId)
 
   // The reorder state machine — useQuery on ['lists'], useMutation on
   // reorderLists with makeOptimisticReorder, activeId, and the
@@ -139,18 +132,6 @@ export default function DesktopListsPanel({
     // the /lists "Updated …" timestamps. Same path as ListsPage.
   })
 
-  // gearItems / categories are needed for CSV import (importCsvRowsToList
-  // resolves names against existing inventory). They're already cached by
-  // ListDetailPage's parent queries, so these reads are effectively
-  // free reference-fetches.
-  const { data: gearItems = [] } = useQuery({
-    queryKey: queryKeys.gearItems(),
-    queryFn: () => fetchGearItems(userId),
-  })
-  const { data: categories = [] } = useQuery({
-    queryKey: queryKeys.categories(),
-    queryFn: () => fetchCategories(userId),
-  })
 
   const [dialog, setDialog] = useState<DialogState | null>(null)
 
@@ -165,46 +146,12 @@ export default function DesktopListsPanel({
     onError: (message) => setDialog({ type: 'import-error', message }),
   })
 
-  // New-list flow: optimistic insert against ['lists'] then navigate. Mirrors
-  // ListsPage.createListMut so the user-visible behavior is the same whether
-  // the new list is started from /lists or from this panel.
-  const createListMut = useMutation({
-    mutationFn: (name: string) => createList(userId, name, nextListSortOrder(lists)),
-    ...makeOptimisticInsert<List, string>({
-      qc,
-      queryKey: queryKeys.lists(),
-      optimistic: (name) => optimisticListPlaceholder({ name, userId, sortOrder: nextListSortOrder(lists) }),
-    }),
-    onSuccess: (created) => {
-      setDialog(null)
-      navigate(`/lists/${created.id}`)
-    },
-  })
-
-  // CSV-import flow: createList then populate, then navigate into the new
-  // list. Same shape ListsPage uses so a CSV imported here behaves identically.
-  const importMut = useMutation({
-    mutationFn: async ({ name, rows }: { name: string; rows: ListImportRow[] }) => {
-      // Preflight the per-list and inventory caps BEFORE creating the list,
-      // so a rejected over-cap import leaves no orphan list or categories.
-      assertListImportWithinCaps(rows, gearItems, categories)
-      const newList = await createList(userId, name, nextListSortOrder(lists))
-      await importCsvRowsToList(newList.id, userId, rows, gearItems, categories)
-      return newList
-    },
-    onSuccess: (newList) => {
-      qc.invalidateQueries({ queryKey: queryKeys.lists() })
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      qc.invalidateQueries({ queryKey: queryKeys.categories() })
-      setDialog(null)
-      navigate(`/lists/${newList.id}`)
-    },
-    onError: (err) =>
-      setDialog({
-        type: 'import-error',
-        message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
-      }),
-  })
+  // CSV-import-into-a-new-list. Shared hook owns the preflight/create/populate
+  // data path plus the success invalidate+navigate; this panel owns closing the
+  // dialog on success and routing failures into the import-error dialog via the
+  // call-site onSuccess/onError below. Same hook ListsPage uses so a CSV
+  // imported here behaves identically.
+  const importMut = useListImportMutation(userId)
 
   // Desktop-only panel, so MouseSensor + KeyboardSensor is enough. No
   // TouchSensor: the surrounding aside is `hidden lg:flex`, and bringing it
@@ -326,7 +273,7 @@ export default function DesktopListsPanel({
           onChange={(v) => setDialog({ type: 'creating', draft: v })}
           onSubmit={() => {
             const trimmed = dialog.draft.trim()
-            if (trimmed) createListMut.mutate(trimmed)
+            if (trimmed) submitCreateList(trimmed, { onSuccess: () => setDialog(null) })
             else setDialog(null)
           }}
           onCancel={() => setDialog(null)}
@@ -424,7 +371,17 @@ export default function DesktopListsPanel({
           rows={dialog.rows}
           saving={importMut.isPending}
           onConfirm={() =>
-            importMut.mutate({ name: nameFromCsvFilename(dialog.filename), rows: dialog.rows })
+            importMut.mutate(
+              { name: nameFromCsvFilename(dialog.filename), rows: dialog.rows },
+              {
+                onSuccess: () => setDialog(null),
+                onError: (err) =>
+                  setDialog({
+                    type: 'import-error',
+                    message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
+                  }),
+              },
+            )
           }
           onClose={() => setDialog(null)}
         />

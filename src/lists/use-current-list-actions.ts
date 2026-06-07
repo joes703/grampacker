@@ -6,15 +6,23 @@ import {
   updateList,
   duplicateList,
   deleteList,
+  createList,
   fetchListItems,
   fetchCategories,
   makeOptimisticUpdate,
   makeOptimisticDelete,
+  makeOptimisticInsert,
   nextListSortOrder,
 } from '../lib/queries'
 import { listItemsToCsv, downloadCsv } from '../lib/csv'
 import { showToast } from '../lib/toast'
+import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import type { List, Category } from '../lib/types'
+
+// createListMut variables: the name plus the append sort_order snapshotted at
+// submit time. Carried together so the optimistic placeholder and the server
+// write share one immutable per-invocation value (see submitCreateList).
+type CreateListVars = { name: string; sortOrder: number }
 
 // Shared current-list actions hook. Both the /lists card kebab
 // (ListsPage) and the in-list List options popover/modal
@@ -69,6 +77,42 @@ export function useCurrentListActions(userId: string) {
     }),
   })
 
+  // Create a new list. The append sort_order is captured ONCE per invocation -
+  // in submitCreateList below, from the pre-insert ['lists'] cache - and passed
+  // as an immutable mutation variable, so the optimistic placeholder and the
+  // server write consume the exact same value. This matters because
+  // makeOptimisticInsert.onMutate appends the placeholder to the cache BEFORE
+  // mutationFn runs; if mutationFn recomputed the position from the cache it
+  // would count that placeholder and persist a sort_order one position too
+  // high. Threading the value through the variables (rather than a shared ref)
+  // also keeps two near-simultaneous creates from corrupting each other's
+  // value. (duplicateMut reads the cache in its mutationFn safely because it
+  // has no optimistic insert polluting it.)
+  const createListMut = useMutation({
+    mutationFn: ({ name, sortOrder }: CreateListVars) => createList(userId, name, sortOrder),
+    ...makeOptimisticInsert<List, CreateListVars>({
+      qc,
+      queryKey: queryKeys.lists(),
+      optimistic: ({ name, sortOrder }) => optimisticListPlaceholder({ name, userId, sortOrder }),
+    }),
+    onSuccess: (created) => navigate(`/lists/${created.id}`),
+  })
+
+  // Hook-owned submit wrapper: snapshot the append sort_order from the live
+  // ['lists'] cache once, then fire the mutation with that immutable value.
+  // Callers trigger creation through this (not createListMut.mutate directly)
+  // and read createListMut.isPending for the saving state. Dialog-closing stays
+  // caller-owned, so the page passes { onSuccess: () => setDialog(null) } here;
+  // the optimistic-insert helper owns onSettled (invalidate), and the mutation's
+  // own onSuccess (navigate) runs before this per-call onSuccess.
+  const submitCreateList = useCallback(
+    (name: string, options?: Parameters<typeof createListMut.mutate>[1]) => {
+      const currentLists = qc.getQueryData<List[]>(queryKeys.lists()) ?? []
+      createListMut.mutate({ name, sortOrder: nextListSortOrder(currentLists) }, options)
+    },
+    [qc, createListMut],
+  )
+
   const duplicateMut = useMutation({
     mutationFn: (target: List) => {
       const currentLists = qc.getQueryData<List[]>(queryKeys.lists()) ?? []
@@ -117,5 +161,5 @@ export function useCurrentListActions(userId: string) {
     [qc, userId],
   )
 
-  return { renameMut, duplicateMut, deleteListMut, exportCsv, draftMut }
+  return { createListMut, submitCreateList, renameMut, duplicateMut, deleteListMut, exportCsv, draftMut }
 }
