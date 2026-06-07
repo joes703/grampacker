@@ -13,7 +13,12 @@ dist
 
 # Claude Code project-level tooling config (per-clone, not shared)
 /.claude/
-/AGENTS.md
+
+# AGENTS.md is a TRACKED, stable stub pointing agents to CLAUDE.md (see the file
+# itself). The claude-mem plugin may overwrite the local working copy with a
+# session memory dump; protect it per-clone with
+# `git update-index --skip-worktree AGENTS.md` so those writes never get
+# committed. Do NOT re-ignore it - it must ship in the repo.
 
 # Supabase CLI local link/version cache (per-clone, regenerated)
 /supabase/.temp/
