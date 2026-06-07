@@ -170,11 +170,23 @@ export async function resolveOrCreateGearForImport({
   }
 
   // NewGear omits user_id (it targets the atomic RPC), but this direct
-  // gear_items insert needs it. Re-add user_id and drop the planner's
-  // placeholder id so the DB assigns the real ids.
+  // gear_items insert needs it. Build each row explicitly (also drops the
+  // planner's placeholder id so the DB assigns the real ids).
   const { data: created, error } = await supabase
     .from('gear_items')
-    .insert(newGear.map(({ id: _placeholder, ...rest }) => ({ ...rest, user_id: userId })))
+    .insert(
+      newGear.map((g) => ({
+        user_id: userId,
+        name: g.name,
+        description: g.description,
+        weight_grams: g.weight_grams,
+        category_id: g.category_id,
+        cost: g.cost,
+        purchase_date: g.purchase_date,
+        status: g.status,
+        sort_order: g.sort_order,
+      })),
+    )
     .select('id')
   if (error) throw error
 
