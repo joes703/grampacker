@@ -17,6 +17,7 @@ dist
 
 # Supabase CLI local link/version cache (per-clone, regenerated)
 /supabase/.temp/
+/supabase/.branches/
 
 # Lighthouse / Chrome DevTools report exports — generated locally, never
 # checked in

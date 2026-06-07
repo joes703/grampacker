@@ -10,9 +10,7 @@ import type { ListImportRow } from '../lib/csv'
 
 // Hoisted spies shared by the mock factories and the test bodies.
 const q = vi.hoisted(() => ({
-  createList: vi.fn(),
-  importCsvRowsToList: vi.fn(),
-  assertListImportWithinCaps: vi.fn(),
+  importListFromCsv: vi.fn(),
   nextListSortOrder: vi.fn(() => 7),
   // The hook resolves inventory via fetchQuery, so these query fns are what
   // it ultimately calls (when the cache is cold/stale). Tests drive them.
@@ -33,9 +31,7 @@ vi.mock('../lib/queries', () => ({
     gearItems: () => ['gear-items'],
     categories: () => ['categories'],
   },
-  createList: q.createList,
-  importCsvRowsToList: q.importCsvRowsToList,
-  assertListImportWithinCaps: q.assertListImportWithinCaps,
+  importListFromCsv: q.importListFromCsv,
   nextListSortOrder: q.nextListSortOrder,
   fetchLists: q.fetchLists,
   fetchGearItems: q.fetchGearItems,
@@ -122,9 +118,7 @@ function warmWrapper({ children }: { children: ReactNode }) {
 
 describe('useListImportMutation', () => {
   beforeEach(() => {
-    q.createList.mockReset()
-    q.importCsvRowsToList.mockReset().mockResolvedValue(undefined)
-    q.assertListImportWithinCaps.mockReset().mockImplementation(() => {})
+    q.importListFromCsv.mockReset().mockResolvedValue(undefined)
     q.nextListSortOrder.mockClear().mockReturnValue(7)
     // Sensible defaults so fetchQuery resolves in every test; individual
     // tests override to assert the resolved values flow through.
@@ -135,14 +129,14 @@ describe('useListImportMutation', () => {
   })
   afterEach(() => cleanup())
 
-  it('preflights caps, creates, populates, invalidates, and navigates (happy path)', async () => {
+  it('resolves inventory, imports atomically, invalidates, and navigates (happy path)', async () => {
     const lists: List[] = [{ ...LIST, id: 'a', sort_order: 0 }]
     const gearItems: GearItem[] = [GEAR]
     const categories: Category[] = [CAT]
     q.fetchLists.mockResolvedValue(lists)
     q.fetchGearItems.mockResolvedValue(gearItems)
     q.fetchCategories.mockResolvedValue(categories)
-    q.createList.mockResolvedValueOnce({ ...LIST, id: 'L1' })
+    q.importListFromCsv.mockResolvedValueOnce({ ...LIST, id: 'L1' })
 
     const { result } = renderHook(() => useListImportMutation('u1'), { wrapper })
     const invalidateSpy = vi.spyOn(lastQc, 'invalidateQueries')
@@ -150,10 +144,9 @@ describe('useListImportMutation', () => {
     act(() => { result.current.mutate({ name: 'Imported', rows: ROWS }) })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(q.assertListImportWithinCaps).toHaveBeenCalledWith(ROWS, gearItems, categories)
     expect(q.nextListSortOrder).toHaveBeenCalledWith(lists)
-    expect(q.createList).toHaveBeenCalledWith('u1', 'Imported', 7)
-    expect(q.importCsvRowsToList).toHaveBeenCalledWith('L1', 'u1', ROWS, gearItems, categories)
+    // sortOrder is whatever nextListSortOrder returns in this test (mocked 7).
+    expect(q.importListFromCsv).toHaveBeenCalledWith('u1', 'Imported', ROWS, gearItems, categories, 7)
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['lists'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['gear-items'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['categories'] })
@@ -167,23 +160,22 @@ describe('useListImportMutation', () => {
     q.fetchGearItems.mockResolvedValue([GEAR])
     q.fetchCategories.mockResolvedValue([CAT])
     q.fetchLists.mockResolvedValue([])
-    q.createList.mockResolvedValueOnce({ ...LIST, id: 'L1' })
+    q.importListFromCsv.mockResolvedValueOnce({ ...LIST, id: 'L1' })
 
     const { result } = renderHook(() => useListImportMutation('u1'), { wrapper })
     act(() => { result.current.mutate({ name: 'Imported', rows: ROWS }) })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    // The fetched, non-empty inventory flows into BOTH the cap preflight and
-    // the import dedup - this is the structural guarantee against [].
+    // The fetched, non-empty inventory flows into importListFromCsv (which
+    // owns the cap preflight and dedup) - the structural guarantee against [].
     expect(q.fetchGearItems).toHaveBeenCalledWith('u1')
     expect(q.fetchCategories).toHaveBeenCalledWith('u1')
-    expect(q.assertListImportWithinCaps).toHaveBeenCalledWith(ROWS, [GEAR], [CAT])
-    expect(q.importCsvRowsToList).toHaveBeenCalledWith('L1', 'u1', ROWS, [GEAR], [CAT])
+    expect(q.importListFromCsv).toHaveBeenCalledWith('u1', 'Imported', ROWS, [GEAR], [CAT], 7)
   })
 
   it('uses warm cache without refetching when data is fresh', async () => {
     const lists: List[] = [{ ...LIST, id: 'a' }]
-    q.createList.mockResolvedValueOnce({ ...LIST, id: 'L1' })
+    q.importListFromCsv.mockResolvedValueOnce({ ...LIST, id: 'L1' })
 
     const { result } = renderHook(() => useListImportMutation('u1'), { wrapper: warmWrapper })
     act(() => {
@@ -200,33 +192,30 @@ describe('useListImportMutation', () => {
     expect(q.fetchLists).not.toHaveBeenCalled()
     expect(q.fetchGearItems).not.toHaveBeenCalled()
     expect(q.fetchCategories).not.toHaveBeenCalled()
-    // The cached inventory still flows through.
-    expect(q.assertListImportWithinCaps).toHaveBeenCalledWith(ROWS, [GEAR], [CAT])
+    // The cached inventory still flows through to importListFromCsv.
+    expect(q.importListFromCsv).toHaveBeenCalledWith('u1', 'Imported', ROWS, [GEAR], [CAT], 7)
   })
 
-  it('preflight-before-write: when caps throw, no list is created or populated', async () => {
-    q.assertListImportWithinCaps.mockImplementation(() => {
-      throw new Error('over cap')
-    })
+  it('surfaces an over-cap rejection and does not navigate', async () => {
+    // The cap preflight now lives inside importListFromCsv; an over-cap import
+    // rejects there. The hook must surface that as isError and not navigate.
+    q.importListFromCsv.mockRejectedValueOnce(new Error('over cap'))
 
     const { result } = renderHook(() => useListImportMutation('u1'), { wrapper })
     act(() => { result.current.mutate({ name: 'Imported', rows: ROWS }, { onError: () => {} }) })
 
     await waitFor(() => expect(result.current.isError).toBe(true))
-    expect(q.createList).not.toHaveBeenCalled()
-    expect(q.importCsvRowsToList).not.toHaveBeenCalled()
     expect(navigateSpy).not.toHaveBeenCalled()
   })
 
-  it('surfaces a generic populate error and does not navigate', async () => {
-    q.createList.mockResolvedValueOnce({ ...LIST, id: 'L1' })
-    q.importCsvRowsToList.mockRejectedValueOnce(new Error('insert failed'))
+  it('surfaces a generic import error and does not navigate', async () => {
+    q.importListFromCsv.mockRejectedValueOnce(new Error('import failed'))
 
     const { result } = renderHook(() => useListImportMutation('u1'), { wrapper })
     act(() => { result.current.mutate({ name: 'Imported', rows: ROWS }, { onError: () => {} }) })
 
     await waitFor(() => expect(result.current.isError).toBe(true))
-    expect(q.createList).toHaveBeenCalled()
+    expect(q.importListFromCsv).toHaveBeenCalled()
     expect(navigateSpy).not.toHaveBeenCalled()
   })
 })

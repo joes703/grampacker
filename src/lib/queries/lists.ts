@@ -2,6 +2,7 @@ import { supabase } from '../supabase'
 import type { List, PublicList } from '../types'
 import { generateSlug } from '../slug'
 import { bulkUpdateSortOrder } from './bulk-reorder'
+import type { ListImportPlan } from './import-plan'
 
 // Typeguard for Postgres unique-violation errors propagated through
 // supabase.from(...) and supabase.rpc(...). PostgrestError carries the
@@ -188,6 +189,35 @@ export async function duplicateList(source: List, userId: string, sortOrder: num
       p_source_list_id: source.id,
       p_slug: slug,
       p_sort_order: sortOrder,
+    })
+    if (error) throw error
+    return data as List
+  })
+}
+
+// Stage 10 (C-05): atomic CSV import. One RPC creates the list, the new
+// categories, the new gear, and the list_items in a single transaction, so a
+// late failure (cap trigger, FK) leaves no orphan list/categories/gear. The
+// plan is computed by the pure TS planner (buildListImportPlan); this wrapper
+// only commits it. withSlugRetry catches 23505 and retries with a fresh slug,
+// matching createList / createListFromSelection / duplicateList. SECURITY
+// INVOKER; ownership enforced by the inline auth.uid() check on p_user_id plus
+// RLS on lists/categories/gear_items/list_items running under the invoker.
+export async function createListWithImportedItems(
+  userId: string,
+  name: string,
+  sortOrder: number,
+  plan: ListImportPlan,
+): Promise<List> {
+  return withSlugRetry(async (slug) => {
+    const { data, error } = await supabase.rpc('create_list_with_imported_items', {
+      p_user_id: userId,
+      p_name: name,
+      p_slug: slug,
+      p_sort_order: sortOrder,
+      p_new_categories: plan.newCategories,
+      p_new_gear: plan.newGear,
+      p_list_items: plan.listItems,
     })
     if (error) throw error
     return data as List

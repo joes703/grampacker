@@ -1,26 +1,18 @@
 import { supabase } from '../supabase'
-import { DEFAULT_GEAR_STATUS, type GearStatus } from '../gear-status'
 import type { Category, GearItem } from '../types'
-import { createCategory, nextCategorySortOrder } from './categories'
+import { createCategory } from './categories'
+import { planNewCategories, planGearResolution } from './import-plan'
+import { randomTempId } from '../random-temp-id'
 
-// Shared CSV-import helpers used by both list-import (importCsvRowsToList)
+// Shared CSV-import helpers used by both list-import (importListFromCsv)
 // and gear-only-import (importGearItems). The two paths differ only in
-// whether they go on to insert list_items afterwards; gear resolution and
+// whether they go on to attach list_items afterwards; gear resolution and
 // dedup are identical.
 
-// Composite dedup key: a CSV row matches an existing gear item when its
-// category + lowercase name + weight all agree. Same shape used to seed the
-// existing-gear map and to look up each row.
-//
-// Unicode normalization: NFC before lowercase so visually identical names
-// that happen to be encoded differently (e.g. "café" with a precomposed
-// `é` vs. "café" composed as `e` + combining acute) compare equal.
-// Without this, a re-import from a tool that emits NFD created duplicate
-// gear rows for the same item. NFC + toLowerCase (not toLocaleLowerCase)
-// stays locale-independent so the key is identical in every runtime.
-export function gearKey(categoryId: string | null, name: string, weight_grams: number): string {
-  return `${categoryId ?? ''}:${name.trim().normalize('NFC').toLowerCase()}:${weight_grams}`
-}
+// gearKey now lives in the Supabase-free sort-keys module so the pure
+// import planner can use it without a cycle. Re-exported here for
+// back-compat with existing import sites.
+export { gearKey } from './sort-keys'
 
 // Per-user / per-list resource caps. Canonical definitions live in
 // ../caps; re-exported here so existing import-path callers (and the
@@ -33,7 +25,7 @@ export function gearKey(categoryId: string | null, name: string, weight_grams: n
 // has already committed new categories (orphaning them) and, for list
 // import, after the new list row was created (orphaning it).
 export { GEAR_ITEM_CAP, LIST_ITEM_CAP } from '../caps'
-import { GEAR_ITEM_CAP, LIST_ITEM_CAP, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../caps'
+import { GEAR_ITEM_CAP, LIST_ITEM_CAP } from '../caps'
 
 // Dedup key for the preflight counter. Mirrors gearKey's name handling
 // (trim + NFC + lowercase) but keys the category by NAME rather than id,
@@ -114,25 +106,15 @@ export async function resolveOrCreateCategories(
   rows: { category: string }[],
   existingCategories: Category[],
 ): Promise<Map<string, string>> {
+  // Plan the new categories purely (dedup by lowercased name, gap-safe
+  // sort_order off the existing max), then insert them in order. The map
+  // we return covers both pre-existing categories and the newly-created
+  // ids (keyed by lowercased name).
+  const { newCategories } = planNewCategories(rows, existingCategories, randomTempId)
   const catByName = new Map(existingCategories.map((c) => [c.name.toLowerCase(), c.id]))
-  const uniqueCatNames = [...new Set(rows.map((r) => r.category.trim()).filter(Boolean))]
-  // Walk off the end of the existing max sort_order, not the existing
-  // count. Deletes leave gaps (categories.deleteCategory does not
-  // compact), so `existing.length` would tie an existing row whenever a
-  // category had been deleted. `nextCategorySortOrder` snapshots the max
-  // once; we increment a local counter per insert so a batch of new
-  // categories gets a strictly-ascending block past the existing tail.
-  let newCount = 0
-  for (const name of uniqueCatNames) {
-    if (!catByName.has(name.toLowerCase())) {
-      const created = await createCategory(
-        userId,
-        name,
-        nextCategorySortOrder(existingCategories, newCount),
-      )
-      catByName.set(name.toLowerCase(), created.id)
-      newCount++
-    }
+  for (const c of newCategories) {
+    const created = await createCategory(userId, c.name, c.sort_order)
+    catByName.set(c.name.toLowerCase(), created.id)
   }
   return catByName
 }
@@ -166,86 +148,61 @@ export async function resolveOrCreateGearForImport({
   catByName: Map<string, string>
   startSortOrder: number
 }): Promise<{ gearIdByRow: (string | null)[]; newCount: number; matchedCount: number }> {
-  const gearIdByExistingKey = new Map<string, string>()
-  for (const g of existingGearItems) {
-    gearIdByExistingKey.set(gearKey(g.category_id, g.name, g.weight_grams), g.id)
+  // Pass the caller's startSortOrder straight through; the planner owns the
+  // dedup (match against existing library only) and the per-new sort_order
+  // walk. We do NOT recompute startSortOrder here.
+  const { newGear, gearRefByRow } = planGearResolution(
+    rows,
+    existingGearItems,
+    catByName,
+    startSortOrder,
+    randomTempId,
+  )
+  const newIds = new Set(newGear.map((g) => g.id))
+  // matchedCount = rows resolved to an existing gear id: non-null refs that
+  // are not one of this import's planned placeholder ids. Empty-name rows
+  // yield null refs (excluded); new-gear rows carry placeholder ids in
+  // newIds (excluded). Equivalent to the prior per-existing-match counter.
+  const matchedCount = gearRefByRow.filter((ref) => ref !== null && !newIds.has(ref)).length
+
+  if (newGear.length === 0) {
+    return { gearIdByRow: gearRefByRow, newCount: 0, matchedCount }
   }
 
-  // queueIndices[i] === null means row i resolved to existing gear (id is in
-  // gearIdByRow[i] already). Otherwise row i is queued at newGearRows[that index].
-  const gearIdByRow: (string | null)[] = []
-  const queueIndices: (number | null)[] = []
-  const newGearRows: {
-    user_id: string
-    name: string
-    description: string | null
-    weight_grams: number
-    category_id: string | null
-    cost: number | null
-    purchase_date: string | null
-    status: GearStatus
-    sort_order: number
-  }[] = []
-  let matchedCount = 0
-
-  for (const row of rows) {
-    const trimmedName = row.name.trim()
-    if (!trimmedName) {
-      gearIdByRow.push(null)
-      queueIndices.push(null)
-      continue
-    }
-    const categoryId = resolveCategoryId(row.category, catByName)
-    // Dedup key intentionally excludes cost/purchase_date. Those are
-    // display-only metadata and can change over time without making an
-    // item "different". Matching on (category, name, weight) keeps a
-    // re-import from duplicating the same physical item.
-    const key = gearKey(categoryId, trimmedName, row.weight_grams)
-    const existing = gearIdByExistingKey.get(key)
-    if (existing) {
-      gearIdByRow.push(existing)
-      queueIndices.push(null)
-      matchedCount++
-    } else {
-      gearIdByRow.push(null)
-      queueIndices.push(newGearRows.length)
-      newGearRows.push({
+  // NewGear omits user_id (it targets the atomic RPC), but this direct
+  // gear_items insert needs it. Build each row explicitly (also drops the
+  // planner's placeholder id so the DB assigns the real ids).
+  const { data: created, error } = await supabase
+    .from('gear_items')
+    .insert(
+      newGear.map((g) => ({
         user_id: userId,
-        name: trimmedName.slice(0, MAX_NAME_LENGTH),
-        description: row.description ? row.description.slice(0, MAX_DESC_LENGTH) : null,
-        weight_grams: row.weight_grams,
-        category_id: categoryId,
-        cost: row.cost ?? null,
-        purchase_date: row.purchase_date ?? null,
-        // Status is app-internal only; CSV import does not carry it.
-        // Imported gear always gets the default, matching the DB default
-        // and the GearItemDialog default.
-        status: DEFAULT_GEAR_STATUS,
-        sort_order: startSortOrder + newGearRows.length,
-      })
-    }
-  }
+        name: g.name,
+        description: g.description,
+        weight_grams: g.weight_grams,
+        category_id: g.category_id,
+        cost: g.cost,
+        purchase_date: g.purchase_date,
+        status: g.status,
+        sort_order: g.sort_order,
+      })),
+    )
+    .select('id')
+  if (error) throw error
 
-  if (newGearRows.length > 0) {
-    const { data: created, error } = await supabase
-      .from('gear_items')
-      .insert(newGearRows)
-      .select('id')
-    if (error) throw error
-    // Supabase preserves insertion order: created[i] is newGearRows[i]'s id.
-    for (let i = 0; i < gearIdByRow.length; i++) {
-      const qi = queueIndices[i]
-      if (typeof qi !== 'number') continue
-      const createdRow = created[qi]
-      if (createdRow) gearIdByRow[i] = createdRow.id
-    }
-  }
+  // Supabase preserves insertion order: created[i] is newGear[i]'s id.
+  const idByPlaceholder = new Map<string, string>()
+  newGear.forEach((g, idx) => {
+    const c = created[idx]
+    if (c) idByPlaceholder.set(g.id, c.id)
+  })
+  const gearIdByRow = gearRefByRow.map((ref) => {
+    if (ref === null) return null
+    const realId = idByPlaceholder.get(ref)
+    // ref is either an existing gear id (not in the map) or a placeholder
+    // id that maps to a real server id.
+    return realId ?? ref
+  })
 
-  return { gearIdByRow, newCount: newGearRows.length, matchedCount }
-}
-
-function resolveCategoryId(rawCategory: string, catByName: Map<string, string>): string | null {
-  const trimmed = rawCategory.trim()
-  if (!trimmed) return null
-  return catByName.get(trimmed.toLowerCase()) ?? null
+  return { gearIdByRow, newCount: newGear.length, matchedCount }
 }

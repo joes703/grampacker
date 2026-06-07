@@ -20,21 +20,11 @@ export async function fetchGearItems(userId: string): Promise<GearItem[]> {
   return data
 }
 
-// Next sort_order slot for a newly-created gear item. Same rationale as
-// nextCategorySortOrder: deleteGearItem (and bulkDeleteGearItems) do not
-// compact, so the existing sequence is sparse after any delete, and
-// length-based slot picking ties with an existing row. The (sort_order,
-// name) read order then silently reshuffles the user's gear library.
-// `offset` is for batched callers (CSV import): pass 0 for the first new
-// row, 1 for the next, etc.
-export function nextGearItemSortOrder(
-  existing: Pick<GearItem, 'sort_order'>[],
-  offset = 0,
-): number {
-  let max = -1
-  for (const g of existing) if (g.sort_order > max) max = g.sort_order
-  return max + 1 + offset
-}
+// nextGearItemSortOrder now lives in the Supabase-free sort-keys module so
+// the pure import planner can use it without a cycle. Re-exported here for
+// back-compat with existing import sites.
+export { nextGearItemSortOrder } from './sort-keys'
+import { nextGearItemSortOrder } from './sort-keys'
 
 export async function createGearItem(
   userId: string,
