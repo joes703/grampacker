@@ -14,13 +14,13 @@ set local "request.jwt.claims" = '{"sub":"00000000-0000-0000-0000-000000000001",
 -- ---- 5 success assertions -------------------------------------------------
 select lives_ok($$
   select public.create_list_with_imported_items(
-    '00000000-0000-0000-0000-000000000001', 'Imported', 'slugok01', 0,
+    '00000000-0000-0000-0000-000000000001', 'Imported', 'slugok', 0,
     '[{"id":"10000000-0000-0000-0000-000000000001","name":"Shelter","sort_order":0}]'::jsonb,
     '[{"id":"20000000-0000-0000-0000-000000000001","name":"Tent","description":null,"weight_grams":1000,"category_id":"10000000-0000-0000-0000-000000000001","cost":null,"purchase_date":null,"status":"active","sort_order":0}]'::jsonb,
     '[{"gear_item_id":"20000000-0000-0000-0000-000000000001","quantity":1,"is_worn":false,"is_consumable":false,"sort_order":0}]'::jsonb
   )
 $$, 'happy path commits');
-select is((select count(*)::int from public.lists      where slug = 'slugok01'), 1, 'one list created');
+select is((select count(*)::int from public.lists      where slug = 'slugok'), 1, 'one list created');
 select is((select count(*)::int from public.categories where id = '10000000-0000-0000-0000-000000000001'), 1, 'category created');
 select is((select count(*)::int from public.gear_items where id = '20000000-0000-0000-0000-000000000001'), 1, 'gear created');
 select is((select count(*)::int from public.list_items where gear_item_id = '20000000-0000-0000-0000-000000000001'), 1, 'list_item created');
@@ -36,7 +36,7 @@ create temporary table _counts as
 -- (quantity 0) at the FINAL insert, AFTER cats+gear+list -> whole txn rolls back.
 select throws_ok($$
   select public.create_list_with_imported_items(
-    '00000000-0000-0000-0000-000000000001', 'Bad', 'slugbad1', 1,
+    '00000000-0000-0000-0000-000000000001', 'Bad', 'slugbd', 1,
     '[{"id":"10000000-0000-0000-0000-000000000002","name":"Cooking","sort_order":1}]'::jsonb,
     '[{"id":"20000000-0000-0000-0000-000000000002","name":"Stove","description":null,"weight_grams":200,"category_id":"10000000-0000-0000-0000-000000000002","cost":null,"purchase_date":null,"status":"active","sort_order":1}]'::jsonb,
     '[{"gear_item_id":"20000000-0000-0000-0000-000000000002","quantity":0,"is_worn":false,"is_consumable":false,"sort_order":0}]'::jsonb
