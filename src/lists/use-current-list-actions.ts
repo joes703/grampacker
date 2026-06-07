@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import {
@@ -72,25 +72,31 @@ export function useCurrentListActions(userId: string) {
     }),
   })
 
-  // Create a new list. Mirrors ListsPage's createListMut byte-for-byte on
-  // the data path: read the live ['lists'] cache at mutation time (same
-  // pattern as duplicateMut) to compute the append sort_order, optimistic
-  // insert a placeholder, then navigate into the server-authoritative row.
-  // Dialog-closing is intentionally NOT done here - it stays caller-owned,
-  // so the page passes { onSuccess: () => setDialog(null) } to .mutate. The
-  // optimistic-insert helper owns onSettled (invalidate); this onSuccess
-  // runs first to navigate to the new list.
+  // Create a new list. The append sort_order is computed ONCE, in the
+  // optimistic callback, and reused by mutationFn via this ref. The ordering
+  // is load-bearing: makeOptimisticInsert.onMutate runs the optimistic
+  // callback (reading the clean, pre-insert ['lists'] cache) and THEN appends
+  // the placeholder, all before mutationFn runs. If mutationFn re-read the
+  // cache it would see the just-inserted placeholder and persist a sort_order
+  // one position too high. The ref bridges onMutate -> mutationFn so the
+  // persisted value matches the optimistic one. (duplicateMut reads the cache
+  // in its mutationFn safely because it has no optimistic insert polluting it.)
+  //
+  // Dialog-closing is intentionally NOT done here - it stays caller-owned, so
+  // the page passes { onSuccess: () => setDialog(null) } to .mutate. The
+  // optimistic-insert helper owns onSettled (invalidate); this onSuccess runs
+  // first to navigate to the new list.
+  const createSortOrderRef = useRef(0)
   const createListMut = useMutation({
-    mutationFn: (name: string) => {
-      const currentLists = qc.getQueryData<List[]>(queryKeys.lists()) ?? []
-      return createList(userId, name, nextListSortOrder(currentLists))
-    },
+    mutationFn: (name: string) => createList(userId, name, createSortOrderRef.current),
     ...makeOptimisticInsert<List, string>({
       qc,
       queryKey: queryKeys.lists(),
       optimistic: (name) => {
         const currentLists = qc.getQueryData<List[]>(queryKeys.lists()) ?? []
-        return optimisticListPlaceholder({ name, userId, sortOrder: nextListSortOrder(currentLists) })
+        const sortOrder = nextListSortOrder(currentLists)
+        createSortOrderRef.current = sortOrder
+        return optimisticListPlaceholder({ name, userId, sortOrder })
       },
     }),
     onSuccess: (created) => navigate(`/lists/${created.id}`),
