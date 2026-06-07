@@ -41,7 +41,7 @@ select throws_ok($$
     '[{"id":"20000000-0000-0000-0000-000000000002","name":"Stove","description":null,"weight_grams":200,"category_id":"10000000-0000-0000-0000-000000000002","cost":null,"purchase_date":null,"status":"active","sort_order":1}]'::jsonb,
     '[{"gear_item_id":"20000000-0000-0000-0000-000000000002","quantity":0,"is_worn":false,"is_consumable":false,"sort_order":0}]'::jsonb
   )
-$$, 'late list_items failure raises');
+$$, '23514', NULL, 'late list_items failure raises (check_violation)');
 
 select is((select count(*) from public.lists),      (select l  from _counts), 'lists unchanged after rollback');
 select is((select count(*) from public.categories), (select c  from _counts), 'categories unchanged after rollback');
