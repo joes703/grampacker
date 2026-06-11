@@ -59,6 +59,15 @@ export {
   importGearItems,
 } from './gear'
 export {
+  fetchFoodItems,
+  createFoodItem,
+  updateFoodItem,
+  deleteFoodItem,
+  nextFoodItemSortOrder,
+  assertFoodItemWithinCap,
+} from './food'
+export type { FoodItemInput } from './food'
+export {
   fetchLists,
   fetchSharedList,
   createList,

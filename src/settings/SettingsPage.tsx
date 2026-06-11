@@ -10,10 +10,11 @@ import {
   queryKeys,
   fetchCategories,
   fetchGearItems,
+  fetchFoodItems,
   fetchLists,
   fetchAllUserListItems,
 } from '../lib/queries'
-import { gearItemsToCsv, listItemsToCsv } from '../lib/csv'
+import { gearItemsToCsv, foodItemsToCsv, listItemsToCsv } from '../lib/csv'
 import TypedConfirmDialog from '../components/TypedConfirmDialog'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import FormLabel from '../components/FormLabel'
@@ -65,7 +66,7 @@ export default function SettingsPage() {
         />
       </Section>
 
-      <Section title="Download all data" subtitle="A zip with your gear inventory and one CSV per list" icon={<Download size={16} />}>
+      <Section title="Download all data" subtitle="A zip with your gear and food libraries and one CSV per list" icon={<Download size={16} />}>
         <DownloadAllData />
       </Section>
 
@@ -488,10 +489,11 @@ function DownloadAllData() {
       // than awaiting it serially — both are network-bound, no reason for
       // one to gate the other.
       const fflatePromise = import('fflate')
-      const [fflate, categories, gearItems, lists, allItems] = await Promise.all([
+      const [fflate, categories, gearItems, foodItems, lists, allItems] = await Promise.all([
         fflatePromise,
         qc.fetchQuery({ queryKey: queryKeys.categories(), queryFn: () => fetchCategories(userId) }),
         qc.fetchQuery({ queryKey: queryKeys.gearItems(), queryFn: () => fetchGearItems(userId) }),
+        qc.fetchQuery({ queryKey: queryKeys.foodItems(), queryFn: () => fetchFoodItems(userId) }),
         qc.fetchQuery({ queryKey: queryKeys.lists(), queryFn: () => fetchLists(userId) }),
         fetchAllUserListItems(userId),
       ])
@@ -499,6 +501,10 @@ function DownloadAllData() {
 
       const files: Record<string, Uint8Array> = {}
       files['gear-library.csv'] = strToU8(gearItemsToCsv(gearItems, categories))
+      // Food library: a CSV for spreadsheets plus a canonical JSON that
+      // preserves ids/relationships for a future re-import (Story 13).
+      files['food-library.csv'] = strToU8(foodItemsToCsv(foodItems))
+      files['food-data.json'] = strToU8(JSON.stringify({ food_items: foodItems }, null, 2))
 
       const itemsByListId = Map.groupBy(allItems, (item) => item.list_id)
 
