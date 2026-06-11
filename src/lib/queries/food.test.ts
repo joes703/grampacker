@@ -1,4 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// food.ts imports ../supabase, whose module-eval throws when VITE_SUPABASE_URL
+// is unset (CI has no .env). These tests only exercise pure helpers, so mock
+// the client to keep the real module from evaluating - same pattern as
+// lists.test.ts / import-helpers.test.ts.
+vi.mock('../supabase', () => ({ supabase: {} }))
+
 import { nextFoodItemSortOrder, assertFoodItemWithinCap } from './food'
 import { FOOD_ITEM_CAP } from '../caps'
 import type { FoodItem } from '../types'
