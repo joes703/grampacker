@@ -1,6 +1,6 @@
 -- supabase/tests/food_items.test.sql
 begin;
-select plan(22);
+select plan(21);
 
 create extension if not exists pgtap with schema extensions;
 
