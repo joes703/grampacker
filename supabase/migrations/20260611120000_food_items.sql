@@ -39,16 +39,21 @@ create index food_items_user_brand_lower_idx on public.food_items (user_id, lowe
 alter table public.food_items enable row level security;
 
 create policy food_items_owner_all on public.food_items
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- updated_at maintenance (shared trigger function from the initial schema).
 create trigger food_items_updated_at
   before update on public.food_items
   for each row execute function public.set_updated_at();
 
--- 1000-food-per-user cap (technical design 13).
+-- 1000-food-per-user cap (technical design 13). search_path = '' pins object
+-- resolution (all identifiers are fully schema-qualified) per the function
+-- hardening convention (20260429000000 / 20260514202025).
 create function public.check_food_item_limit()
-returns trigger language plpgsql as $$
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
 begin
   if (select count(*) from public.food_items where user_id = new.user_id) >= 1000 then
     raise exception 'Food item limit reached (1000 per user)';
@@ -56,6 +61,11 @@ begin
   return new;
 end;
 $$;
+
+-- The trigger fires regardless of EXECUTE (trigger firing does not check it),
+-- so revoke direct Data API execution. No role should be able to call this
+-- function as an RPC.
+revoke all on function public.check_food_item_limit() from public, anon, authenticated;
 
 create trigger food_items_limit
   before insert on public.food_items

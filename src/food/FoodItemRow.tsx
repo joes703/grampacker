@@ -21,7 +21,7 @@ function servingSummary(f: FoodItem): string {
   const base = f.serving_description
     ? `${f.serving_description} (${f.serving_weight_grams} g)`
     : `${f.serving_weight_grams} g`
-  return `${base} - ${f.calories_per_serving} cal`
+  return `${base} - ${f.calories_per_serving} kcal`
 }
 
 export default function FoodItemRow({ food, onEdit, onDelete }: Props) {
@@ -94,7 +94,7 @@ function FoodRowKebab({
               onClick={() => { close(); onDelete() }}
               tone="danger"
             >
-              Delete from inventory
+              Delete from library
             </RowMenuItem>
           </div>,
           document.body,

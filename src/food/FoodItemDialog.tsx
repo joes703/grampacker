@@ -218,7 +218,7 @@ export default function FoodItemDialog({
               onClick={onDeleteFromInventory}
               className="text-sm font-medium text-red-600 hover:underline"
             >
-              Delete from inventory
+              Delete from library
             </button>
           ) : null}
         </div>

@@ -39,7 +39,7 @@ export default function FoodLibraryPage() {
   const [search, setSearch] = useState('')
   const [dialog, setDialog] = useState<DialogState | null>(null)
 
-  const { data: allItems = [], isLoading } = useQuery({
+  const { data: allItems = [], isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.foodItems(),
     queryFn: () => fetchFoodItems(userId),
   })
@@ -67,7 +67,6 @@ export default function FoodLibraryPage() {
         ...patch,
       }),
       merge: (curr, next) => [...curr, next].sort((a, b) => a.name.localeCompare(b.name)),
-      errorToast: "Couldn't add that food. Please try again.",
     }),
   })
 
@@ -79,7 +78,6 @@ export default function FoodLibraryPage() {
       queryKey: queryKeys.foodItems(),
       id: ({ id }) => id,
       apply: (food, { patch }) => ({ ...food, ...patch }),
-      errorToast: "Couldn't save that food. Please try again.",
     }),
   })
 
@@ -89,7 +87,6 @@ export default function FoodLibraryPage() {
       qc,
       queryKey: queryKeys.foodItems(),
       id: (id) => id,
-      errorToast: "Couldn't delete that food. Please try again.",
     }),
   })
 
@@ -159,6 +156,17 @@ export default function FoodLibraryPage() {
 
       {isLoading ? (
         <p className="py-12 text-center text-sm text-gray-500">Loading your food library...</p>
+      ) : isError ? (
+        <div className="rounded-lg border border-dashed border-gray-300 py-12 text-center">
+          <p className="text-sm text-gray-600">Couldn't load your food library.</p>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="mt-2 text-sm font-medium text-gray-900 underline"
+          >
+            Try again
+          </button>
+        </div>
       ) : allItems.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 py-12 text-center">
           <p className="text-sm text-gray-600">Your food library is empty.</p>
@@ -209,11 +217,11 @@ export default function FoodLibraryPage() {
         <Modal
           open
           onClose={() => setDialog(null)}
-          title="Delete from inventory"
+          title="Delete from library"
           className="w-[calc(100vw-2rem)] max-w-sm"
         >
           <div className="p-6">
-            <h2 className="text-base font-semibold text-gray-900">Delete from inventory</h2>
+            <h2 className="text-base font-semibold text-gray-900">Delete from library</h2>
             <p className="mt-2 text-sm text-gray-600">
               Delete "{dialog.item.name}" from your food library? This cannot be undone.
             </p>
