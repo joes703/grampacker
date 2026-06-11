@@ -13,6 +13,10 @@
 // Max gear items in a user's inventory.
 export const GEAR_ITEM_CAP = 500
 
+// Max foods in a user's library. Mirrors check_food_item_limit
+// (20260611120000). See the Food Planning technical design 13.
+export const FOOD_ITEM_CAP = 1000
+
 // Max items a single list can hold.
 export const LIST_ITEM_CAP = 300
 

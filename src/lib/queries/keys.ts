@@ -5,6 +5,7 @@
 export const queryKeys = {
   categories: () => ['categories'] as const,
   gearItems: () => ['gear-items'] as const,
+  foodItems: () => ['food-items'] as const,
   lists: () => ['lists'] as const,
   listItems: (listId: string) => ['list-items', listId] as const,
   // User-scoped so a same-tab account switch can't surface the previous

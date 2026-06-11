@@ -87,6 +87,34 @@ export type GearItem = {
   updated_at: string
 }
 
+// Account-wide food library row (migration 20260611120000). Owner-scoped
+// inventory of foods; per-trip usage lives in the Food plan (later phases),
+// never here. Required: name, serving_weight_grams, calories_per_serving.
+// Every nutrient column is nullable because null means "unknown", never
+// zero — see the Food Planning technical design 1.1.
+export type FoodItem = {
+  id: string
+  user_id: string
+  name: string
+  brand: string | null
+  serving_description: string | null
+  serving_weight_grams: number
+  calories_per_serving: number
+  servings_per_package: number | null
+  fat_grams: number | null
+  saturated_fat_grams: number | null
+  carbs_grams: number | null
+  fiber_grams: number | null
+  sugar_grams: number | null
+  protein_grams: number | null
+  sodium_mg: number | null
+  potassium_mg: number | null
+  notes: string | null
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
 // Narrower response shapes for public read paths (/r/<slug>). Fewer columns
 // than the authenticated equivalents — see SECURITY.md "Public read paths"
 // for the allowlist rationale. SharePage maps these to the full types at the
