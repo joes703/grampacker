@@ -6,6 +6,7 @@ import RootRedirect from './RootRedirect'
 import { SidebarDrawerProvider } from './sidebar-drawer-context'
 import { MobilePrimaryNavProvider } from './mobile-primary-nav-context'
 import GearLibraryPage from '../gear/GearLibraryPage'
+import FoodLibraryPage from '../food/FoodLibraryPage'
 import ListsPage from '../lists/ListsPage'
 import ListDetailPage from '../lists/ListDetailPage'
 import OfflineBanner from '../components/OfflineBanner'
@@ -39,6 +40,7 @@ export default function AppShell() {
               <Routes>
                 <Route path="/" element={<RootRedirect />} />
                 <Route path="/gear" element={<GearLibraryPage />} />
+                <Route path="/food" element={<FoodLibraryPage />} />
                 <Route path="/lists" element={<ListsPage />} />
                 <Route path="/lists/:id" element={<ListDetailPage />} />
                 <Route path="/settings" element={<SettingsPage />} />

@@ -40,7 +40,7 @@ describe('foodItemsToCsv', () => {
 
   it('renders missing optional values as empty cells, never zero', () => {
     const csv = foodItemsToCsv([food({ name: 'Plain', protein_grams: null })])
-    const cells = csv.trim().split('\r\n')[1].split(',')
+    const cells = (csv.trim().split('\r\n')[1] ?? '').split(',')
     // Column order: 0 name, 3 weight, 4 calories, 11 protein.
     expect(cells[0]).toBe('Plain')
     expect(cells[3]).toBe('50')

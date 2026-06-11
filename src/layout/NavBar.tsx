@@ -1,6 +1,6 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Backpack, HelpCircle, ListChecks, LogOut, Settings } from 'lucide-react'
+import { Apple, Backpack, HelpCircle, ListChecks, LogOut, Settings } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import { supabase } from '../lib/supabase'
 import { queryKeys, fetchLists } from '../lib/queries'
@@ -19,6 +19,7 @@ type RouteContext =
   | { kind: 'list-detail'; listId: string }
   | { kind: 'all-lists' }
   | { kind: 'gear' }
+  | { kind: 'food' }
   | { kind: 'settings' }
   | { kind: 'help' }
   | { kind: 'other' }
@@ -28,6 +29,7 @@ function resolveRoute(pathname: string): RouteContext {
   if (listMatch?.[1]) return { kind: 'list-detail', listId: listMatch[1] }
   if (pathname === '/lists') return { kind: 'all-lists' }
   if (pathname === '/gear') return { kind: 'gear' }
+  if (pathname === '/food') return { kind: 'food' }
   if (pathname === '/settings') return { kind: 'settings' }
   if (pathname === '/help') return { kind: 'help' }
   return { kind: 'other' }
@@ -92,6 +94,16 @@ export default function NavBar() {
             >
               <Backpack size={14} />
               <span className="sr-only lg:not-sr-only">Gear</span>
+            </NavLink>
+            <NavLink
+              to="/food"
+              title="Food"
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50'}`
+              }
+            >
+              <Apple size={14} />
+              <span className="sr-only lg:not-sr-only">Food</span>
             </NavLink>
             {/* NavLink with to="/lists" gives the same pill styling and the
                 same active behavior the previous dropdown carried (active on
@@ -204,6 +216,7 @@ function RouteHeading({ route }: { route: RouteContext }) {
 
   if (route.kind === 'all-lists') return <StaticHeading>Lists</StaticHeading>
   if (route.kind === 'gear') return <StaticHeading>Gear Inventory</StaticHeading>
+  if (route.kind === 'food') return <StaticHeading>Food Library</StaticHeading>
   if (route.kind === 'settings') return <StaticHeading>Settings</StaticHeading>
   if (route.kind === 'help') return <StaticHeading>Help</StaticHeading>
   return <div className="flex-1 min-w-0" />
