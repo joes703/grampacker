@@ -4,6 +4,7 @@ import {
   queryKeys, fetchFoodItems,
   upsertFoodPlanEntry, updateFoodPlanEntry, deleteFoodPlanEntry,
   assertFoodPlanEntryWithinCap, type EntryAddition,
+  addFoodPlanDay, deleteFoodPlanDay, updateDayType, assertFoodPlanDayWithinCap,
 } from '../lib/queries'
 import { randomTempId } from '../lib/random-temp-id'
 import type { EntryBasis, FoodItem, FoodPlanDocument as Doc } from '../lib/types'
@@ -12,6 +13,7 @@ import FoodPlanDayCard from './FoodPlanDayCard'
 import FoodPlanExtras from './FoodPlanExtras'
 import FoodPicker from './FoodPicker'
 import EntryAmountDialog, { type EntryAmountResult } from './EntryAmountDialog'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 type AddTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
 
@@ -26,6 +28,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const [addTarget, setAddTarget] = useState<AddTarget | null>(null)
   const [pickedFood, setPickedFood] = useState<FoodItem | null>(null)
   const [editEntryId, setEditEntryId] = useState<string | null>(null)
+  const [confirmDeleteDayId, setConfirmDeleteDayId] = useState<string | null>(null)
 
   function existingEntry(food: FoodItem, target: AddTarget) {
     return doc.entries.find((e) =>
@@ -73,6 +76,26 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     onSuccess: invalidate,
   })
 
+  const addDayMut = useMutation({
+    mutationFn: () => {
+      assertFoodPlanDayWithinCap(doc.days.length)
+      const sortOrder = doc.days.reduce((m, d) => Math.max(m, d.sort_order + 1), 0)
+      return addFoodPlanDay(userId, doc.plan.id, sortOrder)
+    },
+    meta: { errorToast: "Couldn't add a day. Please try again." },
+    onSuccess: invalidate,
+  })
+  const deleteDayMut = useMutation({
+    mutationFn: (dayId: string) => deleteFoodPlanDay(dayId),
+    meta: { errorToast: "Couldn't delete the day. Please try again." },
+    onSuccess: invalidate,
+  })
+  const dayTypeMut = useMutation({
+    mutationFn: (v: { dayId: string; override: 'full' | 'partial' | null }) => updateDayType(v.dayId, v.override),
+    meta: { errorToast: "Couldn't change the day type. Please try again." },
+    onSuccess: invalidate,
+  })
+
   const addTargetExisting = addTarget && pickedFood ? existingEntry(pickedFood, addTarget) : undefined
   const editingEntry = doc.entries.find((e) => e.id === editEntryId) ?? null
   const editingFood = editingEntry ? foodById.get(editingEntry.food_item_id) : undefined
@@ -90,9 +113,19 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
             onAddFoodToCell={(dayMealId) => setAddTarget({ kind: 'cell', dayMealId })}
             onEditEntry={(entryId) => setEditEntryId(entryId)}
             onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
+            onSetDayType={(override) => dayTypeMut.mutate({ dayId: dayView.day.id, override })}
+            onDeleteDay={() => setConfirmDeleteDayId(dayView.day.id)}
           />
         ))}
       </div>
+      <button
+        type="button"
+        onClick={() => addDayMut.mutate()}
+        disabled={addDayMut.isPending}
+        className="mt-3 rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+      >
+        + Add day
+      </button>
       <FoodPlanExtras
         extras={view.extras}
         foodById={foodById}
@@ -120,6 +153,16 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           saving={editMut.isPending}
           onSave={(r) => editMut.mutate({ id: editingEntry.id, basis: r.basis, amount: r.amount })}
           onClose={() => setEditEntryId(null)}
+        />
+      ) : null}
+      {confirmDeleteDayId ? (
+        <ConfirmDialog
+          title="Delete day"
+          message="Delete this day? Its scheduled meals and the food planned in them will be removed. This cannot be undone."
+          confirmLabel="Delete"
+          dangerous
+          onCancel={() => setConfirmDeleteDayId(null)}
+          onConfirm={() => deleteDayMut.mutate(confirmDeleteDayId, { onSuccess: () => setConfirmDeleteDayId(null) })}
         />
       ) : null}
     </div>
