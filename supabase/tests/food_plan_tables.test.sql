@@ -75,10 +75,15 @@ insert into public.lists (id, user_id, name, slug, sort_order)
 values ('c0000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-0000000000b1','Trip2','plslg2',1);
 insert into public.food_plans (id, user_id, list_id, num_nights)
 values ('e0000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-0000000000b1','c0000000-0000-0000-0000-000000000002',1);
+-- e2 gets its OWN meal so the (day_id, meal_id) pair below is brand new and the
+-- global day_meals unique (day_id, meal_id) does not preempt the composite FK.
+-- day '...22220001' belongs to e1, so (day_id, food_plan_id = e2) fails the day FK.
+insert into public.meals (id, user_id, food_plan_id, name, sort_order)
+values ('11110000-0000-0000-0000-000000000099','00000000-0000-0000-0000-0000000000b1','e0000000-0000-0000-0000-000000000002','E2 Meal',0);
 select throws_ok($$
   insert into public.day_meals (user_id, food_plan_id, day_id, meal_id)
-  values ('00000000-0000-0000-0000-0000000000b1','e0000000-0000-0000-0000-000000000002','22220000-0000-0000-0000-000000000001','11110000-0000-0000-0000-000000000001')
-$$, '23503', NULL, 'a day_meal cannot reference a day/meal from a different plan (composite FK)');
+  values ('00000000-0000-0000-0000-0000000000b1','e0000000-0000-0000-0000-000000000002','22220000-0000-0000-0000-000000000001','11110000-0000-0000-0000-000000000099')
+$$, '23503', NULL, 'a day_meal cannot reference a day from a different plan (composite FK)');
 
 -- Meal cap: plan e1 has 1 meal; add 19 more = 20, 21st fails.
 insert into public.meals (user_id, food_plan_id, name, sort_order)
