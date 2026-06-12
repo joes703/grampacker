@@ -9,6 +9,7 @@ import GearLibraryPage from '../gear/GearLibraryPage'
 import FoodLibraryPage from '../food/FoodLibraryPage'
 import ListsPage from '../lists/ListsPage'
 import ListDetailPage from '../lists/ListDetailPage'
+import FoodPlanPage from '../food/FoodPlanPage'
 import OfflineBanner from '../components/OfflineBanner'
 import PasskeyNudge from '../components/PasskeyNudge'
 
@@ -43,6 +44,7 @@ export default function AppShell() {
                 <Route path="/food" element={<FoodLibraryPage />} />
                 <Route path="/lists" element={<ListsPage />} />
                 <Route path="/lists/:id" element={<ListDetailPage />} />
+                <Route path="/lists/:id/food" element={<FoodPlanPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/help" element={<HelpPage />} />
                 <Route path="*" element={<NotFound />} />

@@ -84,6 +84,7 @@ import PackingProgress from './PackingProgress'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
 import CategoryGroup from './CategoryGroup'
+import ListWorkspaceTabs from './ListWorkspaceTabs'
 import PanelCard from './PanelCard'
 import ItemRow from './ItemRow'
 import GearItemDialog from '../gear/GearItemDialog'
@@ -1018,6 +1019,7 @@ function ListDetailInner({
             stretched across the full width the missing sidebar leaves
             behind. */}
         <div className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'max-w-3xl mx-auto' : ''}`}>
+          <ListWorkspaceTabs listId={listId} active="gear" />
           <ListDocumentToolbar
             list={list}
             packMode={mode === 'pack'}
