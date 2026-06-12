@@ -4,13 +4,14 @@ import { FLAT_TABLE_HEADER } from '../components/flat-table-styles'
 import FoodPlanEntryRow from './FoodPlanEntryRow'
 
 export default function MealSection({
-  cell, foodById, headerAction, renderEntryActions, onAddFood,
+  cell, foodById, headerAction, onAddFood, onEditEntry, onRemoveEntry,
 }: {
   cell: CellView
   foodById: Map<string, FoodItem>
   headerAction?: React.ReactNode
-  renderEntryActions?: (entryId: string) => React.ReactNode
   onAddFood?: () => void
+  onEditEntry?: (entryId: string) => void
+  onRemoveEntry?: (entryId: string) => void
 }) {
   return (
     <section className="mt-2">
@@ -22,7 +23,13 @@ export default function MealSection({
         <p className="px-3 py-2 text-sm text-gray-400">No food yet.</p>
       ) : (
         cell.entries.map((entry) => (
-          <FoodPlanEntryRow key={entry.id} entry={entry} food={foodById.get(entry.food_item_id)} actions={renderEntryActions?.(entry.id)} />
+          <FoodPlanEntryRow
+            key={entry.id}
+            entry={entry}
+            food={foodById.get(entry.food_item_id)}
+            onEdit={onEditEntry ? () => onEditEntry(entry.id) : undefined}
+            onRemove={onRemoveEntry ? () => onRemoveEntry(entry.id) : undefined}
+          />
         ))
       )}
       {onAddFood ? (

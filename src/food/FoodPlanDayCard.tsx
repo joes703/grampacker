@@ -4,13 +4,16 @@ import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MealSection from './MealSection'
 
 export default function FoodPlanDayCard({
-  dayView, dayIndex, foodById, headerAction, renderCell,
+  dayView, dayIndex, foodById, headerAction, renderCell, onAddFoodToCell, onEditEntry, onRemoveEntry,
 }: {
   dayView: DayView
   dayIndex: number
   foodById: Map<string, FoodItem>
   headerAction?: React.ReactNode
   renderCell?: (dayMealId: string) => React.ReactNode
+  onAddFoodToCell?: (dayMealId: string) => void
+  onEditEntry?: (entryId: string) => void
+  onRemoveEntry?: (entryId: string) => void
 }) {
   return (
     <div className={FLAT_TABLE_SURFACE}>
@@ -22,7 +25,15 @@ export default function FoodPlanDayCard({
         </div>
       </div>
       {dayView.cells.map((cell) => (
-        <MealSection key={cell.dayMealId} cell={cell} foodById={foodById} headerAction={renderCell?.(cell.dayMealId)} />
+        <MealSection
+          key={cell.dayMealId}
+          cell={cell}
+          foodById={foodById}
+          headerAction={renderCell?.(cell.dayMealId)}
+          onAddFood={onAddFoodToCell ? () => onAddFoodToCell(cell.dayMealId) : undefined}
+          onEditEntry={onEditEntry}
+          onRemoveEntry={onRemoveEntry}
+        />
       ))}
     </div>
   )
