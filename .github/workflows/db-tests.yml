@@ -27,3 +27,9 @@ jobs:
 
       - name: Run pgTAP suite
         run: supabase test db
+
+      - name: Security advisors
+        run: supabase db advisors --local --type security --level warn --fail-on warn
+
+      - name: Performance advisors
+        run: supabase db advisors --local --type performance --level warn --fail-on warn
