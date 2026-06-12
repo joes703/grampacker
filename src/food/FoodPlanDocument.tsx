@@ -5,6 +5,7 @@ import {
   upsertFoodPlanEntry, updateFoodPlanEntry, deleteFoodPlanEntry,
   assertFoodPlanEntryWithinCap, type EntryAddition,
   addFoodPlanDay, deleteFoodPlanDay, updateDayType, assertFoodPlanDayWithinCap,
+  addMealDefinition, deleteMeal, deleteDayMeal, addDayMeal, assertMealDefinitionWithinCap,
 } from '../lib/queries'
 import { randomTempId } from '../lib/random-temp-id'
 import type { EntryBasis, FoodItem, FoodPlanDocument as Doc } from '../lib/types'
@@ -13,6 +14,7 @@ import FoodPlanDayCard from './FoodPlanDayCard'
 import FoodPlanExtras from './FoodPlanExtras'
 import FoodPicker from './FoodPicker'
 import EntryAmountDialog, { type EntryAmountResult } from './EntryAmountDialog'
+import AddMealDialog from './AddMealDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 type AddTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
@@ -29,6 +31,8 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const [pickedFood, setPickedFood] = useState<FoodItem | null>(null)
   const [editEntryId, setEditEntryId] = useState<string | null>(null)
   const [confirmDeleteDayId, setConfirmDeleteDayId] = useState<string | null>(null)
+  const [showAddMeal, setShowAddMeal] = useState(false)
+  const [confirmDeleteMealId, setConfirmDeleteMealId] = useState<string | null>(null)
 
   function existingEntry(food: FoodItem, target: AddTarget) {
     return doc.entries.find((e) =>
@@ -96,6 +100,32 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     onSuccess: invalidate,
   })
 
+  const addMealMut = useMutation({
+    mutationFn: (name: string) => {
+      assertMealDefinitionWithinCap(doc.meals.length)
+      const sortOrder = doc.meals.reduce((m, x) => Math.max(m, x.sort_order + 1), 0)
+      return addMealDefinition(userId, doc.plan.id, name, sortOrder)
+    },
+    meta: { errorToast: "Couldn't add the meal. Please try again." },
+    onSuccess: invalidate,
+    onSettled: () => setShowAddMeal(false),
+  })
+  const omitMealMut = useMutation({
+    mutationFn: (dayMealId: string) => deleteDayMeal(dayMealId),
+    meta: { errorToast: "Couldn't omit the meal. Please try again." },
+    onSuccess: invalidate,
+  })
+  const restoreMealMut = useMutation({
+    mutationFn: (v: { dayId: string; mealId: string }) => addDayMeal(userId, doc.plan.id, v.dayId, v.mealId),
+    meta: { errorToast: "Couldn't restore the meal. Please try again." },
+    onSuccess: invalidate,
+  })
+  const deleteMealMut = useMutation({
+    mutationFn: (mealId: string) => deleteMeal(mealId),
+    meta: { errorToast: "Couldn't delete the meal. Please try again." },
+    onSuccess: invalidate,
+  })
+
   const addTargetExisting = addTarget && pickedFood ? existingEntry(pickedFood, addTarget) : undefined
   const editingEntry = doc.entries.find((e) => e.id === editEntryId) ?? null
   const editingFood = editingEntry ? foodById.get(editingEntry.food_item_id) : undefined
@@ -115,17 +145,30 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
             onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
             onSetDayType={(override) => dayTypeMut.mutate({ dayId: dayView.day.id, override })}
             onDeleteDay={() => setConfirmDeleteDayId(dayView.day.id)}
+            allMeals={view.meals}
+            onOmitMeal={(dayMealId) => omitMealMut.mutate(dayMealId)}
+            onDeleteMeal={(mealId) => setConfirmDeleteMealId(mealId)}
+            onRestoreMeal={(dayId, mealId) => restoreMealMut.mutate({ dayId, mealId })}
           />
         ))}
       </div>
-      <button
-        type="button"
-        onClick={() => addDayMut.mutate()}
-        disabled={addDayMut.isPending}
-        className="mt-3 rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
-      >
-        + Add day
-      </button>
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={() => addDayMut.mutate()}
+          disabled={addDayMut.isPending}
+          className="rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+        >
+          + Add day
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowAddMeal(true)}
+          className="rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+        >
+          + Add meal
+        </button>
+      </div>
       <FoodPlanExtras
         extras={view.extras}
         foodById={foodById}
@@ -163,6 +206,19 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           dangerous
           onCancel={() => setConfirmDeleteDayId(null)}
           onConfirm={() => deleteDayMut.mutate(confirmDeleteDayId, { onSuccess: () => setConfirmDeleteDayId(null) })}
+        />
+      ) : null}
+      {showAddMeal ? (
+        <AddMealDialog saving={addMealMut.isPending} onSave={(name) => addMealMut.mutate(name)} onClose={() => setShowAddMeal(false)} />
+      ) : null}
+      {confirmDeleteMealId ? (
+        <ConfirmDialog
+          title="Delete meal"
+          message="Delete this meal from every day in the plan? The food planned in it will be removed. This cannot be undone."
+          confirmLabel="Delete"
+          dangerous
+          onCancel={() => setConfirmDeleteMealId(null)}
+          onConfirm={() => deleteMealMut.mutate(confirmDeleteMealId, { onSuccess: () => setConfirmDeleteMealId(null) })}
         />
       ) : null}
     </div>

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, MoreVertical, Trash2 } from 'lucide-react'
-import type { FoodItem } from '../lib/types'
+import type { FoodItem, Meal } from '../lib/types'
 import type { DayView } from './useFoodPlanDocument'
 import { FLAT_TABLE_SURFACE, POPOVER_SURFACE } from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
@@ -10,7 +10,7 @@ import MealSection from './MealSection'
 
 export default function FoodPlanDayCard({
   dayView, dayIndex, foodById, headerAction, renderCell, onAddFoodToCell, onEditEntry, onRemoveEntry,
-  onSetDayType, onDeleteDay,
+  onSetDayType, onDeleteDay, allMeals, onOmitMeal, onDeleteMeal, onRestoreMeal,
 }: {
   dayView: DayView
   dayIndex: number
@@ -22,6 +22,10 @@ export default function FoodPlanDayCard({
   onRemoveEntry?: (entryId: string) => void
   onSetDayType?: (override: 'full' | 'partial' | null) => void
   onDeleteDay?: () => void
+  allMeals?: Meal[]
+  onOmitMeal?: (dayMealId: string) => void
+  onDeleteMeal?: (mealId: string) => void
+  onRestoreMeal?: (dayId: string, mealId: string) => void
 }) {
   return (
     <div className={FLAT_TABLE_SURFACE}>
@@ -44,8 +48,24 @@ export default function FoodPlanDayCard({
           onAddFood={onAddFoodToCell ? () => onAddFoodToCell(cell.dayMealId) : undefined}
           onEditEntry={onEditEntry}
           onRemoveEntry={onRemoveEntry}
+          onOmit={onOmitMeal ? () => onOmitMeal(cell.dayMealId) : undefined}
+          onDeleteMeal={onDeleteMeal ? () => onDeleteMeal(cell.meal.id) : undefined}
         />
       ))}
+      {allMeals && onRestoreMeal
+        ? allMeals
+            .filter((m) => !dayView.scheduledMealIds.has(m.id))
+            .map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => onRestoreMeal(dayView.day.id, m.id)}
+                className="px-3 py-2 text-sm font-medium text-emerald-700 hover:underline"
+              >
+                + Restore {m.name}
+              </button>
+            ))
+        : null}
     </div>
   )
 }
