@@ -29,7 +29,9 @@ import { supabase } from '../supabase'
 // keeps optimistic.test.ts runnable without VITE_SUPABASE_* env vars and
 // avoids Vite's "ineffective dynamic import" warning that the previous
 // in-helper `await import('../supabase')` produced.
-export type ReorderableTable = 'categories' | 'list_items' | 'gear_items' | 'lists'
+export type ReorderableTable =
+  | 'categories' | 'list_items' | 'gear_items' | 'lists'
+  | 'food_items' | 'food_plan_days' | 'meals' | 'food_plan_entries'
 
 export async function bulkUpdateSortOrder<T extends { id: string; sort_order: number }>(
   table: ReorderableTable,

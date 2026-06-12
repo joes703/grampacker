@@ -135,3 +135,35 @@ export type PublicListItem = Pick<
 }
 
 export type PublicCategory = Pick<Category, 'id' | 'name' | 'sort_order'>
+
+export type EntryBasis = 'servings' | 'packages' | 'weight'
+
+export type FoodPlan = {
+  id: string; user_id: string; list_id: string
+  num_nights: number | null; is_food_shared: boolean
+  created_at: string; updated_at: string
+}
+export type Meal = {
+  id: string; user_id: string; food_plan_id: string
+  name: string; anchor_role: 'breakfast' | 'dinner' | null; is_default: boolean
+  sort_order: number; created_at: string; updated_at: string
+}
+export type FoodPlanDay = {
+  id: string; user_id: string; food_plan_id: string
+  day_type_override: 'full' | 'partial' | null
+  sort_order: number; created_at: string; updated_at: string
+}
+export type DayMeal = {
+  id: string; user_id: string; food_plan_id: string
+  day_id: string; meal_id: string; created_at: string; updated_at: string
+}
+export type FoodPlanEntry = {
+  id: string; user_id: string; food_plan_id: string
+  day_meal_id: string | null; is_extra: boolean; food_item_id: string
+  basis: EntryBasis; amount: number; sort_order: number
+  created_at: string; updated_at: string
+}
+// The whole plan assembled by fetchFoodPlan. Phase 3 adds daily/meal targets.
+export type FoodPlanDocument = {
+  plan: FoodPlan; meals: Meal[]; days: FoodPlanDay[]; dayMeals: DayMeal[]; entries: FoodPlanEntry[]
+}

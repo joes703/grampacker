@@ -39,3 +39,9 @@ export const MAX_DESC_LENGTH = 2000
 
 // Max characters for a gear category name field.
 export const MAX_CATEGORY_NAME = 128
+
+export const FOOD_PLAN_DAY_CAP = 60
+export const MEAL_DEFINITION_CAP = 20
+export const FOOD_PLAN_ENTRY_CAP = 2000
+// meals.name CHECK is char_length 1..128 - the Meal name input must match.
+export const MEAL_NAME_MAX = 128
