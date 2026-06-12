@@ -171,9 +171,10 @@ revoke execute on function public.duplicate_food_plan_day from public, anon;
 grant  execute on function public.duplicate_food_plan_day to   authenticated;
 
 -- 8.7 upsert_food_plan_entry: concurrency-safe, cap-safe ADD / COPY / MOVE / MERGE.
--- Advisory lock on (plan, location, food) serializes concurrent writers to the
--- same target (SELECT FOR UPDATE locks nothing when the target is empty). A move
--- to an empty target relocates the source IN PLACE (no insert => safe at the cap);
+-- Advisory lock on (plan, food) serializes all moves and additions for that food,
+-- including opposite-direction moves (SELECT FOR UPDATE locks nothing when the
+-- target is empty). A move to an empty target relocates the source IN PLACE
+-- (no insert => safe at the cap);
 -- a move to an occupied target merges then deletes the source; a same-location
 -- move is a no-op. Mixed-basis merge is combined server-side in p_preserve_basis.
 create or replace function public.upsert_food_plan_entry(
