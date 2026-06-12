@@ -1,10 +1,9 @@
-import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CircleMinus, MoreVertical, Pencil } from 'lucide-react'
 import type { FoodItem, FoodPlanEntry } from '../lib/types'
 import { FLAT_TABLE_ROW, POPOVER_SURFACE } from '../components/flat-table-styles'
 import { RowMenuItem } from '../components/RowMenuItem'
-import { usePortalPopover } from '../lib/use-portal-popover'
+import { useAnchoredMenu } from '../lib/use-anchored-menu'
 
 const BASIS_LABEL: Record<FoodPlanEntry['basis'], string> = { servings: 'servings', packages: 'pkg', weight: 'g' }
 
@@ -43,38 +42,27 @@ function EntryKebab({
   onEdit?: () => void
   onRemove?: () => void
 }) {
-  const [open, setOpen] = useState(false)
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
-  const menuRef = useRef<HTMLDivElement | null>(null)
-  const close = () => setOpen(false)
-
-  usePortalPopover({ isOpen: open, onClose: close, triggerRef, contentRef: menuRef })
-
-  function menuPos() {
-    const rect = triggerRef.current?.getBoundingClientRect()
-    if (!rect) return { top: 0, left: 0 }
-    return { top: rect.bottom + 4, left: rect.right - 192 }
-  }
-  const pos = open ? menuPos() : null
+  const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
+    useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
 
   return (
     <>
       <button
         ref={triggerRef}
         type="button"
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}
+        onClick={(e) => { e.stopPropagation(); if (menuOpen) close(); else openMenu() }}
         aria-label="Entry options"
         className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
       >
         <MoreVertical size={14} />
       </button>
 
-      {open && pos && createPortal(
+      {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
           ref={menuRef}
           role="menu"
           className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
-          style={{ top: pos.top, left: pos.left }}
+          style={{ top: menuPos.top, left: menuPos.left }}
         >
           {onEdit && (
             <RowMenuItem icon={<Pencil size={13} />} onClick={() => { close(); onEdit() }}>

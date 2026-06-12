@@ -1,11 +1,10 @@
-import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, MoreVertical, Trash2 } from 'lucide-react'
 import type { FoodItem, Meal } from '../lib/types'
 import type { DayView } from './useFoodPlanDocument'
 import { FLAT_TABLE_SURFACE, POPOVER_SURFACE } from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
-import { usePortalPopover } from '../lib/use-portal-popover'
+import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import MealSection from './MealSection'
 
 export default function FoodPlanDayCard({
@@ -79,38 +78,27 @@ function DayKebab({ currentOverride, onSetDayType, onDeleteDay }: {
   onSetDayType?: (override: 'full' | 'partial' | null) => void
   onDeleteDay?: () => void
 }) {
-  const [open, setOpen] = useState(false)
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
-  const menuRef = useRef<HTMLDivElement | null>(null)
-  const close = () => setOpen(false)
-
-  usePortalPopover({ isOpen: open, onClose: close, triggerRef, contentRef: menuRef })
-
-  function menuPos() {
-    const rect = triggerRef.current?.getBoundingClientRect()
-    if (!rect) return { top: 0, left: 0 }
-    return { top: rect.bottom + 4, left: rect.right - 192 }
-  }
-  const pos = open ? menuPos() : null
+  const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
+    useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
 
   return (
     <>
       <button
         ref={triggerRef}
         type="button"
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}
+        onClick={(e) => { e.stopPropagation(); if (menuOpen) close(); else openMenu() }}
         aria-label="Day options"
         className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
       >
         <MoreVertical size={14} />
       </button>
 
-      {open && pos && createPortal(
+      {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
           ref={menuRef}
           role="menu"
           className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
-          style={{ top: pos.top, left: pos.left }}
+          style={{ top: menuPos.top, left: menuPos.left }}
         >
           <RowMenuItem
             icon={currentOverride === null ? <Check size={13} /> : undefined}
