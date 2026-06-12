@@ -13,7 +13,7 @@ set local role authenticated;
 set local "request.jwt.claims" = '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}';
 
 insert into public.lists (id, user_id, name, slug, sort_order)
-values ('c0000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000b1', 'Trip', 'planslug', 0);
+values ('c0000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000b1', 'Trip', 'plslg1', 0);
 -- food1 has servings_per_package; food2 does NOT (drives the basis-validation test);
 -- food3 is a spare used only for the 2001st-entry cap assertion.
 insert into public.food_items (id, user_id, name, serving_weight_grams, calories_per_serving, servings_per_package)
@@ -72,7 +72,7 @@ select throws_ok($$
 $$, '22023', NULL, 'packages basis without servings_per_package is rejected (unknown never becomes zero)');
 
 insert into public.lists (id, user_id, name, slug, sort_order)
-values ('c0000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-0000000000b1','Trip2','planslug2',1);
+values ('c0000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-0000000000b1','Trip2','plslg2',1);
 insert into public.food_plans (id, user_id, list_id, num_nights)
 values ('e0000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-0000000000b1','c0000000-0000-0000-0000-000000000002',1);
 select throws_ok($$
@@ -100,7 +100,7 @@ $$, 'P0001', NULL, 'the 61st day in a plan is rejected by the cap trigger');
 -- 2000 entries; the 2001st uses a THIRD food in some cell (not yet present there),
 -- so it clears the per-cell unique and provably trips the cap trigger.
 insert into public.lists (id, user_id, name, slug, sort_order)
-values ('c0000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-0000000000b1','CapTrip','capslug',2);
+values ('c0000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-0000000000b1','CapTrip','plslg3',2);
 insert into public.food_plans (id, user_id, list_id)
 values ('e0000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-0000000000b1','c0000000-0000-0000-0000-000000000003');
 insert into public.meals (user_id, food_plan_id, name, sort_order)

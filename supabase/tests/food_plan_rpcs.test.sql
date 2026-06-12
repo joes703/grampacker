@@ -13,7 +13,7 @@ set local role authenticated;
 set local "request.jwt.claims" = '{"sub":"00000000-0000-0000-0000-0000000000c1","role":"authenticated"}';
 
 insert into public.lists (id, user_id, name, slug, sort_order)
-values ('cc000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-0000000000c1','Trip','rpcslug',0);
+values ('cc000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-0000000000c1','Trip','rpslg1',0);
 -- Bar: spp=4, weight=40 (merge math checkable). Spare: a second food (no spp).
 insert into public.food_items (id, user_id, name, serving_weight_grams, calories_per_serving, servings_per_package)
 values ('dd000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-0000000000c1','Bar',40,150,4);
@@ -35,7 +35,7 @@ select is((select count(*)::int from public.day_meals where food_plan_id=(select
           1, 'only the scheduled cell was created (subset respected)');
 
 insert into public.lists (id, user_id, name, slug, sort_order)
-values ('cc000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-0000000000c1','Trip2','rpcslug2',1);
+values ('cc000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-0000000000c1','Trip2','rpslg2',1);
 select throws_ok($$
   select public.create_food_plan(
     '00000000-0000-0000-0000-0000000000c1','cc000000-0000-0000-0000-000000000002', 1,
@@ -139,7 +139,7 @@ select is((select amount from public.food_plan_entries where id='a4000000-0000-0
 -- == Block E: move-merge uses the live SOURCE quantity, not p_entry ==
 -- Fresh plan: 1 day, Breakfast (h1) + Dinner (h2) scheduled, Spare in both cells.
 insert into public.lists (id, user_id, name, slug, sort_order)
-values ('cc000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-0000000000c1','MergeTrip','mergerpc',3);
+values ('cc000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-0000000000c1','MergeTrip','rpslg4',3);
 select public.create_food_plan('00000000-0000-0000-0000-0000000000c1','cc000000-0000-0000-0000-000000000004', 1,
   '[{"id":"a1100000-0000-0000-0000-000000000001","name":"Breakfast","anchor_role":"breakfast","is_default":true,"sort_order":0},
     {"id":"a1100000-0000-0000-0000-000000000002","name":"Dinner","anchor_role":"dinner","is_default":true,"sort_order":1}]'::jsonb,
@@ -164,7 +164,7 @@ select is((select amount from public.food_plan_entries where day_meal_id='a33000
 
 -- == Block G: move at the entry cap (in-place relocate, count unchanged) ==
 insert into public.lists (id, user_id, name, slug, sort_order)
-values ('cc000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-0000000000c1','CapTrip','caprpcslug',2);
+values ('cc000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-0000000000c1','CapTrip','rpslg3',2);
 insert into public.food_plans (id, user_id, list_id) values ('ee000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-0000000000c1','cc000000-0000-0000-0000-000000000003');
 insert into public.meals (user_id, food_plan_id, name, sort_order)
 select '00000000-0000-0000-0000-0000000000c1','ee000000-0000-0000-0000-000000000003','CM'||g, g from generate_series(1,20) g;
