@@ -113,7 +113,11 @@ create index food_plan_days_user_idx    on public.food_plan_days (user_id);
 create index day_meals_user_idx         on public.day_meals (user_id);
 create index food_plan_entries_user_idx on public.food_plan_entries (user_id);
 
--- RLS: owner-only on every table (plain auth.uid() form, matching food_items).
+-- RLS: owner-only on every table. auth.uid() is wrapped in (select auth.uid())
+-- so the planner caches it once per statement (initPlan) instead of re-evaluating
+-- per row - this is what the auth_rls_initplan advisor requires (see migration
+-- 20260512000000). A single FOR ALL TO authenticated policy keeps one policy per
+-- (role, action), so multiple_permissive_policies stays clear too.
 alter table public.food_plans        enable row level security;
 alter table public.meals             enable row level security;
 alter table public.food_plan_days    enable row level security;
@@ -121,15 +125,15 @@ alter table public.day_meals         enable row level security;
 alter table public.food_plan_entries enable row level security;
 
 create policy food_plans_owner_all on public.food_plans
-  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 create policy meals_owner_all on public.meals
-  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 create policy food_plan_days_owner_all on public.food_plan_days
-  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 create policy day_meals_owner_all on public.day_meals
-  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 create policy food_plan_entries_owner_all on public.food_plan_entries
-  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
 create trigger food_plans_updated_at        before update on public.food_plans        for each row execute function public.set_updated_at();
 create trigger meals_updated_at             before update on public.meals             for each row execute function public.set_updated_at();
