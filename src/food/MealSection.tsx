@@ -8,11 +8,10 @@ import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import FoodPlanEntryRow from './FoodPlanEntryRow'
 
 export default function MealSection({
-  cell, foodById, headerAction, onAddFood, onEditEntry, onRemoveEntry, onOmit, onDeleteMeal,
+  cell, foodById, onAddFood, onEditEntry, onRemoveEntry, onOmit, onDeleteMeal,
 }: {
   cell: CellView
   foodById: Map<string, FoodItem>
-  headerAction?: React.ReactNode
   onAddFood?: () => void
   onEditEntry?: (entryId: string) => void
   onRemoveEntry?: (entryId: string) => void
@@ -23,10 +22,7 @@ export default function MealSection({
     <section className="mt-2">
       <div className={`${FLAT_TABLE_HEADER} flex items-center justify-between`}>
         <span>{cell.meal.name}</span>
-        <span className="flex items-center gap-1">
-          {headerAction}
-          {(onOmit || onDeleteMeal) && <MealKebab onOmit={onOmit} onDeleteMeal={onDeleteMeal} />}
-        </span>
+        {(onOmit || onDeleteMeal) && <MealKebab onOmit={onOmit} onDeleteMeal={onDeleteMeal} />}
       </div>
       {cell.entries.length === 0 ? (
         <p className="px-3 py-2 text-sm text-gray-400">No food yet.</p>
@@ -85,7 +81,7 @@ function MealKebab({ onOmit, onDeleteMeal }: {
               Omit on this day
             </RowMenuItem>
           )}
-          <RowMenuSeparator />
+          {onOmit && onDeleteMeal && <RowMenuSeparator />}
           {onDeleteMeal && (
             <RowMenuItem icon={<Trash2 size={13} />} onClick={() => { close(); onDeleteMeal() }} tone="removal">
               Delete meal everywhere

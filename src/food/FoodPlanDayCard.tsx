@@ -8,14 +8,12 @@ import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import MealSection from './MealSection'
 
 export default function FoodPlanDayCard({
-  dayView, dayIndex, foodById, headerAction, renderCell, onAddFoodToCell, onEditEntry, onRemoveEntry,
+  dayView, dayIndex, foodById, onAddFoodToCell, onEditEntry, onRemoveEntry,
   onSetDayType, onDeleteDay, allMeals, onOmitMeal, onDeleteMeal, onRestoreMeal,
 }: {
   dayView: DayView
   dayIndex: number
   foodById: Map<string, FoodItem>
-  headerAction?: React.ReactNode
-  renderCell?: (dayMealId: string) => React.ReactNode
   onAddFoodToCell?: (dayMealId: string) => void
   onEditEntry?: (entryId: string) => void
   onRemoveEntry?: (entryId: string) => void
@@ -32,7 +30,6 @@ export default function FoodPlanDayCard({
         <h2 className="text-sm font-semibold text-gray-900">Day {dayIndex + 1}</h2>
         <div className="flex items-center gap-2">
           <span className="text-xs uppercase tracking-wide text-gray-400">{dayView.dayType}</span>
-          {headerAction}
           {(onSetDayType || onDeleteDay) && (
             <DayKebab currentOverride={dayView.day.day_type_override} onSetDayType={onSetDayType} onDeleteDay={onDeleteDay} />
           )}
@@ -43,7 +40,6 @@ export default function FoodPlanDayCard({
           key={cell.dayMealId}
           cell={cell}
           foodById={foodById}
-          headerAction={renderCell?.(cell.dayMealId)}
           onAddFood={onAddFoodToCell ? () => onAddFoodToCell(cell.dayMealId) : undefined}
           onEditEntry={onEditEntry}
           onRemoveEntry={onRemoveEntry}
