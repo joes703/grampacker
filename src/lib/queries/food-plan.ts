@@ -4,6 +4,7 @@ import { FOOD_PLAN_DAY_CAP, MEAL_DEFINITION_CAP, FOOD_PLAN_ENTRY_CAP } from '../
 import type { FoodPlanStructure } from '../food/basis'
 import type {
   FoodPlan, Meal, FoodPlanDay, DayMeal, FoodPlanEntry, FoodPlanDocument, EntryBasis,
+  FoodPlanDailyTarget, MealTarget, DailyTargetInput, MealTargetInput,
 } from '../types'
 
 // ---- Composite read (design 9.1): one plan assembled from owner-scoped reads.
@@ -13,16 +14,19 @@ export async function fetchFoodPlan(userId: string, listId: string): Promise<Foo
   if (error) throw error
   if (!plan) return null
   const planId = (plan as FoodPlan).id
-  const [meals, days, dayMeals, entries] = await Promise.all([
+  const [meals, days, dayMeals, entries, dailyTargets, mealTargets] = await Promise.all([
     selectByPlan<Meal>('meals', planId, userId, 'sort_order'),
     selectByPlan<FoodPlanDay>('food_plan_days', planId, userId, 'sort_order'),
     selectByPlan<DayMeal>('day_meals', planId, userId, null),
     selectByPlan<FoodPlanEntry>('food_plan_entries', planId, userId, 'sort_order'),
+    selectByPlan<FoodPlanDailyTarget>('food_plan_daily_targets', planId, userId, null),
+    selectByPlan<MealTarget>('meal_targets', planId, userId, null),
   ])
-  return { plan: plan as FoodPlan, meals, days, dayMeals, entries }
+  return { plan: plan as FoodPlan, meals, days, dayMeals, entries, dailyTargets, mealTargets }
 }
 async function selectByPlan<T>(
-  table: 'meals' | 'food_plan_days' | 'day_meals' | 'food_plan_entries',
+  table: 'meals' | 'food_plan_days' | 'day_meals' | 'food_plan_entries'
+    | 'food_plan_daily_targets' | 'meal_targets',
   planId: string, userId: string, orderBy: string | null,
 ): Promise<T[]> {
   let q = supabase.from(table).select('*').eq('food_plan_id', planId).eq('user_id', userId)
@@ -142,4 +146,36 @@ export function assertMealDefinitionWithinCap(existingMeals: number): void {
 }
 export function assertFoodPlanEntryWithinCap(existingEntries: number): void {
   if (existingEntries >= FOOD_PLAN_ENTRY_CAP) throw new Error(`This plan already has the maximum ${FOOD_PLAN_ENTRY_CAP} entries.`)
+}
+
+// ---- Single-row, full-row target writes. RLS authorizes; ON CONFLICT updates
+// the per-metric row in place. Input omits id so identity is never overwritten.
+export async function upsertDailyTarget(target: DailyTargetInput): Promise<void> {
+  // Allowlist the columns we forward: even if a caller leaks an id at runtime,
+  // it is never sent, so ON CONFLICT can never overwrite the row's identity.
+  const { user_id, food_plan_id, metric, mode, target_min, target_max } = target
+  const payload = { user_id, food_plan_id, metric, mode, target_min, target_max }
+  const { error } = await supabase
+    .from('food_plan_daily_targets')
+    .upsert(payload, { onConflict: 'food_plan_id,metric' })
+  if (error) throw error
+}
+
+export async function deleteDailyTarget(id: string): Promise<void> {
+  const { error } = await supabase.from('food_plan_daily_targets').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function upsertMealTarget(target: MealTargetInput): Promise<void> {
+  const { user_id, food_plan_id, meal_id, metric, mode, target_min, target_max } = target
+  const payload = { user_id, food_plan_id, meal_id, metric, mode, target_min, target_max }
+  const { error } = await supabase
+    .from('meal_targets')
+    .upsert(payload, { onConflict: 'meal_id,metric' })
+  if (error) throw error
+}
+
+export async function deleteMealTarget(id: string): Promise<void> {
+  const { error } = await supabase.from('meal_targets').delete().eq('id', id)
+  if (error) throw error
 }

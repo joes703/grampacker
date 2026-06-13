@@ -163,7 +163,32 @@ export type FoodPlanEntry = {
   basis: EntryBasis; amount: number; sort_order: number
   created_at: string; updated_at: string
 }
-// The whole plan assembled by fetchFoodPlan. Phase 3 adds daily/meal targets.
+export type TargetMode = 'range' | 'min' | 'max' | 'off'
+export type DailyTargetMetric = 'calories' | 'protein' | 'carbs' | 'fiber' | 'sodium' | 'calorie_density'
+export type MealTargetMetric = 'calories' | 'protein' | 'fat_pct' | 'sugar_pct' | 'carb_protein_ratio'
+
+export type FoodPlanDailyTarget = {
+  id: string; user_id: string; food_plan_id: string
+  metric: DailyTargetMetric; mode: TargetMode
+  target_min: number | null; target_max: number | null
+}
+export type MealTarget = {
+  id: string; user_id: string; food_plan_id: string; meal_id: string
+  metric: MealTargetMetric; mode: TargetMode
+  target_min: number | null; target_max: number | null
+}
+
+// Write inputs OMIT id: insert mints it (gen_random_uuid default) and ON CONFLICT
+// preserves the existing row's id. The `id?: never` guard makes passing a full
+// row (with id: string) a COMPILE error - Omit alone would let a wider variable
+// through (excess-property checks skip variables, not just object literals). The
+// upsert functions ALSO allowlist the columns at runtime, so even a leaked id
+// can never be forwarded. See upsert* in queries/food-plan.ts.
+export type DailyTargetInput = Omit<FoodPlanDailyTarget, 'id'> & { id?: never }
+export type MealTargetInput = Omit<MealTarget, 'id'> & { id?: never }
+
+// The whole plan assembled by fetchFoodPlan. Daily/meal targets added in Phase 3.
 export type FoodPlanDocument = {
   plan: FoodPlan; meals: Meal[]; days: FoodPlanDay[]; dayMeals: DayMeal[]; entries: FoodPlanEntry[]
+  dailyTargets: FoodPlanDailyTarget[]; mealTargets: MealTarget[]
 }

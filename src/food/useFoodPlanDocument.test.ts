@@ -16,6 +16,8 @@ function baseDoc(): FoodPlanDocument {
       { id: 'e1', user_id: 'u', food_plan_id: 'p', day_meal_id: 'dm1', is_extra: false, food_item_id: 'f1', basis: 'servings', amount: 2, sort_order: 0, created_at: ts, updated_at: ts },
       { id: 'e2', user_id: 'u', food_plan_id: 'p', day_meal_id: null, is_extra: true, food_item_id: 'f2', basis: 'servings', amount: 1, sort_order: 0, created_at: ts, updated_at: ts },
     ],
+    dailyTargets: [],
+    mealTargets: [],
   }
 }
 
