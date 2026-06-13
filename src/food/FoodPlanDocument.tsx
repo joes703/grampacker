@@ -62,16 +62,21 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
       return upsertFoodPlanEntry(userId, addition, v.result.preserveBasis, null)
     },
     meta: { errorToast: "Couldn't add the food. Please try again." },
-    onSuccess: invalidate,
-    onSettled: () => { setPickedFood(null); setAddTarget(null) },
+    onSuccess: () => {
+      setPickedFood(null)
+      setAddTarget(null)
+      return invalidate()
+    },
   })
 
   const editMut = useMutation({
     mutationFn: (v: { id: string; basis: EntryBasis; amount: number }) =>
       updateFoodPlanEntry(v.id, { basis: v.basis, amount: v.amount }),
     meta: { errorToast: "Couldn't update the food. Please try again." },
-    onSuccess: invalidate,
-    onSettled: () => setEditEntryId(null),
+    onSuccess: () => {
+      setEditEntryId(null)
+      return invalidate()
+    },
   })
 
   const removeMut = useMutation({
@@ -107,8 +112,10 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
       return addMealDefinition(userId, doc.plan.id, name, sortOrder)
     },
     meta: { errorToast: "Couldn't add the meal. Please try again." },
-    onSuccess: invalidate,
-    onSettled: () => setShowAddMeal(false),
+    onSuccess: () => {
+      setShowAddMeal(false)
+      return invalidate()
+    },
   })
   const omitMealMut = useMutation({
     mutationFn: (dayMealId: string) => deleteDayMeal(dayMealId),
@@ -129,6 +136,24 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const addTargetExisting = addTarget && pickedFood ? existingEntry(pickedFood, addTarget) : undefined
   const editingEntry = doc.entries.find((e) => e.id === editEntryId) ?? null
   const editingFood = editingEntry ? foodById.get(editingEntry.food_item_id) : undefined
+
+  if (foodsQuery.isLoading) {
+    return <p className="mt-6 text-sm text-gray-500">Loading your food library...</p>
+  }
+  if (foodsQuery.isError) {
+    return (
+      <div className="mt-6">
+        <p className="text-sm text-gray-700">Couldn't load your food library.</p>
+        <button
+          type="button"
+          onClick={() => foodsQuery.refetch()}
+          className="mt-2 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+        >
+          Try again
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="mt-4">

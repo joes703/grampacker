@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
+import { FOOD_PLAN_DAY_CAP } from '../lib/caps'
 import { buildFoodPlanStructure, type FoodPlanStructure } from '../lib/food/basis'
 import { randomTempId } from '../lib/random-temp-id'
 
@@ -17,24 +18,24 @@ export default function CreateFoodPlanDialog({
   const [nights, setNights] = useState('')
   const [omitted, setOmitted] = useState<Set<string>>(() => new Set())
 
-  const dayCount = Math.max(0, Math.floor(Number(days) || 0))
-  const nightsValue = nights.trim() === '' ? null : Math.max(0, Math.floor(Number(nights) || 0))
+  const parsedDays = Number(days)
+  const dayCount = Number.isInteger(parsedDays) ? parsedDays : 0
+  const parsedNights = nights.trim() === '' ? null : Number(nights)
+  const nightsValue = parsedNights !== null && Number.isInteger(parsedNights) ? parsedNights : null
+  const validNights = parsedNights === null ||
+    (Number.isInteger(parsedNights) && parsedNights >= 0 && parsedNights <= 999)
 
-  const seed = useMemo(() => buildFoodPlanStructure(dayCount, randomTempId), [dayCount])
-  const cellId = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const dm of seed.dayMeals) m.set(`${dm.day_id}:${dm.meal_id}`, dm.id)
-    return m
-  }, [seed])
+  const seedDayCount = Math.min(FOOD_PLAN_DAY_CAP, Math.max(0, dayCount))
+  const seed = useMemo(() => buildFoodPlanStructure(seedDayCount, randomTempId), [seedDayCount])
 
-  const plannedMeals = seed.dayMeals.length - omitted.size
-  const canCreate = dayCount >= 1 && plannedMeals >= 1
+  const plannedMeals = seed.dayMeals.filter((_, index) => !omitted.has(String(index))).length
+  const canCreate = dayCount >= 1 && dayCount <= FOOD_PLAN_DAY_CAP && validNights && plannedMeals >= 1
 
-  function toggle(id: string) {
+  function toggle(cellKey: string) {
     setOmitted((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(cellKey)) next.delete(cellKey)
+      else next.add(cellKey)
       return next
     })
   }
@@ -43,7 +44,11 @@ export default function CreateFoodPlanDialog({
     e.preventDefault()
     if (!canCreate) return
     onCreate(
-      { meals: seed.meals, days: seed.days, dayMeals: seed.dayMeals.filter((dm) => !omitted.has(dm.id)) },
+      {
+        meals: seed.meals,
+        days: seed.days,
+        dayMeals: seed.dayMeals.filter((_, index) => !omitted.has(String(index))),
+      },
       nightsValue,
     )
   }
@@ -60,7 +65,7 @@ export default function CreateFoodPlanDialog({
             <label className="block text-sm font-medium text-gray-700">
               Days
               <input
-                autoFocus type="number" inputMode="numeric" min={1} value={days}
+                autoFocus type="number" inputMode="numeric" min={1} max={FOOD_PLAN_DAY_CAP} step={1} value={days}
                 onChange={(e) => setDays(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
               />
@@ -68,7 +73,7 @@ export default function CreateFoodPlanDialog({
             <label className="block text-sm font-medium text-gray-700">
               Nights <span className="text-gray-400">(optional)</span>
               <input
-                type="number" inputMode="numeric" min={0} value={nights}
+                type="number" inputMode="numeric" min={0} max={999} step={1} value={nights}
                 onChange={(e) => setNights(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
               />
@@ -92,15 +97,15 @@ export default function CreateFoodPlanDialog({
                 {seed.days.map((d, i) => (
                   <tr key={d.id} className="border-t border-gray-100">
                     <td className="px-3 py-1.5 text-gray-700">Day {i + 1}</td>
-                    {seed.meals.map((m) => {
-                      const id = cellId.get(`${d.id}:${m.id}`)
+                    {seed.meals.map((m, mealIndex) => {
+                      const cellKey = String(i * seed.meals.length + mealIndex)
                       return (
                         <td key={m.id} className="px-3 py-1.5">
                           <input
                             type="checkbox"
                             aria-label={`Day ${i + 1} ${m.name}`}
-                            checked={id ? !omitted.has(id) : false}
-                            onChange={() => id && toggle(id)}
+                            checked={!omitted.has(cellKey)}
+                            onChange={() => toggle(cellKey)}
                           />
                         </td>
                       )

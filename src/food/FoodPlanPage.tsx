@@ -28,8 +28,10 @@ export default function FoodPlanPage() {
     mutationFn: (v: { structure: FoodPlanStructure; nights: number | null }) =>
       createFoodPlan(userId, listId ?? '', v.nights, v.structure),
     meta: { errorToast: "Couldn't start the food plan. Please try again." },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.foodPlan(listId ?? '') }),
-    onSettled: () => setShowCreate(false),
+    onSuccess: () => {
+      setShowCreate(false)
+      return qc.invalidateQueries({ queryKey: queryKeys.foodPlan(listId ?? '') })
+    },
   })
 
   if (!listId) return null
