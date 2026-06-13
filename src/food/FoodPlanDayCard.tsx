@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { Check, MoreVertical, Trash2 } from 'lucide-react'
+import { Check, Copy, MoreVertical, Trash2 } from 'lucide-react'
 import type { FoodItem, Meal } from '../lib/types'
 import type { DayView } from './useFoodPlanDocument'
 import { FLAT_TABLE_SURFACE, POPOVER_SURFACE } from '../components/flat-table-styles'
@@ -9,7 +9,7 @@ import MealSection from './MealSection'
 
 export default function FoodPlanDayCard({
   dayView, dayIndex, listId, userId, foodById, onAddFoodToCell, onEditEntry, onRemoveEntry,
-  onSetDayType, onDeleteDay, allMeals, onOmitMeal, onDeleteMeal, onRestoreMeal,
+  onSetDayType, onDeleteDay, onDuplicate, allMeals, onOmitMeal, onDeleteMeal, onRestoreMeal,
   dragHandle, outerRef, outerStyle,
 }: {
   dayView: DayView
@@ -22,6 +22,7 @@ export default function FoodPlanDayCard({
   onRemoveEntry?: (entryId: string) => void
   onSetDayType?: (override: 'full' | 'partial' | null) => void
   onDeleteDay?: () => void
+  onDuplicate?: () => void
   allMeals?: Meal[]
   onOmitMeal?: (dayMealId: string) => void
   onDeleteMeal?: (mealId: string) => void
@@ -39,8 +40,8 @@ export default function FoodPlanDayCard({
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs uppercase tracking-wide text-gray-400">{dayView.dayType}</span>
-          {(onSetDayType || onDeleteDay) && (
-            <DayKebab currentOverride={dayView.day.day_type_override} onSetDayType={onSetDayType} onDeleteDay={onDeleteDay} />
+          {(onSetDayType || onDeleteDay || onDuplicate) && (
+            <DayKebab currentOverride={dayView.day.day_type_override} onSetDayType={onSetDayType} onDeleteDay={onDeleteDay} onDuplicate={onDuplicate} />
           )}
         </div>
       </div>
@@ -80,10 +81,11 @@ export default function FoodPlanDayCard({
 // three-dot trigger plus a portal-rendered menu, with dismissal handled by
 // usePortalPopover (no hand-rolled listeners). Lets the user override the
 // day type (Auto/Full/Partial) or delete the day.
-function DayKebab({ currentOverride, onSetDayType, onDeleteDay }: {
+function DayKebab({ currentOverride, onSetDayType, onDeleteDay, onDuplicate }: {
   currentOverride: 'full' | 'partial' | null
   onSetDayType?: (override: 'full' | 'partial' | null) => void
   onDeleteDay?: () => void
+  onDuplicate?: () => void
 }) {
   const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
     useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
@@ -126,6 +128,9 @@ function DayKebab({ currentOverride, onSetDayType, onDeleteDay }: {
             Partial
           </RowMenuItem>
           <RowMenuSeparator />
+          <RowMenuItem icon={<Copy size={13} />} onClick={() => { close(); onDuplicate?.() }}>
+            Duplicate day
+          </RowMenuItem>
           <RowMenuItem icon={<Trash2 size={13} />} onClick={() => { close(); onDeleteDay?.() }} tone="removal">
             Delete day
           </RowMenuItem>

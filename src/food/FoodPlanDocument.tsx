@@ -14,7 +14,7 @@ import {
   queryKeys, fetchFoodItems, fetchFoodPlan,
   upsertFoodPlanEntry, updateFoodPlanEntry, deleteFoodPlanEntry,
   assertFoodPlanEntryWithinCap, type EntryAddition,
-  addFoodPlanDay, deleteFoodPlanDay, updateDayType, assertFoodPlanDayWithinCap,
+  addFoodPlanDay, deleteFoodPlanDay, updateDayType, assertFoodPlanDayWithinCap, duplicateFoodPlanDay,
   addMealDefinition, deleteMeal, deleteDayMeal, addDayMeal, assertMealDefinitionWithinCap,
 } from '../lib/queries'
 import { randomTempId } from '../lib/random-temp-id'
@@ -156,6 +156,16 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     meta: { errorToast: "Couldn't delete the day. Please try again." },
     onSuccess: invalidate,
   })
+  const duplicateDayMut = useMutation({
+    mutationFn: (dayId: string) => {
+      assertFoodPlanDayWithinCap(doc.days.length)
+      const sortOrder = doc.days.reduce((m, d) => Math.max(m, d.sort_order + 1), 0)
+      // server copies the LIVE source day (schedule + entries) by id
+      return duplicateFoodPlanDay(userId, dayId, sortOrder)
+    },
+    meta: { errorToast: "Couldn't duplicate the day. Please try again." },
+    onSuccess: invalidate,
+  })
   const dayTypeMut = useMutation({
     mutationFn: (v: { dayId: string; override: 'full' | 'partial' | null }) => updateDayType(v.dayId, v.override),
     meta: { errorToast: "Couldn't change the day type. Please try again." },
@@ -241,6 +251,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
                 onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
                 onSetDayType={(override) => dayTypeMut.mutate({ dayId: dayView.day.id, override })}
                 onDeleteDay={() => setConfirmDeleteDayId(dayView.day.id)}
+                onDuplicate={() => duplicateDayMut.mutate(dayView.day.id)}
                 allMeals={view.meals}
                 onOmitMeal={(dayMealId) => omitMealMut.mutate(dayMealId)}
                 onDeleteMeal={(mealId) => setConfirmDeleteMealId(mealId)}
