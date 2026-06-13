@@ -29,6 +29,7 @@ import AddMealDialog from './AddMealDialog'
 import MoveCopyEntryDialog, { type MoveCopyTarget } from './MoveCopyEntryDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ScheduleGridDialog, { type ScheduleToggle } from './ScheduleGridDialog'
+import FoodPlanSummary from './FoodPlanSummary'
 
 type AddTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
 
@@ -304,6 +305,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           </div>
         </SortableContext>
       </DndContext>
+      <FoodPlanSummary plan={currentDoc.plan} view={view} foodById={foodById} />
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
         <SortableContext items={view.days.map((d) => d.day.id)} strategy={verticalListSortingStrategy}>
           <div className="mt-4 space-y-4">

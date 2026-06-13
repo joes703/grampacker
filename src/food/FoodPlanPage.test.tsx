@@ -206,7 +206,7 @@ describe('FoodPlanPage rendering', () => {
     vi.mocked(fetchFoodItems).mockResolvedValue([])
     renderPage()
 
-    expect(await screen.findByText('Day 1')).toBeTruthy()
+    expect((await screen.findAllByText('Day 1')).length).toBeGreaterThan(0)
     // Meal section headers render for each scheduled meal.
     expect(screen.getAllByText('Breakfast').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Dinner').length).toBeGreaterThan(0)
