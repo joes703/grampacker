@@ -6,6 +6,7 @@ import {
   assertMealDefinitionWithinCap,
   assertFoodPlanEntryWithinCap,
   upsertFoodPlanEntries,
+  createFoodPlan,
   fetchFoodPlan,
   upsertDailyTarget,
   upsertMealTarget,
@@ -48,6 +49,31 @@ describe('upsertFoodPlanEntries', () => {
       p_user_id: 'user-1',
       p_additions: additions,
     })
+  })
+})
+
+describe('createFoodPlan', () => {
+  beforeEach(() => rpc.mockReset())
+
+  it('creates a day-based plan without sending a nights value', async () => {
+    rpc.mockResolvedValue({ data: { id: 'plan-1' }, error: null })
+    const structure = {
+      meals: [{ id: 'meal-1', name: 'Breakfast', anchor_role: 'breakfast' as const, is_default: true, sort_order: 0 }],
+      days: [{ id: 'day-1', sort_order: 0 }],
+      dayMeals: [{ id: 'cell-1', day_id: 'day-1', meal_id: 'meal-1' }],
+    }
+
+    await createFoodPlan('user-1', 'list-1', structure)
+
+    expect(rpc).toHaveBeenCalledWith('create_food_plan', {
+      p_user_id: 'user-1',
+      p_list_id: 'list-1',
+      p_meals: structure.meals,
+      p_days: structure.days,
+      p_day_meals: structure.dayMeals,
+    })
+    const payload = rpc.mock.calls[0]?.[1] as Record<string, unknown>
+    expect('p_num_nights' in payload).toBe(false)
   })
 })
 

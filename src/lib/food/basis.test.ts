@@ -21,7 +21,7 @@ describe('effectiveServings', () => {
 })
 
 describe('buildFoodPlanStructure', () => {
-  it('day count is independent of nights: 5 days -> 5 days, 15 cells (full seed)', () => {
+  it('builds the requested day count: 5 days -> 5 days, 15 cells (full seed)', () => {
     const s = buildFoodPlanStructure(5, () => crypto.randomUUID())
     expect(s.meals).toHaveLength(3)
     expect(s.meals.filter((m) => m.is_default)).toHaveLength(3)

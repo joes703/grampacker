@@ -25,8 +25,8 @@ export default function FoodPlanPage() {
 
   const [showCreate, setShowCreate] = useState(false)
   const createMut = useMutation({
-    mutationFn: (v: { structure: FoodPlanStructure; nights: number | null }) =>
-      createFoodPlan(userId, listId ?? '', v.nights, v.structure),
+    mutationFn: (structure: FoodPlanStructure) =>
+      createFoodPlan(userId, listId ?? '', structure),
     meta: { errorToast: "Couldn't start the food plan. Please try again." },
     onSuccess: () => {
       setShowCreate(false)
@@ -67,7 +67,7 @@ export default function FoodPlanPage() {
       {showCreate ? (
         <CreateFoodPlanDialog
           saving={createMut.isPending}
-          onCreate={(structure, nights) => createMut.mutate({ structure, nights })}
+          onCreate={(structure) => createMut.mutate(structure)}
           onClose={() => setShowCreate(false)}
         />
       ) : null}

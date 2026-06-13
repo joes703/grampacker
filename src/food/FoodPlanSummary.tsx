@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { type WeightUnit } from '../lib/weight'
-import type { FoodItem, FoodPlan } from '../lib/types'
+import type { FoodItem } from '../lib/types'
 import type { FoodPlanView } from '../lib/food/view'
 import {
   summarizeTrip, type GroupSummary, type NutrientKey, type NutrientTotal,
@@ -52,9 +52,8 @@ function SummaryRow({ label, group, cols, weightUnit, nameForId }: { label: stri
 }
 
 export default function FoodPlanSummary({
-  plan, view, foodById,
+  view, foodById,
 }: {
-  plan: FoodPlan
   view: FoodPlanView
   foodById: Map<string, FoodItem>
 }) {
@@ -89,7 +88,7 @@ export default function FoodPlanSummary({
         <>
           <div className="flex items-center justify-between px-3 py-1.5 text-xs text-gray-500">
             <span>
-              {view.days.length} days{plan.num_nights != null ? `, ${plan.num_nights} nights` : ''} - {totalMeals} planned meals
+              {view.days.length} days - {totalMeals} planned meals
               {perMealCounts.length > 0 && (
                 <span className="ml-1 text-gray-400">({perMealCounts.map((p) => `${p.name} x${p.count}`).join(', ')})</span>
               )}

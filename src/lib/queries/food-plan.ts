@@ -38,10 +38,10 @@ async function selectByPlan<T>(
 
 // ---- create_food_plan: caller passes the owner-chosen structure (subset grid).
 export async function createFoodPlan(
-  userId: string, listId: string, numNights: number | null, structure: FoodPlanStructure,
+  userId: string, listId: string, structure: FoodPlanStructure,
 ): Promise<FoodPlan> {
   const { data, error } = await supabase.rpc('create_food_plan', {
-    p_user_id: userId, p_list_id: listId, p_num_nights: numNights,
+    p_user_id: userId, p_list_id: listId,
     p_meals: structure.meals, p_days: structure.days, p_day_meals: structure.dayMeals,
   })
   if (error) throw error

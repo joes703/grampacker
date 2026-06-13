@@ -122,7 +122,7 @@ function makeFood(over: Partial<FoodItem> & { id: string; name: string }): FoodI
 // optional entries. entries default to [] so callers can layer their own.
 function makeDoc(entries: FoodPlanEntry[] = []): Doc {
   const plan: FoodPlan = {
-    id: 'plan1', user_id: 'u1', list_id: 'L1', num_nights: null,
+    id: 'plan1', user_id: 'u1', list_id: 'L1',
     is_food_shared: false, created_at: NOW, updated_at: NOW,
   }
   const breakfast: Meal = {
@@ -172,7 +172,7 @@ function makeEntry(over: Partial<FoodPlanEntry> & { id: string; food_item_id: st
 }
 
 describe('FoodPlanPage create flow', () => {
-  it('gates create on the DAY count and passes nights + a structure of the right day length', async () => {
+  it('gates create on the day count and passes a structure of the right day length', async () => {
     vi.mocked(fetchFoodPlan).mockResolvedValue(null)
     vi.mocked(fetchFoodItems).mockResolvedValue([])
     vi.mocked(createFoodPlan).mockResolvedValue(makeDoc().plan)
@@ -180,13 +180,11 @@ describe('FoodPlanPage create flow', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Start food plan' }))
 
-    // Dialog open. Set Days=5, Nights=4.
+    // Dialog open. Set Days=5.
     const days = await screen.findByLabelText('Days')
-    const nights = screen.getByLabelText(/Nights/)
     fireEvent.change(days, { target: { value: '5' } })
-    fireEvent.change(nights, { target: { value: '4' } })
 
-    // 5 days x 3 default meals = 15 planned meals (driven by DAY count, not nights).
+    // 5 days x 3 default meals = 15 planned meals.
     expect(await screen.findByText('15 planned meals')).toBeTruthy()
 
     // Submit (the dialog's own "Start food plan" button inside the form).
@@ -197,8 +195,7 @@ describe('FoodPlanPage create flow', () => {
     const call = vi.mocked(createFoodPlan).mock.calls[0]!
     expect(call[0]).toBe('u1')
     expect(call[1]).toBe('L1')
-    expect(call[2]).toBe(4) // nights arg, NOT the day count
-    expect((call[3] as { days: unknown[] }).days).toHaveLength(5)
+    expect((call[2] as { days: unknown[] }).days).toHaveLength(5)
   })
 })
 

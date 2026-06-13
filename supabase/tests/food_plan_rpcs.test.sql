@@ -24,7 +24,7 @@ values ('dd000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-00000000
 -- SUBSET grid (2 meals, 1 day, but only Breakfast scheduled - Dinner omitted).
 select lives_ok($$
   select public.create_food_plan(
-    '00000000-0000-0000-0000-0000000000c1','cc000000-0000-0000-0000-000000000001', 1,
+    '00000000-0000-0000-0000-0000000000c1','cc000000-0000-0000-0000-000000000001',
     '[{"id":"a1000000-0000-0000-0000-000000000001","name":"Breakfast","anchor_role":"breakfast","is_default":true,"sort_order":0},
       {"id":"a1000000-0000-0000-0000-000000000002","name":"Dinner","anchor_role":"dinner","is_default":true,"sort_order":1}]'::jsonb,
     '[{"id":"a2000000-0000-0000-0000-000000000001","sort_order":0}]'::jsonb,
@@ -38,7 +38,7 @@ insert into public.lists (id, user_id, name, slug, sort_order)
 values ('cc000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-0000000000c1','Trip2','rpslg2',1);
 select throws_ok($$
   select public.create_food_plan(
-    '00000000-0000-0000-0000-0000000000c1','cc000000-0000-0000-0000-000000000002', 1,
+    '00000000-0000-0000-0000-0000000000c1','cc000000-0000-0000-0000-000000000002',
     '[{"id":"b1000000-0000-0000-0000-000000000001","name":"Breakfast","anchor_role":"breakfast","is_default":true,"sort_order":0}]'::jsonb,
     '[{"id":"b2000000-0000-0000-0000-000000000001","sort_order":0}]'::jsonb,
     '[{"id":"b3000000-0000-0000-0000-000000000001","day_id":"b2000000-0000-0000-0000-000000000001","meal_id":"b1000000-0000-0000-0000-000000000001"},
@@ -47,7 +47,7 @@ select throws_ok($$
 $$, '22023', NULL, 'a duplicate (day, meal) cell is rejected');
 
 select throws_ok($$
-  select public.create_food_plan('00000000-0000-0000-0000-0000000000c2','cc000000-0000-0000-0000-000000000001',1,'[]'::jsonb,'[]'::jsonb,'[]'::jsonb)
+  select public.create_food_plan('00000000-0000-0000-0000-0000000000c2','cc000000-0000-0000-0000-000000000001','[]'::jsonb,'[]'::jsonb,'[]'::jsonb)
 $$, '42501', NULL, 'create_food_plan rejects a mismatched p_user_id');
 
 -- == Block B: schedule edits - custom Meal FIRST, then prove a new day omits it ==
@@ -140,7 +140,7 @@ select is((select amount from public.food_plan_entries where id='a4000000-0000-0
 -- Fresh plan: 1 day, Breakfast (h1) + Dinner (h2) scheduled, Spare in both cells.
 insert into public.lists (id, user_id, name, slug, sort_order)
 values ('cc000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-0000000000c1','MergeTrip','rpslg4',3);
-select public.create_food_plan('00000000-0000-0000-0000-0000000000c1','cc000000-0000-0000-0000-000000000004', 1,
+select public.create_food_plan('00000000-0000-0000-0000-0000000000c1','cc000000-0000-0000-0000-000000000004',
   '[{"id":"a1100000-0000-0000-0000-000000000001","name":"Breakfast","anchor_role":"breakfast","is_default":true,"sort_order":0},
     {"id":"a1100000-0000-0000-0000-000000000002","name":"Dinner","anchor_role":"dinner","is_default":true,"sort_order":1}]'::jsonb,
   '[{"id":"a2200000-0000-0000-0000-000000000001","sort_order":0}]'::jsonb,

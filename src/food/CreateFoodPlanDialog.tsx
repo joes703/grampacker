@@ -11,25 +11,20 @@ export default function CreateFoodPlanDialog({
   onClose,
 }: {
   saving?: boolean
-  onCreate: (structure: FoodPlanStructure, nights: number | null) => void
+  onCreate: (structure: FoodPlanStructure) => void
   onClose: () => void
 }) {
   const [days, setDays] = useState('1')
-  const [nights, setNights] = useState('')
   const [omitted, setOmitted] = useState<Set<string>>(() => new Set())
 
   const parsedDays = Number(days)
   const dayCount = Number.isInteger(parsedDays) ? parsedDays : 0
-  const parsedNights = nights.trim() === '' ? null : Number(nights)
-  const nightsValue = parsedNights !== null && Number.isInteger(parsedNights) ? parsedNights : null
-  const validNights = parsedNights === null ||
-    (Number.isInteger(parsedNights) && parsedNights >= 0 && parsedNights <= 999)
 
   const seedDayCount = Math.min(FOOD_PLAN_DAY_CAP, Math.max(0, dayCount))
   const seed = useMemo(() => buildFoodPlanStructure(seedDayCount, randomTempId), [seedDayCount])
 
   const plannedMeals = seed.dayMeals.filter((_, index) => !omitted.has(String(index))).length
-  const canCreate = dayCount >= 1 && dayCount <= FOOD_PLAN_DAY_CAP && validNights && plannedMeals >= 1
+  const canCreate = dayCount >= 1 && dayCount <= FOOD_PLAN_DAY_CAP && plannedMeals >= 1
 
   function toggle(cellKey: string) {
     setOmitted((prev) => {
@@ -43,14 +38,11 @@ export default function CreateFoodPlanDialog({
   function submit(e: FormEvent) {
     e.preventDefault()
     if (!canCreate) return
-    onCreate(
-      {
-        meals: seed.meals,
-        days: seed.days,
-        dayMeals: seed.dayMeals.filter((_, index) => !omitted.has(String(index))),
-      },
-      nightsValue,
-    )
+    onCreate({
+      meals: seed.meals,
+      days: seed.days,
+      dayMeals: seed.dayMeals.filter((_, index) => !omitted.has(String(index))),
+    })
   }
 
   return (
@@ -61,20 +53,12 @@ export default function CreateFoodPlanDialog({
           <p className="mt-1 text-sm text-gray-600">
             A food plan adds a meal-by-meal schedule for this trip, drawing from your food library.
           </p>
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-4 max-w-32">
             <label className="block text-sm font-medium text-gray-700">
               Days
               <input
                 autoFocus type="number" inputMode="numeric" min={1} max={FOOD_PLAN_DAY_CAP} step={1} value={days}
                 onChange={(e) => setDays(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
-              />
-            </label>
-            <label className="block text-sm font-medium text-gray-700">
-              Nights <span className="text-gray-400">(optional)</span>
-              <input
-                type="number" inputMode="numeric" min={0} max={999} step={1} value={nights}
-                onChange={(e) => setNights(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
               />
             </label>
