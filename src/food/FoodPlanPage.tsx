@@ -1,0 +1,76 @@
+import { useState } from 'react'
+import { useParams, Link } from 'react-router'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useRequireSession } from '../auth/use-require-session'
+import { useDocumentTitle } from '../lib/use-document-title'
+import { queryKeys, fetchFoodPlan, createFoodPlan } from '../lib/queries'
+import PrimaryButton from '../components/PrimaryButton'
+import ListWorkspaceTabs from '../lists/ListWorkspaceTabs'
+import CreateFoodPlanDialog from './CreateFoodPlanDialog'
+import FoodPlanDocument from './FoodPlanDocument'
+import type { FoodPlanStructure } from '../lib/food/basis'
+
+export default function FoodPlanPage() {
+  const { id: listId } = useParams<{ id: string }>()
+  const auth = useRequireSession()
+  const userId = auth?.userId ?? ''
+  const qc = useQueryClient()
+  useDocumentTitle('Food plan')
+
+  const planQuery = useQuery({
+    queryKey: queryKeys.foodPlan(listId ?? ''),
+    queryFn: () => fetchFoodPlan(userId, listId ?? ''),
+    enabled: Boolean(listId),
+  })
+
+  const [showCreate, setShowCreate] = useState(false)
+  const createMut = useMutation({
+    mutationFn: (v: { structure: FoodPlanStructure; nights: number | null }) =>
+      createFoodPlan(userId, listId ?? '', v.nights, v.structure),
+    meta: { errorToast: "Couldn't start the food plan. Please try again." },
+    onSuccess: () => {
+      setShowCreate(false)
+      return qc.invalidateQueries({ queryKey: queryKeys.foodPlan(listId ?? '') })
+    },
+  })
+
+  if (!listId) return null
+
+  return (
+    <div className="mx-auto max-w-3xl p-4 sm:p-6">
+      <ListWorkspaceTabs listId={listId} active="food" />
+
+      {planQuery.isLoading ? (
+        <p className="mt-6 text-sm text-gray-500">Loading food plan...</p>
+      ) : planQuery.isError ? (
+        <div className="mt-6">
+          <p className="text-sm text-gray-700">Couldn't load this food plan.</p>
+          <button type="button" onClick={() => planQuery.refetch()} className="mt-2 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100">
+            Try again
+          </button>
+        </div>
+      ) : !planQuery.data ? (
+        <div className="mt-6">
+          <h1 className="text-lg font-semibold text-gray-900">No food plan yet</h1>
+          <p className="mt-1 text-sm text-gray-600">Start one to schedule meals for this trip.</p>
+          <PrimaryButton type="button" onClick={() => setShowCreate(true)} className="mt-4">
+            Start food plan
+          </PrimaryButton>
+          <p className="mt-3 text-sm">
+            <Link to={`/lists/${listId}`} className="text-gray-500 hover:underline">Back to gear list</Link>
+          </p>
+        </div>
+      ) : (
+        <FoodPlanDocument listId={listId} userId={userId} doc={planQuery.data} />
+      )}
+
+      {showCreate ? (
+        <CreateFoodPlanDialog
+          saving={createMut.isPending}
+          onCreate={(structure, nights) => createMut.mutate({ structure, nights })}
+          onClose={() => setShowCreate(false)}
+        />
+      ) : null}
+    </div>
+  )
+}

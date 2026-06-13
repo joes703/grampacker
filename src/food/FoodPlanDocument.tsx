@@ -1,0 +1,251 @@
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  queryKeys, fetchFoodItems,
+  upsertFoodPlanEntry, updateFoodPlanEntry, deleteFoodPlanEntry,
+  assertFoodPlanEntryWithinCap, type EntryAddition,
+  addFoodPlanDay, deleteFoodPlanDay, updateDayType, assertFoodPlanDayWithinCap,
+  addMealDefinition, deleteMeal, deleteDayMeal, addDayMeal, assertMealDefinitionWithinCap,
+} from '../lib/queries'
+import { randomTempId } from '../lib/random-temp-id'
+import type { EntryBasis, FoodItem, FoodPlanDocument as Doc } from '../lib/types'
+import { useFoodPlanView } from './useFoodPlanDocument'
+import FoodPlanDayCard from './FoodPlanDayCard'
+import FoodPlanExtras from './FoodPlanExtras'
+import FoodPicker from './FoodPicker'
+import EntryAmountDialog, { type EntryAmountResult } from './EntryAmountDialog'
+import AddMealDialog from './AddMealDialog'
+import ConfirmDialog from '../components/ConfirmDialog'
+
+type AddTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
+
+export default function FoodPlanDocument({ listId, userId, doc }: { listId: string; userId: string; doc: Doc }) {
+  const view = useFoodPlanView(doc)
+  const foodsQuery = useQuery({ queryKey: queryKeys.foodItems(), queryFn: () => fetchFoodItems(userId) })
+  const foodById = new Map<string, FoodItem>((foodsQuery.data ?? []).map((f) => [f.id, f]))
+
+  const qc = useQueryClient()
+  const invalidate = () => qc.invalidateQueries({ queryKey: queryKeys.foodPlan(listId) })
+
+  const [addTarget, setAddTarget] = useState<AddTarget | null>(null)
+  const [pickedFood, setPickedFood] = useState<FoodItem | null>(null)
+  const [editEntryId, setEditEntryId] = useState<string | null>(null)
+  const [confirmDeleteDayId, setConfirmDeleteDayId] = useState<string | null>(null)
+  const [showAddMeal, setShowAddMeal] = useState(false)
+  const [confirmDeleteMealId, setConfirmDeleteMealId] = useState<string | null>(null)
+
+  function existingEntry(food: FoodItem, target: AddTarget) {
+    return doc.entries.find((e) =>
+      e.food_item_id === food.id &&
+      (target.kind === 'extra' ? e.is_extra : !e.is_extra && e.day_meal_id === target.dayMealId))
+  }
+  function nextEntrySort(target: AddTarget): number {
+    const siblings = doc.entries.filter((e) =>
+      target.kind === 'extra' ? e.is_extra : e.day_meal_id === target.dayMealId)
+    return siblings.reduce((max, e) => Math.max(max, e.sort_order + 1), 0)
+  }
+
+  const addMut = useMutation({
+    mutationFn: (v: { food: FoodItem; target: AddTarget; result: EntryAmountResult }) => {
+      const prior = existingEntry(v.food, v.target)
+      if (!prior) assertFoodPlanEntryWithinCap(doc.entries.length) // a merge does not add a row
+      const addition: EntryAddition = {
+        id: randomTempId(),
+        food_plan_id: doc.plan.id,
+        day_meal_id: v.target.kind === 'cell' ? v.target.dayMealId : null,
+        is_extra: v.target.kind === 'extra',
+        food_item_id: v.food.id,
+        basis: v.result.basis,
+        amount: v.result.amount,
+        sort_order: prior?.sort_order ?? nextEntrySort(v.target),
+      }
+      return upsertFoodPlanEntry(userId, addition, v.result.preserveBasis, null)
+    },
+    meta: { errorToast: "Couldn't add the food. Please try again." },
+    onSuccess: () => {
+      setPickedFood(null)
+      setAddTarget(null)
+      return invalidate()
+    },
+  })
+
+  const editMut = useMutation({
+    mutationFn: (v: { id: string; basis: EntryBasis; amount: number }) =>
+      updateFoodPlanEntry(v.id, { basis: v.basis, amount: v.amount }),
+    meta: { errorToast: "Couldn't update the food. Please try again." },
+    onSuccess: () => {
+      setEditEntryId(null)
+      return invalidate()
+    },
+  })
+
+  const removeMut = useMutation({
+    mutationFn: (id: string) => deleteFoodPlanEntry(id),
+    meta: { errorToast: "Couldn't remove the food. Please try again." },
+    onSuccess: invalidate,
+  })
+
+  const addDayMut = useMutation({
+    mutationFn: () => {
+      assertFoodPlanDayWithinCap(doc.days.length)
+      const sortOrder = doc.days.reduce((m, d) => Math.max(m, d.sort_order + 1), 0)
+      return addFoodPlanDay(userId, doc.plan.id, sortOrder)
+    },
+    meta: { errorToast: "Couldn't add a day. Please try again." },
+    onSuccess: invalidate,
+  })
+  const deleteDayMut = useMutation({
+    mutationFn: (dayId: string) => deleteFoodPlanDay(dayId),
+    meta: { errorToast: "Couldn't delete the day. Please try again." },
+    onSuccess: invalidate,
+  })
+  const dayTypeMut = useMutation({
+    mutationFn: (v: { dayId: string; override: 'full' | 'partial' | null }) => updateDayType(v.dayId, v.override),
+    meta: { errorToast: "Couldn't change the day type. Please try again." },
+    onSuccess: invalidate,
+  })
+
+  const addMealMut = useMutation({
+    mutationFn: (name: string) => {
+      assertMealDefinitionWithinCap(doc.meals.length)
+      const sortOrder = doc.meals.reduce((m, x) => Math.max(m, x.sort_order + 1), 0)
+      return addMealDefinition(userId, doc.plan.id, name, sortOrder)
+    },
+    meta: { errorToast: "Couldn't add the meal. Please try again." },
+    onSuccess: () => {
+      setShowAddMeal(false)
+      return invalidate()
+    },
+  })
+  const omitMealMut = useMutation({
+    mutationFn: (dayMealId: string) => deleteDayMeal(dayMealId),
+    meta: { errorToast: "Couldn't omit the meal. Please try again." },
+    onSuccess: invalidate,
+  })
+  const restoreMealMut = useMutation({
+    mutationFn: (v: { dayId: string; mealId: string }) => addDayMeal(userId, doc.plan.id, v.dayId, v.mealId),
+    meta: { errorToast: "Couldn't restore the meal. Please try again." },
+    onSuccess: invalidate,
+  })
+  const deleteMealMut = useMutation({
+    mutationFn: (mealId: string) => deleteMeal(mealId),
+    meta: { errorToast: "Couldn't delete the meal. Please try again." },
+    onSuccess: invalidate,
+  })
+
+  const addTargetExisting = addTarget && pickedFood ? existingEntry(pickedFood, addTarget) : undefined
+  const editingEntry = doc.entries.find((e) => e.id === editEntryId) ?? null
+  const editingFood = editingEntry ? foodById.get(editingEntry.food_item_id) : undefined
+
+  if (foodsQuery.isLoading) {
+    return <p className="mt-6 text-sm text-gray-500">Loading your food library...</p>
+  }
+  if (foodsQuery.isError) {
+    return (
+      <div className="mt-6">
+        <p className="text-sm text-gray-700">Couldn't load your food library.</p>
+        <button
+          type="button"
+          onClick={() => foodsQuery.refetch()}
+          className="mt-2 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+        >
+          Try again
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-4">
+      <h1 className="text-lg font-semibold text-gray-900">Food plan</h1>
+      <div className="mt-4 space-y-4">
+        {view.days.map((dayView, i) => (
+          <FoodPlanDayCard
+            key={dayView.day.id}
+            dayView={dayView}
+            dayIndex={i}
+            foodById={foodById}
+            onAddFoodToCell={(dayMealId) => setAddTarget({ kind: 'cell', dayMealId })}
+            onEditEntry={(entryId) => setEditEntryId(entryId)}
+            onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
+            onSetDayType={(override) => dayTypeMut.mutate({ dayId: dayView.day.id, override })}
+            onDeleteDay={() => setConfirmDeleteDayId(dayView.day.id)}
+            allMeals={view.meals}
+            onOmitMeal={(dayMealId) => omitMealMut.mutate(dayMealId)}
+            onDeleteMeal={(mealId) => setConfirmDeleteMealId(mealId)}
+            onRestoreMeal={(dayId, mealId) => restoreMealMut.mutate({ dayId, mealId })}
+          />
+        ))}
+      </div>
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={() => addDayMut.mutate()}
+          disabled={addDayMut.isPending}
+          className="rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+        >
+          + Add day
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowAddMeal(true)}
+          className="rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+        >
+          + Add meal
+        </button>
+      </div>
+      <FoodPlanExtras
+        extras={view.extras}
+        foodById={foodById}
+        onAddFood={() => setAddTarget({ kind: 'extra' })}
+        onEditEntry={(entryId) => setEditEntryId(entryId)}
+        onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
+      />
+
+      {addTarget && !pickedFood ? (
+        <FoodPicker foods={foodsQuery.data ?? []} onPick={(f) => setPickedFood(f)} onClose={() => setAddTarget(null)} />
+      ) : null}
+      {addTarget && pickedFood ? (
+        <EntryAmountDialog
+          food={pickedFood}
+          existing={addTargetExisting}
+          saving={addMut.isPending}
+          onSave={(r) => addMut.mutate({ food: pickedFood, target: addTarget, result: r })}
+          onClose={() => { setPickedFood(null); setAddTarget(null) }}
+        />
+      ) : null}
+      {editingEntry && editingFood ? (
+        <EntryAmountDialog
+          food={editingFood}
+          initial={{ basis: editingEntry.basis, amount: editingEntry.amount }}
+          saving={editMut.isPending}
+          onSave={(r) => editMut.mutate({ id: editingEntry.id, basis: r.basis, amount: r.amount })}
+          onClose={() => setEditEntryId(null)}
+        />
+      ) : null}
+      {confirmDeleteDayId ? (
+        <ConfirmDialog
+          title="Delete day"
+          message="Delete this day? Its scheduled meals and the food planned in them will be removed. This cannot be undone."
+          confirmLabel="Delete"
+          dangerous
+          onCancel={() => setConfirmDeleteDayId(null)}
+          onConfirm={() => deleteDayMut.mutate(confirmDeleteDayId, { onSuccess: () => setConfirmDeleteDayId(null) })}
+        />
+      ) : null}
+      {showAddMeal ? (
+        <AddMealDialog saving={addMealMut.isPending} onSave={(name) => addMealMut.mutate(name)} onClose={() => setShowAddMeal(false)} />
+      ) : null}
+      {confirmDeleteMealId ? (
+        <ConfirmDialog
+          title="Delete meal"
+          message="Delete this meal from every day in the plan? The food planned in it will be removed. This cannot be undone."
+          confirmLabel="Delete"
+          dangerous
+          onCancel={() => setConfirmDeleteMealId(null)}
+          onConfirm={() => deleteMealMut.mutate(confirmDeleteMealId, { onSuccess: () => setConfirmDeleteMealId(null) })}
+        />
+      ) : null}
+    </div>
+  )
+}
