@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { CircleMinus, MoreVertical, Pencil } from 'lucide-react'
+import { CircleMinus, Copy, FolderInput, MoreVertical, Pencil } from 'lucide-react'
 import type { FoodItem, FoodPlanEntry } from '../lib/types'
 import { FLAT_TABLE_ROW, POPOVER_SURFACE } from '../components/flat-table-styles'
 import { RowMenuItem } from '../components/RowMenuItem'
@@ -12,17 +12,19 @@ function formatAmount(n: number): string {
 }
 
 export default function FoodPlanEntryRow({
-  entry, food, onEdit, onRemove, dragHandle, outerRef, outerStyle,
+  entry, food, onEdit, onMove, onCopy, onRemove, dragHandle, outerRef, outerStyle,
 }: {
   entry: FoodPlanEntry
   food: FoodItem | undefined
   onEdit?: () => void
+  onMove?: () => void
+  onCopy?: () => void
   onRemove?: () => void
   dragHandle?: React.ReactNode
   outerRef?: (el: HTMLElement | null) => void
   outerStyle?: React.CSSProperties
 }) {
-  const showKebab = Boolean(onEdit || onRemove)
+  const showKebab = Boolean(onEdit || onMove || onCopy || onRemove)
   return (
     <div ref={outerRef} style={outerStyle} className={`${FLAT_TABLE_ROW} flex items-center justify-between gap-3`}>
       <span className="flex min-w-0 items-center gap-1">
@@ -31,7 +33,7 @@ export default function FoodPlanEntryRow({
       </span>
       <span className="flex items-center gap-2 whitespace-nowrap text-sm text-gray-500">
         {formatAmount(entry.amount)} {BASIS_LABEL[entry.basis]}
-        {showKebab && <EntryKebab onEdit={onEdit} onRemove={onRemove} />}
+        {showKebab && <EntryKebab onEdit={onEdit} onMove={onMove} onCopy={onCopy} onRemove={onRemove} />}
       </span>
     </div>
   )
@@ -43,9 +45,13 @@ export default function FoodPlanEntryRow({
 // state so only one menu can be open per row.
 function EntryKebab({
   onEdit,
+  onMove,
+  onCopy,
   onRemove,
 }: {
   onEdit?: () => void
+  onMove?: () => void
+  onCopy?: () => void
   onRemove?: () => void
 }) {
   const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
@@ -73,6 +79,16 @@ function EntryKebab({
           {onEdit && (
             <RowMenuItem icon={<Pencil size={13} />} onClick={() => { close(); onEdit() }}>
               Edit
+            </RowMenuItem>
+          )}
+          {onMove && (
+            <RowMenuItem icon={<FolderInput size={13} />} onClick={() => { close(); onMove() }}>
+              Move to...
+            </RowMenuItem>
+          )}
+          {onCopy && (
+            <RowMenuItem icon={<Copy size={13} />} onClick={() => { close(); onCopy() }}>
+              Copy to...
             </RowMenuItem>
           )}
           {onRemove && (

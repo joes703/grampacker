@@ -18,7 +18,7 @@ import {
   addMealDefinition, deleteMeal, deleteDayMeal, addDayMeal, assertMealDefinitionWithinCap,
 } from '../lib/queries'
 import { randomTempId } from '../lib/random-temp-id'
-import type { EntryBasis, FoodItem, Meal, FoodPlanDocument as Doc } from '../lib/types'
+import type { EntryBasis, FoodItem, FoodPlanEntry, Meal, FoodPlanDocument as Doc } from '../lib/types'
 import { useFoodPlanView } from './useFoodPlanDocument'
 import { useFoodReorder } from './useFoodReorder'
 import FoodPlanDayCard from './FoodPlanDayCard'
@@ -26,6 +26,7 @@ import FoodPlanExtras from './FoodPlanExtras'
 import FoodPicker from './FoodPicker'
 import EntryAmountDialog, { type EntryAmountResult } from './EntryAmountDialog'
 import AddMealDialog from './AddMealDialog'
+import MoveCopyEntryDialog, { type MoveCopyTarget } from './MoveCopyEntryDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 type AddTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
@@ -90,6 +91,12 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const [confirmDeleteDayId, setConfirmDeleteDayId] = useState<string | null>(null)
   const [showAddMeal, setShowAddMeal] = useState(false)
   const [confirmDeleteMealId, setConfirmDeleteMealId] = useState<string | null>(null)
+  const [moveCopy, setMoveCopy] = useState<{ mode: 'move' | 'copy'; entry: FoodPlanEntry } | null>(null)
+
+  function openMoveCopy(mode: 'move' | 'copy', entryId: string) {
+    const entry = doc.entries.find((e) => e.id === entryId)
+    if (entry) setMoveCopy({ mode, entry })
+  }
 
   function existingEntry(food: FoodItem, target: AddTarget) {
     return doc.entries.find((e) =>
@@ -140,6 +147,20 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     mutationFn: (id: string) => deleteFoodPlanEntry(id),
     meta: { errorToast: "Couldn't remove the food. Please try again." },
     onSuccess: invalidate,
+  })
+
+  const moveCopyMut = useMutation({
+    mutationFn: (v: { entry: FoodPlanEntry; target: MoveCopyTarget; preserveBasis: EntryBasis | null; isMove: boolean }) => {
+      const addition: EntryAddition = {
+        id: randomTempId(), food_plan_id: doc.plan.id,
+        day_meal_id: v.target.kind === 'cell' ? v.target.dayMealId : null,
+        is_extra: v.target.kind === 'extra',
+        food_item_id: v.entry.food_item_id, basis: v.entry.basis, amount: v.entry.amount, sort_order: 0,
+      }
+      return upsertFoodPlanEntry(userId, addition, v.preserveBasis, v.isMove ? v.entry.id : null)
+    },
+    meta: { errorToast: "Couldn't move the food. Please try again." },
+    onSuccess: () => { setMoveCopy(null); return invalidate() },
   })
 
   const addDayMut = useMutation({
@@ -248,6 +269,8 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
                 foodById={foodById}
                 onAddFoodToCell={(dayMealId) => setAddTarget({ kind: 'cell', dayMealId })}
                 onEditEntry={(entryId) => setEditEntryId(entryId)}
+                onMoveEntry={(entryId) => openMoveCopy('move', entryId)}
+                onCopyEntry={(entryId) => openMoveCopy('copy', entryId)}
                 onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
                 onSetDayType={(override) => dayTypeMut.mutate({ dayId: dayView.day.id, override })}
                 onDeleteDay={() => setConfirmDeleteDayId(dayView.day.id)}
@@ -283,6 +306,8 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
         foodById={foodById}
         onAddFood={() => setAddTarget({ kind: 'extra' })}
         onEditEntry={(entryId) => setEditEntryId(entryId)}
+        onMoveEntry={(entryId) => openMoveCopy('move', entryId)}
+        onCopyEntry={(entryId) => openMoveCopy('copy', entryId)}
         onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
       />
 
@@ -328,6 +353,16 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           dangerous
           onCancel={() => setConfirmDeleteMealId(null)}
           onConfirm={() => deleteMealMut.mutate(confirmDeleteMealId, { onSuccess: () => setConfirmDeleteMealId(null) })}
+        />
+      ) : null}
+      {moveCopy && foodById.get(moveCopy.entry.food_item_id) ? (
+        <MoveCopyEntryDialog
+          mode={moveCopy.mode}
+          entry={moveCopy.entry}
+          food={foodById.get(moveCopy.entry.food_item_id)!}
+          view={view}
+          onConfirm={(r) => moveCopyMut.mutate({ entry: moveCopy.entry, target: r.target, preserveBasis: r.preserveBasis, isMove: moveCopy.mode === 'move' })}
+          onClose={() => setMoveCopy(null)}
         />
       ) : null}
     </div>

@@ -8,7 +8,7 @@ import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import MealSection from './MealSection'
 
 export default function FoodPlanDayCard({
-  dayView, dayIndex, listId, userId, foodById, onAddFoodToCell, onEditEntry, onRemoveEntry,
+  dayView, dayIndex, listId, userId, foodById, onAddFoodToCell, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry,
   onSetDayType, onDeleteDay, onDuplicate, allMeals, onOmitMeal, onDeleteMeal, onRestoreMeal,
   dragHandle, outerRef, outerStyle,
 }: {
@@ -19,6 +19,8 @@ export default function FoodPlanDayCard({
   foodById: Map<string, FoodItem>
   onAddFoodToCell?: (dayMealId: string) => void
   onEditEntry?: (entryId: string) => void
+  onMoveEntry?: (entryId: string) => void
+  onCopyEntry?: (entryId: string) => void
   onRemoveEntry?: (entryId: string) => void
   onSetDayType?: (override: 'full' | 'partial' | null) => void
   onDeleteDay?: () => void
@@ -54,6 +56,8 @@ export default function FoodPlanDayCard({
           foodById={foodById}
           onAddFood={onAddFoodToCell ? () => onAddFoodToCell(cell.dayMealId) : undefined}
           onEditEntry={onEditEntry}
+          onMoveEntry={onMoveEntry}
+          onCopyEntry={onCopyEntry}
           onRemoveEntry={onRemoveEntry}
           onOmit={onOmitMeal ? () => onOmitMeal(cell.dayMealId) : undefined}
           onDeleteMeal={onDeleteMeal ? () => onDeleteMeal(cell.meal.id) : undefined}

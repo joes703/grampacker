@@ -8,7 +8,7 @@ import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import CellEntryReorder from './CellEntryReorder'
 
 export default function MealSection({
-  cell, listId, userId, foodById, onAddFood, onEditEntry, onRemoveEntry, onOmit, onDeleteMeal,
+  cell, listId, userId, foodById, onAddFood, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry, onOmit, onDeleteMeal,
 }: {
   cell: CellView
   listId: string
@@ -16,6 +16,8 @@ export default function MealSection({
   foodById: Map<string, FoodItem>
   onAddFood?: () => void
   onEditEntry?: (entryId: string) => void
+  onMoveEntry?: (entryId: string) => void
+  onCopyEntry?: (entryId: string) => void
   onRemoveEntry?: (entryId: string) => void
   onOmit?: () => void
   onDeleteMeal?: () => void
@@ -32,6 +34,8 @@ export default function MealSection({
         dayMealId={cell.dayMealId}
         foodById={foodById}
         onEditEntry={onEditEntry}
+        onMoveEntry={onMoveEntry}
+        onCopyEntry={onCopyEntry}
         onRemoveEntry={onRemoveEntry}
       />
       {onAddFood ? (
