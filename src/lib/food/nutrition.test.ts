@@ -70,3 +70,39 @@ describe('nutrientTotals', () => {
     expect(r.calories).toEqual({ state: 'complete', value: 100 })
   })
 })
+
+import { calorieDensityPerGram, carbProteinRatio, fatPct, sugarPct, sodiumDensity } from './nutrition'
+
+const C = (value: number) => ({ state: 'complete' as const, value })
+const INC = (...ids: string[]) => ({ state: 'incomplete' as const, missingFoodIds: ids })
+
+describe('derived values (canonical)', () => {
+  it('calorieDensityPerGram is kcal per gram', () => {
+    expect(calorieDensityPerGram(C(200), { state: 'complete', grams: 100 })).toBeCloseTo(2, 5)
+  })
+  it('calorieDensityPerGram is null at zero or incomplete weight', () => {
+    expect(calorieDensityPerGram(C(200), { state: 'complete', grams: 0 })).toBeNull()
+    expect(calorieDensityPerGram(C(200), { state: 'incomplete', missingFoodIds: ['x'] })).toBeNull()
+    expect(calorieDensityPerGram(INC('x'), { state: 'complete', grams: 100 })).toBeNull()
+  })
+  it('carbProteinRatio needs both complete and protein > 0', () => {
+    expect(carbProteinRatio(C(60), C(20))).toBeCloseTo(3, 5)
+    expect(carbProteinRatio(C(60), C(0))).toBeNull()
+    expect(carbProteinRatio(INC('x'), C(20))).toBeNull()
+  })
+  it('fatPct uses the calculated macro-calorie denominator', () => {
+    // fat 10, carbs 20, protein 10 -> macroCal = 90 + 80 + 40 = 210; fatCal = 90; 90/210*100 = 42.857
+    expect(fatPct(C(10), C(20), C(10))).toBeCloseTo(42.857, 2)
+    expect(fatPct(C(10), INC('x'), C(10))).toBeNull() // denominator needs carbs complete
+  })
+  it('sugarPct uses sugar*4 over the macro-calorie denominator', () => {
+    // sugar 25, fat 10, carbs 40, protein 10 -> macroCal = 90 + 160 + 40 = 290; sugarCal = 100; 100/290*100 = 34.48
+    expect(sugarPct(C(25), C(10), C(40), C(10))).toBeCloseTo(34.483, 2)
+    expect(sugarPct(INC('x'), C(10), C(40), C(10))).toBeNull() // sugar (numerator) unknown
+    expect(sugarPct(C(25), C(10), INC('x'), C(10))).toBeNull() // denominator unknown -> sugar % unknown
+  })
+  it('sodiumDensity is mg per kcal', () => {
+    expect(sodiumDensity(C(400), C(2000))).toBeCloseTo(0.2, 5)
+    expect(sodiumDensity(C(400), C(0))).toBeNull()
+  })
+})

@@ -66,3 +66,40 @@ export function nutrientTotals(
   for (const key of NUTRIENT_KEYS) out[key] = nutrientTotal(entries, foodById, key)
   return out
 }
+
+// kcal per gram (canonical). The display layer converts to kcal/oz; the domain
+// never sees the weight unit. Null when calories or weight are unknown, or at
+// zero weight.
+export function calorieDensityPerGram(calories: NutrientTotal, weight: WeightTotal): number | null {
+  if (calories.state !== 'complete' || weight.state !== 'complete' || weight.grams <= 0) return null
+  return calories.value / weight.grams
+}
+
+export function carbProteinRatio(carbs: NutrientTotal, protein: NutrientTotal): number | null {
+  if (carbs.state !== 'complete' || protein.state !== 'complete' || protein.value <= 0) return null
+  return carbs.value / protein.value
+}
+
+// Calculated macro calories: fat*9 + carbs*4 + protein*4. The shared denominator
+// for fat % / sugar %. Requires all three complete.
+export function fatPct(fat: NutrientTotal, carbs: NutrientTotal, protein: NutrientTotal): number | null {
+  if (fat.state !== 'complete' || carbs.state !== 'complete' || protein.state !== 'complete') return null
+  const macroCalories = fat.value * 9 + carbs.value * 4 + protein.value * 4
+  if (macroCalories <= 0) return null
+  return (fat.value * 9) / macroCalories * 100
+}
+
+export function sugarPct(
+  sugar: NutrientTotal, fat: NutrientTotal, carbs: NutrientTotal, protein: NutrientTotal,
+): number | null {
+  if (sugar.state !== 'complete' || fat.state !== 'complete' || carbs.state !== 'complete' || protein.state !== 'complete') return null
+  const macroCalories = fat.value * 9 + carbs.value * 4 + protein.value * 4
+  if (macroCalories <= 0) return null
+  return (sugar.value * 4) / macroCalories * 100
+}
+
+// Sodium per calorie, displayed as mg/kcal.
+export function sodiumDensity(sodiumMg: NutrientTotal, calories: NutrientTotal): number | null {
+  if (sodiumMg.state !== 'complete' || calories.state !== 'complete' || calories.value <= 0) return null
+  return sodiumMg.value / calories.value
+}
