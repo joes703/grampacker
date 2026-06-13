@@ -1,7 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import Modal from '../components/Modal'
-import { createFoodItem, queryKeys, nextFoodItemSortOrder, type FoodItemInput } from '../lib/queries'
+import {
+  assertFoodItemWithinCap,
+  createFoodItem,
+  queryKeys,
+  nextFoodItemSortOrder,
+  type FoodItemInput,
+} from '../lib/queries'
 import type { FoodItem } from '../lib/types'
 import { FLAT_TABLE_ROW, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import FoodItemDialog from './FoodItemDialog'
@@ -29,7 +35,10 @@ export default function FoodPicker({
   const qc = useQueryClient()
 
   const createMut = useMutation({
-    mutationFn: (patch: FoodItemInput) => createFoodItem(userId, patch, nextFoodItemSortOrder(foods)),
+    mutationFn: (patch: FoodItemInput) => {
+      assertFoodItemWithinCap(foods)
+      return createFoodItem(userId, patch, nextFoodItemSortOrder(foods))
+    },
     meta: { errorToast: "Couldn't add the food. Please try again." },
     onSuccess: (created) => {
       setShowCreate(false)

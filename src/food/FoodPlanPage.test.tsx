@@ -30,6 +30,7 @@ vi.mock('../lib/queries', () => ({
   fetchFoodItems: vi.fn(),
   // entry writes
   upsertFoodPlanEntry: vi.fn(),
+  upsertFoodPlanEntries: vi.fn(),
   updateFoodPlanEntry: vi.fn(),
   deleteFoodPlanEntry: vi.fn(),
   assertFoodPlanEntryWithinCap: () => {},
@@ -48,6 +49,7 @@ vi.mock('../lib/queries', () => ({
   // picker
   createFoodItem: vi.fn(),
   nextFoodItemSortOrder: () => 0,
+  assertFoodItemWithinCap: () => {},
   // reorder
   bulkUpdateSortOrder: vi.fn(),
 }))
@@ -56,7 +58,7 @@ vi.mock('../auth/use-require-session', () => ({
   useRequireSession: () => ({ userId: 'u1' }),
 }))
 
-import { fetchFoodPlan, fetchFoodItems, createFoodPlan, upsertFoodPlanEntry } from '../lib/queries'
+import { fetchFoodPlan, fetchFoodItems, createFoodPlan, upsertFoodPlanEntries } from '../lib/queries'
 import FoodPlanPage from './FoodPlanPage'
 
 // jsdom does not implement the native <dialog> showModal/close API that
@@ -227,7 +229,7 @@ describe('FoodPlanPage add food', () => {
     const food = makeFood({ id: 'food-oat', name: 'Oatmeal' })
     vi.mocked(fetchFoodPlan).mockResolvedValue(makeDoc())
     vi.mocked(fetchFoodItems).mockResolvedValue([food])
-    vi.mocked(upsertFoodPlanEntry).mockResolvedValue(makeEntry({ id: 'saved', food_item_id: 'food-oat' }))
+    vi.mocked(upsertFoodPlanEntries).mockResolvedValue([makeEntry({ id: 'saved', food_item_id: 'food-oat' })])
     renderPage()
 
     // Open the first cell's add picker.
@@ -240,9 +242,10 @@ describe('FoodPlanPage add food', () => {
     // Amount dialog: leave defaults (servings, amount 1), Save.
     fireEvent.click(await screen.findByRole('button', { name: 'Save' }))
 
-    await waitFor(() => expect(upsertFoodPlanEntry).toHaveBeenCalled())
-    const call = vi.mocked(upsertFoodPlanEntry).mock.calls[0]!
-    expect(call[2]).toBeNull() // preserveBasis
+    await waitFor(() => expect(upsertFoodPlanEntries).toHaveBeenCalled())
+    const call = vi.mocked(upsertFoodPlanEntries).mock.calls[0]!
+    expect(call[1]).toHaveLength(1)
+    expect(call[1][0]?.preserve_basis).toBeNull()
   })
 
   it('passes the chosen preserveBasis when merging into a cell that already holds the food', async () => {
@@ -251,7 +254,7 @@ describe('FoodPlanPage add food', () => {
     const existing = makeEntry({ id: 'entry1', food_item_id: 'food-oat', day_meal_id: 'dm-b', basis: 'servings', amount: 2 })
     vi.mocked(fetchFoodPlan).mockResolvedValue(makeDoc([existing]))
     vi.mocked(fetchFoodItems).mockResolvedValue([food])
-    vi.mocked(upsertFoodPlanEntry).mockResolvedValue(makeEntry({ id: 'saved', food_item_id: 'food-oat' }))
+    vi.mocked(upsertFoodPlanEntries).mockResolvedValue([makeEntry({ id: 'saved', food_item_id: 'food-oat' })])
     renderPage()
 
     // Open the Breakfast cell's add (first "+ Add food").
@@ -273,8 +276,8 @@ describe('FoodPlanPage add food', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    await waitFor(() => expect(upsertFoodPlanEntry).toHaveBeenCalled())
-    const call = vi.mocked(upsertFoodPlanEntry).mock.calls[0]!
-    expect(call[2]).toBe('servings') // chosen preserveBasis, not null
+    await waitFor(() => expect(upsertFoodPlanEntries).toHaveBeenCalled())
+    const call = vi.mocked(upsertFoodPlanEntries).mock.calls[0]!
+    expect(call[1][0]?.preserve_basis).toBe('servings')
   })
 })

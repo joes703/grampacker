@@ -110,9 +110,8 @@ function SortableEntryRow({
       type="button"
       {...attributes}
       {...listeners}
-      tabIndex={-1}
       aria-label="Drag to reorder"
-      className="inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center text-gray-300 hover:text-gray-500"
+      className="inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center text-gray-300 hover:text-gray-500 focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
     >
       <GripVertical size={14} />
     </button>

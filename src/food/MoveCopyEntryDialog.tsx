@@ -24,6 +24,8 @@ export default function MoveCopyEntryDialog({
   const [preserve, setPreserve] = useState<EntryBasis>(entry.basis)
 
   const needsPreserve = Boolean(conflict) && conflict!.basis !== entry.basis
+  const preserveOptions = needsPreserve ? [conflict!.basis, entry.basis] : []
+  const selectedPreserve = preserveOptions.includes(preserve) ? preserve : entry.basis
   const canConfirm = target !== null && !(isSameLocation(entry, target))
 
   return (
@@ -52,9 +54,9 @@ export default function MoveCopyEntryDialog({
         {needsPreserve ? (
           <fieldset className="mt-2 rounded-lg border border-gray-200 p-3">
             <legend className="px-1 text-xs font-medium text-gray-600">Destination already has this food. Keep the combined total in</legend>
-            {[conflict!.basis, entry.basis].map((b) => (
+            {preserveOptions.map((b) => (
               <label key={b} className="flex items-center gap-2 text-sm text-gray-700">
-                <input type="radio" name="preserve" checked={preserve === b} onChange={() => setPreserve(b)} /> {BASIS_LABEL[b]}
+                <input type="radio" name="preserve" checked={selectedPreserve === b} onChange={() => setPreserve(b)} /> {BASIS_LABEL[b]}
               </label>
             ))}
           </fieldset>
@@ -63,7 +65,7 @@ export default function MoveCopyEntryDialog({
         <div className="mt-3 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100">Cancel</button>
           <PrimaryButton type="button" disabled={!canConfirm}
-            onClick={() => target && onConfirm({ target, preserveBasis: needsPreserve ? preserve : null })}>
+            onClick={() => target && onConfirm({ target, preserveBasis: needsPreserve ? selectedPreserve : null })}>
             {mode === 'move' ? 'Move here' : 'Copy here'}
           </PrimaryButton>
         </div>
