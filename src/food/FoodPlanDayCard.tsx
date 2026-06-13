@@ -6,6 +6,7 @@ import { FLAT_TABLE_SURFACE, POPOVER_SURFACE } from '../components/flat-table-st
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import MealSection from './MealSection'
+import DayTotalsStrip from './DayTotalsStrip'
 
 export default function FoodPlanDayCard({
   dayView, dayIndex, listId, userId, foodById, onAddFoodToCell, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry,
@@ -41,6 +42,7 @@ export default function FoodPlanDayCard({
           <h2 className="text-sm font-semibold text-gray-900">Day {dayIndex + 1}</h2>
         </div>
         <div className="flex items-center gap-2">
+          <DayTotalsStrip dayView={dayView} foodById={foodById} />
           <span className="text-xs uppercase tracking-wide text-gray-400">{dayView.dayType}</span>
           {(onSetDayType || onDeleteDay || onDuplicate) && (
             <DayKebab currentOverride={dayView.day.day_type_override} onSetDayType={onSetDayType} onDeleteDay={onDeleteDay} onDuplicate={onDuplicate} />
