@@ -10,6 +10,7 @@ import MealSection from './MealSection'
 export default function FoodPlanDayCard({
   dayView, dayIndex, listId, userId, foodById, onAddFoodToCell, onEditEntry, onRemoveEntry,
   onSetDayType, onDeleteDay, allMeals, onOmitMeal, onDeleteMeal, onRestoreMeal,
+  dragHandle, outerRef, outerStyle,
 }: {
   dayView: DayView
   dayIndex: number
@@ -25,11 +26,17 @@ export default function FoodPlanDayCard({
   onOmitMeal?: (dayMealId: string) => void
   onDeleteMeal?: (mealId: string) => void
   onRestoreMeal?: (dayId: string, mealId: string) => void
+  dragHandle?: React.ReactNode
+  outerRef?: (el: HTMLElement | null) => void
+  outerStyle?: React.CSSProperties
 }) {
   return (
-    <div className={FLAT_TABLE_SURFACE}>
+    <div ref={outerRef} style={outerStyle} className={FLAT_TABLE_SURFACE}>
       <div className="flex items-center justify-between px-3 py-2">
-        <h2 className="text-sm font-semibold text-gray-900">Day {dayIndex + 1}</h2>
+        <div className="flex items-center gap-1">
+          {dragHandle}
+          <h2 className="text-sm font-semibold text-gray-900">Day {dayIndex + 1}</h2>
+        </div>
         <div className="flex items-center gap-2">
           <span className="text-xs uppercase tracking-wide text-gray-400">{dayView.dayType}</span>
           {(onSetDayType || onDeleteDay) && (

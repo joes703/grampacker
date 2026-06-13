@@ -1,15 +1,26 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  queryKeys, fetchFoodItems,
+  DndContext, MouseSensor, TouchSensor, KeyboardSensor,
+  useSensor, useSensors, closestCenter, type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext, sortableKeyboardCoordinates,
+  verticalListSortingStrategy, horizontalListSortingStrategy, useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { GripVertical } from 'lucide-react'
+import {
+  queryKeys, fetchFoodItems, fetchFoodPlan,
   upsertFoodPlanEntry, updateFoodPlanEntry, deleteFoodPlanEntry,
   assertFoodPlanEntryWithinCap, type EntryAddition,
   addFoodPlanDay, deleteFoodPlanDay, updateDayType, assertFoodPlanDayWithinCap,
   addMealDefinition, deleteMeal, deleteDayMeal, addDayMeal, assertMealDefinitionWithinCap,
 } from '../lib/queries'
 import { randomTempId } from '../lib/random-temp-id'
-import type { EntryBasis, FoodItem, FoodPlanDocument as Doc } from '../lib/types'
+import type { EntryBasis, FoodItem, Meal, FoodPlanDocument as Doc } from '../lib/types'
 import { useFoodPlanView } from './useFoodPlanDocument'
+import { useFoodReorder } from './useFoodReorder'
 import FoodPlanDayCard from './FoodPlanDayCard'
 import FoodPlanExtras from './FoodPlanExtras'
 import FoodPicker from './FoodPicker'
@@ -20,12 +31,58 @@ import ConfirmDialog from '../components/ConfirmDialog'
 type AddTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
 
 export default function FoodPlanDocument({ listId, userId, doc }: { listId: string; userId: string; doc: Doc }) {
-  const view = useFoodPlanView(doc)
+  // Colocate the food-plan subscription here: the day/meal reorder DndContexts
+  // below mutate the ['food-plan', listId] cache, so per the colocation rule
+  // (project_reorder_subscription_colocation, commit b8624ec) the component
+  // hosting those contexts must also subscribe and derive its view from the
+  // subscribed data rather than from the prop.
+  const planQuery = useQuery({
+    queryKey: queryKeys.foodPlan(listId),
+    queryFn: () => fetchFoodPlan(userId, listId),
+  })
+  const view = useFoodPlanView(planQuery.data ?? doc)
   const foodsQuery = useQuery({ queryKey: queryKeys.foodItems(), queryFn: () => fetchFoodItems(userId) })
   const foodById = new Map<string, FoodItem>((foodsQuery.data ?? []).map((f) => [f.id, f]))
 
   const qc = useQueryClient()
   const invalidate = () => qc.invalidateQueries({ queryKey: queryKeys.foodPlan(listId) })
+
+  const reorderDays = useFoodReorder(listId, 'days')
+  const reorderMeals = useFoodReorder(listId, 'meals')
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  function handleDayDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const ids = view.days.map((d) => d.day.id)
+    const from = ids.indexOf(String(active.id))
+    const to = ids.indexOf(String(over.id))
+    if (from < 0 || to < 0) return
+    const next = [...ids]
+    const [moved] = next.splice(from, 1)
+    if (moved === undefined) return
+    next.splice(to, 0, moved)
+    reorderDays.mutate(next)
+  }
+
+  function handleMealDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const ids = view.meals.map((m) => m.id)
+    const from = ids.indexOf(String(active.id))
+    const to = ids.indexOf(String(over.id))
+    if (from < 0 || to < 0) return
+    const next = [...ids]
+    const [moved] = next.splice(from, 1)
+    if (moved === undefined) return
+    next.splice(to, 0, moved)
+    reorderMeals.mutate(next)
+  }
 
   const [addTarget, setAddTarget] = useState<AddTarget | null>(null)
   const [pickedFood, setPickedFood] = useState<FoodItem | null>(null)
@@ -158,27 +215,41 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   return (
     <div className="mt-4">
       <h1 className="text-lg font-semibold text-gray-900">Food plan</h1>
-      <div className="mt-4 space-y-4">
-        {view.days.map((dayView, i) => (
-          <FoodPlanDayCard
-            key={dayView.day.id}
-            dayView={dayView}
-            dayIndex={i}
-            listId={listId}
-            userId={userId}
-            foodById={foodById}
-            onAddFoodToCell={(dayMealId) => setAddTarget({ kind: 'cell', dayMealId })}
-            onEditEntry={(entryId) => setEditEntryId(entryId)}
-            onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
-            onSetDayType={(override) => dayTypeMut.mutate({ dayId: dayView.day.id, override })}
-            onDeleteDay={() => setConfirmDeleteDayId(dayView.day.id)}
-            allMeals={view.meals}
-            onOmitMeal={(dayMealId) => omitMealMut.mutate(dayMealId)}
-            onDeleteMeal={(mealId) => setConfirmDeleteMealId(mealId)}
-            onRestoreMeal={(dayId, mealId) => restoreMealMut.mutate({ dayId, mealId })}
-          />
-        ))}
-      </div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleMealDragEnd}>
+        <SortableContext items={view.meals.map((m) => m.id)} strategy={horizontalListSortingStrategy}>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Meals</span>
+            {view.meals.map((m) => (
+              <SortableMealChip key={m.id} meal={m} />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
+        <SortableContext items={view.days.map((d) => d.day.id)} strategy={verticalListSortingStrategy}>
+          <div className="mt-4 space-y-4">
+            {view.days.map((dayView, i) => (
+              <SortableDayCard
+                key={dayView.day.id}
+                dayView={dayView}
+                dayIndex={i}
+                listId={listId}
+                userId={userId}
+                foodById={foodById}
+                onAddFoodToCell={(dayMealId) => setAddTarget({ kind: 'cell', dayMealId })}
+                onEditEntry={(entryId) => setEditEntryId(entryId)}
+                onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
+                onSetDayType={(override) => dayTypeMut.mutate({ dayId: dayView.day.id, override })}
+                onDeleteDay={() => setConfirmDeleteDayId(dayView.day.id)}
+                allMeals={view.meals}
+                onOmitMeal={(dayMealId) => omitMealMut.mutate(dayMealId)}
+                onDeleteMeal={(mealId) => setConfirmDeleteMealId(mealId)}
+                onRestoreMeal={(dayId, mealId) => restoreMealMut.mutate({ dayId, mealId })}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
       <div className="mt-3 flex gap-2">
         <button
           type="button"
@@ -249,5 +320,63 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
         />
       ) : null}
     </div>
+  )
+}
+
+// Sortable wrapper for a day card. Calls useSortable, builds the grip handle,
+// and forwards the outer ref + transform style + handle to the presentational
+// FoodPlanDayCard. Must be rendered inside the day SortableContext. Accepts the
+// same props as FoodPlanDayCard and spreads them through.
+function SortableDayCard(props: React.ComponentProps<typeof FoodPlanDayCard>) {
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id: props.dayView.day.id })
+
+  const outerStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  const handle = (
+    <button
+      type="button"
+      {...attributes}
+      {...listeners}
+      tabIndex={-1}
+      aria-label="Drag to reorder day"
+      className="inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center text-gray-300 hover:text-gray-500"
+    >
+      <GripVertical size={14} />
+    </button>
+  )
+
+  return (
+    <FoodPlanDayCard {...props} dragHandle={handle} outerRef={setNodeRef} outerStyle={outerStyle} />
+  )
+}
+
+// Sortable chip for the meal legend. Calls useSortable, renders a pill with a
+// grip handle and the meal name. Must be rendered inside the meal SortableContext.
+function SortableMealChip({ meal }: { meal: Meal }) {
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id: meal.id })
+
+  return (
+    <span
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2 py-1 text-xs text-gray-700"
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        tabIndex={-1}
+        aria-label="Drag to reorder meal"
+        className="inline-flex cursor-grab items-center text-gray-300 hover:text-gray-500"
+      >
+        <GripVertical size={12} />
+      </button>
+      {meal.name}
+    </span>
   )
 }
