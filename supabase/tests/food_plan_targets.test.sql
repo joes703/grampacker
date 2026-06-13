@@ -110,19 +110,20 @@ select throws_ok($$
   insert into public.food_plan_daily_targets (user_id, food_plan_id, metric, mode, target_min)
   values ('00000000-0000-0000-0000-0000000000c1','e1000000-0000-0000-0000-000000000001','fiber','min',30)
 $$, '42501', NULL, 'c2 cannot insert a row owned by c1 (RLS WITH CHECK)');
-select is(
-  (with u as (
-     update public.food_plan_daily_targets set target_min = 9999
-     where food_plan_id = 'e1000000-0000-0000-0000-000000000001' and metric = 'calories'
-     returning 1)
-   select count(*)::int from u),
+-- A data-modifying CTE must attach to the TOP LEVEL of the statement; it cannot
+-- be nested inside a scalar sub-select. So the WITH leads the SELECT and is()
+-- reads the CTE from a sub-select in its first argument.
+with u as (
+  update public.food_plan_daily_targets set target_min = 9999
+  where food_plan_id = 'e1000000-0000-0000-0000-000000000001' and metric = 'calories'
+  returning 1)
+select is((select count(*)::int from u),
   0, 'c2 update of c1 daily target affects zero rows (RLS USING hides it)');
-select is(
-  (with d as (
-     delete from public.food_plan_daily_targets
-     where food_plan_id = 'e1000000-0000-0000-0000-000000000001' and metric = 'calories'
-     returning 1)
-   select count(*)::int from d),
+with d as (
+  delete from public.food_plan_daily_targets
+  where food_plan_id = 'e1000000-0000-0000-0000-000000000001' and metric = 'calories'
+  returning 1)
+select is((select count(*)::int from d),
   0, 'c2 delete of c1 daily target affects zero rows (RLS USING hides it)');
 
 -- F) Cascade: back as c1, deleting the plan removes its targets ---------------
