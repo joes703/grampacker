@@ -1,31 +1,91 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  queryKeys, fetchFoodItems,
-  upsertFoodPlanEntry, updateFoodPlanEntry, deleteFoodPlanEntry,
+  DndContext, MouseSensor, TouchSensor, KeyboardSensor,
+  useSensor, useSensors, closestCenter, type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext, sortableKeyboardCoordinates,
+  verticalListSortingStrategy, horizontalListSortingStrategy, useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { GripVertical } from 'lucide-react'
+import {
+  queryKeys, fetchFoodItems, fetchFoodPlan,
+  upsertFoodPlanEntry, upsertFoodPlanEntries, updateFoodPlanEntry, deleteFoodPlanEntry,
   assertFoodPlanEntryWithinCap, type EntryAddition,
-  addFoodPlanDay, deleteFoodPlanDay, updateDayType, assertFoodPlanDayWithinCap,
+  addFoodPlanDay, deleteFoodPlanDay, updateDayType, assertFoodPlanDayWithinCap, duplicateFoodPlanDay,
   addMealDefinition, deleteMeal, deleteDayMeal, addDayMeal, assertMealDefinitionWithinCap,
 } from '../lib/queries'
 import { randomTempId } from '../lib/random-temp-id'
-import type { EntryBasis, FoodItem, FoodPlanDocument as Doc } from '../lib/types'
+import type { EntryBasis, FoodItem, FoodPlanEntry, Meal, FoodPlanDocument as Doc } from '../lib/types'
 import { useFoodPlanView } from './useFoodPlanDocument'
+import { useFoodReorder } from './useFoodReorder'
 import FoodPlanDayCard from './FoodPlanDayCard'
 import FoodPlanExtras from './FoodPlanExtras'
 import FoodPicker from './FoodPicker'
 import EntryAmountDialog, { type EntryAmountResult } from './EntryAmountDialog'
 import AddMealDialog from './AddMealDialog'
+import MoveCopyEntryDialog, { type MoveCopyTarget } from './MoveCopyEntryDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
+import ScheduleGridDialog, { type ScheduleToggle } from './ScheduleGridDialog'
 
 type AddTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
 
 export default function FoodPlanDocument({ listId, userId, doc }: { listId: string; userId: string; doc: Doc }) {
-  const view = useFoodPlanView(doc)
+  // Colocate the food-plan subscription here: the day/meal reorder DndContexts
+  // below mutate the ['food-plan', listId] cache, so per the colocation rule
+  // (project_reorder_subscription_colocation, commit b8624ec) the component
+  // hosting those contexts must also subscribe and derive its view from the
+  // subscribed data rather than from the prop.
+  const planQuery = useQuery({
+    queryKey: queryKeys.foodPlan(listId),
+    queryFn: () => fetchFoodPlan(userId, listId),
+  })
+  const currentDoc = planQuery.data ?? doc
+  const view = useFoodPlanView(currentDoc)
   const foodsQuery = useQuery({ queryKey: queryKeys.foodItems(), queryFn: () => fetchFoodItems(userId) })
   const foodById = new Map<string, FoodItem>((foodsQuery.data ?? []).map((f) => [f.id, f]))
 
   const qc = useQueryClient()
   const invalidate = () => qc.invalidateQueries({ queryKey: queryKeys.foodPlan(listId) })
+
+  const reorderDays = useFoodReorder(listId, 'days')
+  const reorderMeals = useFoodReorder(listId, 'meals')
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  function handleDayDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const ids = view.days.map((d) => d.day.id)
+    const from = ids.indexOf(String(active.id))
+    const to = ids.indexOf(String(over.id))
+    if (from < 0 || to < 0) return
+    const next = [...ids]
+    const [moved] = next.splice(from, 1)
+    if (moved === undefined) return
+    next.splice(to, 0, moved)
+    reorderDays.mutate(next)
+  }
+
+  function handleMealDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const ids = view.meals.map((m) => m.id)
+    const from = ids.indexOf(String(active.id))
+    const to = ids.indexOf(String(over.id))
+    if (from < 0 || to < 0) return
+    const next = [...ids]
+    const [moved] = next.splice(from, 1)
+    if (moved === undefined) return
+    next.splice(to, 0, moved)
+    reorderMeals.mutate(next)
+  }
 
   const [addTarget, setAddTarget] = useState<AddTarget | null>(null)
   const [pickedFood, setPickedFood] = useState<FoodItem | null>(null)
@@ -33,33 +93,63 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const [confirmDeleteDayId, setConfirmDeleteDayId] = useState<string | null>(null)
   const [showAddMeal, setShowAddMeal] = useState(false)
   const [confirmDeleteMealId, setConfirmDeleteMealId] = useState<string | null>(null)
+  const [moveCopy, setMoveCopy] = useState<{ mode: 'move' | 'copy'; entry: FoodPlanEntry } | null>(null)
+  const [showGrid, setShowGrid] = useState(false)
 
-  function existingEntry(food: FoodItem, target: AddTarget) {
-    return doc.entries.find((e) =>
-      e.food_item_id === food.id &&
+  function openMoveCopy(mode: 'move' | 'copy', entryId: string) {
+    const entry = currentDoc.entries.find((e) => e.id === entryId)
+    if (entry) setMoveCopy({ mode, entry })
+  }
+
+  function entryAtTarget(foodId: string, target: AddTarget) {
+    return currentDoc.entries.find((e) =>
+      e.food_item_id === foodId &&
       (target.kind === 'extra' ? e.is_extra : !e.is_extra && e.day_meal_id === target.dayMealId))
   }
+  function existingEntry(food: FoodItem, target: AddTarget) {
+    return entryAtTarget(food.id, target)
+  }
   function nextEntrySort(target: AddTarget): number {
-    const siblings = doc.entries.filter((e) =>
+    const siblings = currentDoc.entries.filter((e) =>
       target.kind === 'extra' ? e.is_extra : e.day_meal_id === target.dayMealId)
     return siblings.reduce((max, e) => Math.max(max, e.sort_order + 1), 0)
   }
 
+  const usedFoodIds = new Set(currentDoc.entries.map((e) => e.food_item_id))
+
+  function computeAlsoDays(target: AddTarget): { dayMealId: string; label: string }[] {
+    if (target.kind !== 'cell') return []
+    let mealId: string | undefined
+    view.days.forEach((dv) => dv.cells.forEach((c) => { if (c.dayMealId === target.dayMealId) mealId = c.meal.id }))
+    if (mealId === undefined) return []
+    const out: { dayMealId: string; label: string }[] = []
+    view.days.forEach((dv, i) => dv.cells.forEach((c) => {
+      if (c.meal.id === mealId && c.dayMealId !== target.dayMealId) out.push({ dayMealId: c.dayMealId, label: `Day ${i + 1}` })
+    }))
+    return out
+  }
+
   const addMut = useMutation({
-    mutationFn: (v: { food: FoodItem; target: AddTarget; result: EntryAmountResult }) => {
-      const prior = existingEntry(v.food, v.target)
-      if (!prior) assertFoodPlanEntryWithinCap(doc.entries.length) // a merge does not add a row
-      const addition: EntryAddition = {
-        id: randomTempId(),
-        food_plan_id: doc.plan.id,
-        day_meal_id: v.target.kind === 'cell' ? v.target.dayMealId : null,
-        is_extra: v.target.kind === 'extra',
-        food_item_id: v.food.id,
-        basis: v.result.basis,
-        amount: v.result.amount,
-        sort_order: prior?.sort_order ?? nextEntrySort(v.target),
+    mutationFn: async (v: { food: FoodItem; target: AddTarget; result: EntryAmountResult }) => {
+      const targets: AddTarget[] = v.target.kind === 'cell'
+        ? [v.target, ...v.result.alsoDayMealIds.map((id) => ({ kind: 'cell' as const, dayMealId: id }))]
+        : [v.target]
+      const newCount = targets.filter((t) => !existingEntry(v.food, t)).length
+      if (newCount > 0) {
+        assertFoodPlanEntryWithinCap(currentDoc.entries.length + newCount - 1)
       }
-      return upsertFoodPlanEntry(userId, addition, v.result.preserveBasis, null)
+      const additions = targets.map((t) => {
+        const prior = existingEntry(v.food, t)
+        const addition: EntryAddition = {
+          id: randomTempId(), food_plan_id: currentDoc.plan.id,
+          day_meal_id: t.kind === 'cell' ? t.dayMealId : null,
+          is_extra: t.kind === 'extra', food_item_id: v.food.id,
+          basis: v.result.basis, amount: v.result.amount,
+          sort_order: prior?.sort_order ?? nextEntrySort(t),
+        }
+        return { entry: addition, preserve_basis: v.result.preserveBasis }
+      })
+      await upsertFoodPlanEntries(userId, additions)
     },
     meta: { errorToast: "Couldn't add the food. Please try again." },
     onSuccess: () => {
@@ -85,11 +175,30 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     onSuccess: invalidate,
   })
 
+  const moveCopyMut = useMutation({
+    mutationFn: (v: { entry: FoodPlanEntry; target: MoveCopyTarget; preserveBasis: EntryBasis | null; isMove: boolean }) => {
+      if (!v.isMove && !entryAtTarget(v.entry.food_item_id, v.target)) {
+        assertFoodPlanEntryWithinCap(currentDoc.entries.length)
+      }
+      const addition: EntryAddition = {
+        id: randomTempId(), food_plan_id: currentDoc.plan.id,
+        day_meal_id: v.target.kind === 'cell' ? v.target.dayMealId : null,
+        is_extra: v.target.kind === 'extra',
+        food_item_id: v.entry.food_item_id, basis: v.entry.basis, amount: v.entry.amount,
+        // append at the destination (ignored by the server on a merge)
+        sort_order: nextEntrySort(v.target),
+      }
+      return upsertFoodPlanEntry(userId, addition, v.preserveBasis, v.isMove ? v.entry.id : null)
+    },
+    meta: { errorToast: "Couldn't move or copy the food. Please try again." },
+    onSuccess: () => { setMoveCopy(null); return invalidate() },
+  })
+
   const addDayMut = useMutation({
     mutationFn: () => {
-      assertFoodPlanDayWithinCap(doc.days.length)
-      const sortOrder = doc.days.reduce((m, d) => Math.max(m, d.sort_order + 1), 0)
-      return addFoodPlanDay(userId, doc.plan.id, sortOrder)
+      assertFoodPlanDayWithinCap(currentDoc.days.length)
+      const sortOrder = currentDoc.days.reduce((m, d) => Math.max(m, d.sort_order + 1), 0)
+      return addFoodPlanDay(userId, currentDoc.plan.id, sortOrder)
     },
     meta: { errorToast: "Couldn't add a day. Please try again." },
     onSuccess: invalidate,
@@ -97,6 +206,22 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const deleteDayMut = useMutation({
     mutationFn: (dayId: string) => deleteFoodPlanDay(dayId),
     meta: { errorToast: "Couldn't delete the day. Please try again." },
+    onSuccess: invalidate,
+  })
+  const duplicateDayMut = useMutation({
+    mutationFn: (dayId: string) => {
+      assertFoodPlanDayWithinCap(currentDoc.days.length)
+      const sourceEntryCount = view.days
+        .find((day) => day.day.id === dayId)
+        ?.cells.reduce((total, cell) => total + cell.entries.length, 0) ?? 0
+      if (sourceEntryCount > 0) {
+        assertFoodPlanEntryWithinCap(currentDoc.entries.length + sourceEntryCount - 1)
+      }
+      const sortOrder = currentDoc.days.reduce((m, d) => Math.max(m, d.sort_order + 1), 0)
+      // server copies the LIVE source day (schedule + entries) by id
+      return duplicateFoodPlanDay(userId, dayId, sortOrder)
+    },
+    meta: { errorToast: "Couldn't duplicate the day. Please try again." },
     onSuccess: invalidate,
   })
   const dayTypeMut = useMutation({
@@ -107,9 +232,9 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
 
   const addMealMut = useMutation({
     mutationFn: (name: string) => {
-      assertMealDefinitionWithinCap(doc.meals.length)
-      const sortOrder = doc.meals.reduce((m, x) => Math.max(m, x.sort_order + 1), 0)
-      return addMealDefinition(userId, doc.plan.id, name, sortOrder)
+      assertMealDefinitionWithinCap(currentDoc.meals.length)
+      const sortOrder = currentDoc.meals.reduce((m, x) => Math.max(m, x.sort_order + 1), 0)
+      return addMealDefinition(userId, currentDoc.plan.id, name, sortOrder)
     },
     meta: { errorToast: "Couldn't add the meal. Please try again." },
     onSuccess: () => {
@@ -123,7 +248,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     onSuccess: invalidate,
   })
   const restoreMealMut = useMutation({
-    mutationFn: (v: { dayId: string; mealId: string }) => addDayMeal(userId, doc.plan.id, v.dayId, v.mealId),
+    mutationFn: (v: { dayId: string; mealId: string }) => addDayMeal(userId, currentDoc.plan.id, v.dayId, v.mealId),
     meta: { errorToast: "Couldn't restore the meal. Please try again." },
     onSuccess: invalidate,
   })
@@ -132,9 +257,20 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     meta: { errorToast: "Couldn't delete the meal. Please try again." },
     onSuccess: invalidate,
   })
+  const toggleCellMut = useMutation({
+    mutationFn: async (v: ScheduleToggle) => {
+      if (v.on) {
+        await addDayMeal(userId, currentDoc.plan.id, v.dayId, v.mealId)
+      } else {
+        await deleteDayMeal(v.dayMealId ?? '')
+      }
+    },
+    meta: { errorToast: "Couldn't update the schedule. Please try again." },
+    onSuccess: invalidate,
+  })
 
   const addTargetExisting = addTarget && pickedFood ? existingEntry(pickedFood, addTarget) : undefined
-  const editingEntry = doc.entries.find((e) => e.id === editEntryId) ?? null
+  const editingEntry = currentDoc.entries.find((e) => e.id === editEntryId) ?? null
   const editingFood = editingEntry ? foodById.get(editingEntry.food_item_id) : undefined
 
   if (foodsQuery.isLoading) {
@@ -158,25 +294,44 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   return (
     <div className="mt-4">
       <h1 className="text-lg font-semibold text-gray-900">Food plan</h1>
-      <div className="mt-4 space-y-4">
-        {view.days.map((dayView, i) => (
-          <FoodPlanDayCard
-            key={dayView.day.id}
-            dayView={dayView}
-            dayIndex={i}
-            foodById={foodById}
-            onAddFoodToCell={(dayMealId) => setAddTarget({ kind: 'cell', dayMealId })}
-            onEditEntry={(entryId) => setEditEntryId(entryId)}
-            onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
-            onSetDayType={(override) => dayTypeMut.mutate({ dayId: dayView.day.id, override })}
-            onDeleteDay={() => setConfirmDeleteDayId(dayView.day.id)}
-            allMeals={view.meals}
-            onOmitMeal={(dayMealId) => omitMealMut.mutate(dayMealId)}
-            onDeleteMeal={(mealId) => setConfirmDeleteMealId(mealId)}
-            onRestoreMeal={(dayId, mealId) => restoreMealMut.mutate({ dayId, mealId })}
-          />
-        ))}
-      </div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleMealDragEnd}>
+        <SortableContext items={view.meals.map((m) => m.id)} strategy={horizontalListSortingStrategy}>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Meals</span>
+            {view.meals.map((m) => (
+              <SortableMealChip key={m.id} meal={m} />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
+        <SortableContext items={view.days.map((d) => d.day.id)} strategy={verticalListSortingStrategy}>
+          <div className="mt-4 space-y-4">
+            {view.days.map((dayView, i) => (
+              <SortableDayCard
+                key={dayView.day.id}
+                dayView={dayView}
+                dayIndex={i}
+                listId={listId}
+                userId={userId}
+                foodById={foodById}
+                onAddFoodToCell={(dayMealId) => setAddTarget({ kind: 'cell', dayMealId })}
+                onEditEntry={(entryId) => setEditEntryId(entryId)}
+                onMoveEntry={(entryId) => openMoveCopy('move', entryId)}
+                onCopyEntry={(entryId) => openMoveCopy('copy', entryId)}
+                onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
+                onSetDayType={(override) => dayTypeMut.mutate({ dayId: dayView.day.id, override })}
+                onDeleteDay={() => setConfirmDeleteDayId(dayView.day.id)}
+                onDuplicate={() => duplicateDayMut.mutate(dayView.day.id)}
+                allMeals={view.meals}
+                onOmitMeal={(dayMealId) => omitMealMut.mutate(dayMealId)}
+                onDeleteMeal={(mealId) => setConfirmDeleteMealId(mealId)}
+                onRestoreMeal={(dayId, mealId) => restoreMealMut.mutate({ dayId, mealId })}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
       <div className="mt-3 flex gap-2">
         <button
           type="button"
@@ -193,22 +348,38 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
         >
           + Add meal
         </button>
+        <button
+          type="button"
+          onClick={() => setShowGrid(true)}
+          className="rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+        >
+          Edit schedule
+        </button>
       </div>
       <FoodPlanExtras
         extras={view.extras}
         foodById={foodById}
         onAddFood={() => setAddTarget({ kind: 'extra' })}
         onEditEntry={(entryId) => setEditEntryId(entryId)}
+        onMoveEntry={(entryId) => openMoveCopy('move', entryId)}
+        onCopyEntry={(entryId) => openMoveCopy('copy', entryId)}
         onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
       />
 
       {addTarget && !pickedFood ? (
-        <FoodPicker foods={foodsQuery.data ?? []} onPick={(f) => setPickedFood(f)} onClose={() => setAddTarget(null)} />
+        <FoodPicker
+          foods={foodsQuery.data ?? []}
+          usedFoodIds={usedFoodIds}
+          userId={userId}
+          onPick={(f) => setPickedFood(f)}
+          onClose={() => setAddTarget(null)}
+        />
       ) : null}
       {addTarget && pickedFood ? (
         <EntryAmountDialog
           food={pickedFood}
           existing={addTargetExisting}
+          alsoDays={addTarget.kind === 'cell' ? computeAlsoDays(addTarget) : undefined}
           saving={addMut.isPending}
           onSave={(r) => addMut.mutate({ food: pickedFood, target: addTarget, result: r })}
           onClose={() => { setPickedFood(null); setAddTarget(null) }}
@@ -246,6 +417,75 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           onConfirm={() => deleteMealMut.mutate(confirmDeleteMealId, { onSuccess: () => setConfirmDeleteMealId(null) })}
         />
       ) : null}
+      {moveCopy && foodById.get(moveCopy.entry.food_item_id) ? (
+        <MoveCopyEntryDialog
+          mode={moveCopy.mode}
+          entry={moveCopy.entry}
+          food={foodById.get(moveCopy.entry.food_item_id)!}
+          view={view}
+          onConfirm={(r) => moveCopyMut.mutate({ entry: moveCopy.entry, target: r.target, preserveBasis: r.preserveBasis, isMove: moveCopy.mode === 'move' })}
+          onClose={() => setMoveCopy(null)}
+        />
+      ) : null}
+      {showGrid ? (
+        <ScheduleGridDialog view={view} onToggle={(t) => toggleCellMut.mutate(t)} onClose={() => setShowGrid(false)} />
+      ) : null}
     </div>
+  )
+}
+
+// Sortable wrapper for a day card. Calls useSortable, builds the grip handle,
+// and forwards the outer ref + transform style + handle to the presentational
+// FoodPlanDayCard. Must be rendered inside the day SortableContext. Accepts the
+// same props as FoodPlanDayCard and spreads them through.
+function SortableDayCard(props: React.ComponentProps<typeof FoodPlanDayCard>) {
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id: props.dayView.day.id })
+
+  const outerStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  const handle = (
+    <button
+      type="button"
+      {...attributes}
+      {...listeners}
+      aria-label="Drag to reorder day"
+      className="inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center text-gray-300 hover:text-gray-500 focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+    >
+      <GripVertical size={14} />
+    </button>
+  )
+
+  return (
+    <FoodPlanDayCard {...props} dragHandle={handle} outerRef={setNodeRef} outerStyle={outerStyle} />
+  )
+}
+
+// Sortable chip for the meal legend. Calls useSortable, renders a pill with a
+// grip handle and the meal name. Must be rendered inside the meal SortableContext.
+function SortableMealChip({ meal }: { meal: Meal }) {
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id: meal.id })
+
+  return (
+    <span
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2 py-1 text-xs text-gray-700"
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder meal"
+        className="inline-flex cursor-grab items-center text-gray-300 hover:text-gray-500 focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      >
+        <GripVertical size={12} />
+      </button>
+      {meal.name}
+    </span>
   )
 }

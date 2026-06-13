@@ -3,12 +3,14 @@ import { FLAT_TABLE_SURFACE, FLAT_TABLE_HEADER } from '../components/flat-table-
 import FoodPlanEntryRow from './FoodPlanEntryRow'
 
 export default function FoodPlanExtras({
-  extras, foodById, onAddFood, onEditEntry, onRemoveEntry,
+  extras, foodById, onAddFood, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry,
 }: {
   extras: FoodPlanEntry[]
   foodById: Map<string, FoodItem>
   onAddFood?: () => void
   onEditEntry?: (entryId: string) => void
+  onMoveEntry?: (entryId: string) => void
+  onCopyEntry?: (entryId: string) => void
   onRemoveEntry?: (entryId: string) => void
 }) {
   return (
@@ -23,6 +25,8 @@ export default function FoodPlanExtras({
             entry={entry}
             food={foodById.get(entry.food_item_id)}
             onEdit={onEditEntry ? () => onEditEntry(entry.id) : undefined}
+            onMove={onMoveEntry ? () => onMoveEntry(entry.id) : undefined}
+            onCopy={onCopyEntry ? () => onCopyEntry(entry.id) : undefined}
             onRemove={onRemoveEntry ? () => onRemoveEntry(entry.id) : undefined}
           />
         ))

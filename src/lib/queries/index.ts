@@ -103,8 +103,8 @@ export {
 export { GEAR_ITEM_AUTH_SELECT, GEAR_ITEM_PUBLIC_SELECT } from './projections'
 export {
   fetchFoodPlan, createFoodPlan, addFoodPlanDay, addMealDefinition, duplicateFoodPlanDay,
-  upsertFoodPlanEntry, updateFoodPlanEntry, deleteFoodPlanEntry, deleteFoodPlanDay,
+  upsertFoodPlanEntry, upsertFoodPlanEntries, updateFoodPlanEntry, deleteFoodPlanEntry, deleteFoodPlanDay,
   updateDayType, renameMeal, deleteMeal, deleteDayMeal, addDayMeal, deleteFoodPlan,
   assertFoodPlanDayWithinCap, assertMealDefinitionWithinCap, assertFoodPlanEntryWithinCap,
 } from './food-plan'
-export type { EntryAddition } from './food-plan'
+export type { EntryAddition, EntryBatchAddition } from './food-plan'

@@ -3,7 +3,7 @@ import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import type { EntryBasis, FoodItem, FoodPlanEntry } from '../lib/types'
 
-export type EntryAmountResult = { basis: EntryBasis; amount: number; preserveBasis: EntryBasis | null }
+export type EntryAmountResult = { basis: EntryBasis; amount: number; preserveBasis: EntryBasis | null; alsoDayMealIds: string[] }
 
 function availableBases(food: FoodItem): EntryBasis[] {
   const bases: EntryBasis[] = ['servings', 'weight']
@@ -13,11 +13,12 @@ function availableBases(food: FoodItem): EntryBasis[] {
 const BASIS_LABEL: Record<EntryBasis, string> = { servings: 'Servings', packages: 'Packages', weight: 'Weight (g)' }
 
 export default function EntryAmountDialog({
-  food, existing, initial, saving = false, onSave, onClose,
+  food, existing, initial, alsoDays, saving = false, onSave, onClose,
 }: {
   food: FoodItem
   existing?: FoodPlanEntry
   initial?: { basis: EntryBasis; amount: number }
+  alsoDays?: { dayMealId: string; label: string }[]
   saving?: boolean
   onSave: (result: EntryAmountResult) => void
   onClose: () => void
@@ -26,6 +27,7 @@ export default function EntryAmountDialog({
   const [basis, setBasis] = useState<EntryBasis>(initial?.basis ?? bases[0] ?? 'servings')
   const [amount, setAmount] = useState(initial ? String(initial.amount) : '1')
   const [preserve, setPreserve] = useState<EntryBasis>(existing?.basis ?? basis)
+  const [alsoChecked, setAlsoChecked] = useState<Set<string>>(() => new Set())
 
   const parsed = Number(amount)
   const canSave = Number.isFinite(parsed) && parsed > 0
@@ -38,6 +40,7 @@ export default function EntryAmountDialog({
       basis,
       amount: parsed,
       preserveBasis: isMergeConflict ? preserve : null,
+      alsoDayMealIds: alsoDays ? [...alsoChecked] : [],
     })
   }
 
@@ -63,6 +66,29 @@ export default function EntryAmountDialog({
             onChange={(e) => setAmount(e.target.value)}
             className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none" />
         </label>
+
+        {alsoDays && alsoDays.length > 0 ? (
+          <fieldset className="rounded-lg border border-gray-200 p-3">
+            <legend className="px-1 text-xs font-medium text-gray-600">Also add to</legend>
+            <div className="mt-1 space-y-1">
+              {alsoDays.map((d) => (
+                <label key={d.dayMealId} className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={alsoChecked.has(d.dayMealId)}
+                    onChange={(e) => setAlsoChecked((prev) => {
+                      const next = new Set(prev)
+                      if (e.target.checked) next.add(d.dayMealId)
+                      else next.delete(d.dayMealId)
+                      return next
+                    })}
+                  />
+                  {d.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        ) : null}
 
         {isMergeConflict ? (
           <fieldset className="rounded-lg border border-gray-200 p-3">

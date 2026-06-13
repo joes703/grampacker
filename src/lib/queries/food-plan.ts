@@ -85,6 +85,21 @@ export async function upsertFoodPlanEntry(
   return data as FoodPlanEntry
 }
 
+export type EntryBatchAddition = {
+  entry: EntryAddition
+  preserve_basis: EntryBasis | null
+}
+export async function upsertFoodPlanEntries(
+  userId: string, additions: EntryBatchAddition[],
+): Promise<FoodPlanEntry[]> {
+  const { data, error } = await supabase.rpc('upsert_food_plan_entries', {
+    p_user_id: userId,
+    p_additions: additions,
+  })
+  if (error) throw error
+  return data as FoodPlanEntry[]
+}
+
 // ---- single-row writes (basis-validation trigger still fires).
 export async function updateFoodPlanEntry(id: string, patch: Partial<Pick<FoodPlanEntry, 'basis' | 'amount'>>): Promise<void> {
   const { error } = await supabase.from('food_plan_entries').update(patch).eq('id', id); if (error) throw error

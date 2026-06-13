@@ -1,6 +1,6 @@
 -- supabase/tests/food_plan_rpcs.test.sql
 begin;
-select plan(29);
+select plan(31);
 
 create extension if not exists pgtap with schema extensions;
 
@@ -161,6 +161,49 @@ select lives_ok($$
 $$, 'move-merge into an occupied cell');
 select is((select amount from public.food_plan_entries where day_meal_id='a3300000-0000-0000-0000-000000000001' and food_item_id='dd000000-0000-0000-0000-000000000002'),
           7::numeric, 'merged to 7 servings from the SOURCE amount (2 + 5), ignoring p_entry amount (999)');
+
+-- == Block J: multi-location add is atomic ==
+-- The first addition is valid and the second has an unknown day_meal. The
+-- wrapper must roll the first insert back when the second one fails.
+select throws_ok($$
+  select * from public.upsert_food_plan_entries(
+    '00000000-0000-0000-0000-0000000000c1',
+    jsonb_build_array(
+      jsonb_build_object(
+        'entry', jsonb_build_object(
+          'id','a4500000-0000-0000-0000-000000000001',
+          'food_plan_id',(select id from public.food_plans where list_id='cc000000-0000-0000-0000-000000000004'),
+          'day_meal_id','a3300000-0000-0000-0000-000000000002',
+          'is_extra',false,
+          'food_item_id','dd000000-0000-0000-0000-000000000001',
+          'basis','servings',
+          'amount',1,
+          'sort_order',0
+        ),
+        'preserve_basis', null
+      ),
+      jsonb_build_object(
+        'entry', jsonb_build_object(
+          'id','a4500000-0000-0000-0000-000000000002',
+          'food_plan_id',(select id from public.food_plans where list_id='cc000000-0000-0000-0000-000000000004'),
+          'day_meal_id','00000000-0000-0000-0000-00000000dead',
+          'is_extra',false,
+          'food_item_id','dd000000-0000-0000-0000-000000000002',
+          'basis','servings',
+          'amount',1,
+          'sort_order',0
+        ),
+        'preserve_basis', null
+      )
+    )
+  )
+$$, 'P0002', NULL, 'a late batch failure aborts the multi-location add');
+select is(
+  (select count(*)::int from public.food_plan_entries
+   where id='a4500000-0000-0000-0000-000000000001'),
+  0,
+  'the valid first addition was rolled back with the failed batch'
+);
 
 -- == Block G: move at the entry cap (in-place relocate, count unchanged) ==
 insert into public.lists (id, user_id, name, slug, sort_order)
