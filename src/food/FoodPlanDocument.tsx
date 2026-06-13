@@ -109,21 +109,38 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     return siblings.reduce((max, e) => Math.max(max, e.sort_order + 1), 0)
   }
 
+  const usedFoodIds = new Set(doc.entries.map((e) => e.food_item_id))
+
+  function computeAlsoDays(target: AddTarget): { dayMealId: string; label: string }[] {
+    if (target.kind !== 'cell') return []
+    let mealId: string | undefined
+    view.days.forEach((dv) => dv.cells.forEach((c) => { if (c.dayMealId === target.dayMealId) mealId = c.meal.id }))
+    if (mealId === undefined) return []
+    const out: { dayMealId: string; label: string }[] = []
+    view.days.forEach((dv, i) => dv.cells.forEach((c) => {
+      if (c.meal.id === mealId && c.dayMealId !== target.dayMealId) out.push({ dayMealId: c.dayMealId, label: `Day ${i + 1}` })
+    }))
+    return out
+  }
+
   const addMut = useMutation({
-    mutationFn: (v: { food: FoodItem; target: AddTarget; result: EntryAmountResult }) => {
-      const prior = existingEntry(v.food, v.target)
-      if (!prior) assertFoodPlanEntryWithinCap(doc.entries.length) // a merge does not add a row
-      const addition: EntryAddition = {
-        id: randomTempId(),
-        food_plan_id: doc.plan.id,
-        day_meal_id: v.target.kind === 'cell' ? v.target.dayMealId : null,
-        is_extra: v.target.kind === 'extra',
-        food_item_id: v.food.id,
-        basis: v.result.basis,
-        amount: v.result.amount,
-        sort_order: prior?.sort_order ?? nextEntrySort(v.target),
-      }
-      return upsertFoodPlanEntry(userId, addition, v.result.preserveBasis, null)
+    mutationFn: async (v: { food: FoodItem; target: AddTarget; result: EntryAmountResult }) => {
+      const targets: AddTarget[] = v.target.kind === 'cell'
+        ? [v.target, ...v.result.alsoDayMealIds.map((id) => ({ kind: 'cell' as const, dayMealId: id }))]
+        : [v.target]
+      const newCount = targets.filter((t) => !existingEntry(v.food, t)).length
+      if (newCount > 0) assertFoodPlanEntryWithinCap(doc.entries.length) // best-effort preflight; server enforces per row
+      await Promise.all(targets.map((t) => {
+        const prior = existingEntry(v.food, t)
+        const addition: EntryAddition = {
+          id: randomTempId(), food_plan_id: doc.plan.id,
+          day_meal_id: t.kind === 'cell' ? t.dayMealId : null,
+          is_extra: t.kind === 'extra', food_item_id: v.food.id,
+          basis: v.result.basis, amount: v.result.amount,
+          sort_order: prior?.sort_order ?? nextEntrySort(t),
+        }
+        return upsertFoodPlanEntry(userId, addition, v.result.preserveBasis, null)
+      }))
     },
     meta: { errorToast: "Couldn't add the food. Please try again." },
     onSuccess: () => {
@@ -312,12 +329,19 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
       />
 
       {addTarget && !pickedFood ? (
-        <FoodPicker foods={foodsQuery.data ?? []} onPick={(f) => setPickedFood(f)} onClose={() => setAddTarget(null)} />
+        <FoodPicker
+          foods={foodsQuery.data ?? []}
+          usedFoodIds={usedFoodIds}
+          userId={userId}
+          onPick={(f) => setPickedFood(f)}
+          onClose={() => setAddTarget(null)}
+        />
       ) : null}
       {addTarget && pickedFood ? (
         <EntryAmountDialog
           food={pickedFood}
           existing={addTargetExisting}
+          alsoDays={addTarget.kind === 'cell' ? computeAlsoDays(addTarget) : undefined}
           saving={addMut.isPending}
           onSave={(r) => addMut.mutate({ food: pickedFood, target: addTarget, result: r })}
           onClose={() => { setPickedFood(null); setAddTarget(null) }}
