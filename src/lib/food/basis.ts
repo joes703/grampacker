@@ -31,7 +31,7 @@ export type FoodPlanStructure = { meals: NewMeal[]; days: NewDay[]; dayMeals: Ne
 // Dinner (anchor), dayCount days, every default Meal on every day. The create
 // dialog may drop cells from dayMeals before passing the structure to
 // createFoodPlan (which accepts any unique valid subset). dayCount is the
-// explicitly-entered number of days, independent of nights.
+// explicitly-entered number of days.
 export function buildFoodPlanStructure(dayCount: number, mintId: () => string): FoodPlanStructure {
   const meals: NewMeal[] = [
     { id: mintId(), name: 'Breakfast', anchor_role: 'breakfast', is_default: true, sort_order: 0 },

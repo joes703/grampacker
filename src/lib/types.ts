@@ -140,7 +140,7 @@ export type EntryBasis = 'servings' | 'packages' | 'weight'
 
 export type FoodPlan = {
   id: string; user_id: string; list_id: string
-  num_nights: number | null; is_food_shared: boolean
+  is_food_shared: boolean
   created_at: string; updated_at: string
 }
 export type Meal = {

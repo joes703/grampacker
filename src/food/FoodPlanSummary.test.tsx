@@ -4,7 +4,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import FoodPlanSummary from './FoodPlanSummary'
 import type { FoodPlanView } from '../lib/food/view'
-import type { FoodItem, FoodPlan, Meal } from '../lib/types'
+import type { FoodItem, Meal } from '../lib/types'
 
 afterEach(cleanup)
 
@@ -21,7 +21,6 @@ const meal: Meal = { id: 'm', user_id: 'u', food_plan_id: 'p', name: 'Breakfast'
 function ent(id: string, dayMealId: string | null, amount: number, isExtra = false) {
   return { id, user_id: 'u', food_plan_id: 'p', day_meal_id: dayMealId, is_extra: isExtra, food_item_id: 'a', basis: 'servings' as const, amount, sort_order: 0, created_at: '', updated_at: '' }
 }
-const plan: FoodPlan = { id: 'p', user_id: 'u', list_id: 'L1', num_nights: 1, is_food_shared: false, created_at: '', updated_at: '' }
 const view: FoodPlanView = {
   meals: [meal],
   days: [
@@ -34,30 +33,30 @@ const view: FoodPlanView = {
 describe('FoodPlanSummary', () => {
   const foods = new Map([['a', food({})]])
   it('Planned total sums numbered days only', () => {
-    render(<FoodPlanSummary plan={plan} view={view} foodById={foods} />)
+    render(<FoodPlanSummary view={view} foodById={foods} />)
     const row = screen.getByRole('row', { name: /Planned total/i })
     expect(within(row).getByText('300 kcal')).toBeInTheDocument()
   })
   it('Packed total = Planned + Extras', () => {
-    render(<FoodPlanSummary plan={plan} view={view} foodById={foods} />)
+    render(<FoodPlanSummary view={view} foodById={foods} />)
     const row = screen.getByRole('row', { name: /Packed total/i })
     expect(within(row).getByText('600 kcal')).toBeInTheDocument()
   })
   it('states the Full-day average denominator in the headline and the row', () => {
-    render(<FoodPlanSummary plan={plan} view={view} foodById={foods} />)
+    render(<FoodPlanSummary view={view} foodById={foods} />)
     expect(screen.getByText(/200 kcal \(1 of 2 days counted\)/i)).toBeInTheDocument()
     expect(screen.getAllByText(/1 of 2 days counted/i).length).toBeGreaterThanOrEqual(2)
   })
   it('reveals optional columns via More metrics', async () => {
     const user = userEvent.setup()
-    render(<FoodPlanSummary plan={plan} view={view} foodById={foods} />)
+    render(<FoodPlanSummary view={view} foodById={foods} />)
     expect(screen.queryByRole('columnheader', { name: /Fiber/i })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /More metrics/i }))
     expect(screen.getByRole('columnheader', { name: /Fiber/i })).toBeInTheDocument()
   })
   it('collapses and reopens the summary table', async () => {
     const user = userEvent.setup()
-    render(<FoodPlanSummary plan={plan} view={view} foodById={foods} />)
+    render(<FoodPlanSummary view={view} foodById={foods} />)
     expect(screen.getByRole('row', { name: /Planned total/i })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Summary' }))
     expect(screen.queryByRole('row', { name: /Planned total/i })).not.toBeInTheDocument()
@@ -66,7 +65,7 @@ describe('FoodPlanSummary', () => {
   })
   it('shows the incomplete marker when a contributing food lacks the nutrient', () => {
     const partial = new Map([['a', food({ sodium_mg: null })]])
-    render(<FoodPlanSummary plan={plan} view={view} foodById={partial} />)
+    render(<FoodPlanSummary view={view} foodById={partial} />)
     expect(screen.getAllByRole('button', { name: /missing this nutrient/i }).length).toBeGreaterThan(0)
   })
 })

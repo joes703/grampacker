@@ -1,8 +1,11 @@
 -- supabase/tests/food_plan_tables.test.sql
 begin;
-select plan(16);
+select plan(17);
 
 create extension if not exists pgtap with schema extensions;
+
+select hasnt_column('public', 'food_plans', 'num_nights',
+  'food plans do not store an unused nights value');
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000b1', 'planowner@test.dev'),
@@ -24,13 +27,13 @@ insert into public.food_items (id, user_id, name, serving_weight_grams, calories
 values ('d0000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-0000000000b1', 'Spare', 50, 100);
 
 select lives_ok($$
-  insert into public.food_plans (id, user_id, list_id, num_nights)
-  values ('e0000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-0000000000b1','c0000000-0000-0000-0000-000000000001', 3)
+  insert into public.food_plans (id, user_id, list_id)
+  values ('e0000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-0000000000b1','c0000000-0000-0000-0000-000000000001')
 $$, 'owner creates a plan');
 
 select throws_ok($$
-  insert into public.food_plans (user_id, list_id, num_nights)
-  values ('00000000-0000-0000-0000-0000000000b1','c0000000-0000-0000-0000-000000000001', 2)
+  insert into public.food_plans (user_id, list_id)
+  values ('00000000-0000-0000-0000-0000000000b1','c0000000-0000-0000-0000-000000000001')
 $$, '23505', NULL, 'a second plan on the same list is rejected (unique list_id)');
 
 insert into public.meals (id, user_id, food_plan_id, name, anchor_role, is_default, sort_order)
@@ -73,8 +76,8 @@ $$, '22023', NULL, 'packages basis without servings_per_package is rejected (unk
 
 insert into public.lists (id, user_id, name, slug, sort_order)
 values ('c0000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-0000000000b1','Trip2','plslg2',1);
-insert into public.food_plans (id, user_id, list_id, num_nights)
-values ('e0000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-0000000000b1','c0000000-0000-0000-0000-000000000002',1);
+insert into public.food_plans (id, user_id, list_id)
+values ('e0000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-0000000000b1','c0000000-0000-0000-0000-000000000002');
 -- e2 gets its OWN meal so the (day_id, meal_id) pair below is brand new and the
 -- global day_meals unique (day_id, meal_id) does not preempt the composite FK.
 -- day '...22220001' belongs to e1, so (day_id, food_plan_id = e2) fails the day FK.

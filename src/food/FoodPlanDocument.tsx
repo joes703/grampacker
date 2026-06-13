@@ -305,7 +305,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           </div>
         </SortableContext>
       </DndContext>
-      <FoodPlanSummary plan={currentDoc.plan} view={view} foodById={foodById} />
+      <FoodPlanSummary view={view} foodById={foodById} />
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
         <SortableContext items={view.days.map((d) => d.day.id)} strategy={verticalListSortingStrategy}>
           <div className="mt-4 space-y-4">

@@ -23,6 +23,7 @@ describe('CreateFoodPlanDialog', () => {
     const onCreate = vi.fn()
     render(<CreateFoodPlanDialog onCreate={onCreate} onClose={vi.fn()} />)
 
+    expect(screen.queryByLabelText(/Nights/i)).toBeNull()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Day 1 Breakfast' }))
     fireEvent.change(screen.getByLabelText('Days'), { target: { value: '2' } })
 

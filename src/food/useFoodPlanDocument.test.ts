@@ -5,7 +5,7 @@ import type { FoodPlanDocument } from '../lib/types'
 function baseDoc(): FoodPlanDocument {
   const ts = ''
   return {
-    plan: { id: 'p', user_id: 'u', list_id: 'l', num_nights: 1, is_food_shared: false, created_at: ts, updated_at: ts },
+    plan: { id: 'p', user_id: 'u', list_id: 'l', is_food_shared: false, created_at: ts, updated_at: ts },
     meals: [
       { id: 'mB', user_id: 'u', food_plan_id: 'p', name: 'Breakfast', anchor_role: 'breakfast', is_default: true, sort_order: 0, created_at: ts, updated_at: ts },
       { id: 'mD', user_id: 'u', food_plan_id: 'p', name: 'Dinner', anchor_role: 'dinner', is_default: true, sort_order: 1, created_at: ts, updated_at: ts },
