@@ -12,17 +12,23 @@ function formatAmount(n: number): string {
 }
 
 export default function FoodPlanEntryRow({
-  entry, food, onEdit, onRemove,
+  entry, food, onEdit, onRemove, dragHandle, outerRef, outerStyle,
 }: {
   entry: FoodPlanEntry
   food: FoodItem | undefined
   onEdit?: () => void
   onRemove?: () => void
+  dragHandle?: React.ReactNode
+  outerRef?: (el: HTMLElement | null) => void
+  outerStyle?: React.CSSProperties
 }) {
   const showKebab = Boolean(onEdit || onRemove)
   return (
-    <div className={`${FLAT_TABLE_ROW} flex items-center justify-between gap-3`}>
-      <span className="min-w-0 truncate text-sm text-gray-900">{food?.name ?? 'Unknown food'}</span>
+    <div ref={outerRef} style={outerStyle} className={`${FLAT_TABLE_ROW} flex items-center justify-between gap-3`}>
+      <span className="flex min-w-0 items-center gap-1">
+        {dragHandle}
+        <span className="min-w-0 truncate text-sm text-gray-900">{food?.name ?? 'Unknown food'}</span>
+      </span>
       <span className="flex items-center gap-2 whitespace-nowrap text-sm text-gray-500">
         {formatAmount(entry.amount)} {BASIS_LABEL[entry.basis]}
         {showKebab && <EntryKebab onEdit={onEdit} onRemove={onRemove} />}

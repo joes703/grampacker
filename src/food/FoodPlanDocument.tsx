@@ -164,6 +164,8 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
             key={dayView.day.id}
             dayView={dayView}
             dayIndex={i}
+            listId={listId}
+            userId={userId}
             foodById={foodById}
             onAddFoodToCell={(dayMealId) => setAddTarget({ kind: 'cell', dayMealId })}
             onEditEntry={(entryId) => setEditEntryId(entryId)}

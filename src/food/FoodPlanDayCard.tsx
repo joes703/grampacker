@@ -8,11 +8,13 @@ import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import MealSection from './MealSection'
 
 export default function FoodPlanDayCard({
-  dayView, dayIndex, foodById, onAddFoodToCell, onEditEntry, onRemoveEntry,
+  dayView, dayIndex, listId, userId, foodById, onAddFoodToCell, onEditEntry, onRemoveEntry,
   onSetDayType, onDeleteDay, allMeals, onOmitMeal, onDeleteMeal, onRestoreMeal,
 }: {
   dayView: DayView
   dayIndex: number
+  listId: string
+  userId: string
   foodById: Map<string, FoodItem>
   onAddFoodToCell?: (dayMealId: string) => void
   onEditEntry?: (entryId: string) => void
@@ -39,6 +41,8 @@ export default function FoodPlanDayCard({
         <MealSection
           key={cell.dayMealId}
           cell={cell}
+          listId={listId}
+          userId={userId}
           foodById={foodById}
           onAddFood={onAddFoodToCell ? () => onAddFoodToCell(cell.dayMealId) : undefined}
           onEditEntry={onEditEntry}
