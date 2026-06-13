@@ -103,3 +103,63 @@ export function sodiumDensity(sodiumMg: NutrientTotal, calories: NutrientTotal):
   if (sodiumMg.state !== 'complete' || calories.state !== 'complete' || calories.value <= 0) return null
   return sodiumMg.value / calories.value
 }
+
+import type { FoodPlanView } from './view'
+
+export type GroupSummary = {
+  weight: WeightTotal
+  totals: Record<NutrientKey, NutrientTotal>
+  calorieDensityPerGram: number | null
+}
+export type DaySummary = GroupSummary & { dayId: string; dayType: 'full' | 'partial' }
+export type TripSummary = {
+  days: DaySummary[]
+  extras: GroupSummary
+  planned: GroupSummary
+  packed: GroupSummary
+  fullDayAverage: GroupSummary & { fullDays: number; totalDays: number }
+}
+
+function makeGroup(entries: NutEntry[], foodById: Map<string, FoodItem>): GroupSummary {
+  const totals = nutrientTotals(entries, foodById)
+  const weight = totalWeight(entries, foodById)
+  return { weight, totals, calorieDensityPerGram: calorieDensityPerGram(totals.calories, weight) }
+}
+
+export function summarizeTrip(view: FoodPlanView, foodById: Map<string, FoodItem>): TripSummary {
+  const days: DaySummary[] = view.days.map((d) => {
+    const entries = d.cells.flatMap((c) => c.entries)
+    return { dayId: d.day.id, dayType: d.dayType, ...makeGroup(entries, foodById) }
+  })
+
+  const plannedEntries = view.days.flatMap((d) => d.cells.flatMap((c) => c.entries))
+  const planned = makeGroup(plannedEntries, foodById)
+  const extras = makeGroup(view.extras, foodById)
+  const packed = makeGroup([...plannedEntries, ...view.extras], foodById)
+
+  // Full-day average from COMBINED full-day entries: per-nutrient average =
+  // combined / fullDays; density = combined calories / combined weight (intensive,
+  // NOT the mean of daily densities).
+  const fullViews = view.days.filter((d) => d.dayType === 'full')
+  const fullEntries = fullViews.flatMap((d) => d.cells.flatMap((c) => c.entries))
+  const n = fullViews.length
+  const combinedTotals = nutrientTotals(fullEntries, foodById)
+  const combinedWeight = totalWeight(fullEntries, foodById)
+  const avgTotals = {} as Record<NutrientKey, NutrientTotal>
+  for (const key of NUTRIENT_KEYS) {
+    const t = combinedTotals[key]
+    avgTotals[key] = t.state === 'incomplete' ? t : { state: 'complete', value: n > 0 ? t.value / n : 0 }
+  }
+  const avgWeight: WeightTotal = combinedWeight.state === 'incomplete'
+    ? combinedWeight
+    : { state: 'complete', grams: n > 0 ? combinedWeight.grams / n : 0 }
+  const fullDayAverage = {
+    weight: avgWeight,
+    totals: avgTotals,
+    calorieDensityPerGram: calorieDensityPerGram(combinedTotals.calories, combinedWeight),
+    fullDays: n,
+    totalDays: days.length,
+  }
+
+  return { days, extras, planned, packed, fullDayAverage }
+}

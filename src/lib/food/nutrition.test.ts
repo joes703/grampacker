@@ -71,7 +71,19 @@ describe('nutrientTotals', () => {
   })
 })
 
-import { calorieDensityPerGram, carbProteinRatio, fatPct, sugarPct, sodiumDensity } from './nutrition'
+import { calorieDensityPerGram, carbProteinRatio, fatPct, sugarPct, sodiumDensity, summarizeTrip } from './nutrition'
+import type { FoodPlanView } from './view'
+import type { Meal, FoodPlanDay } from '../types'
+
+function meal(id: string): Meal {
+  return { id, user_id: 'u', food_plan_id: 'p', name: id, anchor_role: null, is_default: false, sort_order: 0, created_at: '', updated_at: '' }
+}
+function day(id: string): FoodPlanDay {
+  return { id, user_id: 'u', food_plan_id: 'p', day_type_override: null, sort_order: 0, created_at: '', updated_at: '' }
+}
+function cell(dayMealId: string, entries: FoodPlanEntry[]) {
+  return { dayMealId, meal: meal('m'), entries }
+}
 
 const C = (value: number) => ({ state: 'complete' as const, value })
 const INC = (...ids: string[]) => ({ state: 'incomplete' as const, missingFoodIds: ids })
@@ -104,5 +116,67 @@ describe('derived values (canonical)', () => {
   it('sodiumDensity is mg per kcal', () => {
     expect(sodiumDensity(C(400), C(2000))).toBeCloseTo(0.2, 5)
     expect(sodiumDensity(C(400), C(0))).toBeNull()
+  })
+})
+
+describe('summarizeTrip', () => {
+  const foods = new Map([['a', food({ id: 'a', calories_per_serving: 100, serving_weight_grams: 50 })]])
+  const view: FoodPlanView = {
+    meals: [meal('m')],
+    days: [
+      { day: day('d1'), dayType: 'full', scheduledMealIds: new Set(['m']),
+        cells: [cell('dm1', [entry({ id: 'x', day_meal_id: 'dm1', food_item_id: 'a', amount: 2 })])] },
+      { day: day('d2'), dayType: 'partial', scheduledMealIds: new Set(['m']),
+        cells: [cell('dm2', [entry({ id: 'y', day_meal_id: 'dm2', food_item_id: 'a', amount: 1 })])] },
+    ],
+    extras: [entry({ id: 'z', day_meal_id: null, is_extra: true, food_item_id: 'a', amount: 3 })],
+  }
+
+  it('Planned sums numbered days only, with its own density', () => {
+    const s = summarizeTrip(view, foods)
+    expect(s.planned.totals.calories).toEqual({ state: 'complete', value: 300 })
+    expect(s.planned.calorieDensityPerGram).toBeCloseTo(2, 5)
+  })
+  it('Packed = Planned + Extras', () => {
+    const s = summarizeTrip(view, foods)
+    expect(s.packed.totals.calories).toEqual({ state: 'complete', value: 600 })
+  })
+  it('Extras has its own calculable density', () => {
+    const s = summarizeTrip(view, foods)
+    expect(s.extras.calorieDensityPerGram).toBeCloseTo(2, 5)
+  })
+  it('Full-day average uses only Full days, with weight and combined-ratio density', () => {
+    const s = summarizeTrip(view, foods)
+    expect(s.fullDayAverage.fullDays).toBe(1)
+    expect(s.fullDayAverage.totalDays).toBe(2)
+    expect(s.fullDayAverage.totals.calories).toEqual({ state: 'complete', value: 200 })
+    expect(s.fullDayAverage.weight).toEqual({ state: 'complete', grams: 100 })
+    expect(s.fullDayAverage.calorieDensityPerGram).toBeCloseTo(2, 5)
+  })
+  it('per-day summaries carry type, weight, totals, density', () => {
+    const s = summarizeTrip(view, foods)
+    expect(s.days[0]?.dayType).toBe('full')
+    expect(s.days[0]?.weight).toEqual({ state: 'complete', grams: 100 })
+    expect(s.days[0]?.calorieDensityPerGram).toBeCloseTo(2, 5)
+  })
+})
+
+describe('summarizeTrip full-day density is combined/combined, not averaged', () => {
+  const dense = food({ id: 'b', calories_per_serving: 100, serving_weight_grams: 200 })
+  const foods2 = new Map([['a', food({ id: 'a', calories_per_serving: 100, serving_weight_grams: 50 })], ['b', dense]])
+  const view: FoodPlanView = {
+    meals: [meal('m')],
+    days: [
+      { day: day('d1'), dayType: 'full', scheduledMealIds: new Set(['m']),
+        cells: [cell('dm1', [entry({ id: 'x', day_meal_id: 'dm1', food_item_id: 'a', amount: 2 })])] }, // 200 kcal / 100 g
+      { day: day('d2'), dayType: 'full', scheduledMealIds: new Set(['m']),
+        cells: [cell('dm2', [entry({ id: 'y', day_meal_id: 'dm2', food_item_id: 'b', amount: 1 })])] }, // 100 kcal / 200 g
+    ],
+    extras: [],
+  }
+  it('combined 300 kcal / 300 g = 1.0, not (2.0 + 0.5)/2 = 1.25', () => {
+    const s = summarizeTrip(view, foods2)
+    expect(s.fullDayAverage.calorieDensityPerGram).toBeCloseTo(1, 5)
+    expect(s.fullDayAverage.totals.calories).toEqual({ state: 'complete', value: 150 })
   })
 })
