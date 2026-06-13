@@ -28,6 +28,7 @@ import EntryAmountDialog, { type EntryAmountResult } from './EntryAmountDialog'
 import AddMealDialog from './AddMealDialog'
 import MoveCopyEntryDialog, { type MoveCopyTarget } from './MoveCopyEntryDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
+import ScheduleGridDialog, { type ScheduleToggle } from './ScheduleGridDialog'
 
 type AddTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
 
@@ -92,6 +93,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const [showAddMeal, setShowAddMeal] = useState(false)
   const [confirmDeleteMealId, setConfirmDeleteMealId] = useState<string | null>(null)
   const [moveCopy, setMoveCopy] = useState<{ mode: 'move' | 'copy'; entry: FoodPlanEntry } | null>(null)
+  const [showGrid, setShowGrid] = useState(false)
 
   function openMoveCopy(mode: 'move' | 'copy', entryId: string) {
     const entry = doc.entries.find((e) => e.id === entryId)
@@ -237,6 +239,17 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     meta: { errorToast: "Couldn't delete the meal. Please try again." },
     onSuccess: invalidate,
   })
+  const toggleCellMut = useMutation({
+    mutationFn: async (v: ScheduleToggle) => {
+      if (v.on) {
+        await addDayMeal(userId, doc.plan.id, v.dayId, v.mealId)
+      } else {
+        await deleteDayMeal(v.dayMealId ?? '')
+      }
+    },
+    meta: { errorToast: "Couldn't update the schedule. Please try again." },
+    onSuccess: invalidate,
+  })
 
   const addTargetExisting = addTarget && pickedFood ? existingEntry(pickedFood, addTarget) : undefined
   const editingEntry = doc.entries.find((e) => e.id === editEntryId) ?? null
@@ -317,6 +330,13 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
         >
           + Add meal
         </button>
+        <button
+          type="button"
+          onClick={() => setShowGrid(true)}
+          className="rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+        >
+          Edit schedule
+        </button>
       </div>
       <FoodPlanExtras
         extras={view.extras}
@@ -388,6 +408,9 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           onConfirm={(r) => moveCopyMut.mutate({ entry: moveCopy.entry, target: r.target, preserveBasis: r.preserveBasis, isMove: moveCopy.mode === 'move' })}
           onClose={() => setMoveCopy(null)}
         />
+      ) : null}
+      {showGrid ? (
+        <ScheduleGridDialog view={view} onToggle={(t) => toggleCellMut.mutate(t)} onClose={() => setShowGrid(false)} />
       ) : null}
     </div>
   )
