@@ -131,7 +131,8 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
         ? [v.target, ...v.result.alsoDayMealIds.map((id) => ({ kind: 'cell' as const, dayMealId: id }))]
         : [v.target]
       const newCount = targets.filter((t) => !existingEntry(v.food, t)).length
-      if (newCount > 0) assertFoodPlanEntryWithinCap(doc.entries.length) // best-effort preflight; server enforces per row
+      // best-effort preflight against the projected total; server enforces per row
+      if (newCount > 0) assertFoodPlanEntryWithinCap(doc.entries.length + newCount - 1)
       await Promise.all(targets.map((t) => {
         const prior = existingEntry(v.food, t)
         const addition: EntryAddition = {
@@ -174,7 +175,9 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
         id: randomTempId(), food_plan_id: doc.plan.id,
         day_meal_id: v.target.kind === 'cell' ? v.target.dayMealId : null,
         is_extra: v.target.kind === 'extra',
-        food_item_id: v.entry.food_item_id, basis: v.entry.basis, amount: v.entry.amount, sort_order: 0,
+        food_item_id: v.entry.food_item_id, basis: v.entry.basis, amount: v.entry.amount,
+        // append at the destination (ignored by the server on a merge)
+        sort_order: nextEntrySort(v.target),
       }
       return upsertFoodPlanEntry(userId, addition, v.preserveBasis, v.isMove ? v.entry.id : null)
     },
