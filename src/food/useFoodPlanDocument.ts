@@ -1,14 +1,7 @@
 import { useMemo } from 'react'
-import type { FoodPlanDocument, FoodPlanDay, FoodPlanEntry, Meal } from '../lib/types'
-
-export type CellView = { dayMealId: string; meal: Meal; entries: FoodPlanEntry[] }
-export type DayView = {
-  day: FoodPlanDay
-  dayType: 'full' | 'partial'
-  cells: CellView[]
-  scheduledMealIds: Set<string>
-}
-export type FoodPlanView = { meals: Meal[]; days: DayView[]; extras: FoodPlanEntry[] }
+import type { FoodPlanDocument, FoodPlanEntry, Meal } from '../lib/types'
+import type { CellView, DayView, FoodPlanView } from '../lib/food/view'
+export type { CellView, DayView, FoodPlanView } from '../lib/food/view'
 
 const bySort = <T extends { sort_order: number }>(a: T, b: T) => a.sort_order - b.sort_order
 

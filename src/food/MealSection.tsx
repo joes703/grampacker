@@ -6,6 +6,8 @@ import { FLAT_TABLE_HEADER, POPOVER_SURFACE } from '../components/flat-table-sty
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import CellEntryReorder from './CellEntryReorder'
+import { nutrientTotal } from '../lib/food/nutrition'
+import NutrientTotalCell from './NutrientTotalCell'
 
 export default function MealSection({
   cell, listId, userId, foodById, onAddFood, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry, onOmit, onDeleteMeal,
@@ -26,7 +28,16 @@ export default function MealSection({
     <section className="mt-2">
       <div className={`${FLAT_TABLE_HEADER} flex items-center justify-between`}>
         <span>{cell.meal.name}</span>
-        {(onOmit || onDeleteMeal) && <MealKebab onOmit={onOmit} onDeleteMeal={onDeleteMeal} />}
+        <span className="flex items-center gap-2">
+          <span className="text-xs font-normal normal-case text-gray-500">
+            <NutrientTotalCell
+              total={nutrientTotal(cell.entries, foodById, 'calories')}
+              kind="calories"
+              nameForId={(id) => foodById.get(id)?.name ?? 'Unknown food'}
+            />
+          </span>
+          {(onOmit || onDeleteMeal) && <MealKebab onOmit={onOmit} onDeleteMeal={onDeleteMeal} />}
+        </span>
       </div>
       <CellEntryReorder
         listId={listId}
