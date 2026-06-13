@@ -151,6 +151,8 @@ function makeDoc(entries: FoodPlanEntry[] = []): Doc {
     days: [day],
     dayMeals: [dmBreakfast, dmDinner],
     entries,
+    dailyTargets: [],
+    mealTargets: [],
   }
 }
 
