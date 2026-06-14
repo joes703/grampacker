@@ -111,3 +111,7 @@ export {
 export type { EntryAddition, EntryBatchAddition, TargetsSavePayload } from './food-plan'
 export { fetchTargetDefaults, saveTargetDefaults } from './target-defaults'
 export type { DefaultsSavePayload } from './target-defaults'
+export {
+  fetchFoodPackSignatures, fetchFoodPackState, setFoodPackState, invalidateFoodPlanCaches,
+} from './food-pack'
+export type { FoodPackSignature, FoodPackStateRow } from './food-pack'
