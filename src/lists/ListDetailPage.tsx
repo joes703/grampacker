@@ -1048,9 +1048,9 @@ function ListDetailInner({
                     (CategoryGroup's hideWorn handles that). Spreads the
                     same sharedGroupProps every in-category section uses so
                     row chrome stays consistent — including readyChecksEnabled
-                    (Ready checkbox column in Pack mode), packActionsDisabled,
-                    onSetGearStatus, edit/delete handlers, weight unit, and
-                    breakpoint. Worn-specific overrides come after the spread
+                    (Ready checkbox column in Pack mode), onSetGearStatus,
+                    edit/delete handlers, weight unit, and breakpoint.
+                    Worn-specific overrides come after the spread
                     so they win: section name "Worn", the stable wornItems
                     list, and sortable={false}. The items array walks
                     categories in display order so in-section order is

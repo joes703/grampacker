@@ -79,11 +79,6 @@ type Props = {
   // on the base Props so CategoryGroup's rowPropsFor() builder can spread the
   // same object into either renderer.
   reorderPending?: boolean
-  // Pack-mode write-block: when true, the is_packed checkbox is disabled and
-  // its onChange is a no-op. Set by ListDetailPage when navigator.onLine is
-  // false — offline pack-mode is read-only by deliberate product choice (no
-  // mutation outbox; honest capability boundary). Ignored outside pack mode.
-  packActionsDisabled?: boolean
   onUpdate?: (patch: Partial<Pick<ListItemWithGear, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed' | 'is_ready'>>) => void
   onSaveName?: (name: string) => void
   onSaveDescription?: (description: string) => void
@@ -113,7 +108,6 @@ export default function ItemRow({
   isBelowLg,
   packMode = false,
   readyChecksEnabled = false,
-  packActionsDisabled = false,
   onUpdate,
   onSaveName,
   onSaveDescription,
@@ -211,13 +205,9 @@ export default function ItemRow({
             <PackModeCheckbox
               variant="ready"
               checked={item.is_ready}
-              disabled={packActionsDisabled}
-              onChange={(checked) => {
-                if (packActionsDisabled) return
-                onUpdate?.({ is_ready: checked })
-              }}
+              onChange={(checked) => onUpdate?.({ is_ready: checked })}
               ariaLabel={`Mark ${name} ready`}
-              title={packActionsDisabled ? 'Ready checkmark unavailable.' : 'Ready'}
+              title="Ready"
               standaloneLabel
             />
             <span
@@ -228,21 +218,12 @@ export default function ItemRow({
         )}
         {/* Wrapping label means clicking/tapping the name toggles packed,
             and screen readers announce the item name as the checkbox's
-            accessible name (no separate aria-label needed).
-
-            When packActionsDisabled is true, the input is `disabled` so
-            click + keyboard activation are blocked at the platform level,
-            and the onChange is also a no-op as defense in depth. */}
-        <label className={`flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 ${packActionsDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+            accessible name (no separate aria-label needed). */}
+        <label className="flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 cursor-pointer">
           <PackModeCheckbox
             variant="packed"
             checked={item.is_packed}
-            disabled={packActionsDisabled}
-            onChange={(checked) => {
-              if (packActionsDisabled) return
-              onUpdate?.({ is_packed: checked })
-            }}
-            title={packActionsDisabled ? 'Packing checkmark unavailable.' : undefined}
+            onChange={(checked) => onUpdate?.({ is_packed: checked })}
           />
           {/* Print-only empty checkbox. The native input above is suppressed
               in print because browsers render its checked state visually,
