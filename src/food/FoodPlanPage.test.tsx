@@ -52,13 +52,15 @@ vi.mock('../lib/queries', () => ({
   assertFoodItemWithinCap: () => {},
   // reorder
   bulkUpdateSortOrder: vi.fn(),
+  // targets
+  saveFoodPlanTargets: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('../auth/use-require-session', () => ({
   useRequireSession: () => ({ userId: 'u1' }),
 }))
 
-import { fetchFoodPlan, fetchFoodItems, createFoodPlan, upsertFoodPlanEntries } from '../lib/queries'
+import { fetchFoodPlan, fetchFoodItems, createFoodPlan, upsertFoodPlanEntries, saveFoodPlanTargets } from '../lib/queries'
 import FoodPlanPage from './FoodPlanPage'
 
 // jsdom does not implement the native <dialog> showModal/close API that
@@ -209,6 +211,46 @@ describe('FoodPlanPage rendering', () => {
     // Meal section headers render for each scheduled meal.
     expect(screen.getAllByText('Breakfast').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Dinner').length).toBeGreaterThan(0)
+  })
+})
+
+describe('FoodPlanPage targets', () => {
+  it('saves edited daily targets through the modal and closes on success', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(makeDoc())
+    vi.mocked(fetchFoodItems).mockResolvedValue([])
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit targets' }))
+    fireEvent.change(await screen.findByLabelText('Calories mode'), { target: { value: 'max' } })
+    fireEvent.change(screen.getByLabelText('Calories maximum'), { target: { value: '2500' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save targets' }))
+
+    await waitFor(() => expect(saveFoodPlanTargets).toHaveBeenCalledTimes(1))
+    const call = vi.mocked(saveFoodPlanTargets).mock.calls[0]!
+    expect(call[0]).toBe('u1')
+    expect(call[1]).toBe('plan1')
+    expect(call[2].dailyUpserts).toEqual([{ metric: 'calories', mode: 'max', target_min: null, target_max: 2500 }])
+    // Dialog closes on success.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Save targets' })).not.toBeInTheDocument())
+  })
+
+  it('keeps the modal open and preserves the edit when the save fails', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(makeDoc())
+    vi.mocked(fetchFoodItems).mockResolvedValue([])
+    vi.mocked(saveFoodPlanTargets).mockRejectedValueOnce(new Error('boom'))
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit targets' }))
+    fireEvent.change(await screen.findByLabelText('Calories mode'), { target: { value: 'max' } })
+    fireEvent.change(screen.getByLabelText('Calories maximum'), { target: { value: '2500' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save targets' }))
+
+    await waitFor(() => expect(saveFoodPlanTargets).toHaveBeenCalled())
+    // A rejected save must not close the modal or discard the typed value. (No
+    // toast assertion: this QueryClient has no MutationCache handler / toast
+    // viewport - the meta.errorToast wiring is covered by mutation-error-handler tests.)
+    expect(screen.getByRole('button', { name: 'Save targets' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Calories maximum')).toHaveValue('2500')
   })
 })
 

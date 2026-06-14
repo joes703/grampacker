@@ -16,6 +16,7 @@ import {
   assertFoodPlanEntryWithinCap, type EntryAddition,
   addFoodPlanDay, deleteFoodPlanDay, updateDayType, assertFoodPlanDayWithinCap, duplicateFoodPlanDay,
   addMealDefinition, deleteMeal, deleteDayMeal, addDayMeal, assertMealDefinitionWithinCap,
+  saveFoodPlanTargets, type TargetsSavePayload,
 } from '../lib/queries'
 import { randomTempId } from '../lib/random-temp-id'
 import type { EntryBasis, FoodItem, FoodPlanEntry, Meal, FoodPlanDocument as Doc } from '../lib/types'
@@ -30,6 +31,7 @@ import MoveCopyEntryDialog, { type MoveCopyTarget } from './MoveCopyEntryDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ScheduleGridDialog, { type ScheduleToggle } from './ScheduleGridDialog'
 import FoodPlanSummary from './FoodPlanSummary'
+import TargetsDialog from './TargetsDialog'
 
 type AddTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
 
@@ -96,6 +98,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const [confirmDeleteMealId, setConfirmDeleteMealId] = useState<string | null>(null)
   const [moveCopy, setMoveCopy] = useState<{ mode: 'move' | 'copy'; entry: FoodPlanEntry } | null>(null)
   const [showGrid, setShowGrid] = useState(false)
+  const [showTargets, setShowTargets] = useState(false)
 
   function openMoveCopy(mode: 'move' | 'copy', entryId: string) {
     const entry = currentDoc.entries.find((e) => e.id === entryId)
@@ -174,6 +177,15 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     mutationFn: (id: string) => deleteFoodPlanEntry(id),
     meta: { errorToast: "Couldn't remove the food. Please try again." },
     onSuccess: invalidate,
+  })
+
+  const saveTargetsMut = useMutation({
+    mutationFn: (p: TargetsSavePayload) => saveFoodPlanTargets(userId, currentDoc.plan.id, p),
+    meta: { errorToast: "Couldn't save targets. Please try again." },
+    onSuccess: () => {
+      setShowTargets(false)
+      return invalidate()
+    },
   })
 
   const moveCopyMut = useMutation({
@@ -305,7 +317,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           </div>
         </SortableContext>
       </DndContext>
-      <FoodPlanSummary view={view} foodById={foodById} dailyTargets={currentDoc.dailyTargets} />
+      <FoodPlanSummary view={view} foodById={foodById} dailyTargets={currentDoc.dailyTargets} onEditTargets={() => setShowTargets(true)} />
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
         <SortableContext items={view.days.map((d) => d.day.id)} strategy={verticalListSortingStrategy}>
           <div className="mt-4 space-y-4">
@@ -432,6 +444,17 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
       ) : null}
       {showGrid ? (
         <ScheduleGridDialog view={view} onToggle={(t) => toggleCellMut.mutate(t)} onClose={() => setShowGrid(false)} />
+      ) : null}
+      {showTargets ? (
+        <TargetsDialog
+          plan={currentDoc.plan}
+          meals={currentDoc.meals}
+          dailyTargets={currentDoc.dailyTargets}
+          mealTargets={currentDoc.mealTargets}
+          saving={saveTargetsMut.isPending}
+          onSave={(p) => saveTargetsMut.mutate(p)}
+          onClose={() => setShowTargets(false)}
+        />
       ) : null}
     </div>
   )
