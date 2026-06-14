@@ -31,6 +31,10 @@ vi.mock('../lib/supabase', () => ({
       passkey: { list: vi.fn(async () => ({ data: [], error: null })) },
     },
     rpc: mockSupabase.rpc,
+    // DefaultTargetsSection (rendered as part of SettingsPage) runs a useQuery
+    // that calls supabase.from(...). Resolve empty so it renders the benign
+    // "No defaults set." summary without affecting the delete flow under test.
+    from: () => ({ select: () => ({ eq: async () => ({ data: [], error: null }) }) }),
   },
 }))
 
