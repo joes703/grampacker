@@ -7,7 +7,7 @@ Live at <https://grampacker.app>. Personal project, free to use.
 ## Features
 
 - Maintain a reusable gear inventory and build trip-specific packing lists.
-- Track packed and ready items in Pack mode, including while offline.
+- Track packed and ready items in Pack mode.
 - Share read-only public lists and mark unfinished lists as drafts.
 - Import Lighterpack-compatible CSV files and export list or gear data.
 - Install the app as a PWA and sign in with a password or passkey.
