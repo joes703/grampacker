@@ -70,3 +70,14 @@ export function computeWeightBreakdown(
 
   return { catRows, baseGrams, consumableGrams, wornGrams, totalPackGrams }
 }
+
+// Compose projected Food weight into a breakdown. Food is always consumable
+// (design 5.1): only consumable and pack-total move; base, worn, and the
+// per-category base rows are untouched. Pure: returns a new object.
+export function withProjectedFood(breakdown: WeightBreakdown, projectedConsumableGrams: number): WeightBreakdown {
+  return {
+    ...breakdown,
+    consumableGrams: breakdown.consumableGrams + projectedConsumableGrams,
+    totalPackGrams: breakdown.totalPackGrams + projectedConsumableGrams,
+  }
+}
