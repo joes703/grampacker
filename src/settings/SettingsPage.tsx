@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, Fingerprint, KeyRound, Scale, Trash2 } from 'lucide-react'
+import { Download, Fingerprint, KeyRound, Scale, Target, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../lib/supabase'
 import { isPasskeySupported, passkeyErrorMessage } from '../lib/passkey'
@@ -21,6 +21,7 @@ import FormLabel from '../components/FormLabel'
 import PrimaryButton from '../components/PrimaryButton'
 import { TABLE_RADIUS, TABLE_STRONG_DIVIDER, TABLE_SURFACE_BG } from '../components/flat-table-styles'
 import { useDocumentTitle } from '../lib/use-document-title'
+import DefaultTargetsSection from '../food/DefaultTargetsSection'
 
 export default function SettingsPage() {
   useDocumentTitle('Settings')
@@ -64,6 +65,10 @@ export default function SettingsPage() {
           label="Weight units"
           hint="Affects how gear, list, and pack weights are displayed everywhere."
         />
+      </Section>
+
+      <Section title="Default nutrition targets" subtitle="Copied into each new food plan; existing plans are not changed" icon={<Target size={16} />}>
+        <DefaultTargetsSection />
       </Section>
 
       <Section title="Download all data" subtitle="A zip with your gear and food libraries and one CSV per list" icon={<Download size={16} />}>

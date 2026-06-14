@@ -109,3 +109,5 @@ export {
   saveFoodPlanTargets,
 } from './food-plan'
 export type { EntryAddition, EntryBatchAddition, TargetsSavePayload } from './food-plan'
+export { fetchTargetDefaults, saveTargetDefaults } from './target-defaults'
+export type { DefaultsSavePayload } from './target-defaults'
