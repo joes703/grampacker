@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { type WeightUnit } from '../lib/weight'
-import type { FoodItem } from '../lib/types'
+import type { FoodItem, FoodPlanDailyTarget, DailyTargetMetric } from '../lib/types'
 import type { FoodPlanView } from '../lib/food/view'
 import {
   summarizeTrip, type GroupSummary, type NutrientKey, type NutrientTotal,
 } from '../lib/food/nutrition'
-import { formatCalorieDensity } from './nutrition-format'
+import { resolveDailyTargets, dailyMetricForNutrientKey, type ResolvedTarget } from '../lib/food/targets'
+import { formatCalorieDensity, formatDailyTargetBand } from './nutrition-format'
+import TargetStatusMark from './TargetStatusMark'
 import { FLAT_TABLE_SURFACE, FLAT_TABLE_HEADER } from '../components/flat-table-styles'
 import NutrientTotalCell, { WeightCell, type NutrientCellKind } from './NutrientTotalCell'
 
@@ -28,14 +30,22 @@ const OPTIONAL_COLS: Col[] = [
 // Module-level (not nested in the parent render) so an open IncompleteMarker
 // popover inside a cell is not remounted/dismissed on every parent re-render.
 // WeightCell is shared from NutrientTotalCell.
-function NutCells({ totals, cols, nameForId }: { totals: Record<NutrientKey, NutrientTotal>; cols: Col[]; nameForId: (id: string) => string }) {
+function NutCells({ totals, cols, nameForId, targets }: {
+  totals: Record<NutrientKey, NutrientTotal>; cols: Col[]; nameForId: (id: string) => string
+  targets?: Map<DailyTargetMetric, ResolvedTarget<DailyTargetMetric>>
+}) {
   return (
     <>
-      {cols.map((c) => (
-        <td key={c.key} className="px-2 py-1.5 text-right">
-          <NutrientTotalCell total={totals[c.key]} kind={c.kind} nameForId={nameForId} />
-        </td>
-      ))}
+      {cols.map((c) => {
+        const m = dailyMetricForNutrientKey(c.key)
+        const rt = m ? targets?.get(m) : undefined
+        return (
+          <td key={c.key} className="px-2 py-1.5 text-right">
+            <NutrientTotalCell total={totals[c.key]} kind={c.kind} nameForId={nameForId} />
+            {rt ? <TargetStatusMark status={rt.status} /> : null}
+          </td>
+        )
+      })}
     </>
   )
 }
@@ -52,15 +62,22 @@ function SummaryRow({ label, group, cols, weightUnit, nameForId }: { label: stri
 }
 
 export default function FoodPlanSummary({
-  view, foodById,
+  view, foodById, dailyTargets, onEditTargets,
 }: {
   view: FoodPlanView
   foodById: Map<string, FoodItem>
+  dailyTargets: FoodPlanDailyTarget[]
+  onEditTargets?: () => void
 }) {
   const { weightUnit } = useWeightUnit()
   const [open, setOpen] = useState(true)
   const [showMore, setShowMore] = useState(false)
   const s = summarizeTrip(view, foodById)
+  const dayTargetMaps = s.days.map((d) => resolveDailyTargets(dailyTargets, d.totals, d.calorieDensityPerGram, d.dayType))
+  // "Active" = a target the user actually configured. An explicit `off` row must
+  // NOT render a Target band or a glyph - filter it before deciding what to show.
+  const activeDailyTargets = dailyTargets.filter((t) => t.mode !== 'off')
+  const densityTarget = activeDailyTargets.find((t) => t.metric === 'calorie_density')
   const cols = showMore ? [...DEFAULT_COLS, ...OPTIONAL_COLS] : DEFAULT_COLS
   const nameForId = (id: string) => foodById.get(id)?.name ?? 'Unknown food'
 
@@ -82,6 +99,7 @@ export default function FoodPlanSummary({
         <span><span className="text-gray-400">Packed weight </span><span className="font-semibold"><WeightCell weight={s.packed.weight} weightUnit={weightUnit} nameForId={nameForId} /></span></span>
         <span><span className="text-gray-400">Full-day average </span><span className="font-semibold">{fullAvgCal.state === 'complete' && s.fullDayAverage.fullDays > 0 ? `${Math.round(fullAvgCal.value)} kcal (${s.fullDayAverage.fullDays} of ${s.fullDayAverage.totalDays} days counted)` : '-'}</span></span>
         <span><span className="text-gray-400">Packed density </span><span className="font-semibold">{formatCalorieDensity(s.packed.calorieDensityPerGram, weightUnit)}</span></span>
+        {onEditTargets && <button type="button" onClick={onEditTargets} className="ml-auto font-medium text-emerald-700 hover:underline">Edit targets</button>}
       </div>
 
       {open && (
@@ -109,14 +127,29 @@ export default function FoodPlanSummary({
                 </tr>
               </thead>
               <tbody>
+                {activeDailyTargets.length > 0 && (
+                  <tr aria-label="Daily target" className="border-t border-gray-200 text-xs text-gray-500">
+                    <th scope="row" className="px-2 py-1.5 text-left font-medium">Target</th>
+                    <td className="px-2 py-1.5" />
+                    {cols.map((c) => {
+                      const m = dailyMetricForNutrientKey(c.key)
+                      const t = m ? activeDailyTargets.find((x) => x.metric === m) : undefined
+                      return <td key={c.key} className="px-2 py-1.5 text-right tabular-nums">{t ? formatDailyTargetBand(t.metric, t.mode, t.target_min, t.target_max, weightUnit) : ''}</td>
+                    })}
+                    <td className="px-2 py-1.5 text-right tabular-nums">{densityTarget ? formatDailyTargetBand('calorie_density', densityTarget.mode, densityTarget.target_min, densityTarget.target_max, weightUnit) : ''}</td>
+                  </tr>
+                )}
                 {s.days.map((d, i) => (
                   <tr key={d.dayId} aria-label={`Day ${i + 1}`} className="border-t border-gray-100">
                     <th scope="row" className="px-2 py-1.5 text-left font-normal">
                       Day {i + 1} <span className="text-xs uppercase text-gray-400">{d.dayType}</span>
                     </th>
                     <td className="px-2 py-1.5 text-right"><WeightCell weight={d.weight} weightUnit={weightUnit} nameForId={nameForId} /></td>
-                    <NutCells totals={d.totals} cols={cols} nameForId={nameForId} />
-                    <td className="px-2 py-1.5 text-right tabular-nums">{formatCalorieDensity(d.calorieDensityPerGram, weightUnit)}</td>
+                    <NutCells totals={d.totals} cols={cols} nameForId={nameForId} targets={dayTargetMaps[i]} />
+                    <td className="px-2 py-1.5 text-right tabular-nums">
+                      {formatCalorieDensity(d.calorieDensityPerGram, weightUnit)}
+                      {dayTargetMaps[i]?.get('calorie_density') ? <TargetStatusMark status={dayTargetMaps[i]!.get('calorie_density')!.status} /> : null}
+                    </td>
                   </tr>
                 ))}
                 <SummaryRow label="Extras" group={s.extras} cols={cols} weightUnit={weightUnit} nameForId={nameForId} />
