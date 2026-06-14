@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RotateCcw, WifiOff } from 'lucide-react'
+import { RotateCcw } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToggleSwitch from '../components/ToggleSwitch'
 import {
@@ -15,19 +15,6 @@ type Props = {
   onReset: () => void
   showUnpackedOnly: boolean
   onToggleShowUnpackedOnly: () => void
-  // True when navigator.onLine is false. Surfaces a contextual capability-
-  // boundary message and disables Reset since it would fail. Individual
-  // checkmarks still work offline and sync later. The Unpacked-only toggle
-  // stays enabled because it's local view state.
-  offline?: boolean
-  pendingSyncCount?: number
-  syncing?: boolean
-  // True after a sync attempt errored. The auto-retry-on-reconnect path
-  // still runs (the page-level effect clears this on offline), but until
-  // then we surface a manual Retry affordance so a transient server error
-  // doesn't strand the user waiting for an offline transition.
-  syncBlocked?: boolean
-  onRetrySync?: () => void
   // Ready Checks block. The "Add ready checks" toggle lives inline at the
   // top of this panel — it's the only place pack-mode options live now
   // that List options is hidden in pack mode. `enabled` still drives the
@@ -50,11 +37,6 @@ export default function PackingProgress({
   onReset,
   showUnpackedOnly,
   onToggleShowUnpackedOnly,
-  offline = false,
-  pendingSyncCount = 0,
-  syncing = false,
-  syncBlocked = false,
-  onRetrySync,
   readyChecks,
 }: Props) {
   const pct = total === 0 ? 0 : Math.round((packed / total) * 100)
@@ -116,8 +98,7 @@ export default function PackingProgress({
           <button
             type="button"
             onClick={() => setConfirmingReset(true)}
-            disabled={packed === 0 || offline}
-            title={offline ? 'Offline. Reconnect to reset packed state.' : undefined}
+            disabled={packed === 0}
             className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <RotateCcw size={12} /> Reset packed
@@ -146,8 +127,7 @@ export default function PackingProgress({
               <button
                 type="button"
                 onClick={() => setConfirmingResetReady(true)}
-                disabled={readyCount === 0 || offline}
-                title={offline ? 'Offline. Reconnect to reset ready state.' : undefined}
+                disabled={readyCount === 0}
                 className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <RotateCcw size={12} /> Reset ready
@@ -163,33 +143,6 @@ export default function PackingProgress({
         </div>
       )}
 
-      {(offline || pendingSyncCount > 0 || syncing) && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="mt-2 flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 border border-amber-200"
-        >
-          <WifiOff size={12} aria-hidden="true" className="mt-0.5 shrink-0" />
-          <span className="flex-1">
-            {syncing
-              ? 'Syncing pack-mode checkmarks...'
-              : offline
-                ? 'Offline. Pack-mode checkmarks will sync when you reconnect.'
-                : syncBlocked
-                  ? `Couldn't sync ${pendingSyncCount} pack-mode ${pendingSyncCount === 1 ? 'change' : 'changes'}.`
-                  : `${pendingSyncCount} pack-mode ${pendingSyncCount === 1 ? 'change is' : 'changes are'} waiting to sync.`}
-          </span>
-          {syncBlocked && !offline && !syncing && onRetrySync && (
-            <button
-              type="button"
-              onClick={onRetrySync}
-              className="shrink-0 rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
-            >
-              Retry
-            </button>
-          )}
-        </div>
-      )}
       {confirmingReset && (
         // Reset is recoverable (just clears is_packed flags), so the confirm
         // uses ConfirmDialog's default neutral styling — no `dangerous` flag.
