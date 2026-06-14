@@ -10,8 +10,9 @@ import type { List } from '../lib/types'
 //
 // Fast path (M4): if localStorage has a cached last-visited list path,
 // redirect to it immediately without waiting for fetchLists. The path
-// includes `?mode=pack` when the user was last packing, so a PWA cold
-// start lands them right back in pack mode instead of dropping to the
+// includes `?mode=pack` when the user was last packing, so a cold start
+// (including a home-screen / standalone launch) lands them right back in
+// pack mode instead of dropping to the
 // list edit view. The destination page's queries start in parallel
 // with what would have been the fetchLists round-trip on the cold
 // path. Server-side misses (deleted list, different user under a

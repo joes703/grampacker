@@ -1,5 +1,5 @@
 // Stores the path of the last-visited list (including pack-mode query)
-// so RootRedirect can land the user back where they were when the PWA
+// so RootRedirect can land the user back where they were when the app
 // reloads from the manifest start_url. Pack mode itself is URL state
 // (?mode=pack); this helper just makes the redirect honor the full
 // path rather than only the list id.

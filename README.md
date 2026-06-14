@@ -10,7 +10,7 @@ Live at <https://grampacker.app>. Personal project, free to use.
 - Track packed and ready items in Pack mode.
 - Share read-only public lists and mark unfinished lists as drafts.
 - Import Lighterpack-compatible CSV files and export list or gear data.
-- Install the app as a PWA and sign in with a password or passkey.
+- Install the app to your home screen and sign in with a password or passkey.
 
 ## Stack
 
