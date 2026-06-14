@@ -29,7 +29,7 @@ export async function fetchFoodPackState(userId: string, listId: string): Promis
 }
 
 // expectedSignature is the current_signature the user saw; the RPC rejects a missing
-// or stale value (PT409) so an offline pack never packs a quantity the user never saw.
+// or stale value (PT409) so packing never confirms a quantity the user did not see.
 export async function setFoodPackState(
   userId: string, listId: string, foodItemId: string, isPacked: boolean, expectedSignature: string | null,
 ): Promise<FoodPackStateRow> {

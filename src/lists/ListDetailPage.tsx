@@ -61,6 +61,7 @@ import { showToast } from '../lib/toast'
 import { assignSortOrderSlots } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
+import { computeWeightBreakdown, withProjectedFood } from '../lib/weight-breakdown'
 import {
   fanOutGearListItemsCaches,
   rollbackListItemsCaches,
@@ -78,6 +79,8 @@ import ListDocumentToolbar from './ListDocumentToolbar'
 import EmptyListCell from './EmptyListCell'
 import PrintListHeader from './PrintListHeader'
 import PackingProgress from './PackingProgress'
+import FoodProjectionSection from './FoodProjectionSection'
+import { useFoodProjection } from './useFoodProjection'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
 import CategoryGroup from './CategoryGroup'
@@ -283,6 +286,7 @@ function ListDetailInner({
     queryKey: queryKeys.categories(),
     queryFn: () => fetchCategories(userId),
   })
+  const foodProjection = useFoodProjection(userId, listId)
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
@@ -641,6 +645,7 @@ function ListDetailInner({
     } finally {
       qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
     }
+    await foodProjection.resetPackedFoods()
   }
 
   // Mirror of resetPacked for Ready Checks. Reset Ready and Reset Packed
@@ -696,6 +701,13 @@ function ListDetailInner({
   )
 
   const grouped = useGroupedListItems(listItems, categories)
+  const weightBreakdown = useMemo(
+    () => withProjectedFood(
+      computeWeightBreakdown(listItems, categories),
+      foodProjection.projectedConsumableGrams,
+    ),
+    [categories, foodProjection.projectedConsumableGrams, listItems],
+  )
 
   // Group Worn: hide is_worn items inside each category and render them in
   // a trailing Worn section. Phase 5 follow-up: worn-hiding is done at the
@@ -849,7 +861,7 @@ function ListDetailInner({
 
   return (
     <div className="flex flex-col gap-4 print:pb-0">
-      <PrintListHeader list={list} listItems={listItems} categories={categories} />
+      <PrintListHeader list={list} listItems={listItems} categories={categories} breakdown={weightBreakdown} />
 
       {/* Mobile pack-mode toggle. Pack is a mode of THIS list, not a
           global destination, so it lives on the list page rather than in
@@ -919,11 +931,11 @@ function ListDetailInner({
           />
 
           {/* Pack-mode progress bar */}
-          {mode === 'pack' && listItems.length > 0 && (
+          {mode === 'pack' && (listItems.length + foodProjection.packableTotal) > 0 && (
             <div className="print:hidden">
               <PackingProgress
-                total={listItems.length}
-                packed={listItems.filter((i) => i.is_packed).length}
+                total={listItems.length + foodProjection.packableTotal}
+                packed={listItems.filter((i) => i.is_packed).length + foodProjection.packedTotal}
                 onReset={resetPacked}
                 showUnpackedOnly={showUnpackedOnly}
                 onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
@@ -972,12 +984,33 @@ function ListDetailInner({
                   onEditingChange={setNotesEditing}
                 />
               </PanelCard>
-              <WeightSummary items={listItems} categories={categories} />
+              <WeightSummary
+                items={listItems}
+                categories={categories}
+                breakdown={weightBreakdown}
+                incompleteFoodWeight={foodProjection.hasIncompleteRows}
+              />
             </div>
           )}
 
+          {foodProjection.isError ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Couldn&apos;t load Food plan projection. Gear items are still shown.
+            </div>
+          ) : null}
+
+          {foodProjection.rows.length > 0 && (
+            <FoodProjectionSection
+              listId={listId}
+              packMode={mode === 'pack'}
+              showUnpackedOnly={showUnpackedOnly}
+              rows={foodProjection.rows}
+              onTogglePacked={foodProjection.togglePacked}
+            />
+          )}
+
           {/* Items grouped by category */}
-          {listItems.length === 0 ? (
+          {listItems.length === 0 && foodProjection.rows.length === 0 ? (
             <EmptyListCell onMobileAdd={() => setDrawerOpen(true)} />
           ) : (() => {
             const activeParsed = activeId ? parseDnDId(activeId) : null

@@ -19,6 +19,8 @@ import WeightTable from './WeightTable'
 type Props = {
   items: ListItemWithGear[]
   categories: Category[]
+  breakdown?: WeightBreakdown
+  incompleteFoodWeight?: boolean
 }
 
 // Weight summary rendered below Notes on the list detail page (normal
@@ -40,35 +42,46 @@ type Props = {
 // Math is shared with the SharePage and the desktop table via
 // computeWeightBreakdown in lib/weight-breakdown.ts; this component
 // owns presentation only.
-export default function WeightSummary({ items, categories }: Props) {
-  const breakdown = useMemo(
+export default function WeightSummary({ items, categories, breakdown: providedBreakdown, incompleteFoodWeight = false }: Props) {
+  const computedBreakdown = useMemo(
     () => computeWeightBreakdown(items, categories),
     [items, categories],
   )
+  const breakdown = providedBreakdown ?? computedBreakdown
   const [breakdownOpen, setBreakdownOpen] = useState(false)
 
-  if (items.length === 0) return null
+  if (items.length === 0 && breakdown.totalPackGrams === 0) return null
 
   return (
     <>
       {/* Mobile / tablet portrait — compact strip + collapsible table. */}
       <div className="lg:hidden flex flex-col gap-2">
         <SummaryStrip breakdown={breakdown} />
+        {incompleteFoodWeight ? <IncompleteFoodWeightNote /> : null}
         <BreakdownDisclosure
           open={breakdownOpen}
           onToggle={() => setBreakdownOpen((v) => !v)}
         >
-          <WeightTable items={items} categories={categories} />
+          <WeightTable items={items} categories={categories} breakdown={breakdown} />
         </BreakdownDisclosure>
       </div>
 
       {/* Desktop — same panel as before. */}
       <div className="hidden lg:block">
         <PanelCard title="Weight summary">
-          <WeightTable items={items} categories={categories} />
+          <WeightTable items={items} categories={categories} breakdown={breakdown} />
+          {incompleteFoodWeight ? <IncompleteFoodWeightNote /> : null}
         </PanelCard>
       </div>
     </>
+  )
+}
+
+function IncompleteFoodWeightNote() {
+  return (
+    <p className="px-3 pb-2 text-xs text-amber-700">
+      Some Food plan weight is missing packaging data and is not counted.
+    </p>
   )
 }
 

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { ListItemWithGear, Category } from '../lib/types'
-import { computeWeightBreakdown } from '../lib/weight-breakdown'
+import { computeWeightBreakdown, type WeightBreakdown } from '../lib/weight-breakdown'
 import {
   COMPACT_PANEL_BODY_TEXT,
   TABLE_DIVIDER_LINE,
@@ -11,25 +11,27 @@ import TotalWeightValue from '../components/TotalWeightValue'
 type Props = {
   items: ListItemWithGear[]
   categories: Category[]
+  breakdown?: WeightBreakdown
 }
 
 function fmtG(grams: number): string {
   return `${grams} g`
 }
 
-export default function WeightTable({ items, categories }: Props) {
+export default function WeightTable({ items, categories, breakdown: providedBreakdown }: Props) {
   // Hook must be called unconditionally; the empty-list early return moved
   // below the memo. The memo guards against unrelated parent re-renders
   // (notes editor keystroke, dialog open/close) recomputing the breakdown
   // — pack-mode toggles still rebuild because `items` reference changes
   // there, but those are the renders where the breakdown legitimately
   // changes anyway.
-  const breakdown = useMemo(
+  const computedBreakdown = useMemo(
     () => computeWeightBreakdown(items, categories),
     [items, categories],
   )
+  const breakdown = providedBreakdown ?? computedBreakdown
 
-  if (items.length === 0) return null
+  if (items.length === 0 && breakdown.totalPackGrams === 0 && breakdown.wornGrams === 0) return null
 
   const { catRows, baseGrams, consumableGrams, wornGrams, totalPackGrams } = breakdown
 
