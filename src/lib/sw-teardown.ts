@@ -26,6 +26,7 @@ export async function runServiceWorkerTeardown(): Promise<void> {
 
   try {
     localStorage.removeItem('grampacker:pending-checks:v2')
+    localStorage.removeItem('grampacker:last-auth-session')
   } catch {
     /* localStorage can throw in restricted contexts */
   }

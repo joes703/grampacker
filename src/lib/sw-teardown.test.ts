@@ -20,6 +20,7 @@ describe('runServiceWorkerTeardown', () => {
       delete: cacheDelete,
     })
     localStorage.setItem('grampacker:pending-checks:v2', '[]')
+    localStorage.setItem('grampacker:last-auth-session', '{}')
     localStorage.setItem('grampacker:passkey-nudge-pending', 'keep-me')
 
     await runServiceWorkerTeardown()
@@ -28,6 +29,7 @@ describe('runServiceWorkerTeardown', () => {
     expect(cacheDelete).toHaveBeenCalledWith('workbox-precache')
     expect(cacheDelete).toHaveBeenCalledWith('supabase-rest')
     expect(localStorage.getItem('grampacker:pending-checks:v2')).toBeNull()
+    expect(localStorage.getItem('grampacker:last-auth-session')).toBeNull()
     expect(localStorage.getItem('grampacker:passkey-nudge-pending')).toBe('keep-me')
   })
 

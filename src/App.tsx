@@ -15,10 +15,8 @@ const queryClient = new QueryClient({
       staleTime: 1000 * 30,
       // Default retry is 3 with exponential backoff (~7s offline thrash).
       // Skip retries while offline; keep one retry when online to absorb a
-      // transient blip. The Workbox SW serves Supabase GETs from cache
-      // (StaleWhileRevalidate, see vite.config.ts), so most offline reads
-      // succeed against cache regardless — retries only matter for
-      // cache-miss URLs, where retrying offline can't help.
+      // transient blip. Offline reads have no cache to fall back on now that
+      // the service worker is gone, so retrying offline cannot help.
       retry: (failureCount) =>
         typeof navigator !== 'undefined' && !navigator.onLine ? false : failureCount < 1,
     },
