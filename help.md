@@ -97,7 +97,7 @@ When Ready checks are on, every row in Pack mode gets a Ready checkbox (amber) b
 
 A second progress bar tracks how many items are Ready, alongside the Packed progress bar. Separate **Reset ready** and **Reset packed** buttons let you clear either state without affecting the other.
 
-Like Packed, Ready checkmarks work offline and sync when you reconnect. Ready state is not shown on public share links.
+Ready state is not shown on public share links.
 
 ### List options
 
@@ -129,13 +129,9 @@ Lighterpack CSV exports should work as a starting point. You can also use your o
 
 From Settings, you can export your account data as a zip file. The export includes your gear inventory and lists. This is a good way to backup your data.
 
-## Mobile and offline use
+## Mobile use
 
 grampacker works in a mobile browser and can be added to your home screen so it opens like an app.
-
-For offline use, open the lists you need while you still have a connection. Previously opened lists may still be available when offline.
-
-Packing checkmarks work offline and sync when you reconnect. Other edits, like changing list items or quantities, still need a connection.
 
 ## Account and privacy
 
