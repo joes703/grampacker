@@ -78,6 +78,7 @@ export default function FoodLibraryPage() {
       queryKey: queryKeys.foodItems(),
       id: ({ id }) => id,
       apply: (food, { patch }) => ({ ...food, ...patch }),
+      invalidateKeys: [queryKeys.foodPackSignaturesAll()],
     }),
   })
 
@@ -87,6 +88,7 @@ export default function FoodLibraryPage() {
       qc,
       queryKey: queryKeys.foodItems(),
       id: (id) => id,
+      invalidateKeys: [queryKeys.foodPlansAll(), queryKeys.foodPackSignaturesAll(), queryKeys.foodPackStateAll()],
     }),
   })
 

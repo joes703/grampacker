@@ -17,6 +17,7 @@ import {
   addFoodPlanDay, deleteFoodPlanDay, updateDayType, assertFoodPlanDayWithinCap, duplicateFoodPlanDay,
   addMealDefinition, deleteMeal, deleteDayMeal, addDayMeal, assertMealDefinitionWithinCap,
   saveFoodPlanTargets, type TargetsSavePayload,
+  invalidateFoodPlanCaches,
 } from '../lib/queries'
 import { randomTempId } from '../lib/random-temp-id'
 import type { EntryBasis, FoodItem, FoodPlanEntry, Meal, FoodPlanDocument as Doc } from '../lib/types'
@@ -51,7 +52,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const foodById = new Map<string, FoodItem>((foodsQuery.data ?? []).map((f) => [f.id, f]))
 
   const qc = useQueryClient()
-  const invalidate = () => qc.invalidateQueries({ queryKey: queryKeys.foodPlan(listId) })
+  const invalidate = () => invalidateFoodPlanCaches(qc, listId)
 
   const reorderDays = useFoodReorder(listId, 'days')
   const reorderMeals = useFoodReorder(listId, 'meals')

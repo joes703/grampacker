@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { queryKeys, bulkUpdateSortOrder } from '../lib/queries'
+import { queryKeys, bulkUpdateSortOrder, invalidateFoodPlanCaches } from '../lib/queries'
 import { showToast } from '../lib/toast'
 import type { FoodPlanDocument } from '../lib/types'
 import type { ReorderableTable } from '../lib/queries/bulk-reorder'
@@ -46,6 +46,6 @@ export function useFoodReorder(listId: string, slice: Slice) {
       if (ctx?.prev !== undefined) qc.setQueryData(key, ctx.prev)
       showToast("Couldn't save the new order. Please try again.", { type: 'error' })
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: key }),
+    onSettled: () => invalidateFoodPlanCaches(qc, listId),
   })
 }

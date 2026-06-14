@@ -6,7 +6,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 // Mock the queries barrel: the real module pulls in the Supabase client,
 // which throws at import without env vars. Provide just what the page reads.
 vi.mock('../lib/queries', () => ({
-  queryKeys: { foodItems: () => ['food-items'] as const },
+  queryKeys: {
+    foodItems: () => ['food-items'] as const,
+    foodPlansAll: () => ['food-plan'] as const,
+    foodPackSignaturesAll: () => ['food-pack-signatures'] as const,
+    foodPackStateAll: () => ['food-pack-state'] as const,
+  },
   fetchFoodItems: vi.fn(),
   createFoodItem: vi.fn(),
   updateFoodItem: vi.fn(),

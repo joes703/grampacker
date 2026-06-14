@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRequireSession } from '../auth/use-require-session'
 import { useDocumentTitle } from '../lib/use-document-title'
-import { queryKeys, fetchFoodPlan, createFoodPlan } from '../lib/queries'
+import { queryKeys, fetchFoodPlan, createFoodPlan, invalidateFoodPlanCaches } from '../lib/queries'
 import PrimaryButton from '../components/PrimaryButton'
 import ListWorkspaceTabs from '../lists/ListWorkspaceTabs'
 import CreateFoodPlanDialog from './CreateFoodPlanDialog'
@@ -30,7 +30,7 @@ export default function FoodPlanPage() {
     meta: { errorToast: "Couldn't start the food plan. Please try again." },
     onSuccess: () => {
       setShowCreate(false)
-      return qc.invalidateQueries({ queryKey: queryKeys.foodPlan(listId ?? '') })
+      return invalidateFoodPlanCaches(qc, listId ?? '')
     },
   })
 
