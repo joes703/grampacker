@@ -5,6 +5,7 @@ import type { FoodPlanStructure } from '../food/basis'
 import type {
   FoodPlan, Meal, FoodPlanDay, DayMeal, FoodPlanEntry, FoodPlanDocument, EntryBasis,
   FoodPlanDailyTarget, MealTarget, DailyTargetInput, MealTargetInput,
+  DailyTargetMetric, MealTargetMetric, TargetMode,
 } from '../types'
 
 // ---- Composite read (design 9.1): one plan assembled from owner-scoped reads.
@@ -177,5 +178,25 @@ export async function upsertMealTarget(target: MealTargetInput): Promise<void> {
 
 export async function deleteMealTarget(id: string): Promise<void> {
   const { error } = await supabase.from('meal_targets').delete().eq('id', id)
+  if (error) throw error
+}
+
+export type TargetsSavePayload = {
+  dailyUpserts: { metric: DailyTargetMetric; mode: TargetMode; target_min: number | null; target_max: number | null }[]
+  dailyDeletes: DailyTargetMetric[]
+  mealUpserts: { meal_id: string; metric: MealTargetMetric; mode: TargetMode; target_min: number | null; target_max: number | null }[]
+  mealDeletes: { meal_id: string; metric: MealTargetMetric }[]
+}
+
+// One transactional save: all upserts/deletes commit together (see RPC).
+export async function saveFoodPlanTargets(userId: string, foodPlanId: string, payload: TargetsSavePayload): Promise<void> {
+  const { error } = await supabase.rpc('save_food_plan_targets', {
+    p_user_id: userId,
+    p_food_plan_id: foodPlanId,
+    p_daily_upserts: payload.dailyUpserts,
+    p_daily_deletes: payload.dailyDeletes,
+    p_meal_upserts: payload.mealUpserts,
+    p_meal_deletes: payload.mealDeletes,
+  })
   if (error) throw error
 }

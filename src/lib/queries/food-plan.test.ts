@@ -10,6 +10,7 @@ import {
   fetchFoodPlan,
   upsertDailyTarget,
   upsertMealTarget,
+  saveFoodPlanTargets,
 } from './food-plan'
 import type { DailyTargetInput, MealTargetInput } from '../types'
 import { FOOD_PLAN_DAY_CAP, MEAL_DEFINITION_CAP, FOOD_PLAN_ENTRY_CAP } from '../caps'
@@ -152,5 +153,28 @@ describe('target upserts', () => {
     )
     const payload = upsert.mock.calls[0]?.[0] as Record<string, unknown>
     expect('id' in payload).toBe(false)
+  })
+})
+
+describe('saveFoodPlanTargets', () => {
+  beforeEach(() => rpc.mockReset())
+  it('sends one RPC call with the four payload arrays', async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+    const payload = {
+      dailyUpserts: [{ metric: 'calories' as const, mode: 'range' as const, target_min: 2000, target_max: 3000 }],
+      dailyDeletes: ['protein' as const],
+      mealUpserts: [{ meal_id: 'm', metric: 'fat_pct' as const, mode: 'max' as const, target_min: null, target_max: 30 }],
+      mealDeletes: [{ meal_id: 'm', metric: 'sugar_pct' as const }],
+    }
+    await saveFoodPlanTargets('u', 'p', payload)
+    expect(rpc).toHaveBeenCalledWith('save_food_plan_targets', {
+      p_user_id: 'u', p_food_plan_id: 'p',
+      p_daily_upserts: payload.dailyUpserts, p_daily_deletes: payload.dailyDeletes,
+      p_meal_upserts: payload.mealUpserts, p_meal_deletes: payload.mealDeletes,
+    })
+  })
+  it('throws on rpc error', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'boom' } })
+    await expect(saveFoodPlanTargets('u', 'p', { dailyUpserts: [], dailyDeletes: [], mealUpserts: [], mealDeletes: [] })).rejects.toBeDefined()
   })
 })
