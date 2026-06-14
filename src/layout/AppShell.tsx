@@ -10,7 +10,6 @@ import FoodLibraryPage from '../food/FoodLibraryPage'
 import ListsPage from '../lists/ListsPage'
 import ListDetailPage from '../lists/ListDetailPage'
 import FoodPlanPage from '../food/FoodPlanPage'
-import OfflineBanner from '../components/OfflineBanner'
 import PasskeyNudge from '../components/PasskeyNudge'
 
 // Settings and Help are rarely visited and don't need to ship in the main
@@ -33,7 +32,6 @@ export default function AppShell() {
     <SidebarDrawerProvider>
       <MobilePrimaryNavProvider>
         <div className="min-h-screen bg-gray-50">
-          <OfflineBanner />
           <PasskeyNudge />
           <NavBar />
           <main className="mx-auto max-w-7xl px-4 pt-4 lg:pt-8 pb-20 lg:pb-8">
