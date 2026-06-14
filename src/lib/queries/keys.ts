@@ -7,6 +7,8 @@ export const queryKeys = {
   gearItems: () => ['gear-items'] as const,
   foodItems: () => ['food-items'] as const,
   foodPlan: (listId: string) => ['food-plan', listId] as const,
+  foodPackSignatures: (listId: string) => ['food-pack-signatures', listId] as const,
+  foodPackState: (listId: string) => ['food-pack-state', listId] as const,
   lists: () => ['lists'] as const,
   listItems: (listId: string) => ['list-items', listId] as const,
   // User-scoped so a same-tab account switch can't surface the previous
