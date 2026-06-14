@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nutrientTotal, nutrientTotals, totalWeight, NUTRIENT_KEYS } from './nutrition'
+import { nutrientTotal, nutrientTotals, totalWeight, NUTRIENT_KEYS, derivedValue } from './nutrition'
 import type { FoodItem, FoodPlanEntry } from '../types'
 
 function food(p: Partial<FoodItem>): FoodItem {
@@ -178,5 +178,17 @@ describe('summarizeTrip full-day density is combined/combined, not averaged', ()
     const s = summarizeTrip(view, foods2)
     expect(s.fullDayAverage.calorieDensityPerGram).toBeCloseTo(1, 5)
     expect(s.fullDayAverage.totals.calories).toEqual({ state: 'complete', value: 150 })
+  })
+})
+
+describe('derivedValue', () => {
+  const dC = (value: number) => ({ state: 'complete' as const, value })
+  const dINC = (...ids: string[]) => ({ state: 'incomplete' as const, missingFoodIds: ids })
+  it('incomplete inputs -> incomplete with unioned ids', () => {
+    expect(derivedValue([dINC('a'), dC(1), dINC('b')], () => 5)).toEqual({ state: 'incomplete', missingFoodIds: ['a', 'b'] })
+  })
+  it('complete + value -> complete; complete + null -> undefined', () => {
+    expect(derivedValue([dC(1)], () => 5)).toEqual({ state: 'complete', value: 5 })
+    expect(derivedValue([dC(1)], () => null)).toEqual({ state: 'undefined' })
   })
 })

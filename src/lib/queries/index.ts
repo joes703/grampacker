@@ -106,5 +106,6 @@ export {
   upsertFoodPlanEntry, upsertFoodPlanEntries, updateFoodPlanEntry, deleteFoodPlanEntry, deleteFoodPlanDay,
   updateDayType, renameMeal, deleteMeal, deleteDayMeal, addDayMeal, deleteFoodPlan,
   assertFoodPlanDayWithinCap, assertMealDefinitionWithinCap, assertFoodPlanEntryWithinCap,
+  saveFoodPlanTargets,
 } from './food-plan'
-export type { EntryAddition, EntryBatchAddition } from './food-plan'
+export type { EntryAddition, EntryBatchAddition, TargetsSavePayload } from './food-plan'

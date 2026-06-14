@@ -1,5 +1,5 @@
 // src/lib/food/targets.ts
-import type { DailyTargetMetric, MealTargetMetric, TargetMode } from '../types'
+import type { DailyTargetMetric, FoodPlanDailyTarget, MealTarget, MealTargetMetric, TargetMode } from '../types'
 import {
   carbProteinRatio, fatPct, sugarPct,
   type NutrientKey, type NutrientTotal,
@@ -63,4 +63,40 @@ export function mealMetricValue(
     case 'sugar_pct': return sugarPct(totals.sugar_grams, totals.fat_grams, totals.carbs_grams, totals.protein_grams)
     case 'carb_protein_ratio': return carbProteinRatio(totals.carbs_grams, totals.protein_grams)
   }
+}
+
+export type ResolvedTarget<M extends string> = {
+  metric: M; mode: TargetMode; target_min: number | null; target_max: number | null
+  value: number | null; status: TargetStatus
+}
+
+export function dailyMetricForNutrientKey(key: NutrientKey): DailyTargetMetric | null {
+  for (const m of Object.keys(DAILY_NUTRIENT_KEY) as Exclude<DailyTargetMetric, 'calorie_density'>[]) {
+    if (DAILY_NUTRIENT_KEY[m] === key) return m
+  }
+  return null
+}
+
+export function resolveDailyTargets(
+  targets: FoodPlanDailyTarget[], totals: Record<NutrientKey, NutrientTotal>,
+  calorieDensityPerGram: number | null, dayType: 'full' | 'partial',
+): Map<DailyTargetMetric, ResolvedTarget<DailyTargetMetric>> {
+  const graded = dayType === 'full'
+  const out = new Map<DailyTargetMetric, ResolvedTarget<DailyTargetMetric>>()
+  for (const t of targets) {
+    const value = dailyMetricValue(t.metric, totals, calorieDensityPerGram)
+    out.set(t.metric, { metric: t.metric, mode: t.mode, target_min: t.target_min, target_max: t.target_max, value, status: evaluateTarget(t, value, graded) })
+  }
+  return out
+}
+
+export function resolveMealTargets(
+  targets: MealTarget[], totals: Record<NutrientKey, NutrientTotal>,
+): Map<MealTargetMetric, ResolvedTarget<MealTargetMetric>> {
+  const out = new Map<MealTargetMetric, ResolvedTarget<MealTargetMetric>>()
+  for (const t of targets) {
+    const value = mealMetricValue(t.metric, totals)
+    out.set(t.metric, { metric: t.metric, mode: t.mode, target_min: t.target_min, target_max: t.target_max, value, status: evaluateTarget(t, value, true) })
+  }
+  return out
 }

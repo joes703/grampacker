@@ -1,21 +1,21 @@
 import { createPortal } from 'react-dom'
 import { CircleMinus, MoreVertical, Trash2 } from 'lucide-react'
-import type { FoodItem } from '../lib/types'
+import type { FoodItem, MealTarget } from '../lib/types'
 import type { CellView } from './useFoodPlanDocument'
 import { FLAT_TABLE_HEADER, POPOVER_SURFACE } from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import CellEntryReorder from './CellEntryReorder'
-import { nutrientTotal } from '../lib/food/nutrition'
-import NutrientTotalCell from './NutrientTotalCell'
+import MealTargetsBar from './MealTargetsBar'
 
 export default function MealSection({
-  cell, listId, userId, foodById, onAddFood, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry, onOmit, onDeleteMeal,
+  cell, listId, userId, foodById, mealTargets, onAddFood, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry, onOmit, onDeleteMeal,
 }: {
   cell: CellView
   listId: string
   userId: string
   foodById: Map<string, FoodItem>
+  mealTargets: MealTarget[]
   onAddFood?: () => void
   onEditEntry?: (entryId: string) => void
   onMoveEntry?: (entryId: string) => void
@@ -29,16 +29,10 @@ export default function MealSection({
       <div className={`${FLAT_TABLE_HEADER} flex items-center justify-between`}>
         <span>{cell.meal.name}</span>
         <span className="flex items-center gap-2">
-          <span className="text-xs font-normal normal-case text-gray-500">
-            <NutrientTotalCell
-              total={nutrientTotal(cell.entries, foodById, 'calories')}
-              kind="calories"
-              nameForId={(id) => foodById.get(id)?.name ?? 'Unknown food'}
-            />
-          </span>
           {(onOmit || onDeleteMeal) && <MealKebab onOmit={onOmit} onDeleteMeal={onDeleteMeal} />}
         </span>
       </div>
+      <MealTargetsBar entries={cell.entries} foodById={foodById} mealTargets={mealTargets} />
       <CellEntryReorder
         listId={listId}
         userId={userId}

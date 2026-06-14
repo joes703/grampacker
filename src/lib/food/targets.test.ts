@@ -1,7 +1,8 @@
 // src/lib/food/targets.test.ts
 import { describe, it, expect } from 'vitest'
-import { evaluateTarget, resolveTotal, dailyMetricValue, mealMetricValue } from './targets'
+import { evaluateTarget, resolveTotal, dailyMetricValue, mealMetricValue, resolveDailyTargets, resolveMealTargets, dailyMetricForNutrientKey } from './targets'
 import type { NutrientKey, NutrientTotal } from './nutrition'
+import type { FoodPlanDailyTarget, MealTarget } from '../types'
 
 const C = (value: number): NutrientTotal => ({ state: 'complete', value })
 const INC = (...ids: string[]): NutrientTotal => ({ state: 'incomplete', missingFoodIds: ids })
@@ -72,5 +73,29 @@ describe('mealMetricValue', () => {
   })
   it('carb_protein_ratio needs both and protein > 0', () => {
     expect(mealMetricValue('carb_protein_ratio', totals({ carbs_grams: C(60), protein_grams: C(20) }))).toBeCloseTo(3, 5)
+  })
+})
+
+const daily = (o: Partial<FoodPlanDailyTarget> & Pick<FoodPlanDailyTarget, 'metric' | 'mode'>): FoodPlanDailyTarget => ({ id: 'd', user_id: 'u', food_plan_id: 'p', target_min: null, target_max: null, ...o })
+const meal = (o: Partial<MealTarget> & Pick<MealTarget, 'metric' | 'mode'>): MealTarget => ({ id: 'm', user_id: 'u', food_plan_id: 'p', meal_id: 'mm', target_min: null, target_max: null, ...o })
+
+describe('dailyMetricForNutrientKey', () => {
+  it('maps columns to metrics, null where none', () => {
+    expect(dailyMetricForNutrientKey('protein_grams')).toBe('protein')
+    expect(dailyMetricForNutrientKey('fat_grams')).toBeNull()
+  })
+})
+describe('resolveDailyTargets', () => {
+  it('grades Full, neutral on Partial', () => {
+    const t = [daily({ metric: 'calories', mode: 'range', target_min: 2000, target_max: 3000 })]
+    expect(resolveDailyTargets(t, totals({ calories: C(3500) }), null, 'full').get('calories')?.status).toBe('over')
+    expect(resolveDailyTargets(t, totals({ calories: C(3500) }), null, 'partial').get('calories')?.status).toBe('neutral')
+  })
+})
+describe('resolveMealTargets', () => {
+  it('always grades; incomplete input -> incomplete', () => {
+    const t = [meal({ metric: 'fat_pct', mode: 'max', target_max: 30 })]
+    expect(resolveMealTargets(t, totals({ fat_grams: C(10), carbs_grams: C(20), protein_grams: C(10) })).get('fat_pct')?.status).toBe('over')
+    expect(resolveMealTargets(t, totals({ fat_grams: C(10), carbs_grams: INC('x'), protein_grams: C(10) })).get('fat_pct')?.status).toBe('incomplete')
   })
 })

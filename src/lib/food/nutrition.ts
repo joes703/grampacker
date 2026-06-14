@@ -163,3 +163,22 @@ export function summarizeTrip(view: FoodPlanView, foodById: Map<string, FoodItem
 
   return { days, extras, planned, packed, fullDayAverage }
 }
+
+// A derived value distinguishes three outcomes so the UI never shows a silent
+// dash for missing data: complete (a number), incomplete (inputs missing - name
+// the foods), or undefined (mathematically undefined, e.g. zero denominator).
+export type DerivedValue =
+  | { state: 'complete'; value: number }
+  | { state: 'incomplete'; missingFoodIds: string[] }
+  | { state: 'undefined' }
+
+export function derivedValue(inputs: NutrientTotal[], compute: () => number | null): DerivedValue {
+  const missing = new Set<string>()
+  let incomplete = false
+  for (const t of inputs) {
+    if (t.state === 'incomplete') { incomplete = true; for (const id of t.missingFoodIds) missing.add(id) }
+  }
+  if (incomplete) return { state: 'incomplete', missingFoodIds: [...missing] }
+  const v = compute()
+  return v === null ? { state: 'undefined' } : { state: 'complete', value: v }
+}

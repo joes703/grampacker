@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { Check, Copy, MoreVertical, Trash2 } from 'lucide-react'
-import type { FoodItem, Meal } from '../lib/types'
+import type { FoodItem, Meal, MealTarget } from '../lib/types'
 import type { DayView } from './useFoodPlanDocument'
 import { FLAT_TABLE_SURFACE, POPOVER_SURFACE } from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
@@ -9,7 +9,7 @@ import MealSection from './MealSection'
 import DayTotalsStrip from './DayTotalsStrip'
 
 export default function FoodPlanDayCard({
-  dayView, dayIndex, listId, userId, foodById, onAddFoodToCell, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry,
+  dayView, dayIndex, listId, userId, foodById, mealTargets, onAddFoodToCell, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry,
   onSetDayType, onDeleteDay, onDuplicate, allMeals, onOmitMeal, onDeleteMeal, onRestoreMeal,
   dragHandle, outerRef, outerStyle,
 }: {
@@ -18,6 +18,7 @@ export default function FoodPlanDayCard({
   listId: string
   userId: string
   foodById: Map<string, FoodItem>
+  mealTargets?: MealTarget[]
   onAddFoodToCell?: (dayMealId: string) => void
   onEditEntry?: (entryId: string) => void
   onMoveEntry?: (entryId: string) => void
@@ -56,6 +57,7 @@ export default function FoodPlanDayCard({
           listId={listId}
           userId={userId}
           foodById={foodById}
+          mealTargets={(mealTargets ?? []).filter((t) => t.meal_id === cell.meal.id)}
           onAddFood={onAddFoodToCell ? () => onAddFoodToCell(cell.dayMealId) : undefined}
           onEditEntry={onEditEntry}
           onMoveEntry={onMoveEntry}
