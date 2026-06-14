@@ -11,7 +11,6 @@ import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
 import AboutLink from '../components/AboutLink'
-import OfflineBanner from '../components/OfflineBanner'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import DraftBanner from './DraftBanner'
 import { PANEL_EMPTY_TEXT } from '../components/flat-table-styles'
@@ -142,7 +141,6 @@ export default function SharePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <OfflineBanner />
       <div className="mx-auto max-w-5xl px-4 py-10">
         {/* Header. Viewers don't have Settings access, so the share page
             keeps its own units control. Rendered label-less: the g / oz

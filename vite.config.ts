@@ -1,7 +1,6 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   test: {
@@ -26,9 +25,8 @@ export default defineConfig({
       output: {
         // Split heavy third-party deps out of the main bundle so a code-only
         // deploy (the common case) invalidates only the small app chunk,
-        // not the ~500 kB of vendor JS. The PWA precache still ships every
-        // chunk on first load, but on subsequent updates the SW can reuse
-        // the unchanged vendor chunks from cache. Keep this list small and
+        // not the ~500 kB of vendor JS. Browsers reuse the unchanged vendor
+        // chunks from the HTTP cache across deploys. Keep this list small and
         // explicit: over-splitting fragments the cache and hurts cold load.
         manualChunks: (id) => {
           if (id.includes('node_modules')) {
@@ -50,93 +48,5 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    VitePWA({
-      // Auto-update: SW silently swaps in a new build on next page load.
-      // injectRegister: 'auto' makes the plugin write the registration
-      // script into index.html — no manual `registerSW()` call needed in
-      // src/. If we ever want a "new version available, refresh" prompt
-      // UI, switch to 'prompt' and import virtual:pwa-register in main.tsx.
-      registerType: 'autoUpdate',
-      injectRegister: 'auto',
-      // Wipe outdated precache entries on activation, and skip the
-      // "waiting" phase so a fresh build takes effect on the next reload
-      // rather than two reloads later.
-      workbox: {
-        cleanupOutdatedCaches: true,
-        clientsClaim: true,
-        skipWaiting: true,
-        navigateFallback: 'index.html',
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
-        // Supabase REST cache below is URL-keyed (not auth-keyed). The
-        // shared-device boundary is enforced from the app side instead:
-        // AuthProvider calls clearSupabaseRestCache() (src/lib/sw-cache.ts)
-        // whenever the active user id changes, flushing the
-        // 'supabase-rest' cache on sign-out and on a different user
-        // signing in within the same tab. StaleWhileRevalidate is kept
-        // for same-user offline/read performance; the boundary control
-        // is the user-id-change clear, not a per-request cache-key plugin.
-        runtimeCaching: [
-          {
-            // Supabase REST GETs (PostgREST reads). Match host-agnostically
-            // on /rest/v1/ — the app only ever talks to one Supabase project,
-            // and matching by path keeps the regex independent of which
-            // env var the build was given. Method GET only — POST/PATCH/
-            // DELETE (mutations) and POST /rpc/ (bulk_update_sort_order
-            // and similar) fall through to network-only.
-            urlPattern: /\/rest\/v1\/(?!rpc\/).*/i,
-            method: 'GET',
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'supabase-rest',
-              expiration: {
-                // Each list visit produces ~3-5 unique URLs (lists, list_items
-                // for that listId, gear_items, categories). 300 entries covers
-                // ~75 lists comfortably, vs. the previous 50 cap which could
-                // evict the very list a user prepped before going offline. JSON
-                // payloads are small; storage cost is a few MB at the cap.
-                maxEntries: 300,
-                maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
-              },
-              // Treat opaque/cors responses as cacheable. Supabase responds
-              // 200 with cors headers; this is just defense against the
-              // default of 0-and-200-only.
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            // /auth/v1/ — login, signup, token refresh, magic link verify.
-            // Explicit NetworkOnly to make the intent obvious in code review;
-            // without an entry these would fall through to NetworkOnly
-            // anyway, but a stale auth response on disk would be the worst
-            // possible cache miss.
-            urlPattern: /\/auth\/v1\//i,
-            handler: 'NetworkOnly',
-          },
-        ],
-      },
-      manifest: {
-        name: 'grampacker',
-        short_name: 'grampacker',
-        description: 'A backpacking gear list, weight tracker, and packing tool.',
-        start_url: '/',
-        display: 'standalone',
-        background_color: '#ffffff',
-        theme_color: '#059669',
-        icons: [
-          {
-            src: '/web-app-manifest-192x192.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any maskable',
-          },
-          {
-            src: '/web-app-manifest-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any maskable',
-          },
-        ],
-      },
-    }),
   ],
 })

@@ -2,13 +2,6 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import { clearSupabaseRestCache } from '../lib/sw-cache'
-
-const OFFLINE_SESSION_KEY = 'grampacker:last-auth-session'
-// Supabase owns sb-<project>-auth-token and may clear it during refresh
-// failures. Keep a separate last-known-good copy so an offline reload can
-// still render cached app data until the next online auth round-trip decides
-// whether the session is truly invalid.
 
 type AuthContextValue = {
   session: Session | null
@@ -17,130 +10,58 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue>({ session: null, loading: true })
 
-function isOnline() {
-  return typeof navigator === 'undefined' || navigator.onLine
-}
-
-function readOfflineSession(): Session | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const raw = window.localStorage.getItem(OFFLINE_SESSION_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<Session>
-    return typeof parsed.access_token === 'string' && typeof parsed.refresh_token === 'string'
-      ? (parsed as Session)
-      : null
-  } catch {
-    return null
-  }
-}
-
-function writeOfflineSession(session: Session) {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(OFFLINE_SESSION_KEY, JSON.stringify(session))
-}
-
-function clearOfflineSession() {
-  if (typeof window === 'undefined') return
-  window.localStorage.removeItem(OFFLINE_SESSION_KEY)
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  // Tracks the active user id across auth events so we can flush the
-  // Workbox runtime REST cache when the user actually changes. `undefined`
-  // means "not yet seeded" (mount); a concrete user id or null means we've
-  // seen at least one auth result. Transitions FROM undefined never clear
-  // (the cache content belongs to whichever user we're booting as). See
-  // src/lib/sw-cache.ts and vite.config.ts for the surrounding model.
+  // Tracks the active user id across auth events so we drop the in-memory
+  // React Query cache when the user actually changes. `undefined` means
+  // "not yet seeded" (mount); a concrete id or null means we've seen at
+  // least one auth result. A transition FROM undefined never clears (the
+  // cache belongs to whoever we're booting as).
   const lastUserIdRef = useRef<string | null | undefined>(undefined)
   const queryClient = useQueryClient()
 
   useEffect(() => {
     let ignored = false
 
-    // Reconcile the active user id and, on identity change (including
-    // sign-out, where nextUserId is null), wipe BOTH caches that can
-    // hold the previous user's rows BEFORE callers commit the new
-    // session to React state:
+    // On identity change (including sign-out, where nextUserId is null),
+    // drop the in-memory React Query cache BEFORE callers commit the new
+    // session to state. Most query keys (['gear-items'], ['lists'],
+    // ['list-items', id], ...) are NOT user-scoped, and the global 30s
+    // staleTime means a query re-mounting right after an account switch
+    // would otherwise be served the previous user's data from memory
+    // without a refetch. queryClient.clear() drops every cached query and
+    // observer; the next mount starts cold under the new identity.
     //
-    //   1. The URL-keyed SW REST cache. The workbox `supabase-rest`
-    //      runtime cache holds row JSON KEY'd BY URL (auth lives in
-    //      the Authorization header, not the URL), so a different user
-    //      signing in inside the same tab would otherwise be served
-    //      the previous user's cached data — either while offline
-    //      (reads land on the SW) or on reconnect (React Query's
-    //      refetchOnReconnect races StaleWhileRevalidate and the
-    //      cached response wins). This clear runs even when offline.
-    //
-    //   2. The in-memory React Query cache. Most query keys
-    //      (['gear-items'], ['lists'], ['list-items', id], ...) are
-    //      NOT user-scoped, and the global 30s staleTime means a query
-    //      that re-mounts right after an account switch would be served
-    //      the previous user's data from memory without a refetch. The
-    //      SW clear above does not touch this layer. queryClient.clear()
-    //      drops every cached query and observer; the next mount starts
-    //      from a cold cache and fetches under the new identity.
-    //
-    // Both clears are awaited here so they gate every downstream
-    // `setSession`: no useQuery can read either cache under the new
-    // identity until both are gone. caches.delete and clear() are local
-    // operations; the latency cost is a few ms.
-    //
-    // First call after mount (prev === undefined) just seeds the ref;
-    // the cache content belongs to whoever we're booting as, so we do
-    // NOT clear (that would throw away the boot user's warm cache).
+    // First call after mount (prev === undefined) just seeds the ref (no
+    // clear - that would throw away the boot user's warm cache).
     // Same-identity calls are no-ops.
-    async function reconcileUserId(nextUserId: string | null) {
+    function reconcileUserId(nextUserId: string | null) {
       const prev = lastUserIdRef.current
       if (prev === undefined) {
         lastUserIdRef.current = nextUserId
         return
       }
       if (prev === nextUserId) return
-      try {
-        await clearSupabaseRestCache()
-      } catch {
-        // helper is silent-on-failure internally; if it threw despite
-        // that, still advance the ref so a steady-state same-identity
-        // event afterwards doesn't re-fire the clear in an infinite
-        // loop.
-      }
-      // Drop the in-memory React Query cache too. Synchronous, but kept
-      // after the awaited SW clear so the ordering reads as "both caches
-      // gone, then commit the session".
       queryClient.clear()
       lastUserIdRef.current = nextUserId
     }
 
     async function loadInitialSession() {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession()
+        const { data: { session } } = await supabase.auth.getSession()
         if (ignored) return
-        if (session) {
-          writeOfflineSession(session)
-          await reconcileUserId(session.user.id)
-          if (ignored) return
-          setSession(session)
-        } else if (error && !isOnline()) {
-          const offline = readOfflineSession()
-          await reconcileUserId(offline?.user.id ?? null)
-          if (ignored) return
-          setSession(offline)
-        } else {
-          clearOfflineSession()
-          await reconcileUserId(null)
-          if (ignored) return
-          setSession(null)
-        }
+        reconcileUserId(session?.user.id ?? null)
+        if (ignored) return
+        setSession(session)
       } catch {
+        // getSession failed to resolve a session (e.g. a transient network
+        // failure on cold load). Treat it as signed-out; a later auth event
+        // reconciles if a session becomes available.
         if (ignored) return
-        if (!isOnline()) {
-          const offline = readOfflineSession()
-          await reconcileUserId(offline?.user.id ?? null)
-          if (!ignored) setSession(offline)
-        }
+        reconcileUserId(null)
+        if (ignored) return
+        setSession(null)
       } finally {
         if (!ignored) setLoading(false)
       }
@@ -149,58 +70,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (ignored) return
-      if (session) {
-        writeOfflineSession(session)
-        await reconcileUserId(session.user.id)
-        if (ignored) return
-        setSession(session)
-        return
-      }
-
-      if (!isOnline()) {
-        // Offline null-session events are treated as transient refresh
-        // failures. A real sign-out or invalid refresh token will be
-        // reconciled by the next online auth event/getSession result.
-        // Skip reconcileUserId here so the previous online user id stays
-        // recorded; flipping it to null offline would cause a spurious
-        // cache clear on the next online auth event.
-        return
-      }
-
-      clearOfflineSession()
-      await reconcileUserId(null)
+      reconcileUserId(nextSession?.user.id ?? null)
       if (ignored) return
-      setSession(null)
+      setSession(nextSession)
     })
-
-    // Defense-in-depth for the offline-user-switch case. If supabase
-    // doesn't fire a fresh auth event after reconnect (e.g. the new
-    // user's token is still valid), the 'online' edge re-runs
-    // reconciliation against the current session. The primary clear
-    // already happens at the offline auth event (above) since the
-    // online guard was removed; this is belt-and-braces for cases
-    // where that event was somehow missed.
-    async function onWindowOnline() {
-      if (ignored) return
-      try {
-        const { data: { session: current } } = await supabase.auth.getSession()
-        if (ignored) return
-        await reconcileUserId(current?.user?.id ?? null)
-      } catch {
-        // next auth event will reconcile
-      }
-    }
-    window.addEventListener('online', onWindowOnline)
 
     return () => {
       ignored = true
       subscription.unsubscribe()
-      window.removeEventListener('online', onWindowOnline)
     }
-    // queryClient is a stable instance from QueryClientProvider; listed
-    // to satisfy exhaustive-deps without causing the effect to re-run.
+    // queryClient is a stable instance from QueryClientProvider; listed to
+    // satisfy exhaustive-deps without re-running the effect.
   }, [queryClient])
 
   return <AuthContext.Provider value={{ session, loading }}>{children}</AuthContext.Provider>
