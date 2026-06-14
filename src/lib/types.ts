@@ -187,6 +187,23 @@ export type MealTarget = {
 export type DailyTargetInput = Omit<FoodPlanDailyTarget, 'id'> & { id?: never }
 export type MealTargetInput = Omit<MealTarget, 'id'> & { id?: never }
 
+// User-scoped default daily targets (Phase 3B-iii). Daily-only in v1. Copied
+// into new plans server-side by create_food_plan; the plan owns its copy. A
+// stored default is ALWAYS active: the table CHECK forbids mode='off' (Off is an
+// editor action that deletes the row), so the row type excludes 'off'.
+export type TargetDefault = {
+  id: string; user_id: string
+  metric: DailyTargetMetric; mode: Exclude<TargetMode, 'off'>
+  target_min: number | null; target_max: number | null
+}
+// A single active default sent to save_target_defaults (mode is never 'off';
+// switching to Off emits a delete instead).
+export type DailyDefaultUpsert = {
+  metric: DailyTargetMetric
+  mode: Exclude<TargetMode, 'off'>
+  target_min: number | null; target_max: number | null
+}
+
 // The whole plan assembled by fetchFoodPlan. Daily/meal targets added in Phase 3.
 export type FoodPlanDocument = {
   plan: FoodPlan; meals: Meal[]; days: FoodPlanDay[]; dayMeals: DayMeal[]; entries: FoodPlanEntry[]

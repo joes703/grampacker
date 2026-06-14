@@ -13,4 +13,7 @@ export const queryKeys = {
   // user's passkey metadata from cache (the global 30s staleTime would
   // otherwise serve it without a refetch).
   passkeys: (userId: string) => ['passkeys', userId] as const,
+  // User-scoped: a same-tab account switch must not surface the previous
+  // user's default targets from cache.
+  targetDefaults: (userId: string) => ['target-defaults', userId] as const,
 }
