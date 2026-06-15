@@ -6,17 +6,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { PublicListItem } from '../lib/types'
 
-const auth = vi.hoisted(() => {
-  type MockAuthValue = { session: { user: { id: string } } | null; loading: boolean }
-  return {
-    useAuth: vi.fn<() => MockAuthValue>(() => ({ session: null, loading: false })),
-  }
-})
-const copyHook = vi.hoisted(() => ({
-  mutate: vi.fn(),
-  usePublicGearCopyMutation: vi.fn(),
-}))
-
 // Mock only the public fetchers SharePage calls. Do NOT importActual -
 // the real ../lib/queries pulls in the Supabase client, which throws at import
 // without env vars. No co-rendered child imports other ../lib/queries exports.
@@ -32,11 +21,6 @@ vi.mock('../lib/queries', () => ({
   fetchSharedFoodPlan: vi.fn(async () => null),
 }))
 
-vi.mock('../auth/AuthProvider', () => ({ useAuth: auth.useAuth }))
-vi.mock('./use-public-gear-copy-mutation', () => ({
-  usePublicGearCopyMutation: copyHook.usePublicGearCopyMutation,
-}))
-
 import {
   fetchSharedFoodPlan,
   fetchSharedFoodSummary,
@@ -47,11 +31,6 @@ import SharePage from './SharePage'
 
 // jsdom has no matchMedia; SharePage -> useIsBelowLg() reads it during render.
 beforeEach(() => {
-  auth.useAuth.mockReturnValue({ session: null, loading: false })
-  copyHook.usePublicGearCopyMutation.mockReturnValue({
-    mutate: copyHook.mutate,
-    isPending: false,
-  })
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
     media: query,
@@ -116,37 +95,27 @@ describe('SharePage draft banner', () => {
   })
 })
 
-describe('SharePage public gear copy', () => {
-  it('shows a sign-in link to signed-out viewers', async () => {
+describe('SharePage read-only public sharing', () => {
+  it('does not offer public copy actions to signed-out viewers', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue(baseList)
     renderShareView()
 
-    const link = await screen.findByRole('link', { name: 'Sign in to copy' })
-    expect(link).toHaveAttribute('href', '/login')
+    expect(await screen.findByText('Trip')).toBeTruthy()
+    expect(screen.queryByRole('link', { name: 'Sign in to copy' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Copy gear list' })).toBeNull()
   })
 
-  it('lets signed-in viewers copy the gear list', async () => {
-    const user = userEvent.setup()
-    auth.useAuth.mockReturnValue({
-      session: { user: { id: 'user-1' } },
-      loading: false,
-    })
+  it('keeps public gear shares read-only even when food weight is shown', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue(baseList)
     vi.mocked(fetchSharedListItems).mockResolvedValue([sharedItem])
-    // The derived Food row (500 g) must NOT enter the copy payload: it is not a
-    // gear/list item, so Copy gear list cannot carry it (rule 6).
     vi.mocked(fetchSharedFoodSummary).mockResolvedValue(500)
 
     renderShareView()
 
-    await user.click(await screen.findByRole('button', { name: 'Copy gear list' }))
-
-    expect(copyHook.usePublicGearCopyMutation).toHaveBeenCalledWith('user-1')
-    expect(copyHook.mutate).toHaveBeenCalledWith({
-      list: baseList,
-      items: [sharedItem],
-      categories: [],
-    })
+    expect(await screen.findByText('Food')).toBeTruthy()
+    expect(screen.getByText('From Food plan')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Copy gear list' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Sign in to copy' })).toBeNull()
   })
 })
 

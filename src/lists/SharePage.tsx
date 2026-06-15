@@ -1,5 +1,5 @@
 import { Suspense, lazy, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
   fetchSharedList, fetchSharedListItems, fetchSharedListCategories,
@@ -20,9 +20,6 @@ import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import DraftBanner from './DraftBanner'
 import { PANEL_EMPTY_TEXT } from '../components/flat-table-styles'
 import PublicFoodPlanSection from '../food/PublicFoodPlanSection'
-import PrimaryButton from '../components/PrimaryButton'
-import { useAuth } from '../auth/AuthProvider'
-import { usePublicGearCopyMutation } from './use-public-gear-copy-mutation'
 
 // Notes are rendered as Markdown on the public share view (typing markdown
 // in the authed NotesEditor textarea is the only authoring path). Lazy so
@@ -34,9 +31,6 @@ export default function SharePage() {
   const { slug } = useParams<{ slug: string }>()
   const { weightUnit } = useWeightUnit()
   const isBelowLg = useIsBelowLg()
-  const { session, loading: authLoading } = useAuth()
-  const userId = session?.user.id ?? ''
-  const copyGearMutation = usePublicGearCopyMutation(userId)
   const [activeTab, setActiveTab] = useState<'gear' | 'food'>('gear')
 
   const { data: list, isLoading: listLoading, isError: listError } = useQuery({
@@ -64,7 +58,7 @@ export default function SharePage() {
     [items],
   )
 
-  const { data: categories = [], isLoading: categoriesLoading, isError: categoriesError } = useQuery({
+  const { data: categories = [], isError: categoriesError } = useQuery({
     queryKey: ['shared-list-categories', list?.id, categoryIds.toSorted().join(',')],
     queryFn: () => fetchSharedListCategories(categoryIds),
     enabled: Boolean(list?.id) && categoryIds.length > 0,
@@ -170,7 +164,6 @@ export default function SharePage() {
     : []
   const showFoodPlan = Boolean(sharedFoodPlan)
   const showingFoodPlan = showFoodPlan && activeTab === 'food'
-  const categoriesReady = categoryIds.length === 0 || !categoriesLoading
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -183,24 +176,6 @@ export default function SharePage() {
         {list.is_draft && <DraftBanner />}
         <div className="mb-6 flex flex-wrap items-center gap-3">
           <h1 className="flex-1 min-w-0 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
-          {!authLoading && (
-            session ? (
-              <PrimaryButton
-                size="sm"
-                onClick={() => copyGearMutation.mutate({ list, items, categories })}
-                disabled={copyGearMutation.isPending || !categoriesReady}
-              >
-                {copyGearMutation.isPending ? 'Copying…' : 'Copy gear list'}
-              </PrimaryButton>
-            ) : (
-              <Link
-                to="/login"
-                className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Sign in to copy
-              </Link>
-            )
-          )}
           <UnitSegmentedControl idPrefix="share" />
         </div>
         {showFoodPlan && (
