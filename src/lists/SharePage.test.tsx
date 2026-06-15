@@ -4,16 +4,20 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 
-// Mock only the three public fetchers SharePage calls. Do NOT importActual -
+// Mock only the public fetchers SharePage calls. Do NOT importActual -
 // the real ../lib/queries pulls in the Supabase client, which throws at import
 // without env vars. No co-rendered child imports other ../lib/queries exports.
 vi.mock('../lib/queries', () => ({
+  queryKeys: {
+    sharedFoodProjection: (slug: string) => ['shared-food-projection', slug],
+  },
   fetchSharedList: vi.fn(),
   fetchSharedListItems: vi.fn(async () => []),
   fetchSharedListCategories: vi.fn(async () => []),
+  fetchSharedFoodProjection: vi.fn(async () => []),
 }))
 
-import { fetchSharedList } from '../lib/queries'
+import { fetchSharedFoodProjection, fetchSharedList } from '../lib/queries'
 import SharePage from './SharePage'
 
 // jsdom has no matchMedia; SharePage -> useIsBelowLg() reads it during render.
@@ -82,5 +86,28 @@ describe('SharePage error and not-found states', () => {
     vi.mocked(fetchSharedList).mockResolvedValueOnce(null)
     renderShareView()
     expect(await screen.findByText('List not found')).toBeTruthy()
+  })
+})
+
+describe('SharePage public food projection', () => {
+  it('renders aggregate Food plan rows without the owner edit link', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue({ ...baseList, is_draft: false })
+    vi.mocked(fetchSharedFoodProjection).mockResolvedValue([
+      {
+        list_slug: 'abc123',
+        food_name: 'Energy bar',
+        brand: 'Trail Co',
+        total_effective_servings: 2,
+        total_weight_grams: 120,
+      },
+    ])
+
+    renderShareView()
+
+    expect(await screen.findByText('Food from plan')).toBeTruthy()
+    expect(screen.getByText('Energy bar')).toBeTruthy()
+    expect(screen.getByText('Trail Co')).toBeTruthy()
+    expect(screen.getByText('2 servings')).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /edit food plan/i })).toBeNull()
   })
 })

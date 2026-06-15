@@ -42,6 +42,7 @@ type Props = {
   showUnpackedOnly: boolean
   rows: FoodProjectionDisplayRow[]
   onTogglePacked: (foodItemId: string, next: boolean) => void
+  editFoodPlanHref?: string | null
 }
 
 function incompleteLabel(reason: FoodProjectionDisplayRow & { state: 'incomplete' }): string {
@@ -54,6 +55,7 @@ export default function FoodProjectionSection({
   showUnpackedOnly,
   rows,
   onTogglePacked,
+  editFoodPlanHref,
 }: Props) {
   const { weightUnit } = useWeightUnit()
   const visibleRows = packMode && showUnpackedOnly
@@ -63,6 +65,7 @@ export default function FoodProjectionSection({
   if (visibleRows.length === 0) return null
 
   const rowCount = rows.length
+  const editHref = editFoodPlanHref === undefined ? `/lists/${listId}/food` : editFoodPlanHref
 
   return (
     <section className={FLAT_TABLE_SURFACE} aria-label="Food carried from plan">
@@ -73,9 +76,11 @@ export default function FoodProjectionSection({
             {rowCount} food{rowCount === 1 ? '' : 's'}
           </span>
         </div>
-        <Link to={`/lists/${listId}/food`} className="shrink-0 text-xs font-medium text-blue-600 hover:underline">
-          Edit food plan
-        </Link>
+        {editHref ? (
+          <Link to={editHref} className="shrink-0 text-xs font-medium text-blue-600 hover:underline">
+            Edit food plan
+          </Link>
+        ) : null}
       </div>
 
       <div>
