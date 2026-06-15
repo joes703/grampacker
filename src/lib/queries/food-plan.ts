@@ -202,6 +202,14 @@ export async function deleteFoodPlan(id: string): Promise<void> {
   const { error } = await supabase.from('food_plans').delete().eq('id', id); if (error) throw error
 }
 
+export async function updateFoodPlanShare(foodPlanId: string, isFoodShared: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('food_plans')
+    .update({ is_food_shared: isFoodShared })
+    .eq('id', foodPlanId)
+  if (error) throw error
+}
+
 // ---- cap preflight.
 export function assertFoodPlanDayWithinCap(existingDays: number): void {
   if (existingDays >= FOOD_PLAN_DAY_CAP) throw new Error(`This plan already has the maximum ${FOOD_PLAN_DAY_CAP} days.`)
