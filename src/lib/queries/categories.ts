@@ -4,7 +4,7 @@ import { bulkUpdateSortOrder } from './bulk-reorder'
 
 // Owner-scoped private read. See queries/index.ts for the convention.
 export async function fetchCategories(userId: string): Promise<Category[]> {
-  const { data, error } = await publicSupabase
+  const { data, error } = await supabase
     .from('categories')
     .select('*')
     .eq('user_id', userId)
@@ -20,7 +20,7 @@ export async function fetchCategories(userId: string): Promise<Category[]> {
 // the allowlist.
 export async function fetchSharedListCategories(categoryIds: string[]): Promise<PublicCategory[]> {
   if (categoryIds.length === 0) return []
-  const { data, error } = await supabase
+  const { data, error } = await publicSupabase
     .from('public_gear_categories')
     .select('id, name, sort_order')
     .in('id', categoryIds)

@@ -17,7 +17,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const mockState = vi.hoisted(() => ({
   // Per-call records, written in order; tests clear before each case.
-  calls: [] as { table: string; selectCols: string | null }[],
+  calls: [] as { client: 'private' | 'public'; table: string; selectCols: string | null }[],
   // Response for the next call. Tests overwrite per case. `single` is
   // what `.single()` resolves to; `list` is what the awaited builder
   // resolves to when no `.single()` is chained.
@@ -28,7 +28,7 @@ const mockState = vi.hoisted(() => ({
 vi.mock('../supabase', () => ({
   supabase: {
     from(table: string) {
-      const state = { table, selectCols: null as string | null }
+      const state = { client: 'private' as const, table, selectCols: null as string | null }
       mockState.calls.push(state)
       // Chainable builder. Every filter-style method (eq, in, order)
       // returns the same builder. The builder is `thenable` so callers
@@ -62,7 +62,7 @@ vi.mock('../supabase', () => ({
   },
   publicSupabase: {
     from(table: string) {
-      const state = { table, selectCols: null as string | null }
+      const state = { client: 'public' as const, table, selectCols: null as string | null }
       mockState.calls.push(state)
       const builder: Record<string, unknown> = {
         select(cols: string) {
@@ -93,9 +93,9 @@ vi.mock('../supabase', () => ({
   },
 }))
 
-import { fetchSharedList } from './lists'
+import { fetchLists, fetchSharedList } from './lists'
 import { fetchSharedListItems, fetchListItems, fetchAllUserListItems } from './list-items'
-import { fetchSharedListCategories } from './categories'
+import { fetchCategories, fetchSharedListCategories } from './categories'
 import { GEAR_ITEM_AUTH_SELECT } from './projections'
 import { patchAffectsListItemsView } from '../../lists/list-items-fan-out'
 
@@ -214,6 +214,7 @@ describe('fetchSharedList (public share view list projection)', () => {
     const result = await fetchSharedList('abc123')
 
     expect(mockState.calls).toHaveLength(1)
+    expect(mockState.calls[0]?.client).toBe('public')
     expect(mockState.calls[0]?.table).toBe('public_gear_lists')
     const cols = mockState.calls[0]?.selectCols ?? ''
     // Explicit allowlist matches SECURITY.md "Public read column allowlist".
@@ -275,6 +276,7 @@ describe('fetchSharedListItems (public share view list_items projection)', () =>
     const result = await fetchSharedListItems('list-1')
 
     expect(mockState.calls).toHaveLength(1)
+    expect(mockState.calls[0]?.client).toBe('public')
     expect(mockState.calls[0]?.table).toBe('public_gear_list_items')
     const cols = mockState.calls[0]?.selectCols ?? ''
 
@@ -423,6 +425,7 @@ describe('fetchListItems (authenticated list view list_items projection)', () =>
     await fetchListItems('list-1', 'user-1')
 
     expect(mockState.calls).toHaveLength(1)
+    expect(mockState.calls[0]?.client).toBe('private')
     expect(mockState.calls[0]?.table).toBe('list_items')
     const cols = mockState.calls[0]?.selectCols ?? ''
     // The list_items row itself is fetched with `*` (authenticated path
@@ -448,6 +451,7 @@ describe('fetchAllUserListItems (authenticated export list_items projection)', (
     await fetchAllUserListItems('user-1')
 
     expect(mockState.calls).toHaveLength(1)
+    expect(mockState.calls[0]?.client).toBe('private')
     expect(mockState.calls[0]?.table).toBe('list_items')
     const cols = mockState.calls[0]?.selectCols ?? ''
     expect(cols).toContain(GEAR_ITEM_AUTH_SELECT)
@@ -465,6 +469,30 @@ describe('fetchAllUserListItems (authenticated export list_items projection)', (
       'status',
       'weight_grams',
     ])
+  })
+})
+
+describe('authenticated owner reads use the session Supabase client', () => {
+  it('fetchLists reads from lists with the private client', async () => {
+    mockState.nextList = { data: [], error: null }
+
+    await fetchLists('user-1')
+
+    expect(mockState.calls).toHaveLength(1)
+    expect(mockState.calls[0]?.client).toBe('private')
+    expect(mockState.calls[0]?.table).toBe('lists')
+    expect(mockState.calls[0]?.selectCols).toBe('*')
+  })
+
+  it('fetchCategories reads from categories with the private client', async () => {
+    mockState.nextList = { data: [], error: null }
+
+    await fetchCategories('user-1')
+
+    expect(mockState.calls).toHaveLength(1)
+    expect(mockState.calls[0]?.client).toBe('private')
+    expect(mockState.calls[0]?.table).toBe('categories')
+    expect(mockState.calls[0]?.selectCols).toBe('*')
   })
 })
 
@@ -487,6 +515,7 @@ describe('fetchSharedListCategories (public share view categories projection)', 
     const result = await fetchSharedListCategories(['cat-1', 'cat-2'])
 
     expect(mockState.calls).toHaveLength(1)
+    expect(mockState.calls[0]?.client).toBe('public')
     expect(mockState.calls[0]?.table).toBe('public_gear_categories')
     const cols = mockState.calls[0]?.selectCols ?? ''
 
