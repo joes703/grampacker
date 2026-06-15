@@ -32,7 +32,7 @@ type Props = {
 // PackingProgress, leaving Gear / Lists / Add.
 //
 // Pack mode used to live as a fifth slot here, but pack is URL state on
-// a list (?mode=pack), not a separate destination — it would have
+// a list (/lists/:id/pack), not a global destination — it would have
 // forced either a 5-slot inconsistent shape or a confusing
 // always-grayed Add in pack mode. The Pack toggle now lives inline on
 // the list page itself (MobilePackToggle), which also keeps Add
