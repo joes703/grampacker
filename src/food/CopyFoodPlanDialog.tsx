@@ -23,7 +23,9 @@ export default function CopyFoodPlanDialog({
   })
   const options = optionsQuery.data ?? []
   const [selected, setSelected] = useState('')
-  const selectedFoodPlanId = selected || options[0]?.food_plan_id || ''
+  const selectedFoodPlanId = options.some((option) => option.food_plan_id === selected)
+    ? selected
+    : options[0]?.food_plan_id ?? ''
 
   function submit(e: FormEvent) {
     e.preventDefault()
