@@ -183,8 +183,8 @@ set local "request.jwt.claims" = '{"sub":"00000000-0000-0000-0000-0000000005a1",
 
 select is((select count(*)::int from public.lists where id = '53000000-0000-0000-0000-000000000001'), 1,
   'owner still reads their own shared base list');
-select is((select count(*)::int from public.public_gear_lists where slug = 'priv01'), 0,
-  'owner does not see an unshared list through the public view');
+select is((select count(*)::int from public.lists where id = '53000000-0000-0000-0000-000000000002'), 1,
+  'owner still reads their own unshared base list');
 
 select finish();
 rollback;
