@@ -92,7 +92,7 @@ select is(public.get_public_food_plan('nope00'), null::jsonb,
 
 select is(
   (select array_agg(key order by key) from jsonb_object_keys(public.get_public_food_plan('pubd01')) key),
-  array['dailyTargets','dayMeals','days','entries','foods','mealTargets','meals','plan']::text[],
+  array['dailyTargets','dayMeals','days','entries','foods','meals','mealTargets','plan']::text[],
   'document exposes only the expected top-level keys');
 select ok(not jsonb_path_exists(public.get_public_food_plan('pubd01'), '$.**.user_id'),
   'document exposes no owner ids');
@@ -117,7 +117,7 @@ select is(jsonb_array_length(public.get_public_food_plan('pubd01')->'dailyTarget
   'document includes daily targets');
 select is(jsonb_array_length(public.get_public_food_plan('pubd01')->'mealTargets'), 1,
   'document includes meal targets');
-select is((public.get_public_food_plan('pubd01')->'foods'->0->>'calories_per_serving')::int, 250,
+select is((public.get_public_food_plan('pubd01')->'foods'->0->>'calories_per_serving')::numeric, 250::numeric,
   'document includes nutrition needed for public totals');
 
 set local role authenticated;
