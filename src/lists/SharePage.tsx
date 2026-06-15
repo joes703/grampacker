@@ -1,7 +1,10 @@
-import { Suspense, lazy, useMemo } from 'react'
+import { Suspense, lazy, useMemo, useState } from 'react'
 import { useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { fetchSharedList, fetchSharedListItems, fetchSharedListCategories, fetchSharedFoodProjection, queryKeys } from '../lib/queries'
+import {
+  fetchSharedList, fetchSharedListItems, fetchSharedListCategories,
+  fetchSharedFoodProjection, fetchSharedFoodPlan, queryKeys,
+} from '../lib/queries'
 import { groupListItemsByCategory } from '../lib/grouping'
 import type { Category, ListItemWithGear, PublicCategory, PublicListItem } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
@@ -16,6 +19,7 @@ import AboutLink from '../components/AboutLink'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import DraftBanner from './DraftBanner'
 import { PANEL_EMPTY_TEXT } from '../components/flat-table-styles'
+import PublicFoodPlanSection from '../food/PublicFoodPlanSection'
 
 // Notes are rendered as Markdown on the public share view (typing markdown
 // in the authed NotesEditor textarea is the only authoring path). Lazy so
@@ -27,6 +31,7 @@ export default function SharePage() {
   const { slug } = useParams<{ slug: string }>()
   const { weightUnit } = useWeightUnit()
   const isBelowLg = useIsBelowLg()
+  const [activeTab, setActiveTab] = useState<'gear' | 'food'>('gear')
 
   const { data: list, isLoading: listLoading, isError: listError } = useQuery({
     queryKey: ['shared-list', slug],
@@ -64,8 +69,13 @@ export default function SharePage() {
     queryFn: () => fetchSharedFoodProjection(slug!),
     enabled: Boolean(list?.id) && Boolean(slug),
   })
+  const { data: sharedFoodPlan = null, isLoading: foodPlanLoading, isError: foodPlanError } = useQuery({
+    queryKey: queryKeys.sharedFoodPlan(slug ?? ''),
+    queryFn: () => fetchSharedFoodPlan(slug!),
+    enabled: Boolean(list?.id) && Boolean(slug),
+  })
 
-  if (listLoading || itemsLoading || foodProjectionLoading) {
+  if (listLoading || itemsLoading || foodProjectionLoading || foodPlanLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <p className="text-sm text-gray-400">Loading…</p>
@@ -80,7 +90,7 @@ export default function SharePage() {
   // mislead the viewer into thinking the owner stopped sharing — and
   // an items/categories fetch failure rendering as an empty list would
   // do the same in reverse.
-  if (listError || itemsError || categoriesError || foodProjectionError) {
+  if (listError || itemsError || categoriesError || foodProjectionError || foodPlanError) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -165,6 +175,8 @@ export default function SharePage() {
   const wornItems = showWornGroup
     ? grouped.flatMap((g) => g.items.filter((i) => i.is_worn))
     : []
+  const showFoodPlan = Boolean(sharedFoodPlan)
+  const showingFoodPlan = showFoodPlan && activeTab === 'food'
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -179,7 +191,29 @@ export default function SharePage() {
           <h1 className="flex-1 min-w-0 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
           <UnitSegmentedControl idPrefix="share" />
         </div>
+        {showFoodPlan && (
+          <div className="mb-4 flex gap-1 border-b border-gray-200">
+            <button
+              type="button"
+              onClick={() => setActiveTab('gear')}
+              className={`border-b-2 px-3 py-2 text-sm font-medium ${activeTab === 'gear' ? 'border-blue-600 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            >
+              Gear list
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('food')}
+              className={`border-b-2 px-3 py-2 text-sm font-medium ${activeTab === 'food' ? 'border-blue-600 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            >
+              Food plan
+            </button>
+          </div>
+        )}
 
+        {showingFoodPlan && sharedFoodPlan ? (
+          <PublicFoodPlanSection doc={sharedFoodPlan} />
+        ) : (
+          <>
         {/* Notes + Weight summary — side by side on desktop, with Notes
             getting the wider read-only column. */}
         <div className={`mb-6 grid gap-4 ${items.length > 0 || foodProjectionRows.length > 0 ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
@@ -241,6 +275,8 @@ export default function SharePage() {
               />
             )}
           </div>
+        )}
+          </>
         )}
 
         <div className="mt-8 text-center">
