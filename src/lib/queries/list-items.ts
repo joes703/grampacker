@@ -1,4 +1,4 @@
-import { supabase } from '../supabase'
+import { publicSupabase, supabase } from '../supabase'
 import type { Category, GearItem, ListItem, ListItemWithGear, List, PublicListItem } from '../types'
 import type { ListImportRow } from '../csv'
 import { bulkUpdateSortOrder } from './bulk-reorder'
@@ -27,7 +27,7 @@ export function nextListItemSortOrder(
 // Owner-scoped private read. See queries/index.ts for the convention.
 // Uses the list_items.user_id column added in 20260506000002.
 export async function fetchListItems(listId: string, userId: string): Promise<ListItemWithGear[]> {
-  const { data, error } = await supabase
+  const { data, error } = await publicSupabase
     .from('list_items')
     .select(`*, ${GEAR_ITEM_AUTH_SELECT}`)
     .eq('user_id', userId)

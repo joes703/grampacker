@@ -60,6 +60,37 @@ vi.mock('../supabase', () => ({
       return builder
     },
   },
+  publicSupabase: {
+    from(table: string) {
+      const state = { table, selectCols: null as string | null }
+      mockState.calls.push(state)
+      const builder: Record<string, unknown> = {
+        select(cols: string) {
+          state.selectCols = cols
+          return builder
+        },
+        eq() {
+          return builder
+        },
+        in() {
+          return builder
+        },
+        order() {
+          return builder
+        },
+        single() {
+          return Promise.resolve(mockState.nextSingle)
+        },
+        then(
+          resolve: (v: unknown) => unknown,
+          reject?: (e: unknown) => unknown,
+        ) {
+          return Promise.resolve(mockState.nextList).then(resolve, reject)
+        },
+      }
+      return builder
+    },
+  },
 }))
 
 import { fetchSharedList } from './lists'

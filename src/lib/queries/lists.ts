@@ -1,4 +1,4 @@
-import { supabase } from '../supabase'
+import { publicSupabase, supabase } from '../supabase'
 import type { List, PublicList } from '../types'
 import { generateSlug } from '../slug'
 import { bulkUpdateSortOrder } from './bulk-reorder'
@@ -56,7 +56,7 @@ export function nextListSortOrder(
 
 // Owner-scoped private read. See queries/index.ts for the convention.
 export async function fetchLists(userId: string): Promise<List[]> {
-  const { data, error } = await supabase
+  const { data, error } = await publicSupabase
     .from('lists')
     .select('*')
     .eq('user_id', userId)

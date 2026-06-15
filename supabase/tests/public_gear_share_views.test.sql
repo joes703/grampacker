@@ -56,9 +56,9 @@ select is(
    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
    where n.nspname = 'public'
      and c.relname in ('public_gear_lists','public_gear_list_items','public_gear_categories')
-     and c.reloptions @> array['security_barrier=true','security_invoker=false']),
+     and c.reloptions @> array['security_barrier=true','security_invoker=true']),
   3,
-  'all public Gear share views are security-barrier, definer-rights views');
+  'all public Gear share views are security-barrier, invoker-rights views');
 
 select is(
   (select count(*)::int
@@ -103,13 +103,17 @@ select bag_eq(
   'authenticated keeps CRUD grants on the base Gear-list tables');
 
 select bag_eq(
-  $$ select table_name::text from information_schema.role_table_grants
+  $$ select table_name::text, column_name::text from information_schema.role_column_grants
      where table_schema = 'public'
-       and table_name in ('public_gear_lists','public_gear_list_items','public_gear_categories')
-       and grantee = 'authenticated'
+       and table_name in ('categories','gear_items','lists','list_items')
+       and grantee = 'anon'
        and privilege_type = 'SELECT' $$,
-  $$ values ('public_gear_lists'), ('public_gear_list_items'), ('public_gear_categories') $$,
-  'authenticated can SELECT the curated public Gear views');
+  $$ values
+       ('categories','id'), ('categories','name'), ('categories','sort_order'),
+       ('gear_items','id'), ('gear_items','name'), ('gear_items','description'), ('gear_items','weight_grams'), ('gear_items','category_id'),
+       ('lists','id'), ('lists','slug'), ('lists','name'), ('lists','description'), ('lists','group_worn'), ('lists','is_draft'), ('lists','is_shared'),
+       ('list_items','id'), ('list_items','list_id'), ('list_items','gear_item_id'), ('list_items','quantity'), ('list_items','is_worn'), ('list_items','is_consumable'), ('list_items','sort_order') $$,
+  'anon has only the public base-column grants required by the invoker views');
 
 select bag_eq(
   $$ select table_name::text, privilege_type::text from information_schema.role_table_grants
@@ -135,14 +139,14 @@ select bag_eq(
 set local role anon;
 set local "request.jwt.claims" = '{"role":"anon"}';
 
-select throws_ok($$ select count(*) from public.lists $$, '42501', NULL,
-  'anon cannot read the base lists table');
-select throws_ok($$ select count(*) from public.list_items $$, '42501', NULL,
-  'anon cannot read the base list_items table');
-select throws_ok($$ select count(*) from public.gear_items $$, '42501', NULL,
-  'anon cannot read the base gear_items table');
-select throws_ok($$ select count(*) from public.categories $$, '42501', NULL,
-  'anon cannot read the base categories table');
+select throws_ok($$ select user_id from public.lists $$, '42501', NULL,
+  'anon cannot read private columns from the base lists table');
+select throws_ok($$ select is_packed from public.list_items $$, '42501', NULL,
+  'anon cannot read private columns from the base list_items table');
+select throws_ok($$ select status from public.gear_items $$, '42501', NULL,
+  'anon cannot read private columns from the base gear_items table');
+select throws_ok($$ select user_id from public.categories $$, '42501', NULL,
+  'anon cannot read private columns from the base categories table');
 
 select is((select count(*)::int from public.public_gear_lists), 2,
   'anon sees shared lists through the curated list view');
@@ -170,8 +174,8 @@ select is((select count(*)::int from public.gear_items where id = '52000000-0000
   'authenticated non-owner cannot read another users shared gear item from the base table');
 select is((select count(*)::int from public.categories where id = '51000000-0000-0000-0000-000000000001'), 0,
   'authenticated non-owner cannot read another users shared category from the base table');
-select is((select count(*)::int from public.public_gear_lists where slug = 'pubg01'), 1,
-  'authenticated non-owner can read another users shared list through the public view');
+select throws_ok($$ select count(*) from public.public_gear_lists where slug = 'pubg01' $$, '42501', NULL,
+  'authenticated non-owner does not use the public view grant; browser public reads use the anon client');
 select is((select count(*)::int from public.lists where id = '53000000-0000-0000-0000-000000000003'), 1,
   'authenticated user still reads their own base list');
 
