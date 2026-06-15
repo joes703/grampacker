@@ -1,21 +1,23 @@
-// Stores the path of the last-visited list (including pack-mode query)
+// Stores the path of the last-visited list (including pack route)
 // so RootRedirect can land the user back where they were when the app
 // reloads from the manifest start_url. Pack mode itself is URL state
-// (?mode=pack); this helper just makes the redirect honor the full
+// (/lists/:id/pack); this helper just makes the redirect honor the full
 // path rather than only the list id.
 //
 // Validation is intentionally strict: only `/lists/<uuid>` with an
-// optional exact `?mode=pack`. The helper refuses to store anything
+// optional exact `/pack`. The helper refuses to store anything
 // else, so a malformed value can never make it past write-time and
 // any tampered localStorage entry that doesn't match the regex is
 // treated as a miss on read. If a future list-detail URL state needs
-// to survive RootRedirect (e.g. `?filter=…`), broaden LIST_PATH_RE
+// to survive RootRedirect, broaden LIST_PATH_RE
 // explicitly; do not relax to "any string starting with /lists/".
 
 const KEY = 'lastListPath'
 const LEGACY_KEY = 'lastListId'
 const LIST_PATH_RE =
-  /^\/lists\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?mode=pack)?$/i
+  /^\/lists\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/pack)?$/i
+const LEGACY_PACK_PATH_RE =
+  /^\/lists\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\?mode=pack$/i
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -32,6 +34,17 @@ export function readLastListPath(): string | null {
   try {
     const raw = localStorage.getItem(KEY)
     if (raw && LIST_PATH_RE.test(raw)) return raw
+    const legacyPack = raw?.match(LEGACY_PACK_PATH_RE)
+    const legacyPackId = legacyPack?.[1]
+    if (legacyPackId) {
+      const path = `/lists/${legacyPackId}/pack`
+      try {
+        localStorage.setItem(KEY, path)
+      } catch {
+        // best-effort migration; stale value may linger on quota errors.
+      }
+      return path
+    }
 
     const legacyId = localStorage.getItem(LEGACY_KEY)
     if (legacyId && UUID_RE.test(legacyId)) {
@@ -84,6 +97,7 @@ export function clearLastListPath(): void {
 export function getListIdFromListPath(path: string): string | null {
   if (!LIST_PATH_RE.test(path)) return null
   const idStart = '/lists/'.length
-  const queryIdx = path.indexOf('?')
-  return queryIdx === -1 ? path.slice(idStart) : path.slice(idStart, queryIdx)
+  const rest = path.slice(idStart)
+  const slashIdx = rest.indexOf('/')
+  return slashIdx === -1 ? rest : rest.slice(0, slashIdx)
 }

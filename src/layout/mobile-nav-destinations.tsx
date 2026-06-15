@@ -9,7 +9,7 @@ import type { MobileBottomBarItem } from '../components/MobileBottomBar'
 // Active-state rules live here so all callers stay aligned:
 //   - Gear active on /gear
 //   - Lists active on /lists and /lists/:id (any subroute, including
-//     ?mode=pack). Pack mode is URL state on a list, not a separate
+//     /pack). Pack mode is URL state on a list, not a global
 //     destination; the in-page Pack pill on List Detail carries that
 //     signal locally.
 export function buildMobileDestinationItems(pathname: string): MobileBottomBarItem[] {

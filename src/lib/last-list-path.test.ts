@@ -9,7 +9,8 @@ import {
 
 const UUID = '11111111-2222-3333-4444-555555555555'
 const BARE_PATH = `/lists/${UUID}`
-const PACK_PATH = `/lists/${UUID}?mode=pack`
+const PACK_PATH = `/lists/${UUID}/pack`
+const LEGACY_PACK_PATH = `/lists/${UUID}?mode=pack`
 
 beforeEach(() => {
   localStorage.clear()
@@ -37,8 +38,14 @@ describe('readLastListPath', () => {
   })
 
   it('rejects paths with extra query keys', () => {
-    localStorage.setItem('lastListPath', `${BARE_PATH}?mode=pack&extra=1`)
+    localStorage.setItem('lastListPath', `${LEGACY_PACK_PATH}&extra=1`)
     expect(readLastListPath()).toBeNull()
+  })
+
+  it('migrates the legacy pack-mode query path to the pack route', () => {
+    localStorage.setItem('lastListPath', LEGACY_PACK_PATH)
+    expect(readLastListPath()).toBe(PACK_PATH)
+    expect(localStorage.getItem('lastListPath')).toBe(PACK_PATH)
   })
 
   it('rejects paths with a non-UUID id segment', () => {
@@ -65,6 +72,11 @@ describe('writeLastListPath', () => {
 
   it('no-ops on a path with extra query keys', () => {
     writeLastListPath(`${BARE_PATH}?other=1`)
+    expect(localStorage.getItem('lastListPath')).toBeNull()
+  })
+
+  it('no-ops on the legacy pack-mode query path', () => {
+    writeLastListPath(LEGACY_PACK_PATH)
     expect(localStorage.getItem('lastListPath')).toBeNull()
   })
 

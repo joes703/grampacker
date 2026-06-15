@@ -42,6 +42,7 @@ export default function AppShell() {
                 <Route path="/food" element={<FoodLibraryPage />} />
                 <Route path="/lists" element={<ListsPage />} />
                 <Route path="/lists/:id" element={<ListDetailPage />} />
+                <Route path="/lists/:id/pack" element={<ListDetailPage />} />
                 <Route path="/lists/:id/food" element={<FoodPlanPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/help" element={<HelpPage />} />

@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pencil } from 'lucide-react'
-import { Link, useParams, useSearchParams } from 'react-router'
+import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   DndContext,
@@ -170,25 +170,15 @@ function ListDetailInner({
   userId: string
   qc: ReturnType<typeof useQueryClient>
 }) {
-  // Pack mode is URL-represented as ?mode=pack so it's bookmarkable,
-  // refresh-stable, and back/forward navigable. Anything other than the
-  // exact string 'pack' (missing, garbage, typo) falls back to edit mode
-  // silently. The toggle UI lives in ListDocumentToolbar at md+ and in
-  // MobilePackToggle at <lg (a list-page control, not bottom-bar nav);
-  // this hook owns both the read and the write. Public share view at
-  // /r/:slug is a different page and never sees this parameter.
-  const [searchParams, setSearchParams] = useSearchParams()
-  const mode: Mode = searchParams.get('mode') === 'pack' ? 'pack' : 'edit'
+  // Pack mode is URL-represented as /lists/:id/pack so it's bookmarkable,
+  // refresh-stable, and back/forward navigable. The legacy ?mode=pack URL
+  // redirects below for old bookmarks and home-screen shortcuts.
+  const location = useLocation()
+  const navigate = useNavigate()
+  const legacyPackMode = location.pathname === `/lists/${listId}` && new URLSearchParams(location.search).get('mode') === 'pack'
+  const mode: Mode = location.pathname === `/lists/${listId}/pack` || legacyPackMode ? 'pack' : 'edit'
   function togglePackMode() {
-    setSearchParams(
-      (prev) => {
-        const np = new URLSearchParams(prev)
-        if (mode === 'pack') np.delete('mode')
-        else np.set('mode', 'pack')
-        return np
-      },
-      { replace: false },
-    )
+    navigate(mode === 'pack' ? `/lists/${listId}` : `/lists/${listId}/pack`)
   }
   const { weightUnit } = useWeightUnit()
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
@@ -225,6 +215,12 @@ function ListDetailInner({
   // the title doesn't briefly drop to the bare app name.
   useDocumentTitle(list?.name ?? 'Lists')
 
+  useEffect(() => {
+    if (legacyPackMode) {
+      navigate(`/lists/${listId}/pack`, { replace: true })
+    }
+  }, [legacyPackMode, listId, navigate])
+
   // M4 cache write: stash the list path only AFTER the list resolves to
   // a real, RLS-permitted row. Writing on mount unconditionally would
   // make a stale cache sticky — RootRedirect would send user B to user
@@ -233,10 +229,10 @@ function ListDetailInner({
   // the lists query is in-flight or the route is invalid, so no write
   // fires on those paths. The `mode` dep tracks pack-mode toggling so
   // the stored path stays in sync: enters pack mode -> stored path
-  // gains ?mode=pack; exits -> stored path drops it.
+  // gains /pack; exits -> stored path drops it.
   useEffect(() => {
     if (list?.id) {
-      const path = mode === 'pack' ? `/lists/${list.id}?mode=pack` : `/lists/${list.id}`
+      const path = mode === 'pack' ? `/lists/${list.id}/pack` : `/lists/${list.id}`
       writeLastListPath(path)
     }
   }, [list?.id, mode])
@@ -923,7 +919,7 @@ function ListDetailInner({
             stretched across the full width the missing sidebar leaves
             behind. */}
         <div className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'max-w-3xl mx-auto' : ''}`}>
-          <ListWorkspaceTabs listId={listId} active="gear" />
+          <ListWorkspaceTabs listId={listId} active={mode === 'pack' ? 'pack' : 'gear'} />
           <ListDocumentToolbar
             list={list}
             packMode={mode === 'pack'}
