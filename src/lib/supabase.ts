@@ -24,3 +24,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     experimental: { passkey: true },
   },
 })
+
+export const publicSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+  },
+})

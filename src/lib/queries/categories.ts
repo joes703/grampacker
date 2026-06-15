@@ -1,10 +1,10 @@
-import { supabase } from '../supabase'
+import { publicSupabase, supabase } from '../supabase'
 import type { Category, PublicCategory } from '../types'
 import { bulkUpdateSortOrder } from './bulk-reorder'
 
 // Owner-scoped private read. See queries/index.ts for the convention.
 export async function fetchCategories(userId: string): Promise<Category[]> {
-  const { data, error } = await supabase
+  const { data, error } = await publicSupabase
     .from('categories')
     .select('*')
     .eq('user_id', userId)
@@ -14,14 +14,14 @@ export async function fetchCategories(userId: string): Promise<Category[]> {
   return data
 }
 
-// Categories referenced by the items in a shared list (public read). Relies
-// on the categories_anon_select RLS policy. Returns only
-// the columns the share view renders: no user_id, no is_default, no
-// created_at. See SECURITY.md "Public read paths" for the allowlist.
+// Categories referenced by the items in a shared list (public read). Reads
+// through a curated DB view that physically omits private base-table columns
+// (user_id, is_default, created_at). See SECURITY.md "Public read paths" for
+// the allowlist.
 export async function fetchSharedListCategories(categoryIds: string[]): Promise<PublicCategory[]> {
   if (categoryIds.length === 0) return []
   const { data, error } = await supabase
-    .from('categories')
+    .from('public_gear_categories')
     .select('id, name, sort_order')
     .in('id', categoryIds)
     .order('sort_order', { ascending: true })

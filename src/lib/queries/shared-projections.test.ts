@@ -3,11 +3,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // These tests lock the public share-view column allowlist at the unit
 // level. The three helpers under test feed unauthenticated /r/<slug>
 // rendering. A future refactor that swaps an explicit `select(cols)` for
-// `select('*')` would silently widen the wire response to include
-// owner-only columns (is_packed, user_id, slug, is_shared, is_default,
-// created_at, updated_at). RLS still gates which rows return, but per
-// SECURITY.md "Public read column allowlist" we also gate which COLUMNS
-// return so the auth context never leaks into the share-view payload.
+// `select('*')` against the curated public views would widen the wire
+// response. The database views are the real security boundary; these tests
+// lock the client to those view names and their intended column projection.
 //
 // The mock captures:
 //   - the table name passed to supabase.from(table)
@@ -62,12 +60,43 @@ vi.mock('../supabase', () => ({
       return builder
     },
   },
+  publicSupabase: {
+    from(table: string) {
+      const state = { table, selectCols: null as string | null }
+      mockState.calls.push(state)
+      const builder: Record<string, unknown> = {
+        select(cols: string) {
+          state.selectCols = cols
+          return builder
+        },
+        eq() {
+          return builder
+        },
+        in() {
+          return builder
+        },
+        order() {
+          return builder
+        },
+        single() {
+          return Promise.resolve(mockState.nextSingle)
+        },
+        then(
+          resolve: (v: unknown) => unknown,
+          reject?: (e: unknown) => unknown,
+        ) {
+          return Promise.resolve(mockState.nextList).then(resolve, reject)
+        },
+      }
+      return builder
+    },
+  },
 }))
 
 import { fetchSharedList } from './lists'
 import { fetchSharedListItems, fetchListItems, fetchAllUserListItems } from './list-items'
 import { fetchSharedListCategories } from './categories'
-import { GEAR_ITEM_AUTH_SELECT, GEAR_ITEM_PUBLIC_SELECT } from './projections'
+import { GEAR_ITEM_AUTH_SELECT } from './projections'
 import { patchAffectsListItemsView } from '../../lists/list-items-fan-out'
 
 // Helper: parse the column list inside the `gear_item:gear_items(...)`
@@ -104,31 +133,10 @@ const FORBIDDEN_PUBLIC_COLUMNS = [
 ]
 
 describe('gear-item projection constants', () => {
-  // The constants are the wire-level allowlist for the gear_item join.
-  // Locking their literal values here means: any widening (new column) is
+  // The constant is the private wire-level allowlist for the gear_item join.
+  // Locking its literal value here means: any widening (new column) is
   // a deliberate, reviewable diff in this test file, not a silent change
   // somewhere in the queries layer.
-  it('GEAR_ITEM_PUBLIC_SELECT contains only the public allowlist', () => {
-    expect(GEAR_ITEM_PUBLIC_SELECT).toBe(
-      'gear_item:gear_items(id, name, description, weight_grams, category_id)',
-    )
-    expect(gearColumnList(GEAR_ITEM_PUBLIC_SELECT)).toEqual([
-      'category_id',
-      'description',
-      'id',
-      'name',
-      'weight_grams',
-    ])
-    // Defense in depth: re-enumerate the forbidden private columns so a
-    // future widening that adds one trips this test directly on the
-    // constant, not just at a call site.
-    const inner = GEAR_ITEM_PUBLIC_SELECT
-    for (const forbidden of ['cost', 'purchase_date', 'status', 'is_ready', 'user_id', 'sort_order']) {
-      expect(inner).not.toContain(forbidden)
-    }
-    expect(inner).not.toContain('*')
-  })
-
   it('GEAR_ITEM_AUTH_SELECT extends the public allowlist with status only', () => {
     expect(GEAR_ITEM_AUTH_SELECT).toBe(
       'gear_item:gear_items(id, name, description, weight_grams, category_id, status)',
@@ -191,7 +199,7 @@ describe('EMBEDDED_GEAR_FIELDS stays in sync with GEAR_ITEM_AUTH_SELECT', () => 
 })
 
 describe('fetchSharedList (public share view list projection)', () => {
-  it('reads from public.lists with an explicit, narrow select string', async () => {
+  it('reads from public_gear_lists with an explicit, narrow select string', async () => {
     mockState.nextSingle = {
       data: {
         id: 'list-1',
@@ -206,7 +214,7 @@ describe('fetchSharedList (public share view list projection)', () => {
     const result = await fetchSharedList('abc123')
 
     expect(mockState.calls).toHaveLength(1)
-    expect(mockState.calls[0]?.table).toBe('lists')
+    expect(mockState.calls[0]?.table).toBe('public_gear_lists')
     const cols = mockState.calls[0]?.selectCols ?? ''
     // Explicit allowlist matches SECURITY.md "Public read column allowlist".
     expect(cols).toBe('id, name, description, group_worn, is_draft')
@@ -245,7 +253,7 @@ describe('fetchSharedList (public share view list projection)', () => {
 })
 
 describe('fetchSharedListItems (public share view list_items projection)', () => {
-  it('reads from public.list_items with the narrow allowlist plus nested gear_item allowlist', async () => {
+  it('reads from public_gear_list_items with the narrow flattened view allowlist', async () => {
     mockState.nextList = {
       data: [
         {
@@ -255,13 +263,10 @@ describe('fetchSharedListItems (public share view list_items projection)', () =>
           is_worn: false,
           is_consumable: false,
           sort_order: 0,
-          gear_item: {
-            id: 'g-1',
-            name: 'Tent',
-            description: null,
-            weight_grams: 1200,
-            category_id: 'cat-1',
-          },
+          gear_name: 'Tent',
+          gear_description: null,
+          gear_weight_grams: 1200,
+          gear_category_id: 'cat-1',
         },
       ],
       error: null,
@@ -270,7 +275,7 @@ describe('fetchSharedListItems (public share view list_items projection)', () =>
     const result = await fetchSharedListItems('list-1')
 
     expect(mockState.calls).toHaveLength(1)
-    expect(mockState.calls[0]?.table).toBe('list_items')
+    expect(mockState.calls[0]?.table).toBe('public_gear_list_items')
     const cols = mockState.calls[0]?.selectCols ?? ''
 
     // No wildcard. SECURITY.md forbids select('*') on share-view paths
@@ -281,49 +286,20 @@ describe('fetchSharedListItems (public share view list_items projection)', () =>
     for (const forbidden of FORBIDDEN_PUBLIC_COLUMNS) {
       expect(cols).not.toContain(forbidden)
     }
-    // Note: list_id is excluded from list_items, but the join syntax
-    // does include `gear_items` (the joined table) and `gear_item:` (the
-    // alias). `list_id` itself must not appear as a list_items column.
     expect(cols).not.toMatch(/(^|,|\s)list_id(\s|,|$)/)
 
-    // The exact projection on list_items: the documented allowlist.
-    expect(cols).toContain('id')
-    expect(cols).toContain('gear_item_id')
-    expect(cols).toContain('quantity')
-    expect(cols).toContain('is_worn')
-    expect(cols).toContain('is_consumable')
-    expect(cols).toContain('sort_order')
-
-    // Nested gear_item join uses an explicit column list, not a wildcard.
-    expect(cols).toContain('gear_item:gear_items(')
-    // The select embeds the shared constant verbatim. Any divergence (a
-    // local hand-written join that drifted from the constant) fails here.
-    expect(cols).toContain(GEAR_ITEM_PUBLIC_SELECT)
-
-    const gearCols = cols.match(/gear_item:gear_items\(([^)]+)\)/)?.[1] ?? ''
-    expect(gearCols).not.toContain('*')
-    // Exact-set equality: the public gear projection is ONLY the
-    // allowlist below. Adding a column to the join (even one already
-    // visible to authed users) requires updating this list deliberately.
-    expect(gearColumnList(cols)).toEqual([
-      'category_id',
-      'description',
-      'id',
-      'name',
-      'weight_grams',
-    ])
-    // Gear-item columns excluded from the public view (per SECURITY.md):
-    expect(gearCols).not.toContain('user_id')
-    expect(gearCols).not.toContain('sort_order')
-    expect(gearCols).not.toContain('cost')
-    expect(gearCols).not.toContain('purchase_date')
-    // status is advisory inventory metadata (needs_repair, loaned_out, need_to_buy).
-    // Surfaced in private views only; share viewers must not see it.
-    expect(gearCols).not.toContain('status')
-    // is_ready lives on list_items (not gear_items), but assert absence
-    // here too: a typo that put it inside the gear_item parens would
-    // surface as a runtime PostgREST error in prod. Catch at unit level.
-    expect(gearCols).not.toContain('is_ready')
+    expect(cols).toBe(
+      'id, gear_item_id, quantity, is_worn, is_consumable, sort_order, gear_name, gear_description, gear_weight_grams, gear_category_id',
+    )
+    for (const forbidden of [
+      'gear_status',
+      'gear_cost',
+      'gear_purchase_date',
+      'gear_user_id',
+      'gear_sort_order',
+    ]) {
+      expect(cols).not.toContain(forbidden)
+    }
 
     // Returned PublicListItem shape: exactly the allowlist keys.
     expect(result).toHaveLength(1)
@@ -346,11 +322,10 @@ describe('fetchSharedListItems (public share view list_items projection)', () =>
 })
 
 // Runtime shape guard inside fetchSharedListItems. Locks the
-// TS/runtime contract (PostgREST response matches PublicListItem) so a
+// TS/runtime contract (the public view row maps to PublicListItem) so a
 // future shape drift or accidental column widening fails the share page
 // loudly instead of silently propagating into the renderer. NOT a
-// security boundary — that's RLS + the narrow SELECT + the projection
-// constant tests above.
+// security boundary — that's the curated DB view + grant matrix.
 describe('fetchSharedListItems runtime shape guard', () => {
   // Canonical valid row. Tests below mutate one field at a time so each
   // negative case isolates a single failure mode.
@@ -362,13 +337,10 @@ describe('fetchSharedListItems runtime shape guard', () => {
       is_worn: false,
       is_consumable: false,
       sort_order: 0,
-      gear_item: {
-        id: 'g-1',
-        name: 'Tent',
-        description: null,
-        weight_grams: 1200,
-        category_id: 'cat-1',
-      },
+      gear_name: 'Tent',
+      gear_description: null,
+      gear_weight_grams: 1200,
+      gear_category_id: 'cat-1',
     }
   }
 
@@ -379,29 +351,27 @@ describe('fetchSharedListItems runtime shape guard', () => {
     expect(result[0]?.gear_item.name).toBe('Tent')
   })
 
-  it('throws when gear_item is null', async () => {
-    const row = { ...validPublicRow(), gear_item: null }
+  it('throws when gear_name is the wrong type', async () => {
+    const row = { ...validPublicRow(), gear_name: null }
     mockState.nextList = { data: [row], error: null }
     await expect(fetchSharedListItems('list-1')).rejects.toThrow(
-      /gear_item is null or not an object/,
+      /field "gear_name" is not string/,
     )
   })
 
-  it('throws when gear_item carries a private column (status)', async () => {
-    const row = validPublicRow()
-    const tampered = { ...row, gear_item: { ...row.gear_item, status: 'active' } }
+  it('throws when the view row carries a private gear column (gear_status)', async () => {
+    const tampered = { ...validPublicRow(), gear_status: 'active' }
     mockState.nextList = { data: [tampered], error: null }
     await expect(fetchSharedListItems('list-1')).rejects.toThrow(
-      /gear_item carries forbidden key "status"/,
+      /view row carries forbidden key "gear_status"/,
     )
   })
 
-  it('throws when gear_item carries a private column (cost)', async () => {
-    const row = validPublicRow()
-    const tampered = { ...row, gear_item: { ...row.gear_item, cost: 199.99 } }
+  it('throws when the view row carries a private gear column (gear_cost)', async () => {
+    const tampered = { ...validPublicRow(), gear_cost: 199.99 }
     mockState.nextList = { data: [tampered], error: null }
     await expect(fetchSharedListItems('list-1')).rejects.toThrow(
-      /gear_item carries forbidden key "cost"/,
+      /view row carries forbidden key "gear_cost"/,
     )
   })
 
@@ -409,7 +379,7 @@ describe('fetchSharedListItems runtime shape guard', () => {
     const tampered = { ...validPublicRow(), is_packed: true }
     mockState.nextList = { data: [tampered], error: null }
     await expect(fetchSharedListItems('list-1')).rejects.toThrow(
-      /list_item carries forbidden key "is_packed"/,
+      /view row carries forbidden key "is_packed"/,
     )
   })
 
@@ -417,7 +387,7 @@ describe('fetchSharedListItems runtime shape guard', () => {
     const tampered = { ...validPublicRow(), user_id: 'owner-1' }
     mockState.nextList = { data: [tampered], error: null }
     await expect(fetchSharedListItems('list-1')).rejects.toThrow(
-      /list_item carries forbidden key "user_id"/,
+      /view row carries forbidden key "user_id"/,
     )
   })
 
@@ -437,12 +407,11 @@ describe('fetchSharedListItems runtime shape guard', () => {
     )
   })
 
-  it('throws when gear_item.weight_grams is the wrong type', async () => {
-    const row = validPublicRow()
-    const tampered = { ...row, gear_item: { ...row.gear_item, weight_grams: '1200' } }
+  it('throws when gear_weight_grams is the wrong type', async () => {
+    const tampered = { ...validPublicRow(), gear_weight_grams: '1200' }
     mockState.nextList = { data: [tampered], error: null }
     await expect(fetchSharedListItems('list-1')).rejects.toThrow(
-      /field "gear_item.weight_grams" is not number/,
+      /field "gear_weight_grams" is not number/,
     )
   })
 })
@@ -506,7 +475,7 @@ describe('fetchSharedListCategories (public share view categories projection)', 
     expect(mockState.calls).toHaveLength(0)
   })
 
-  it('reads from public.categories with the narrow allowlist when ids are present', async () => {
+  it('reads from public_gear_categories with the narrow allowlist when ids are present', async () => {
     mockState.nextList = {
       data: [
         { id: 'cat-1', name: 'Shelter', sort_order: 0 },
@@ -518,7 +487,7 @@ describe('fetchSharedListCategories (public share view categories projection)', 
     const result = await fetchSharedListCategories(['cat-1', 'cat-2'])
 
     expect(mockState.calls).toHaveLength(1)
-    expect(mockState.calls[0]?.table).toBe('categories')
+    expect(mockState.calls[0]?.table).toBe('public_gear_categories')
     const cols = mockState.calls[0]?.selectCols ?? ''
 
     // Explicit allowlist per SECURITY.md "Public read column allowlist".
