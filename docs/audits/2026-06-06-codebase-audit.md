@@ -4,6 +4,8 @@
 
 Synthesis of seven parallel audit tracks (behavioral, duplication, drift, dead-code, language, security, tests). Findings deduplicated across tracks, challenged against a quality bar, re-severitized by actual impact, and ranked. Highest-impact behavioral claims were spot-checked against the live code before being blessed.
 
+> **Resolution status (updated 2026-06-07):** 19 of 21 "C" findings are fixed across PRs #29, #31, #32, #33, #34, #37, #38. Two are closed as WON'T FIX: **C-11** (shared status-badge color is intentional) and **C-18** (AGENTS.md is overwritten by the claude-mem codex watch, which has no per-project disable - an external-tool limitation; AGENTS.md stays gitignored and `CLAUDE.md` is the canonical tracked instruction file). **C-13** is fixed for the part that mattered (list-mutation/import consolidation); the within-category slice-based DnD remains accepted, documented tech debt. Per-finding notes are inline below.
+
 ---
 
 ## 1. Executive summary
@@ -38,6 +40,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Tests needed:** A failed `resetPackedForList` produces a toast and restores `is_packed` on the cleared ids only.
 - **Safe for autonomous repair:** yes
 - **Corroborating tracks:** 1 (F-3).
+- **RESOLVED (Stage 6, PR #29):** `resetPacked`/`resetReady` now roll back, `showToast` on failure, and consume the error (no rethrow); the `() => void` call-site contract is preserved so no unhandled rejection remains.
 
 ---
 
@@ -52,6 +55,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Tests needed:** Rejected `createListFromSelection` -> visible error feedback.
 - **Safe for autonomous repair:** yes
 - **Corroborating tracks:** 1 (F-2).
+- **RESOLVED (Stage 6, PR #29):** `createListFromSelectionMut` now has an `onError` routing to the `import-error` dialog, mirroring `importItems`.
 
 ---
 
@@ -66,6 +70,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Tests needed:** Rejected RPC -> toast.
 - **Safe for autonomous repair:** yes
 - **Corroborating tracks:** 1 (F-4).
+- **RESOLVED (Stage 6, PR #29):** `addNewItemMut` now has an `onError` toast ("Couldn't add that item. Please try again.").
 
 ---
 
@@ -80,6 +85,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Tests needed:** Rejected `duplicateList` -> toast.
 - **Safe for autonomous repair:** yes
 - **Corroborating tracks:** 1 (F-5).
+- **RESOLVED (Stage 6, PR #29):** `duplicateMut` now has an `onError` toast ("Couldn't duplicate that list. Please try again."); covered by a regression test in `use-current-list-actions.test.ts`.
 
 > **Systemic note for C-01..C-04 + C-21 (exportCsv):** these six are one finding class - *non-optimistic user actions lack failure feedback because the codebase's "silent rollback" policy was applied without carving out the no-snap-back paths.* Fix as a single batch (Stage 6) and codify the explicit convention (added to `CLAUDE.md`):
 > - **Optimistic mutation with a visible rollback:** the rollback may itself be the failure signal (no toast required - this is the documented existing policy; do NOT add toasts to these).
@@ -99,6 +105,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Tests needed:** A rejected `fetchQuery` -> toast, and `downloadCsv` not called.
 - **Safe for autonomous repair:** yes
 - **Corroborating tracks:** 1 (NI-3, promoted).
+- **RESOLVED (Stage 6, PR #29):** `exportCsv` now wraps its body in try/catch, toasts on failure, and consumes the error so the fire-and-forget call sites cannot reject; covered by `use-current-list-actions.test.ts`.
 
 ---
 
@@ -128,6 +135,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Tests needed:** None - test already locks the string.
 - **Safe for autonomous repair:** yes (doc-only).
 - **Corroborating tracks:** 3 (F-1), 6 (F1) - same root, merged.
+- **RESOLVED (PR #31):** `SECURITY.md:92` now lists all 5 included columns and notes `group_worn`/`is_draft` are deliberately public.
 
 ---
 
@@ -140,6 +148,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Recommended correction:** Add `cost`, `purchase_date`, `status` to the `gear_items` Excluded list at line 94.
 - **Safe for autonomous repair:** yes (doc-only).
 - **Corroborating tracks:** 3 (F-2), 6 (verified-correct list).
+- **RESOLVED (PR #31):** `SECURITY.md:94` `gear_items` Excluded list now names `cost`, `purchase_date`, `status`.
 
 ---
 
@@ -152,6 +161,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Recommended correction:** Add `is_ready` and `user_id` to the `list_items` Excluded list.
 - **Safe for autonomous repair:** yes (doc-only).
 - **Corroborating tracks:** 3 (F-3).
+- **RESOLVED (PR #31):** `SECURITY.md:93` `list_items` Excluded list now names `is_ready` and `user_id`.
 
 ---
 
@@ -164,6 +174,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Recommended correction:** Spec: gear export = 12 (10 + cost + purchase_date); list export = 10 Lighterpack-compatible; drop the "same header" claim. Round-trip test already exists in `csv/core.test.ts`.
 - **Safe for autonomous repair:** yes (doc-only).
 - **Corroborating tracks:** 3 (F-4).
+- **RESOLVED (PR #31):** `SPEC.md:143` now states gear export = 12 columns (10 Lighterpack + `cost` + `purchase_date`), list export = 10; the "same header" claim is dropped.
 
 ---
 
@@ -176,6 +187,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Recommended correction:** Reword CLAUDE.md to "`ignore-scripts=true` IS set and was accepted after testing; if you ever remove it, re-test `rm -rf node_modules && npm ci` because `fsevents` uses an install script."
 - **Safe for autonomous repair:** yes (doc-only).
 - **Corroborating tracks:** 3 (F-8), 6 (verified-no-drift on `.npmrc` itself).
+- **RESOLVED (PR #31):** CLAUDE.md Supply-chain section reworded to state `ignore-scripts=true` IS set and was accepted after testing, with the `fsevents` re-test caveat.
 
 ---
 
@@ -203,6 +215,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Tests needed:** `BulkActionsToolbar` warns exactly at `LIST_ITEM_CAP`.
 - **Safe for autonomous repair:** yes (mechanical, no behavior change).
 - **Corroborating tracks:** 2 (F-05, F-08, F-09, Overlapping-Systems row 5).
+- **RESOLVED (PR #32):** All caps centralized in `src/lib/caps.ts` (`GEAR_ITEM_CAP`, `LIST_ITEM_CAP`, `LIST_CAP`, `MAX_ITEM_WEIGHT_GRAMS`, `MAX_LIST_ITEM_QUANTITY`); call-site literals replaced.
 
 ---
 
@@ -216,6 +229,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Tests needed:** pure-logic test that within-cat reorder no-ops on cross-category drops and emits only the active category's slice (see M-test-5); extracted-hook test for import happy/over-cap/error paths.
 - **Safe for autonomous repair:** no - extraction from 900-1300 line files with interleaved state; plan + checkpoint review first.
 - **Corroborating tracks:** 2 (F-01, F-02, F-03, F-04), 4 (slice-DnD context), 7 (Findings 5, 6 - no tests), CONCERNS.md.
+- **RESOLVED (Stage 9, PR #37) - the part that mattered:** The duplicated `importMut`/`createListMut` bodies were consolidated into shared hooks (`useListImportMutation`, `useCurrentListActions`); `ListsPage` and `DesktopListsPanel` now call the hook, and `ListsEmptyState` keeps its intentionally-distinct `sort_order: 0` thin wrapper but routes through the shared `importListFromCsv` (so the C-05 orphan path was single-sourced before Stage 10 fixed it). **Deliberately NOT done:** the within-category slice-based DnD remains hand-rolled in both god-files - its algebra is slice-based, not flat, so it cannot use `useReorderable`. That is accepted, documented tech debt (CLAUDE.md "Nested-reorder surfaces still hand-roll DnD"); the same-tick `useQuery` colocation rule is met narratively at each site. Not re-opening.
 
 ---
 
@@ -229,6 +243,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Tests needed:** None (tests use the `*Check*` names directly).
 - **Safe for autonomous repair:** yes.
 - **Corroborating tracks:** 4 (A-1..A-4).
+- **RESOLVED (PR #33):** The four dead aliases (`PendingPackedState`, `readPendingPackedStates`, `removePendingPackedStates`, `subscribeToPendingPackedStates`) were deleted from `offline-packed-queue.ts`; grep confirms zero remaining references.
 
 ---
 
@@ -242,6 +257,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Tests needed:** Confirm existing `offline-packed-queue.test.ts` passes; add `readStored()` returns `{}` on empty storage.
 - **Safe for autonomous repair:** only-after-named-decision (the named decision is "the 2026-06-15 TTL date has passed").
 - **Corroborating tracks:** 1 (F-6), 4 (A-5).
+- **RESOLVED (PR #34):** `STORAGE_KEY_V1` and `migrateV1IfPresent` deleted (owner-approved early removal ahead of the 2026-06-15 TTL); grep confirms both are gone. `readStored()` no longer runs the migration branch on cold reads.
 
 ---
 
@@ -254,6 +270,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Recommended correction:** Rewrite `help.md:9` to "Each list has a **Pack mode** and an optional public link..."; fix `help.md:21` to "trip-specific"; change `LoginPage.tsx:88` "packing mode" -> "Pack mode".
 - **Safe for autonomous repair:** yes.
 - **Corroborating tracks:** 5 (F-02, F-03, F-06, F-10).
+- **RESOLVED (PR #31 + login-copy-trim):** `help.md` rewritten to "Pack mode" / public link, "trip-specific" fixed; the sign-in "packing mode" line was dropped from `LoginPage`. Grep confirms "packing mode"/"sharing mode" appear nowhere in `src/`/`public/`.
 
 ---
 
@@ -266,6 +283,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Recommended correction:** Point the comment at `20260526173748`; change "the other two" -> "the remaining three".
 - **Safe for autonomous repair:** yes.
 - **Corroborating tracks:** 5 (F-16), 3 (F-6).
+- **RESOLVED (PR #31):** `gear-status.ts` comment now pins to migration `20260526173748` and no longer says "the other two".
 
 ---
 
@@ -278,6 +296,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Recommended correction:** Either delete + `.gitignore` it, or replace with a stub redirecting to `CLAUDE.md`.
 - **Safe for autonomous repair:** only-after-named-decision (delete vs stub).
 - **Corroborating tracks:** 3 (F-7).
+- **WON'T FIX (2026-06-07) - external-tool limitation.** A stable, tracked `AGENTS.md` is not achievable while the claude-mem codex watch is enabled. The watch (`~/.claude-mem/transcript-watch.json`) writes `${cwd}/AGENTS.md` on every codex `session_start`/`session_end`, and it cannot be disabled for one project: its only context controls (`context.path`, `context.mode`, `context.updateOn`) are global and would drop per-project `AGENTS.md` for *all* codex projects, and `CLAUDE_MEM_EXCLUDED_PROJECTS` stops new capture but not the write (verified - `/api/context/inject` still served stored context after exclusion + worker restart). A tracked stub plus `git update-index --skip-worktree` was rejected: `skip-worktree` only hides the daemon's overwrites from git, it does not protect the file, so the stub is misleading. **Resolution:** leave `AGENTS.md` gitignored + untracked (`.gitignore` already ignores it) so the dumps never enter the repo, and treat **`CLAUDE.md`** as the canonical, tracked agent-instructions file. The only residual is that codex (which reads `AGENTS.md` by convention) won't auto-read `CLAUDE.md` on a fresh clone - accepted as an external-tool convention gap.
 
 ---
 
@@ -290,6 +309,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
 - **Recommended correction:** Align manifest description to the canonical tagline; add `og:title`/`og:description`/`og:url`/`og:type` to `index.html`.
 - **Safe for autonomous repair:** yes (additive/copy-align).
 - **Corroborating tracks:** 5 (F-09, F-11).
+- **RESOLVED (PR #31):** PWA manifest description aligned to the canonical tagline ("A backpacking gear list, weight tracker, and packing tool."); `og:title`/`og:description`/`twitter:card` meta tags added to `index.html`.
 
 ---
 
@@ -305,6 +325,7 @@ Ordered by severity, then confidence. Corroborating tracks noted. "Safe for auto
   - **Pre-existing ASCII-rule violation (found during Stage 6):** `src/lib/mutation-error-handler.ts` comments contain three em dashes (U+2014) - pre-existing on `main` (extracted 2026-05-06, after the spelling sweep), NOT introduced by Stage 6. Left untouched to avoid scope creep in PR #29; fix in this Stage-1 doc/comment bundle. Worth a quick repo-wide `grep -rlP '[^\x00-\x7F]' src/` to catch any other comment-level drift past the 2026-04-30 sweep.
 - **Impact:** Minor consistency/readability.
 - **Safe for autonomous repair:** yes (the "Lighterpack" casing pick is the one item that benefits from owner confirmation but defaulting to the docs' lowercase is defensible).
+- **RESOLVED (PR #31):** Doc/comment polish bundle landed; casing standardized to "Lighterpack". Grep confirms no `LighterPack` (capital P) stragglers and zero em dashes (U+2014) in `src/` (the `mutation-error-handler.ts` em dashes were cleared).
 
 ---
 
