@@ -23,10 +23,14 @@ vi.mock('../lib/queries', () => ({
   queryKeys: {
     foodPlan: (listId: string) => ['food-plan', listId] as const,
     foodItems: () => ['food-items'] as const,
+    foodPlanCopyOptions: (userId: string, targetListId: string) => ['food-plan-copy-options', userId, targetListId] as const,
   },
   // page + document data
   fetchFoodPlan: vi.fn(),
   createFoodPlan: vi.fn(),
+  fetchFoodPlanCopyOptions: vi.fn(),
+  copyFoodPlanToList: vi.fn(),
+  invalidateFoodPlanCaches: vi.fn(),
   fetchFoodItems: vi.fn(),
   // entry writes
   upsertFoodPlanEntry: vi.fn(),
@@ -60,7 +64,10 @@ vi.mock('../auth/use-require-session', () => ({
   useRequireSession: () => ({ userId: 'u1' }),
 }))
 
-import { fetchFoodPlan, fetchFoodItems, createFoodPlan, upsertFoodPlanEntries, saveFoodPlanTargets } from '../lib/queries'
+import {
+  fetchFoodPlan, fetchFoodItems, createFoodPlan, fetchFoodPlanCopyOptions, copyFoodPlanToList,
+  upsertFoodPlanEntries, saveFoodPlanTargets,
+} from '../lib/queries'
 import FoodPlanPage from './FoodPlanPage'
 
 // jsdom does not implement the native <dialog> showModal/close API that
@@ -198,6 +205,34 @@ describe('FoodPlanPage create flow', () => {
     expect(call[0]).toBe('u1')
     expect(call[1]).toBe('L1')
     expect((call[2] as { days: unknown[] }).days).toHaveLength(5)
+  })
+
+  it('copies an existing food plan into an empty list', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(null)
+    vi.mocked(fetchFoodPlanCopyOptions).mockResolvedValue([
+      { food_plan_id: 'source-plan-1', list_id: 'source-list-1', list_name: 'Wind River high route' },
+    ])
+    vi.mocked(copyFoodPlanToList).mockResolvedValue(makeDoc().plan)
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy existing plan' }))
+
+    expect(await screen.findByText(/edits will not sync back/i)).toBeTruthy()
+    expect(await screen.findByLabelText('Food plan to copy')).toHaveValue('source-plan-1')
+    fireEvent.click(screen.getByRole('button', { name: 'Copy food plan' }))
+
+    await waitFor(() => expect(copyFoodPlanToList).toHaveBeenCalledWith('u1', 'source-plan-1', 'L1'))
+  })
+
+  it('shows an empty copy state when there are no other food plans', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(null)
+    vi.mocked(fetchFoodPlanCopyOptions).mockResolvedValue([])
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy existing plan' }))
+
+    expect(await screen.findByText('No other food plans to copy yet.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Copy food plan' })).toBeDisabled()
   })
 })
 

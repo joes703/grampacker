@@ -98,13 +98,14 @@ export {
 export { GEAR_ITEM_AUTH_SELECT } from './projections'
 export {
   fetchSharedFoodProjection, fetchSharedFoodPlan,
-  fetchFoodPlan, createFoodPlan, addFoodPlanDay, addMealDefinition, duplicateFoodPlanDay,
+  fetchFoodPlan, createFoodPlan, fetchFoodPlanCopyOptions, copyFoodPlanToList,
+  addFoodPlanDay, addMealDefinition, duplicateFoodPlanDay,
   upsertFoodPlanEntry, upsertFoodPlanEntries, updateFoodPlanEntry, deleteFoodPlanEntry, deleteFoodPlanDay,
   updateDayType, renameMeal, deleteMeal, deleteDayMeal, addDayMeal, deleteFoodPlan, updateFoodPlanShare,
   assertFoodPlanDayWithinCap, assertMealDefinitionWithinCap, assertFoodPlanEntryWithinCap,
   saveFoodPlanTargets,
 } from './food-plan'
-export type { EntryAddition, EntryBatchAddition, TargetsSavePayload } from './food-plan'
+export type { EntryAddition, EntryBatchAddition, FoodPlanCopyOption, TargetsSavePayload } from './food-plan'
 export { fetchTargetDefaults, saveTargetDefaults } from './target-defaults'
 export type { DefaultsSavePayload } from './target-defaults'
 export {

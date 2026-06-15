@@ -7,6 +7,8 @@ import {
   assertFoodPlanEntryWithinCap,
   upsertFoodPlanEntries,
   createFoodPlan,
+  fetchFoodPlanCopyOptions,
+  copyFoodPlanToList,
   fetchFoodPlan,
   upsertDailyTarget,
   upsertMealTarget,
@@ -76,6 +78,65 @@ describe('createFoodPlan', () => {
     })
     const payload = rpc.mock.calls[0]?.[1] as Record<string, unknown>
     expect('p_num_nights' in payload).toBe(false)
+  })
+})
+
+describe('food plan copy helpers', () => {
+  beforeEach(() => {
+    rpc.mockReset()
+    from.mockReset()
+  })
+
+  it('copies a source food plan to a target list through one RPC call', async () => {
+    rpc.mockResolvedValue({ data: { id: 'copied-plan' }, error: null })
+
+    await copyFoodPlanToList('user-1', 'source-plan', 'target-list')
+
+    expect(rpc).toHaveBeenCalledWith('copy_food_plan_to_list', {
+      p_user_id: 'user-1',
+      p_source_food_plan_id: 'source-plan',
+      p_target_list_id: 'target-list',
+    })
+  })
+
+  it('loads copy options from the user plans and list names, excluding the target list', async () => {
+    const planBuilder = {
+      select: vi.fn(() => planBuilder),
+      eq: vi.fn(() => planBuilder),
+      neq: vi.fn(() => planBuilder),
+      order: vi.fn(() => Promise.resolve({
+        data: [
+          { id: 'plan-2', list_id: 'list-2', created_at: '2026-01-02' },
+          { id: 'plan-3', list_id: 'list-3', created_at: '2026-01-01' },
+        ],
+        error: null,
+      })),
+    }
+    const listBuilder = {
+      select: vi.fn(() => listBuilder),
+      eq: vi.fn(() => listBuilder),
+      in: vi.fn(() => Promise.resolve({
+        data: [
+          { id: 'list-2', name: 'Wind River' },
+          { id: 'list-3', name: 'Wonderland' },
+        ],
+        error: null,
+      })),
+    }
+    from.mockImplementation((table: string) => {
+      if (table === 'food_plans') return planBuilder
+      if (table === 'lists') return listBuilder
+      throw new Error(`unexpected table ${table}`)
+    })
+
+    await expect(fetchFoodPlanCopyOptions('user-1', 'target-list')).resolves.toEqual([
+      { food_plan_id: 'plan-2', list_id: 'list-2', list_name: 'Wind River' },
+      { food_plan_id: 'plan-3', list_id: 'list-3', list_name: 'Wonderland' },
+    ])
+    expect(planBuilder.eq).toHaveBeenCalledWith('user_id', 'user-1')
+    expect(planBuilder.neq).toHaveBeenCalledWith('list_id', 'target-list')
+    expect(listBuilder.eq).toHaveBeenCalledWith('user_id', 'user-1')
+    expect(listBuilder.in).toHaveBeenCalledWith('id', ['list-2', 'list-3'])
   })
 })
 

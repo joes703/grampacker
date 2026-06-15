@@ -3,10 +3,11 @@ import { useParams, Link } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRequireSession } from '../auth/use-require-session'
 import { useDocumentTitle } from '../lib/use-document-title'
-import { queryKeys, fetchFoodPlan, createFoodPlan, invalidateFoodPlanCaches } from '../lib/queries'
+import { queryKeys, fetchFoodPlan, createFoodPlan, copyFoodPlanToList, invalidateFoodPlanCaches } from '../lib/queries'
 import PrimaryButton from '../components/PrimaryButton'
 import ListWorkspaceTabs from '../lists/ListWorkspaceTabs'
 import CreateFoodPlanDialog from './CreateFoodPlanDialog'
+import CopyFoodPlanDialog from './CopyFoodPlanDialog'
 import FoodPlanDocument from './FoodPlanDocument'
 import type { FoodPlanStructure } from '../lib/food/basis'
 
@@ -24,12 +25,22 @@ export default function FoodPlanPage() {
   })
 
   const [showCreate, setShowCreate] = useState(false)
+  const [showCopy, setShowCopy] = useState(false)
   const createMut = useMutation({
     mutationFn: (structure: FoodPlanStructure) =>
       createFoodPlan(userId, listId ?? '', structure),
     meta: { errorToast: "Couldn't start the food plan. Please try again." },
     onSuccess: () => {
       setShowCreate(false)
+      return invalidateFoodPlanCaches(qc, listId ?? '')
+    },
+  })
+  const copyMut = useMutation({
+    mutationFn: (sourceFoodPlanId: string) =>
+      copyFoodPlanToList(userId, sourceFoodPlanId, listId ?? ''),
+    meta: { errorToast: "Couldn't copy the food plan. Please try again." },
+    onSuccess: () => {
+      setShowCopy(false)
       return invalidateFoodPlanCaches(qc, listId ?? '')
     },
   })
@@ -53,9 +64,18 @@ export default function FoodPlanPage() {
         <div className="mt-6">
           <h1 className="text-lg font-semibold text-gray-900">No food plan yet</h1>
           <p className="mt-1 text-sm text-gray-600">Start one to schedule meals for this trip.</p>
-          <PrimaryButton type="button" onClick={() => setShowCreate(true)} className="mt-4">
-            Start food plan
-          </PrimaryButton>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <PrimaryButton type="button" onClick={() => setShowCreate(true)}>
+              Start food plan
+            </PrimaryButton>
+            <button
+              type="button"
+              onClick={() => setShowCopy(true)}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Copy existing plan
+            </button>
+          </div>
           <p className="mt-3 text-sm">
             <Link to={`/lists/${listId}`} className="text-gray-500 hover:underline">Back to gear list</Link>
           </p>
@@ -69,6 +89,15 @@ export default function FoodPlanPage() {
           saving={createMut.isPending}
           onCreate={(structure) => createMut.mutate(structure)}
           onClose={() => setShowCreate(false)}
+        />
+      ) : null}
+      {showCopy ? (
+        <CopyFoodPlanDialog
+          userId={userId}
+          targetListId={listId}
+          copying={copyMut.isPending}
+          onCopy={(sourceFoodPlanId) => copyMut.mutate(sourceFoodPlanId)}
+          onClose={() => setShowCopy(false)}
         />
       ) : null}
     </div>

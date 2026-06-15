@@ -69,7 +69,7 @@ When adding a new FK from one user-owned table to another:
 PostgREST authenticates incoming requests against one of three Postgres roles:
 
 - **`anon`**: unauthenticated. Used by the public share view (`/r/:slug`). Has column-level SELECT only on the public base columns required by the curated views; private base columns are ungranted. Reads public Gear data through curated security-invoker views (`public_gear_lists`, `public_gear_list_items`, `public_gear_categories`). Has no write capability anywhere.
-- **`authenticated`**: signed-in users. Reads / writes via the owner policies. Has `EXECUTE` on the five user-callable RPCs we expose: `delete_account`, `bulk_update_sort_order`, `add_gear_item_with_list_item`, `create_list_from_selection`, `duplicate_list`. Of these, only `delete_account` is `SECURITY DEFINER`; the other four are `SECURITY INVOKER` (converted in `20260514202025`). The two trigger-only definers, `handle_new_user` and `rls_auto_enable`, have EXECUTE revoked from all roles; triggers fire regardless of EXECUTE privileges.
+- **`authenticated`**: signed-in users. Reads / writes via the owner policies. Has `EXECUTE` on user-callable RPCs including `delete_account`, `bulk_update_sort_order`, `add_gear_item_with_list_item`, `create_list_from_selection`, `duplicate_list`, and Food-plan write helpers such as `copy_food_plan_to_list`. Of these, only `delete_account` is `SECURITY DEFINER`; the other owner-write RPCs are `SECURITY INVOKER`. The two trigger-only definers, `handle_new_user` and `rls_auto_enable`, have EXECUTE revoked from all roles; triggers fire regardless of EXECUTE privileges.
 - **`public`** (Postgres pseudo-role): every grant defaults to this unless explicitly revoked. We **explicitly revoke `EXECUTE` from `public`** on every SECURITY DEFINER function we own, so a misconfigured grant elsewhere can't accidentally expose them.
 
 There is no admin role today. The owner of every row is the user; there is no separate operator path.
@@ -115,7 +115,7 @@ The `Public*` types in `src/lib/types.ts` (PublicList, PublicListItem, PublicGea
 - **`rls_auto_enable()`** runs `ALTER TABLE … ENABLE ROW LEVEL SECURITY`, which requires table ownership.
 - **`get_public_food_plan(slug)`** assembles a detailed public Food-plan JSON document without granting anon the underlying day/Meal/entry base columns. It returns data only when the parent list is shared and the plan's `is_food_shared` toggle is on.
 
-Four functions that were previously `SECURITY DEFINER` for historical reasons (`bulk_update_sort_order`, `add_gear_item_with_list_item`, `create_list_from_selection`, `duplicate_list`) were converted to `SECURITY INVOKER` in `20260514202025` once RLS policies plus the composite FKs (`20260506000002`) were confirmed to enforce the same ownership their inline checks do. See `DECISIONS.md` ADR 3 for the bulk-reorder case and the full debugging story behind the original RPC decision.
+Four functions that were previously `SECURITY DEFINER` for historical reasons (`bulk_update_sort_order`, `add_gear_item_with_list_item`, `create_list_from_selection`, `duplicate_list`) were converted to `SECURITY INVOKER` in `20260514202025` once RLS policies plus the composite FKs (`20260506000002`) were confirmed to enforce the same ownership their inline checks do. New owner-write RPCs, including `copy_food_plan_to_list`, follow that invoker pattern by default. See `DECISIONS.md` ADR 3 for the bulk-reorder case and the full debugging story behind the original RPC decision.
 
 ### Compensating-control checklist
 
@@ -139,7 +139,7 @@ Current `SECURITY DEFINER` functions:
 
 `rls_auto_enable` keeps `set search_path = 'pg_catalog'` rather than `''`: its body depends on `pg_event_trigger_ddl_commands()` and `format()`, `pg_catalog` cannot be shadowed, and re-testing an event trigger to tighten it further is high-risk and low-value. `20260514202025` left it untouched on purpose.
 
-Four formerly-DEFINER RPCs (`bulk_update_sort_order`, `add_gear_item_with_list_item`, `create_list_from_selection`, `duplicate_list`) were converted to `SECURITY INVOKER` in `20260514202025`. They remain `EXECUTE`-granted to `authenticated` only, run with `search_path = ''`, and keep their inline `auth.uid()` ownership checks (now defense-in-depth on top of RLS, and preserving the exact `42501` / `P0002` error contracts). Under INVOKER their writes are gated by the `*_auth_*` RLS policies plus the composite FKs from `20260506000002`, which enforce the same ownership the inline checks do.
+Four formerly-DEFINER RPCs (`bulk_update_sort_order`, `add_gear_item_with_list_item`, `create_list_from_selection`, `duplicate_list`) were converted to `SECURITY INVOKER` in `20260514202025`. They remain `EXECUTE`-granted to `authenticated` only, run with `search_path = ''`, and keep their inline `auth.uid()` ownership checks (now defense-in-depth on top of RLS, and preserving the exact `42501` / `P0002` error contracts). Under INVOKER their writes are gated by the `*_auth_*` RLS policies plus the composite FKs from `20260506000002`, which enforce the same ownership the inline checks do. `copy_food_plan_to_list` uses the same shape: invoker rights, explicit `auth.uid()` check, owner-scoped source and target checks, then schema-enforced same-owner inserts.
 
 ---
 
