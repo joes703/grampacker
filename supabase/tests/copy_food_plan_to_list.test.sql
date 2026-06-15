@@ -1,6 +1,6 @@
 -- supabase/tests/copy_food_plan_to_list.test.sql
 begin;
-select plan(28);
+select plan(27);
 
 create extension if not exists pgtap with schema extensions;
 
@@ -8,6 +8,9 @@ select ok(has_function_privilege('authenticated', 'public.copy_food_plan_to_list
   'authenticated can execute copy_food_plan_to_list');
 select ok(has_function_privilege('service_role', 'public.copy_food_plan_to_list(uuid,uuid,uuid)', 'execute'),
   'service_role can execute copy_food_plan_to_list');
+-- Grant-matrix coverage is enough for the no-anon contract. Do not also
+-- invoke this revoked function as anon: Supabase Postgres 17.6.1.105 has
+-- been observed to terminate the local server on that path.
 select ok(not has_function_privilege('anon', 'public.copy_food_plan_to_list(uuid,uuid,uuid)', 'execute'),
   'anon cannot execute copy_food_plan_to_list');
 
@@ -174,16 +177,6 @@ select throws_ok($$
     '83000000-0000-0000-0000-000000000002'
   )
 $$, '42501', NULL, 'copy rejects mismatched p_user_id');
-
-set local role anon;
-set local "request.jwt.claims" = '{"role":"anon"}';
-select throws_ok($$
-  select public.copy_food_plan_to_list(
-    '00000000-0000-0000-0000-0000000008a1',
-    '82000000-0000-0000-0000-000000000001',
-    '83000000-0000-0000-0000-000000000002'
-  )
-$$, '42501', NULL, 'anon cannot execute copy_food_plan_to_list');
 
 select finish();
 rollback;
