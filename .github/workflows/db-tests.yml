@@ -22,6 +22,12 @@ jobs:
         with:
           version: 2.105.0
 
+      - name: Clean up any previous local Supabase stack
+        run: |
+          supabase stop --no-backup || true
+          docker ps -aq --filter "name=supabase" | xargs -r docker rm -f
+          docker network ls --filter "name=supabase" -q | xargs -r docker network rm || true
+
       - name: Start local Supabase stack
         run: supabase db start
 
@@ -33,3 +39,7 @@ jobs:
 
       - name: Performance advisors
         run: supabase db advisors --local --type performance --level warn --fail-on warn
+
+      - name: Stop local Supabase stack
+        if: always()
+        run: supabase stop --no-backup || true
