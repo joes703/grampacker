@@ -8,32 +8,7 @@ import { useIsMobile } from '../lib/use-breakpoint'
 import { readLastListPath } from '../lib/last-list-path'
 import MobileMenu from './MobileMenu'
 import CurrentListHeader from '../lists/CurrentListHeader'
-
-// Per-route slot resolution. Mounted only inside AppShell, which is gated by
-// PrivateRoute — so this component is never rendered on /login, /register,
-// /forgot-password, /reset-password, or /r/:slug. The path-match logic only
-// needs to handle authenticated routes plus the AppShell catch-all. AppShell
-// can't pass routeId via props (NavBar sits outside the inner <Routes>), so
-// the current list id is parsed from pathname here.
-type RouteContext =
-  | { kind: 'list-detail'; listId: string }
-  | { kind: 'all-lists' }
-  | { kind: 'gear' }
-  | { kind: 'food' }
-  | { kind: 'settings' }
-  | { kind: 'help' }
-  | { kind: 'other' }
-
-function resolveRoute(pathname: string): RouteContext {
-  const listMatch = pathname.match(/^\/lists\/([^/]+)$/)
-  if (listMatch?.[1]) return { kind: 'list-detail', listId: listMatch[1] }
-  if (pathname === '/lists') return { kind: 'all-lists' }
-  if (pathname === '/gear') return { kind: 'gear' }
-  if (pathname === '/food') return { kind: 'food' }
-  if (pathname === '/settings') return { kind: 'settings' }
-  if (pathname === '/help') return { kind: 'help' }
-  return { kind: 'other' }
-}
+import { resolveRoute, type RouteContext } from './route-context'
 
 // Global authed top bar. Stable across every authed route:
 //   - Brand on md+.
