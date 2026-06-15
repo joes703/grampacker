@@ -100,7 +100,7 @@ export {
   fetchSharedFoodProjection,
   fetchFoodPlan, createFoodPlan, addFoodPlanDay, addMealDefinition, duplicateFoodPlanDay,
   upsertFoodPlanEntry, upsertFoodPlanEntries, updateFoodPlanEntry, deleteFoodPlanEntry, deleteFoodPlanDay,
-  updateDayType, renameMeal, deleteMeal, deleteDayMeal, addDayMeal, deleteFoodPlan,
+  updateDayType, renameMeal, deleteMeal, deleteDayMeal, addDayMeal, deleteFoodPlan, updateFoodPlanShare,
   assertFoodPlanDayWithinCap, assertMealDefinitionWithinCap, assertFoodPlanEntryWithinCap,
   saveFoodPlanTargets,
 } from './food-plan'

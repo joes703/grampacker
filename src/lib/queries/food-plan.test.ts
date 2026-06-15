@@ -11,6 +11,7 @@ import {
   upsertDailyTarget,
   upsertMealTarget,
   saveFoodPlanTargets,
+  updateFoodPlanShare,
 } from './food-plan'
 import type { DailyTargetInput, MealTargetInput } from '../types'
 import { FOOD_PLAN_DAY_CAP, MEAL_DEFINITION_CAP, FOOD_PLAN_ENTRY_CAP } from '../caps'
@@ -176,5 +177,29 @@ describe('saveFoodPlanTargets', () => {
   it('throws on rpc error', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'boom' } })
     await expect(saveFoodPlanTargets('u', 'p', { dailyUpserts: [], dailyDeletes: [], mealUpserts: [], mealDeletes: [] })).rejects.toBeDefined()
+  })
+})
+
+describe('updateFoodPlanShare', () => {
+  beforeEach(() => from.mockReset())
+
+  it('updates only is_food_shared on the chosen plan row', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null })
+    const update = vi.fn(() => ({ eq }))
+    from.mockReturnValue({ update })
+
+    await updateFoodPlanShare('plan-1', true)
+
+    expect(from).toHaveBeenCalledWith('food_plans')
+    expect(update).toHaveBeenCalledWith({ is_food_shared: true })
+    expect(eq).toHaveBeenCalledWith('id', 'plan-1')
+  })
+
+  it('throws on update errors', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: { message: 'boom' } })
+    const update = vi.fn(() => ({ eq }))
+    from.mockReturnValue({ update })
+
+    await expect(updateFoodPlanShare('plan-1', false)).rejects.toBeDefined()
   })
 })
