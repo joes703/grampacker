@@ -66,6 +66,13 @@ describe('FoodProjectionSection', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
 
+  it('can hide the owner-only edit link for public share rendering', () => {
+    renderSection({ editFoodPlanHref: null })
+
+    expect(screen.getByText('Food from plan')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /edit food plan/i })).not.toBeInTheDocument()
+  })
+
   it('renders pack checkboxes in pack mode and delegates toggles', () => {
     const { onTogglePacked } = renderSection({ packMode: true })
 

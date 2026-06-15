@@ -136,6 +136,14 @@ export type PublicListItem = Pick<
 
 export type PublicCategory = Pick<Category, 'id' | 'name' | 'sort_order'>
 
+export type PublicFoodProjection = {
+  list_slug: string
+  food_name: string
+  brand: string | null
+  total_effective_servings: number
+  total_weight_grams: number
+}
+
 export type EntryBasis = 'servings' | 'packages' | 'weight'
 
 export type FoodPlan = {
