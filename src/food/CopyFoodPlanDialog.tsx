@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
@@ -23,17 +23,12 @@ export default function CopyFoodPlanDialog({
   })
   const options = optionsQuery.data ?? []
   const [selected, setSelected] = useState('')
-
-  useEffect(() => {
-    if (!selected && options.length > 0) {
-      setSelected(options[0]!.food_plan_id)
-    }
-  }, [options, selected])
+  const selectedFoodPlanId = selected || options[0]?.food_plan_id || ''
 
   function submit(e: FormEvent) {
     e.preventDefault()
-    if (!selected || copying) return
-    onCopy(selected)
+    if (!selectedFoodPlanId || copying) return
+    onCopy(selectedFoodPlanId)
   }
 
   return (
@@ -59,7 +54,7 @@ export default function CopyFoodPlanDialog({
           <label className="mt-4 block text-sm font-medium text-gray-700">
             Food plan to copy
             <select
-              value={selected}
+              value={selectedFoodPlanId}
               onChange={(e) => setSelected(e.target.value)}
               className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
             >
@@ -76,7 +71,7 @@ export default function CopyFoodPlanDialog({
           <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100">
             Cancel
           </button>
-          <PrimaryButton type="submit" disabled={copying || !selected || options.length === 0 || optionsQuery.isError}>
+          <PrimaryButton type="submit" disabled={copying || !selectedFoodPlanId || options.length === 0 || optionsQuery.isError}>
             {copying ? 'Copying...' : 'Copy food plan'}
           </PrimaryButton>
         </div>
