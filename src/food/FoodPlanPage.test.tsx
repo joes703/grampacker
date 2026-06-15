@@ -99,6 +99,7 @@ function renderPage() {
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  return qc
 }
 
 const NOW = '2026-01-01T00:00:00.000Z'
@@ -222,6 +223,34 @@ describe('FoodPlanPage create flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Copy food plan' }))
 
     await waitFor(() => expect(copyFoodPlanToList).toHaveBeenCalledWith('u1', 'source-plan-1', 'L1'))
+  })
+
+  it('falls back to a live copy option when the selected source disappears', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(null)
+    vi.mocked(fetchFoodPlanCopyOptions)
+      .mockResolvedValueOnce([
+        { food_plan_id: 'source-plan-1', list_id: 'source-list-1', list_name: 'Wind River high route' },
+        { food_plan_id: 'source-plan-2', list_id: 'source-list-2', list_name: 'Sierra loop' },
+      ])
+      .mockResolvedValueOnce([
+        { food_plan_id: 'source-plan-2', list_id: 'source-list-2', list_name: 'Sierra loop' },
+      ])
+    vi.mocked(copyFoodPlanToList).mockResolvedValue(makeDoc().plan)
+    const qc = renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy existing plan' }))
+    const select = await screen.findByLabelText('Food plan to copy')
+    fireEvent.change(select, { target: { value: 'source-plan-1' } })
+    expect(select).toHaveValue('source-plan-1')
+
+    await qc.refetchQueries({ queryKey: ['food-plan-copy-options', 'u1', 'L1'] })
+    await waitFor(() => expect(fetchFoodPlanCopyOptions).toHaveBeenCalledTimes(2))
+    expect(await screen.findByLabelText('Food plan to copy')).toHaveValue('source-plan-2')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy food plan' }))
+
+    await waitFor(() => expect(copyFoodPlanToList).toHaveBeenCalledWith('u1', 'source-plan-2', 'L1'))
+    expect(copyFoodPlanToList).not.toHaveBeenCalledWith('u1', 'source-plan-1', 'L1')
   })
 
   it('shows an empty copy state when there are no other food plans', async () => {
