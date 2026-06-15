@@ -264,6 +264,53 @@ export async function createFoodPlan(
   return data as FoodPlan
 }
 
+export type FoodPlanCopyOption = {
+  food_plan_id: string
+  list_id: string
+  list_name: string
+}
+
+export async function fetchFoodPlanCopyOptions(userId: string, targetListId: string): Promise<FoodPlanCopyOption[]> {
+  const { data: plans, error: plansError } = await supabase
+    .from('food_plans')
+    .select('id, list_id, created_at')
+    .eq('user_id', userId)
+    .neq('list_id', targetListId)
+    .order('created_at', { ascending: false })
+  if (plansError) throw plansError
+  const rows = (plans ?? []) as { id: string; list_id: string }[]
+  if (rows.length === 0) return []
+
+  const listIds = rows.map((row) => row.list_id)
+  const { data: lists, error: listsError } = await supabase
+    .from('lists')
+    .select('id, name')
+    .eq('user_id', userId)
+    .in('id', listIds)
+  if (listsError) throw listsError
+
+  const listNameById = new Map((lists ?? []).map((list) => {
+    const row = list as { id: string; name: string }
+    return [row.id, row.name]
+  }))
+  return rows
+    .map((row) => {
+      const name = listNameById.get(row.list_id)
+      return name ? { food_plan_id: row.id, list_id: row.list_id, list_name: name } : null
+    })
+    .filter((row): row is FoodPlanCopyOption => row !== null)
+}
+
+export async function copyFoodPlanToList(userId: string, sourceFoodPlanId: string, targetListId: string): Promise<FoodPlan> {
+  const { data, error } = await supabase.rpc('copy_food_plan_to_list', {
+    p_user_id: userId,
+    p_source_food_plan_id: sourceFoodPlanId,
+    p_target_list_id: targetListId,
+  })
+  if (error) throw error
+  return data as FoodPlan
+}
+
 // ---- server-authoritative schedule edits: ids + sort order only.
 export async function addFoodPlanDay(userId: string, foodPlanId: string, sortOrder: number): Promise<void> {
   const { error } = await supabase.rpc('add_food_plan_day', {
