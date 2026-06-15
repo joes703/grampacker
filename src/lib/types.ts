@@ -144,6 +144,51 @@ export type PublicFoodProjection = {
   total_weight_grams: number
 }
 
+export type PublicFoodPlanMeal = Pick<Meal, 'id' | 'name' | 'anchor_role' | 'is_default' | 'sort_order'>
+export type PublicFoodPlanDay = Pick<FoodPlanDay, 'id' | 'day_type_override' | 'sort_order'>
+export type PublicFoodPlanDayMeal = Pick<DayMeal, 'id' | 'day_id' | 'meal_id'>
+export type PublicFoodPlanEntry = Pick<
+  FoodPlanEntry,
+  'id' | 'day_meal_id' | 'is_extra' | 'food_item_id' | 'basis' | 'amount' | 'sort_order'
+>
+export type PublicFoodPlanFood = Pick<
+  FoodItem,
+  | 'id'
+  | 'name'
+  | 'brand'
+  | 'serving_description'
+  | 'serving_weight_grams'
+  | 'calories_per_serving'
+  | 'servings_per_package'
+  | 'fat_grams'
+  | 'saturated_fat_grams'
+  | 'carbs_grams'
+  | 'fiber_grams'
+  | 'sugar_grams'
+  | 'protein_grams'
+  | 'sodium_mg'
+  | 'potassium_mg'
+  | 'sort_order'
+>
+export type PublicFoodPlanDailyTarget = Pick<
+  FoodPlanDailyTarget,
+  'id' | 'metric' | 'mode' | 'target_min' | 'target_max'
+>
+export type PublicFoodPlanMealTarget = Pick<
+  MealTarget,
+  'id' | 'meal_id' | 'metric' | 'mode' | 'target_min' | 'target_max'
+>
+export type PublicFoodPlanDocument = {
+  plan: { id: string; list_slug: string }
+  meals: PublicFoodPlanMeal[]
+  days: PublicFoodPlanDay[]
+  dayMeals: PublicFoodPlanDayMeal[]
+  entries: PublicFoodPlanEntry[]
+  foods: PublicFoodPlanFood[]
+  dailyTargets: PublicFoodPlanDailyTarget[]
+  mealTargets: PublicFoodPlanMealTarget[]
+}
+
 export type EntryBasis = 'servings' | 'packages' | 'weight'
 
 export type FoodPlan = {

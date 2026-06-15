@@ -5,7 +5,7 @@ import type { FoodPlanStructure } from '../food/basis'
 import type {
   FoodPlan, Meal, FoodPlanDay, DayMeal, FoodPlanEntry, FoodPlanDocument, EntryBasis,
   FoodPlanDailyTarget, MealTarget, DailyTargetInput, MealTargetInput,
-  DailyTargetMetric, MealTargetMetric, TargetMode, PublicFoodProjection,
+  DailyTargetMetric, MealTargetMetric, TargetMode, PublicFoodProjection, PublicFoodPlanDocument,
 } from '../types'
 
 // ---- Public aggregate projection (shared Gear list, no auth).
@@ -69,6 +69,157 @@ export async function fetchSharedFoodProjection(slug: string): Promise<PublicFoo
     .order('food_name', { ascending: true })
   if (error) throw error
   assertPublicFoodProjectionRows(data)
+  return data
+}
+
+// ---- Public detailed Food plan (shared Gear list + Include Food plan).
+const FORBIDDEN_PUBLIC_FOOD_PLAN_KEYS = new Set([
+  'user_id',
+  'list_id',
+  'food_plan_id',
+  'notes',
+  'created_at',
+  'updated_at',
+  'is_packed',
+  'packed_signature',
+])
+
+function assertNoForbiddenPublicFoodPlanKeys(value: unknown, path = '$'): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => assertNoForbiddenPublicFoodPlanKeys(item, `${path}[${i}]`))
+    return
+  }
+  if (!value || typeof value !== 'object') return
+  for (const [key, child] of Object.entries(value)) {
+    if (FORBIDDEN_PUBLIC_FOOD_PLAN_KEYS.has(key)) {
+      throw new Error(`Unexpected public food plan response shape: ${path}.${key} is forbidden`)
+    }
+    assertNoForbiddenPublicFoodPlanKeys(child, `${path}.${key}`)
+  }
+}
+
+function assertStringField(row: Record<string, unknown>, field: string, context: string): void {
+  if (typeof row[field] !== 'string') {
+    throw new Error(`Unexpected public food plan response shape: ${context}.${field} is not a string`)
+  }
+}
+function assertNullableStringField(row: Record<string, unknown>, field: string, context: string): void {
+  if (row[field] !== null && typeof row[field] !== 'string') {
+    throw new Error(`Unexpected public food plan response shape: ${context}.${field} is not a string or null`)
+  }
+}
+function assertNumberField(row: Record<string, unknown>, field: string, context: string): void {
+  if (typeof row[field] !== 'number') {
+    throw new Error(`Unexpected public food plan response shape: ${context}.${field} is not a number`)
+  }
+}
+function assertNullableNumberField(row: Record<string, unknown>, field: string, context: string): void {
+  if (row[field] !== null && typeof row[field] !== 'number') {
+    throw new Error(`Unexpected public food plan response shape: ${context}.${field} is not a number or null`)
+  }
+}
+function assertBooleanField(row: Record<string, unknown>, field: string, context: string): void {
+  if (typeof row[field] !== 'boolean') {
+    throw new Error(`Unexpected public food plan response shape: ${context}.${field} is not a boolean`)
+  }
+}
+function assertArrayField(row: Record<string, unknown>, field: string): unknown[] {
+  const value = row[field]
+  if (!Array.isArray(value)) {
+    throw new Error(`Unexpected public food plan response shape: ${field} is not an array`)
+  }
+  return value
+}
+function assertObject(value: unknown, context: string): asserts value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`Unexpected public food plan response shape: ${context} is not an object`)
+  }
+}
+function assertEntryBasis(value: unknown, context: string): void {
+  if (value !== 'servings' && value !== 'packages' && value !== 'weight') {
+    throw new Error(`Unexpected public food plan response shape: ${context}.basis is not a valid basis`)
+  }
+}
+function assertTargetMode(value: unknown, context: string): void {
+  if (value !== 'range' && value !== 'min' && value !== 'max' && value !== 'off') {
+    throw new Error(`Unexpected public food plan response shape: ${context}.mode is not a valid target mode`)
+  }
+}
+
+function assertPublicFoodPlanDocument(data: unknown): asserts data is PublicFoodPlanDocument | null {
+  if (data === null) return
+  assertObject(data, 'document')
+  assertNoForbiddenPublicFoodPlanKeys(data)
+  assertObject(data.plan, 'plan')
+  assertStringField(data.plan, 'id', 'plan')
+  assertStringField(data.plan, 'list_slug', 'plan')
+
+  assertArrayField(data, 'meals').forEach((item, i) => {
+    assertObject(item, `meals[${i}]`)
+    assertStringField(item, 'id', `meals[${i}]`)
+    assertStringField(item, 'name', `meals[${i}]`)
+    assertNullableStringField(item, 'anchor_role', `meals[${i}]`)
+    assertBooleanField(item, 'is_default', `meals[${i}]`)
+    assertNumberField(item, 'sort_order', `meals[${i}]`)
+  })
+  assertArrayField(data, 'days').forEach((item, i) => {
+    assertObject(item, `days[${i}]`)
+    assertStringField(item, 'id', `days[${i}]`)
+    assertNullableStringField(item, 'day_type_override', `days[${i}]`)
+    assertNumberField(item, 'sort_order', `days[${i}]`)
+  })
+  assertArrayField(data, 'dayMeals').forEach((item, i) => {
+    assertObject(item, `dayMeals[${i}]`)
+    assertStringField(item, 'id', `dayMeals[${i}]`)
+    assertStringField(item, 'day_id', `dayMeals[${i}]`)
+    assertStringField(item, 'meal_id', `dayMeals[${i}]`)
+  })
+  assertArrayField(data, 'entries').forEach((item, i) => {
+    assertObject(item, `entries[${i}]`)
+    assertStringField(item, 'id', `entries[${i}]`)
+    assertNullableStringField(item, 'day_meal_id', `entries[${i}]`)
+    assertBooleanField(item, 'is_extra', `entries[${i}]`)
+    assertStringField(item, 'food_item_id', `entries[${i}]`)
+    assertEntryBasis(item.basis, `entries[${i}]`)
+    assertNumberField(item, 'amount', `entries[${i}]`)
+    assertNumberField(item, 'sort_order', `entries[${i}]`)
+  })
+  assertArrayField(data, 'foods').forEach((item, i) => {
+    assertObject(item, `foods[${i}]`)
+    assertStringField(item, 'id', `foods[${i}]`)
+    assertStringField(item, 'name', `foods[${i}]`)
+    assertNullableStringField(item, 'brand', `foods[${i}]`)
+    assertNullableStringField(item, 'serving_description', `foods[${i}]`)
+    assertNumberField(item, 'serving_weight_grams', `foods[${i}]`)
+    assertNumberField(item, 'calories_per_serving', `foods[${i}]`)
+    for (const field of ['servings_per_package', 'fat_grams', 'saturated_fat_grams', 'carbs_grams', 'fiber_grams', 'sugar_grams', 'protein_grams', 'sodium_mg', 'potassium_mg']) {
+      assertNullableNumberField(item, field, `foods[${i}]`)
+    }
+    assertNumberField(item, 'sort_order', `foods[${i}]`)
+  })
+  assertArrayField(data, 'dailyTargets').forEach((item, i) => {
+    assertObject(item, `dailyTargets[${i}]`)
+    assertStringField(item, 'id', `dailyTargets[${i}]`)
+    assertStringField(item, 'metric', `dailyTargets[${i}]`)
+    assertTargetMode(item.mode, `dailyTargets[${i}]`)
+    assertNullableNumberField(item, 'target_min', `dailyTargets[${i}]`)
+    assertNullableNumberField(item, 'target_max', `dailyTargets[${i}]`)
+  })
+  assertArrayField(data, 'mealTargets').forEach((item, i) => {
+    assertObject(item, `mealTargets[${i}]`)
+    assertStringField(item, 'id', `mealTargets[${i}]`)
+    assertStringField(item, 'meal_id', `mealTargets[${i}]`)
+    assertStringField(item, 'metric', `mealTargets[${i}]`)
+    assertTargetMode(item.mode, `mealTargets[${i}]`)
+    assertNullableNumberField(item, 'target_min', `mealTargets[${i}]`)
+    assertNullableNumberField(item, 'target_max', `mealTargets[${i}]`)
+  })
+}
+
+export async function fetchSharedFoodPlan(slug: string): Promise<PublicFoodPlanDocument | null> {
+  const { data, error } = await publicSupabase.rpc('get_public_food_plan', { p_slug: slug })
+  if (error) throw error
+  assertPublicFoodPlanDocument(data)
   return data
 }
 

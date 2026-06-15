@@ -18,11 +18,13 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 const mockState = vi.hoisted(() => ({
   // Per-call records, written in order; tests clear before each case.
   calls: [] as { client: 'private' | 'public'; table: string; selectCols: string | null }[],
+  rpcCalls: [] as { client: 'private' | 'public'; fn: string; args: Record<string, unknown> }[],
   // Response for the next call. Tests overwrite per case. `single` is
   // what `.single()` resolves to; `list` is what the awaited builder
   // resolves to when no `.single()` is chained.
   nextSingle: { data: null as unknown, error: null as { message: string; code?: string } | null },
   nextList: { data: [] as unknown[], error: null as { message: string } | null },
+  nextRpc: { data: null as unknown, error: null as { message: string } | null },
 }))
 
 vi.mock('../supabase', () => ({
@@ -61,6 +63,10 @@ vi.mock('../supabase', () => ({
     },
   },
   publicSupabase: {
+    rpc(fn: string, args: Record<string, unknown>) {
+      mockState.rpcCalls.push({ client: 'public', fn, args })
+      return Promise.resolve(mockState.nextRpc)
+    },
     from(table: string) {
       const state = { client: 'public' as const, table, selectCols: null as string | null }
       mockState.calls.push(state)
@@ -96,7 +102,7 @@ vi.mock('../supabase', () => ({
 import { fetchLists, fetchSharedList } from './lists'
 import { fetchSharedListItems, fetchListItems, fetchAllUserListItems } from './list-items'
 import { fetchCategories, fetchSharedListCategories } from './categories'
-import { fetchSharedFoodProjection } from './food-plan'
+import { fetchSharedFoodPlan, fetchSharedFoodProjection } from './food-plan'
 import { GEAR_ITEM_AUTH_SELECT } from './projections'
 import { patchAffectsListItemsView } from '../../lists/list-items-fan-out'
 
@@ -114,8 +120,10 @@ function gearColumnList(selectString: string): string[] {
 
 beforeEach(() => {
   mockState.calls.length = 0
+  mockState.rpcCalls.length = 0
   mockState.nextSingle = { data: null, error: null }
   mockState.nextList = { data: [], error: null }
+  mockState.nextRpc = { data: null, error: null }
 })
 
 // Columns SECURITY.md "Public read column allowlist" forbids on the share
@@ -608,5 +616,97 @@ describe('fetchSharedFoodProjection (public aggregate food projection)', () => {
     await expect(fetchSharedFoodProjection('abc123')).rejects.toThrow(
       /field "total_effective_servings" is not number/,
     )
+  })
+})
+
+describe('fetchSharedFoodPlan (public detailed food plan)', () => {
+  const doc = {
+    plan: { id: 'plan-1', list_slug: 'abc123' },
+    meals: [{ id: 'meal-1', name: 'On-trail food', anchor_role: null, is_default: true, sort_order: 0 }],
+    days: [{ id: 'day-1', day_type_override: null, sort_order: 0 }],
+    dayMeals: [{ id: 'cell-1', day_id: 'day-1', meal_id: 'meal-1' }],
+    entries: [{
+      id: 'entry-1',
+      day_meal_id: 'cell-1',
+      is_extra: false,
+      food_item_id: 'food-1',
+      basis: 'servings',
+      amount: 2,
+      sort_order: 0,
+    }],
+    foods: [{
+      id: 'food-1',
+      name: 'Energy bar',
+      brand: 'Trail Co',
+      serving_description: 'bar',
+      serving_weight_grams: 60,
+      calories_per_serving: 260,
+      servings_per_package: null,
+      fat_grams: 9,
+      saturated_fat_grams: null,
+      carbs_grams: 35,
+      fiber_grams: 4,
+      sugar_grams: 12,
+      protein_grams: 10,
+      sodium_mg: 180,
+      potassium_mg: null,
+      sort_order: 0,
+    }],
+    dailyTargets: [{
+      id: 'daily-1',
+      metric: 'calories',
+      mode: 'range',
+      target_min: 2000,
+      target_max: 3000,
+    }],
+    mealTargets: [{
+      id: 'meal-target-1',
+      meal_id: 'meal-1',
+      metric: 'protein',
+      mode: 'min',
+      target_min: 20,
+      target_max: null,
+    }],
+  }
+
+  it('calls the public detail RPC and returns a valid document', async () => {
+    mockState.nextRpc = { data: doc, error: null }
+
+    const result = await fetchSharedFoodPlan('abc123')
+
+    expect(mockState.rpcCalls).toEqual([
+      { client: 'public', fn: 'get_public_food_plan', args: { p_slug: 'abc123' } },
+    ])
+    expect(result).toEqual(doc)
+  })
+
+  it('returns null when the RPC returns no public Food plan', async () => {
+    mockState.nextRpc = { data: null, error: null }
+
+    await expect(fetchSharedFoodPlan('abc123')).resolves.toBeNull()
+  })
+
+  it('throws when the public detail document carries a forbidden private key', async () => {
+    mockState.nextRpc = {
+      data: {
+        ...doc,
+        foods: [{ ...doc.foods[0], notes: 'private' }],
+      },
+      error: null,
+    }
+
+    await expect(fetchSharedFoodPlan('abc123')).rejects.toThrow(/notes is forbidden/)
+  })
+
+  it('throws when the public detail document has an invalid field type', async () => {
+    mockState.nextRpc = {
+      data: {
+        ...doc,
+        entries: [{ ...doc.entries[0], amount: '2' }],
+      },
+      error: null,
+    }
+
+    await expect(fetchSharedFoodPlan('abc123')).rejects.toThrow(/entries\[0\]\.amount is not a number/)
   })
 })

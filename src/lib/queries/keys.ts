@@ -9,6 +9,7 @@ export const queryKeys = {
   foodPlansAll: () => ['food-plan'] as const,
   foodPlan: (listId: string) => ['food-plan', listId] as const,
   sharedFoodProjection: (slug: string) => ['shared-food-projection', slug] as const,
+  sharedFoodPlan: (slug: string) => ['shared-food-plan', slug] as const,
   foodPackSignaturesAll: () => ['food-pack-signatures'] as const,
   foodPackSignatures: (listId: string) => ['food-pack-signatures', listId] as const,
   foodPackStateAll: () => ['food-pack-state'] as const,

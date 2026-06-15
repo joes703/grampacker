@@ -97,7 +97,7 @@ export {
 } from './import-helpers'
 export { GEAR_ITEM_AUTH_SELECT } from './projections'
 export {
-  fetchSharedFoodProjection,
+  fetchSharedFoodProjection, fetchSharedFoodPlan,
   fetchFoodPlan, createFoodPlan, addFoodPlanDay, addMealDefinition, duplicateFoodPlanDay,
   upsertFoodPlanEntry, upsertFoodPlanEntries, updateFoodPlanEntry, deleteFoodPlanEntry, deleteFoodPlanDay,
   updateDayType, renameMeal, deleteMeal, deleteDayMeal, addDayMeal, deleteFoodPlan, updateFoodPlanShare,
