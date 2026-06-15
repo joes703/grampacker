@@ -4,6 +4,18 @@ import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
+import type { PublicListItem } from '../lib/types'
+
+const auth = vi.hoisted(() => {
+  type MockAuthValue = { session: { user: { id: string } } | null; loading: boolean }
+  return {
+    useAuth: vi.fn<() => MockAuthValue>(() => ({ session: null, loading: false })),
+  }
+})
+const copyHook = vi.hoisted(() => ({
+  mutate: vi.fn(),
+  usePublicGearCopyMutation: vi.fn(),
+}))
 
 // Mock only the public fetchers SharePage calls. Do NOT importActual -
 // the real ../lib/queries pulls in the Supabase client, which throws at import
@@ -20,11 +32,26 @@ vi.mock('../lib/queries', () => ({
   fetchSharedFoodPlan: vi.fn(async () => null),
 }))
 
-import { fetchSharedFoodPlan, fetchSharedFoodProjection, fetchSharedList } from '../lib/queries'
+vi.mock('../auth/AuthProvider', () => ({ useAuth: auth.useAuth }))
+vi.mock('./use-public-gear-copy-mutation', () => ({
+  usePublicGearCopyMutation: copyHook.usePublicGearCopyMutation,
+}))
+
+import {
+  fetchSharedFoodPlan,
+  fetchSharedFoodProjection,
+  fetchSharedList,
+  fetchSharedListItems,
+} from '../lib/queries'
 import SharePage from './SharePage'
 
 // jsdom has no matchMedia; SharePage -> useIsBelowLg() reads it during render.
 beforeEach(() => {
+  auth.useAuth.mockReturnValue({ session: null, loading: false })
+  copyHook.usePublicGearCopyMutation.mockReturnValue({
+    mutate: copyHook.mutate,
+    isPending: false,
+  })
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
     media: query,
@@ -43,7 +70,23 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const baseList = { id: 'list-1', name: 'Trip', description: null, group_worn: false }
+const baseList = { id: 'list-1', name: 'Trip', description: null, group_worn: false, is_draft: false }
+
+const sharedItem: PublicListItem = {
+  id: 'item-1',
+  gear_item_id: 'gear-1',
+  quantity: 1,
+  is_worn: false,
+  is_consumable: false,
+  sort_order: 0,
+  gear_item: {
+    id: 'gear-1',
+    name: 'Tent',
+    description: null,
+    weight_grams: 1200,
+    category_id: null,
+  },
+}
 
 function renderShareView() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -70,6 +113,37 @@ describe('SharePage draft banner', () => {
     renderShareView()
     expect(await screen.findByText('Trip')).toBeTruthy()
     expect(screen.queryByText('Work in progress')).toBeNull()
+  })
+})
+
+describe('SharePage public gear copy', () => {
+  it('shows a sign-in link to signed-out viewers', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue(baseList)
+    renderShareView()
+
+    const link = await screen.findByRole('link', { name: 'Sign in to copy' })
+    expect(link).toHaveAttribute('href', '/login')
+  })
+
+  it('lets signed-in viewers copy the gear list', async () => {
+    const user = userEvent.setup()
+    auth.useAuth.mockReturnValue({
+      session: { user: { id: 'user-1' } },
+      loading: false,
+    })
+    vi.mocked(fetchSharedList).mockResolvedValue(baseList)
+    vi.mocked(fetchSharedListItems).mockResolvedValue([sharedItem])
+
+    renderShareView()
+
+    await user.click(await screen.findByRole('button', { name: 'Copy gear list' }))
+
+    expect(copyHook.usePublicGearCopyMutation).toHaveBeenCalledWith('user-1')
+    expect(copyHook.mutate).toHaveBeenCalledWith({
+      list: baseList,
+      items: [sharedItem],
+      categories: [],
+    })
   })
 })
 
