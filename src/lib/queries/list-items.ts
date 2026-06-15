@@ -27,7 +27,7 @@ export function nextListItemSortOrder(
 // Owner-scoped private read. See queries/index.ts for the convention.
 // Uses the list_items.user_id column added in 20260506000002.
 export async function fetchListItems(listId: string, userId: string): Promise<ListItemWithGear[]> {
-  const { data, error } = await publicSupabase
+  const { data, error } = await supabase
     .from('list_items')
     .select(`*, ${GEAR_ITEM_AUTH_SELECT}`)
     .eq('user_id', userId)
@@ -66,7 +66,7 @@ type PublicListItemViewRow = Pick<
 // is_ready, no gear status/cost/purchase_date, no timestamps. See
 // SECURITY.md "Public read paths" for the allowlist.
 export async function fetchSharedListItems(listId: string): Promise<PublicListItem[]> {
-  const { data, error } = await supabase
+  const { data, error } = await publicSupabase
     .from('public_gear_list_items')
     .select(
       'id, gear_item_id, quantity, is_worn, is_consumable, sort_order, gear_name, gear_description, gear_weight_grams, gear_category_id',

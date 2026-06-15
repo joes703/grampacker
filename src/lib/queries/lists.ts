@@ -56,7 +56,7 @@ export function nextListSortOrder(
 
 // Owner-scoped private read. See queries/index.ts for the convention.
 export async function fetchLists(userId: string): Promise<List[]> {
-  const { data, error } = await publicSupabase
+  const { data, error } = await supabase
     .from('lists')
     .select('*')
     .eq('user_id', userId)
@@ -80,7 +80,7 @@ export async function fetchLists(userId: string): Promise<List[]> {
 // as not-found) propagates so TanStack Query exposes the failure and the
 // share page distinguishes a real outage from a bad link.
 export async function fetchSharedList(slug: string): Promise<PublicList | null> {
-  const { data, error } = await supabase
+  const { data, error } = await publicSupabase
     .from('public_gear_lists')
     .select('id, name, description, group_worn, is_draft')
     .eq('slug', slug)
