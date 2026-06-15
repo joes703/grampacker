@@ -5,70 +5,19 @@ import type { FoodPlanStructure } from '../food/basis'
 import type {
   FoodPlan, Meal, FoodPlanDay, DayMeal, FoodPlanEntry, FoodPlanDocument, EntryBasis,
   FoodPlanDailyTarget, MealTarget, DailyTargetInput, MealTargetInput,
-  DailyTargetMetric, MealTargetMetric, TargetMode, PublicFoodProjection, PublicFoodPlanDocument,
+  DailyTargetMetric, MealTargetMetric, TargetMode, PublicFoodPlanDocument,
 } from '../types'
 
-// ---- Public aggregate projection (shared Gear list, no auth).
-type PublicFoodProjectionViewRow = PublicFoodProjection
-
-const FORBIDDEN_PUBLIC_FOOD_PROJECTION_KEYS: readonly string[] = [
-  'id',
-  'user_id',
-  'list_id',
-  'food_plan_id',
-  'food_item_id',
-  'day_meal_id',
-  'is_extra',
-  'notes',
-  'calories_per_serving',
-  'protein_grams',
-  'sodium_mg',
-  'is_food_shared',
-  'created_at',
-  'updated_at',
-  'is_packed',
-  'packed_signature',
-]
-
-function publicFoodProjectionShapeError(index: number, field: string, expected: string): Error {
-  return new Error(`Unexpected public food projection response shape: row ${index} field "${field}" is not ${expected}`)
-}
-
-function assertPublicFoodProjectionRows(data: unknown): asserts data is PublicFoodProjectionViewRow[] {
-  if (!Array.isArray(data)) {
-    throw new Error('Unexpected public food projection response shape: payload is not an array')
-  }
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i]
-    if (!row || typeof row !== 'object') {
-      throw new Error(`Unexpected public food projection response shape: row ${i} is not an object`)
-    }
-    const r = row as Record<string, unknown>
-    for (const key of FORBIDDEN_PUBLIC_FOOD_PROJECTION_KEYS) {
-      if (key in r) {
-        throw new Error(`Unexpected public food projection response shape: row ${i} carries forbidden key "${key}"`)
-      }
-    }
-    if (typeof r.list_slug !== 'string') throw publicFoodProjectionShapeError(i, 'list_slug', 'string')
-    if (typeof r.food_name !== 'string') throw publicFoodProjectionShapeError(i, 'food_name', 'string')
-    if (r.brand !== null && typeof r.brand !== 'string') throw publicFoodProjectionShapeError(i, 'brand', 'string or null')
-    if (typeof r.total_effective_servings !== 'number') {
-      throw publicFoodProjectionShapeError(i, 'total_effective_servings', 'number')
-    }
-    if (typeof r.total_weight_grams !== 'number') {
-      throw publicFoodProjectionShapeError(i, 'total_weight_grams', 'number')
-    }
-  }
-}
-
-export async function fetchSharedFoodProjection(slug: string): Promise<PublicFoodProjection[]> {
-  const { data, error } = await publicSupabase
-    .from('food_projection_public')
-    .select('list_slug, food_name, brand, total_effective_servings, total_weight_grams')
-    .eq('list_slug', slug)
-    .order('food_name', { ascending: true })
+// ---- Public aggregate food weight (shared Gear list, no auth).
+// Public Gear shares show total carried food WEIGHT only -- never the menu.
+// The summary RPC is SECURITY DEFINER, gated on lists.is_shared, and returns a
+// single number. Itemized food stays behind fetchSharedFoodPlan (dual-gated).
+export async function fetchSharedFoodSummary(slug: string): Promise<number> {
+  const { data, error } = await publicSupabase.rpc('food_projection_public_summary', { p_slug: slug })
   if (error) throw error
-  assertPublicFoodProjectionRows(data)
+  if (typeof data !== 'number' || !Number.isFinite(data) || data < 0) {
+    throw new Error(`Unexpected public food summary response shape: expected a non-negative number, got ${typeof data}`)
+  }
   return data
 }
 

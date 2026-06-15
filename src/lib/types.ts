@@ -136,14 +136,6 @@ export type PublicListItem = Pick<
 
 export type PublicCategory = Pick<Category, 'id' | 'name' | 'sort_order'>
 
-export type PublicFoodProjection = {
-  list_slug: string
-  food_name: string
-  brand: string | null
-  total_effective_servings: number
-  total_weight_grams: number
-}
-
 export type PublicFoodPlanMeal = Pick<Meal, 'id' | 'name' | 'anchor_role' | 'is_default' | 'sort_order'>
 export type PublicFoodPlanDay = Pick<FoodPlanDay, 'id' | 'day_type_override' | 'sort_order'>
 export type PublicFoodPlanDayMeal = Pick<DayMeal, 'id' | 'day_id' | 'meal_id'>

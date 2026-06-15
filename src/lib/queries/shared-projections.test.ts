@@ -102,7 +102,7 @@ vi.mock('../supabase', () => ({
 import { fetchLists, fetchSharedList } from './lists'
 import { fetchSharedListItems, fetchListItems, fetchAllUserListItems } from './list-items'
 import { fetchCategories, fetchSharedListCategories } from './categories'
-import { fetchSharedFoodPlan, fetchSharedFoodProjection } from './food-plan'
+import { fetchSharedFoodPlan, fetchSharedFoodSummary } from './food-plan'
 import { GEAR_ITEM_AUTH_SELECT } from './projections'
 import { patchAffectsListItemsView } from '../../lists/list-items-fan-out'
 
@@ -540,82 +540,27 @@ describe('fetchSharedListCategories (public share view categories projection)', 
   })
 })
 
-describe('fetchSharedFoodProjection (public aggregate food projection)', () => {
-  it('reads from food_projection_public with the narrow aggregate allowlist', async () => {
-    mockState.nextList = {
-      data: [
-        {
-          list_slug: 'abc123',
-          food_name: 'Energy bar',
-          brand: 'Trail Co',
-          total_effective_servings: 2,
-          total_weight_grams: 120,
-        },
-      ],
-      error: null,
-    }
+describe('fetchSharedFoodSummary (public aggregate food weight)', () => {
+  it('calls the summary RPC on the public client and returns the number', async () => {
+    mockState.nextRpc = { data: 318, error: null }
 
-    const result = await fetchSharedFoodProjection('abc123')
+    const result = await fetchSharedFoodSummary('abc123')
 
-    expect(mockState.calls).toHaveLength(1)
-    expect(mockState.calls[0]?.client).toBe('public')
-    expect(mockState.calls[0]?.table).toBe('food_projection_public')
-    const cols = mockState.calls[0]?.selectCols ?? ''
-    expect(cols).toBe('list_slug, food_name, brand, total_effective_servings, total_weight_grams')
-    expect(cols).not.toContain('*')
-    for (const forbidden of [
-      'user_id',
-      'food_plan_id',
-      'food_item_id',
-      'day_meal_id',
-      'notes',
-      'calories_per_serving',
-      'is_food_shared',
-      'is_packed',
-      'packed_signature',
-    ]) {
-      expect(cols).not.toContain(forbidden)
-    }
-    expect(result).toEqual(mockState.nextList.data)
+    expect(mockState.rpcCalls).toHaveLength(1)
+    expect(mockState.rpcCalls[0]?.client).toBe('public')
+    expect(mockState.rpcCalls[0]?.fn).toBe('food_projection_public_summary')
+    expect(mockState.rpcCalls[0]?.args).toEqual({ p_slug: 'abc123' })
+    expect(result).toBe(318)
   })
 
-  it('throws when the aggregate projection row carries a forbidden private key', async () => {
-    mockState.nextList = {
-      data: [
-        {
-          list_slug: 'abc123',
-          food_name: 'Energy bar',
-          brand: null,
-          total_effective_servings: 2,
-          total_weight_grams: 120,
-          notes: 'private',
-        },
-      ],
-      error: null,
-    }
-
-    await expect(fetchSharedFoodProjection('abc123')).rejects.toThrow(
-      /forbidden key "notes"/,
-    )
+  it('throws when the summary response is not a non-negative number', async () => {
+    mockState.nextRpc = { data: 'oops', error: null }
+    await expect(fetchSharedFoodSummary('abc123')).rejects.toThrow(/non-negative number/)
   })
 
-  it('throws when aggregate numbers have the wrong type', async () => {
-    mockState.nextList = {
-      data: [
-        {
-          list_slug: 'abc123',
-          food_name: 'Energy bar',
-          brand: null,
-          total_effective_servings: '2',
-          total_weight_grams: 120,
-        },
-      ],
-      error: null,
-    }
-
-    await expect(fetchSharedFoodProjection('abc123')).rejects.toThrow(
-      /field "total_effective_servings" is not number/,
-    )
+  it('throws when the RPC errors', async () => {
+    mockState.nextRpc = { data: null, error: { message: 'boom' } }
+    await expect(fetchSharedFoodSummary('abc123')).rejects.toThrow()
   })
 })
 

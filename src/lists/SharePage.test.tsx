@@ -22,13 +22,13 @@ const copyHook = vi.hoisted(() => ({
 // without env vars. No co-rendered child imports other ../lib/queries exports.
 vi.mock('../lib/queries', () => ({
   queryKeys: {
-    sharedFoodProjection: (slug: string) => ['shared-food-projection', slug],
+    sharedFoodSummary: (slug: string) => ['shared-food-summary', slug],
     sharedFoodPlan: (slug: string) => ['shared-food-plan', slug],
   },
   fetchSharedList: vi.fn(),
   fetchSharedListItems: vi.fn(async () => []),
   fetchSharedListCategories: vi.fn(async () => []),
-  fetchSharedFoodProjection: vi.fn(async () => []),
+  fetchSharedFoodSummary: vi.fn(async () => 0),
   fetchSharedFoodPlan: vi.fn(async () => null),
 }))
 
@@ -39,7 +39,7 @@ vi.mock('./use-public-gear-copy-mutation', () => ({
 
 import {
   fetchSharedFoodPlan,
-  fetchSharedFoodProjection,
+  fetchSharedFoodSummary,
   fetchSharedList,
   fetchSharedListItems,
 } from '../lib/queries'
@@ -133,6 +133,9 @@ describe('SharePage public gear copy', () => {
     })
     vi.mocked(fetchSharedList).mockResolvedValue(baseList)
     vi.mocked(fetchSharedListItems).mockResolvedValue([sharedItem])
+    // The derived Food row (500 g) must NOT enter the copy payload: it is not a
+    // gear/list item, so Copy gear list cannot carry it (rule 6).
+    vi.mocked(fetchSharedFoodSummary).mockResolvedValue(500)
 
     renderShareView()
 
@@ -166,26 +169,31 @@ describe('SharePage error and not-found states', () => {
   })
 })
 
-describe('SharePage public food projection', () => {
-  it('renders aggregate Food plan rows without the owner edit link', async () => {
+describe('SharePage public food summary', () => {
+  it('shows one aggregate Food row with weight and no itemized food when the plan is private', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue({ ...baseList, is_draft: false })
-    vi.mocked(fetchSharedFoodProjection).mockResolvedValue([
-      {
-        list_slug: 'abc123',
-        food_name: 'Energy bar',
-        brand: 'Trail Co',
-        total_effective_servings: 2,
-        total_weight_grams: 120,
-      },
-    ])
+    vi.mocked(fetchSharedFoodSummary).mockResolvedValue(318)
+    vi.mocked(fetchSharedFoodPlan).mockResolvedValue(null) // is_food_shared = false
 
     renderShareView()
 
-    expect(await screen.findByText('Food from plan')).toBeTruthy()
-    expect(screen.getByText('Energy bar')).toBeTruthy()
-    expect(screen.getByText('Trail Co')).toBeTruthy()
-    expect(screen.getByText('2 servings')).toBeTruthy()
-    expect(screen.queryByRole('link', { name: /edit food plan/i })).toBeNull()
+    expect(await screen.findByText('Food')).toBeTruthy()
+    expect(screen.getByText('From Food plan')).toBeTruthy()
+    // No itemization, and no detailed Food plan tab.
+    expect(screen.queryByText('Energy bar')).toBeNull()
+    expect(screen.queryByText('Trail Co')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Food plan' })).toBeNull()
+    expect(screen.queryByText('Food from plan')).toBeNull() // old itemized header gone
+  })
+
+  it('omits the Food row when there is no food-plan weight', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue({ ...baseList, is_draft: false })
+    vi.mocked(fetchSharedFoodSummary).mockResolvedValue(0)
+
+    renderShareView()
+
+    await screen.findByText('Trip')
+    expect(screen.queryByText('From Food plan')).toBeNull()
   })
 })
 
@@ -228,8 +236,15 @@ describe('SharePage public food plan tab', () => {
       dailyTargets: [],
       mealTargets: [],
     })
+    vi.mocked(fetchSharedFoodSummary).mockResolvedValue(318)
 
     renderShareView()
+
+    // Gear tab shows ONLY the aggregate Food row -- never the itemized menu,
+    // even though the detailed plan is shared.
+    expect(await screen.findByText('Food')).toBeTruthy()
+    expect(screen.getByText('From Food plan')).toBeTruthy()
+    expect(screen.queryByText('On-trail food')).toBeNull()
 
     await user.click(await screen.findByRole('button', { name: 'Food plan' }))
 
