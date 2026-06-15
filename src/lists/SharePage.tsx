@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
   fetchSharedList, fetchSharedListItems, fetchSharedListCategories,
-  fetchSharedFoodProjection, fetchSharedFoodPlan, queryKeys,
+  fetchSharedFoodSummary, fetchSharedFoodPlan, queryKeys,
 } from '../lib/queries'
 import { groupListItemsByCategory } from '../lib/grouping'
 import type { Category, ListItemWithGear, PublicCategory, PublicListItem } from '../lib/types'
@@ -14,7 +14,7 @@ import { computeWeightBreakdown, withProjectedFood } from '../lib/weight-breakdo
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
-import FoodProjectionSection, { type FoodProjectionDisplayRow } from './FoodProjectionSection'
+import FoodSummaryRow from './FoodSummaryRow'
 import AboutLink from '../components/AboutLink'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import DraftBanner from './DraftBanner'
@@ -70,9 +70,9 @@ export default function SharePage() {
     enabled: Boolean(list?.id) && categoryIds.length > 0,
   })
 
-  const { data: foodProjection = [], isLoading: foodProjectionLoading, isError: foodProjectionError } = useQuery({
-    queryKey: queryKeys.sharedFoodProjection(slug ?? ''),
-    queryFn: () => fetchSharedFoodProjection(slug!),
+  const { data: foodSummaryGrams = 0, isLoading: foodSummaryLoading, isError: foodSummaryError } = useQuery({
+    queryKey: queryKeys.sharedFoodSummary(slug ?? ''),
+    queryFn: () => fetchSharedFoodSummary(slug!),
     enabled: Boolean(list?.id) && Boolean(slug),
   })
   const { data: sharedFoodPlan = null, isLoading: foodPlanLoading, isError: foodPlanError } = useQuery({
@@ -81,7 +81,7 @@ export default function SharePage() {
     enabled: Boolean(list?.id) && Boolean(slug),
   })
 
-  if (listLoading || itemsLoading || foodProjectionLoading || foodPlanLoading) {
+  if (listLoading || itemsLoading || foodSummaryLoading || foodPlanLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <p className="text-sm text-gray-400">Loading…</p>
@@ -96,7 +96,7 @@ export default function SharePage() {
   // mislead the viewer into thinking the owner stopped sharing — and
   // an items/categories fetch failure rendering as an empty list would
   // do the same in reverse.
-  if (listError || itemsError || categoriesError || foodProjectionError || foodPlanError) {
+  if (listError || itemsError || categoriesError || foodSummaryError || foodPlanError) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -150,20 +150,7 @@ export default function SharePage() {
     created_at: '',
   }))
 
-  const foodProjectionRows: FoodProjectionDisplayRow[] = foodProjection.map((row) => ({
-    foodItemId: `${row.food_name}::${row.brand ?? ''}`,
-    state: 'complete',
-    name: row.food_name,
-    brand: row.brand,
-    servingsLabel: formatProjectionServings(row.total_effective_servings),
-    weightGrams: row.total_weight_grams,
-    packed: false,
-    packable: false,
-  }))
-  const projectedFoodGrams = foodProjectionRows.reduce(
-    (total, row) => total + (row.state === 'complete' ? row.weightGrams : 0),
-    0,
-  )
+  const projectedFoodGrams = foodSummaryGrams
   const weightBreakdown = withProjectedFood(
     computeWeightBreakdown(itemsForRender, categoriesForRender),
     projectedFoodGrams,
@@ -241,7 +228,7 @@ export default function SharePage() {
           <>
         {/* Notes + Weight summary — side by side on desktop, with Notes
             getting the wider read-only column. */}
-        <div className={`mb-6 grid gap-4 ${items.length > 0 || foodProjectionRows.length > 0 ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
+        <div className={`mb-6 grid gap-4 ${items.length > 0 || projectedFoodGrams > 0 ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
           <PanelCard title="Notes">
             {list.description ? (
               <div className="px-3 py-2 min-h-[8rem]">
@@ -253,23 +240,16 @@ export default function SharePage() {
               <p className={`px-3 py-2 min-h-[8rem] ${PANEL_EMPTY_TEXT}`}>No notes</p>
             )}
           </PanelCard>
-          {(items.length > 0 || foodProjectionRows.length > 0) && (
+          {(items.length > 0 || projectedFoodGrams > 0) && (
             <PanelCard title="Weight summary">
               <WeightTable items={itemsForRender} categories={categoriesForRender} breakdown={weightBreakdown} />
             </PanelCard>
           )}
         </div>
 
-        {foodProjectionRows.length > 0 && (
+        {projectedFoodGrams > 0 && (
           <div className="mb-6">
-            <FoodProjectionSection
-              listId={list.id}
-              packMode={false}
-              showUnpackedOnly={false}
-              rows={foodProjectionRows}
-              onTogglePacked={() => {}}
-              editFoodPlanHref={null}
-            />
+            <FoodSummaryRow grams={projectedFoodGrams} />
           </div>
         )}
 
@@ -310,9 +290,4 @@ export default function SharePage() {
       </div>
     </div>
   )
-}
-
-function formatProjectionServings(n: number): string {
-  const rounded = Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, '')
-  return `${rounded} serving${rounded === '1' ? '' : 's'}`
 }
