@@ -84,7 +84,7 @@ select ok(
   exists (select 1 from pg_catalog.pg_proc p
     join pg_catalog.pg_namespace n on n.oid = p.pronamespace
     where n.nspname='public' and p.proname='food_projection_public_summary'
-      and p.proconfig @> array['search_path=']),
+      and p.proconfig @> array['search_path=""']),
   'food_projection_public_summary pins search_path to empty');
 
 -- 4-6. Grant matrix: anon + service_role execute; authenticated + public do not.
