@@ -66,9 +66,10 @@ export async function fetchLists(userId: string): Promise<List[]> {
   return data
 }
 
-// Public read (shared list, no auth). Returns only the columns the share
-// view renders: no user_id, no slug echo, no is_shared / sort_order /
-// timestamps. See SECURITY.md "Public read paths" for the allowlist.
+// Public read (shared list, no auth). Reads through a curated DB view
+// that physically omits private base-table columns (user_id, is_shared,
+// sort_order, ready_checks_enabled, timestamps). See SECURITY.md "Public
+// read paths" for the allowlist.
 // group_worn is included so the share view honors the owner's worn-grouping
 // preference (see PublicList in types.ts).
 //
@@ -80,10 +81,9 @@ export async function fetchLists(userId: string): Promise<List[]> {
 // share page distinguishes a real outage from a bad link.
 export async function fetchSharedList(slug: string): Promise<PublicList | null> {
   const { data, error } = await supabase
-    .from('lists')
+    .from('public_gear_lists')
     .select('id, name, description, group_worn, is_draft')
     .eq('slug', slug)
-    .eq('is_shared', true)
     .single()
   if (error) {
     if (error.code === 'PGRST116') return null

@@ -6,7 +6,7 @@ import { buildListImportPlan } from './import-plan'
 import { createListWithImportedItems } from './lists'
 import { assertListImportWithinCaps } from './import-helpers'
 import { randomTempId } from '../random-temp-id'
-import { GEAR_ITEM_AUTH_SELECT, GEAR_ITEM_PUBLIC_SELECT } from './projections'
+import { GEAR_ITEM_AUTH_SELECT } from './projections'
 
 // Next sort_order slot for a newly-created list_item, scoped to its
 // list. Same sparse-order rationale as nextCategorySortOrder /
@@ -51,36 +51,44 @@ export async function fetchAllUserListItems(userId: string): Promise<ListItemWit
   return data as ListItemWithGear[]
 }
 
-// Public read (shared list, no auth). Returns only the columns the share
-// view renders: no list_id (viewer already has it), no is_packed (owner's
-// packing state), no created_at/updated_at. See SECURITY.md "Public read
-// paths" for the allowlist.
+type PublicListItemViewRow = Pick<
+  PublicListItem,
+  'id' | 'gear_item_id' | 'quantity' | 'is_worn' | 'is_consumable' | 'sort_order'
+> & {
+  gear_name: string
+  gear_description: string | null
+  gear_weight_grams: number
+  gear_category_id: string | null
+}
+
+// Public read (shared list, no auth). Reads through a curated DB view that
+// physically omits private base-table columns: no user_id, no is_packed /
+// is_ready, no gear status/cost/purchase_date, no timestamps. See
+// SECURITY.md "Public read paths" for the allowlist.
 export async function fetchSharedListItems(listId: string): Promise<PublicListItem[]> {
   const { data, error } = await supabase
-    .from('list_items')
+    .from('public_gear_list_items')
     .select(
-      `id, gear_item_id, quantity, is_worn, is_consumable, sort_order, ${GEAR_ITEM_PUBLIC_SELECT}`,
+      'id, gear_item_id, quantity, is_worn, is_consumable, sort_order, gear_name, gear_description, gear_weight_grams, gear_category_id',
     )
     .eq('list_id', listId)
     .order('sort_order', { ascending: true })
   if (error) throw error
-  // Runtime guard for the TS/runtime contract: PostgREST returns gear_item
-  // as a single object (one-to-one via FK) but TS infers it as an array
-  // from the explicit-column SELECT; the previous `as unknown as` cast
-  // silently accepted any shape. This assert turns a future PostgREST
-  // shape change (or a leaked private column) into a loud error instead.
-  // Authorization stays at RLS + the narrow SELECT above + the
-  // shared-projections.test.ts allowlist; this is a maintainability
-  // guard, not a security boundary.
-  assertPublicListItems(data)
-  return data
+  // Runtime guard for the TS/runtime contract. Authorization is enforced by
+  // the view + grant matrix; this guard turns a future PostgREST shape drift
+  // or accidental forbidden-column widening into a loud error instead of a
+  // silently malformed share page.
+  assertPublicListItemViewRows(data)
+  const mapped = data.map(mapPublicListItemViewRow)
+  assertPublicListItems(mapped)
+  return mapped
 }
 
 // Forbidden columns on the public share response. Defense-in-depth
-// against a leaked private field from a broken SELECT, an RLS rule that
-// returned more than expected, or a developer who appended a column to
-// GEAR_ITEM_PUBLIC_SELECT without thinking. SECURITY.md's "Public read
-// column allowlist" is the source of truth; this is the runtime mirror.
+// against a leaked private field from a broken SELECT, a widened public
+// view, or a developer who appended a column without thinking. SECURITY.md's
+// "Public read paths" section is the source of truth; this is the runtime
+// mirror.
 const FORBIDDEN_LIST_ITEM_KEYS: readonly string[] = [
   'is_packed',
   'is_ready',
@@ -97,6 +105,19 @@ const FORBIDDEN_GEAR_ITEM_KEYS: readonly string[] = [
   'sort_order',
   'created_at',
   'updated_at',
+]
+const FORBIDDEN_PUBLIC_VIEW_KEYS: readonly string[] = [
+  ...FORBIDDEN_LIST_ITEM_KEYS,
+  'status',
+  'cost',
+  'purchase_date',
+  'gear_status',
+  'gear_cost',
+  'gear_purchase_date',
+  'gear_sort_order',
+  'gear_user_id',
+  'gear_created_at',
+  'gear_updated_at',
 ]
 
 function shapeError(index: number, field: string, expected: string): Error {
@@ -128,6 +149,61 @@ function assertPublicListItems(data: unknown): asserts data is PublicListItem[] 
   }
   for (let i = 0; i < data.length; i++) {
     assertPublicListItemRow(data[i], i)
+  }
+}
+
+function assertPublicListItemViewRows(data: unknown): asserts data is PublicListItemViewRow[] {
+  if (!Array.isArray(data)) {
+    throw new Error('Unexpected public list item response shape: payload is not an array')
+  }
+  for (let i = 0; i < data.length; i++) {
+    assertPublicListItemViewRow(data[i], i)
+  }
+}
+
+function assertPublicListItemViewRow(row: unknown, index: number): void {
+  if (!row || typeof row !== 'object') {
+    throw new Error(
+      `Unexpected public list item response shape: row ${index} is not an object`,
+    )
+  }
+  const r = row as Record<string, unknown>
+  for (const forbidden of FORBIDDEN_PUBLIC_VIEW_KEYS) {
+    if (forbidden in r) throw forbiddenKeyError(index, 'view row', forbidden)
+  }
+  if (typeof r.id !== 'string') throw shapeError(index, 'id', 'string')
+  if (typeof r.gear_item_id !== 'string') throw shapeError(index, 'gear_item_id', 'string')
+  if (typeof r.quantity !== 'number') throw shapeError(index, 'quantity', 'number')
+  if (typeof r.sort_order !== 'number') throw shapeError(index, 'sort_order', 'number')
+  if (typeof r.is_worn !== 'boolean') throw shapeError(index, 'is_worn', 'boolean')
+  if (typeof r.is_consumable !== 'boolean') throw shapeError(index, 'is_consumable', 'boolean')
+  if (typeof r.gear_name !== 'string') throw shapeError(index, 'gear_name', 'string')
+  if (typeof r.gear_weight_grams !== 'number') {
+    throw shapeError(index, 'gear_weight_grams', 'number')
+  }
+  if (r.gear_description !== null && typeof r.gear_description !== 'string') {
+    throw shapeError(index, 'gear_description', 'string or null')
+  }
+  if (r.gear_category_id !== null && typeof r.gear_category_id !== 'string') {
+    throw shapeError(index, 'gear_category_id', 'string or null')
+  }
+}
+
+function mapPublicListItemViewRow(row: PublicListItemViewRow): PublicListItem {
+  return {
+    id: row.id,
+    gear_item_id: row.gear_item_id,
+    quantity: row.quantity,
+    is_worn: row.is_worn,
+    is_consumable: row.is_consumable,
+    sort_order: row.sort_order,
+    gear_item: {
+      id: row.gear_item_id,
+      name: row.gear_name,
+      description: row.gear_description,
+      weight_grams: row.gear_weight_grams,
+      category_id: row.gear_category_id,
+    },
   }
 }
 

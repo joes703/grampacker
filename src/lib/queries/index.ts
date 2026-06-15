@@ -12,20 +12,15 @@
 //
 // Each helper takes a required `userId: string` parameter and applies
 // it as an explicit `.eq('user_id', userId)` filter, even though RLS
-// would gate ownership anyway. The redundant filter is defense in depth
-// against the cross-channel leak from public *_select_shared policies.
-// Without it, a signed-in user's `select('*')` would return own rows
-// plus any other user's transitively-readable shared rows.
+// gates ownership anyway. The redundant filter is defense in depth and
+// keeps query intent obvious.
 //
-// See SECURITY.md "Query-level owner scoping" for the full rationale
-// and the policy-level reason authenticated reads can match shared rows
-// (each *_auth_select policy is `auth.uid() = user_id OR is_shared`).
+// See SECURITY.md "Query-level owner scoping" for the full rationale.
 //
 // New private helpers must follow this pattern. Public-read helpers
 // (`fetchSharedList`, `fetchSharedListItems`, `fetchSharedListCategories`)
-// intentionally don't filter by user_id; they rely on the
-// *_anon_select policies, and that asymmetry is the whole point
-// of the cross-channel-leak defense.
+// intentionally don't filter by user_id; they read curated public views
+// that physically omit private columns.
 // ---------------------------------------------------------------------
 export { queryKeys } from './keys'
 export { bulkUpdateSortOrder } from './bulk-reorder'
@@ -100,7 +95,7 @@ export {
   assertGearImportWithinCap,
   assertListImportWithinCaps,
 } from './import-helpers'
-export { GEAR_ITEM_AUTH_SELECT, GEAR_ITEM_PUBLIC_SELECT } from './projections'
+export { GEAR_ITEM_AUTH_SELECT } from './projections'
 export {
   fetchFoodPlan, createFoodPlan, addFoodPlanDay, addMealDefinition, duplicateFoodPlanDay,
   upsertFoodPlanEntry, upsertFoodPlanEntries, updateFoodPlanEntry, deleteFoodPlanEntry, deleteFoodPlanDay,
