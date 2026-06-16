@@ -350,7 +350,8 @@ describe('FoodPlanPage add food', () => {
     fireEvent.click(addButtons[0]!)
 
     // Picker open: pick Oatmeal.
-    fireEvent.click(await screen.findByRole('button', { name: 'Oatmeal' }))
+    const picker = await screen.findByRole('dialog', { name: 'Add food' })
+    fireEvent.click(within(picker).getByRole('button', { name: /Oatmeal/ }))
 
     // Amount dialog: leave defaults (servings, amount 1), Save.
     fireEvent.click(await screen.findByRole('button', { name: 'Save' }))
@@ -375,7 +376,8 @@ describe('FoodPlanPage add food', () => {
     fireEvent.click(addButtons[0]!)
 
     // Pick the food already in this cell.
-    fireEvent.click(await screen.findByRole('button', { name: 'Oatmeal' }))
+    const picker = await screen.findByRole('dialog', { name: 'Add food' })
+    fireEvent.click(within(picker).getByRole('button', { name: /Oatmeal/ }))
 
     // Amount dialog opens with the merge note. Switch basis to Weight (g) to
     // create a merge conflict, which reveals the preserve radio group.
