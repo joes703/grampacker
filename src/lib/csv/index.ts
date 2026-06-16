@@ -11,7 +11,7 @@
 export { toCsv, downloadCsv, parseCsv, MAX_CSV_ROWS } from './core'
 export { gearItemsToCsv, parseGearCsv } from './gear'
 export type { GearCsvRow } from './gear'
-export { foodItemsToCsv, parseFoodCsv } from './food'
+export { foodItemsToCsv, parseFoodCsv, FOOD_CSV_HEADER, FOOD_CSV_HEADERS } from './food'
 export type { FoodImportRow } from './food'
 export { listItemsToCsv, parseListCsv, nameFromCsvFilename } from './list'
 export type { ListImportRow } from './list'

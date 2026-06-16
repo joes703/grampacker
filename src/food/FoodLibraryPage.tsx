@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, X, Download, Upload } from 'lucide-react'
+import { Plus, Search, X, Download, Upload, FileText } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import { useDocumentTitle } from '../lib/use-document-title'
 import {
@@ -26,6 +26,7 @@ import Modal from '../components/Modal'
 import FoodItemRow from './FoodItemRow'
 import FoodItemDialog from './FoodItemDialog'
 import FoodImportPreviewDialog from './FoodImportPreviewDialog'
+import FoodCsvFormatDialog from './FoodCsvFormatDialog'
 import type { FoodItem } from '../lib/types'
 
 type DialogState =
@@ -34,6 +35,7 @@ type DialogState =
   | { type: 'delete'; item: FoodItem; returnDialog?: DialogState }
   | { type: 'import-preview'; rows: FoodImportRow[] }
   | { type: 'import-error'; message: string }
+  | { type: 'csv-format' }
 
 export default function FoodLibraryPage() {
   useDocumentTitle('Food')
@@ -152,6 +154,14 @@ export default function FoodLibraryPage() {
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-lg font-semibold text-gray-900">Food</h1>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setDialog({ type: 'csv-format' })}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100"
+          >
+            <FileText size={15} />
+            <span className="sr-only sm:not-sr-only">CSV format</span>
+          </button>
           <button
             type="button"
             onClick={openImportPicker}
@@ -293,6 +303,10 @@ export default function FoodLibraryPage() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {dialog?.type === 'csv-format' && (
+        <FoodCsvFormatDialog onClose={() => setDialog(null)} />
       )}
 
       {dialog?.type === 'import-preview' && (

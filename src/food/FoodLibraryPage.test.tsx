@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -28,7 +28,13 @@ vi.mock('../auth/use-require-session', () => ({
 }))
 
 import { fetchFoodItems } from '../lib/queries'
+import { FOOD_CSV_HEADER } from '../lib/csv'
 import FoodLibraryPage from './FoodLibraryPage'
+
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function () { this.open = true }
+  HTMLDialogElement.prototype.close = function () { this.open = false }
+})
 
 afterEach(() => {
   cleanup()
@@ -70,5 +76,19 @@ describe('FoodLibraryPage error state', () => {
     // After a successful refetch the empty state replaces the error state.
     expect(await screen.findByText('Your food library is empty.')).toBeTruthy()
     expect(fetchFoodItems).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('FoodLibraryPage CSV format affordance', () => {
+  it('renders a CSV format control that opens the canonical-header help', async () => {
+    vi.mocked(fetchFoodItems).mockResolvedValueOnce([])
+    renderPage()
+
+    const trigger = await screen.findByRole('button', { name: /csv format/i })
+    fireEvent.click(trigger)
+
+    // The dialog shows the canonical header and a Copy header button.
+    expect(screen.getByText(FOOD_CSV_HEADER)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /copy header/i })).toBeInTheDocument()
   })
 })
