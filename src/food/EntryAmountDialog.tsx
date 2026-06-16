@@ -51,6 +51,14 @@ export default function EntryAmountDialog({
     }
   }
 
+  function selectAllAlsoDays() {
+    setAlsoChecked(new Set(alsoDays?.map((d) => d.dayMealId) ?? []))
+  }
+
+  function clearAlsoDays() {
+    setAlsoChecked(new Set())
+  }
+
   function submit(e: FormEvent) {
     e.preventDefault()
     if (!canSave) return
@@ -98,6 +106,14 @@ export default function EntryAmountDialog({
         {alsoDays && alsoDays.length > 0 ? (
           <fieldset className="rounded-lg border border-gray-200 p-3">
             <legend className="px-1 text-xs font-medium text-gray-600">Also add to</legend>
+            <div className="mb-2 flex justify-end gap-2 text-xs">
+              <button type="button" onClick={selectAllAlsoDays} className="font-medium text-emerald-700 hover:underline">
+                All days
+              </button>
+              <button type="button" onClick={clearAlsoDays} className="font-medium text-gray-500 hover:underline">
+                Clear
+              </button>
+            </div>
             <div className="mt-1 space-y-1">
               {alsoDays.map((d) => (
                 <label key={d.dayMealId} className="flex items-center gap-2 text-sm text-gray-700">
@@ -115,6 +131,9 @@ export default function EntryAmountDialog({
                 </label>
               ))}
             </div>
+            <p className="mt-2 text-xs text-gray-400">
+              Where the food already exists, compatible quantities merge.
+            </p>
           </fieldset>
         ) : null}
 
