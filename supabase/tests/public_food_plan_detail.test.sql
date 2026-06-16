@@ -1,6 +1,6 @@
 -- supabase/tests/public_food_plan_detail.test.sql
 begin;
-select plan(25);
+select plan(24);
 
 create extension if not exists pgtap with schema extensions;
 
@@ -122,8 +122,11 @@ select is((public.get_public_food_plan('pubd01')->'foods'->0->>'calories_per_ser
 
 set local role authenticated;
 set local "request.jwt.claims" = '{"sub":"00000000-0000-0000-0000-0000000007a2","role":"authenticated"}';
-select throws_ok($$ select public.get_public_food_plan('pubd01') $$, '42501', NULL,
-  'authenticated callers do not use the public detail RPC grant; browser public reads use the anon client');
+-- Do not live-call the revoked RPC as authenticated here. On the local
+-- Supabase Postgres 17.6.1.105 image, that revoked SECURITY DEFINER call can
+-- terminate the backend connection before pgTAP can report the expected 42501.
+-- The privilege contract is asserted directly above with has_function_privilege,
+-- which is the stronger and non-crashing check.
 
 select finish();
 rollback;
