@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import type { EntryBasis, FoodItem, FoodPlanEntry } from '../lib/types'
+import { effectiveServings } from '../lib/food/basis'
 
 export type EntryAmountResult = { basis: EntryBasis; amount: number; preserveBasis: EntryBasis | null; alsoDayMealIds: string[] }
 
@@ -11,6 +12,10 @@ function availableBases(food: FoodItem): EntryBasis[] {
   return bases
 }
 const BASIS_LABEL: Record<EntryBasis, string> = { servings: 'Servings', packages: 'Packages', weight: 'Weight (g)' }
+
+function formatDerivedNumber(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)))
+}
 
 export default function EntryAmountDialog({
   food, existing, initial, alsoDays, saving = false, onSave, onClose,
@@ -32,6 +37,19 @@ export default function EntryAmountDialog({
   const parsed = Number(amount)
   const canSave = Number.isFinite(parsed) && parsed > 0
   const isMergeConflict = Boolean(existing) && existing!.basis !== basis
+  let derived: { servings: number; weightG: number; kcal: number } | null = null
+  if (canSave) {
+    try {
+      const servings = effectiveServings({ basis, amount: parsed }, food)
+      derived = {
+        servings,
+        weightG: servings * food.serving_weight_grams,
+        kcal: servings * food.calories_per_serving,
+      }
+    } catch {
+      derived = null
+    }
+  }
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -66,6 +84,16 @@ export default function EntryAmountDialog({
             onChange={(e) => setAmount(e.target.value)}
             className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none" />
         </label>
+        {derived ? (
+          <div className="space-y-1 text-xs">
+            <p className="text-gray-500 tabular-nums">
+              = {formatDerivedNumber(derived.servings)} servings - {Math.round(derived.weightG)} g - {Math.round(derived.kcal)} kcal
+            </p>
+            <p className="text-gray-400">
+              Entered as {BASIS_LABEL[basis].toLowerCase()} - that basis is kept; the rest is derived from the library item.
+            </p>
+          </div>
+        ) : null}
 
         {alsoDays && alsoDays.length > 0 ? (
           <fieldset className="rounded-lg border border-gray-200 p-3">
