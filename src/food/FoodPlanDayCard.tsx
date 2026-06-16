@@ -8,6 +8,13 @@ import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import MealSection from './MealSection'
 import DayTotalsStrip from './DayTotalsStrip'
 
+function dayTypeTitle(dayType: 'full' | 'partial', override: 'full' | 'partial' | null) {
+  const base = dayType === 'partial'
+    ? 'Partial day - excluded from the full-day average and target check.'
+    : 'Full day - included in the full-day average and target check.'
+  return override === null ? base : `${base} Set manually.`
+}
+
 export default function FoodPlanDayCard({
   dayView, dayIndex, listId, userId, foodById, mealTargets, onAddFoodToCell, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry,
   onSetDayType, onDeleteDay, onDuplicate, allMeals, onOmitMeal, onDeleteMeal, onRestoreMeal,
@@ -44,7 +51,15 @@ export default function FoodPlanDayCard({
         </div>
         <div className="flex items-center gap-2">
           <DayTotalsStrip dayView={dayView} foodById={foodById} />
-          <span className="text-xs uppercase tracking-wide text-gray-400">{dayView.dayType}</span>
+          <span
+            title={dayTypeTitle(dayView.dayType, dayView.day.day_type_override)}
+            className="inline-flex items-center gap-1 text-xs uppercase tracking-wide text-gray-400"
+          >
+            <span>{dayView.dayType}</span>
+            {dayView.day.day_type_override !== null ? (
+              <span className="normal-case tracking-normal">(manual)</span>
+            ) : null}
+          </span>
           {(onSetDayType || onDeleteDay || onDuplicate) && (
             <DayKebab currentOverride={dayView.day.day_type_override} onSetDayType={onSetDayType} onDeleteDay={onDeleteDay} onDuplicate={onDuplicate} />
           )}
