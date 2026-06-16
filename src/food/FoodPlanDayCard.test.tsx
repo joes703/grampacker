@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import FoodPlanDayCard from './FoodPlanDayCard'
 import type { DayView } from '../lib/food/view'
+
+vi.mock('./MealSection', () => ({
+  default: function MealSectionStub() {
+    return null
+  },
+}))
 
 afterEach(cleanup)
 
