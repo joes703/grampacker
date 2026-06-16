@@ -6,6 +6,7 @@ import type {
   FoodPlan, Meal, FoodPlanDay, DayMeal, FoodPlanEntry, FoodPlanDocument, EntryBasis,
   FoodPlanDailyTarget, MealTarget, DailyTargetInput, MealTargetInput,
   DailyTargetMetric, MealTargetMetric, TargetMode, PublicFoodPlanDocument,
+  TargetDefault,
 } from '../types'
 
 // ---- Public aggregate food weight (shared Gear list, no auth).
@@ -418,4 +419,81 @@ export async function saveFoodPlanTargets(userId: string, foodPlanId: string, pa
     p_meal_deletes: payload.mealDeletes,
   })
   if (error) throw error
+}
+
+// ---- Faithful account-takeout snapshot of the owner's food-plan graph.
+// Raw rows keyed by EXACT table name (snake_case) so the exported JSON is an
+// unambiguous mirror of the schema. Deliberately NOT shaped like FoodPlanDocument
+// (which is camelCase, nested, and per-list for rendering). Deterministic
+// .order(...) on every table keeps the export byte-stable across runs.
+//
+// food_items is fetched separately (already loaded for food-library.csv) and is
+// composed in by buildFoodDataJson. food_pack_state is excluded on purpose:
+// it is transient per-trip packing state, not user-authored content.
+export type FoodTakeoutData = {
+  food_plans: FoodPlan[]
+  meals: Meal[]
+  food_plan_days: FoodPlanDay[]
+  day_meals: DayMeal[]
+  food_plan_entries: FoodPlanEntry[]
+  food_plan_daily_targets: FoodPlanDailyTarget[]
+  meal_targets: MealTarget[]
+  food_plan_target_defaults: TargetDefault[]
+}
+
+export async function fetchAllUserFoodData(userId: string): Promise<FoodTakeoutData> {
+  const [
+    foodPlans,
+    meals,
+    foodPlanDays,
+    dayMeals,
+    foodPlanEntries,
+    foodPlanDailyTargets,
+    mealTargets,
+    foodPlanTargetDefaults,
+  ] = await Promise.all([
+    supabase.from('food_plans').select('*').eq('user_id', userId)
+      .order('list_id', { ascending: true }).order('id', { ascending: true }),
+    supabase.from('meals').select('*').eq('user_id', userId)
+      .order('food_plan_id', { ascending: true }).order('sort_order', { ascending: true })
+      .order('id', { ascending: true }),
+    supabase.from('food_plan_days').select('*').eq('user_id', userId)
+      .order('food_plan_id', { ascending: true }).order('sort_order', { ascending: true })
+      .order('id', { ascending: true }),
+    supabase.from('day_meals').select('*').eq('user_id', userId)
+      .order('food_plan_id', { ascending: true }).order('day_id', { ascending: true })
+      .order('meal_id', { ascending: true }).order('id', { ascending: true }),
+    supabase.from('food_plan_entries').select('*').eq('user_id', userId)
+      .order('food_plan_id', { ascending: true })
+      // day_meal_id is null for Extras rows; pin nulls last so order is total.
+      .order('day_meal_id', { ascending: true, nullsFirst: false })
+      .order('is_extra', { ascending: true }).order('sort_order', { ascending: true })
+      .order('id', { ascending: true }),
+    supabase.from('food_plan_daily_targets').select('*').eq('user_id', userId)
+      .order('food_plan_id', { ascending: true }).order('metric', { ascending: true })
+      .order('id', { ascending: true }),
+    supabase.from('meal_targets').select('*').eq('user_id', userId)
+      .order('food_plan_id', { ascending: true }).order('meal_id', { ascending: true })
+      .order('metric', { ascending: true }).order('id', { ascending: true }),
+    supabase.from('food_plan_target_defaults').select('*').eq('user_id', userId)
+      .order('metric', { ascending: true }).order('id', { ascending: true }),
+  ])
+
+  for (const result of [
+    foodPlans, meals, foodPlanDays, dayMeals, foodPlanEntries,
+    foodPlanDailyTargets, mealTargets, foodPlanTargetDefaults,
+  ]) {
+    if (result.error) throw result.error
+  }
+
+  return {
+    food_plans: (foodPlans.data ?? []) as FoodPlan[],
+    meals: (meals.data ?? []) as Meal[],
+    food_plan_days: (foodPlanDays.data ?? []) as FoodPlanDay[],
+    day_meals: (dayMeals.data ?? []) as DayMeal[],
+    food_plan_entries: (foodPlanEntries.data ?? []) as FoodPlanEntry[],
+    food_plan_daily_targets: (foodPlanDailyTargets.data ?? []) as FoodPlanDailyTarget[],
+    meal_targets: (mealTargets.data ?? []) as MealTarget[],
+    food_plan_target_defaults: (foodPlanTargetDefaults.data ?? []) as TargetDefault[],
+  }
 }

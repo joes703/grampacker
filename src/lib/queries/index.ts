@@ -103,9 +103,9 @@ export {
   upsertFoodPlanEntry, upsertFoodPlanEntries, updateFoodPlanEntry, deleteFoodPlanEntry, deleteFoodPlanDay,
   updateDayType, renameMeal, deleteMeal, deleteDayMeal, addDayMeal, deleteFoodPlan, updateFoodPlanShare,
   assertFoodPlanDayWithinCap, assertMealDefinitionWithinCap, assertFoodPlanEntryWithinCap,
-  saveFoodPlanTargets,
+  saveFoodPlanTargets, fetchAllUserFoodData,
 } from './food-plan'
-export type { EntryAddition, EntryBatchAddition, FoodPlanCopyOption, TargetsSavePayload } from './food-plan'
+export type { EntryAddition, EntryBatchAddition, FoodPlanCopyOption, TargetsSavePayload, FoodTakeoutData } from './food-plan'
 export { fetchTargetDefaults, saveTargetDefaults } from './target-defaults'
 export type { DefaultsSavePayload } from './target-defaults'
 export {
