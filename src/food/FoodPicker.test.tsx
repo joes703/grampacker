@@ -106,7 +106,7 @@ describe('FoodPicker', () => {
     const user = userEvent.setup()
     renderPicker({ foods: [food()] })
 
-    expect(screen.getByText('Recently used across your trips')).toBeInTheDocument()
+    expect(screen.getByText('Recently added to your library')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'In this plan' }))
     expect(screen.getByText('Already in this plan')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'A-Z' }))

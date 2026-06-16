@@ -21,7 +21,7 @@ const TABS: { id: PickerTab; label: string }[] = [
 ]
 
 const TAB_HINT: Record<PickerTab, string> = {
-  recent: 'Recently used across your trips',
+  recent: 'Recently added to your library',
   inPlan: 'Already in this plan',
   az: 'All foods, alphabetical',
 }
