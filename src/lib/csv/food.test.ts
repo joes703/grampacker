@@ -28,12 +28,15 @@ function food(partial: Partial<FoodItem>): FoodItem {
   }
 }
 
+const CANONICAL_HEADER =
+  'name,brand,serving_description,serving_weight_grams,calories_per_serving,servings_per_package,fat_grams,saturated_fat_grams,carbs_grams,fiber_grams,sugar_grams,protein_grams,sodium_mg,potassium_mg,notes'
+
 describe('foodItemsToCsv', () => {
-  it('includes a header row and one row per food', () => {
+  it('emits exactly the canonical snake_case header order', () => {
     const csv = foodItemsToCsv([food({ name: 'Oats', calories_per_serving: 150 })])
     const lines = csv.trim().split('\r\n')
     expect(lines).toHaveLength(2)
-    expect(lines[0]).toContain('Food Name')
+    expect(lines[0]).toBe(CANONICAL_HEADER)
     expect(lines[1]).toContain('Oats')
     expect(lines[1]).toContain('150')
   })
@@ -53,8 +56,91 @@ describe('foodItemsToCsv', () => {
   })
 })
 
-const CANONICAL_HEADER =
-  'name,brand,serving_description,serving_weight_grams,calories_per_serving,servings_per_package,fat_grams,saturated_fat_grams,carbs_grams,fiber_grams,sugar_grams,protein_grams,sodium_mg,potassium_mg,notes'
+describe('foodItemsToCsv <-> parseFoodCsv round-trip', () => {
+  it('round-trips every supported field through export then import', () => {
+    const original = food({
+      name: 'Trail Mix',
+      brand: 'TrailCo',
+      serving_description: '1 handful',
+      serving_weight_grams: 42,
+      calories_per_serving: 210,
+      servings_per_package: 6,
+      fat_grams: 14,
+      saturated_fat_grams: 2.5,
+      carbs_grams: 18,
+      fiber_grams: 3,
+      sugar_grams: 9,
+      protein_grams: 6,
+      sodium_mg: 55,
+      potassium_mg: 180,
+      notes: 'salty, with chocolate',
+    })
+    const rows = parseFoodCsv(foodItemsToCsv([original])) as Exclude<
+      ReturnType<typeof parseFoodCsv>,
+      string
+    >
+    expect(rows[0]!.errors).toEqual([])
+    expect(rows[0]!.item).toEqual({
+      name: 'Trail Mix',
+      brand: 'TrailCo',
+      serving_description: '1 handful',
+      serving_weight_grams: 42,
+      calories_per_serving: 210,
+      servings_per_package: 6,
+      fat_grams: 14,
+      saturated_fat_grams: 2.5,
+      carbs_grams: 18,
+      fiber_grams: 3,
+      sugar_grams: 9,
+      protein_grams: 6,
+      sodium_mg: 55,
+      potassium_mg: 180,
+      notes: 'salty, with chocolate',
+    })
+  })
+
+  it('round-trips blank optional fields as null (exported empty cells import as null)', () => {
+    const sparse = food({
+      name: 'Plain Rice',
+      brand: null,
+      serving_description: null,
+      serving_weight_grams: 75,
+      calories_per_serving: 270,
+      servings_per_package: null,
+      fat_grams: null,
+      saturated_fat_grams: null,
+      carbs_grams: null,
+      fiber_grams: null,
+      sugar_grams: null,
+      protein_grams: null,
+      sodium_mg: null,
+      potassium_mg: null,
+      notes: null,
+    })
+    const rows = parseFoodCsv(foodItemsToCsv([sparse])) as Exclude<
+      ReturnType<typeof parseFoodCsv>,
+      string
+    >
+    expect(rows[0]!.errors).toEqual([])
+    expect(rows[0]!.item).toEqual({
+      name: 'Plain Rice',
+      brand: null,
+      serving_description: null,
+      serving_weight_grams: 75,
+      calories_per_serving: 270,
+      servings_per_package: null,
+      fat_grams: null,
+      saturated_fat_grams: null,
+      carbs_grams: null,
+      fiber_grams: null,
+      sugar_grams: null,
+      protein_grams: null,
+      sodium_mg: null,
+      potassium_mg: null,
+      notes: null,
+    })
+  })
+})
 
 describe('parseFoodCsv', () => {
   it('returns an error string for an empty file', () => {

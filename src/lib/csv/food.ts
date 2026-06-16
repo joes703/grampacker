@@ -2,25 +2,29 @@ import type { FoodItem } from '../types'
 import type { FoodItemInput } from '../queries/food'
 import { toCsv, parseCsv, MAX_CSV_ROWS } from './core'
 
-// Serialize the food library for account takeout. Missing optional values
-// render as '' (never 0): unknown stays unknown (Story 1, Story 5).
+// Serialize the food library to the canonical Grampacker Food CSV: snake_case
+// headers in column order matching FoodItemInput, the SAME format parseFoodCsv
+// reads, so export -> import round-trips every field. (GearSkeptic headers are
+// an import-only convenience alias; they are never emitted here.) Missing
+// optional values render as '' (never 0) so unknown stays unknown, and import
+// reads those empty cells back as null (Story 1, Story 5).
 export function foodItemsToCsv(items: FoodItem[]): string {
   const rows = items.map((f) => ({
-    'Food Name': f.name,
-    Brand: f.brand ?? '',
-    'Serving Description': f.serving_description ?? '',
-    'Serving Weight (g)': f.serving_weight_grams,
-    'Calories per Serving': f.calories_per_serving,
-    'Servings per Package': f.servings_per_package ?? '',
-    'Fat (g)': f.fat_grams ?? '',
-    'Saturated Fat (g)': f.saturated_fat_grams ?? '',
-    'Carbs (g)': f.carbs_grams ?? '',
-    'Fiber (g)': f.fiber_grams ?? '',
-    'Sugar (g)': f.sugar_grams ?? '',
-    'Protein (g)': f.protein_grams ?? '',
-    'Sodium (mg)': f.sodium_mg ?? '',
-    'Potassium (mg)': f.potassium_mg ?? '',
-    Notes: f.notes ?? '',
+    name: f.name,
+    brand: f.brand ?? '',
+    serving_description: f.serving_description ?? '',
+    serving_weight_grams: f.serving_weight_grams,
+    calories_per_serving: f.calories_per_serving,
+    servings_per_package: f.servings_per_package ?? '',
+    fat_grams: f.fat_grams ?? '',
+    saturated_fat_grams: f.saturated_fat_grams ?? '',
+    carbs_grams: f.carbs_grams ?? '',
+    fiber_grams: f.fiber_grams ?? '',
+    sugar_grams: f.sugar_grams ?? '',
+    protein_grams: f.protein_grams ?? '',
+    sodium_mg: f.sodium_mg ?? '',
+    potassium_mg: f.potassium_mg ?? '',
+    notes: f.notes ?? '',
   }))
   return toCsv(rows)
 }
