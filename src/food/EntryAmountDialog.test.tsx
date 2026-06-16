@@ -82,9 +82,9 @@ describe('EntryAmountDialog', () => {
       <EntryAmountDialog
         food={food()}
         alsoDays={[
-          { dayMealId: 'dm-1', label: 'Day 1' },
-          { dayMealId: 'dm-2', label: 'Day 2' },
-          { dayMealId: 'dm-3', label: 'Day 3' },
+          { id: 'dm-1', dayMealId: 'dm-1', label: 'Day 1' },
+          { id: 'dm-2', dayMealId: 'dm-2', label: 'Day 2' },
+          { id: 'dm-3', dayMealId: 'dm-3', label: 'Day 3' },
         ]}
         onSave={onSave}
         onClose={vi.fn()}
@@ -112,7 +112,7 @@ describe('EntryAmountDialog', () => {
     const { rerender } = render(
       <EntryAmountDialog
         food={food()}
-        alsoDays={[{ dayMealId: 'dm-1', label: 'Day 1' }]}
+        alsoDays={[{ id: 'dm-1', dayMealId: 'dm-1', label: 'Day 1' }]}
         onSave={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -123,5 +123,35 @@ describe('EntryAmountDialog', () => {
     rerender(<EntryAmountDialog food={food()} onSave={vi.fn()} onClose={vi.fn()} />)
 
     expect(screen.queryByText('Where the food already exists, compatible quantities merge.')).not.toBeInTheDocument()
+  })
+
+  it('shows omitted also-add days as disabled and excludes them from all-days selection', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn()
+    render(
+      <EntryAmountDialog
+        food={food()}
+        alsoDays={[
+          { id: 'dm-1', dayMealId: 'dm-1', label: 'Day 1' },
+          { id: 'day-2:meal-1', dayMealId: null, label: 'Day 2', omitted: true },
+          { id: 'dm-3', dayMealId: 'dm-3', label: 'Day 3' },
+        ]}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByLabelText('Day 2')).toBeDisabled()
+    expect(screen.getByLabelText('Day 2')).toHaveAttribute('title', 'This meal is omitted on Day 2')
+
+    await user.click(screen.getByRole('button', { name: 'All days' }))
+    expect(screen.getByLabelText('Day 1')).toBeChecked()
+    expect(screen.getByLabelText('Day 2')).not.toBeChecked()
+    expect(screen.getByLabelText('Day 3')).toBeChecked()
+
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      alsoDayMealIds: ['dm-1', 'dm-3'],
+    }))
   })
 })

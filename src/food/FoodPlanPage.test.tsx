@@ -166,6 +166,40 @@ function makeDoc(entries: FoodPlanEntry[] = []): Doc {
   }
 }
 
+function makeDocWithOmittedBreakfastDay(): Doc {
+  const plan: FoodPlan = {
+    id: 'plan1', user_id: 'u1', list_id: 'L1',
+    is_food_shared: false, created_at: NOW, updated_at: NOW,
+  }
+  const breakfast: Meal = {
+    id: 'meal-b', user_id: 'u1', food_plan_id: 'plan1', name: 'Breakfast',
+    anchor_role: 'breakfast', is_default: true, sort_order: 0, created_at: NOW, updated_at: NOW,
+  }
+  const days: FoodPlanDay[] = [0, 1, 2].map((i) => ({
+    id: `day${i + 1}`, user_id: 'u1', food_plan_id: 'plan1', day_type_override: null,
+    sort_order: i, created_at: NOW, updated_at: NOW,
+  }))
+  const dayMeals: DayMeal[] = [
+    {
+      id: 'dm-b1', user_id: 'u1', food_plan_id: 'plan1', day_id: 'day1',
+      meal_id: 'meal-b', created_at: NOW, updated_at: NOW,
+    },
+    {
+      id: 'dm-b2', user_id: 'u1', food_plan_id: 'plan1', day_id: 'day2',
+      meal_id: 'meal-b', created_at: NOW, updated_at: NOW,
+    },
+  ]
+  return {
+    plan,
+    meals: [breakfast],
+    days,
+    dayMeals,
+    entries: [],
+    dailyTargets: [],
+    mealTargets: [],
+  }
+}
+
 function makeEntry(over: Partial<FoodPlanEntry> & { id: string; food_item_id: string }): FoodPlanEntry {
   return {
     user_id: 'u1',
@@ -394,5 +428,37 @@ describe('FoodPlanPage add food', () => {
     await waitFor(() => expect(upsertFoodPlanEntries).toHaveBeenCalled())
     const call = vi.mocked(upsertFoodPlanEntries).mock.calls[0]!
     expect(call[1][0]?.preserve_basis).toBe('servings')
+  })
+
+  it('shows omitted same-meal days as disabled in multi-day add', async () => {
+    const food = makeFood({ id: 'food-oat', name: 'Oatmeal' })
+    vi.mocked(fetchFoodPlan).mockResolvedValue(makeDocWithOmittedBreakfastDay())
+    vi.mocked(fetchFoodItems).mockResolvedValue([food])
+    vi.mocked(upsertFoodPlanEntries).mockResolvedValue([makeEntry({ id: 'saved', food_item_id: 'food-oat' })])
+    renderPage()
+
+    const addButtons = await screen.findAllByRole('button', { name: '+ Add food' })
+    fireEvent.click(addButtons[0]!)
+
+    const picker = await screen.findByRole('dialog', { name: 'Add food' })
+    fireEvent.click(within(picker).getByRole('button', { name: /Oatmeal/ }))
+
+    const amountDialog = await screen.findByRole('dialog', { name: 'Oatmeal' })
+    const day2 = within(amountDialog).getByLabelText('Day 2')
+    const day3 = within(amountDialog).getByLabelText('Day 3')
+    expect(day2).toBeEnabled()
+    expect(day3).toBeDisabled()
+    expect(day3).toHaveAttribute('title', 'This meal is omitted on Day 3')
+
+    fireEvent.click(within(amountDialog).getByRole('button', { name: 'All days' }))
+    expect(day2).toBeChecked()
+    expect(day3).not.toBeChecked()
+
+    fireEvent.click(within(amountDialog).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(upsertFoodPlanEntries).toHaveBeenCalled())
+    const call = vi.mocked(upsertFoodPlanEntries).mock.calls[0]!
+    expect(call[1]).toHaveLength(2)
+    expect(call[1].map((a) => a.entry.day_meal_id)).toEqual(['dm-b1', 'dm-b2'])
   })
 })
