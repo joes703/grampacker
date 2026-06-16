@@ -26,7 +26,7 @@ import { useFoodReorder } from './useFoodReorder'
 import FoodPlanDayCard from './FoodPlanDayCard'
 import FoodPlanExtras from './FoodPlanExtras'
 import FoodPicker from './FoodPicker'
-import EntryAmountDialog, { type EntryAmountResult } from './EntryAmountDialog'
+import EntryAmountDialog, { type EntryAmountAlsoDay, type EntryAmountResult } from './EntryAmountDialog'
 import AddMealDialog from './AddMealDialog'
 import MoveCopyEntryDialog, { type MoveCopyTarget } from './MoveCopyEntryDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -122,15 +122,21 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
 
   const usedFoodIds = new Set(currentDoc.entries.map((e) => e.food_item_id))
 
-  function computeAlsoDays(target: AddTarget): { dayMealId: string; label: string }[] {
+  function computeAlsoDays(target: AddTarget): EntryAmountAlsoDay[] {
     if (target.kind !== 'cell') return []
     let mealId: string | undefined
     view.days.forEach((dv) => dv.cells.forEach((c) => { if (c.dayMealId === target.dayMealId) mealId = c.meal.id }))
     if (mealId === undefined) return []
-    const out: { dayMealId: string; label: string }[] = []
-    view.days.forEach((dv, i) => dv.cells.forEach((c) => {
-      if (c.meal.id === mealId && c.dayMealId !== target.dayMealId) out.push({ dayMealId: c.dayMealId, label: `Day ${i + 1}` })
-    }))
+    const out: EntryAmountAlsoDay[] = []
+    view.days.forEach((dv, i) => {
+      const label = `Day ${i + 1}`
+      const cell = dv.cells.find((c) => c.meal.id === mealId)
+      if (cell) {
+        if (cell.dayMealId !== target.dayMealId) out.push({ id: cell.dayMealId, dayMealId: cell.dayMealId, label })
+      } else {
+        out.push({ id: `${dv.day.id}:${mealId}`, dayMealId: null, label, omitted: true })
+      }
+    })
     return out
   }
 

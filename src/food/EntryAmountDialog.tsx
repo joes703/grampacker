@@ -5,6 +5,7 @@ import type { EntryBasis, FoodItem, FoodPlanEntry } from '../lib/types'
 import { effectiveServings } from '../lib/food/basis'
 
 export type EntryAmountResult = { basis: EntryBasis; amount: number; preserveBasis: EntryBasis | null; alsoDayMealIds: string[] }
+export type EntryAmountAlsoDay = { id: string; dayMealId: string | null; label: string; omitted?: boolean }
 
 function availableBases(food: FoodItem): EntryBasis[] {
   const bases: EntryBasis[] = ['servings', 'weight']
@@ -23,7 +24,7 @@ export default function EntryAmountDialog({
   food: FoodItem
   existing?: FoodPlanEntry
   initial?: { basis: EntryBasis; amount: number }
-  alsoDays?: { dayMealId: string; label: string }[]
+  alsoDays?: EntryAmountAlsoDay[]
   saving?: boolean
   onSave: (result: EntryAmountResult) => void
   onClose: () => void
@@ -52,7 +53,7 @@ export default function EntryAmountDialog({
   }
 
   function selectAllAlsoDays() {
-    setAlsoChecked(new Set(alsoDays?.map((d) => d.dayMealId) ?? []))
+    setAlsoChecked(new Set(alsoDays?.flatMap((d) => (!d.omitted && d.dayMealId ? [d.dayMealId] : [])) ?? []))
   }
 
   function clearAlsoDays() {
@@ -115,21 +116,31 @@ export default function EntryAmountDialog({
               </button>
             </div>
             <div className="mt-1 space-y-1">
-              {alsoDays.map((d) => (
-                <label key={d.dayMealId} className="flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={alsoChecked.has(d.dayMealId)}
-                    onChange={(e) => setAlsoChecked((prev) => {
-                      const next = new Set(prev)
-                      if (e.target.checked) next.add(d.dayMealId)
-                      else next.delete(d.dayMealId)
-                      return next
-                    })}
-                  />
-                  {d.label}
-                </label>
-              ))}
+              {alsoDays.map((d) => {
+                const disabled = d.omitted || d.dayMealId === null
+                const title = disabled ? `This meal is omitted on ${d.label}` : undefined
+                return (
+                  <label
+                    key={d.id}
+                    className={`flex items-center gap-2 text-sm ${disabled ? 'cursor-not-allowed text-gray-400 opacity-60' : 'text-gray-700'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      title={title}
+                      disabled={disabled}
+                      checked={d.dayMealId !== null && alsoChecked.has(d.dayMealId)}
+                      onChange={(e) => setAlsoChecked((prev) => {
+                        const next = new Set(prev)
+                        if (d.dayMealId === null) return next
+                        if (e.target.checked) next.add(d.dayMealId)
+                        else next.delete(d.dayMealId)
+                        return next
+                      })}
+                    />
+                    {d.label}
+                  </label>
+                )
+              })}
             </div>
             <p className="mt-2 text-xs text-gray-400">
               Where the food already exists, compatible quantities merge.
