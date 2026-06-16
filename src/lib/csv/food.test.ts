@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { foodItemsToCsv } from './food'
+import { foodItemsToCsv, parseFoodCsv } from './food'
 import type { FoodItem } from '../types'
 
 function food(partial: Partial<FoodItem>): FoodItem {
@@ -50,5 +50,113 @@ describe('foodItemsToCsv', () => {
 
   it('returns an empty string for an empty library', () => {
     expect(foodItemsToCsv([])).toBe('')
+  })
+})
+
+const CANONICAL_HEADER =
+  'name,brand,serving_description,serving_weight_grams,calories_per_serving,servings_per_package,fat_grams,saturated_fat_grams,carbs_grams,fiber_grams,sugar_grams,protein_grams,sodium_mg,potassium_mg,notes'
+
+describe('parseFoodCsv', () => {
+  it('returns an error string for an empty file', () => {
+    expect(typeof parseFoodCsv('')).toBe('string')
+  })
+
+  it('returns an error string when required columns are missing', () => {
+    const out = parseFoodCsv('brand,notes\nTrailCo,hi')
+    expect(typeof out).toBe('string')
+    expect(out as string).toMatch(/name/i)
+  })
+
+  it('parses a canonical CSV row into a valid FoodItemInput', () => {
+    const csv = `${CANONICAL_HEADER}\nOats,TrailCo,1 cup,80,300,4,5,1,54,8,1,11,10,200,morning`
+    const rows = parseFoodCsv(csv)
+    expect(Array.isArray(rows)).toBe(true)
+    const [row] = rows as Exclude<ReturnType<typeof parseFoodCsv>, string>
+    expect(row!.errors).toEqual([])
+    expect(row!.item).toEqual({
+      name: 'Oats',
+      brand: 'TrailCo',
+      serving_description: '1 cup',
+      serving_weight_grams: 80,
+      calories_per_serving: 300,
+      servings_per_package: 4,
+      fat_grams: 5,
+      saturated_fat_grams: 1,
+      carbs_grams: 54,
+      fiber_grams: 8,
+      sugar_grams: 1,
+      protein_grams: 11,
+      sodium_mg: 10,
+      potassium_mg: 200,
+      notes: 'morning',
+    })
+  })
+
+  it('maps GearSkeptic-style headers to canonical fields', () => {
+    const csv =
+      'Flavor,Brand,Class,Serv(g),Cal/Serv,Servings,Fat,Na,K,Carbs,Fiber,Sugar,Protein\n' +
+      'Peanut Butter,TrailCo,Spread,34,190,1,16,150,180,7,2,3,8'
+    const rows = parseFoodCsv(csv) as Exclude<ReturnType<typeof parseFoodCsv>, string>
+    expect(rows[0]!.errors).toEqual([])
+    expect(rows[0]!.item).toMatchObject({
+      name: 'Peanut Butter',
+      brand: 'TrailCo',
+      serving_description: 'Spread',
+      serving_weight_grams: 34,
+      calories_per_serving: 190,
+      servings_per_package: 1,
+      fat_grams: 16,
+      sodium_mg: 150,
+      potassium_mg: 180,
+      carbs_grams: 7,
+      fiber_grams: 2,
+      sugar_grams: 3,
+      protein_grams: 8,
+    })
+  })
+
+  it('maps blank optional nutrients to null, never 0', () => {
+    // name=Plain, brand blank, serving_description blank,
+    // serving_weight_grams=50, calories_per_serving=150, rest blank.
+    const csv = `${CANONICAL_HEADER}\nPlain,,,50,150,,,,,,,,,,`
+    const rows = parseFoodCsv(csv) as Exclude<ReturnType<typeof parseFoodCsv>, string>
+    const { item } = rows[0]!
+    expect(item).not.toBeNull()
+    expect(item!.serving_weight_grams).toBe(50)
+    expect(item!.calories_per_serving).toBe(150)
+    expect(item!.brand).toBeNull()
+    expect(item!.serving_description).toBeNull()
+    expect(item!.servings_per_package).toBeNull()
+    expect(item!.fat_grams).toBeNull()
+    expect(item!.protein_grams).toBeNull()
+    expect(item!.sodium_mg).toBeNull()
+    expect(item!.notes).toBeNull()
+  })
+
+  it('flags rows with invalid required and optional numbers (and yields a null item)', () => {
+    const csv =
+      `${CANONICAL_HEADER}\n` +
+      // blank name; zero serving weight; negative calories
+      `,,,0,-5,,,,,,,,,,\n` +
+      // non-numeric serving weight; servings_per_package = 0; negative fiber
+      `Bar,,,abc,100,0,,,,-3,,,,,`
+    const rows = parseFoodCsv(csv) as Exclude<ReturnType<typeof parseFoodCsv>, string>
+
+    expect(rows[0]!.item).toBeNull()
+    expect(rows[0]!.errors.join(' ')).toMatch(/name/i)
+    expect(rows[0]!.errors.join(' ')).toMatch(/serving weight/i)
+    expect(rows[0]!.errors.join(' ')).toMatch(/calories/i)
+
+    expect(rows[1]!.item).toBeNull()
+    expect(rows[1]!.errors.join(' ')).toMatch(/serving weight/i)
+    expect(rows[1]!.errors.join(' ')).toMatch(/servings per package/i)
+    expect(rows[1]!.errors.join(' ')).toMatch(/fiber/i)
+  })
+
+  it('rejects thousands separators and trailing units as non-numeric', () => {
+    const csv = `${CANONICAL_HEADER}\nGranola,,,"1,000",150,,,,,,,,,,`
+    const rows = parseFoodCsv(csv) as Exclude<ReturnType<typeof parseFoodCsv>, string>
+    expect(rows[0]!.item).toBeNull()
+    expect(rows[0]!.errors.join(' ')).toMatch(/serving weight/i)
   })
 })
