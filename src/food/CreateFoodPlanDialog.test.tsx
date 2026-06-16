@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import CreateFoodPlanDialog from './CreateFoodPlanDialog'
 
 beforeAll(() => {
@@ -17,6 +17,8 @@ beforeAll(() => {
     }
   }
 })
+
+afterEach(cleanup)
 
 describe('CreateFoodPlanDialog', () => {
   it('keeps omitted cells aligned when the day count changes', () => {
@@ -36,5 +38,12 @@ describe('CreateFoodPlanDialog', () => {
     const [structure] = onCreate.mock.calls[0]!
     expect(structure.days).toHaveLength(2)
     expect(structure.dayMeals).toHaveLength(5)
+  })
+
+  it('explains how the schedule seeds and where extras go', () => {
+    render(<CreateFoodPlanDialog onCreate={vi.fn()} onClose={vi.fn()} />)
+
+    expect(screen.getByText(/Every day starts with all the default meals/i)).toBeTruthy()
+    expect(screen.getByText(/Emergency or unassigned food goes in Extras/i)).toBeTruthy()
   })
 })

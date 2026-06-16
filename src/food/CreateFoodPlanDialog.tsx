@@ -51,7 +51,9 @@ export default function CreateFoodPlanDialog({
         <div className="px-6 pt-6">
           <h2 className="text-base font-semibold text-gray-900">Start a food plan</h2>
           <p className="mt-1 text-sm text-gray-600">
-            A food plan adds a meal-by-meal schedule for this trip, drawing from your food library.
+            This seeds your day and meal sections. Every day starts with all the default meals you
+            pick below. Open the schedule grid afterward to remove any meal you won't carry on a
+            given day.
           </p>
           <div className="mt-4 max-w-32">
             <label className="block text-sm font-medium text-gray-700">
@@ -99,7 +101,9 @@ export default function CreateFoodPlanDialog({
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-xs text-gray-500">You can also add or remove meals after creating the plan.</p>
+          <p className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+            Add or rename meals later from the plan. Emergency or unassigned food goes in Extras, not a day.
+          </p>
         </div>
 
         <div className="shrink-0 border-t border-gray-100 bg-white px-6 py-3" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
