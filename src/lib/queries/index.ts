@@ -60,6 +60,8 @@ export {
   deleteFoodItem,
   nextFoodItemSortOrder,
   assertFoodItemWithinCap,
+  assertFoodImportWithinCap,
+  importFoodItems,
 } from './food'
 export type { FoodItemInput } from './food'
 export {
