@@ -72,3 +72,32 @@ export function assertFoodItemWithinCap(existing: FoodItem[]): void {
     )
   }
 }
+
+// Bulk-import cap preflight: the whole import must fit under FOOD_ITEM_CAP.
+// The DB trigger remains authoritative; this turns a generic post-write
+// failure into a specific, friendly message and avoids a partial write.
+export function assertFoodImportWithinCap(existing: FoodItem[], incoming: number): void {
+  if (existing.length + incoming > FOOD_ITEM_CAP) {
+    throw new Error(
+      `Importing ${incoming} food${incoming === 1 ? '' : 's'} would exceed your food library limit (${FOOD_ITEM_CAP} max). You have ${existing.length}. Remove some foods or split the import.`,
+    )
+  }
+}
+
+// Bulk-import food items from validated CSV rows. Single owner-scoped INSERT of
+// full rows (every NOT NULL column is provided), so there is no partial-column
+// upsert/RLS trap - a plain INSERT is correct here. New rows mint server-side
+// ids and get sort_order appended after the existing library. No dedup: each
+// valid CSV row becomes a new food item.
+export async function importFoodItems(
+  userId: string,
+  items: FoodItemInput[],
+  existing: FoodItem[],
+): Promise<{ newCount: number }> {
+  assertFoodImportWithinCap(existing, items.length)
+  const start = nextFoodItemSortOrder(existing)
+  const rows = items.map((item, i) => ({ user_id: userId, sort_order: start + i, ...item }))
+  const { error } = await supabase.from('food_items').insert(rows)
+  if (error) throw error
+  return { newCount: rows.length }
+}

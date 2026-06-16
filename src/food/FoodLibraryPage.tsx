@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, X, Download } from 'lucide-react'
+import { Plus, Search, X, Download, Upload } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
 import { useDocumentTitle } from '../lib/use-document-title'
 import {
@@ -11,24 +11,29 @@ import {
   deleteFoodItem,
   nextFoodItemSortOrder,
   assertFoodItemWithinCap,
+  importFoodItems,
   makeOptimisticInsert,
   makeOptimisticUpdate,
   makeOptimisticDelete,
   type FoodItemInput,
 } from '../lib/queries'
 import { showToast } from '../lib/toast'
-import { foodItemsToCsv, downloadCsv } from '../lib/csv'
+import { foodItemsToCsv, downloadCsv, parseFoodCsv, type FoodImportRow } from '../lib/csv'
+import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { FLAT_TABLE_SURFACE, FLAT_TABLE_HEADER } from '../components/flat-table-styles'
 import PrimaryButton from '../components/PrimaryButton'
 import Modal from '../components/Modal'
 import FoodItemRow from './FoodItemRow'
 import FoodItemDialog from './FoodItemDialog'
+import FoodImportPreviewDialog from './FoodImportPreviewDialog'
 import type { FoodItem } from '../lib/types'
 
 type DialogState =
   | { type: 'create' }
   | { type: 'edit'; item: FoodItem }
   | { type: 'delete'; item: FoodItem; returnDialog?: DialogState }
+  | { type: 'import-preview'; rows: FoodImportRow[] }
+  | { type: 'import-error'; message: string }
 
 export default function FoodLibraryPage() {
   useDocumentTitle('Food')
@@ -92,6 +97,31 @@ export default function FoodLibraryPage() {
     }),
   })
 
+  const {
+    inputRef: importInputRef,
+    onChange: handleImportFile,
+    openPicker: openImportPicker,
+  } = useCsvFileInput<FoodImportRow>(parseFoodCsv, {
+    onParsed: (rows) => setDialog({ type: 'import-preview', rows }),
+    onError: (message) => setDialog({ type: 'import-error', message }),
+  })
+
+  const importItems = useMutation({
+    mutationFn: (items: FoodItemInput[]) => importFoodItems(userId, items, allItems),
+    onSuccess: ({ newCount }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.foodItems() })
+      setDialog(null)
+      showToast(`Imported ${newCount} food${newCount === 1 ? '' : 's'}`, { type: 'success' })
+    },
+    // Surface failures (e.g. the cap preflight) in the import-error dialog
+    // instead of leaving the preview open with no feedback.
+    onError: (err) =>
+      setDialog({
+        type: 'import-error',
+        message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
+      }),
+  })
+
   function handleSave(patch: FoodItemInput) {
     if (dialog?.type === 'edit') {
       editItem.mutate({ id: dialog.item.id, patch }, { onSuccess: () => setDialog(null) })
@@ -112,9 +142,24 @@ export default function FoodLibraryPage() {
 
   return (
     <div className="space-y-4">
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={handleImportFile}
+      />
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-lg font-semibold text-gray-900">Food</h1>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={openImportPicker}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100"
+          >
+            <Upload size={15} />
+            <span className="sr-only sm:not-sr-only">Import</span>
+          </button>
           <button
             type="button"
             onClick={handleExport}
@@ -244,6 +289,39 @@ export default function FoodLibraryPage() {
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {dialog?.type === 'import-preview' && (
+        <FoodImportPreviewDialog
+          rows={dialog.rows}
+          existingCount={allItems.length}
+          saving={importItems.isPending}
+          onConfirm={(items) => importItems.mutate(items)}
+          onClose={() => setDialog(null)}
+        />
+      )}
+
+      {dialog?.type === 'import-error' && (
+        <Modal
+          open
+          onClose={() => setDialog(null)}
+          title="Import failed"
+          className="w-[calc(100vw-2rem)] max-w-sm"
+        >
+          <div className="p-6">
+            <h2 className="text-base font-semibold text-gray-900">Couldn't import CSV</h2>
+            <p className="mt-2 text-sm text-gray-600">{dialog.message}</p>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setDialog(null)}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                Close
               </button>
             </div>
           </div>
