@@ -9,7 +9,7 @@ import {
   type FoodItemInput,
 } from '../lib/queries'
 import type { FoodItem } from '../lib/types'
-import { FLAT_TABLE_ROW, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import { FLAT_TABLE_ROW } from '../components/flat-table-styles'
 import FoodItemDialog from './FoodItemDialog'
 
 type PickerTab = 'recent' | 'inPlan' | 'az'
@@ -19,6 +19,16 @@ const TABS: { id: PickerTab; label: string }[] = [
   { id: 'inPlan', label: 'In this plan' },
   { id: 'az', label: 'A-Z' },
 ]
+
+const TAB_HINT: Record<PickerTab, string> = {
+  recent: 'Recently used across your trips',
+  inPlan: 'Already in this plan',
+  az: 'All foods, alphabetical',
+}
+
+function servingDescriptor(food: FoodItem): string {
+  return food.serving_description ?? `${food.serving_weight_grams} g`
+}
 
 export default function FoodPicker({
   foods, usedFoodIds, userId, onPick, onClose,
@@ -82,6 +92,7 @@ export default function FoodPicker({
           </button>
         </div>
         <div className="px-4 pt-2 pb-2">
+          <p className="mb-2 text-xs text-gray-400">{TAB_HINT[tab]}</p>
           <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search your food library"
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none" />
         </div>
@@ -91,9 +102,22 @@ export default function FoodPicker({
           ) : (
             filtered.map((f) => (
               <button key={f.id} type="button" onClick={() => onPick(f)}
-                className={`${FLAT_TABLE_ROW} ${ROW_CONTROL_TARGET} flex w-full items-center justify-between text-left`}>
-                <span className="min-w-0 truncate text-sm text-gray-900">{f.name}</span>
-                {f.brand ? <span className="ml-2 truncate text-xs text-gray-400">{f.brand}</span> : null}
+                className={`${FLAT_TABLE_ROW} w-full justify-between gap-3 px-3 py-2 text-left hover:bg-gray-50`}>
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-sm text-gray-900">{f.name}</span>
+                    {usedFoodIds.has(f.id) ? (
+                      <span className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                        In plan
+                      </span>
+                    ) : null}
+                  </span>
+                  {f.brand ? <span className="mt-0.5 block truncate text-xs text-gray-400">{f.brand}</span> : null}
+                </span>
+                <span className="ml-3 shrink-0 text-right text-xs text-gray-400 tabular-nums">
+                  <span className="block">{f.calories_per_serving} kcal</span>
+                  <span className="block">{servingDescriptor(f)}</span>
+                </span>
               </button>
             ))
           )}
