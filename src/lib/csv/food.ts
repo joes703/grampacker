@@ -2,30 +2,57 @@ import type { FoodItem } from '../types'
 import type { FoodItemInput } from '../queries/food'
 import { toCsv, parseCsv, MAX_CSV_ROWS } from './core'
 
-// Serialize the food library to the canonical Grampacker Food CSV: snake_case
-// headers in column order matching FoodItemInput, the SAME format parseFoodCsv
-// reads, so export -> import round-trips every field. (GearSkeptic headers are
-// an import-only convenience alias; they are never emitted here.) Missing
-// optional values render as '' (never 0) so unknown stays unknown, and import
-// reads those empty cells back as null (Story 1, Story 5).
+// The canonical Grampacker Food CSV header: snake_case column names in
+// FoodItemInput order. SINGLE SOURCE OF TRUTH shared by export (foodItemsToCsv
+// emits exactly this), import (parseFoodCsv reads these canonical names), and
+// the "CSV format" help affordance. GearSkeptic headers are an import-only
+// convenience alias and are never part of this list.
+export const FOOD_CSV_HEADERS = [
+  'name',
+  'brand',
+  'serving_description',
+  'serving_weight_grams',
+  'calories_per_serving',
+  'servings_per_package',
+  'fat_grams',
+  'saturated_fat_grams',
+  'carbs_grams',
+  'fiber_grams',
+  'sugar_grams',
+  'protein_grams',
+  'sodium_mg',
+  'potassium_mg',
+  'notes',
+] as const
+
+// The canonical header row as a single comma-joined string (what users copy).
+export const FOOD_CSV_HEADER = FOOD_CSV_HEADERS.join(',')
+
+// Serialize the food library to the canonical Grampacker Food CSV (FOOD_CSV_HEADERS),
+// the SAME format parseFoodCsv reads, so export -> import round-trips every field.
+// The Record type binds the row keys to FOOD_CSV_HEADERS, so a column rename/reorder
+// is a compile error here. Missing optional values render as '' (never 0) so unknown
+// stays unknown, and import reads those empty cells back as null (Story 1, Story 5).
 export function foodItemsToCsv(items: FoodItem[]): string {
-  const rows = items.map((f) => ({
-    name: f.name,
-    brand: f.brand ?? '',
-    serving_description: f.serving_description ?? '',
-    serving_weight_grams: f.serving_weight_grams,
-    calories_per_serving: f.calories_per_serving,
-    servings_per_package: f.servings_per_package ?? '',
-    fat_grams: f.fat_grams ?? '',
-    saturated_fat_grams: f.saturated_fat_grams ?? '',
-    carbs_grams: f.carbs_grams ?? '',
-    fiber_grams: f.fiber_grams ?? '',
-    sugar_grams: f.sugar_grams ?? '',
-    protein_grams: f.protein_grams ?? '',
-    sodium_mg: f.sodium_mg ?? '',
-    potassium_mg: f.potassium_mg ?? '',
-    notes: f.notes ?? '',
-  }))
+  const rows = items.map(
+    (f): Record<(typeof FOOD_CSV_HEADERS)[number], string | number> => ({
+      name: f.name,
+      brand: f.brand ?? '',
+      serving_description: f.serving_description ?? '',
+      serving_weight_grams: f.serving_weight_grams,
+      calories_per_serving: f.calories_per_serving,
+      servings_per_package: f.servings_per_package ?? '',
+      fat_grams: f.fat_grams ?? '',
+      saturated_fat_grams: f.saturated_fat_grams ?? '',
+      carbs_grams: f.carbs_grams ?? '',
+      fiber_grams: f.fiber_grams ?? '',
+      sugar_grams: f.sugar_grams ?? '',
+      protein_grams: f.protein_grams ?? '',
+      sodium_mg: f.sodium_mg ?? '',
+      potassium_mg: f.potassium_mg ?? '',
+      notes: f.notes ?? '',
+    }),
+  )
   return toCsv(rows)
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { foodItemsToCsv, parseFoodCsv } from './food'
+import { foodItemsToCsv, parseFoodCsv, FOOD_CSV_HEADER } from './food'
 import type { FoodItem } from '../types'
 
 function food(partial: Partial<FoodItem>): FoodItem {
@@ -30,6 +30,14 @@ function food(partial: Partial<FoodItem>): FoodItem {
 
 const CANONICAL_HEADER =
   'name,brand,serving_description,serving_weight_grams,calories_per_serving,servings_per_package,fat_grams,saturated_fat_grams,carbs_grams,fiber_grams,sugar_grams,protein_grams,sodium_mg,potassium_mg,notes'
+
+describe('FOOD_CSV_HEADER', () => {
+  it('is the single source of truth: matches the foodItemsToCsv header row', () => {
+    const headerLine = foodItemsToCsv([food({})]).split('\r\n')[0]
+    expect(FOOD_CSV_HEADER).toBe(headerLine)
+    expect(FOOD_CSV_HEADER).toBe(CANONICAL_HEADER)
+  })
+})
 
 describe('foodItemsToCsv', () => {
   it('emits exactly the canonical snake_case header order', () => {
