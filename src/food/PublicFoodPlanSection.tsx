@@ -14,6 +14,7 @@ export default function PublicFoodPlanSection({ doc }: { doc: PublicFoodPlanDocu
   const fullDoc = toReadonlyFoodPlanDocument(doc)
   const view = selectFoodPlanView(fullDoc)
   const foodById = new Map<string, FoodItem>(toReadonlyFoods(doc).map((food) => [food.id, food]))
+  const hasActiveDailyTargets = fullDoc.dailyTargets.some((target) => target.mode !== 'off')
 
   return (
     <section aria-label="Food plan" className="space-y-4">
@@ -22,6 +23,11 @@ export default function PublicFoodPlanSection({ doc }: { doc: PublicFoodPlanDocu
         foodById={foodById}
         dailyTargets={fullDoc.dailyTargets}
       />
+      {hasActiveDailyTargets ? (
+        <p className="text-xs text-gray-400">
+          Targets shown are the list owner's, not grampacker recommendations.
+        </p>
+      ) : null}
 
       <div className="space-y-4">
         {view.days.map((dayView, i) => (
