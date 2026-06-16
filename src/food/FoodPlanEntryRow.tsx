@@ -78,7 +78,7 @@ function EntryKebab({
         >
           {onEdit && (
             <RowMenuItem icon={<Pencil size={13} />} onClick={() => { close(); onEdit() }}>
-              Edit
+              Edit quantity
             </RowMenuItem>
           )}
           {onMove && (

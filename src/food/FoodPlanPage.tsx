@@ -63,7 +63,10 @@ export default function FoodPlanPage() {
       ) : !planQuery.data ? (
         <div className="mt-6">
           <h1 className="text-lg font-semibold text-gray-900">No food plan yet</h1>
-          <p className="mt-1 text-sm text-gray-600">Start one to schedule meals for this trip.</p>
+          <p className="mt-1 text-sm text-gray-600">
+            Track the food you'll carry - its weight and, if you want, nutrition by day and meal.
+            Start fresh, or copy one of your own food plans to reuse the same menu.
+          </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <PrimaryButton type="button" onClick={() => setShowCreate(true)}>
               Start food plan

@@ -208,6 +208,14 @@ describe('FoodPlanPage create flow', () => {
     expect((call[2] as { days: unknown[] }).days).toHaveLength(5)
   })
 
+  it('shows the enriched empty-state copy when no plan exists', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(null)
+    vi.mocked(fetchFoodItems).mockResolvedValue([])
+    renderPage()
+
+    expect(await screen.findByText(/Track the food you'll carry/i)).toBeTruthy()
+  })
+
   it('copies an existing food plan into an empty list', async () => {
     vi.mocked(fetchFoodPlan).mockResolvedValue(null)
     vi.mocked(fetchFoodPlanCopyOptions).mockResolvedValue([
