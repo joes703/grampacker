@@ -13,8 +13,9 @@ import {
   fetchFoodItems,
   fetchLists,
   fetchAllUserListItems,
+  fetchAllUserFoodData,
 } from '../lib/queries'
-import { gearItemsToCsv, foodItemsToCsv, listItemsToCsv } from '../lib/csv'
+import { buildTakeoutFiles } from '../lib/export/takeout-files'
 import TypedConfirmDialog from '../components/TypedConfirmDialog'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import FormLabel from '../components/FormLabel'
@@ -494,33 +495,32 @@ function DownloadAllData() {
       // than awaiting it serially — both are network-bound, no reason for
       // one to gate the other.
       const fflatePromise = import('fflate')
-      const [fflate, categories, gearItems, foodItems, lists, allItems] = await Promise.all([
+      const [fflate, categories, gearItems, foodItems, lists, allItems, foodData] = await Promise.all([
         fflatePromise,
         qc.fetchQuery({ queryKey: queryKeys.categories(), queryFn: () => fetchCategories(userId) }),
         qc.fetchQuery({ queryKey: queryKeys.gearItems(), queryFn: () => fetchGearItems(userId) }),
         qc.fetchQuery({ queryKey: queryKeys.foodItems(), queryFn: () => fetchFoodItems(userId) }),
         qc.fetchQuery({ queryKey: queryKeys.lists(), queryFn: () => fetchLists(userId) }),
         fetchAllUserListItems(userId),
+        fetchAllUserFoodData(userId),
       ])
       const { zipSync, strToU8 } = fflate
 
+      // food-data.json is now a faithful version 2 account-takeout snapshot:
+      // the food library plus the full food-plan graph (meals/days/day_meals/
+      // entries) and nutrition targets/defaults. food_pack_state is excluded
+      // by design. See buildTakeoutFiles / buildFoodDataJson.
+      const fileContents = buildTakeoutFiles({
+        categories,
+        gearItems,
+        foodItems,
+        foodData,
+        lists,
+        allItems,
+      })
       const files: Record<string, Uint8Array> = {}
-      files['gear-library.csv'] = strToU8(gearItemsToCsv(gearItems, categories))
-      // Food library: a CSV for spreadsheets plus a canonical JSON that
-      // preserves ids/relationships for a future re-import (Story 13).
-      files['food-library.csv'] = strToU8(foodItemsToCsv(foodItems))
-      files['food-data.json'] = strToU8(JSON.stringify({ food_items: foodItems }, null, 2))
-
-      const itemsByListId = Map.groupBy(allItems, (item) => item.list_id)
-
-      const seen = new Map<string, number>()
-      for (const list of lists) {
-        const items = itemsByListId.get(list.id) ?? []
-        const base = list.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase().replace(/^-|-$/g, '') || 'list'
-        const count = seen.get(base) ?? 0
-        seen.set(base, count + 1)
-        const filename = count === 0 ? `${base}.csv` : `${base}-${count + 1}.csv`
-        files[`lists/${filename}`] = strToU8(listItemsToCsv(items, categories))
+      for (const [name, content] of Object.entries(fileContents)) {
+        files[name] = strToU8(content)
       }
 
       const zipped = zipSync(files)
