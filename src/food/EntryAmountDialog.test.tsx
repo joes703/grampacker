@@ -74,4 +74,54 @@ describe('EntryAmountDialog', () => {
     expect(screen.queryByText(/servings - .* g - .* kcal/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Entered as/)).not.toBeInTheDocument()
   })
+
+  it('selects and clears all also-add days', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn()
+    render(
+      <EntryAmountDialog
+        food={food()}
+        alsoDays={[
+          { dayMealId: 'dm-1', label: 'Day 1' },
+          { dayMealId: 'dm-2', label: 'Day 2' },
+          { dayMealId: 'dm-3', label: 'Day 3' },
+        ]}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'All days' }))
+    expect(screen.getByLabelText('Day 1')).toBeChecked()
+    expect(screen.getByLabelText('Day 2')).toBeChecked()
+    expect(screen.getByLabelText('Day 3')).toBeChecked()
+
+    await user.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(screen.getByLabelText('Day 1')).not.toBeChecked()
+    expect(screen.getByLabelText('Day 2')).not.toBeChecked()
+    expect(screen.getByLabelText('Day 3')).not.toBeChecked()
+
+    await user.click(screen.getByRole('button', { name: 'All days' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      alsoDayMealIds: ['dm-1', 'dm-2', 'dm-3'],
+    }))
+  })
+
+  it('shows the compatible-merge note only with also-add days', () => {
+    const { rerender } = render(
+      <EntryAmountDialog
+        food={food()}
+        alsoDays={[{ dayMealId: 'dm-1', label: 'Day 1' }]}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Where the food already exists, compatible quantities merge.')).toBeInTheDocument()
+
+    rerender(<EntryAmountDialog food={food()} onSave={vi.fn()} onClose={vi.fn()} />)
+
+    expect(screen.queryByText('Where the food already exists, compatible quantities merge.')).not.toBeInTheDocument()
+  })
 })
