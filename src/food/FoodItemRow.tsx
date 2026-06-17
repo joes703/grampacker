@@ -48,7 +48,7 @@ export default function FoodItemRow({ food, onEdit, onDelete }: Props) {
 // Kebab popover mirroring GearRowKebab (src/gear/GearItemRow.tsx): three-dot
 // trigger + portal-rendered menu via useAnchoredMenu. Each row owns its own
 // menu state so multiple kebabs can't open at once. Items: Edit, Delete.
-function FoodRowKebab({
+export function FoodRowKebab({
   name,
   onEdit,
   onDelete,
