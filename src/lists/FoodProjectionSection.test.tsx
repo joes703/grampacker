@@ -80,7 +80,9 @@ describe('FoodProjectionSection', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /pack energy bar/i }))
 
     expect(onTogglePacked).toHaveBeenCalledWith('bar', true)
-    expect(screen.getByRole('checkbox', { name: /pack mystery food/i })).toBeDisabled()
+    const incompleteCheckbox = screen.getByRole('checkbox', { name: /pack mystery food - missing packaging info/i })
+    expect(incompleteCheckbox).toBeDisabled()
+    expect(incompleteCheckbox).not.toHaveAttribute('title')
   })
 
   it('keeps incomplete rows visible when showing unpacked only', () => {

@@ -95,8 +95,7 @@ export default function FoodProjectionSection({
                 checked={row.state === 'complete' ? row.packed : false}
                 disabled={row.state === 'incomplete' || !row.packable}
                 onChange={(checked) => onTogglePacked(row.foodItemId, checked)}
-                ariaLabel={`Pack ${row.name}`}
-                title={row.state === 'incomplete' ? incompleteLabel(row) : undefined}
+                ariaLabel={row.state === 'incomplete' ? `Pack ${row.name} - ${incompleteLabel(row)}` : `Pack ${row.name}`}
                 standaloneLabel
               />
             ) : null}
