@@ -19,7 +19,7 @@ function dayTypeTitle(dayType: 'full' | 'partial', override: 'full' | 'partial' 
 export default function FoodPlanDayCard({
   dayView, dayIndex, listId, userId, foodById, mealTargets, onAddFoodToCell, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry,
   onSetDayType, onDeleteDay, onDuplicate, onReviewNutrition, allMeals, onOmitMeal, onDeleteMeal, onRestoreMeal,
-  dragHandle, outerRef, outerStyle,
+  dragHandle, outerRef, outerStyle, embedded = false,
 }: {
   dayView: DayView
   dayIndex: number
@@ -43,13 +43,21 @@ export default function FoodPlanDayCard({
   dragHandle?: React.ReactNode
   outerRef?: (el: HTMLElement | null) => void
   outerStyle?: React.CSSProperties
+  embedded?: boolean
 }) {
   const [open, setOpen] = useState(true)
   const title = `Day ${dayIndex + 1}`
   const bodyId = useId()
+  const containerClass = embedded ? 'border-b border-gray-100 bg-white' : FLAT_TABLE_SURFACE
 
   return (
-    <div ref={outerRef} style={outerStyle} className={FLAT_TABLE_SURFACE}>
+    <div
+      id={`food-day-${dayView.day.id}`}
+      data-testid={`food-day-${dayView.day.id}`}
+      ref={outerRef}
+      style={outerStyle}
+      className={containerClass}
+    >
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-1">
           {dragHandle}
