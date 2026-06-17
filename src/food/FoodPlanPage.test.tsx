@@ -319,6 +319,23 @@ describe('FoodPlanPage rendering', () => {
     expect(screen.getAllByText('Dinner').length).toBeGreaterThan(0)
   })
 
+  it('shows the food plan toolbar and schedule context', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(makeDocWithOmittedBreakfastDay())
+    vi.mocked(fetchFoodItems).mockResolvedValue([])
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Food plan' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit schedule' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add day' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add meal' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Targets' })).toBeInTheDocument()
+    expect(screen.getByText('3 days - 2 planned meals - 2 full days')).toBeInTheDocument()
+    expect(screen.getByText(/Meal order:/)).toBeInTheDocument()
+    expect(screen.getByText('Breakfast x2')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '+ Add day' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '+ Add meal' })).not.toBeInTheDocument()
+  })
+
   it('opens and closes the per-day nutrition review panel', async () => {
     const food = makeFood({
       id: 'food-oat',
@@ -352,7 +369,7 @@ describe('FoodPlanPage targets', () => {
     vi.mocked(fetchFoodItems).mockResolvedValue([])
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit targets' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Targets' }))
     fireEvent.change(await screen.findByLabelText('Calories mode'), { target: { value: 'max' } })
     fireEvent.change(screen.getByLabelText('Calories maximum'), { target: { value: '2500' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save targets' }))
@@ -372,7 +389,7 @@ describe('FoodPlanPage targets', () => {
     vi.mocked(saveFoodPlanTargets).mockRejectedValueOnce(new Error('boom'))
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit targets' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Targets' }))
     fireEvent.change(await screen.findByLabelText('Calories mode'), { target: { value: 'max' } })
     fireEvent.change(screen.getByLabelText('Calories maximum'), { target: { value: '2500' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save targets' }))
