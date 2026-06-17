@@ -2,7 +2,17 @@
 import { afterEach, beforeAll, describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import FoodCsvFormatDialog from './FoodCsvFormatDialog'
-import { FOOD_CSV_HEADER } from '../lib/csv'
+const csv = vi.hoisted(() => ({ downloadCsv: vi.fn() }))
+
+vi.mock('../lib/csv', async (importActual) => {
+  const actual = await importActual<typeof import('../lib/csv')>()
+  return {
+    ...actual,
+    downloadCsv: csv.downloadCsv,
+  }
+})
+
+import { FOOD_CSV_HEADER, FOOD_SAMPLE_CSV } from '../lib/csv'
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = function () { this.open = true }
@@ -28,5 +38,13 @@ describe('FoodCsvFormatDialog', () => {
     expect(writeText).toHaveBeenCalledWith(FOOD_CSV_HEADER)
     // Success feedback: the button flips to a "Copied" confirmation.
     expect(await screen.findByText('Copied')).toBeInTheDocument()
+  })
+
+  it('downloads a canonical sample CSV', () => {
+    render(<FoodCsvFormatDialog onClose={() => {}} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /download sample csv/i }))
+
+    expect(csv.downloadCsv).toHaveBeenCalledWith('food-library-sample.csv', FOOD_SAMPLE_CSV)
   })
 })
