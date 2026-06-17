@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import PublicFoodPlanSection from './PublicFoodPlanSection'
 import type { PublicFoodPlanDocument } from '../lib/types'
 
@@ -97,5 +97,34 @@ describe('PublicFoodPlanSection', () => {
     )
 
     expect(screen.queryByText(/not grampacker recommendations/i)).not.toBeInTheDocument()
+  })
+
+  it('renders one continuous flat document shell containing the days and embedded Extras', () => {
+    render(<PublicFoodPlanSection doc={baseDoc} />)
+
+    const shell = screen.getByTestId('public-food-plan-document')
+    expect(within(shell).getByTestId('public-food-day-day-1')).toBeInTheDocument()
+    // Extras renders inside the same shell (embedded FoodPlanExtras), exactly once.
+    expect(within(shell).getByTestId('food-extras')).toBeInTheDocument()
+    expect(within(shell).getAllByTestId('food-extras')).toHaveLength(1)
+  })
+
+  it('uses the flat day-section grammar: gray day-header strip, subordinate non-gray meal header', () => {
+    render(<PublicFoodPlanSection doc={baseDoc} />)
+
+    expect(screen.getByTestId('public-food-day-header-day-1')).toHaveClass('bg-gray-50')
+    const mealHeader = screen.getByTestId('public-food-meal-header')
+    expect(mealHeader).not.toHaveClass('bg-gray-50')
+    expect(mealHeader).toHaveTextContent('Breakfast')
+  })
+
+  it('shows no private editor controls (stays read-only)', () => {
+    render(<PublicFoodPlanSection doc={baseDoc} />)
+
+    expect(screen.queryByRole('button', { name: /review .* nutrition/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Day options' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Meal options' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /drag to reorder/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /add food/i })).not.toBeInTheDocument()
   })
 })
