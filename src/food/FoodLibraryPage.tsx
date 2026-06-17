@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, X, Download, Upload, FileText } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
@@ -259,6 +259,13 @@ export default function FoodLibraryPage() {
       }),
   })
 
+  // Stable across dialog open/close so the memoized rows/cards (FoodLibraryRow /
+  // FoodLibraryCard) skip re-rendering when only `dialog` state churns - the one
+  // parent state change that does not affect row content. setDialog is itself
+  // stable, so an empty dep list is correct.
+  const openEdit = useCallback((item: FoodItem) => setDialog({ type: 'edit', item }), [])
+  const openDelete = useCallback((item: FoodItem) => setDialog({ type: 'delete', item }), [])
+
   function handleSave(patch: FoodItemInput) {
     if (dialog?.type === 'edit') {
       editItem.mutate({ id: dialog.item.id, patch }, { onSuccess: () => setDialog(null) })
@@ -419,8 +426,8 @@ export default function FoodLibraryPage() {
               foods={filtered}
               weightUnit={weightUnit}
               showMacros={showMacros}
-              onEdit={(item) => setDialog({ type: 'edit', item })}
-              onDelete={(item) => setDialog({ type: 'delete', item })}
+              onEdit={openEdit}
+              onDelete={openDelete}
             />
           ) : (
           <div className="overflow-x-auto">
@@ -449,45 +456,14 @@ export default function FoodLibraryPage() {
               </thead>
               <tbody className={`divide-y ${TABLE_DIVIDER_LINE}`}>
                 {filtered.map((food) => (
-                  <tr
+                  <FoodLibraryRow
                     key={food.id}
-                    data-testid="food-library-row"
-                    className={`${FLAT_TABLE_BODY_TEXT} bg-white hover:bg-gray-50`}
-                  >
-                    <td className="w-64 min-w-48 max-w-64 px-3 py-2">
-                      <div className="truncate font-medium text-gray-900" title={food.name}>{food.name}</div>
-                      {food.brand ? (
-                        <div className={`${FLAT_TABLE_BODY_TEXT_MUTED} truncate`}>{food.brand}</div>
-                      ) : null}
-                    </td>
-                    <td className="min-w-36 px-3 py-2 text-gray-600">
-                      {servingLabel(food, weightUnit)}
-                    </td>
-                    <td className={`${FLAT_TABLE_NUMERIC_TEXT} px-3 py-2 text-right text-gray-900`}>
-                      {food.calories_per_serving} kcal
-                    </td>
-                    <td className={`${FLAT_TABLE_NUMERIC_TEXT} min-w-28 px-3 py-2 text-right text-gray-900`}>
-                      {formatCalorieDensity(calorieDensity(food), weightUnit)}
-                    </td>
-                    {showMacros ? (
-                      <>
-                        <MacroCell>{formatGram(food.protein_grams)}</MacroCell>
-                        <MacroCell>{formatGram(food.carbs_grams)}</MacroCell>
-                        <MacroCell>{formatGram(food.fat_grams)}</MacroCell>
-                        <MacroCell>{formatGram(food.fiber_grams)}</MacroCell>
-                        <MacroCell>{formatMg(food.sodium_mg)}</MacroCell>
-                        <MacroCell>{formatMg(food.potassium_mg)}</MacroCell>
-                        <MacroCell>{formatRatio(carbProtein(food))}</MacroCell>
-                      </>
-                    ) : null}
-                    <td className="px-2 py-1 text-right">
-                      <FoodRowKebab
-                        name={food.name}
-                        onEdit={() => setDialog({ type: 'edit', item: food })}
-                        onDelete={() => setDialog({ type: 'delete', item: food })}
-                      />
-                    </td>
-                  </tr>
+                    food={food}
+                    weightUnit={weightUnit}
+                    showMacros={showMacros}
+                    onEdit={openEdit}
+                    onDelete={openDelete}
+                  />
                 ))}
               </tbody>
             </table>
@@ -632,6 +608,65 @@ function MacroCell({ children }: { children: string }) {
   )
 }
 
+// Memoized so a parent re-render that does not change row content (the only one
+// being a `dialog` open/close) skips re-rendering every visible row. The barrier
+// is real because all props are referentially stable across that churn: each
+// `food` keeps its identity (filtered is useMemo'd on [allItems, search, sort]),
+// weightUnit/showMacros are unchanged, and onEdit/onDelete are useCallback'd in
+// the parent. When content-affecting props (sort/search/showMacros/weightUnit)
+// do change, the rows re-render - which is correct.
+const FoodLibraryRow = memo(function FoodLibraryRow({
+  food,
+  weightUnit,
+  showMacros,
+  onEdit,
+  onDelete,
+}: {
+  food: FoodItem
+  weightUnit: 'g' | 'oz'
+  showMacros: boolean
+  onEdit: (food: FoodItem) => void
+  onDelete: (food: FoodItem) => void
+}) {
+  return (
+    <tr data-testid="food-library-row" className={`${FLAT_TABLE_BODY_TEXT} bg-white hover:bg-gray-50`}>
+      <td className="w-64 min-w-48 max-w-64 px-3 py-2">
+        <div className="truncate font-medium text-gray-900" title={food.name}>{food.name}</div>
+        {food.brand ? (
+          <div className={`${FLAT_TABLE_BODY_TEXT_MUTED} truncate`}>{food.brand}</div>
+        ) : null}
+      </td>
+      <td className="min-w-36 px-3 py-2 text-gray-600">
+        {servingLabel(food, weightUnit)}
+      </td>
+      <td className={`${FLAT_TABLE_NUMERIC_TEXT} px-3 py-2 text-right text-gray-900`}>
+        {food.calories_per_serving} kcal
+      </td>
+      <td className={`${FLAT_TABLE_NUMERIC_TEXT} min-w-28 px-3 py-2 text-right text-gray-900`}>
+        {formatCalorieDensity(calorieDensity(food), weightUnit)}
+      </td>
+      {showMacros ? (
+        <>
+          <MacroCell>{formatGram(food.protein_grams)}</MacroCell>
+          <MacroCell>{formatGram(food.carbs_grams)}</MacroCell>
+          <MacroCell>{formatGram(food.fat_grams)}</MacroCell>
+          <MacroCell>{formatGram(food.fiber_grams)}</MacroCell>
+          <MacroCell>{formatMg(food.sodium_mg)}</MacroCell>
+          <MacroCell>{formatMg(food.potassium_mg)}</MacroCell>
+          <MacroCell>{formatRatio(carbProtein(food))}</MacroCell>
+        </>
+      ) : null}
+      <td className="px-2 py-1 text-right">
+        <FoodRowKebab
+          name={food.name}
+          onEdit={() => onEdit(food)}
+          onDelete={() => onDelete(food)}
+        />
+      </td>
+    </tr>
+  )
+})
+
 // Loading placeholder for the library content area. Mirrors the loaded shape
 // (header strip + rows) so the page does not jump from blank text to a full
 // list, and matches whichever layout will arrive: table rows on desktop,
@@ -690,46 +725,72 @@ function FoodLibraryCardList({
 }) {
   return (
     <ul data-testid="food-library-mobile-list" className="divide-y divide-gray-100">
-      {foods.map((food) => {
-        const meta = [food.brand, servingLabel(food, weightUnit)].filter(Boolean).join(', ')
-        return (
-          <li key={food.id} className="flex items-stretch bg-white hover:bg-gray-50">
-            <button
-              type="button"
-              data-testid="food-library-mobile-row"
-              onClick={() => onEdit(food)}
-              className="flex min-h-14 min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium text-gray-900">{food.name}</span>
-                {meta ? (
-                  <span className={`${FLAT_TABLE_BODY_TEXT_MUTED} block truncate`}>{meta}</span>
-                ) : null}
-                {showMacros ? (
-                  <span className={`${FLAT_TABLE_BODY_TEXT_MUTED} block truncate`}>
-                    P {compactGram(food.protein_grams)}, C {compactGram(food.carbs_grams)}, F {compactGram(food.fat_grams)}
-                  </span>
-                ) : null}
-              </span>
-              <span className="shrink-0 text-right">
-                <span className={`${FLAT_TABLE_NUMERIC_TEXT} block text-gray-900`}>
-                  {food.calories_per_serving} kcal
-                </span>
-                <span className={`${FLAT_TABLE_NUMERIC_TEXT} block text-xs text-gray-500`}>
-                  {formatCalorieDensity(calorieDensity(food), weightUnit)}
-                </span>
-              </span>
-            </button>
-            <div className="flex items-center pr-1">
-              <FoodRowKebab
-                name={food.name}
-                onEdit={() => onEdit(food)}
-                onDelete={() => onDelete(food)}
-              />
-            </div>
-          </li>
-        )
-      })}
+      {foods.map((food) => (
+        <FoodLibraryCard
+          key={food.id}
+          food={food}
+          weightUnit={weightUnit}
+          showMacros={showMacros}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+      ))}
     </ul>
   )
 }
+
+// Memoized for the same reason as FoodLibraryRow: stable food/weightUnit/
+// showMacros/onEdit/onDelete props let a `dialog`-only parent re-render skip the
+// whole card list. Content-affecting prop changes still re-render correctly.
+const FoodLibraryCard = memo(function FoodLibraryCard({
+  food,
+  weightUnit,
+  showMacros,
+  onEdit,
+  onDelete,
+}: {
+  food: FoodItem
+  weightUnit: 'g' | 'oz'
+  showMacros: boolean
+  onEdit: (food: FoodItem) => void
+  onDelete: (food: FoodItem) => void
+}) {
+  const meta = [food.brand, servingLabel(food, weightUnit)].filter(Boolean).join(', ')
+  return (
+    <li className="flex items-stretch bg-white hover:bg-gray-50">
+      <button
+        type="button"
+        data-testid="food-library-mobile-row"
+        onClick={() => onEdit(food)}
+        className="flex min-h-14 min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium text-gray-900">{food.name}</span>
+          {meta ? (
+            <span className={`${FLAT_TABLE_BODY_TEXT_MUTED} block truncate`}>{meta}</span>
+          ) : null}
+          {showMacros ? (
+            <span className={`${FLAT_TABLE_BODY_TEXT_MUTED} block truncate`}>
+              P {compactGram(food.protein_grams)}, C {compactGram(food.carbs_grams)}, F {compactGram(food.fat_grams)}
+            </span>
+          ) : null}
+        </span>
+        <span className="shrink-0 text-right">
+          <span className={`${FLAT_TABLE_NUMERIC_TEXT} block text-gray-900`}>
+            {food.calories_per_serving} kcal
+          </span>
+          <span className={`${FLAT_TABLE_NUMERIC_TEXT} block text-xs text-gray-500`}>
+            {formatCalorieDensity(calorieDensity(food), weightUnit)}
+          </span>
+        </span>
+      </button>
+      <div className="flex items-center pr-1">
+        <FoodRowKebab
+          name={food.name}
+          onEdit={() => onEdit(food)}
+          onDelete={() => onDelete(food)}
+        />
+      </div>
+    </li>
+  )
+})
