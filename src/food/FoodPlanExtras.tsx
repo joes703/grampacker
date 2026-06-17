@@ -20,9 +20,16 @@ export default function FoodPlanExtras({
       data-testid="food-extras"
       className={embedded ? 'border-t-2 border-gray-200 bg-white' : `${FLAT_TABLE_SURFACE} mt-4`}
     >
-      <div className={FLAT_TABLE_HEADER}>Extras</div>
+      <div className={`${FLAT_TABLE_HEADER} flex-col items-start justify-center gap-0.5 py-2 lg:flex-row lg:items-center lg:justify-start lg:gap-2`}>
+        <span>Extras</span>
+        <span className="text-xs font-normal text-gray-500">
+          Extra or emergency food - counted in packed food, not assigned to a day.
+        </span>
+      </div>
       {extras.length === 0 ? (
-        <p className="px-3 py-2 text-sm text-gray-400">Nothing in extras.</p>
+        <p className="px-3 py-2 text-sm text-gray-400">
+          No extra food yet. Use Extras for spare meals, emergency bars, or food that is packed but not assigned to a specific day.
+        </p>
       ) : (
         extras.map((entry) => (
           <FoodPlanEntryRow
