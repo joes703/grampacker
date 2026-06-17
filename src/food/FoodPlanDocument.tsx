@@ -23,7 +23,7 @@ import { randomTempId } from '../lib/random-temp-id'
 import type { EntryBasis, FoodItem, FoodPlanEntry, Meal, FoodPlanDocument as Doc } from '../lib/types'
 import { useFoodPlanView } from './useFoodPlanDocument'
 import { useFoodReorder } from './useFoodReorder'
-import FoodPlanDayCard from './FoodPlanDayCard'
+import FoodPlanDaySection from './FoodPlanDaySection'
 import FoodPlanExtras from './FoodPlanExtras'
 import FoodPicker from './FoodPicker'
 import EntryAmountDialog, { type EntryAmountAlsoDay, type EntryAmountResult } from './EntryAmountDialog'
@@ -386,7 +386,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
               <SortableContext items={view.days.map((d) => d.day.id)} strategy={verticalListSortingStrategy}>
                 <div>
                   {view.days.map((dayView, i) => (
-                    <SortableDayCard
+                    <SortableDaySection
                       key={dayView.day.id}
                       embedded
                       dayView={dayView}
@@ -516,11 +516,11 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   )
 }
 
-// Sortable wrapper for a day card. Calls useSortable, builds the grip handle,
+// Sortable wrapper for a day section. Calls useSortable, builds the grip handle,
 // and forwards the outer ref + transform style + handle to the presentational
-// FoodPlanDayCard. Must be rendered inside the day SortableContext. Accepts the
-// same props as FoodPlanDayCard and spreads them through.
-function SortableDayCard(props: React.ComponentProps<typeof FoodPlanDayCard>) {
+// FoodPlanDaySection. Must be rendered inside the day SortableContext. Accepts the
+// same props as FoodPlanDaySection and spreads them through.
+function SortableDaySection(props: React.ComponentProps<typeof FoodPlanDaySection>) {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: props.dayView.day.id })
 
@@ -542,7 +542,7 @@ function SortableDayCard(props: React.ComponentProps<typeof FoodPlanDayCard>) {
   )
 
   return (
-    <FoodPlanDayCard {...props} dragHandle={handle} outerRef={setNodeRef} outerStyle={outerStyle} />
+    <FoodPlanDaySection {...props} dragHandle={handle} outerRef={setNodeRef} outerStyle={outerStyle} />
   )
 }
 

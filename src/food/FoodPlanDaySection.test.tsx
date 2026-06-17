@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import FoodPlanDayCard from './FoodPlanDayCard'
+import FoodPlanDaySection from './FoodPlanDaySection'
 import type { DayView } from '../lib/food/view'
 
 vi.mock('./MealSection', () => ({
@@ -65,9 +65,9 @@ const lunchMeal = {
   updated_at: ts,
 } as const
 
-function renderCard(view: DayView, props: Partial<Parameters<typeof FoodPlanDayCard>[0]> = {}) {
+function renderSection(view: DayView, props: Partial<Parameters<typeof FoodPlanDaySection>[0]> = {}) {
   render(
-    <FoodPlanDayCard
+    <FoodPlanDaySection
       dayView={view}
       dayIndex={0}
       listId="list1"
@@ -78,14 +78,14 @@ function renderCard(view: DayView, props: Partial<Parameters<typeof FoodPlanDayC
   )
 }
 
-describe('FoodPlanDayCard', () => {
+describe('FoodPlanDaySection', () => {
   it('renders the day header as a flat gray section strip', () => {
-    renderCard(dayViewWithMeal())
+    renderSection(dayViewWithMeal())
     expect(screen.getByTestId('food-day-header-day1')).toHaveClass('bg-gray-50')
   })
 
   it('explains that automatic days are derived from the scheduled meals', () => {
-    renderCard(dayView('partial', null))
+    renderSection(dayView('partial', null))
 
     const label = screen.getByRole('button', {
       name: 'partial - Partial day - excluded from the full-day average and target check. Set automatically from the scheduled meals.',
@@ -98,7 +98,7 @@ describe('FoodPlanDayCard', () => {
   })
 
   it('shows when a partial day was set manually', () => {
-    renderCard(dayView('partial', 'partial'))
+    renderSection(dayView('partial', 'partial'))
 
     const label = screen.getByRole('button', {
       name: 'partial (manual) - Partial day - excluded from the full-day average and target check. Set manually.',
@@ -108,7 +108,7 @@ describe('FoodPlanDayCard', () => {
   })
 
   it('shows when a full day was set manually', () => {
-    renderCard(dayView('full', 'full'))
+    renderSection(dayView('full', 'full'))
 
     const label = screen.getByRole('button', {
       name: 'full (manual) - Full day - included in the full-day average and target check. Set manually.',
@@ -118,7 +118,7 @@ describe('FoodPlanDayCard', () => {
   })
 
   it('starts expanded and can collapse the day body', () => {
-    renderCard(dayViewWithMeal())
+    renderSection(dayViewWithMeal())
 
     expect(screen.getByText('Breakfast meal body')).toBeInTheDocument()
 
@@ -129,7 +129,7 @@ describe('FoodPlanDayCard', () => {
   })
 
   it('expands again after collapsing', () => {
-    renderCard(dayViewWithMeal())
+    renderSection(dayViewWithMeal())
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse Day 1' }))
     fireEvent.click(screen.getByRole('button', { name: 'Expand Day 1' }))
@@ -138,7 +138,7 @@ describe('FoodPlanDayCard', () => {
   })
 
   it('opens a keyboard and touch accessible explanation for day type', () => {
-    renderCard(dayView('partial', 'partial'))
+    renderSection(dayView('partial', 'partial'))
 
     fireEvent.click(screen.getByRole('button', {
       name: 'partial (manual) - Partial day - excluded from the full-day average and target check. Set manually.',
@@ -151,7 +151,7 @@ describe('FoodPlanDayCard', () => {
 
   it('calls onReviewNutrition from the day header action', () => {
     const onReviewNutrition = vi.fn()
-    renderCard(dayViewWithMeal(), { onReviewNutrition })
+    renderSection(dayViewWithMeal(), { onReviewNutrition })
 
     fireEvent.click(screen.getByRole('button', { name: 'Review Day 1 nutrition' }))
 
@@ -160,7 +160,7 @@ describe('FoodPlanDayCard', () => {
 
   it('keeps collapse and restore behavior when embedded in the plan document', () => {
     const onRestoreMeal = vi.fn()
-    renderCard(dayViewWithMeal(), {
+    renderSection(dayViewWithMeal(), {
       embedded: true,
       allMeals: [dayViewWithMeal().cells[0]!.meal, lunchMeal],
       onRestoreMeal,
