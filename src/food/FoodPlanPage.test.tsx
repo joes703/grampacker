@@ -318,6 +318,32 @@ describe('FoodPlanPage rendering', () => {
     expect(screen.getAllByText('Breakfast').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Dinner').length).toBeGreaterThan(0)
   })
+
+  it('opens and closes the per-day nutrition review panel', async () => {
+    const food = makeFood({
+      id: 'food-oat',
+      name: 'Oatmeal',
+      calories_per_serving: 160,
+      protein_grams: 4,
+      carbs_grams: 33,
+      fat_grams: 3,
+      sodium_mg: 180,
+    })
+    vi.mocked(fetchFoodPlan).mockResolvedValue(makeDoc([
+      makeEntry({ id: 'entry1', food_item_id: 'food-oat', day_meal_id: 'dm-b' }),
+    ]))
+    vi.mocked(fetchFoodItems).mockResolvedValue([food])
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Review Day 1 nutrition' }))
+
+    expect(await screen.findByRole('heading', { name: 'Day 1 nutrition review' })).toBeInTheDocument()
+    expect(screen.getByRole('row', { name: 'Day total' })).toHaveTextContent('160 kcal')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close nutrition review' }))
+
+    expect(screen.queryByRole('heading', { name: 'Day 1 nutrition review' })).not.toBeInTheDocument()
+  })
 })
 
 describe('FoodPlanPage targets', () => {
