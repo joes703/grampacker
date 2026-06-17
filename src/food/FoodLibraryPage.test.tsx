@@ -213,6 +213,61 @@ describe('FoodLibraryPage table view', () => {
     ])
   })
 
+  it('sorts by name ascending by default and reverses when the Food header is clicked', async () => {
+    vi.mocked(fetchFoodItems).mockResolvedValueOnce([
+      food({ id: 'c', name: 'Cherry', brand: null }),
+      food({ id: 'a', name: 'Apple', brand: null }),
+      food({ id: 'b', name: 'Banana', brand: null }),
+    ])
+    renderPage()
+
+    await screen.findByText('Apple')
+    const order = () => screen.getAllByTestId('food-library-row').map((row) => row.textContent)
+    // Default sort is name ascending.
+    expect(order()).toEqual([
+      expect.stringContaining('Apple'),
+      expect.stringContaining('Banana'),
+      expect.stringContaining('Cherry'),
+    ])
+
+    const foodHeader = screen.getByRole('button', { name: 'Sort by Food' })
+    fireEvent.click(foodHeader)
+    expect(order()).toEqual([
+      expect.stringContaining('Cherry'),
+      expect.stringContaining('Banana'),
+      expect.stringContaining('Apple'),
+    ])
+
+    fireEvent.click(foodHeader)
+    expect(order()).toEqual([
+      expect.stringContaining('Apple'),
+      expect.stringContaining('Banana'),
+      expect.stringContaining('Cherry'),
+    ])
+  })
+
+  it('breaks ties between unknown values by name, not input order', async () => {
+    vi.mocked(fetchFoodItems).mockResolvedValueOnce([
+      food({ id: 'z', name: 'Zucchini', brand: null, protein_grams: null }),
+      food({ id: 'm', name: 'Mango', brand: null, protein_grams: 5 }),
+      food({ id: 'a', name: 'Apricot', brand: null, protein_grams: null }),
+    ])
+    renderPage()
+
+    await screen.findByText('Mango')
+    fireEvent.click(screen.getByRole('switch', { name: /show macros/i }))
+    fireEvent.click(screen.getByRole('button', { name: /sort by protein/i }))
+
+    // The known value ranks first; the two unknowns tie and fall back to name
+    // ascending (Apricot before Zucchini) despite their reversed input order.
+    const order = screen.getAllByTestId('food-library-row').map((row) => row.textContent)
+    expect(order).toEqual([
+      expect.stringContaining('Mango'),
+      expect.stringContaining('Apricot'),
+      expect.stringContaining('Zucchini'),
+    ])
+  })
+
   it('truncates long food names instead of widening the table', async () => {
     const longName = 'Very long food name that should not force the whole food library table to widen'
     vi.mocked(fetchFoodItems).mockResolvedValueOnce([
@@ -223,6 +278,9 @@ describe('FoodLibraryPage table view', () => {
     const name = await screen.findByText(longName)
     expect(name).toHaveClass('truncate')
     expect(name).toHaveAttribute('title', longName)
+    // truncate only clips when its cell caps width; the bound is what keeps a
+    // long name from widening the whole column.
+    expect(name.closest('td')).toHaveClass('max-w-64')
   })
 
   it('shows macro columns only after Show macros is enabled, using dashes for unknown values', async () => {
