@@ -6,18 +6,21 @@ import RootRedirect from './RootRedirect'
 import { SidebarDrawerProvider } from './sidebar-drawer-context'
 import { MobilePrimaryNavProvider } from './mobile-primary-nav-context'
 import GearLibraryPage from '../gear/GearLibraryPage'
-import FoodLibraryPage from '../food/FoodLibraryPage'
 import ListsPage from '../lists/ListsPage'
 import ListDetailPage from '../lists/ListDetailPage'
-import FoodPlanPage from '../food/FoodPlanPage'
 import PasskeyNudge from '../components/PasskeyNudge'
 
-// Settings and Help are rarely visited and don't need to ship in the main
-// bundle. ListsPage/ListDetailPage/GearLibraryPage stay eager — they are
-// the post-login destinations and the primary navigation surfaces; lazy
-// would add a chunk hop on every nav with no real win.
+// Secondary surfaces, lazy-loaded to keep them out of the entry chunk. The
+// food pages pull in the whole nutrition / plan / projection subtree, so
+// splitting them is the biggest single bundle win here (perf audit P3). They
+// already sit under the shared <Suspense fallback={null}> below.
+// ListsPage/ListDetailPage/GearLibraryPage stay eager — they are the
+// post-login destinations and primary navigation surfaces; lazy would add a
+// chunk hop on every nav with no real win.
 const SettingsPage = lazy(() => import('../settings/SettingsPage'))
 const HelpPage = lazy(() => import('../help/HelpPage'))
+const FoodLibraryPage = lazy(() => import('../food/FoodLibraryPage'))
+const FoodPlanPage = lazy(() => import('../food/FoodPlanPage'))
 
 function NotFound() {
   return (
