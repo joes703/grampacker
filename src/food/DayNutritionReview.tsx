@@ -17,7 +17,7 @@ import { useWeightUnit } from '../lib/use-weight-unit'
 import { formatCalorieDensity, formatDailyTargetBand, formatMealTargetBand, formatPct, formatRatio } from './nutrition-format'
 import NutrientTotalCell, { WeightCell, type NutrientCellKind } from './NutrientTotalCell'
 import TargetStatusMark from './TargetStatusMark'
-import { FLAT_TABLE_HEADER, POPOVER_SURFACE } from '../components/flat-table-styles'
+import { FLAT_TABLE_HEADER } from '../components/flat-table-styles'
 
 const REVIEW_COLS: { key: NutrientKey; label: string; kind: NutrientCellKind }[] = [
   { key: 'calories', label: 'Calories', kind: 'calories' },
@@ -64,7 +64,10 @@ export default function DayNutritionReview({
   const partial = dayView.dayType === 'partial'
 
   return (
-    <aside className={`sticky top-3 self-start overflow-hidden ${POPOVER_SURFACE}`}>
+    <aside
+      aria-label={`Day ${dayIndex + 1} nutrition review panel`}
+      className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-hidden rounded-t-2xl border border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-lg lg:sticky lg:top-3 lg:z-auto lg:max-h-none lg:self-start lg:rounded-lg lg:pb-0"
+    >
       <div className="flex items-center gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2">
         <h2 className="text-sm font-semibold text-gray-900">Day {dayIndex + 1} nutrition review</h2>
         <button
