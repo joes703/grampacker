@@ -528,3 +528,23 @@ describe('FoodPlanPage add food', () => {
     expect(call[1].map((a) => a.entry.day_meal_id)).toEqual(['dm-b1', 'dm-b2'])
   })
 })
+
+describe('FoodPlanPage loading state', () => {
+  it('shows a loading skeleton while the plan query is pending', () => {
+    vi.mocked(fetchFoodPlan).mockReturnValueOnce(new Promise<never>(() => {}))
+    vi.mocked(fetchFoodItems).mockResolvedValue([])
+    renderPage()
+
+    expect(screen.getByTestId('food-plan-loading')).toBeInTheDocument()
+    // the empty-plan affordance must not appear while loading
+    expect(screen.queryByText('No food plan yet')).toBeNull()
+  })
+
+  it('shows the skeleton while the document loads the food library', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(makeDoc())
+    vi.mocked(fetchFoodItems).mockReturnValueOnce(new Promise<never>(() => {}))
+    renderPage()
+
+    expect(await screen.findByTestId('food-plan-loading')).toBeInTheDocument()
+  })
+})

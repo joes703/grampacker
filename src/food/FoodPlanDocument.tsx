@@ -32,6 +32,7 @@ import MoveCopyEntryDialog, { type MoveCopyTarget } from './MoveCopyEntryDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ScheduleGridDialog, { type ScheduleToggle } from './ScheduleGridDialog'
 import FoodPlanSummary from './FoodPlanSummary'
+import FoodPlanSkeleton from './FoodPlanSkeleton'
 import TargetsDialog from './TargetsDialog'
 import DayNutritionReview from './DayNutritionReview'
 import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
@@ -305,7 +306,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   }))
 
   if (foodsQuery.isLoading) {
-    return <p className="mt-6 text-sm text-gray-500">Loading your food library...</p>
+    return <FoodPlanSkeleton />
   }
   if (foodsQuery.isError) {
     return (

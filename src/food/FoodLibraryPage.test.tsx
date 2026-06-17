@@ -458,3 +458,24 @@ describe('FoodLibraryPage mobile card view', () => {
     expect(screen.queryByText('4.00 kcal/g')).toBeNull()
   })
 })
+
+describe('FoodLibraryPage loading state', () => {
+  it('shows a loading skeleton while the library query is pending (desktop)', () => {
+    stubViewport(false)
+    vi.mocked(fetchFoodItems).mockReturnValueOnce(new Promise<never>(() => {}))
+    renderPage()
+
+    expect(screen.getByTestId('food-library-loading')).toBeInTheDocument()
+    // existing empty/error states are not shown during loading
+    expect(screen.queryByText('Your food library is empty.')).toBeNull()
+    expect(screen.queryByText("Couldn't load your food library.")).toBeNull()
+  })
+
+  it('shows the loading skeleton on mobile too', () => {
+    stubViewport(true)
+    vi.mocked(fetchFoodItems).mockReturnValueOnce(new Promise<never>(() => {}))
+    renderPage()
+
+    expect(screen.getByTestId('food-library-loading')).toBeInTheDocument()
+  })
+})
