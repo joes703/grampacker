@@ -79,14 +79,17 @@ function renderCard(view: DayView, props: Partial<Parameters<typeof FoodPlanDayC
 }
 
 describe('FoodPlanDayCard', () => {
-  it('explains automatic partial days', () => {
+  it('explains that automatic days are derived from the scheduled meals', () => {
     renderCard(dayView('partial', null))
 
     const label = screen.getByRole('button', {
-      name: 'partial - Partial day - excluded from the full-day average and target check.',
+      name: 'partial - Partial day - excluded from the full-day average and target check. Set automatically from the scheduled meals.',
     })
     expect(label).toHaveTextContent('partial')
     expect(screen.queryByText('(manual)')).not.toBeInTheDocument()
+
+    fireEvent.click(label)
+    expect(screen.getByRole('note')).toHaveTextContent('Set automatically from the scheduled meals.')
   })
 
   it('shows when a partial day was set manually', () => {
