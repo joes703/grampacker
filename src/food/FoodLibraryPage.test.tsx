@@ -153,6 +153,78 @@ describe('FoodLibraryPage table view', () => {
     expect(rows[1]).toHaveTextContent('Low Calorie')
   })
 
+  it('toggles numeric sorting between descending and ascending', async () => {
+    vi.mocked(fetchFoodItems).mockResolvedValueOnce([
+      food({ id: 'low', name: 'Low Calorie', calories_per_serving: 100 }),
+      food({ id: 'mid', name: 'Medium Calorie', calories_per_serving: 300 }),
+      food({ id: 'high', name: 'High Calorie', calories_per_serving: 500 }),
+    ])
+    renderPage()
+
+    await screen.findByText('Low Calorie')
+    const calories = screen.getByRole('button', { name: /sort by calories/i })
+
+    fireEvent.click(calories)
+    let rows = screen.getAllByTestId('food-library-row')
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining('High Calorie'),
+      expect.stringContaining('Medium Calorie'),
+      expect.stringContaining('Low Calorie'),
+    ])
+
+    fireEvent.click(calories)
+    rows = screen.getAllByTestId('food-library-row')
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining('Low Calorie'),
+      expect.stringContaining('Medium Calorie'),
+      expect.stringContaining('High Calorie'),
+    ])
+  })
+
+  it('keeps unknown macro values below known values in both sort directions', async () => {
+    vi.mocked(fetchFoodItems).mockResolvedValueOnce([
+      food({ id: 'unknown-a', name: 'Unknown Alpha', protein_grams: null }),
+      food({ id: 'known-low', name: 'Known Low', protein_grams: 4 }),
+      food({ id: 'unknown-b', name: 'Unknown Beta', protein_grams: null }),
+      food({ id: 'known-high', name: 'Known High', protein_grams: 20 }),
+    ])
+    renderPage()
+
+    await screen.findByText('Known Low')
+    fireEvent.click(screen.getByRole('switch', { name: /show macros/i }))
+    const protein = screen.getByRole('button', { name: /sort by protein/i })
+
+    fireEvent.click(protein)
+    let rows = screen.getAllByTestId('food-library-row')
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining('Known High'),
+      expect.stringContaining('Known Low'),
+      expect.stringContaining('Unknown Alpha'),
+      expect.stringContaining('Unknown Beta'),
+    ])
+
+    fireEvent.click(protein)
+    rows = screen.getAllByTestId('food-library-row')
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining('Known Low'),
+      expect.stringContaining('Known High'),
+      expect.stringContaining('Unknown Alpha'),
+      expect.stringContaining('Unknown Beta'),
+    ])
+  })
+
+  it('truncates long food names instead of widening the table', async () => {
+    const longName = 'Very long food name that should not force the whole food library table to widen'
+    vi.mocked(fetchFoodItems).mockResolvedValueOnce([
+      food({ id: 'long', name: longName }),
+    ])
+    renderPage()
+
+    const name = await screen.findByText(longName)
+    expect(name).toHaveClass('truncate')
+    expect(name).toHaveAttribute('title', longName)
+  })
+
   it('shows macro columns only after Show macros is enabled, using dashes for unknown values', async () => {
     vi.mocked(fetchFoodItems).mockResolvedValueOnce([
       food({

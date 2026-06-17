@@ -401,8 +401,8 @@ export default function FoodLibraryPage() {
                     data-testid="food-library-row"
                     className={`${FLAT_TABLE_BODY_TEXT} bg-white hover:bg-gray-50`}
                   >
-                    <td className="min-w-48 px-3 py-2">
-                      <div className="font-medium text-gray-900">{food.name}</div>
+                    <td className="w-64 min-w-48 max-w-64 px-3 py-2">
+                      <div className="truncate font-medium text-gray-900" title={food.name}>{food.name}</div>
                       {food.brand ? (
                         <div className={`${FLAT_TABLE_BODY_TEXT_MUTED} truncate`}>{food.brand}</div>
                       ) : null}
