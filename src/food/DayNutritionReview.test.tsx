@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import DayNutritionReview from './DayNutritionReview'
@@ -141,5 +141,52 @@ describe('DayNutritionReview', () => {
     expect(screen.getAllByText('400 kcal').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Sodium').length).toBeGreaterThan(0)
     expect(screen.getAllByText('800 mg').length).toBeGreaterThan(1)
+  })
+
+  it('shows every configured meal target in the expanded meal review', async () => {
+    const user = userEvent.setup()
+    render(
+      <DayNutritionReview
+        dayView={dayView}
+        dayIndex={0}
+        foodById={new Map([['food1', food]])}
+        dailyTargets={[]}
+        mealTargets={[
+          {
+            id: 'meal-protein-target',
+            user_id: 'user1',
+            food_plan_id: 'plan1',
+            meal_id: 'meal1',
+            metric: 'protein',
+            mode: 'min',
+            target_min: 8,
+            target_max: null,
+          },
+          {
+            id: 'meal-fat-target',
+            user_id: 'user1',
+            food_plan_id: 'plan1',
+            meal_id: 'meal1',
+            metric: 'fat_pct',
+            mode: 'max',
+            target_min: null,
+            target_max: 30,
+          },
+        ]}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /Dinner/ }))
+
+    expect(screen.getByRole('button', { name: /Dinner/ })).toHaveTextContent('2 targets')
+    expect(screen.getByRole('button', { name: /Dinner/ })).toHaveTextContent('1 over')
+    const targetsTable = screen.getByRole('table', { name: 'Dinner targets' })
+    expect(within(targetsTable).getByRole('row', { name: /Protein/ })).toHaveTextContent('10.0 g')
+    expect(within(targetsTable).getByRole('row', { name: /Protein/ })).toHaveTextContent('>= 8 g')
+    expect(within(targetsTable).getByRole('row', { name: /Protein/ })).toHaveTextContent('meets target')
+    expect(within(targetsTable).getByRole('row', { name: /Fat%/ })).toHaveTextContent('47.4%')
+    expect(within(targetsTable).getByRole('row', { name: /Fat%/ })).toHaveTextContent('<= 30%')
+    expect(within(targetsTable).getByRole('row', { name: /Fat%/ })).toHaveTextContent('over target')
   })
 })

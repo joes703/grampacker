@@ -4,15 +4,17 @@ import type { FoodItem, FoodPlanDailyTarget, MealTarget, MealTargetMetric } from
 import type { DayView } from '../lib/food/view'
 import {
   nutrientTotals, totalWeight, calorieDensityPerGram,
-  type NutrientKey, type NutrientTotal,
+  type NutrientKey,
 } from '../lib/food/nutrition'
 import {
   dailyMetricForNutrientKey,
+  type ResolvedTarget,
   resolveDailyTargets,
   resolveMealTargets,
+  type TargetStatus,
 } from '../lib/food/targets'
 import { useWeightUnit } from '../lib/use-weight-unit'
-import { formatCalorieDensity, formatDailyTargetBand } from './nutrition-format'
+import { formatCalorieDensity, formatDailyTargetBand, formatMealTargetBand, formatPct, formatRatio } from './nutrition-format'
 import NutrientTotalCell, { WeightCell, type NutrientCellKind } from './NutrientTotalCell'
 import TargetStatusMark from './TargetStatusMark'
 import { FLAT_TABLE_HEADER, POPOVER_SURFACE } from '../components/flat-table-styles'
@@ -191,7 +193,11 @@ function MealReviewRow({
   const bodyId = useId()
   const totals = nutrientTotals(cell.entries, foodById)
   const resolved = resolveMealTargets(mealTargets, totals)
-  const primary = MEAL_TARGET_PRIORITY.map((metric) => resolved.get(metric)).find((target) => target !== undefined)
+  const targetRows = MEAL_TARGET_PRIORITY.flatMap((metric) => {
+    const target = resolved.get(metric)
+    return target ? [target] : []
+  })
+  const summaryStatus = mealTargetSummaryStatus(targetRows)
 
   return (
     <div className={last ? '' : 'border-b border-gray-100'}>
@@ -205,31 +211,55 @@ function MealReviewRow({
         {open ? <ChevronDown size={13} className="text-gray-400" /> : <ChevronRight size={13} className="text-gray-400" />}
         <span className="font-medium text-gray-800">{cell.meal.name}</span>
         <span className="ml-auto text-xs text-gray-500">
-          {primary ? (
+          {targetRows.length > 0 ? (
             <>
-              {formatMealTargetLabel(primary.metric, totals)}
-              <TargetStatusMark status={primary.status} />
+              {formatMealTargetSummary(targetRows)}
+              {summaryStatus ? <TargetStatusMark status={summaryStatus} /> : null}
             </>
           ) : 'no target'}
         </span>
       </button>
       {open ? (
-        <div id={bodyId} className="flex flex-wrap gap-x-4 gap-y-1 px-8 pb-3 text-xs text-gray-500">
-          <BreakdownStat label="Cal">
-            <NutrientTotalCell total={totals.calories} kind="calories" nameForId={nameForId} />
-          </BreakdownStat>
-          <BreakdownStat label="Protein">
-            <NutrientTotalCell total={totals.protein_grams} kind="grams" nameForId={nameForId} />
-          </BreakdownStat>
-          <BreakdownStat label="Carbs">
-            <NutrientTotalCell total={totals.carbs_grams} kind="grams" nameForId={nameForId} />
-          </BreakdownStat>
-          <BreakdownStat label="Fat">
-            <NutrientTotalCell total={totals.fat_grams} kind="grams" nameForId={nameForId} />
-          </BreakdownStat>
-          <BreakdownStat label="Sodium">
-            <NutrientTotalCell total={totals.sodium_mg} kind="mg" nameForId={nameForId} />
-          </BreakdownStat>
+        <div id={bodyId} className="px-8 pb-3 text-xs text-gray-500">
+          <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1">
+            <BreakdownStat label="Cal">
+              <NutrientTotalCell total={totals.calories} kind="calories" nameForId={nameForId} />
+            </BreakdownStat>
+            <BreakdownStat label="Protein">
+              <NutrientTotalCell total={totals.protein_grams} kind="grams" nameForId={nameForId} />
+            </BreakdownStat>
+            <BreakdownStat label="Carbs">
+              <NutrientTotalCell total={totals.carbs_grams} kind="grams" nameForId={nameForId} />
+            </BreakdownStat>
+            <BreakdownStat label="Fat">
+              <NutrientTotalCell total={totals.fat_grams} kind="grams" nameForId={nameForId} />
+            </BreakdownStat>
+            <BreakdownStat label="Sodium">
+              <NutrientTotalCell total={totals.sodium_mg} kind="mg" nameForId={nameForId} />
+            </BreakdownStat>
+          </div>
+          {targetRows.length > 0 ? (
+            <table className="w-full max-w-xl text-xs" aria-label={`${cell.meal.name} targets`}>
+              <tbody>
+                {targetRows.map((target) => (
+                  <tr key={target.metric} className="border-t border-gray-100">
+                    <th scope="row" className="py-1 pr-3 text-left font-medium text-gray-600">
+                      {formatMealTargetName(target.metric)}
+                    </th>
+                    <td className="px-3 py-1 text-right tabular-nums">
+                      {formatMealTargetValue(target)}
+                    </td>
+                    <td className="px-3 py-1 text-right tabular-nums text-gray-400">
+                      {formatMealTargetBand(target.metric, target.mode, target.target_min, target.target_max)}
+                    </td>
+                    <td className="py-1 pl-3 text-right">
+                      <TargetStatusMark status={target.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -240,10 +270,37 @@ function BreakdownStat({ label, children }: { label: string; children: ReactNode
   return <span><span className="text-gray-400">{label} </span>{children}</span>
 }
 
-function formatMealTargetLabel(metric: MealTargetMetric, totals: Record<NutrientKey, NutrientTotal>): string {
-  if (metric === 'calories') return totals.calories.state === 'complete' ? `${Math.round(totals.calories.value)} kcal` : 'Calories'
-  if (metric === 'protein') return totals.protein_grams.state === 'complete' ? `${Math.round(totals.protein_grams.value)} g protein` : 'Protein'
+function formatMealTargetSummary(targets: ResolvedTarget<MealTargetMetric>[]): string {
+  const label = targets.length === 1 ? 'target' : 'targets'
+  const over = targets.filter((target) => target.status === 'over').length
+  if (over > 0) return `${targets.length} ${label} - ${over} over`
+  const under = targets.filter((target) => target.status === 'under').length
+  if (under > 0) return `${targets.length} ${label} - ${under} under`
+  const incomplete = targets.filter((target) => target.status === 'incomplete').length
+  if (incomplete > 0) return `${targets.length} ${label} - ${incomplete} incomplete`
+  return `${targets.length} ${label} - all met`
+}
+
+function mealTargetSummaryStatus(targets: ResolvedTarget<MealTargetMetric>[]): TargetStatus | null {
+  if (targets.some((target) => target.status === 'over')) return 'over'
+  if (targets.some((target) => target.status === 'under')) return 'under'
+  if (targets.some((target) => target.status === 'incomplete')) return 'incomplete'
+  if (targets.some((target) => target.status === 'pass')) return 'pass'
+  return null
+}
+
+function formatMealTargetName(metric: MealTargetMetric): string {
+  if (metric === 'calories') return 'Calories'
+  if (metric === 'protein') return 'Protein'
   if (metric === 'fat_pct') return 'Fat%'
   if (metric === 'sugar_pct') return 'Sugar%'
   return 'Carb:Pro'
+}
+
+function formatMealTargetValue(target: ResolvedTarget<MealTargetMetric>): string {
+  if (target.value === null) return '-'
+  if (target.metric === 'calories') return `${Math.round(target.value)} kcal`
+  if (target.metric === 'protein') return `${target.value.toFixed(1)} g`
+  if (target.metric === 'fat_pct' || target.metric === 'sugar_pct') return formatPct(target.value)
+  return formatRatio(target.value)
 }
