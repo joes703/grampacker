@@ -71,12 +71,11 @@ function SummaryRow({ label, group, cols, weightUnit, nameForId, href }: {
 }
 
 export default function FoodPlanSummary({
-  view, foodById, dailyTargets, onEditTargets,
+  view, foodById, dailyTargets,
 }: {
   view: FoodPlanView
   foodById: Map<string, FoodItem>
   dailyTargets: FoodPlanDailyTarget[]
-  onEditTargets?: () => void
 }) {
   const { weightUnit } = useWeightUnit()
   const [open, setOpen] = useState(true)
@@ -108,7 +107,6 @@ export default function FoodPlanSummary({
         <span><span className="text-gray-400">Packed weight </span><span className="font-semibold"><WeightCell weight={s.packed.weight} weightUnit={weightUnit} nameForId={nameForId} /></span></span>
         <span><span className="text-gray-400">Full-day average </span><span className="font-semibold">{fullAvgCal.state === 'complete' && s.fullDayAverage.fullDays > 0 ? `${Math.round(fullAvgCal.value)} kcal (${s.fullDayAverage.fullDays} of ${s.fullDayAverage.totalDays} days counted)` : '-'}</span></span>
         <span><span className="text-gray-400">Packed density </span><span className="font-semibold">{formatCalorieDensity(s.packed.calorieDensityPerGram, weightUnit)}</span></span>
-        {onEditTargets && <button type="button" onClick={onEditTargets} className="ml-auto font-medium text-emerald-700 hover:underline">Edit targets</button>}
       </div>
 
       {open && (
