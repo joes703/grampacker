@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   DndContext, MouseSensor, TouchSensor, KeyboardSensor,
@@ -52,7 +52,14 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const currentDoc = planQuery.data ?? doc
   const view = useFoodPlanView(currentDoc)
   const foodsQuery = useQuery({ queryKey: queryKeys.foodItems(), queryFn: () => fetchFoodItems(userId) })
-  const foodById = new Map<string, FoodItem>((foodsQuery.data ?? []).map((f) => [f.id, f]))
+  // Keystone memo (mirrors useFoodProjection.ts:59): a stable foodById identity
+  // is what lets every downstream child's own useMemo skip recompute when an
+  // unrelated dialog/edit state flips here. Without this, the fresh Map busts
+  // them all on every render.
+  const foodById = useMemo(
+    () => new Map<string, FoodItem>((foodsQuery.data ?? []).map((f) => [f.id, f])),
+    [foodsQuery.data],
+  )
 
   const qc = useQueryClient()
   const invalidate = () => invalidateFoodPlanCaches(qc, listId)
@@ -124,7 +131,12 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     return siblings.reduce((max, e) => Math.max(max, e.sort_order + 1), 0)
   }
 
-  const usedFoodIds = new Set(currentDoc.entries.map((e) => e.food_item_id))
+  // Stable so FoodPicker's `foods.filter((f) => usedFoodIds.has(f.id))` memo
+  // (FoodPicker.tsx:69) actually holds across this component's re-renders.
+  const usedFoodIds = useMemo(
+    () => new Set(currentDoc.entries.map((e) => e.food_item_id)),
+    [currentDoc.entries],
+  )
 
   function computeAlsoDays(target: AddTarget): EntryAmountAlsoDay[] {
     if (target.kind !== 'cell') return []
@@ -300,10 +312,13 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const reviewDayView = reviewDayIndex >= 0 ? view.days[reviewDayIndex] : null
   const fullDayCount = view.days.filter((day) => day.dayType === 'full').length
   const plannedMealCount = view.days.reduce((total, day) => total + day.cells.length, 0)
-  const perMealCounts = view.meals.map((meal) => ({
-    meal,
-    count: view.days.reduce((total, day) => total + (day.scheduledMealIds.has(meal.id) ? 1 : 0), 0),
-  }))
+  const perMealCounts = useMemo(
+    () => view.meals.map((meal) => ({
+      meal,
+      count: view.days.reduce((total, day) => total + (day.scheduledMealIds.has(meal.id) ? 1 : 0), 0),
+    })),
+    [view],
+  )
 
   if (foodsQuery.isLoading) {
     return <FoodPlanSkeleton />

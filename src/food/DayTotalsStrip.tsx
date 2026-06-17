@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { nutrientTotal, totalWeight } from '../lib/food/nutrition'
 import NutrientTotalCell, { WeightCell } from './NutrientTotalCell'
@@ -7,21 +8,34 @@ import type { DayView } from '../lib/food/view'
 // Deliberately compact (matches the approved prototype): calories + weight only,
 // rendered INLINE inside the existing day header (no padded strip of its own).
 // Macros and density live in the all-days summary and the 3B review panel.
-export default function DayTotalsStrip({
+//
+// React.memo is effective here (unlike the rest of src/food): both props are
+// referentially stable - `foodById` is memoized in FoodPlanDocument and
+// `dayView` comes from the memoized view - and there are no inline callbacks to
+// bust the barrier. So a parent dialog/edit re-render skips this leaf entirely.
+function DayTotalsStrip({
   dayView, foodById,
 }: {
   dayView: DayView
   foodById: Map<string, FoodItem>
 }) {
   const { weightUnit } = useWeightUnit()
-  const entries = dayView.cells.flatMap((c) => c.entries)
+  const { calories, weight } = useMemo(() => {
+    const entries = dayView.cells.flatMap((c) => c.entries)
+    return {
+      calories: nutrientTotal(entries, foodById, 'calories'),
+      weight: totalWeight(entries, foodById),
+    }
+  }, [dayView, foodById])
   const nameForId = (id: string) => foodById.get(id)?.name ?? 'Unknown food'
   return (
     <span className="flex items-center gap-3 text-xs text-gray-500">
       <span className="flex items-center gap-1"><span className="text-gray-400">Cal</span>
-        <NutrientTotalCell total={nutrientTotal(entries, foodById, 'calories')} kind="calories" nameForId={nameForId} /></span>
+        <NutrientTotalCell total={calories} kind="calories" nameForId={nameForId} /></span>
       <span className="flex items-center gap-1"><span className="text-gray-400">Weight</span>
-        <WeightCell weight={totalWeight(entries, foodById)} weightUnit={weightUnit} nameForId={nameForId} /></span>
+        <WeightCell weight={weight} weightUnit={weightUnit} nameForId={nameForId} /></span>
     </span>
   )
 }
+
+export default memo(DayTotalsStrip)

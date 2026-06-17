@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useMemo, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight, X } from 'lucide-react'
 import type { FoodItem, FoodPlanDailyTarget, MealTarget, MealTargetMetric } from '../lib/types'
 import type { DayView } from '../lib/food/view'
@@ -53,10 +53,12 @@ export default function DayNutritionReview({
   onClose: () => void
 }) {
   const { weightUnit } = useWeightUnit()
-  const entries = dayView.cells.flatMap((cell) => cell.entries)
-  const totals = nutrientTotals(entries, foodById)
-  const weight = totalWeight(entries, foodById)
-  const density = calorieDensityPerGram(totals.calories, weight)
+  const { entries, totals, weight, density } = useMemo(() => {
+    const entries = dayView.cells.flatMap((cell) => cell.entries)
+    const totals = nutrientTotals(entries, foodById)
+    const weight = totalWeight(entries, foodById)
+    return { entries, totals, weight, density: calorieDensityPerGram(totals.calories, weight) }
+  }, [dayView, foodById])
   const resolvedDaily = resolveDailyTargets(dailyTargets, totals, density, dayView.dayType)
   const activeDailyTargets = dailyTargets.filter((target) => target.mode !== 'off')
   const densityTarget = activeDailyTargets.find((target) => target.metric === 'calorie_density')
@@ -194,7 +196,7 @@ function MealReviewRow({
 }) {
   const [open, setOpen] = useState(false)
   const bodyId = useId()
-  const totals = nutrientTotals(cell.entries, foodById)
+  const totals = useMemo(() => nutrientTotals(cell.entries, foodById), [cell.entries, foodById])
   const resolved = resolveMealTargets(mealTargets, totals)
   const targetRows = MEAL_TARGET_PRIORITY.flatMap((metric) => {
     const target = resolved.get(metric)

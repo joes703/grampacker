@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { type WeightUnit } from '../lib/weight'
@@ -80,8 +80,15 @@ export default function FoodPlanSummary({
   const { weightUnit } = useWeightUnit()
   const [open, setOpen] = useState(true)
   const [showMore, setShowMore] = useState(false)
-  const s = summarizeTrip(view, foodById)
-  const dayTargetMaps = s.days.map((d) => resolveDailyTargets(dailyTargets, d.totals, d.calorieDensityPerGram, d.dayType))
+  // The summary's single biggest cost (~20 passes over every day's entries).
+  // Memoized on the stable view + foodById so a parent dialog/edit re-render
+  // does not re-run it. NOT gated on `open`: the always-visible headline below
+  // (packed weight / full-day average / density) reads `s` even when collapsed.
+  const s = useMemo(() => summarizeTrip(view, foodById), [view, foodById])
+  const dayTargetMaps = useMemo(
+    () => s.days.map((d) => resolveDailyTargets(dailyTargets, d.totals, d.calorieDensityPerGram, d.dayType)),
+    [s, dailyTargets],
+  )
   // "Active" = a target the user actually configured. An explicit `off` row must
   // NOT render a Target band or a glyph - filter it before deciding what to show.
   const activeDailyTargets = dailyTargets.filter((t) => t.mode !== 'off')
@@ -91,10 +98,13 @@ export default function FoodPlanSummary({
 
   const fullAvgCal = s.fullDayAverage.totals.calories
   const totalMeals = view.days.reduce((n, d) => n + d.cells.length, 0)
-  const perMealCounts = view.meals.map((m) => ({
-    name: m.name,
-    count: view.days.reduce((n, d) => n + d.cells.filter((c) => c.meal.id === m.id).length, 0),
-  }))
+  const perMealCounts = useMemo(
+    () => view.meals.map((m) => ({
+      name: m.name,
+      count: view.days.reduce((n, d) => n + d.cells.filter((c) => c.meal.id === m.id).length, 0),
+    })),
+    [view],
+  )
 
   return (
     <section className={`${FLAT_TABLE_SURFACE} mb-4`}>

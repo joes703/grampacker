@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import type { FoodItem, FoodPlanEntry, MealTarget, MealTargetMetric } from '../lib/types'
 import {
   nutrientTotals, fatPct, sugarPct, carbProteinRatio, sodiumDensity, derivedValue,
@@ -28,7 +28,10 @@ function Stat({ label, children }: { label: string; children: ReactNode }) {
 export default function MealTargetsBar({ entries, foodById, mealTargets }: {
   entries: FoodPlanEntry[]; foodById: Map<string, FoodItem>; mealTargets: MealTarget[]
 }) {
-  const totals = nutrientTotals(entries, foodById)
+  // Only the entries pass is worth memoizing; entries + foodById are stable, so
+  // it skips on parent re-renders. (No React.memo on the component: the parent
+  // filters `mealTargets` fresh per cell, which would bust the barrier anyway.)
+  const totals = useMemo(() => nutrientTotals(entries, foodById), [entries, foodById])
   const resolved = resolveMealTargets(mealTargets, totals)
   const nameForId = (id: string) => foodById.get(id)?.name ?? 'Unknown food'
   const mark = (m: MealTargetMetric) => { const rt = resolved.get(m); return rt ? <TargetStatusMark status={rt.status} /> : null }
