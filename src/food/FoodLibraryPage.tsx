@@ -347,7 +347,7 @@ export default function FoodLibraryPage() {
       </div>
 
       {isLoading ? (
-        <p className="py-12 text-center text-sm text-gray-500">Loading your food library...</p>
+        <FoodLibrarySkeleton mobile={isMobile} />
       ) : isError ? (
         <div className="rounded-lg border border-dashed border-gray-300 py-12 text-center">
           <p className="text-sm text-gray-600">Couldn't load your food library.</p>
@@ -629,6 +629,45 @@ function MacroCell({ children }: { children: string }) {
     <td className={`${FLAT_TABLE_NUMERIC_TEXT} px-3 py-2 text-right text-gray-900`}>
       {children}
     </td>
+  )
+}
+
+// Loading placeholder for the library content area. Mirrors the loaded shape
+// (header strip + rows) so the page does not jump from blank text to a full
+// list, and matches whichever layout will arrive: table rows on desktop,
+// stacked cards on mobile. Decorative - screen readers get the sr-only label.
+function FoodLibrarySkeleton({ mobile }: { mobile: boolean }) {
+  return (
+    <div data-testid="food-library-loading" aria-busy="true" className={FLAT_TABLE_SURFACE}>
+      <span className="sr-only">Loading your food library</span>
+      <div
+        aria-hidden="true"
+        className={`${FLAT_TABLE_HEADER} justify-between gap-3 px-3 py-2 lg:py-1`}
+      >
+        <div className="h-3 w-16 animate-pulse rounded bg-gray-200" />
+        <div className="h-6 w-40 animate-pulse rounded bg-gray-200" />
+      </div>
+      <div aria-hidden="true" className="divide-y divide-gray-100">
+        {[0, 1, 2, 3, 4, 5].map((row) =>
+          mobile ? (
+            <div key={row} className="flex min-h-14 items-center gap-3 px-3 py-2">
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-4 w-2/3 animate-pulse rounded bg-gray-200" />
+                <div className="h-3 w-1/3 animate-pulse rounded bg-gray-200" />
+              </div>
+              <div className="h-4 w-14 animate-pulse rounded bg-gray-200" />
+            </div>
+          ) : (
+            <div key={row} className="flex items-center gap-3 px-3 py-3">
+              <div className="h-4 flex-1 animate-pulse rounded bg-gray-200" />
+              <div className="h-4 w-16 animate-pulse rounded bg-gray-200" />
+              <div className="h-4 w-20 animate-pulse rounded bg-gray-200" />
+              <div className="h-4 w-6 animate-pulse rounded bg-gray-200" />
+            </div>
+          ),
+        )}
+      </div>
+    </div>
   )
 }
 

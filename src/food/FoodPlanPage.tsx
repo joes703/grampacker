@@ -9,6 +9,7 @@ import ListWorkspaceTabs from '../lists/ListWorkspaceTabs'
 import CreateFoodPlanDialog from './CreateFoodPlanDialog'
 import CopyFoodPlanDialog from './CopyFoodPlanDialog'
 import FoodPlanDocument from './FoodPlanDocument'
+import FoodPlanSkeleton from './FoodPlanSkeleton'
 import type { FoodPlanStructure } from '../lib/food/basis'
 
 export default function FoodPlanPage() {
@@ -52,7 +53,7 @@ export default function FoodPlanPage() {
       <ListWorkspaceTabs listId={listId} active="food" />
 
       {planQuery.isLoading ? (
-        <p className="mt-6 text-sm text-gray-500">Loading food plan...</p>
+        <FoodPlanSkeleton />
       ) : planQuery.isError ? (
         <div className="mt-6">
           <p className="text-sm text-gray-700">Couldn't load this food plan.</p>
