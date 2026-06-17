@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import FoodPlanDayCard from './FoodPlanDayCard'
 import type { DayView } from '../lib/food/view'
 
 vi.mock('./MealSection', () => ({
-  default: function MealSectionStub() {
-    return null
+  default: function MealSectionStub({ cell }: { cell: { meal: { name: string } } }) {
+    return <div>{cell.meal.name} meal body</div>
   },
 }))
 
@@ -28,6 +28,28 @@ function dayView(dayType: 'full' | 'partial', override: 'full' | 'partial' | nul
     dayType,
     cells: [],
     scheduledMealIds: new Set(),
+  }
+}
+
+function dayViewWithMeal(): DayView {
+  return {
+    ...dayView('full', null),
+    cells: [{
+      dayMealId: 'dm1',
+      meal: {
+        id: 'meal1',
+        user_id: 'user1',
+        food_plan_id: 'plan1',
+        name: 'Breakfast',
+        anchor_role: 'breakfast',
+        is_default: true,
+        sort_order: 0,
+        created_at: ts,
+        updated_at: ts,
+      },
+      entries: [],
+    }],
+    scheduledMealIds: new Set(['meal1']),
   }
 }
 
@@ -66,5 +88,25 @@ describe('FoodPlanDayCard', () => {
     const label = screen.getByTitle('Full day - included in the full-day average and target check. Set manually.')
     expect(label).toHaveTextContent('full')
     expect(screen.getByText('(manual)')).toBeInTheDocument()
+  })
+
+  it('starts expanded and can collapse the day body', () => {
+    renderCard(dayViewWithMeal())
+
+    expect(screen.getByText('Breakfast meal body')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse Day 1' }))
+
+    expect(screen.queryByText('Breakfast meal body')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Expand Day 1' })).toBeInTheDocument()
+  })
+
+  it('expands again after collapsing', () => {
+    renderCard(dayViewWithMeal())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse Day 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Expand Day 1' }))
+
+    expect(screen.getByText('Breakfast meal body')).toBeInTheDocument()
   })
 })
