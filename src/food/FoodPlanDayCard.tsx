@@ -13,7 +13,10 @@ function dayTypeTitle(dayType: 'full' | 'partial', override: 'full' | 'partial' 
   const base = dayType === 'partial'
     ? 'Partial day - excluded from the full-day average and target check.'
     : 'Full day - included in the full-day average and target check.'
-  return override === null ? base : `${base} Set manually.`
+  const provenance = override === null
+    ? 'Set automatically from the scheduled meals.'
+    : 'Set manually.'
+  return `${base} ${provenance}`
 }
 
 export default function FoodPlanDayCard({
