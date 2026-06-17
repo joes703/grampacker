@@ -17,7 +17,7 @@ import type {
 // throws at import without env vars. Export every runtime symbol that any module
 // in the FoodPlanPage render tree imports (FoodPlanPage, FoodPlanDocument,
 // FoodPicker, EntryAmountDialog, MoveCopyEntryDialog, CellEntryReorder,
-// useFoodReorder, FoodPlanDayCard, MealSection, FoodPlanExtras, AddMealDialog,
+// useFoodReorder, FoodPlanDaySection, MealSection, FoodPlanExtras, AddMealDialog,
 // ScheduleGridDialog). Missing one throws at import time.
 vi.mock('../lib/queries', () => ({
   queryKeys: {

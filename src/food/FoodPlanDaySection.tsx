@@ -19,7 +19,7 @@ function dayTypeTitle(dayType: 'full' | 'partial', override: 'full' | 'partial' 
   return `${base} ${provenance}`
 }
 
-export default function FoodPlanDayCard({
+export default function FoodPlanDaySection({
   dayView, dayIndex, listId, userId, foodById, mealTargets, onAddFoodToCell, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry,
   onSetDayType, onDeleteDay, onDuplicate, onReviewNutrition, allMeals, onOmitMeal, onDeleteMeal, onRestoreMeal,
   dragHandle, outerRef, outerStyle, embedded = false,
@@ -190,7 +190,7 @@ function DayTypeInfo({
   )
 }
 
-// Kebab popover for a day card. Mirrors FoodPlanEntryRow's EntryKebab: a
+// Kebab popover for a day section. Mirrors FoodPlanEntryRow's EntryKebab: a
 // three-dot trigger plus a portal-rendered menu, with dismissal handled by
 // usePortalPopover (no hand-rolled listeners). Lets the user override the
 // day type (Auto/Full/Partial) or delete the day.
