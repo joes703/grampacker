@@ -3,7 +3,7 @@ import { FLAT_TABLE_SURFACE, FLAT_TABLE_HEADER } from '../components/flat-table-
 import FoodPlanEntryRow from './FoodPlanEntryRow'
 
 export default function FoodPlanExtras({
-  extras, foodById, onAddFood, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry,
+  extras, foodById, onAddFood, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry, embedded = false,
 }: {
   extras: FoodPlanEntry[]
   foodById: Map<string, FoodItem>
@@ -12,9 +12,14 @@ export default function FoodPlanExtras({
   onMoveEntry?: (entryId: string) => void
   onCopyEntry?: (entryId: string) => void
   onRemoveEntry?: (entryId: string) => void
+  embedded?: boolean
 }) {
   return (
-    <div className={`${FLAT_TABLE_SURFACE} mt-4`}>
+    <div
+      id="food-extras"
+      data-testid="food-extras"
+      className={embedded ? 'border-t-2 border-gray-200 bg-white' : `${FLAT_TABLE_SURFACE} mt-4`}
+    >
       <div className={FLAT_TABLE_HEADER}>Extras</div>
       {extras.length === 0 ? (
         <p className="px-3 py-2 text-sm text-gray-400">Nothing in extras.</p>

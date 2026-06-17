@@ -34,6 +34,7 @@ import ScheduleGridDialog, { type ScheduleToggle } from './ScheduleGridDialog'
 import FoodPlanSummary from './FoodPlanSummary'
 import TargetsDialog from './TargetsDialog'
 import DayNutritionReview from './DayNutritionReview'
+import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 
 type AddTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
 
@@ -380,45 +381,49 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
       <FoodPlanSummary view={view} foodById={foodById} dailyTargets={currentDoc.dailyTargets} />
       <div className={reviewDayView ? 'mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]' : 'mt-4'}>
         <div>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
-            <SortableContext items={view.days.map((d) => d.day.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-4">
-                {view.days.map((dayView, i) => (
-                  <SortableDayCard
-                    key={dayView.day.id}
-                    dayView={dayView}
-                    dayIndex={i}
-                    listId={listId}
-                    userId={userId}
-                    foodById={foodById}
-                    mealTargets={currentDoc.mealTargets}
-                    onAddFoodToCell={(dayMealId) => setAddTarget({ kind: 'cell', dayMealId })}
-                    onEditEntry={(entryId) => setEditEntryId(entryId)}
-                    onMoveEntry={(entryId) => openMoveCopy('move', entryId)}
-                    onCopyEntry={(entryId) => openMoveCopy('copy', entryId)}
-                    onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
-                    onSetDayType={(override) => dayTypeMut.mutate({ dayId: dayView.day.id, override })}
-                    onDeleteDay={() => setConfirmDeleteDayId(dayView.day.id)}
-                    onDuplicate={() => duplicateDayMut.mutate(dayView.day.id)}
-                    onReviewNutrition={() => setReviewDayId(dayView.day.id)}
-                    allMeals={view.meals}
-                    onOmitMeal={(dayMealId) => omitMealMut.mutate(dayMealId)}
-                    onDeleteMeal={(mealId) => setConfirmDeleteMealId(mealId)}
-                    onRestoreMeal={(dayId, mealId) => restoreMealMut.mutate({ dayId, mealId })}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-          <FoodPlanExtras
-            extras={view.extras}
-            foodById={foodById}
-            onAddFood={() => setAddTarget({ kind: 'extra' })}
-            onEditEntry={(entryId) => setEditEntryId(entryId)}
-            onMoveEntry={(entryId) => openMoveCopy('move', entryId)}
-            onCopyEntry={(entryId) => openMoveCopy('copy', entryId)}
-            onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
-          />
+          <div data-testid="food-plan-document" className={FLAT_TABLE_SURFACE}>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
+              <SortableContext items={view.days.map((d) => d.day.id)} strategy={verticalListSortingStrategy}>
+                <div>
+                  {view.days.map((dayView, i) => (
+                    <SortableDayCard
+                      key={dayView.day.id}
+                      embedded
+                      dayView={dayView}
+                      dayIndex={i}
+                      listId={listId}
+                      userId={userId}
+                      foodById={foodById}
+                      mealTargets={currentDoc.mealTargets}
+                      onAddFoodToCell={(dayMealId) => setAddTarget({ kind: 'cell', dayMealId })}
+                      onEditEntry={(entryId) => setEditEntryId(entryId)}
+                      onMoveEntry={(entryId) => openMoveCopy('move', entryId)}
+                      onCopyEntry={(entryId) => openMoveCopy('copy', entryId)}
+                      onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
+                      onSetDayType={(override) => dayTypeMut.mutate({ dayId: dayView.day.id, override })}
+                      onDeleteDay={() => setConfirmDeleteDayId(dayView.day.id)}
+                      onDuplicate={() => duplicateDayMut.mutate(dayView.day.id)}
+                      onReviewNutrition={() => setReviewDayId(dayView.day.id)}
+                      allMeals={view.meals}
+                      onOmitMeal={(dayMealId) => omitMealMut.mutate(dayMealId)}
+                      onDeleteMeal={(mealId) => setConfirmDeleteMealId(mealId)}
+                      onRestoreMeal={(dayId, mealId) => restoreMealMut.mutate({ dayId, mealId })}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+            <FoodPlanExtras
+              embedded
+              extras={view.extras}
+              foodById={foodById}
+              onAddFood={() => setAddTarget({ kind: 'extra' })}
+              onEditEntry={(entryId) => setEditEntryId(entryId)}
+              onMoveEntry={(entryId) => openMoveCopy('move', entryId)}
+              onCopyEntry={(entryId) => openMoveCopy('copy', entryId)}
+              onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
+            />
+          </div>
         </div>
         {reviewDayView ? (
           <DayNutritionReview

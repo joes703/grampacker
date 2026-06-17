@@ -53,6 +53,18 @@ function dayViewWithMeal(): DayView {
   }
 }
 
+const lunchMeal = {
+  id: 'meal2',
+  user_id: 'user1',
+  food_plan_id: 'plan1',
+  name: 'Lunch',
+  anchor_role: null,
+  is_default: false,
+  sort_order: 1,
+  created_at: ts,
+  updated_at: ts,
+} as const
+
 function renderCard(view: DayView, props: Partial<Parameters<typeof FoodPlanDayCard>[0]> = {}) {
   render(
     <FoodPlanDayCard
@@ -136,5 +148,25 @@ describe('FoodPlanDayCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Review Day 1 nutrition' }))
 
     expect(onReviewNutrition).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps collapse and restore behavior when embedded in the plan document', () => {
+    const onRestoreMeal = vi.fn()
+    renderCard(dayViewWithMeal(), {
+      embedded: true,
+      allMeals: [dayViewWithMeal().cells[0]!.meal, lunchMeal],
+      onRestoreMeal,
+    })
+
+    expect(screen.getByTestId('food-day-day1')).toBeInTheDocument()
+    expect(screen.getByText('Breakfast meal body')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse Day 1' }))
+    expect(screen.queryByText('Breakfast meal body')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand Day 1' }))
+    fireEvent.click(screen.getByRole('button', { name: '+ Restore Lunch' }))
+
+    expect(onRestoreMeal).toHaveBeenCalledWith('day1', 'meal2')
   })
 })

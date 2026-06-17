@@ -336,6 +336,16 @@ describe('FoodPlanPage rendering', () => {
     expect(screen.queryByRole('button', { name: '+ Add meal' })).not.toBeInTheDocument()
   })
 
+  it('renders days and extras inside one food plan document shell', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(makeDoc())
+    vi.mocked(fetchFoodItems).mockResolvedValue([])
+    renderPage()
+
+    const documentShell = await screen.findByTestId('food-plan-document')
+    expect(within(documentShell).getByTestId('food-day-day1')).toBeInTheDocument()
+    expect(within(documentShell).getByTestId('food-extras')).toBeInTheDocument()
+  })
+
   it('opens and closes the per-day nutrition review panel', async () => {
     const food = makeFood({
       id: 'food-oat',
