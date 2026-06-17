@@ -35,6 +35,7 @@ import ToggleSwitch from '../components/ToggleSwitch'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import { formatItemWeight } from '../lib/weight'
 import { useWeightUnit } from '../lib/use-weight-unit'
+import { useIsMobile } from '../lib/use-breakpoint'
 import { formatCalorieDensity, formatRatio } from './nutrition-format'
 import { FoodRowKebab } from './FoodItemRow'
 import FoodItemDialog from './FoodItemDialog'
@@ -76,6 +77,18 @@ const SORT_LABEL: Record<SortKey, string> = {
   potassium: 'Potassium',
   carbProtein: 'C:P',
 }
+
+// The mobile card layout has no clickable column headers, so it drives the
+// shared sort state through a single "Sort by" select. Keep the option set
+// small and scannable (the desktop-only keys stay reachable on the table).
+const MOBILE_SORTS: { key: SortKey; label: string }[] = [
+  { key: 'name', label: 'Name' },
+  { key: 'calories', label: 'Calories' },
+  { key: 'density', label: 'Density' },
+  { key: 'protein', label: 'Protein' },
+  { key: 'carbs', label: 'Carbs' },
+  { key: 'fat', label: 'Fat' },
+]
 
 function calorieDensity(food: FoodItem): number | null {
   return food.serving_weight_grams > 0
@@ -140,6 +153,12 @@ function formatMg(value: number | null): string {
   return value == null ? '-' : `${Math.round(value)} mg`
 }
 
+// Compact gram value for the mobile card macro line (e.g. "10g"), where space
+// is tight. The table keeps the roomier "10.0 g" via formatGram.
+function compactGram(value: number | null): string {
+  return value == null ? '-' : `${Math.round(value)}g`
+}
+
 export default function FoodLibraryPage() {
   useDocumentTitle('Food')
   const auth = useRequireSession()
@@ -151,6 +170,7 @@ export default function FoodLibraryPage() {
   const [showMacros, setShowMacros] = useState(false)
   const [sort, setSort] = useState<SortState>({ key: 'name', dir: 'asc' })
   const { weightUnit } = useWeightUnit()
+  const isMobile = useIsMobile()
 
   const { data: allItems = [], isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.foodItems(),
@@ -358,7 +378,31 @@ export default function FoodLibraryPage() {
             <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
               {filtered.length} food{filtered.length === 1 ? '' : 's'}
             </span>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+              {isMobile ? (
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                  <span className="text-gray-500">Sort by</span>
+                  <select
+                    aria-label="Sort foods by"
+                    value={sort.key}
+                    onChange={(e) => {
+                      const key = e.target.value as SortKey
+                      setSort({ key, dir: key === 'name' ? 'asc' : 'desc' })
+                    }}
+                    className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-gray-400 focus:outline-none"
+                  >
+                    {/* Surface a desktop-only active key (e.g. Fiber) as a disabled
+                        option so the control reflects the real sort instead of
+                        silently snapping the order to Name. */}
+                    {MOBILE_SORTS.some((s) => s.key === sort.key) ? null : (
+                      <option value={sort.key} disabled>{SORT_LABEL[sort.key]}</option>
+                    )}
+                    {MOBILE_SORTS.map((s) => (
+                      <option key={s.key} value={s.key}>{s.label}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <div className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                 <ToggleSwitch
                   checked={showMacros}
@@ -370,6 +414,15 @@ export default function FoodLibraryPage() {
               <UnitSegmentedControl idPrefix="food-library-units" />
             </div>
           </div>
+          {isMobile ? (
+            <FoodLibraryCardList
+              foods={filtered}
+              weightUnit={weightUnit}
+              showMacros={showMacros}
+              onEdit={(item) => setDialog({ type: 'edit', item })}
+              onDelete={(item) => setDialog({ type: 'delete', item })}
+            />
+          ) : (
           <div className="overflow-x-auto">
             <table aria-label="Food library" className="min-w-full border-collapse">
               <thead className="bg-gray-50">
@@ -439,6 +492,7 @@ export default function FoodLibraryPage() {
               </tbody>
             </table>
           </div>
+          )}
           <p className="border-t border-gray-100 px-3 py-2 text-xs text-gray-500">
             Density uses each food's calories and serving weight. Unknown nutrients show as -.
           </p>
@@ -575,5 +629,68 @@ function MacroCell({ children }: { children: string }) {
     <td className={`${FLAT_TABLE_NUMERIC_TEXT} px-3 py-2 text-right text-gray-900`}>
       {children}
     </td>
+  )
+}
+
+// Phone layout: the wide sortable table becomes a stacked, tappable card list
+// (tap to edit; the kebab keeps Edit/Delete parity with the desktop row). Cards
+// lead with the scannable facts - name, serving, calories, density in the
+// chosen unit - and only add a compact P/C/F line when "Show macros" is on.
+function FoodLibraryCardList({
+  foods,
+  weightUnit,
+  showMacros,
+  onEdit,
+  onDelete,
+}: {
+  foods: FoodItem[]
+  weightUnit: 'g' | 'oz'
+  showMacros: boolean
+  onEdit: (food: FoodItem) => void
+  onDelete: (food: FoodItem) => void
+}) {
+  return (
+    <ul data-testid="food-library-mobile-list" className="divide-y divide-gray-100">
+      {foods.map((food) => {
+        const meta = [food.brand, servingLabel(food, weightUnit)].filter(Boolean).join(', ')
+        return (
+          <li key={food.id} className="flex items-stretch bg-white hover:bg-gray-50">
+            <button
+              type="button"
+              data-testid="food-library-mobile-row"
+              onClick={() => onEdit(food)}
+              className="flex min-h-14 min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium text-gray-900">{food.name}</span>
+                {meta ? (
+                  <span className={`${FLAT_TABLE_BODY_TEXT_MUTED} block truncate`}>{meta}</span>
+                ) : null}
+                {showMacros ? (
+                  <span className={`${FLAT_TABLE_BODY_TEXT_MUTED} block truncate`}>
+                    P {compactGram(food.protein_grams)}, C {compactGram(food.carbs_grams)}, F {compactGram(food.fat_grams)}
+                  </span>
+                ) : null}
+              </span>
+              <span className="shrink-0 text-right">
+                <span className={`${FLAT_TABLE_NUMERIC_TEXT} block text-gray-900`}>
+                  {food.calories_per_serving} kcal
+                </span>
+                <span className={`${FLAT_TABLE_NUMERIC_TEXT} block text-xs text-gray-500`}>
+                  {formatCalorieDensity(calorieDensity(food), weightUnit)}
+                </span>
+              </span>
+            </button>
+            <div className="flex items-center pr-1">
+              <FoodRowKebab
+                name={food.name}
+                onEdit={() => onEdit(food)}
+                onDelete={() => onDelete(food)}
+              />
+            </div>
+          </li>
+        )
+      })}
+    </ul>
   )
 }

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, fireEvent, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -41,7 +41,25 @@ afterEach(() => {
   cleanup()
   localStorage.clear()
   vi.clearAllMocks()
+  vi.unstubAllGlobals()
 })
+
+// jsdom has no matchMedia; the page reads useIsMobile() during render. Default
+// every test to the desktop table; mobile tests opt in with stubViewport(true).
+function stubViewport(mobile: boolean) {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 767px)' ? mobile : false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  }))
+}
+
+beforeEach(() => stubViewport(false))
 
 function food(overrides: Partial<FoodItem> = {}): FoodItem {
   return {
@@ -314,6 +332,121 @@ describe('FoodLibraryPage table view', () => {
   it('switches density display between kcal/g and kcal/oz', async () => {
     vi.mocked(fetchFoodItems).mockResolvedValueOnce([
       food({ id: 'dense', name: 'Dense Bar', serving_weight_grams: 50, calories_per_serving: 200 }),
+    ])
+    renderPage()
+
+    expect(await screen.findByText('4.00 kcal/g')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('oz'))
+
+    expect(await screen.findByText('113.4 kcal/oz')).toBeInTheDocument()
+    expect(screen.queryByText('4.00 kcal/g')).toBeNull()
+  })
+})
+
+describe('FoodLibraryPage mobile card view', () => {
+  it('renders the desktop table at md+ and not the mobile card list', async () => {
+    stubViewport(false)
+    vi.mocked(fetchFoodItems).mockResolvedValueOnce([food({ id: 'a', name: 'Alpha Bar' })])
+    renderPage()
+
+    expect(await screen.findByRole('table', { name: 'Food library' })).toBeInTheDocument()
+    expect(screen.queryByTestId('food-library-mobile-list')).toBeNull()
+  })
+
+  it('renders foods as tappable cards below md, not the table', async () => {
+    stubViewport(true)
+    vi.mocked(fetchFoodItems).mockResolvedValueOnce([
+      food({
+        id: 'a', name: 'Alpha Bar', brand: 'Acme', serving_description: '1 bar',
+        serving_weight_grams: 50, calories_per_serving: 200,
+      }),
+    ])
+    renderPage()
+
+    const list = await screen.findByTestId('food-library-mobile-list')
+    expect(screen.queryByRole('table', { name: 'Food library' })).toBeNull()
+
+    const row = within(list).getByTestId('food-library-mobile-row')
+    expect(row).toHaveTextContent('Alpha Bar')
+    expect(row).toHaveTextContent('Acme')
+    expect(row).toHaveTextContent('1 bar (50 g)')
+    expect(row).toHaveTextContent('200 kcal')
+    expect(row).toHaveTextContent('4.00 kcal/g')
+  })
+
+  it('opens the edit dialog when a card is tapped', async () => {
+    stubViewport(true)
+    vi.mocked(fetchFoodItems).mockResolvedValueOnce([food({ id: 'a', name: 'Alpha Bar' })])
+    renderPage()
+
+    const row = await screen.findByTestId('food-library-mobile-row')
+    fireEvent.click(row)
+
+    // FoodItemDialog renders <Modal title="Edit food">; Modal sets aria-label={title}
+    // on the native <dialog>, so the dialog's accessible name is "Edit food".
+    expect(await screen.findByRole('dialog', { name: 'Edit food' })).toBeInTheDocument()
+  })
+
+  it('exposes per-card Edit/Delete actions via the kebab', async () => {
+    stubViewport(true)
+    vi.mocked(fetchFoodItems).mockResolvedValueOnce([food({ id: 'a', name: 'Alpha Bar' })])
+    renderPage()
+
+    await screen.findByTestId('food-library-mobile-row')
+    const kebab = screen.getByRole('button', { name: 'Options for Alpha Bar' })
+    fireEvent.click(kebab)
+
+    expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Delete from library' })).toBeInTheDocument()
+  })
+
+  it('offers a mobile Sort by control that reorders the cards', async () => {
+    stubViewport(true)
+    vi.mocked(fetchFoodItems).mockResolvedValueOnce([
+      food({ id: 'a', name: 'Almonds', calories_per_serving: 200 }),
+      food({ id: 'b', name: 'Bagel', calories_per_serving: 280 }),
+    ])
+    renderPage()
+
+    await screen.findByTestId('food-library-mobile-list')
+    const select = screen.getByRole('combobox', { name: /sort foods by/i })
+    expect(within(select).getByRole('option', { name: 'Name' })).toBeInTheDocument()
+    expect(within(select).getByRole('option', { name: 'Calories' })).toBeInTheDocument()
+    expect(within(select).getByRole('option', { name: 'Fat' })).toBeInTheDocument()
+
+    // Default sort is name ascending: Almonds before Bagel.
+    let rows = screen.getAllByTestId('food-library-mobile-row')
+    expect(rows[0]).toHaveTextContent('Almonds')
+
+    fireEvent.change(select, { target: { value: 'calories' } })
+
+    // Calories defaults to descending: Bagel (280) before Almonds (200).
+    rows = screen.getAllByTestId('food-library-mobile-row')
+    expect(rows[0]).toHaveTextContent('Bagel')
+    expect(rows[1]).toHaveTextContent('Almonds')
+  })
+
+  it('shows a compact macro line on cards only when Show macros is enabled', async () => {
+    stubViewport(true)
+    vi.mocked(fetchFoodItems).mockResolvedValueOnce([
+      food({ id: 'a', name: 'Alpha Bar', protein_grams: 10, carbs_grams: 25, fat_grams: 8 }),
+    ])
+    renderPage()
+
+    let row = await screen.findByTestId('food-library-mobile-row')
+    expect(row).not.toHaveTextContent('P 10g')
+
+    fireEvent.click(screen.getByRole('switch', { name: /show macros/i }))
+
+    row = screen.getByTestId('food-library-mobile-row')
+    expect(row).toHaveTextContent('P 10g, C 25g, F 8g')
+  })
+
+  it('shows density in the selected unit on cards', async () => {
+    stubViewport(true)
+    vi.mocked(fetchFoodItems).mockResolvedValueOnce([
+      food({ id: 'a', name: 'Dense Bar', serving_weight_grams: 50, calories_per_serving: 200 }),
     ])
     renderPage()
 
