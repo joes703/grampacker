@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { foodItemsToCsv, parseFoodCsv, FOOD_CSV_HEADER } from './food'
+import { foodItemsToCsv, parseFoodCsv, FOOD_CSV_HEADER, FOOD_SAMPLE_CSV } from './food'
 import type { FoodItem } from '../types'
 
 function food(partial: Partial<FoodItem>): FoodItem {
@@ -36,6 +36,19 @@ describe('FOOD_CSV_HEADER', () => {
     const headerLine = foodItemsToCsv([food({})]).split('\r\n')[0]
     expect(FOOD_CSV_HEADER).toBe(headerLine)
     expect(FOOD_CSV_HEADER).toBe(CANONICAL_HEADER)
+  })
+})
+
+describe('FOOD_SAMPLE_CSV', () => {
+  it('uses the canonical header and imports as valid sample food rows', () => {
+    const [header] = FOOD_SAMPLE_CSV.split('\r\n')
+    expect(header).toBe(FOOD_CSV_HEADER)
+
+    const rows = parseFoodCsv(FOOD_SAMPLE_CSV) as Exclude<ReturnType<typeof parseFoodCsv>, string>
+    expect(rows.length).toBeGreaterThanOrEqual(5)
+    expect(rows.every((row) => row.errors.length === 0 && row.item !== null)).toBe(true)
+    expect(rows.map((row) => row.item!.name)).toContain('Instant Oatmeal')
+    expect(rows.map((row) => row.item!.name)).toContain('Peanut Butter')
   })
 })
 
