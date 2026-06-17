@@ -50,10 +50,19 @@ function NutCells({ totals, cols, nameForId, targets }: {
   )
 }
 
-function SummaryRow({ label, group, cols, weightUnit, nameForId }: { label: string; group: GroupSummary; cols: Col[]; weightUnit: WeightUnit; nameForId: (id: string) => string }) {
+function SummaryRow({ label, group, cols, weightUnit, nameForId, href }: {
+  label: string
+  group: GroupSummary
+  cols: Col[]
+  weightUnit: WeightUnit
+  nameForId: (id: string) => string
+  href?: string
+}) {
   return (
     <tr aria-label={label} className="border-t border-gray-200 font-medium">
-      <th scope="row" className="px-2 py-1.5 text-left">{label}</th>
+      <th scope="row" className="px-2 py-1.5 text-left">
+        {href ? <a href={href} className="text-emerald-700 hover:underline">{label}</a> : label}
+      </th>
       <td className="px-2 py-1.5 text-right"><WeightCell weight={group.weight} weightUnit={weightUnit} nameForId={nameForId} /></td>
       <NutCells totals={group.totals} cols={cols} nameForId={nameForId} />
       <td className="px-2 py-1.5 text-right tabular-nums">{formatCalorieDensity(group.calorieDensityPerGram, weightUnit)}</td>
@@ -142,7 +151,8 @@ export default function FoodPlanSummary({
                 {s.days.map((d, i) => (
                   <tr key={d.dayId} aria-label={`Day ${i + 1}`} className="border-t border-gray-100">
                     <th scope="row" className="px-2 py-1.5 text-left font-normal">
-                      Day {i + 1} <span className="text-xs uppercase text-gray-400">{d.dayType}</span>
+                      <a href={`#food-day-${d.dayId}`} className="text-emerald-700 hover:underline">Day {i + 1}</a>{' '}
+                      <span className="text-xs uppercase text-gray-400">{d.dayType}</span>
                     </th>
                     <td className="px-2 py-1.5 text-right"><WeightCell weight={d.weight} weightUnit={weightUnit} nameForId={nameForId} /></td>
                     <NutCells totals={d.totals} cols={cols} nameForId={nameForId} targets={dayTargetMaps[i]} />
@@ -152,7 +162,7 @@ export default function FoodPlanSummary({
                     </td>
                   </tr>
                 ))}
-                <SummaryRow label="Extras" group={s.extras} cols={cols} weightUnit={weightUnit} nameForId={nameForId} />
+                <SummaryRow label="Extras" group={s.extras} cols={cols} weightUnit={weightUnit} nameForId={nameForId} href="#food-extras" />
                 <SummaryRow label="Planned total" group={s.planned} cols={cols} weightUnit={weightUnit} nameForId={nameForId} />
                 <tr aria-label="Full-day average" className="border-t border-gray-200 font-medium">
                   <th scope="row" className="px-2 py-1.5 text-left">

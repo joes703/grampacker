@@ -78,4 +78,11 @@ describe('FoodPlanSummary', () => {
     const partialRow = screen.getByRole('row', { name: /Day 2/ })
     expect(within(partialRow).queryByText('over target')).not.toBeInTheDocument()
   })
+  it('links day and extras rows to their document sections', () => {
+    render(<FoodPlanSummary view={view} foodById={foods} dailyTargets={[]} />)
+
+    expect(screen.getByRole('link', { name: /Day 1/i })).toHaveAttribute('href', '#food-day-d1')
+    expect(screen.getByRole('link', { name: /Day 2/i })).toHaveAttribute('href', '#food-day-d2')
+    expect(screen.getByRole('link', { name: 'Extras' })).toHaveAttribute('href', '#food-extras')
+  })
 })
