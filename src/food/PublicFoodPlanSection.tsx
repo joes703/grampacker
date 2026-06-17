@@ -29,10 +29,17 @@ export default function PublicFoodPlanSection({ doc }: { doc: PublicFoodPlanDocu
         </p>
       ) : null}
 
-      <div className="space-y-4">
+      <div data-testid="public-food-plan-document" className={FLAT_TABLE_SURFACE}>
         {view.days.map((dayView, i) => (
-          <div key={dayView.day.id} className={FLAT_TABLE_SURFACE}>
-            <div className="flex items-center justify-between px-3 py-2">
+          <div
+            key={dayView.day.id}
+            data-testid={`public-food-day-${dayView.day.id}`}
+            className="border-b border-gray-100 bg-white"
+          >
+            <div
+              data-testid={`public-food-day-header-${dayView.day.id}`}
+              className={`${FLAT_TABLE_HEADER} justify-between gap-1 px-3`}
+            >
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-semibold text-gray-900">Day {i + 1}</h2>
                 <span className="text-xs uppercase tracking-wide text-gray-400">{dayView.dayType}</span>
@@ -40,8 +47,13 @@ export default function PublicFoodPlanSection({ doc }: { doc: PublicFoodPlanDocu
               <DayTotalsStrip dayView={dayView} foodById={foodById} />
             </div>
             {dayView.cells.map((cell) => (
-              <section key={cell.dayMealId} className="mt-2">
-                <div className={FLAT_TABLE_HEADER}>{cell.meal.name}</div>
+              <section key={cell.dayMealId}>
+                <div
+                  data-testid="public-food-meal-header"
+                  className="flex items-center border-t border-gray-100 px-3 py-1 pl-6"
+                >
+                  <span className="text-sm font-medium text-gray-500">{cell.meal.name}</span>
+                </div>
                 <MealTargetsBar
                   entries={cell.entries}
                   foodById={foodById}
@@ -58,9 +70,8 @@ export default function PublicFoodPlanSection({ doc }: { doc: PublicFoodPlanDocu
             ))}
           </div>
         ))}
+        <FoodPlanExtras embedded extras={view.extras} foodById={foodById} />
       </div>
-
-      <FoodPlanExtras extras={view.extras} foodById={foodById} />
     </section>
   )
 }
