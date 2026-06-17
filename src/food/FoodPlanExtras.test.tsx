@@ -46,6 +46,21 @@ const entry: FoodPlanEntry = {
 }
 
 describe('FoodPlanExtras', () => {
+  it('explains extras when empty', () => {
+    render(
+      <FoodPlanExtras
+        embedded
+        extras={[]}
+        foodById={new Map()}
+        onAddFood={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Extras')).toBeInTheDocument()
+    expect(screen.getByText('Extra or emergency food - counted in packed food, not assigned to a day.')).toBeInTheDocument()
+    expect(screen.getByText('No extra food yet. Use Extras for spare meals, emergency bars, or food that is packed but not assigned to a specific day.')).toBeInTheDocument()
+  })
+
   it('renders entries and add action when embedded in the plan document', () => {
     const onAddFood = vi.fn()
     render(
@@ -58,6 +73,7 @@ describe('FoodPlanExtras', () => {
     )
 
     expect(screen.getByTestId('food-extras')).toBeInTheDocument()
+    expect(screen.getByText('Extra or emergency food - counted in packed food, not assigned to a day.')).toBeInTheDocument()
     expect(screen.getByText('Spare bar')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '+ Add food' }))
