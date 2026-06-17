@@ -102,6 +102,23 @@ const mealTargets: MealTarget[] = [{
 }]
 
 describe('DayNutritionReview', () => {
+  it('renders as a mobile bottom sheet while keeping the desktop sticky panel classes', () => {
+    render(
+      <DayNutritionReview
+        dayView={dayView}
+        dayIndex={0}
+        foodById={new Map([['food1', food]])}
+        dailyTargets={[]}
+        mealTargets={[]}
+        onClose={() => {}}
+      />,
+    )
+
+    const review = screen.getByLabelText('Day 1 nutrition review panel')
+    expect(review).toHaveClass('fixed', 'inset-x-0', 'bottom-0', 'z-50', 'rounded-t-2xl')
+    expect(review).toHaveClass('lg:sticky', 'lg:top-3', 'lg:z-auto', 'lg:rounded-lg')
+  })
+
   it('shows partial-day daily targets as reference while still grading meal targets', () => {
     render(
       <DayNutritionReview
