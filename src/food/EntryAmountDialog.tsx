@@ -118,7 +118,6 @@ export default function EntryAmountDialog({
             <div className="mt-1 space-y-1">
               {alsoDays.map((d) => {
                 const disabled = d.omitted || d.dayMealId === null
-                const title = disabled ? `This meal is omitted on ${d.label}` : undefined
                 return (
                   <label
                     key={d.id}
@@ -126,7 +125,6 @@ export default function EntryAmountDialog({
                   >
                     <input
                       type="checkbox"
-                      title={title}
                       disabled={disabled}
                       checked={d.dayMealId !== null && alsoChecked.has(d.dayMealId)}
                       onChange={(e) => setAlsoChecked((prev) => {
@@ -138,6 +136,7 @@ export default function EntryAmountDialog({
                       })}
                     />
                     {d.label}
+                    {disabled ? <span className="text-xs">omitted from this day</span> : null}
                   </label>
                 )
               })}
