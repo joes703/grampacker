@@ -63,6 +63,7 @@ describe('FoodProjectionSection', () => {
     expect(screen.getByText('Mystery food')).toBeInTheDocument()
     expect(screen.getByText('Missing packaging info')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /edit food plan/i })).toHaveAttribute('href', '/lists/list-1/food')
+    expect(screen.getByText('One row per food, totaled across all days, meals, and Extras. Edit quantities in the food plan.')).toBeInTheDocument()
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
 

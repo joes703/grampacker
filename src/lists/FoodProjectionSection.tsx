@@ -75,6 +75,9 @@ export default function FoodProjectionSection({
           <span className={`ml-2 ${FLAT_TABLE_HEADER_COUNT}`}>
             {rowCount} food{rowCount === 1 ? '' : 's'}
           </span>
+          <p className="mt-0.5 text-xs font-normal text-gray-400">
+            One row per food, totaled across all days, meals, and Extras. Edit quantities in the food plan.
+          </p>
         </div>
         {editHref ? (
           <Link to={editHref} className="shrink-0 text-xs font-medium text-blue-600 hover:underline">
