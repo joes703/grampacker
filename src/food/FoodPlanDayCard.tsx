@@ -3,7 +3,7 @@ import { useId, useState } from 'react'
 import { Activity, Check, ChevronDown, ChevronRight, Copy, Info, MoreVertical, Trash2 } from 'lucide-react'
 import type { FoodItem, Meal, MealTarget } from '../lib/types'
 import type { DayView } from './useFoodPlanDocument'
-import { FLAT_TABLE_SURFACE, POPOVER_SURFACE } from '../components/flat-table-styles'
+import { FLAT_TABLE_HEADER, FLAT_TABLE_SURFACE, POPOVER_SURFACE } from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import MealSection from './MealSection'
@@ -61,7 +61,10 @@ export default function FoodPlanDayCard({
       style={outerStyle}
       className={containerClass}
     >
-      <div className="flex items-center justify-between px-3 py-2">
+      <div
+        data-testid={`food-day-header-${dayView.day.id}`}
+        className={`${FLAT_TABLE_HEADER} justify-between gap-1 px-3 ${open ? '' : 'border-b-0'}`}
+      >
         <div className="flex items-center gap-1">
           {dragHandle}
           <h2>

@@ -79,6 +79,11 @@ function renderCard(view: DayView, props: Partial<Parameters<typeof FoodPlanDayC
 }
 
 describe('FoodPlanDayCard', () => {
+  it('renders the day header as a flat gray section strip', () => {
+    renderCard(dayViewWithMeal())
+    expect(screen.getByTestId('food-day-header-day1')).toHaveClass('bg-gray-50')
+  })
+
   it('explains that automatic days are derived from the scheduled meals', () => {
     renderCard(dayView('partial', null))
 

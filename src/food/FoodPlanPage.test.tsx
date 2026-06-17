@@ -342,8 +342,20 @@ describe('FoodPlanPage rendering', () => {
     renderPage()
 
     const documentShell = await screen.findByTestId('food-plan-document')
-    expect(within(documentShell).getByTestId('food-day-day1')).toBeInTheDocument()
-    expect(within(documentShell).getByTestId('food-extras')).toBeInTheDocument()
+    const day = within(documentShell).getByTestId('food-day-day1')
+    expect(day).toBeInTheDocument()
+    // Summary anchor contract: day and extras roots keep their scroll-target ids.
+    expect(day).toHaveAttribute('id', 'food-day-day1')
+    const extras = within(documentShell).getByTestId('food-extras')
+    expect(extras).toHaveAttribute('id', 'food-extras')
+    // Extras renders exactly once in the document shell.
+    expect(within(documentShell).getAllByTestId('food-extras')).toHaveLength(1)
+    // The day reorder drag handle is still present after the flat-section restyle.
+    expect(within(day).getByRole('button', { name: 'Drag to reorder day' })).toBeInTheDocument()
+    // Day actions remain reachable via the day kebab.
+    fireEvent.click(within(day).getByRole('button', { name: 'Day options' }))
+    expect(screen.getByRole('menuitem', { name: 'Duplicate day' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Delete day' })).toBeInTheDocument()
   })
 
   it('opens and closes the per-day nutrition review panel', async () => {

@@ -2,7 +2,7 @@ import { createPortal } from 'react-dom'
 import { CircleMinus, MoreVertical, Trash2 } from 'lucide-react'
 import type { FoodItem, MealTarget } from '../lib/types'
 import type { CellView } from './useFoodPlanDocument'
-import { FLAT_TABLE_HEADER, POPOVER_SURFACE } from '../components/flat-table-styles'
+import { POPOVER_SURFACE } from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import CellEntryReorder from './CellEntryReorder'
@@ -25,9 +25,12 @@ export default function MealSection({
   onDeleteMeal?: () => void
 }) {
   return (
-    <section className="mt-2">
-      <div className={`${FLAT_TABLE_HEADER} flex items-center justify-between`}>
-        <span>{cell.meal.name}</span>
+    <section>
+      <div
+        data-testid="meal-section-header"
+        className="flex items-center justify-between border-t border-gray-100 px-3 py-1 pl-6"
+      >
+        <span className="text-sm font-medium text-gray-500">{cell.meal.name}</span>
         <span className="flex items-center gap-2">
           {(onOmit || onDeleteMeal) && <MealKebab onOmit={onOmit} onDeleteMeal={onDeleteMeal} />}
         </span>
