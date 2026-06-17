@@ -125,7 +125,7 @@ describe('EntryAmountDialog', () => {
     expect(screen.queryByText('Where the food already exists, compatible quantities merge.')).not.toBeInTheDocument()
   })
 
-  it('shows omitted also-add days as disabled and excludes them from all-days selection', async () => {
+  it('shows omitted also-add days as disabled with inline copy and excludes them from all-days selection', async () => {
     const user = userEvent.setup()
     const onSave = vi.fn()
     render(
@@ -141,12 +141,14 @@ describe('EntryAmountDialog', () => {
       />,
     )
 
-    expect(screen.getByLabelText('Day 2')).toBeDisabled()
-    expect(screen.getByLabelText('Day 2')).toHaveAttribute('title', 'This meal is omitted on Day 2')
+    const omittedCheckbox = screen.getByRole('checkbox', { name: /Day 2/ })
+    expect(omittedCheckbox).toBeDisabled()
+    expect(omittedCheckbox).not.toHaveAttribute('title')
+    expect(screen.getByText('omitted from this day')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'All days' }))
     expect(screen.getByLabelText('Day 1')).toBeChecked()
-    expect(screen.getByLabelText('Day 2')).not.toBeChecked()
+    expect(omittedCheckbox).not.toBeChecked()
     expect(screen.getByLabelText('Day 3')).toBeChecked()
 
     await user.click(screen.getByRole('button', { name: 'Save' }))

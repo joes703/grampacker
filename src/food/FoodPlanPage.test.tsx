@@ -498,10 +498,11 @@ describe('FoodPlanPage add food', () => {
 
     const amountDialog = await screen.findByRole('dialog', { name: 'Oatmeal' })
     const day2 = within(amountDialog).getByLabelText('Day 2')
-    const day3 = within(amountDialog).getByLabelText('Day 3')
+    const day3 = within(amountDialog).getByRole('checkbox', { name: /Day 3/ })
     expect(day2).toBeEnabled()
     expect(day3).toBeDisabled()
-    expect(day3).toHaveAttribute('title', 'This meal is omitted on Day 3')
+    expect(day3).not.toHaveAttribute('title')
+    expect(within(amountDialog).getByText('omitted from this day')).toBeInTheDocument()
 
     fireEvent.click(within(amountDialog).getByRole('button', { name: 'All days' }))
     expect(day2).toBeChecked()
