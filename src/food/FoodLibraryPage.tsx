@@ -20,14 +20,41 @@ import {
 import { showToast } from '../lib/toast'
 import { foodItemsToCsv, downloadCsv, parseFoodCsv, type FoodImportRow } from '../lib/csv'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
-import { FLAT_TABLE_SURFACE, FLAT_TABLE_HEADER } from '../components/flat-table-styles'
+import {
+  FLAT_TABLE_BODY_TEXT,
+  FLAT_TABLE_BODY_TEXT_MUTED,
+  FLAT_TABLE_EYEBROW,
+  FLAT_TABLE_HEADER,
+  FLAT_TABLE_NUMERIC_TEXT,
+  FLAT_TABLE_SURFACE,
+  TABLE_DIVIDER_LINE,
+} from '../components/flat-table-styles'
 import PrimaryButton from '../components/PrimaryButton'
 import Modal from '../components/Modal'
-import FoodItemRow from './FoodItemRow'
+import ToggleSwitch from '../components/ToggleSwitch'
+import UnitSegmentedControl from '../components/UnitSegmentedControl'
+import { formatItemWeight } from '../lib/weight'
+import { useWeightUnit } from '../lib/use-weight-unit'
+import { formatCalorieDensity, formatRatio } from './nutrition-format'
+import { FoodRowKebab } from './FoodItemRow'
 import FoodItemDialog from './FoodItemDialog'
 import FoodImportPreviewDialog from './FoodImportPreviewDialog'
 import FoodCsvFormatDialog from './FoodCsvFormatDialog'
 import type { FoodItem } from '../lib/types'
+
+type SortKey =
+  | 'name'
+  | 'calories'
+  | 'density'
+  | 'protein'
+  | 'carbs'
+  | 'fat'
+  | 'fiber'
+  | 'sodium'
+  | 'potassium'
+  | 'carbProtein'
+
+type SortState = { key: SortKey; dir: 'asc' | 'desc' }
 
 type DialogState =
   | { type: 'create' }
@@ -37,6 +64,82 @@ type DialogState =
   | { type: 'import-error'; message: string }
   | { type: 'csv-format' }
 
+const SORT_LABEL: Record<SortKey, string> = {
+  name: 'Food',
+  calories: 'Calories',
+  density: 'Density',
+  protein: 'Protein',
+  carbs: 'Carbs',
+  fat: 'Fat',
+  fiber: 'Fiber',
+  sodium: 'Sodium',
+  potassium: 'Potassium',
+  carbProtein: 'C:P',
+}
+
+function calorieDensity(food: FoodItem): number | null {
+  return food.serving_weight_grams > 0
+    ? food.calories_per_serving / food.serving_weight_grams
+    : null
+}
+
+function carbProtein(food: FoodItem): number | null {
+  if (food.carbs_grams == null || food.protein_grams == null || food.protein_grams <= 0) {
+    return null
+  }
+  return food.carbs_grams / food.protein_grams
+}
+
+function sortValue(food: FoodItem, key: SortKey): string | number | null {
+  switch (key) {
+    case 'name':
+      return `${food.name} ${food.brand ?? ''}`.toLowerCase()
+    case 'calories':
+      return food.calories_per_serving
+    case 'density':
+      return calorieDensity(food)
+    case 'protein':
+      return food.protein_grams
+    case 'carbs':
+      return food.carbs_grams
+    case 'fat':
+      return food.fat_grams
+    case 'fiber':
+      return food.fiber_grams
+    case 'sodium':
+      return food.sodium_mg
+    case 'potassium':
+      return food.potassium_mg
+    case 'carbProtein':
+      return carbProtein(food)
+  }
+}
+
+function compareFoods(a: FoodItem, b: FoodItem, sort: SortState): number {
+  const av = sortValue(a, sort.key)
+  const bv = sortValue(b, sort.key)
+  if (av == null && bv == null) return a.name.localeCompare(b.name)
+  if (av == null) return 1
+  if (bv == null) return -1
+  const cmp = typeof av === 'string' && typeof bv === 'string'
+    ? av.localeCompare(bv)
+    : Number(av) - Number(bv)
+  return sort.dir === 'asc' ? cmp : -cmp
+}
+
+function servingLabel(food: FoodItem, unit: 'g' | 'oz'): string {
+  const weight = formatItemWeight(food.serving_weight_grams, unit)
+  return food.serving_description ? `${food.serving_description} (${weight})` : weight
+}
+
+function formatGram(value: number | null): string {
+  return value == null ? '-' : `${value.toFixed(1)} g`
+}
+
+function formatMg(value: number | null): string {
+  return value == null ? '-' : `${Math.round(value)} mg`
+}
+
 export default function FoodLibraryPage() {
   useDocumentTitle('Food')
   const auth = useRequireSession()
@@ -45,6 +148,9 @@ export default function FoodLibraryPage() {
 
   const [search, setSearch] = useState('')
   const [dialog, setDialog] = useState<DialogState | null>(null)
+  const [showMacros, setShowMacros] = useState(false)
+  const [sort, setSort] = useState<SortState>({ key: 'name', dir: 'asc' })
+  const { weightUnit } = useWeightUnit()
 
   const { data: allItems = [], isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.foodItems(),
@@ -52,12 +158,21 @@ export default function FoodLibraryPage() {
   })
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return allItems
-    const q = search.toLowerCase()
-    return allItems.filter(
-      (f) => f.name.toLowerCase().includes(q) || (f.brand ?? '').toLowerCase().includes(q),
-    )
-  }, [allItems, search])
+    const searched = !search.trim() ? allItems : allItems.filter((f) => {
+      const q = search.toLowerCase()
+      return f.name.toLowerCase().includes(q) || (f.brand ?? '').toLowerCase().includes(q)
+    })
+    return [...searched].sort((a, b) => compareFoods(a, b, sort))
+  }, [allItems, search, sort])
+
+  function toggleSort(key: SortKey) {
+    setSort((curr) => {
+      if (curr.key === key) return { key, dir: curr.dir === 'asc' ? 'desc' : 'asc' }
+      return { key, dir: key === 'name' ? 'asc' : 'desc' }
+    })
+  }
+
+  const sortedBy = (key: SortKey) => sort.key === key ? sort.dir : null
 
   const addItem = useMutation({
     mutationFn: (patch: FoodItemInput) =>
@@ -239,19 +354,94 @@ export default function FoodLibraryPage() {
         <p className="py-12 text-center text-sm text-gray-500">No foods match "{search}".</p>
       ) : (
         <div className={FLAT_TABLE_SURFACE}>
-          <div className={`${FLAT_TABLE_HEADER} px-3`}>
+          <div className={`${FLAT_TABLE_HEADER} flex-wrap justify-between gap-3 px-3 py-2 lg:py-1`}>
             <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
               {filtered.length} food{filtered.length === 1 ? '' : 's'}
             </span>
+            <div className="flex items-center gap-4">
+              <div className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                <ToggleSwitch
+                  checked={showMacros}
+                  onChange={() => setShowMacros((v) => !v)}
+                  ariaLabel="Show macros"
+                />
+                <span>Show macros</span>
+              </div>
+              <UnitSegmentedControl idPrefix="food-library-units" />
+            </div>
           </div>
-          {filtered.map((food) => (
-            <FoodItemRow
-              key={food.id}
-              food={food}
-              onEdit={(f) => setDialog({ type: 'edit', item: f })}
-              onDelete={(f) => setDialog({ type: 'delete', item: f })}
-            />
-          ))}
+          <div className="overflow-x-auto">
+            <table aria-label="Food library" className="min-w-full border-collapse">
+              <thead className="bg-gray-50">
+                <tr className={`border-b border-gray-100 ${FLAT_TABLE_EYEBROW}`}>
+                  <SortHeader label="Food" sortKey="name" current={sortedBy('name')} onSort={toggleSort} align="left" />
+                  <th scope="col" className="px-3 py-2 text-left font-semibold">Serving</th>
+                  <SortHeader label="Calories" sortKey="calories" current={sortedBy('calories')} onSort={toggleSort} />
+                  <SortHeader label="Density" sortKey="density" current={sortedBy('density')} onSort={toggleSort} />
+                  {showMacros ? (
+                    <>
+                      <SortHeader label="Protein" sortKey="protein" current={sortedBy('protein')} onSort={toggleSort} />
+                      <SortHeader label="Carbs" sortKey="carbs" current={sortedBy('carbs')} onSort={toggleSort} />
+                      <SortHeader label="Fat" sortKey="fat" current={sortedBy('fat')} onSort={toggleSort} />
+                      <SortHeader label="Fiber" sortKey="fiber" current={sortedBy('fiber')} onSort={toggleSort} />
+                      <SortHeader label="Sodium" sortKey="sodium" current={sortedBy('sodium')} onSort={toggleSort} />
+                      <SortHeader label="Potassium" sortKey="potassium" current={sortedBy('potassium')} onSort={toggleSort} />
+                      <SortHeader label="C:P" sortKey="carbProtein" current={sortedBy('carbProtein')} onSort={toggleSort} />
+                    </>
+                  ) : null}
+                  <th scope="col" className="w-10 px-2 py-2">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className={`divide-y ${TABLE_DIVIDER_LINE}`}>
+                {filtered.map((food) => (
+                  <tr
+                    key={food.id}
+                    data-testid="food-library-row"
+                    className={`${FLAT_TABLE_BODY_TEXT} bg-white hover:bg-gray-50`}
+                  >
+                    <td className="min-w-48 px-3 py-2">
+                      <div className="font-medium text-gray-900">{food.name}</div>
+                      {food.brand ? (
+                        <div className={`${FLAT_TABLE_BODY_TEXT_MUTED} truncate`}>{food.brand}</div>
+                      ) : null}
+                    </td>
+                    <td className="min-w-36 px-3 py-2 text-gray-600">
+                      {servingLabel(food, weightUnit)}
+                    </td>
+                    <td className={`${FLAT_TABLE_NUMERIC_TEXT} px-3 py-2 text-right text-gray-900`}>
+                      {food.calories_per_serving} kcal
+                    </td>
+                    <td className={`${FLAT_TABLE_NUMERIC_TEXT} min-w-28 px-3 py-2 text-right text-gray-900`}>
+                      {formatCalorieDensity(calorieDensity(food), weightUnit)}
+                    </td>
+                    {showMacros ? (
+                      <>
+                        <MacroCell>{formatGram(food.protein_grams)}</MacroCell>
+                        <MacroCell>{formatGram(food.carbs_grams)}</MacroCell>
+                        <MacroCell>{formatGram(food.fat_grams)}</MacroCell>
+                        <MacroCell>{formatGram(food.fiber_grams)}</MacroCell>
+                        <MacroCell>{formatMg(food.sodium_mg)}</MacroCell>
+                        <MacroCell>{formatMg(food.potassium_mg)}</MacroCell>
+                        <MacroCell>{formatRatio(carbProtein(food))}</MacroCell>
+                      </>
+                    ) : null}
+                    <td className="px-2 py-1 text-right">
+                      <FoodRowKebab
+                        name={food.name}
+                        onEdit={() => setDialog({ type: 'edit', item: food })}
+                        onDelete={() => setDialog({ type: 'delete', item: food })}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="border-t border-gray-100 px-3 py-2 text-xs text-gray-500">
+            Density uses each food's calories and serving weight. Unknown nutrients show as -.
+          </p>
         </div>
       )}
 
@@ -342,5 +532,48 @@ export default function FoodLibraryPage() {
         </Modal>
       )}
     </div>
+  )
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  current,
+  onSort,
+  align = 'right',
+}: {
+  label: string
+  sortKey: SortKey
+  current: 'asc' | 'desc' | null
+  onSort: (key: SortKey) => void
+  align?: 'left' | 'right'
+}) {
+  const marker = current === 'asc' ? '^' : current === 'desc' ? 'v' : ''
+  return (
+    <th
+      scope="col"
+      aria-sort={current === 'asc' ? 'ascending' : current === 'desc' ? 'descending' : 'none'}
+      className={`px-3 py-2 font-semibold ${align === 'left' ? 'text-left' : 'text-right'}`}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        aria-label={`Sort by ${SORT_LABEL[sortKey]}`}
+        className={`inline-flex items-center gap-1 rounded text-gray-500 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+          align === 'right' ? 'justify-end' : ''
+        }`}
+      >
+        <span>{label}</span>
+        <span aria-hidden="true" className="inline-block w-2 text-gray-400">{marker}</span>
+      </button>
+    </th>
+  )
+}
+
+function MacroCell({ children }: { children: string }) {
+  return (
+    <td className={`${FLAT_TABLE_NUMERIC_TEXT} px-3 py-2 text-right text-gray-900`}>
+      {children}
+    </td>
   )
 }
