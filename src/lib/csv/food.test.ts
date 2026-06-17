@@ -49,6 +49,28 @@ describe('FOOD_SAMPLE_CSV', () => {
     expect(rows.every((row) => row.errors.length === 0 && row.item !== null)).toBe(true)
     expect(rows.map((row) => row.item!.name)).toContain('Instant Oatmeal')
     expect(rows.map((row) => row.item!.name)).toContain('Peanut Butter')
+
+    const oatmeal = rows.find((row) => row.item?.name === 'Instant Oatmeal')?.item
+    expect(oatmeal).toMatchObject({
+      brand: 'Example Foods',
+      serving_description: '1 packet',
+      serving_weight_grams: 43,
+      calories_per_serving: 160,
+      servings_per_package: 10,
+      carbs_grams: 33,
+      protein_grams: 4,
+      sodium_mg: 180,
+      notes: 'Breakfast base',
+    })
+
+    const peanutButter = rows.find((row) => row.item?.name === 'Peanut Butter')?.item
+    expect(peanutButter).toMatchObject({
+      serving_weight_grams: 32,
+      calories_per_serving: 190,
+      fat_grams: 16,
+      protein_grams: 8,
+      potassium_mg: 190,
+    })
   })
 })
 

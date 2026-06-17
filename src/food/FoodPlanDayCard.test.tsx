@@ -69,7 +69,9 @@ describe('FoodPlanDayCard', () => {
   it('explains automatic partial days', () => {
     renderCard(dayView('partial', null))
 
-    const label = screen.getByTitle('Partial day - excluded from the full-day average and target check.')
+    const label = screen.getByRole('button', {
+      name: 'partial - Partial day - excluded from the full-day average and target check.',
+    })
     expect(label).toHaveTextContent('partial')
     expect(screen.queryByText('(manual)')).not.toBeInTheDocument()
   })
@@ -77,7 +79,9 @@ describe('FoodPlanDayCard', () => {
   it('shows when a partial day was set manually', () => {
     renderCard(dayView('partial', 'partial'))
 
-    const label = screen.getByTitle('Partial day - excluded from the full-day average and target check. Set manually.')
+    const label = screen.getByRole('button', {
+      name: 'partial (manual) - Partial day - excluded from the full-day average and target check. Set manually.',
+    })
     expect(label).toHaveTextContent('partial')
     expect(screen.getByText('(manual)')).toBeInTheDocument()
   })
@@ -85,7 +89,9 @@ describe('FoodPlanDayCard', () => {
   it('shows when a full day was set manually', () => {
     renderCard(dayView('full', 'full'))
 
-    const label = screen.getByTitle('Full day - included in the full-day average and target check. Set manually.')
+    const label = screen.getByRole('button', {
+      name: 'full (manual) - Full day - included in the full-day average and target check. Set manually.',
+    })
     expect(label).toHaveTextContent('full')
     expect(screen.getByText('(manual)')).toBeInTheDocument()
   })
@@ -108,5 +114,17 @@ describe('FoodPlanDayCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Expand Day 1' }))
 
     expect(screen.getByText('Breakfast meal body')).toBeInTheDocument()
+  })
+
+  it('opens a keyboard and touch accessible explanation for day type', () => {
+    renderCard(dayView('partial', 'partial'))
+
+    fireEvent.click(screen.getByRole('button', {
+      name: 'partial (manual) - Partial day - excluded from the full-day average and target check. Set manually.',
+    }))
+
+    expect(screen.getByRole('note')).toHaveTextContent(
+      'Partial day - excluded from the full-day average and target check. Set manually.',
+    )
   })
 })
