@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { useId, useState } from 'react'
-import { Check, ChevronDown, ChevronRight, Copy, Info, MoreVertical, Trash2 } from 'lucide-react'
+import { Activity, Check, ChevronDown, ChevronRight, Copy, Info, MoreVertical, Trash2 } from 'lucide-react'
 import type { FoodItem, Meal, MealTarget } from '../lib/types'
 import type { DayView } from './useFoodPlanDocument'
 import { FLAT_TABLE_SURFACE, POPOVER_SURFACE } from '../components/flat-table-styles'
@@ -18,7 +18,7 @@ function dayTypeTitle(dayType: 'full' | 'partial', override: 'full' | 'partial' 
 
 export default function FoodPlanDayCard({
   dayView, dayIndex, listId, userId, foodById, mealTargets, onAddFoodToCell, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry,
-  onSetDayType, onDeleteDay, onDuplicate, allMeals, onOmitMeal, onDeleteMeal, onRestoreMeal,
+  onSetDayType, onDeleteDay, onDuplicate, onReviewNutrition, allMeals, onOmitMeal, onDeleteMeal, onRestoreMeal,
   dragHandle, outerRef, outerStyle,
 }: {
   dayView: DayView
@@ -35,6 +35,7 @@ export default function FoodPlanDayCard({
   onSetDayType?: (override: 'full' | 'partial' | null) => void
   onDeleteDay?: () => void
   onDuplicate?: () => void
+  onReviewNutrition?: () => void
   allMeals?: Meal[]
   onOmitMeal?: (dayMealId: string) => void
   onDeleteMeal?: (mealId: string) => void
@@ -76,8 +77,19 @@ export default function FoodPlanDayCard({
             dayType={dayView.dayType}
             override={dayView.day.day_type_override}
           />
-          {(onSetDayType || onDeleteDay || onDuplicate) && (
-            <DayKebab currentOverride={dayView.day.day_type_override} onSetDayType={onSetDayType} onDeleteDay={onDeleteDay} onDuplicate={onDuplicate} />
+          {onReviewNutrition ? (
+            <button
+              type="button"
+              onClick={onReviewNutrition}
+              aria-label={`Review ${title} nutrition`}
+              className="inline-flex h-7 items-center gap-1 rounded border border-gray-300 bg-white px-2 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+            >
+              <Activity size={13} aria-hidden="true" />
+              <span className="hidden sm:inline">Review</span>
+            </button>
+          ) : null}
+          {(onSetDayType || onDeleteDay || onDuplicate || onReviewNutrition) && (
+            <DayKebab currentOverride={dayView.day.day_type_override} onSetDayType={onSetDayType} onDeleteDay={onDeleteDay} onDuplicate={onDuplicate} onReviewNutrition={onReviewNutrition} />
           )}
         </div>
       </div>
@@ -168,11 +180,12 @@ function DayTypeInfo({
 // three-dot trigger plus a portal-rendered menu, with dismissal handled by
 // usePortalPopover (no hand-rolled listeners). Lets the user override the
 // day type (Auto/Full/Partial) or delete the day.
-function DayKebab({ currentOverride, onSetDayType, onDeleteDay, onDuplicate }: {
+function DayKebab({ currentOverride, onSetDayType, onDeleteDay, onDuplicate, onReviewNutrition }: {
   currentOverride: 'full' | 'partial' | null
   onSetDayType?: (override: 'full' | 'partial' | null) => void
   onDeleteDay?: () => void
   onDuplicate?: () => void
+  onReviewNutrition?: () => void
 }) {
   const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
     useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
@@ -196,6 +209,14 @@ function DayKebab({ currentOverride, onSetDayType, onDeleteDay, onDuplicate }: {
           className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
           style={{ top: menuPos.top, left: menuPos.left }}
         >
+          {onReviewNutrition ? (
+            <>
+              <RowMenuItem icon={<Activity size={13} />} onClick={() => { close(); onReviewNutrition() }}>
+                Review nutrition
+              </RowMenuItem>
+              <RowMenuSeparator />
+            </>
+          ) : null}
           <RowMenuItem
             icon={currentOverride === null ? <Check size={13} /> : undefined}
             onClick={() => { close(); onSetDayType?.(null) }}

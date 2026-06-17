@@ -53,7 +53,7 @@ function dayViewWithMeal(): DayView {
   }
 }
 
-function renderCard(view: DayView) {
+function renderCard(view: DayView, props: Partial<Parameters<typeof FoodPlanDayCard>[0]> = {}) {
   render(
     <FoodPlanDayCard
       dayView={view}
@@ -61,6 +61,7 @@ function renderCard(view: DayView) {
       listId="list1"
       userId="user1"
       foodById={new Map()}
+      {...props}
     />,
   )
 }
@@ -126,5 +127,14 @@ describe('FoodPlanDayCard', () => {
     expect(screen.getByRole('note')).toHaveTextContent(
       'Partial day - excluded from the full-day average and target check. Set manually.',
     )
+  })
+
+  it('calls onReviewNutrition from the day header action', () => {
+    const onReviewNutrition = vi.fn()
+    renderCard(dayViewWithMeal(), { onReviewNutrition })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Review Day 1 nutrition' }))
+
+    expect(onReviewNutrition).toHaveBeenCalledTimes(1)
   })
 })

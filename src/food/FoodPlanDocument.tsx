@@ -33,6 +33,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import ScheduleGridDialog, { type ScheduleToggle } from './ScheduleGridDialog'
 import FoodPlanSummary from './FoodPlanSummary'
 import TargetsDialog from './TargetsDialog'
+import DayNutritionReview from './DayNutritionReview'
 
 type AddTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
 
@@ -100,6 +101,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const [moveCopy, setMoveCopy] = useState<{ mode: 'move' | 'copy'; entry: FoodPlanEntry } | null>(null)
   const [showGrid, setShowGrid] = useState(false)
   const [showTargets, setShowTargets] = useState(false)
+  const [reviewDayId, setReviewDayId] = useState<string | null>(null)
 
   function openMoveCopy(mode: 'move' | 'copy', entryId: string) {
     const entry = currentDoc.entries.find((e) => e.id === entryId)
@@ -292,6 +294,8 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const addTargetExisting = addTarget && pickedFood ? existingEntry(pickedFood, addTarget) : undefined
   const editingEntry = currentDoc.entries.find((e) => e.id === editEntryId) ?? null
   const editingFood = editingEntry ? foodById.get(editingEntry.food_item_id) : undefined
+  const reviewDayIndex = reviewDayId === null ? -1 : view.days.findIndex((day) => day.day.id === reviewDayId)
+  const reviewDayView = reviewDayIndex >= 0 ? view.days[reviewDayIndex] : null
 
   if (foodsQuery.isLoading) {
     return <p className="mt-6 text-sm text-gray-500">Loading your food library...</p>
@@ -325,68 +329,83 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
         </SortableContext>
       </DndContext>
       <FoodPlanSummary view={view} foodById={foodById} dailyTargets={currentDoc.dailyTargets} onEditTargets={() => setShowTargets(true)} />
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
-        <SortableContext items={view.days.map((d) => d.day.id)} strategy={verticalListSortingStrategy}>
-          <div className="mt-4 space-y-4">
-            {view.days.map((dayView, i) => (
-              <SortableDayCard
-                key={dayView.day.id}
-                dayView={dayView}
-                dayIndex={i}
-                listId={listId}
-                userId={userId}
-                foodById={foodById}
-                mealTargets={currentDoc.mealTargets}
-                onAddFoodToCell={(dayMealId) => setAddTarget({ kind: 'cell', dayMealId })}
-                onEditEntry={(entryId) => setEditEntryId(entryId)}
-                onMoveEntry={(entryId) => openMoveCopy('move', entryId)}
-                onCopyEntry={(entryId) => openMoveCopy('copy', entryId)}
-                onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
-                onSetDayType={(override) => dayTypeMut.mutate({ dayId: dayView.day.id, override })}
-                onDeleteDay={() => setConfirmDeleteDayId(dayView.day.id)}
-                onDuplicate={() => duplicateDayMut.mutate(dayView.day.id)}
-                allMeals={view.meals}
-                onOmitMeal={(dayMealId) => omitMealMut.mutate(dayMealId)}
-                onDeleteMeal={(mealId) => setConfirmDeleteMealId(mealId)}
-                onRestoreMeal={(dayId, mealId) => restoreMealMut.mutate({ dayId, mealId })}
-              />
-            ))}
+      <div className={reviewDayView ? 'mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]' : 'mt-4'}>
+        <div>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDayDragEnd}>
+            <SortableContext items={view.days.map((d) => d.day.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-4">
+                {view.days.map((dayView, i) => (
+                  <SortableDayCard
+                    key={dayView.day.id}
+                    dayView={dayView}
+                    dayIndex={i}
+                    listId={listId}
+                    userId={userId}
+                    foodById={foodById}
+                    mealTargets={currentDoc.mealTargets}
+                    onAddFoodToCell={(dayMealId) => setAddTarget({ kind: 'cell', dayMealId })}
+                    onEditEntry={(entryId) => setEditEntryId(entryId)}
+                    onMoveEntry={(entryId) => openMoveCopy('move', entryId)}
+                    onCopyEntry={(entryId) => openMoveCopy('copy', entryId)}
+                    onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
+                    onSetDayType={(override) => dayTypeMut.mutate({ dayId: dayView.day.id, override })}
+                    onDeleteDay={() => setConfirmDeleteDayId(dayView.day.id)}
+                    onDuplicate={() => duplicateDayMut.mutate(dayView.day.id)}
+                    onReviewNutrition={() => setReviewDayId(dayView.day.id)}
+                    allMeals={view.meals}
+                    onOmitMeal={(dayMealId) => omitMealMut.mutate(dayMealId)}
+                    onDeleteMeal={(mealId) => setConfirmDeleteMealId(mealId)}
+                    onRestoreMeal={(dayId, mealId) => restoreMealMut.mutate({ dayId, mealId })}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => addDayMut.mutate()}
+              disabled={addDayMut.isPending}
+              className="rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            >
+              + Add day
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAddMeal(true)}
+              className="rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            >
+              + Add meal
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowGrid(true)}
+              className="rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Edit schedule
+            </button>
           </div>
-        </SortableContext>
-      </DndContext>
-      <div className="mt-3 flex gap-2">
-        <button
-          type="button"
-          onClick={() => addDayMut.mutate()}
-          disabled={addDayMut.isPending}
-          className="rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
-        >
-          + Add day
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowAddMeal(true)}
-          className="rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
-        >
-          + Add meal
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowGrid(true)}
-          className="rounded-lg border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
-        >
-          Edit schedule
-        </button>
+          <FoodPlanExtras
+            extras={view.extras}
+            foodById={foodById}
+            onAddFood={() => setAddTarget({ kind: 'extra' })}
+            onEditEntry={(entryId) => setEditEntryId(entryId)}
+            onMoveEntry={(entryId) => openMoveCopy('move', entryId)}
+            onCopyEntry={(entryId) => openMoveCopy('copy', entryId)}
+            onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
+          />
+        </div>
+        {reviewDayView ? (
+          <DayNutritionReview
+            dayView={reviewDayView}
+            dayIndex={reviewDayIndex}
+            foodById={foodById}
+            dailyTargets={currentDoc.dailyTargets}
+            mealTargets={currentDoc.mealTargets}
+            onClose={() => setReviewDayId(null)}
+          />
+        ) : null}
       </div>
-      <FoodPlanExtras
-        extras={view.extras}
-        foodById={foodById}
-        onAddFood={() => setAddTarget({ kind: 'extra' })}
-        onEditEntry={(entryId) => setEditEntryId(entryId)}
-        onMoveEntry={(entryId) => openMoveCopy('move', entryId)}
-        onCopyEntry={(entryId) => openMoveCopy('copy', entryId)}
-        onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
-      />
 
       {addTarget && !pickedFood ? (
         <FoodPicker
