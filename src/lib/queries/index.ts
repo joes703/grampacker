@@ -55,6 +55,7 @@ export {
 } from './gear'
 export {
   fetchFoodItems,
+  fetchFoodItemsLite,
   createFoodItem,
   updateFoodItem,
   deleteFoodItem,
@@ -63,7 +64,7 @@ export {
   assertFoodImportWithinCap,
   importFoodItems,
 } from './food'
-export type { FoodItemInput } from './food'
+export type { FoodItemInput, FoodItemLite } from './food'
 export {
   fetchLists,
   fetchSharedList,
