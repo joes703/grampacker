@@ -185,7 +185,7 @@ export default function FoodItemDialog({
 
           {numberField('Servings per package', servingsPerPackage, setServingsPerPackage)}
 
-          <p className="pt-1 text-xs font-medium uppercase tracking-wide text-gray-400">
+          <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
             Nutrition (optional - leave blank if unknown)
           </p>
           <div className="grid grid-cols-2 gap-3">
