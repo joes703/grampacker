@@ -5,6 +5,7 @@ import type { FoodItem, Meal, MealTarget } from '../lib/types'
 import type { DayView } from './useFoodPlanDocument'
 import { FLAT_TABLE_HEADER, FLAT_TABLE_SURFACE, POPOVER_SURFACE } from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
+import RowIconButton from '../components/RowIconButton'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import MealSection from './MealSection'
 import DayTotalsStrip from './DayTotalsStrip'
@@ -206,15 +207,12 @@ function DayKebab({ currentOverride, onSetDayType, onDeleteDay, onDuplicate, onR
 
   return (
     <>
-      <button
+      <RowIconButton
         ref={triggerRef}
-        type="button"
         onClick={(e) => { e.stopPropagation(); if (menuOpen) close(); else openMenu() }}
-        aria-label="Day options"
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-      >
-        <MoreVertical size={14} />
-      </button>
+        ariaLabel="Day options"
+        icon={<MoreVertical size={14} />}
+      />
 
       {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div

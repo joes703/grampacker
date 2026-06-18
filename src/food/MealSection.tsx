@@ -4,6 +4,7 @@ import type { FoodItem, MealTarget } from '../lib/types'
 import type { CellView } from './useFoodPlanDocument'
 import { POPOVER_SURFACE } from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
+import RowIconButton from '../components/RowIconButton'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import CellEntryReorder from './CellEntryReorder'
 import MealTargetsBar from './MealTargetsBar'
@@ -68,15 +69,12 @@ function MealKebab({ onOmit, onDeleteMeal }: {
 
   return (
     <>
-      <button
+      <RowIconButton
         ref={triggerRef}
-        type="button"
         onClick={(e) => { e.stopPropagation(); if (menuOpen) close(); else openMenu() }}
-        aria-label="Meal options"
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-      >
-        <MoreVertical size={14} />
-      </button>
+        ariaLabel="Meal options"
+        icon={<MoreVertical size={14} />}
+      />
 
       {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
