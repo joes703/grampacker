@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 vi.mock('../lib/queries', () => ({
   queryKeys: {
     foodItems: () => ['food-items'] as const,
+    foodItemsLite: () => ['food-items-lite'] as const,
     foodPlansAll: () => ['food-plan'] as const,
     foodPackSignaturesAll: () => ['food-pack-signatures'] as const,
     foodPackStateAll: () => ['food-pack-state'] as const,
@@ -18,16 +19,24 @@ vi.mock('../lib/queries', () => ({
   deleteFoodItem: vi.fn(),
   nextFoodItemSortOrder: () => 0,
   assertFoodItemWithinCap: () => {},
-  makeOptimisticInsert: () => ({}),
-  makeOptimisticUpdate: () => ({}),
-  makeOptimisticDelete: () => ({}),
+  // Spies so a test can assert which caches each mutation fans out to. The
+  // empty config is enough: the page never exercises the real optimistic
+  // lifecycle here (the helper's own tests cover that).
+  makeOptimisticInsert: vi.fn(() => ({})),
+  makeOptimisticUpdate: vi.fn(() => ({})),
+  makeOptimisticDelete: vi.fn(() => ({})),
 }))
 
 vi.mock('../auth/use-require-session', () => ({
   useRequireSession: () => ({ userId: 'u1' }),
 }))
 
-import { fetchFoodItems } from '../lib/queries'
+import {
+  fetchFoodItems,
+  makeOptimisticInsert,
+  makeOptimisticUpdate,
+  makeOptimisticDelete,
+} from '../lib/queries'
 import { FOOD_CSV_HEADER } from '../lib/csv'
 import FoodLibraryPage from './FoodLibraryPage'
 import type { FoodItem } from '../lib/types'
@@ -136,6 +145,25 @@ describe('FoodLibraryPage CSV format affordance', () => {
     // The dialog shows the canonical header and a Copy header button.
     expect(screen.getByText(FOOD_CSV_HEADER)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /copy header/i })).toBeInTheDocument()
+  })
+})
+
+describe('FoodLibraryPage cache fan-out', () => {
+  it('configures add/edit/delete mutations to invalidate the lite projection cache', () => {
+    vi.mocked(fetchFoodItems).mockResolvedValueOnce([])
+    renderPage()
+
+    // The three optimistic mutation configs are built during render. Assert each
+    // one lists ['food-items-lite'] in its invalidateKeys so a library write keeps
+    // the /lists/:id packing projection coherent. (The full ['food-items'] cache
+    // is the mutation's primary key, invalidated by the helper regardless.)
+    const hasLiteKey = (opts: unknown) => {
+      const keys = (opts as { invalidateKeys?: unknown[] } | undefined)?.invalidateKeys ?? []
+      return keys.some((k) => Array.isArray(k) && k[0] === 'food-items-lite')
+    }
+    expect(hasLiteKey(vi.mocked(makeOptimisticInsert).mock.calls[0]?.[0])).toBe(true)
+    expect(hasLiteKey(vi.mocked(makeOptimisticUpdate).mock.calls[0]?.[0])).toBe(true)
+    expect(hasLiteKey(vi.mocked(makeOptimisticDelete).mock.calls[0]?.[0])).toBe(true)
   })
 })
 

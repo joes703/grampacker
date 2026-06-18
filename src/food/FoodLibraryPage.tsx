@@ -209,6 +209,9 @@ export default function FoodLibraryPage() {
         ...patch,
       }),
       merge: (curr, next) => [...curr, next].sort((a, b) => a.name.localeCompare(b.name)),
+      // Keep the lite projection cache (used by the /lists/:id packing
+      // projection) coherent with the full library. See queryKeys.foodItemsLite.
+      invalidateKeys: [queryKeys.foodItemsLite()],
     }),
   })
 
@@ -220,7 +223,7 @@ export default function FoodLibraryPage() {
       queryKey: queryKeys.foodItems(),
       id: ({ id }) => id,
       apply: (food, { patch }) => ({ ...food, ...patch }),
-      invalidateKeys: [queryKeys.foodPackSignaturesAll()],
+      invalidateKeys: [queryKeys.foodPackSignaturesAll(), queryKeys.foodItemsLite()],
     }),
   })
 
@@ -230,7 +233,7 @@ export default function FoodLibraryPage() {
       qc,
       queryKey: queryKeys.foodItems(),
       id: (id) => id,
-      invalidateKeys: [queryKeys.foodPlansAll(), queryKeys.foodPackSignaturesAll(), queryKeys.foodPackStateAll()],
+      invalidateKeys: [queryKeys.foodPlansAll(), queryKeys.foodPackSignaturesAll(), queryKeys.foodPackStateAll(), queryKeys.foodItemsLite()],
     }),
   })
 
@@ -247,6 +250,7 @@ export default function FoodLibraryPage() {
     mutationFn: (items: FoodItemInput[]) => importFoodItems(userId, items, allItems),
     onSuccess: ({ newCount }) => {
       qc.invalidateQueries({ queryKey: queryKeys.foodItems() })
+      qc.invalidateQueries({ queryKey: queryKeys.foodItemsLite() })
       setDialog(null)
       showToast(`Imported ${newCount} food${newCount === 1 ? '' : 's'}`, { type: 'success' })
     },
