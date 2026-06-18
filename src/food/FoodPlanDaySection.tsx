@@ -134,7 +134,7 @@ export default function FoodPlanDaySection({
                     key={m.id}
                     type="button"
                     onClick={() => onRestoreMeal(dayView.day.id, m.id)}
-                    className="px-3 py-2 text-sm font-medium text-emerald-700 hover:underline"
+                    className="px-3 py-2 text-sm font-medium text-blue-600 hover:underline"
                   >
                     + Restore {m.name}
                   </button>

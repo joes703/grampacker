@@ -61,7 +61,7 @@ function SummaryRow({ label, group, cols, weightUnit, nameForId, href }: {
   return (
     <tr aria-label={label} className="border-t border-gray-200 font-medium">
       <th scope="row" className="px-2 py-1.5 text-left">
-        {href ? <a href={href} className="text-emerald-700 hover:underline">{label}</a> : label}
+        {href ? <a href={href} className="text-blue-600 hover:underline">{label}</a> : label}
       </th>
       <td className="px-2 py-1.5 text-right"><WeightCell weight={group.weight} weightUnit={weightUnit} nameForId={nameForId} /></td>
       <NutCells totals={group.totals} cols={cols} nameForId={nameForId} />
@@ -128,7 +128,7 @@ export default function FoodPlanSummary({
                 <span className="ml-1 text-gray-400">({perMealCounts.map((p) => `${p.name} x${p.count}`).join(', ')})</span>
               )}
             </span>
-            <button type="button" onClick={() => setShowMore((v) => !v)} className="font-medium text-emerald-700 hover:underline">
+            <button type="button" onClick={() => setShowMore((v) => !v)} className="font-medium text-blue-600 hover:underline">
               {showMore ? 'Fewer metrics' : 'More metrics'}
             </button>
           </div>
@@ -159,7 +159,7 @@ export default function FoodPlanSummary({
                 {s.days.map((d, i) => (
                   <tr key={d.dayId} aria-label={`Day ${i + 1}`} className="border-t border-gray-100">
                     <th scope="row" className="px-2 py-1.5 text-left font-normal">
-                      <a href={`#food-day-${d.dayId}`} className="text-emerald-700 hover:underline">Day {i + 1}</a>{' '}
+                      <a href={`#food-day-${d.dayId}`} className="text-blue-600 hover:underline">Day {i + 1}</a>{' '}
                       <span className="text-xs uppercase text-gray-400">{d.dayType}</span>
                     </th>
                     <td className="px-2 py-1.5 text-right"><WeightCell weight={d.weight} weightUnit={weightUnit} nameForId={nameForId} /></td>

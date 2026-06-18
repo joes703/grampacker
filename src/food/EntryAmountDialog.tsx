@@ -108,7 +108,7 @@ export default function EntryAmountDialog({
           <fieldset className="rounded-lg border border-gray-200 p-3">
             <legend className="px-1 text-xs font-medium text-gray-600">Also add to</legend>
             <div className="mb-2 flex justify-end gap-2 text-xs">
-              <button type="button" onClick={selectAllAlsoDays} className="font-medium text-emerald-700 hover:underline">
+              <button type="button" onClick={selectAllAlsoDays} className="font-medium text-blue-600 hover:underline">
                 All days
               </button>
               <button type="button" onClick={clearAlsoDays} className="font-medium text-gray-500 hover:underline">
