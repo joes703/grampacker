@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { memo, useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -30,7 +30,9 @@ type CategorySectionProps = {
   weightUnit: WeightUnit
   isBelowLg: boolean
   collapsed: boolean
-  onToggleCollapse: () => void
+  // Receives the collapse key so the page can pass ONE stable toggle identity
+  // to every section (the section binds its own key). Keeps memo real.
+  onToggleCollapse: (key: string) => void
   selectMode: boolean
   selectedIds: Set<string>
   onToggleSelect: (id: string) => void
@@ -97,6 +99,9 @@ function CategorySectionInner(
   // Stable id for the collapsible items region so the chevron button can
   // announce aria-controls.
   const regionId = `gear-cat-region-${category?.id ?? 'uncategorized'}`
+  // Matches the page's collapse-Set key derivation (group.category?.id ??
+  // '__uncategorized__'); the section binds it onto the stable onToggleCollapse.
+  const collapseKey = category?.id ?? '__uncategorized__'
 
   return (
     // Each category renders as its own flat-table card (FLAT_TABLE_SURFACE);
@@ -137,7 +142,7 @@ function CategorySectionInner(
             collapse affordance; the name button next to it triggers
             rename, not collapse, so the two intents stay separate. */}
         <button
-          onClick={onToggleCollapse}
+          onClick={() => onToggleCollapse(collapseKey)}
           aria-expanded={!collapsed}
           aria-controls={regionId}
           aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
@@ -258,6 +263,10 @@ function CategorySectionInner(
             // category only. Each row's useSortable resolves to this list.
             <SortableContext items={items.map((i) => makeDnDId('gear-item', i.id))} strategy={verticalListSortingStrategy}>
               {items.map((item) => (
+                // Forward the page's stable callback identities straight through
+                // (the row binds its own item/id internally). No per-row closures
+                // here, so memo(SortableGearItemRow) holds: only `selected`
+                // changes for the one toggled row on a selection change.
                 <SortableGearItemRow
                   key={item.id}
                   item={item}
@@ -266,11 +275,11 @@ function CategorySectionInner(
                   selectMode={selectMode}
                   reorderPending={itemReorderPending}
                   selected={selectedIds.has(item.id)}
-                  onToggleSelect={() => onToggleSelect(item.id)}
-                  onInlineSave={(patch) => onInlineSave(item.id, patch)}
-                  onEdit={() => onEditItem(item)}
-                  onDelete={() => onDeleteItem(item)}
-                  onSetStatus={(status) => onSetItemStatus(item.id, status)}
+                  onToggleSelect={onToggleSelect}
+                  onInlineSave={onInlineSave}
+                  onEdit={onEditItem}
+                  onDelete={onDeleteItem}
+                  onSetStatus={onSetItemStatus}
                 />
               ))}
             </SortableContext>
@@ -330,7 +339,13 @@ function CategoryKebab({
 // don't have to know about the typed-id convention. `reorderPending`
 // disables the handle while a previous reorder mutation is still in flight,
 // preventing the rollback-clobber race when two reorders overlap.
-export function SortableCategorySection(
+// memo'd so an unrelated page-state churn (typing a new-category name, opening
+// a dialog, toggling the weight unit) skips the whole section subtree - the page
+// passes stable callback identities and a stable `items` reference (groups are
+// useMemo'd), so the only props that change are the ones that should re-render a
+// section: this category's own `collapsed`/`selectedIds`/`selectMode`/`items`.
+// useSortable still re-renders this on category drag regardless of memo.
+export const SortableCategorySection = memo(function SortableCategorySection(
   props: CategorySectionProps & { id: string; reorderPending?: boolean },
 ) {
   const { id, reorderPending, ...rest } = props
@@ -361,9 +376,10 @@ export function SortableCategorySection(
       />
     </div>
   )
-}
+})
 
-// Non-sortable version for Uncategorized
-export function StaticCategorySection(props: CategorySectionProps) {
+// Non-sortable version for Uncategorized. memo'd for the same reason as the
+// sortable variant: skip the Uncategorized subtree on unrelated page churn.
+export const StaticCategorySection = memo(function StaticCategorySection(props: CategorySectionProps) {
   return <CategorySectionInner {...props} />
-}
+})

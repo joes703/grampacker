@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -562,6 +562,45 @@ export default function GearLibraryPage() {
     [groups],
   )
 
+  // ── Stable row/section handlers ────────────────────────────────────────────────
+  // One identity per action, each taking the entity it acts on, so the memoized
+  // CategorySection / SortableGearItemRow barriers are not busted by fresh
+  // per-render closures. (toggleSelect / toggleCollapse from useToggleSet are
+  // already stable and are passed through directly.)
+  //
+  // Destructure the mutate fns: TanStack's `mutate` is referentially stable
+  // across renders, so depending on it (not the whole mutation object, which is
+  // a fresh object each render) keeps these callbacks stable - which is the
+  // whole point. exhaustive-deps is satisfied by the destructured identifiers.
+  const { mutate: editItemMutate } = editItem
+  const { mutate: renameCategoryMutate } = renameCategory
+  const { mutate: removeCategoryMutate } = removeCategory
+  const handleInlineSave = useCallback(
+    (id: string, patch: Partial<Pick<GearItem, 'name' | 'description'>>) =>
+      editItemMutate({ id, patch }),
+    [editItemMutate],
+  )
+  const handleEditItem = useCallback((item: GearItem) => setDialog({ type: 'edit-item', item }), [])
+  const handleDeleteItem = useCallback((item: GearItem) => setDialog({ type: 'delete-item', item }), [])
+  const handleSetItemStatus = useCallback(
+    (id: string, status: GearItem['status']) => editItemMutate({ id, patch: { status } }),
+    [editItemMutate],
+  )
+  const handleRenameCategory = useCallback(
+    (id: string, name: string) => renameCategoryMutate({ id, name }),
+    [renameCategoryMutate],
+  )
+  const handleDeleteCategory = useCallback(
+    (cat: Category) => {
+      if ((itemCountByCategoryId.get(cat.id) ?? 0) === 0) {
+        removeCategoryMutate(cat.id)
+      } else {
+        setDialog({ type: 'delete-category', category: cat })
+      }
+    },
+    [itemCountByCategoryId, removeCategoryMutate],
+  )
+
   // ── Render ────────────────────────────────────────────────────────────────────
   // Bail out cleanly if the session went null mid-render. PrivateRoute
   // normally keeps it non-null here; this is defensive in the brief
@@ -743,36 +782,28 @@ export default function GearLibraryPage() {
               strategy={verticalListSortingStrategy}
             >
               {groups.map((group) => {
+                // All callbacks below are stable identities (see the handlers
+                // declared above + useToggleSet); the only per-render-varying
+                // values are the ones that SHOULD re-render a section: this
+                // group's items / collapsed / selection state. That is what
+                // makes memo(CategorySection) a real barrier. Quick status
+                // change shares editItem so optimistic fan-out into open
+                // ['list-items'] caches stays consistent with the dialog path.
                 const commonProps = {
                   items: group.items,
                   weightUnit,
                   isBelowLg,
                   collapsed: collapsed.has(group.category?.id ?? '__uncategorized__'),
-                  onToggleCollapse: () =>
-                    toggleCollapse(group.category?.id ?? '__uncategorized__'),
+                  onToggleCollapse: toggleCollapse,
                   selectMode,
                   selectedIds,
                   onToggleSelect: toggleSelect,
-                  onInlineSave: (id: string, patch: Partial<Pick<GearItem, 'name' | 'description'>>) =>
-                    editItem.mutate({ id, patch }),
-                  onEditItem: (item: GearItem) => setDialog({ type: 'edit-item', item }),
-                  onDeleteItem: (item: GearItem) => setDialog({ type: 'delete-item', item }),
-                  // Quick status change from the row kebab. Shares the
-                  // editItem mutation so optimistic fan-out into open
-                  // ['list-items'] caches stays consistent with the dialog
-                  // path. The menu component already skips re-selecting the
-                  // current status, so this never fires a no-op PATCH.
-                  onSetItemStatus: (id: string, status: GearItem['status']) =>
-                    editItem.mutate({ id, patch: { status } }),
-                  onRenameCategory: (id: string, name: string) =>
-                    renameCategory.mutate({ id, name }),
-                  onDeleteCategory: (cat: Category) => {
-                    if ((itemCountByCategoryId.get(cat.id) ?? 0) === 0) {
-                      removeCategory.mutate(cat.id)
-                    } else {
-                      setDialog({ type: 'delete-category', category: cat })
-                    }
-                  },
+                  onInlineSave: handleInlineSave,
+                  onEditItem: handleEditItem,
+                  onDeleteItem: handleDeleteItem,
+                  onSetItemStatus: handleSetItemStatus,
+                  onRenameCategory: handleRenameCategory,
+                  onDeleteCategory: handleDeleteCategory,
                   itemReorderPending: reorderGearItemsMut.isPending,
                 }
 
