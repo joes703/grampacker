@@ -85,13 +85,13 @@ export default function FoodPicker({
           <div className="flex gap-3">
             {TABS.map((t) => (
               <button key={t.id} type="button" onClick={() => setTab(t.id)}
-                className={`pb-1 text-sm ${tab === t.id ? 'border-b-2 border-emerald-600 font-semibold text-gray-900' : 'text-gray-500'}`}>
+                className={`pb-1 text-sm ${tab === t.id ? 'border-b-2 border-blue-600 font-semibold text-gray-900' : 'text-gray-500'}`}>
                 {t.label}
               </button>
             ))}
           </div>
           <button type="button" onClick={() => setShowCreate(true)}
-            className="rounded-lg px-2 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50">
+            className="rounded-lg px-2 py-1 text-sm font-medium text-blue-600 hover:bg-blue-50">
             + New food
           </button>
         </div>
@@ -111,7 +111,7 @@ export default function FoodPicker({
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="truncate text-sm text-gray-900">{f.name}</span>
                     {usedFoodIds.has(f.id) ? (
-                      <span className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                      <span className="shrink-0 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
                         In plan
                       </span>
                     ) : null}
