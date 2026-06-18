@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom'
 import { AlertTriangle } from 'lucide-react'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
-import { POPOVER_SURFACE } from '../components/flat-table-styles'
+import { FLAT_TABLE_NUMERIC_TEXT, POPOVER_SURFACE } from '../components/flat-table-styles'
 import { formatTotalWeight, type WeightUnit } from '../lib/weight'
 import type { NutrientTotal, WeightTotal } from '../lib/food/nutrition'
 
@@ -23,7 +23,7 @@ export default function NutrientTotalCell({
   nameForId?: (foodId: string) => string
 }) {
   if (total.state === 'complete') {
-    return <span className="tabular-nums text-gray-900">{formatValue(total.value, kind)}</span>
+    return <span className={`${FLAT_TABLE_NUMERIC_TEXT} text-gray-900`}>{formatValue(total.value, kind)}</span>
   }
   return <IncompleteMarker missingFoodIds={total.missingFoodIds} nameForId={nameForId} />
 }
@@ -89,7 +89,7 @@ export function WeightCell({
   nameForId?: (foodId: string) => string
 }) {
   if (weight.state === 'complete') {
-    return <span className="tabular-nums">{formatTotalWeight(Math.round(weight.grams), weightUnit)}</span>
+    return <span className={FLAT_TABLE_NUMERIC_TEXT}>{formatTotalWeight(Math.round(weight.grams), weightUnit)}</span>
   }
   return <IncompleteMarker missingFoodIds={weight.missingFoodIds} nameForId={nameForId} reason="with a missing definition" />
 }

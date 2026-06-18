@@ -8,13 +8,14 @@ import { resolveMealTargets } from '../lib/food/targets'
 import { formatPct, formatRatio, formatSodiumDensity } from './nutrition-format'
 import NutrientTotalCell, { IncompleteMarker } from './NutrientTotalCell'
 import TargetStatusMark from './TargetStatusMark'
+import { FLAT_TABLE_NUMERIC_TEXT } from '../components/flat-table-styles'
 
 function DerivedCell({ dv, fmt, nameForId, reason }: {
   dv: DerivedValue; fmt: (n: number) => string; nameForId: (id: string) => string; reason: string
 }) {
   if (dv.state === 'incomplete') return <IncompleteMarker missingFoodIds={dv.missingFoodIds} nameForId={nameForId} reason={reason} />
   if (dv.state === 'undefined') return <span className="text-gray-400">-</span>
-  return <>{fmt(dv.value)}</>
+  return <span className={FLAT_TABLE_NUMERIC_TEXT}>{fmt(dv.value)}</span>
 }
 
 const formatPctFmt = (n: number) => formatPct(n)

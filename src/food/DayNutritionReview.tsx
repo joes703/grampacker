@@ -17,7 +17,7 @@ import { useWeightUnit } from '../lib/use-weight-unit'
 import { formatCalorieDensity, formatDailyTargetBand, formatMealTargetBand, formatPct, formatRatio } from './nutrition-format'
 import NutrientTotalCell, { WeightCell, type NutrientCellKind } from './NutrientTotalCell'
 import TargetStatusMark from './TargetStatusMark'
-import { FLAT_TABLE_HEADER } from '../components/flat-table-styles'
+import { FLAT_TABLE_HEADER, FLAT_TABLE_NUMERIC_TEXT } from '../components/flat-table-styles'
 
 const REVIEW_COLS: { key: NutrientKey; label: string; kind: NutrientCellKind }[] = [
   { key: 'calories', label: 'Calories', kind: 'calories' },
@@ -120,12 +120,12 @@ export default function DayNutritionReview({
                       const metric = dailyMetricForNutrientKey(col.key)
                       const target = metric ? activeDailyTargets.find((candidate) => candidate.metric === metric) : undefined
                       return (
-                        <td key={col.key} className="px-2 py-1.5 text-right tabular-nums">
+                        <td key={col.key} className={`px-2 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>
                           {target ? formatDailyTargetBand(target.metric, target.mode, target.target_min, target.target_max, weightUnit) : ''}
                         </td>
                       )
                     })}
-                    <td className="px-2 py-1.5 text-right tabular-nums">
+                    <td className={`px-2 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>
                       {densityTarget
                         ? formatDailyTargetBand('calorie_density', densityTarget.mode, densityTarget.target_min, densityTarget.target_max, weightUnit)
                         : ''}
@@ -145,7 +145,7 @@ export default function DayNutritionReview({
                       </td>
                     )
                   })}
-                  <td className="px-2 py-1.5 text-right tabular-nums">
+                  <td className={`px-2 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>
                     {formatCalorieDensity(density, weightUnit)}
                     {resolvedDaily.get('calorie_density') ? <TargetStatusMark status={resolvedDaily.get('calorie_density')!.status} /> : null}
                   </td>
@@ -251,10 +251,10 @@ function MealReviewRow({
                     <th scope="row" className="py-1 pr-3 text-left font-medium text-gray-600">
                       {formatMealTargetName(target.metric)}
                     </th>
-                    <td className="px-3 py-1 text-right tabular-nums">
+                    <td className={`px-3 py-1 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>
                       {formatMealTargetValue(target)}
                     </td>
-                    <td className="px-3 py-1 text-right tabular-nums text-gray-400">
+                    <td className={`px-3 py-1 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-400`}>
                       {formatMealTargetBand(target.metric, target.mode, target.target_min, target.target_max)}
                     </td>
                     <td className="py-1 pl-3 text-right">

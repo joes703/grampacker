@@ -10,7 +10,7 @@ import {
 import { resolveDailyTargets, dailyMetricForNutrientKey, type ResolvedTarget } from '../lib/food/targets'
 import { formatCalorieDensity, formatDailyTargetBand } from './nutrition-format'
 import TargetStatusMark from './TargetStatusMark'
-import { FLAT_TABLE_SURFACE, FLAT_TABLE_HEADER } from '../components/flat-table-styles'
+import { FLAT_TABLE_SURFACE, FLAT_TABLE_HEADER, FLAT_TABLE_NUMERIC_TEXT } from '../components/flat-table-styles'
 import NutrientTotalCell, { WeightCell, type NutrientCellKind } from './NutrientTotalCell'
 
 type Col = { key: NutrientKey; label: string; kind: NutrientCellKind }
@@ -65,7 +65,7 @@ function SummaryRow({ label, group, cols, weightUnit, nameForId, href }: {
       </th>
       <td className="px-2 py-1.5 text-right"><WeightCell weight={group.weight} weightUnit={weightUnit} nameForId={nameForId} /></td>
       <NutCells totals={group.totals} cols={cols} nameForId={nameForId} />
-      <td className="px-2 py-1.5 text-right tabular-nums">{formatCalorieDensity(group.calorieDensityPerGram, weightUnit)}</td>
+      <td className={`px-2 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>{formatCalorieDensity(group.calorieDensityPerGram, weightUnit)}</td>
     </tr>
   )
 }
@@ -151,9 +151,9 @@ export default function FoodPlanSummary({
                     {cols.map((c) => {
                       const m = dailyMetricForNutrientKey(c.key)
                       const t = m ? activeDailyTargets.find((x) => x.metric === m) : undefined
-                      return <td key={c.key} className="px-2 py-1.5 text-right tabular-nums">{t ? formatDailyTargetBand(t.metric, t.mode, t.target_min, t.target_max, weightUnit) : ''}</td>
+                      return <td key={c.key} className={`px-2 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>{t ? formatDailyTargetBand(t.metric, t.mode, t.target_min, t.target_max, weightUnit) : ''}</td>
                     })}
-                    <td className="px-2 py-1.5 text-right tabular-nums">{densityTarget ? formatDailyTargetBand('calorie_density', densityTarget.mode, densityTarget.target_min, densityTarget.target_max, weightUnit) : ''}</td>
+                    <td className={`px-2 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>{densityTarget ? formatDailyTargetBand('calorie_density', densityTarget.mode, densityTarget.target_min, densityTarget.target_max, weightUnit) : ''}</td>
                   </tr>
                 )}
                 {s.days.map((d, i) => (
@@ -164,7 +164,7 @@ export default function FoodPlanSummary({
                     </th>
                     <td className="px-2 py-1.5 text-right"><WeightCell weight={d.weight} weightUnit={weightUnit} nameForId={nameForId} /></td>
                     <NutCells totals={d.totals} cols={cols} nameForId={nameForId} targets={dayTargetMaps[i]} />
-                    <td className="px-2 py-1.5 text-right tabular-nums">
+                    <td className={`px-2 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>
                       {formatCalorieDensity(d.calorieDensityPerGram, weightUnit)}
                       {dayTargetMaps[i]?.get('calorie_density') ? <TargetStatusMark status={dayTargetMaps[i]!.get('calorie_density')!.status} /> : null}
                     </td>
@@ -184,7 +184,7 @@ export default function FoodPlanSummary({
                         : <span className="text-gray-400">-</span>}
                     </td>
                   ))}
-                  <td className="px-2 py-1.5 text-right tabular-nums">{s.fullDayAverage.fullDays > 0 ? formatCalorieDensity(s.fullDayAverage.calorieDensityPerGram, weightUnit) : '-'}</td>
+                  <td className={`px-2 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>{s.fullDayAverage.fullDays > 0 ? formatCalorieDensity(s.fullDayAverage.calorieDensityPerGram, weightUnit) : '-'}</td>
                 </tr>
                 <SummaryRow label="Packed total" group={s.packed} cols={cols} weightUnit={weightUnit} nameForId={nameForId} />
               </tbody>
