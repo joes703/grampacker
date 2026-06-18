@@ -53,6 +53,10 @@ export default function FoodPicker({
     onSuccess: (created) => {
       setShowCreate(false)
       qc.invalidateQueries({ queryKey: queryKeys.foodItems() })
+      // The new food is added to the plan immediately (onPick below), so the
+      // /lists/:id packing projection must refresh its lite cache too, or it
+      // would render the new entry as a missing-food row within the staleTime.
+      qc.invalidateQueries({ queryKey: queryKeys.foodItemsLite() })
       onPick(created)
     },
   })

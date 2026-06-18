@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import FoodPicker from './FoodPicker'
 import type { FoodItem } from '../lib/types'
@@ -9,7 +9,10 @@ import type { FoodItem } from '../lib/types'
 vi.mock('../lib/queries', () => ({
   assertFoodItemWithinCap: () => {},
   createFoodItem: vi.fn(),
-  queryKeys: { foodItems: () => ['food-items'] as const },
+  queryKeys: {
+    foodItems: () => ['food-items'] as const,
+    foodItemsLite: () => ['food-items-lite'] as const,
+  },
   nextFoodItemSortOrder: () => 0,
 }))
 
@@ -111,5 +114,32 @@ describe('FoodPicker', () => {
     expect(screen.getByText('Already in this plan')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'A-Z' }))
     expect(screen.getByText('All foods, alphabetical')).toBeInTheDocument()
+  })
+
+  it('invalidates both the full and lite food caches when creating from the picker', async () => {
+    const user = userEvent.setup()
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries')
+    renderPicker({})
+
+    await user.click(screen.getByRole('button', { name: '+ New food' }))
+    await user.type(screen.getByLabelText('Name'), 'New bar')
+    await user.type(screen.getByLabelText(/Serving weight/), '50')
+    await user.type(screen.getByLabelText(/Calories/), '200')
+    await user.click(screen.getByRole('button', { name: 'Add food' }))
+
+    await waitFor(() => {
+      const firstKeys = invalidateSpy.mock.calls.map(
+        (c) => (c[0] as { queryKey?: unknown[] } | undefined)?.queryKey?.[0],
+      )
+      // The new food is added to the plan immediately, so the lite projection
+      // cache must be refreshed alongside the full library cache.
+      expect(firstKeys).toContain('food-items-lite')
+    })
+    const allKeys = invalidateSpy.mock.calls.map(
+      (c) => (c[0] as { queryKey?: unknown[] } | undefined)?.queryKey?.[0],
+    )
+    expect(allKeys).toContain('food-items')
+
+    invalidateSpy.mockRestore()
   })
 })
