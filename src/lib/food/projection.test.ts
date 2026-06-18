@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { projectFoodPlan, totalProjectedConsumableGrams } from './projection'
-import type { FoodItem } from '../types'
+import type { FoodItem, FoodItemLite } from '../types'
 
 const oats = { id: 'o', serving_weight_grams: 50, servings_per_package: 4 } as FoodItem
 const bar = { id: 'b', serving_weight_grams: 40, servings_per_package: null } as FoodItem
@@ -55,5 +55,21 @@ describe('projectFoodPlan', () => {
       { food_item_id: 'n', basis: 'packages', amount: 1 }, // incomplete -> excluded
     ], foods)
     expect(totalProjectedConsumableGrams(rows)).toBeCloseTo(100)
+  })
+
+  it('projects from lite food rows that carry no nutrient columns', () => {
+    // The packing projection feeds projectFoodPlan a FoodItemLite map (6 cols,
+    // no nutrient fields). A genuine lite object - not a full FoodItem cast -
+    // must type-check and project correctly.
+    const lite: FoodItemLite = {
+      id: 'bar', name: 'Bar', brand: null,
+      serving_weight_grams: 50, calories_per_serving: 200, servings_per_package: 2,
+    }
+    const liteFoods = new Map<string, FoodItemLite>([['bar', lite]])
+    const rows = projectFoodPlan([{ food_item_id: 'bar', basis: 'servings', amount: 3 }], liteFoods)
+    expect(rows[0]).toMatchObject({
+      state: 'complete', totalEffectiveServings: 3, totalPackedWeightGrams: 150,
+    })
+    if (rows[0]!.state === 'complete') expect(rows[0]!.food.name).toBe('Bar')
   })
 })

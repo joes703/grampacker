@@ -6,6 +6,10 @@ export const queryKeys = {
   categories: () => ['categories'] as const,
   gearItems: () => ['gear-items'] as const,
   foodItems: () => ['food-items'] as const,
+  // Narrow projection of food_items for the /lists/:id packing projection. A
+  // separate cache entry from foodItems because the two responses are different
+  // row shapes; see fetchFoodItemsLite. Every food_items write invalidates both.
+  foodItemsLite: () => ['food-items-lite'] as const,
   foodPlansAll: () => ['food-plan'] as const,
   foodPlan: (listId: string) => ['food-plan', listId] as const,
   foodPlanCopyOptions: (userId: string, targetListId: string) => ['food-plan-copy-options', userId, targetListId] as const,

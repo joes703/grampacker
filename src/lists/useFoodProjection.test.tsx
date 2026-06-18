@@ -8,6 +8,7 @@ import type { FoodItem, FoodPlanDocument, FoodPlanEntry } from '../lib/types'
 const h = vi.hoisted(() => ({
   fetchFoodPlan: vi.fn(),
   fetchFoodItems: vi.fn(),
+  fetchFoodItemsLite: vi.fn(),
   fetchFoodPackSignatures: vi.fn(),
   fetchFoodPackState: vi.fn(),
   setFoodPackState: vi.fn(),
@@ -19,11 +20,13 @@ vi.mock('../lib/queries', () => ({
   queryKeys: {
     foodPlan: (listId: string) => ['food-plan', listId] as const,
     foodItems: () => ['food-items'] as const,
+    foodItemsLite: () => ['food-items-lite'] as const,
     foodPackSignatures: (listId: string) => ['food-pack-signatures', listId] as const,
     foodPackState: (listId: string) => ['food-pack-state', listId] as const,
   },
   fetchFoodPlan: h.fetchFoodPlan,
   fetchFoodItems: h.fetchFoodItems,
+  fetchFoodItemsLite: h.fetchFoodItemsLite,
   fetchFoodPackSignatures: h.fetchFoodPackSignatures,
   fetchFoodPackState: h.fetchFoodPackState,
   setFoodPackState: h.setFoodPackState,
@@ -104,7 +107,7 @@ afterEach(() => {
 describe('useFoodProjection', () => {
   it('packs with the cached server signature and unpacks with null', async () => {
     h.fetchFoodPlan.mockResolvedValue(doc([entry({ id: 'e1', food_item_id: 'bar', amount: 2 })]))
-    h.fetchFoodItems.mockResolvedValue([food({ id: 'bar', name: 'Bar' })])
+    h.fetchFoodItemsLite.mockResolvedValue([food({ id: 'bar', name: 'Bar' })])
     h.fetchFoodPackSignatures.mockResolvedValue([{ food_item_id: 'bar', current_signature: '80|40' }])
     h.fetchFoodPackState.mockResolvedValue([])
     h.setFoodPackState.mockResolvedValue({ food_item_id: 'bar', is_packed: true, packed_signature: '80|40' })
@@ -112,6 +115,10 @@ describe('useFoodProjection', () => {
     const { result } = renderHook(() => useFoodProjection('u1', 'l1'), { wrapper: Wrapper })
 
     await waitFor(() => expect(result.current.rows).toHaveLength(1))
+
+    // The projection must read the lite query, never the full food-items fetch.
+    expect(h.fetchFoodItemsLite).toHaveBeenCalledWith('u1')
+    expect(h.fetchFoodItems).not.toHaveBeenCalled()
 
     act(() => result.current.togglePacked('bar', true))
     await waitFor(() => expect(h.setFoodPackState).toHaveBeenCalledWith('u1', 'l1', 'bar', true, '80|40'))
@@ -123,7 +130,7 @@ describe('useFoodProjection', () => {
 
   it('reverts, refreshes, and toasts when the server rejects a stale signature', async () => {
     h.fetchFoodPlan.mockResolvedValue(doc([entry({ id: 'e1', food_item_id: 'bar', amount: 2 })]))
-    h.fetchFoodItems.mockResolvedValue([food({ id: 'bar', name: 'Bar' })])
+    h.fetchFoodItemsLite.mockResolvedValue([food({ id: 'bar', name: 'Bar' })])
     h.fetchFoodPackSignatures.mockResolvedValue([{ food_item_id: 'bar', current_signature: '80|40' }])
     h.fetchFoodPackState.mockResolvedValue([])
     const err = new Error('stale') as Error & { code: string }

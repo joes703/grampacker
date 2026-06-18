@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchFoodItems,
+  fetchFoodItemsLite,
   fetchFoodPackSignatures,
   fetchFoodPackState,
   fetchFoodPlan,
@@ -12,7 +12,7 @@ import {
 } from '../lib/queries'
 import { projectFoodPlan, totalProjectedConsumableGrams } from '../lib/food/projection'
 import { showToast } from '../lib/toast'
-import type { FoodItem } from '../lib/types'
+import type { FoodItemLite } from '../lib/types'
 import type { FoodProjectionDisplayRow } from './FoodProjectionSection'
 
 type ToggleVars = { foodItemId: string; next: boolean }
@@ -41,8 +41,8 @@ export function useFoodProjection(userId: string, listId: string) {
   })
   const hasPlan = Boolean(planQuery.data)
   const foodsQuery = useQuery({
-    queryKey: queryKeys.foodItems(),
-    queryFn: () => fetchFoodItems(userId),
+    queryKey: queryKeys.foodItemsLite(),
+    queryFn: () => fetchFoodItemsLite(userId),
     enabled: hasPlan,
   })
   const signaturesQuery = useQuery({
@@ -57,7 +57,7 @@ export function useFoodProjection(userId: string, listId: string) {
   })
 
   const foodById = useMemo(
-    () => new Map<string, FoodItem>((foodsQuery.data ?? []).map((f) => [f.id, f])),
+    () => new Map<string, FoodItemLite>((foodsQuery.data ?? []).map((f) => [f.id, f])),
     [foodsQuery.data],
   )
   const signaturesByFood = useMemo(

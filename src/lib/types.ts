@@ -115,6 +115,22 @@ export type FoodItem = {
   updated_at: string
 }
 
+// Narrow read shape for the packing projection (/lists/:id). That projection
+// computes packed weight + effective servings only - it never reads the
+// nutrient columns - so it fetches 6 columns instead of all 18.
+// calories_per_serving is not read today; it is included for parity with the
+// audit's column set and to give a future projection-pack calorie line headroom
+// without a new shape. See docs/performance-review-2026-06-16.md P2.
+export type FoodItemLite = Pick<
+  FoodItem,
+  | 'id'
+  | 'name'
+  | 'brand'
+  | 'serving_weight_grams'
+  | 'calories_per_serving'
+  | 'servings_per_package'
+>
+
 // Narrower response shapes for public read paths (/r/<slug>). Fewer columns
 // than the authenticated equivalents — see SECURITY.md "Public read paths"
 // for the allowlist rationale. SharePage maps these to the full types at the

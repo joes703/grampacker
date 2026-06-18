@@ -1,6 +1,14 @@
 import { supabase } from '../supabase'
 import { FOOD_ITEM_CAP } from '../caps'
-import type { FoodItem } from '../types'
+import type { FoodItem, FoodItemLite } from '../types'
+
+export type { FoodItemLite } from '../types'
+
+// Lite projection columns for the packing projection. Keep this string and the
+// FoodItemLite type in lockstep - drift here is a silent under-fetch. Order
+// matches the type for readability; PostgREST ignores column order.
+const FOOD_ITEM_LITE_COLUMNS =
+  'id, name, brand, serving_weight_grams, calories_per_serving, servings_per_package'
 
 // The owner-editable column set (everything except identity/audit columns).
 export type FoodItemInput = Pick<
@@ -28,6 +36,20 @@ export async function fetchFoodItems(userId: string): Promise<FoodItem[]> {
   const { data, error } = await supabase
     .from('food_items')
     .select('*')
+    .eq('user_id', userId)
+    .order('name', { ascending: true })
+  if (error) throw error
+  return data
+}
+
+// Narrow read for the /lists/:id packing projection: 6 columns instead of all
+// 18. Owner-scoped (explicit user_id on top of RLS) and ordered to match
+// fetchFoodItems. Returns FoodItemLite[]; do NOT use where nutrient fields are
+// needed (the food plan nutrition summary and the library table read full rows).
+export async function fetchFoodItemsLite(userId: string): Promise<FoodItemLite[]> {
+  const { data, error } = await supabase
+    .from('food_items')
+    .select(FOOD_ITEM_LITE_COLUMNS)
     .eq('user_id', userId)
     .order('name', { ascending: true })
   if (error) throw error

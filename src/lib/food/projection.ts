@@ -1,4 +1,4 @@
-import type { EntryBasis, FoodItem } from '../types'
+import type { EntryBasis, FoodItemLite } from '../types'
 
 export type ProjectionEntry = { food_item_id: string; basis: EntryBasis; amount: number }
 
@@ -6,18 +6,23 @@ export type ProjectionEntry = { food_item_id: string; basis: EntryBasis; amount:
 // Discriminated like the nutrition totals: an incomplete row carries NO grams, so
 // it can never enter weight totals as a silent zero. The packed signature is
 // server-computed and is NOT produced here.
+//
+// Typed against FoodItemLite (id/name/brand/serving_weight_grams/
+// calories_per_serving/servings_per_package) because the projection needs only
+// the serving columns; this widens the accepted input so full FoodItem callers
+// still type-check (FoodItem is a structural superset of FoodItemLite).
 export type ProjectionRow =
-  | { foodItemId: string; food: FoodItem; state: 'complete'; totalEffectiveServings: number; totalPackedWeightGrams: number }
-  | { foodItemId: string; food: FoodItem | null; state: 'incomplete'; reason: 'missing-food' | 'missing-metadata' }
+  | { foodItemId: string; food: FoodItemLite; state: 'complete'; totalEffectiveServings: number; totalPackedWeightGrams: number }
+  | { foodItemId: string; food: FoodItemLite | null; state: 'incomplete'; reason: 'missing-food' | 'missing-metadata' }
 
-type Acc = { food: FoodItem | null; servings: number; grams: number; bad: boolean }
+type Acc = { food: FoodItemLite | null; servings: number; grams: number; bad: boolean }
 
-function metadataOk(basis: EntryBasis, food: FoodItem): boolean {
+function metadataOk(basis: EntryBasis, food: FoodItemLite): boolean {
   if (basis === 'packages') return food.servings_per_package != null && food.servings_per_package > 0
   return true // servings needs nothing; weight needs serving_weight_grams, which is NOT NULL > 0
 }
 
-export function projectFoodPlan(entries: ProjectionEntry[], foodById: Map<string, FoodItem>): ProjectionRow[] {
+export function projectFoodPlan(entries: ProjectionEntry[], foodById: Map<string, FoodItemLite>): ProjectionRow[] {
   const order: string[] = []
   const acc = new Map<string, Acc>()
   for (const e of entries) {
