@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react'
+import { memo, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useSortable } from '@dnd-kit/sortable'
 import type { DraggableSyntheticListeners } from '@dnd-kit/core'
@@ -34,11 +34,15 @@ type Props = {
   isBelowLg: boolean
   selectMode: boolean
   selected: boolean
-  onToggleSelect: () => void
-  onInlineSave: (patch: Partial<Pick<GearItem, 'name' | 'description'>>) => void
-  onEdit: () => void
-  onDelete: () => void
-  onSetStatus: (status: GearStatus) => void
+  // Entity-aware callbacks (id / item / status are passed by the row itself,
+  // not pre-bound by the parent map). This lets CategorySection forward ONE
+  // stable callback identity per action to every row, so memo(SortableGearItemRow)
+  // is a real barrier instead of being busted by fresh per-row closures.
+  onToggleSelect: (id: string) => void
+  onInlineSave: (id: string, patch: Partial<Pick<GearItem, 'name' | 'description'>>) => void
+  onEdit: (item: GearItem) => void
+  onDelete: (item: GearItem) => void
+  onSetStatus: (id: string, status: GearStatus) => void
   // Drag plumbing — populated by SortableGearItemRow.
   dragHandle?: ReactNode
   // Touch reorder activator. On mobile the wrapper passes the dnd-kit
@@ -72,7 +76,7 @@ export default function GearItemRow({
     <div className="flex flex-1 items-center gap-2">
       <button
         type="button"
-        onClick={selectMode ? onToggleSelect : onEdit}
+        onClick={selectMode ? () => onToggleSelect(item.id) : () => onEdit(item)}
         aria-label={selectMode ? (selected ? 'Deselect item' : 'Select item') : 'Edit item'}
         className="flex flex-1 min-w-0 items-center gap-2 text-left"
       >
@@ -110,7 +114,7 @@ export default function GearItemRow({
         <input
           type="checkbox"
           checked={selected}
-          onChange={onToggleSelect}
+          onChange={() => onToggleSelect(item.id)}
           aria-label={selected ? `Deselect ${item.name}` : `Select ${item.name}`}
           className="h-4 w-4 rounded border-gray-300 text-blue-600"
         />
@@ -127,7 +131,7 @@ export default function GearItemRow({
            confirm dialog as the kebab/edit-dialog delete path. */
         mobileSwipe ? (
           <SwipeableRow
-            onAction={onDelete}
+            onAction={() => onDelete(item)}
             label="Delete from inventory"
             icon={<Trash2 size={22} />}
             actionClassName="bg-red-600 text-white"
@@ -156,7 +160,7 @@ export default function GearItemRow({
               <GearStatusBadge status={item.status} compact className="shrink-0 print:hidden" />
               <InlineText
                 value={item.name}
-                onSave={(v) => onInlineSave({ name: v })}
+                onSave={(v) => onInlineSave(item.id, { name: v })}
                 className="block min-w-0 flex-1 truncate font-normal text-gray-900"
               />
             </div>
@@ -165,7 +169,7 @@ export default function GearItemRow({
                 <InlineText
                   value={item.description ?? ''}
                   placeholder="Add description"
-                  onSave={(v) => onInlineSave({ description: v })}
+                  onSave={(v) => onInlineSave(item.id, { description: v })}
                   className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}
                 />
               </div>
@@ -183,9 +187,9 @@ export default function GearItemRow({
           {!selectMode && (
             <GearRowKebab
               status={item.status}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              onSetStatus={onSetStatus}
+              onEdit={() => onEdit(item)}
+              onDelete={() => onDelete(item)}
+              onSetStatus={(s) => onSetStatus(item.id, s)}
             />
           )}
         </>
@@ -297,7 +301,16 @@ function GearRowKebab({
 // Drag is disabled in select mode so the row's checkbox doesn't compete with
 // the drag activator, and while a previous reorder mutation is in flight to
 // prevent the rollback-clobber race when two reorders overlap.
-export function SortableGearItemRow(
+//
+// memo'd: this is the real per-row barrier. CategorySection forwards stable
+// callback identities and a stable `item` reference, so when a parent re-render
+// flips unrelated state (e.g. selecting another row changes selectedIds and
+// re-renders the section), every row whose own props are unchanged skips. The
+// inner GearItemRow is intentionally NOT memo'd - its outerStyle/dragHandle are
+// recomputed from useSortable each render here, so a leaf memo would only ever
+// miss. Drag still works: useSortable subscribes to DndContext, which re-renders
+// this component on drag regardless of memo.
+export const SortableGearItemRow = memo(function SortableGearItemRow(
   props: Omit<Props, 'dragHandle' | 'outerRef' | 'outerStyle'> & { reorderPending?: boolean },
 ) {
   const {
@@ -348,4 +361,4 @@ export function SortableGearItemRow(
       outerStyle={sortableStyle}
     />
   )
-}
+})
