@@ -3,6 +3,7 @@ import { CircleMinus, Copy, FolderInput, MoreVertical, Pencil } from 'lucide-rea
 import type { FoodItem, FoodPlanEntry } from '../lib/types'
 import { FLAT_TABLE_ROW, POPOVER_SURFACE } from '../components/flat-table-styles'
 import { RowMenuItem } from '../components/RowMenuItem'
+import RowIconButton from '../components/RowIconButton'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 
 const BASIS_LABEL: Record<FoodPlanEntry['basis'], string> = { servings: 'servings', packages: 'pkg', weight: 'g' }
@@ -59,15 +60,12 @@ function EntryKebab({
 
   return (
     <>
-      <button
+      <RowIconButton
         ref={triggerRef}
-        type="button"
         onClick={(e) => { e.stopPropagation(); if (menuOpen) close(); else openMenu() }}
-        aria-label="Entry options"
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-      >
-        <MoreVertical size={14} />
-      </button>
+        ariaLabel="Entry options"
+        icon={<MoreVertical size={14} />}
+      />
 
       {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div

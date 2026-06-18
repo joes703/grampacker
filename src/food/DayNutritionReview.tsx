@@ -17,7 +17,7 @@ import { useWeightUnit } from '../lib/use-weight-unit'
 import { formatCalorieDensity, formatDailyTargetBand, formatMealTargetBand, formatPct, formatRatio } from './nutrition-format'
 import NutrientTotalCell, { WeightCell, type NutrientCellKind } from './NutrientTotalCell'
 import TargetStatusMark from './TargetStatusMark'
-import { FLAT_TABLE_HEADER, FLAT_TABLE_NUMERIC_TEXT } from '../components/flat-table-styles'
+import { FLAT_TABLE_HEADER, FLAT_TABLE_NUMERIC_TEXT, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 
 const REVIEW_COLS: { key: NutrientKey; label: string; kind: NutrientCellKind }[] = [
   { key: 'calories', label: 'Calories', kind: 'calories' },
@@ -76,7 +76,7 @@ export default function DayNutritionReview({
           type="button"
           onClick={onClose}
           aria-label="Close nutrition review"
-          className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          className={`ml-auto ${ROW_CONTROL_TARGET} text-gray-400 hover:bg-gray-100 hover:text-gray-600`}
         >
           <X size={15} />
         </button>
