@@ -173,8 +173,33 @@ describe('FoodPlanDaySection', () => {
     expect(screen.queryByText('Breakfast meal body')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Expand Day 1' }))
-    fireEvent.click(screen.getByRole('button', { name: '+ Restore Lunch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Restore Lunch' }))
 
     expect(onRestoreMeal).toHaveBeenCalledWith('day1', 'meal2')
+  })
+
+  it('captions the restore pills when a day has omitted meals', () => {
+    const onRestoreMeal = vi.fn()
+    renderSection(dayViewWithMeal(), {
+      embedded: true,
+      allMeals: [dayViewWithMeal().cells[0]!.meal, lunchMeal],
+      onRestoreMeal,
+    })
+
+    expect(screen.getByText('You removed on Day 1 - tap to add back:')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Restore Lunch' })).toBeInTheDocument()
+  })
+
+  it('shows no restore caption or pills when every meal is scheduled', () => {
+    const onRestoreMeal = vi.fn()
+    // allMeals contains only the already-scheduled Breakfast, so nothing is omitted.
+    renderSection(dayViewWithMeal(), {
+      embedded: true,
+      allMeals: [dayViewWithMeal().cells[0]!.meal],
+      onRestoreMeal,
+    })
+
+    expect(screen.queryByText(/tap to add back/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /restore/i })).not.toBeInTheDocument()
   })
 })
