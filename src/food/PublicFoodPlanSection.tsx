@@ -8,7 +8,7 @@ import FoodPlanEntryRow from './FoodPlanEntryRow'
 import FoodPlanExtras from './FoodPlanExtras'
 import DayTotalsStrip from './DayTotalsStrip'
 import MealTargetsBar from './MealTargetsBar'
-import { FLAT_TABLE_HEADER, FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
+import { FLAT_TABLE_EYEBROW, FLAT_TABLE_HEADER, FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 
 export default function PublicFoodPlanSection({ doc }: { doc: PublicFoodPlanDocument }) {
   const fullDoc = toReadonlyFoodPlanDocument(doc)
@@ -52,7 +52,7 @@ export default function PublicFoodPlanSection({ doc }: { doc: PublicFoodPlanDocu
                   data-testid="public-food-meal-header"
                   className="flex items-center border-t border-gray-100 px-3 py-1 pl-6"
                 >
-                  <span className="text-sm font-medium text-gray-500">{cell.meal.name}</span>
+                  <span className={FLAT_TABLE_EYEBROW}>{cell.meal.name}</span>
                 </div>
                 <MealTargetsBar
                   entries={cell.entries}

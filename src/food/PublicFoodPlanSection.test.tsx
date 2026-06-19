@@ -109,13 +109,15 @@ describe('PublicFoodPlanSection', () => {
     expect(within(shell).getAllByTestId('food-extras')).toHaveLength(1)
   })
 
-  it('uses the flat day-section grammar: gray day-header strip, subordinate non-gray meal header', () => {
+  it('uses the flat day-section grammar: gray day-header strip, non-gray uppercase eyebrow meal header', () => {
     render(<PublicFoodPlanSection doc={baseDoc} />)
 
     expect(screen.getByTestId('public-food-day-header-day-1')).toHaveClass('bg-gray-50')
     const mealHeader = screen.getByTestId('public-food-meal-header')
     expect(mealHeader).not.toHaveClass('bg-gray-50')
     expect(mealHeader).toHaveTextContent('Breakfast')
+    // The meal name reads as a small uppercase/tracked eyebrow divider.
+    expect(within(mealHeader).getByText('Breakfast')).toHaveClass('uppercase')
   })
 
   it('shows no private editor controls (stays read-only)', () => {
