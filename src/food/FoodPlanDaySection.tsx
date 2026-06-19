@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { useId, useState } from 'react'
-import { Activity, Check, ChevronDown, ChevronRight, Copy, Info, MoreVertical, Trash2 } from 'lucide-react'
+import { Activity, Check, ChevronDown, ChevronRight, Copy, Info, MoreVertical, Plus, Trash2 } from 'lucide-react'
 import type { FoodItem, Meal, MealTarget } from '../lib/types'
 import type { DayView } from './useFoodPlanDocument'
 import { FLAT_TABLE_HEADER, FLAT_TABLE_SURFACE, POPOVER_SURFACE } from '../components/flat-table-styles'
@@ -53,6 +53,11 @@ export default function FoodPlanDaySection({
   const title = `Day ${dayIndex + 1}`
   const bodyId = useId()
   const containerClass = embedded ? 'border-b border-gray-100 bg-white' : FLAT_TABLE_SURFACE
+  // Meals the owner removed from this day's schedule (not product defaults);
+  // offered as dashed "add back" pills below the day's meal sections.
+  const omittedMeals = allMeals && onRestoreMeal
+    ? allMeals.filter((m) => !dayView.scheduledMealIds.has(m.id))
+    : []
 
   return (
     <div
@@ -127,20 +132,23 @@ export default function FoodPlanDaySection({
               onDeleteMeal={onDeleteMeal ? () => onDeleteMeal(cell.meal.id) : undefined}
             />
           ))}
-          {allMeals && onRestoreMeal
-            ? allMeals
-                .filter((m) => !dayView.scheduledMealIds.has(m.id))
-                .map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => onRestoreMeal(dayView.day.id, m.id)}
-                    className="px-3 py-2 text-sm font-medium text-blue-600 hover:underline"
-                  >
-                    + Restore {m.name}
-                  </button>
-                ))
-            : null}
+          {omittedMeals.length > 0 && onRestoreMeal ? (
+            <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+              <span className="text-xs text-gray-400">You removed on {title} - tap to add back:</span>
+              {omittedMeals.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => onRestoreMeal(dayView.day.id, m.id)}
+                  aria-label={`Restore ${m.name}`}
+                  className="inline-flex items-center gap-1 rounded-full border border-dashed border-gray-300 px-2.5 py-0.5 text-xs font-medium text-gray-600 hover:border-gray-400 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  <Plus size={12} aria-hidden="true" />
+                  {m.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
