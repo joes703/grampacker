@@ -13,6 +13,9 @@ function availableBases(food: FoodItem): EntryBasis[] {
   return bases
 }
 const BASIS_LABEL: Record<EntryBasis, string> = { servings: 'Servings', packages: 'Packages', weight: 'Weight (g)' }
+// Concise labels for the segmented basis control. The "(g)" qualifier stays on
+// BASIS_LABEL for the merge note / preservation note / keep-total radios.
+const BASIS_SEGMENT_LABEL: Record<EntryBasis, string> = { servings: 'Servings', packages: 'Packages', weight: 'Weight' }
 
 function formatDerivedNumber(n: number): string {
   return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)))
@@ -80,13 +83,30 @@ export default function EntryAmountDialog({
             This already has {existing.amount} {BASIS_LABEL[existing.basis].toLowerCase()} here. Your amount will be added to it.
           </p>
         ) : null}
-        <label className="block text-sm font-medium text-gray-700">
-          {existing ? 'Add measured by' : 'Measure by'}
-          <select value={basis} onChange={(e) => setBasis(e.target.value as EntryBasis)}
-            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none">
-            {bases.map((b) => <option key={b} value={b}>{BASIS_LABEL[b]}</option>)}
-          </select>
-        </label>
+        <div>
+          <span className="block text-sm font-medium text-gray-700">
+            {existing ? 'Add measured by' : 'Measure by'}
+          </span>
+          {/* Segmented basis picker. Native buttons keep keyboard/touch
+              behavior; aria-pressed exposes the selected segment. Only the
+              bases available for this food are rendered (no disabled choices),
+              matching the prior select's options exactly. */}
+          <div role="group" aria-label="Entry basis" className="mt-1 flex gap-1 rounded-lg border border-gray-300 bg-white p-0.5">
+            {bases.map((b) => (
+              <button
+                key={b}
+                type="button"
+                onClick={() => setBasis(b)}
+                aria-pressed={basis === b}
+                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 ${
+                  basis === b ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {BASIS_SEGMENT_LABEL[b]}
+              </button>
+            ))}
+          </div>
+        </div>
         <label className="block text-sm font-medium text-gray-700">
           {existing ? 'Amount to add' : 'Amount'}
           <input autoFocus type="number" inputMode="decimal" min={0} step="any" value={amount}

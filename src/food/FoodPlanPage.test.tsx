@@ -478,10 +478,9 @@ describe('FoodPlanPage add food', () => {
     const picker = await screen.findByRole('dialog', { name: 'Add food' })
     fireEvent.click(within(picker).getByRole('button', { name: /Oatmeal/ }))
 
-    // Amount dialog opens with the merge note. Switch basis to Weight (g) to
+    // Amount dialog opens with the merge note. Switch basis to Weight to
     // create a merge conflict, which reveals the preserve radio group.
-    const basisSelect = await screen.findByRole('combobox')
-    fireEvent.change(basisSelect, { target: { value: 'weight' } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Weight' }))
 
     // The preserve group "Keep the combined total in" appears.
     const group = await screen.findByRole('group', { name: /Keep the combined total in/ })
