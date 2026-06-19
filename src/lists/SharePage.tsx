@@ -1,6 +1,7 @@
 import { Suspense, lazy, useMemo, useState } from 'react'
 import { useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
+import { Eye } from 'lucide-react'
 import {
   fetchSharedList, fetchSharedListItems, fetchSharedListCategories,
   fetchSharedFoodSummary, fetchSharedFoodPlan, queryKeys,
@@ -176,6 +177,10 @@ export default function SharePage() {
         {list.is_draft && <DraftBanner />}
         <div className="mb-6 flex flex-wrap items-center gap-3">
           <h1 className="flex-1 min-w-0 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
+          <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-gray-500">
+            <Eye size={13} aria-hidden="true" />
+            Public - read-only
+          </span>
           <UnitSegmentedControl idPrefix="share" />
         </div>
         {showFoodPlan && (
