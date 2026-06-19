@@ -49,10 +49,11 @@ function renderSection(props: Partial<Parameters<typeof MealSection>[0]> = {}) {
 }
 
 describe('MealSection', () => {
-  it('renders the meal name as a subordinate divider, not a gray section strip', () => {
+  it('renders the meal name as a non-gray uppercase eyebrow sub-divider', () => {
     renderSection()
 
-    expect(screen.getByText('Breakfast')).toBeInTheDocument()
+    // The meal name reads as a small uppercase/tracked eyebrow divider.
+    expect(screen.getByText('Breakfast')).toHaveClass('uppercase')
     // The day header owns the gray-50 section-strip grammar; a meal is a
     // lighter, indented sub-divider, so its header must NOT be the gray strip.
     expect(screen.getByTestId('meal-section-header')).not.toHaveClass('bg-gray-50')
