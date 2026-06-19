@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { SearchX } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import Modal from '../components/Modal'
 import {
@@ -87,6 +88,9 @@ export default function FoodPicker({
               <button key={t.id} type="button" onClick={() => setTab(t.id)}
                 className={`pb-1 text-sm ${tab === t.id ? 'border-b-2 border-blue-600 font-semibold text-gray-900' : 'text-gray-500'}`}>
                 {t.label}
+                {t.id === 'inPlan' && usedFoodIds.size > 0 ? (
+                  <span className="ml-1 text-gray-400 tabular-nums">{usedFoodIds.size}</span>
+                ) : null}
               </button>
             ))}
           </div>
@@ -102,7 +106,11 @@ export default function FoodPicker({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto pb-4">
           {filtered.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-gray-400">No matching food.</p>
+            <div className="flex flex-col items-center gap-1 px-4 py-8 text-center">
+              <SearchX size={18} className="text-gray-400" aria-hidden="true" />
+              <p className="text-sm font-medium text-gray-600">No matches</p>
+              <p className="text-xs text-gray-400">Try another name, or create a new food.</p>
+            </div>
           ) : (
             filtered.map((f) => (
               <button key={f.id} type="button" onClick={() => onPick(f)}

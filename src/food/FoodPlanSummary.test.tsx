@@ -3,10 +3,14 @@ import { afterEach, describe, it, expect } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import FoodPlanSummary from './FoodPlanSummary'
+import { setWeightUnit } from '../lib/weight'
 import type { FoodPlanView } from '../lib/food/view'
 import type { FoodItem, Meal } from '../lib/types'
 
 afterEach(cleanup)
+// Density header is unit-responsive; reset the shared store between tests so
+// one test's unit choice does not leak into the next.
+afterEach(() => setWeightUnit('g'))
 
 function food(p: Partial<FoodItem>): FoodItem {
   return {
@@ -58,9 +62,9 @@ describe('FoodPlanSummary', () => {
     const user = userEvent.setup()
     render(<FoodPlanSummary view={view} foodById={foods} dailyTargets={[]} />)
     expect(screen.getByRole('row', { name: /Planned total/i })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Summary' }))
+    await user.click(screen.getByRole('button', { name: 'All days' }))
     expect(screen.queryByRole('row', { name: /Planned total/i })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Summary' }))
+    await user.click(screen.getByRole('button', { name: 'All days' }))
     expect(screen.getByRole('row', { name: /Planned total/i })).toBeInTheDocument()
   })
   it('shows the incomplete marker when a contributing food lacks the nutrient', () => {
@@ -78,6 +82,16 @@ describe('FoodPlanSummary', () => {
     const partialRow = screen.getByRole('row', { name: /Day 2/ })
     expect(within(partialRow).queryByText('over target')).not.toBeInTheDocument()
   })
+  it('labels the density column unit-responsively (kcal/g in grams, kcal/oz in ounces)', () => {
+    setWeightUnit('g')
+    const { rerender } = render(<FoodPlanSummary view={view} foodById={foods} dailyTargets={[]} />)
+    expect(screen.getByRole('columnheader', { name: 'kcal/g' })).toBeInTheDocument()
+
+    setWeightUnit('oz')
+    rerender(<FoodPlanSummary view={view} foodById={foods} dailyTargets={[]} />)
+    expect(screen.getByRole('columnheader', { name: 'kcal/oz' })).toBeInTheDocument()
+  })
+
   it('links day and extras rows to their document sections', () => {
     render(<FoodPlanSummary view={view} foodById={foods} dailyTargets={[]} />)
 

@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { useMemo, useState, type ReactNode } from 'react'
+import { ChevronDown, ChevronRight, PackagePlus } from 'lucide-react'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { type WeightUnit } from '../lib/weight'
 import type { FoodItem, FoodPlanDailyTarget, DailyTargetMetric } from '../lib/types'
@@ -50,18 +50,22 @@ function NutCells({ totals, cols, nameForId, targets }: {
   )
 }
 
-function SummaryRow({ label, group, cols, weightUnit, nameForId, href }: {
+function SummaryRow({ label, group, cols, weightUnit, nameForId, href, icon }: {
   label: string
   group: GroupSummary
   cols: Col[]
   weightUnit: WeightUnit
   nameForId: (id: string) => string
   href?: string
+  icon?: ReactNode
 }) {
+  // The icon is decorative; aria-label on the row and the link text keep the
+  // accessible name as the bare label (e.g. "Extras").
+  const labelContent = icon ? <span className="inline-flex items-center gap-1">{icon}{label}</span> : label
   return (
     <tr aria-label={label} className="border-t border-gray-200 font-medium">
       <th scope="row" className="px-2 py-1.5 text-left">
-        {href ? <a href={href} className="text-blue-600 hover:underline">{label}</a> : label}
+        {href ? <a href={href} className="text-blue-600 hover:underline">{labelContent}</a> : labelContent}
       </th>
       <td className="px-2 py-1.5 text-right"><WeightCell weight={group.weight} weightUnit={weightUnit} nameForId={nameForId} /></td>
       <NutCells totals={group.totals} cols={cols} nameForId={nameForId} />
@@ -78,6 +82,7 @@ export default function FoodPlanSummary({
   dailyTargets: FoodPlanDailyTarget[]
 }) {
   const { weightUnit } = useWeightUnit()
+  const densityLabel = weightUnit === 'oz' ? 'kcal/oz' : 'kcal/g'
   const [open, setOpen] = useState(true)
   const [showMore, setShowMore] = useState(false)
   // The summary's single biggest cost (~20 passes over every day's entries).
@@ -112,7 +117,7 @@ export default function FoodPlanSummary({
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-3 py-2 text-sm">
         <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
           className="flex items-center gap-1 font-semibold text-gray-900">
-          {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />} Summary
+          {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />} All days
         </button>
         <span><span className="text-gray-400">Packed weight </span><span className="font-semibold"><WeightCell weight={s.packed.weight} weightUnit={weightUnit} nameForId={nameForId} /></span></span>
         <span><span className="text-gray-400">Full-day average </span><span className="font-semibold">{fullAvgCal.state === 'complete' && s.fullDayAverage.fullDays > 0 ? `${Math.round(fullAvgCal.value)} kcal (${s.fullDayAverage.fullDays} of ${s.fullDayAverage.totalDays} days counted)` : '-'}</span></span>
@@ -140,7 +145,7 @@ export default function FoodPlanSummary({
                   <th scope="col" className="px-2 py-1.5 text-left font-medium">Day</th>
                   <th scope="col" className="px-2 py-1.5 text-right font-medium">Weight</th>
                   {cols.map((c) => <th key={c.key} scope="col" className="px-2 py-1.5 text-right font-medium">{c.label}</th>)}
-                  <th scope="col" className="px-2 py-1.5 text-right font-medium">Density</th>
+                  <th scope="col" className="px-2 py-1.5 text-right font-medium">{densityLabel}</th>
                 </tr>
               </thead>
               <tbody>
@@ -170,7 +175,7 @@ export default function FoodPlanSummary({
                     </td>
                   </tr>
                 ))}
-                <SummaryRow label="Extras" group={s.extras} cols={cols} weightUnit={weightUnit} nameForId={nameForId} href="#food-extras" />
+                <SummaryRow label="Extras" icon={<PackagePlus size={12} className="text-gray-400" aria-hidden="true" />} group={s.extras} cols={cols} weightUnit={weightUnit} nameForId={nameForId} href="#food-extras" />
                 <SummaryRow label="Planned total" group={s.planned} cols={cols} weightUnit={weightUnit} nameForId={nameForId} />
                 <tr aria-label="Full-day average" className="border-t border-gray-200 font-medium">
                   <th scope="row" className="px-2 py-1.5 text-left">

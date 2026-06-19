@@ -105,6 +105,27 @@ describe('FoodPicker', () => {
     expect(within(screen.getByRole('button', { name: /Used bars/i })).getByText('In plan')).toBeInTheDocument()
   })
 
+  it('counts the foods already in the plan on the In this plan tab', () => {
+    renderPicker({
+      foods: [
+        food({ id: 'food-1', name: 'Used bars' }),
+        food({ id: 'food-2', name: 'Also used' }),
+        food({ id: 'food-3', name: 'Not used' }),
+      ],
+      usedFoodIds: new Set(['food-1', 'food-2']),
+    })
+
+    const tab = screen.getByRole('button', { name: /In this plan/ })
+    expect(within(tab).getByText('2')).toBeInTheDocument()
+  })
+
+  it('shows an enriched empty state with title and description when nothing matches', () => {
+    renderPicker({ foods: [] })
+
+    expect(screen.getByText('No matches')).toBeInTheDocument()
+    expect(screen.getByText('Try another name, or create a new food.')).toBeInTheDocument()
+  })
+
   it('changes the helper hint when switching tabs', async () => {
     const user = userEvent.setup()
     renderPicker({ foods: [food()] })
