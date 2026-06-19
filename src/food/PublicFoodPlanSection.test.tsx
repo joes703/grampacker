@@ -57,7 +57,7 @@ const baseDoc: PublicFoodPlanDocument = {
 }
 
 describe('PublicFoodPlanSection', () => {
-  it("labels active daily targets as the list owner's targets", () => {
+  it("frames active daily targets under an Owner's plan targets eyebrow with owner attribution", () => {
     render(
       <PublicFoodPlanSection
         doc={{
@@ -73,13 +73,17 @@ describe('PublicFoodPlanSection', () => {
       />,
     )
 
-    expect(screen.getByText("Targets shown are the list owner's, not grampacker recommendations.")).toBeInTheDocument()
+    expect(screen.getByText("Owner's plan targets")).toBeInTheDocument()
+    // Copy clarifies these are the owner's saved targets, not grampacker advice.
+    expect(
+      screen.getByText(/list owner's saved targets, not grampacker nutrition recommendations/i),
+    ).toBeInTheDocument()
   })
 
-  it('does not show the owner-target disclaimer when no active targets are set', () => {
+  it("hides the Owner's plan targets note when no active targets are set", () => {
     const { rerender } = render(<PublicFoodPlanSection doc={baseDoc} />)
 
-    expect(screen.queryByText(/not grampacker recommendations/i)).not.toBeInTheDocument()
+    expect(screen.queryByText("Owner's plan targets")).not.toBeInTheDocument()
 
     rerender(
       <PublicFoodPlanSection
@@ -96,7 +100,7 @@ describe('PublicFoodPlanSection', () => {
       />,
     )
 
-    expect(screen.queryByText(/not grampacker recommendations/i)).not.toBeInTheDocument()
+    expect(screen.queryByText("Owner's plan targets")).not.toBeInTheDocument()
   })
 
   it('renders one continuous flat document shell containing the days and embedded Extras', () => {

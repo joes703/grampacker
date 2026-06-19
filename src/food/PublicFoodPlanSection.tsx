@@ -24,9 +24,12 @@ export default function PublicFoodPlanSection({ doc }: { doc: PublicFoodPlanDocu
         dailyTargets={fullDoc.dailyTargets}
       />
       {hasActiveDailyTargets ? (
-        <p className="text-xs text-gray-400">
-          Targets shown are the list owner's, not grampacker recommendations.
-        </p>
+        <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+          <p className={FLAT_TABLE_EYEBROW}>Owner's plan targets</p>
+          <p className="mt-1 text-xs text-gray-400">
+            These are the list owner's saved targets, not grampacker nutrition recommendations.
+          </p>
+        </div>
       ) : null}
 
       <div data-testid="public-food-plan-document" className={FLAT_TABLE_SURFACE}>

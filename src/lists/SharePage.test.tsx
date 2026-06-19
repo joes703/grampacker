@@ -96,6 +96,17 @@ describe('SharePage draft banner', () => {
 })
 
 describe('SharePage read-only public sharing', () => {
+  it('shows a "Public - read-only" indicator in the share header without any edit/copy controls', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue(baseList)
+    renderShareView()
+
+    expect(await screen.findByText('Public - read-only')).toBeTruthy()
+    // The indicator communicates read-only sharing only; no write affordances appear.
+    expect(screen.queryByRole('button', { name: /copy/i })).toBeNull()
+    expect(screen.queryByRole('link', { name: /sign in to copy/i })).toBeNull()
+    expect(screen.queryByRole('link', { name: /edit/i })).toBeNull()
+  })
+
   it('does not offer public copy actions to signed-out viewers', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue(baseList)
     renderShareView()
