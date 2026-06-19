@@ -1,3 +1,4 @@
+import { PackagePlus } from 'lucide-react'
 import type { FoodItem, FoodPlanEntry } from '../lib/types'
 import { FLAT_TABLE_SURFACE, FLAT_TABLE_HEADER } from '../components/flat-table-styles'
 import FoodPlanEntryRow from './FoodPlanEntryRow'
@@ -21,7 +22,7 @@ export default function FoodPlanExtras({
       className={embedded ? 'border-t-2 border-gray-200 bg-white' : `${FLAT_TABLE_SURFACE} mt-4`}
     >
       <div className={`${FLAT_TABLE_HEADER} flex-col items-start justify-center gap-0.5 py-2 lg:flex-row lg:items-center lg:justify-start lg:gap-2`}>
-        <span>Extras</span>
+        <span className="inline-flex items-center gap-1"><PackagePlus size={14} className="text-gray-500" aria-hidden="true" />Extras</span>
         <span className="text-xs font-normal text-gray-500">
           Extra or emergency food - counted in packed food, not assigned to a day.
         </span>
