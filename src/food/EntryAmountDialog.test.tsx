@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import EntryAmountDialog from './EntryAmountDialog'
 import type { FoodItem } from '../lib/types'
@@ -43,13 +43,63 @@ describe('EntryAmountDialog', () => {
     const user = userEvent.setup()
     render(<EntryAmountDialog food={food()} onSave={vi.fn()} onClose={vi.fn()} />)
 
-    await user.selectOptions(screen.getByLabelText('Measure by'), 'packages')
+    await user.click(screen.getByRole('button', { name: 'Packages' }))
     const amount = screen.getByLabelText('Amount')
     await user.clear(amount)
     await user.type(amount, '2')
 
     expect(screen.getByText('= 8 servings - 400 g - 800 kcal')).toBeInTheDocument()
     expect(screen.getByText('Entered as packages - that basis is kept; the rest is derived from the library item.')).toBeInTheDocument()
+  })
+
+  it('renders the available bases as a segmented control with the first selected', () => {
+    render(<EntryAmountDialog food={food()} onSave={vi.fn()} onClose={vi.fn()} />)
+
+    const group = screen.getByRole('group', { name: 'Entry basis' })
+    expect(within(group).getByRole('button', { name: 'Servings' })).toBeInTheDocument()
+    expect(within(group).getByRole('button', { name: 'Packages' })).toBeInTheDocument()
+    expect(within(group).getByRole('button', { name: 'Weight' })).toBeInTheDocument()
+    // Default selection is the first basis; pressed state is exposed accessibly.
+    expect(within(group).getByRole('button', { name: 'Servings' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(group).getByRole('button', { name: 'Weight' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('omits the Packages option when the food has no servings_per_package', () => {
+    render(<EntryAmountDialog food={food({ servings_per_package: null })} onSave={vi.fn()} onClose={vi.fn()} />)
+
+    const group = screen.getByRole('group', { name: 'Entry basis' })
+    expect(within(group).queryByRole('button', { name: 'Packages' })).not.toBeInTheDocument()
+    expect(within(group).getByRole('button', { name: 'Servings' })).toBeInTheDocument()
+    expect(within(group).getByRole('button', { name: 'Weight' })).toBeInTheDocument()
+  })
+
+  it('switches basis via the segmented control and updates the pressed state and derived preview', async () => {
+    const user = userEvent.setup()
+    render(<EntryAmountDialog food={food()} onSave={vi.fn()} onClose={vi.fn()} />)
+
+    // Default servings, amount 1 -> 1 serving / 50 g / 100 kcal.
+    expect(screen.getByText('= 1 servings - 50 g - 100 kcal')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Packages' }))
+
+    expect(screen.getByRole('button', { name: 'Packages' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Servings' })).toHaveAttribute('aria-pressed', 'false')
+    // 1 package of a 4-serving food -> 4 servings / 200 g / 400 kcal.
+    expect(screen.getByText('= 4 servings - 200 g - 400 kcal')).toBeInTheDocument()
+    expect(screen.getByText('Entered as packages - that basis is kept; the rest is derived from the library item.')).toBeInTheDocument()
+  })
+
+  it('saves the selected basis and amount unchanged in the payload', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn()
+    render(<EntryAmountDialog food={food()} onSave={onSave} onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Weight' }))
+    await user.clear(screen.getByLabelText('Amount'))
+    await user.type(screen.getByLabelText('Amount'), '120')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ basis: 'weight', amount: 120 }))
   })
 
   it('hides derived values when the selected basis needs missing metadata', async () => {
