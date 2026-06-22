@@ -348,14 +348,15 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
 
   return (
     <div className="mt-4">
-      {/* Stat strip: the three glanceable reconciliation numbers, read from the
-          same summarizeTrip pass the all-days table uses. */}
-      <FoodPlanStatStrip summary={summary} foodById={foodById} />
-
-      {/* Control row: weight unit selector + plan actions. */}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <UnitSegmentedControl idPrefix="food-plan" />
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+      {/* Headline row: the stat strip (three glanceable reconciliation numbers,
+          read from the same summarizeTrip pass the all-days table uses) on the
+          left, the weight unit selector + plan actions on the right. Stacks on
+          mobile; the wide workspace lets them sit side-by-side on desktop, as in
+          the prototype. */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <FoodPlanStatStrip summary={summary} foodById={foodById} />
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          <UnitSegmentedControl idPrefix="food-plan" />
           <button
             type="button"
             onClick={() => setShowGrid(true)}

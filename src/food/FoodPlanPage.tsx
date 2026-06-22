@@ -61,7 +61,14 @@ export default function FoodPlanPage() {
   if (!listId) return null
 
   return (
-    <div className="mx-auto max-w-3xl p-4 sm:p-6">
+    // Wide workspace: the Food Plan route fills AppShell's max-w-7xl main
+    // (px-4 + pt) exactly like the gear/pack tabs, instead of re-constraining
+    // to max-w-3xl. The old narrow cap was a core source of divergence from the
+    // approved prototype - the stat strip, all-days table, and day document all
+    // need the wider column. Mobile is unchanged (the cap never applied below
+    // the 768px breakpoint). Short empty/error states keep their own readable
+    // max-width so they don't stretch across the full width.
+    <div>
       <ListWorkspaceTabs listId={listId} active="food" />
 
       {/* Desktop in-page document header. Mirrors ListDocumentToolbar on the
@@ -80,14 +87,14 @@ export default function FoodPlanPage() {
       {planQuery.isLoading ? (
         <FoodPlanSkeleton />
       ) : planQuery.isError ? (
-        <div className="mt-6">
+        <div className="mt-6 max-w-2xl">
           <p className="text-sm text-gray-700">Couldn't load this food plan.</p>
           <button type="button" onClick={() => planQuery.refetch()} className="mt-2 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100">
             Try again
           </button>
         </div>
       ) : !planQuery.data ? (
-        <div className="mt-6">
+        <div className="mt-6 max-w-2xl">
           <h1 className="text-lg font-semibold text-gray-900">No food plan yet</h1>
           <p className="mt-1 text-sm text-gray-600">
             Track the food you'll carry - its weight and, if you want, nutrition by day and meal.
