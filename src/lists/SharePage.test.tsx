@@ -231,7 +231,9 @@ describe('SharePage public food plan tab', () => {
     expect(screen.getByRole('button', { name: 'Gear list' })).toBeTruthy()
     expect(screen.getByText('On-trail food')).toBeTruthy()
     expect(screen.getByText('Energy bar')).toBeTruthy()
-    expect(screen.getByText('2 servings')).toBeTruthy()
+    // The entry row prints the quantity in a desktop column AND a mobile
+    // subtitle (only one is visible per viewport); both live in the DOM.
+    expect(screen.getAllByText('2 servings').length).toBeGreaterThan(0)
     expect(screen.queryByRole('link', { name: /edit food plan/i })).toBeNull()
   })
 
