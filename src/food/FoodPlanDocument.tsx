@@ -9,7 +9,7 @@ import {
   verticalListSortingStrategy, horizontalListSortingStrategy, useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical } from 'lucide-react'
+import { GripVertical, CalendarDays } from 'lucide-react'
 import {
   queryKeys, fetchFoodItems, fetchFoodPlan,
   upsertFoodPlanEntry, upsertFoodPlanEntries, updateFoodPlanEntry, deleteFoodPlanEntry,
@@ -32,10 +32,13 @@ import MoveCopyEntryDialog, { type MoveCopyTarget } from './MoveCopyEntryDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ScheduleGridDialog, { type ScheduleToggle } from './ScheduleGridDialog'
 import FoodPlanSummary from './FoodPlanSummary'
+import FoodPlanStatStrip from './FoodPlanStatStrip'
 import FoodPlanSkeleton from './FoodPlanSkeleton'
 import TargetsDialog from './TargetsDialog'
 import DayNutritionReview from './DayNutritionReview'
-import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
+import UnitSegmentedControl from '../components/UnitSegmentedControl'
+import { summarizeTrip } from '../lib/food/nutrition'
+import { FLAT_TABLE_SURFACE, FLAT_TABLE_EYEBROW } from '../components/flat-table-styles'
 
 type AddTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
 
@@ -319,6 +322,11 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     })),
     [view],
   )
+  // One trip reconciliation pass for the whole top: the stat strip and the
+  // all-days summary table both read from this so they can never disagree.
+  // summarizeTrip is the heaviest derive here, so it stays a single memo keyed
+  // on the same (view, foodById) identities the children depend on.
+  const summary = useMemo(() => summarizeTrip(view, foodById), [view, foodById])
 
   if (foodsQuery.isLoading) {
     return <FoodPlanSkeleton />
@@ -340,53 +348,67 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
 
   return (
     <div className="mt-4">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-lg font-semibold text-gray-900">Food plan</h1>
-        <button
-          type="button"
-          onClick={() => setShowGrid(true)}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
-        >
-          Edit schedule
-        </button>
-        <button
-          type="button"
-          onClick={() => addDayMut.mutate()}
-          disabled={addDayMut.isPending}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-        >
-          Add day
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowAddMeal(true)}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
-        >
-          Add meal
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowTargets(true)}
-          className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
-        >
-          Targets
-        </button>
+      {/* Headline row: the stat strip (three glanceable reconciliation numbers,
+          read from the same summarizeTrip pass the all-days table uses) on the
+          left, the weight unit selector + plan actions on the right. Stacks on
+          mobile; the wide workspace lets them sit side-by-side on desktop, as in
+          the prototype. */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <FoodPlanStatStrip summary={summary} foodById={foodById} />
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          <UnitSegmentedControl idPrefix="food-plan" />
+          <button
+            type="button"
+            onClick={() => setShowGrid(true)}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          >
+            Edit schedule
+          </button>
+          <button
+            type="button"
+            onClick={() => addDayMut.mutate()}
+            disabled={addDayMut.isPending}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Add day
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowAddMeal(true)}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          >
+            Add meal
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowTargets(true)}
+            className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+          >
+            Targets
+          </button>
+        </div>
       </div>
-      <div className="mb-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="font-medium text-gray-800">
-            {view.days.length} days - {plannedMealCount} planned meals - {fullDayCount} full days
-          </span>
+
+      {/* Schedule summary card. The meal-order reorder DnD is preserved here -
+          its DndContext mutates ['food-plan', listId], which this component
+          subscribes to per the colocation rule. */}
+      <div className="mt-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-gray-800">
+          <CalendarDays size={15} className="shrink-0 text-gray-400" aria-hidden="true" />
+          <span className="font-medium">{view.days.length} days - {plannedMealCount} planned meals</span>
           {perMealCounts.length > 0 ? (
-            <span className="text-xs text-gray-500">
-              {perMealCounts.map(({ meal, count }) => `${meal.name} x${count}`).join(', ')}
-            </span>
+            <>
+              <span className="text-gray-300" aria-hidden="true">-</span>
+              <span className="text-xs text-gray-500">{perMealCounts.map(({ meal, count }) => `${meal.name} x${count}`).join(', ')}</span>
+            </>
           ) : null}
+          <span className="text-gray-300" aria-hidden="true">-</span>
+          <span className="text-xs text-gray-500">{fullDayCount} full days</span>
         </div>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleMealDragEnd}>
           <SortableContext items={view.meals.map((m) => m.id)} strategy={horizontalListSortingStrategy}>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Meal order:</span>
+              <span className={FLAT_TABLE_EYEBROW}>Meal order</span>
               {view.meals.map((m) => (
                 <SortableMealChip key={m.id} meal={m} />
               ))}
@@ -394,7 +416,10 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           </SortableContext>
         </DndContext>
       </div>
-      <FoodPlanSummary view={view} foodById={foodById} dailyTargets={currentDoc.dailyTargets} />
+
+      <div className="mt-3">
+        <FoodPlanSummary summary={summary} foodById={foodById} dailyTargets={currentDoc.dailyTargets} />
+      </div>
       <div className={reviewDayView ? 'mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]' : 'mt-4'}>
         <div>
           <div data-testid="food-plan-document" className={FLAT_TABLE_SURFACE}>

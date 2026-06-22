@@ -3,6 +3,7 @@ import type {
   FoodPlanDailyTarget, MealTarget,
 } from '../lib/types'
 import { selectFoodPlanView } from './useFoodPlanDocument'
+import { summarizeTrip } from '../lib/food/nutrition'
 import FoodPlanSummary from './FoodPlanSummary'
 import FoodPlanEntryRow from './FoodPlanEntryRow'
 import FoodPlanExtras from './FoodPlanExtras'
@@ -14,12 +15,13 @@ export default function PublicFoodPlanSection({ doc }: { doc: PublicFoodPlanDocu
   const fullDoc = toReadonlyFoodPlanDocument(doc)
   const view = selectFoodPlanView(fullDoc)
   const foodById = new Map<string, FoodItem>(toReadonlyFoods(doc).map((food) => [food.id, food]))
+  const summary = summarizeTrip(view, foodById)
   const hasActiveDailyTargets = fullDoc.dailyTargets.some((target) => target.mode !== 'off')
 
   return (
     <section aria-label="Food plan" className="space-y-4">
       <FoodPlanSummary
-        view={view}
+        summary={summary}
         foodById={foodById}
         dailyTargets={fullDoc.dailyTargets}
       />
