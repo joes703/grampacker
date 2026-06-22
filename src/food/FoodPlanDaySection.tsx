@@ -156,11 +156,11 @@ export default function FoodPlanDaySection({
               ))}
             </div>
           ) : null}
-          {/* Compact day footer: day-level macro strip + Review nutrition CTA.
-              Replaces the per-meal nutrient strips that used to clutter every
-              meal; the detailed targets/derived metrics live in the review
-              panel that this CTA opens. */}
-          <DayNutritionFooter dayView={dayView} foodById={foodById} onReviewNutrition={onReviewNutrition} />
+          {/* Compact day footer: day-level macro strip only. Replaces the
+              per-meal nutrient strips that used to clutter every meal; the
+              detailed targets/derived metrics live in the review panel opened
+              from the day-header Review button (no duplicate footer CTA). */}
+          <DayNutritionFooter dayView={dayView} foodById={foodById} />
         </div>
       ) : null}
     </div>
@@ -178,13 +178,13 @@ function FooterMetric({ label, children }: { label: string; children: ReactNode 
 
 // Compact per-day nutrition strip shown at the bottom of an open day. Mirrors
 // the prototype footer: calories (no label - kcal is the unit), protein, carbs,
-// fat, then sodium + calorie density on desktop, and a right-aligned "Review
-// nutrition" CTA. Raw day totals only; bands, targets, and derived metrics
-// (fat % / sugar % / ratios) stay in the DayNutritionReview panel.
-function DayNutritionFooter({ dayView, foodById, onReviewNutrition }: {
+// fat, then sodium + calorie density on desktop. Raw day totals only; bands,
+// targets, and derived metrics (fat % / sugar % / ratios) stay in the
+// DayNutritionReview panel, opened from the day-header Review button. The
+// footer carries no Review CTA of its own - one Review affordance per day.
+function DayNutritionFooter({ dayView, foodById }: {
   dayView: DayView
   foodById: Map<string, FoodItem>
-  onReviewNutrition?: () => void
 }) {
   const { weightUnit } = useWeightUnit()
   const entries = dayView.cells.flatMap((c) => c.entries)
@@ -205,16 +205,6 @@ function DayNutritionFooter({ dayView, foodById, onReviewNutrition }: {
           {density === null ? '-' : formatCalorieDensity(density, weightUnit)}
         </span>
       </span>
-      {onReviewNutrition ? (
-        <button
-          type="button"
-          onClick={onReviewNutrition}
-          className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline"
-        >
-          <Activity size={13} aria-hidden="true" />
-          Review nutrition
-        </button>
-      ) : null}
     </div>
   )
 }
