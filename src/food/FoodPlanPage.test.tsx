@@ -24,9 +24,11 @@ vi.mock('../lib/queries', () => ({
     foodPlan: (listId: string) => ['food-plan', listId] as const,
     foodItems: () => ['food-items'] as const,
     foodPlanCopyOptions: (userId: string, targetListId: string) => ['food-plan-copy-options', userId, targetListId] as const,
+    lists: () => ['lists'] as const,
   },
   // page + document data
   fetchFoodPlan: vi.fn(),
+  fetchLists: vi.fn().mockResolvedValue([]),
   createFoodPlan: vi.fn(),
   fetchFoodPlanCopyOptions: vi.fn(),
   copyFoodPlanToList: vi.fn(),
@@ -324,13 +326,13 @@ describe('FoodPlanPage rendering', () => {
     vi.mocked(fetchFoodItems).mockResolvedValue([])
     renderPage()
 
-    expect(await screen.findByRole('heading', { name: 'Food plan' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Edit schedule' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Edit schedule' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add day' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add meal' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Targets' })).toBeInTheDocument()
-    expect(screen.getByText('3 days - 2 planned meals - 2 full days')).toBeInTheDocument()
-    expect(screen.getByText(/Meal order:/)).toBeInTheDocument()
+    expect(screen.getByText('3 days - 2 planned meals')).toBeInTheDocument()
+    expect(screen.getByText('2 full days')).toBeInTheDocument()
+    expect(screen.getByText(/Meal order/)).toBeInTheDocument()
     expect(screen.getByText('Breakfast x2')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '+ Add day' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '+ Add meal' })).not.toBeInTheDocument()

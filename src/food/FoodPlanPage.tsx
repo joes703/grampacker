@@ -3,9 +3,11 @@ import { useParams, Link } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRequireSession } from '../auth/use-require-session'
 import { useDocumentTitle } from '../lib/use-document-title'
-import { queryKeys, fetchFoodPlan, createFoodPlan, copyFoodPlanToList, invalidateFoodPlanCaches } from '../lib/queries'
+import { queryKeys, fetchFoodPlan, createFoodPlan, copyFoodPlanToList, invalidateFoodPlanCaches, fetchLists } from '../lib/queries'
 import PrimaryButton from '../components/PrimaryButton'
 import ListWorkspaceTabs from '../lists/ListWorkspaceTabs'
+import CurrentListHeader from '../lists/CurrentListHeader'
+import ListSettingsButton from '../lists/ListSettingsButton'
 import CreateFoodPlanDialog from './CreateFoodPlanDialog'
 import CopyFoodPlanDialog from './CopyFoodPlanDialog'
 import FoodPlanDocument from './FoodPlanDocument'
@@ -24,6 +26,16 @@ export default function FoodPlanPage() {
     queryFn: () => fetchFoodPlan(userId, listId ?? ''),
     enabled: Boolean(listId),
   })
+
+  // Owner-scoped list lookup for the in-page document header (list name +
+  // List options). Shares the ['lists'] cache with /lists and the gear/pack
+  // detail page, so this usually resolves from cache rather than refetching.
+  const listsQuery = useQuery({
+    queryKey: queryKeys.lists(),
+    queryFn: () => fetchLists(userId),
+    enabled: Boolean(userId),
+  })
+  const list = listsQuery.data?.find((l) => l.id === listId)
 
   const [showCreate, setShowCreate] = useState(false)
   const [showCopy, setShowCopy] = useState(false)
@@ -51,6 +63,19 @@ export default function FoodPlanPage() {
   return (
     <div className="mx-auto max-w-3xl p-4 sm:p-6">
       <ListWorkspaceTabs listId={listId} active="food" />
+
+      {/* Desktop in-page document header. Mirrors ListDocumentToolbar on the
+          gear/pack tabs (the global top bar is global-only on desktop, so list
+          identity + List options live in the document column). Mobile keeps the
+          list name in NavBar's route heading. */}
+      {list ? (
+        <div className="mt-4 hidden items-center gap-2 md:flex">
+          <CurrentListHeader list={list} />
+          <div className="ml-auto flex items-center gap-2">
+            <ListSettingsButton list={list} />
+          </div>
+        </div>
+      ) : null}
 
       {planQuery.isLoading ? (
         <FoodPlanSkeleton />

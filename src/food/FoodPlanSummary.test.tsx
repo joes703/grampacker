@@ -4,8 +4,9 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import FoodPlanSummary from './FoodPlanSummary'
 import { setWeightUnit } from '../lib/weight'
+import { summarizeTrip } from '../lib/food/nutrition'
 import type { FoodPlanView } from '../lib/food/view'
-import type { FoodItem, Meal } from '../lib/types'
+import type { FoodItem, FoodPlanDailyTarget, Meal } from '../lib/types'
 
 afterEach(cleanup)
 // Density header is unit-responsive; reset the shared store between tests so
@@ -34,47 +35,58 @@ const view: FoodPlanView = {
   extras: [ent('z', null, 3, true)],
 }
 
+const foods = new Map([['a', food({})]])
+
+// summarizeTrip is now lifted to FoodPlanDocument and passed in; the test
+// computes it the same way so the table reflects the same reconciliation.
+function renderSummary(opts: { foodById?: Map<string, FoodItem>; dailyTargets?: FoodPlanDailyTarget[] } = {}) {
+  const foodById = opts.foodById ?? foods
+  return render(
+    <FoodPlanSummary summary={summarizeTrip(view, foodById)} foodById={foodById} dailyTargets={opts.dailyTargets ?? []} />,
+  )
+}
+
 describe('FoodPlanSummary', () => {
-  const foods = new Map([['a', food({})]])
   it('Planned total sums numbered days only', () => {
-    render(<FoodPlanSummary view={view} foodById={foods} dailyTargets={[]} />)
+    renderSummary()
     const row = screen.getByRole('row', { name: /Planned total/i })
     expect(within(row).getByText('300 kcal')).toBeInTheDocument()
   })
   it('Packed total = Planned + Extras', () => {
-    render(<FoodPlanSummary view={view} foodById={foods} dailyTargets={[]} />)
+    renderSummary()
     const row = screen.getByRole('row', { name: /Packed total/i })
     expect(within(row).getByText('600 kcal')).toBeInTheDocument()
   })
-  it('states the Full-day average denominator in the headline and the row', () => {
-    render(<FoodPlanSummary view={view} foodById={foods} dailyTargets={[]} />)
-    expect(screen.getByText(/200 kcal \(1 of 2 days counted\)/i)).toBeInTheDocument()
-    expect(screen.getAllByText(/1 of 2 days counted/i).length).toBeGreaterThanOrEqual(2)
+  it('states the Full-day average value and denominator in its row', () => {
+    renderSummary()
+    const row = screen.getByRole('row', { name: 'Full-day average' })
+    expect(within(row).getByText('200 kcal')).toBeInTheDocument()
+    expect(within(row).getByText(/1 of 2 days counted/i)).toBeInTheDocument()
   })
   it('reveals optional columns via More metrics', async () => {
     const user = userEvent.setup()
-    render(<FoodPlanSummary view={view} foodById={foods} dailyTargets={[]} />)
+    renderSummary()
     expect(screen.queryByRole('columnheader', { name: /Fiber/i })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /More metrics/i }))
     expect(screen.getByRole('columnheader', { name: /Fiber/i })).toBeInTheDocument()
   })
   it('collapses and reopens the summary table', async () => {
     const user = userEvent.setup()
-    render(<FoodPlanSummary view={view} foodById={foods} dailyTargets={[]} />)
+    renderSummary()
     expect(screen.getByRole('row', { name: /Planned total/i })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'All days' }))
+    await user.click(screen.getByRole('button', { name: /All-days summary/i }))
     expect(screen.queryByRole('row', { name: /Planned total/i })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'All days' }))
+    await user.click(screen.getByRole('button', { name: /All-days summary/i }))
     expect(screen.getByRole('row', { name: /Planned total/i })).toBeInTheDocument()
   })
   it('shows the incomplete marker when a contributing food lacks the nutrient', () => {
     const partial = new Map([['a', food({ sodium_mg: null })]])
-    render(<FoodPlanSummary view={view} foodById={partial} dailyTargets={[]} />)
+    renderSummary({ foodById: partial })
     expect(screen.getAllByRole('button', { name: /missing this nutrient/i }).length).toBeGreaterThan(0)
   })
   it('shows a Target band, grades a Full day, leaves a Partial day neutral', () => {
-    const dailyTargets = [{ id: 'd1', user_id: 'u', food_plan_id: 'p', metric: 'calories' as const, mode: 'max' as const, target_min: null, target_max: 50 }]
-    render(<FoodPlanSummary view={view} foodById={foods} dailyTargets={dailyTargets} />)
+    const dailyTargets: FoodPlanDailyTarget[] = [{ id: 'd1', user_id: 'u', food_plan_id: 'p', metric: 'calories', mode: 'max', target_min: null, target_max: 50 }]
+    renderSummary({ dailyTargets })
     expect(screen.getByRole('row', { name: 'Daily target' })).toBeInTheDocument()
     // Full day exceeds the 50 kcal max -> 'over'; Partial day shows no mark.
     const fullRow = screen.getByRole('row', { name: /Day 1/ })
@@ -84,16 +96,16 @@ describe('FoodPlanSummary', () => {
   })
   it('labels the density column unit-responsively (kcal/g in grams, kcal/oz in ounces)', () => {
     setWeightUnit('g')
-    const { rerender } = render(<FoodPlanSummary view={view} foodById={foods} dailyTargets={[]} />)
+    const { rerender } = renderSummary()
     expect(screen.getByRole('columnheader', { name: 'kcal/g' })).toBeInTheDocument()
 
     setWeightUnit('oz')
-    rerender(<FoodPlanSummary view={view} foodById={foods} dailyTargets={[]} />)
+    rerender(<FoodPlanSummary summary={summarizeTrip(view, foods)} foodById={foods} dailyTargets={[]} />)
     expect(screen.getByRole('columnheader', { name: 'kcal/oz' })).toBeInTheDocument()
   })
 
   it('links day and extras rows to their document sections', () => {
-    render(<FoodPlanSummary view={view} foodById={foods} dailyTargets={[]} />)
+    renderSummary()
 
     expect(screen.getByRole('link', { name: /Day 1/i })).toHaveAttribute('href', '#food-day-d1')
     expect(screen.getByRole('link', { name: /Day 2/i })).toHaveAttribute('href', '#food-day-d2')
