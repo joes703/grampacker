@@ -45,32 +45,50 @@ describe('FOOD_SAMPLE_CSV', () => {
     expect(header).toBe(FOOD_CSV_HEADER)
 
     const rows = parseFoodCsv(FOOD_SAMPLE_CSV) as Exclude<ReturnType<typeof parseFoodCsv>, string>
-    expect(rows.length).toBeGreaterThanOrEqual(5)
+    // The sample is the full Claude Design trip library (20+ foods), not the
+    // old 5-item placeholder, so it is useful smoke-test data for the Food
+    // Plan UI. Every row must still import cleanly.
+    expect(rows.length).toBeGreaterThanOrEqual(20)
     expect(rows.every((row) => row.errors.length === 0 && row.item !== null)).toBe(true)
-    expect(rows.map((row) => row.item!.name)).toContain('Instant Oatmeal')
-    expect(rows.map((row) => row.item!.name)).toContain('Peanut Butter')
 
-    const oatmeal = rows.find((row) => row.item?.name === 'Instant Oatmeal')?.item
+    const names = rows.map((row) => row.item!.name)
+    expect(names).toContain('Instant oatmeal')
+    expect(names).toContain('Beef stroganoff')
+    expect(names).toContain('Olive oil')
+
+    const oatmeal = rows.find((row) => row.item?.name === 'Instant oatmeal')?.item
     expect(oatmeal).toMatchObject({
-      brand: 'Example Foods',
+      brand: 'Quaker',
       serving_description: '1 packet',
       serving_weight_grams: 43,
-      calories_per_serving: 160,
-      servings_per_package: 10,
-      carbs_grams: 33,
+      calories_per_serving: 150,
+      servings_per_package: 1,
+      carbs_grams: 27,
       protein_grams: 4,
-      sodium_mg: 180,
-      notes: 'Breakfast base',
+      sodium_mg: 100,
     })
 
-    const peanutButter = rows.find((row) => row.item?.name === 'Peanut Butter')?.item
-    expect(peanutButter).toMatchObject({
-      serving_weight_grams: 32,
-      calories_per_serving: 190,
-      fat_grams: 16,
-      protein_grams: 8,
-      potassium_mg: 190,
+    // A pouch food whose package is two servings (package basis math).
+    const stroganoff = rows.find((row) => row.item?.name === 'Beef stroganoff')?.item
+    expect(stroganoff).toMatchObject({
+      serving_weight_grams: 70,
+      calories_per_serving: 250,
+      servings_per_package: 2,
+      sodium_mg: 720,
     })
+
+    // null-vs-zero fidelity survives the sample's export -> import round trip:
+    // instant coffee's macros are genuinely unknown (null), but a measured zero
+    // (olive oil sodium) stays 0.
+    const coffee = rows.find((row) => row.item?.name === 'Instant coffee')?.item
+    expect(coffee?.calories_per_serving).toBe(5)
+    expect(coffee?.carbs_grams).toBe(0)
+    expect(coffee?.fat_grams).toBeNull()
+    expect(coffee?.protein_grams).toBeNull()
+
+    const oil = rows.find((row) => row.item?.name === 'Olive oil')?.item
+    expect(oil?.sodium_mg).toBe(0)
+    expect(oil?.fat_grams).toBe(14)
   })
 })
 
