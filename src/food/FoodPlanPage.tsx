@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, Link } from 'react-router'
+import { useParams, useLocation, Link } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRequireSession } from '../auth/use-require-session'
 import { useDocumentTitle } from '../lib/use-document-title'
@@ -10,10 +10,15 @@ import CreateFoodPlanDialog from './CreateFoodPlanDialog'
 import CopyFoodPlanDialog from './CopyFoodPlanDialog'
 import FoodPlanDocument from './FoodPlanDocument'
 import FoodPlanSkeleton from './FoodPlanSkeleton'
+// Throwaway design-prototype (gated behind ?variant=design-prototype). Delete
+// src/food/__design-prototype__/ once the composition is folded into the real UI.
+import FoodPlanDesignPrototype from './__design-prototype__/FoodPlanDesignPrototype'
 import type { FoodPlanStructure } from '../lib/food/basis'
 
 export default function FoodPlanPage() {
   const { id: listId } = useParams<{ id: string }>()
+  const location = useLocation()
+  const isDesignPrototype = new URLSearchParams(location.search).get('variant') === 'design-prototype'
   const auth = useRequireSession()
   const userId = auth?.userId ?? ''
   const qc = useQueryClient()
@@ -45,6 +50,10 @@ export default function FoodPlanPage() {
       return invalidateFoodPlanCaches(qc, listId ?? '')
     },
   })
+
+  // Read-only visual-parity prototype. Gated entirely by the query param so the
+  // default route behavior is unchanged. All hooks above run unconditionally.
+  if (isDesignPrototype) return <FoodPlanDesignPrototype />
 
   if (!listId) return null
 
