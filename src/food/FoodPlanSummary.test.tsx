@@ -111,4 +111,19 @@ describe('FoodPlanSummary', () => {
     expect(screen.getByRole('link', { name: /Day 2/i })).toHaveAttribute('href', '#food-day-d2')
     expect(screen.getByRole('link', { name: 'Extras' })).toHaveAttribute('href', '#food-extras')
   })
+
+  it('orders columns with Weight anchored at the far right', () => {
+    // Weight is the cross-cutting packing metric, so the grammar is
+    // Day | nutrition | density | Weight (Weight last, not second).
+    renderSummary()
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent)
+    expect(headers[0]).toBe('Day')
+    expect(headers[1]).toBe('Calories')
+    expect(headers.at(-2)).toBe('kcal/g')
+    expect(headers.at(-1)).toBe('Weight')
+
+    // Body rows follow the same order: the weight is the last data cell.
+    const day1 = screen.getByRole('row', { name: /Day 1/ })
+    expect(within(day1).getAllByRole('cell').at(-1)).toHaveTextContent('100 g')
+  })
 })

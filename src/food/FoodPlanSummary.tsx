@@ -10,6 +10,15 @@ import TargetStatusMark from './TargetStatusMark'
 import { FLAT_TABLE_SURFACE, FLAT_TABLE_EYEBROW, FLAT_TABLE_NUMERIC_TEXT } from '../components/flat-table-styles'
 import NutrientTotalCell, { WeightCell, type NutrientCellKind } from './NutrientTotalCell'
 
+// Column-order grammar for the Food Plan document. Weight is grampacker's
+// cross-cutting packing metric, so it is visually anchored at the FAR RIGHT
+// wherever a table/row includes it. This all-days table reads:
+//   Day | <nutrition metrics> | density | Weight
+// and keeps that shape when More metrics is open (Day first, nutrition metrics
+// in the middle, density near the end, Weight last). Chunk 2 carries the same
+// rule into the day/meal/entry rows below: entry rows are
+//   Food | Quantity | Calories | Weight | Actions
+// and day/meal headers keep weight as the farthest-right metric when present.
 type Col = { key: NutrientKey; label: string; kind: NutrientCellKind }
 const DEFAULT_COLS: Col[] = [
   { key: 'calories', label: 'Calories', kind: 'calories' },
@@ -64,9 +73,9 @@ function SummaryRow({ label, group, cols, weightUnit, nameForId, href, icon }: {
       <th scope="row" className="whitespace-nowrap px-2.5 py-1.5 text-left">
         {href ? <a href={href} className="text-blue-600 hover:underline">{labelContent}</a> : labelContent}
       </th>
-      <td className="whitespace-nowrap px-2.5 py-1.5 text-right"><WeightCell weight={group.weight} weightUnit={weightUnit} nameForId={nameForId} /></td>
       <NutCells totals={group.totals} cols={cols} nameForId={nameForId} />
       <td className={`whitespace-nowrap px-2.5 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>{formatCalorieDensity(group.calorieDensityPerGram, weightUnit)}</td>
+      <td className="whitespace-nowrap px-2.5 py-1.5 text-right"><WeightCell weight={group.weight} weightUnit={weightUnit} nameForId={nameForId} /></td>
     </tr>
   )
 }
@@ -144,22 +153,23 @@ export default function FoodPlanSummary({
               <thead>
                 <tr className="border-b border-gray-200">
                   <th scope="col" className={`whitespace-nowrap px-2.5 py-1.5 text-left ${FLAT_TABLE_EYEBROW}`}>Day</th>
-                  <th scope="col" className={`whitespace-nowrap px-2.5 py-1.5 text-right ${FLAT_TABLE_EYEBROW}`}>Weight</th>
                   {cols.map((c) => <th key={c.key} scope="col" className={`whitespace-nowrap px-2.5 py-1.5 text-right ${FLAT_TABLE_EYEBROW}`}>{c.label}</th>)}
                   <th scope="col" className={`whitespace-nowrap px-2.5 py-1.5 text-right ${FLAT_TABLE_EYEBROW}`}>{densityLabel}</th>
+                  <th scope="col" className={`whitespace-nowrap px-2.5 py-1.5 text-right ${FLAT_TABLE_EYEBROW}`}>Weight</th>
                 </tr>
               </thead>
               <tbody>
                 {activeDailyTargets.length > 0 && (
                   <tr aria-label="Daily target" className="border-t border-gray-200 text-xs text-gray-500">
                     <th scope="row" className="whitespace-nowrap px-2.5 py-1.5 text-left font-medium">Target</th>
-                    <td className="px-2 py-1.5" />
                     {cols.map((c) => {
                       const m = dailyMetricForNutrientKey(c.key)
                       const t = m ? activeDailyTargets.find((x) => x.metric === m) : undefined
                       return <td key={c.key} className={`whitespace-nowrap px-2.5 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>{t ? formatDailyTargetBand(t.metric, t.mode, t.target_min, t.target_max, weightUnit) : ''}</td>
                     })}
                     <td className={`whitespace-nowrap px-2.5 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>{densityTarget ? formatDailyTargetBand('calorie_density', densityTarget.mode, densityTarget.target_min, densityTarget.target_max, weightUnit) : ''}</td>
+                    {/* empty Weight cell - Target band applies to nutrition/density, not pack weight */}
+                    <td className="px-2.5 py-1.5" />
                   </tr>
                 )}
                 {s.days.map((d, i) => (
@@ -170,12 +180,12 @@ export default function FoodPlanSummary({
                         {d.dayType === 'partial' ? <PartialPill /> : null}
                       </span>
                     </th>
-                    <td className="whitespace-nowrap px-2.5 py-1.5 text-right"><WeightCell weight={d.weight} weightUnit={weightUnit} nameForId={nameForId} /></td>
                     <NutCells totals={d.totals} cols={cols} nameForId={nameForId} targets={dayTargetMaps[i]} />
                     <td className={`whitespace-nowrap px-2.5 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>
                       {formatCalorieDensity(d.calorieDensityPerGram, weightUnit)}
                       {dayTargetMaps[i]?.get('calorie_density') ? <TargetStatusMark status={dayTargetMaps[i]!.get('calorie_density')!.status} /> : null}
                     </td>
+                    <td className="whitespace-nowrap px-2.5 py-1.5 text-right"><WeightCell weight={d.weight} weightUnit={weightUnit} nameForId={nameForId} /></td>
                   </tr>
                 ))}
                 <SummaryRow label="Extras" icon={<PackagePlus size={12} className="text-gray-400" aria-hidden="true" />} group={s.extras} cols={cols} weightUnit={weightUnit} nameForId={nameForId} href="#food-extras" />
@@ -184,7 +194,6 @@ export default function FoodPlanSummary({
                   <th scope="row" className="whitespace-nowrap px-2.5 py-1.5 text-left">
                     Full-day average <span className="text-xs font-normal text-gray-400">{s.fullDayAverage.fullDays} of {s.fullDayAverage.totalDays} days counted</span>
                   </th>
-                  <td className="whitespace-nowrap px-2.5 py-1.5 text-right">{s.fullDayAverage.fullDays > 0 ? <WeightCell weight={s.fullDayAverage.weight} weightUnit={weightUnit} nameForId={nameForId} /> : <span className="text-gray-400">-</span>}</td>
                   {cols.map((c) => (
                     <td key={c.key} className="whitespace-nowrap px-2.5 py-1.5 text-right">
                       {s.fullDayAverage.fullDays > 0
@@ -193,6 +202,7 @@ export default function FoodPlanSummary({
                     </td>
                   ))}
                   <td className={`whitespace-nowrap px-2.5 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>{s.fullDayAverage.fullDays > 0 ? formatCalorieDensity(s.fullDayAverage.calorieDensityPerGram, weightUnit) : '-'}</td>
+                  <td className="whitespace-nowrap px-2.5 py-1.5 text-right">{s.fullDayAverage.fullDays > 0 ? <WeightCell weight={s.fullDayAverage.weight} weightUnit={weightUnit} nameForId={nameForId} /> : <span className="text-gray-400">-</span>}</td>
                 </tr>
                 <SummaryRow label="Packed total" group={s.packed} cols={cols} weightUnit={weightUnit} nameForId={nameForId} />
               </tbody>
