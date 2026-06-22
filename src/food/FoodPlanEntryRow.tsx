@@ -1,17 +1,48 @@
 import { createPortal } from 'react-dom'
 import { CircleMinus, Copy, FolderInput, MoreVertical, Pencil } from 'lucide-react'
 import type { FoodItem, FoodPlanEntry } from '../lib/types'
-import { FLAT_TABLE_ROW, POPOVER_SURFACE } from '../components/flat-table-styles'
+import {
+  FLAT_TABLE_BODY_TEXT, FLAT_TABLE_QUANTITY_TEXT, FLAT_TABLE_ROW,
+  FLAT_TABLE_ROW_PADDING, POPOVER_SURFACE,
+} from '../components/flat-table-styles'
 import { RowMenuItem } from '../components/RowMenuItem'
 import RowIconButton from '../components/RowIconButton'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
-
-const BASIS_LABEL: Record<FoodPlanEntry['basis'], string> = { servings: 'servings', packages: 'pkg', weight: 'g' }
+import { useWeightUnit } from '../lib/use-weight-unit'
+import { nutrientTotal, totalWeight } from '../lib/food/nutrition'
+import NutrientTotalCell, { WeightCell } from './NutrientTotalCell'
 
 function formatAmount(n: number): string {
   return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(3)))
 }
 
+// Basis-aware quantity text (design 3.1 grammar): plain servings, a package
+// count resolved to its servings, or a gram weight. "package -> servings" keeps
+// the entered package count visible AND the resolved servings, so the row never
+// hides which basis the owner picked.
+function quantityText(entry: FoodPlanEntry, food: FoodItem | undefined): string {
+  const amt = formatAmount(entry.amount)
+  switch (entry.basis) {
+    case 'servings':
+      return `${amt} ${entry.amount === 1 ? 'serving' : 'servings'}`
+    case 'weight':
+      return `${amt} g`
+    case 'packages': {
+      const pkg = `${amt} ${entry.amount === 1 ? 'package' : 'packages'}`
+      const spp = food?.servings_per_package
+      if (spp && spp > 0) return `${pkg} (${formatAmount(entry.amount * spp)} serv)`
+      return pkg
+    }
+  }
+}
+
+// One presentational entry row in the Food Plan document. Table-like grammar
+// (design Approach D): Food | Quantity | Calories | Weight | Actions, with
+// Weight anchored at the far right before the kebab per the Chunk 1 column rule.
+// Per-entry calories/weight reuse the same nutrient helpers as the aggregates,
+// so unknown nutrition surfaces an IncompleteMarker (never a fake zero) and a
+// genuinely-known weight stays known. On mobile the quantity + calories collapse
+// into a subtitle under the name; the weight column stays visible.
 export default function FoodPlanEntryRow({
   entry, food, onEdit, onMove, onCopy, onRemove, dragHandle, outerRef, outerStyle,
 }: {
@@ -25,16 +56,48 @@ export default function FoodPlanEntryRow({
   outerRef?: (el: HTMLElement | null) => void
   outerStyle?: React.CSSProperties
 }) {
+  const { weightUnit } = useWeightUnit()
   const showKebab = Boolean(onEdit || onMove || onCopy || onRemove)
+  const oneFood = new Map<string, FoodItem>(food ? [[food.id, food]] : [])
+  const calories = nutrientTotal([entry], oneFood, 'calories')
+  const weight = totalWeight([entry], oneFood)
+  const nameForId = () => food?.name ?? 'Unknown food'
+  const qty = quantityText(entry, food)
+
   return (
-    <div ref={outerRef} style={outerStyle} className={`${FLAT_TABLE_ROW} flex items-center justify-between gap-3`}>
-      <span className="flex min-w-0 items-center gap-1">
-        {dragHandle}
-        <span className="min-w-0 truncate text-sm text-gray-900">{food?.name ?? 'Unknown food'}</span>
+    <div
+      ref={outerRef}
+      style={outerStyle}
+      className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_ROW_PADDING} gap-2 lg:gap-3 hover:bg-gray-50`}
+    >
+      {/* Drag-handle slot. Always reserved (even in Extras, which has no handle)
+          so names line up across rows; the handle stays visible on touch since
+          the TouchSensor activates on it. */}
+      <span className="flex w-5 shrink-0 items-center justify-center">{dragHandle}</span>
+
+      <span className="min-w-0 flex-1">
+        <span className={`block truncate ${FLAT_TABLE_BODY_TEXT} text-gray-900`}>{food?.name ?? 'Unknown food'}</span>
+        {/* Mobile subtitle: quantity + calories (the desktop columns are hidden
+            below lg). Weight keeps its own column on every viewport. */}
+        <span className="mt-0.5 flex items-center gap-1 text-xs text-gray-400 lg:hidden">
+          <span>{qty}</span>
+          <span aria-hidden="true">-</span>
+          <NutrientTotalCell total={calories} kind="calories" nameForId={nameForId} />
+        </span>
       </span>
-      <span className="flex items-center gap-2 whitespace-nowrap text-sm text-gray-500">
-        {formatAmount(entry.amount)} {BASIS_LABEL[entry.basis]}
-        {showKebab && <EntryKebab onEdit={onEdit} onMove={onMove} onCopy={onCopy} onRemove={onRemove} />}
+
+      <span data-testid="entry-quantity" className={`hidden w-36 shrink-0 text-right text-gray-500 lg:block ${FLAT_TABLE_QUANTITY_TEXT}`}>
+        {qty}
+      </span>
+      <span data-testid="entry-calories" className="hidden w-20 shrink-0 text-right lg:block">
+        <NutrientTotalCell total={calories} kind="calories" nameForId={nameForId} />
+      </span>
+      <span data-testid="entry-weight" className="w-20 shrink-0 text-right lg:w-24">
+        <WeightCell weight={weight} weightUnit={weightUnit} nameForId={nameForId} />
+      </span>
+
+      <span className="flex w-7 shrink-0 items-center justify-center">
+        {showKebab ? <EntryKebab onEdit={onEdit} onMove={onMove} onCopy={onCopy} onRemove={onRemove} /> : null}
       </span>
     </div>
   )

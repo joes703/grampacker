@@ -447,7 +447,7 @@ describe('FoodPlanPage add food', () => {
     renderPage()
 
     // Open the first cell's add picker.
-    const addButtons = await screen.findAllByRole('button', { name: '+ Add food' })
+    const addButtons = await screen.findAllByRole('button', { name: 'Add food' })
     fireEvent.click(addButtons[0]!)
 
     // Picker open: pick Oatmeal.
@@ -472,8 +472,8 @@ describe('FoodPlanPage add food', () => {
     vi.mocked(upsertFoodPlanEntries).mockResolvedValue([makeEntry({ id: 'saved', food_item_id: 'food-oat' })])
     renderPage()
 
-    // Open the Breakfast cell's add (first "+ Add food").
-    const addButtons = await screen.findAllByRole('button', { name: '+ Add food' })
+    // Open the Breakfast cell's add (first "Add food").
+    const addButtons = await screen.findAllByRole('button', { name: 'Add food' })
     fireEvent.click(addButtons[0]!)
 
     // Pick the food already in this cell.
@@ -503,7 +503,7 @@ describe('FoodPlanPage add food', () => {
     vi.mocked(upsertFoodPlanEntries).mockResolvedValue([makeEntry({ id: 'saved', food_item_id: 'food-oat' })])
     renderPage()
 
-    const addButtons = await screen.findAllByRole('button', { name: '+ Add food' })
+    const addButtons = await screen.findAllByRole('button', { name: 'Add food' })
     fireEvent.click(addButtons[0]!)
 
     const picker = await screen.findByRole('dialog', { name: 'Add food' })

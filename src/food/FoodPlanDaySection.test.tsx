@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import FoodPlanDaySection from './FoodPlanDaySection'
 import type { DayView } from '../lib/food/view'
+import type { FoodItem, FoodPlanEntry } from '../lib/types'
 
 vi.mock('./MealSection', () => ({
   default: function MealSectionStub({ cell }: { cell: { meal: { name: string } } }) {
@@ -65,6 +66,23 @@ const lunchMeal = {
   updated_at: ts,
 } as const
 
+const food: FoodItem = {
+  id: 'f1', user_id: 'user1', name: 'Oats', brand: null, serving_description: null,
+  serving_weight_grams: 50, calories_per_serving: 100, servings_per_package: null,
+  fat_grams: null, saturated_fat_grams: null, carbs_grams: null, fiber_grams: null,
+  sugar_grams: null, protein_grams: null, sodium_mg: null, potassium_mg: null,
+  notes: null, sort_order: 0, created_at: ts, updated_at: ts,
+}
+
+function dayViewWithFood(): DayView {
+  const entry: FoodPlanEntry = {
+    id: 'e1', user_id: 'user1', food_plan_id: 'plan1', day_meal_id: 'dm1', is_extra: false,
+    food_item_id: 'f1', basis: 'servings', amount: 2, sort_order: 0, created_at: ts, updated_at: ts,
+  }
+  const base = dayViewWithMeal()
+  return { ...base, cells: [{ ...base.cells[0]!, entries: [entry] }] }
+}
+
 function renderSection(view: DayView, props: Partial<Parameters<typeof FoodPlanDaySection>[0]> = {}) {
   render(
     <FoodPlanDaySection
@@ -82,6 +100,18 @@ describe('FoodPlanDaySection', () => {
   it('renders the day header as a flat gray section strip', () => {
     renderSection(dayViewWithMeal())
     expect(screen.getByTestId('food-day-header-day1')).toHaveClass('bg-gray-50')
+  })
+
+  it('shows day calories then weight in the header (weight to the right)', () => {
+    renderSection(dayViewWithFood(), { foodById: new Map([['f1', food]]) })
+    const header = screen.getByTestId('food-day-header-day1')
+
+    // 2 servings x 100 kcal = 200 kcal; 2 x 50 g = 100 g.
+    const cal = within(header).getByText('200 kcal')
+    const weight = within(header).getByText('100 g')
+    expect(cal).toBeInTheDocument()
+    expect(weight).toBeInTheDocument()
+    expect(cal.compareDocumentPosition(weight) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('explains that automatic days are derived from the scheduled meals', () => {

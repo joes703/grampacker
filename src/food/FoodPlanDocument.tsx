@@ -435,7 +435,6 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
                       listId={listId}
                       userId={userId}
                       foodById={foodById}
-                      mealTargets={currentDoc.mealTargets}
                       onAddFoodToCell={(dayMealId) => setAddTarget({ kind: 'cell', dayMealId })}
                       onEditEntry={(entryId) => setEditEntryId(entryId)}
                       onMoveEntry={(entryId) => openMoveCopy('move', entryId)}

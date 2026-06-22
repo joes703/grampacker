@@ -76,7 +76,7 @@ describe('FoodPlanExtras', () => {
     expect(screen.getByText('Extra or emergency food - counted in packed food, not assigned to a day.')).toBeInTheDocument()
     expect(screen.getByText('Spare bar')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '+ Add food' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add food' }))
 
     expect(onAddFood).toHaveBeenCalledTimes(1)
   })
