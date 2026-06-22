@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "preview": "vite preview",
+    "seed:food-design": "node scripts/seed-food-design-sample.mjs",
     "security:lockfile": "node scripts/check-lockfile-sources.mjs",
     "security:check": "npm run security:lockfile && npm audit --audit-level=moderate --min-release-age=0 && npm audit signatures --min-release-age=0 && sh scripts/check-supply-chain-iocs.sh",
     "test": "vitest"

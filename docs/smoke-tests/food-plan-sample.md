@@ -7,11 +7,58 @@ library, so a reviewer sees populated stat cards, an all-days summary with real
 numbers, and day / meal / entry rows.
 
 **There is no general food-plan import, and adding one is intentionally out of
-scope.** Only the Food **Library** has a CSV import. You import the sample foods
-once, then assemble the plan manually in a few minutes. (Importing a whole plan -
-days, meals, scheduled entries, targets - is a separate, unbuilt feature.)
+scope.** Only the Food **Library** has a CSV import. Two ways to get a realistic
+plan: a one-command dev seed (Option A, fastest, needs your account login), or
+build it by hand from the imported sample library (Option B, no credentials).
+(Importing a whole plan - days, meals, scheduled entries, targets - is a separate,
+unbuilt feature; the seed below is a throwaway developer tool, not that feature.)
 
-## 1. Import the sample food library
+## Option A - one-command seed (fastest)
+
+`npm run seed:food-design` loads the entire Claude Design "Wind River high route"
+sample (22 foods, 5 meals, a 7-day schedule with all entries, 3 extras, and daily
++ meal targets) into one existing list you name. It is a **developer/owner
+smoke-test seed, not a general import feature**, and adds no production UI.
+
+**Run it:**
+
+```
+npm run seed:food-design -- --list-id <list-uuid>
+# overwrite an existing plan on that list (deletes ONLY that plan):
+npm run seed:food-design -- --list-id <list-uuid> --replace
+```
+
+Get `<list-uuid>` from the list's URL (`/lists/<uuid>`) or `/lists/<uuid>/food`.
+
+**Required env** (read from `.env` / `.env.local` or the shell - see
+`.env.example`):
+
+- `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` - the same publishable values the
+  app uses (no service-role/secret key is involved).
+- `SEED_USER_EMAIL`, `SEED_USER_PASSWORD` - the account that **owns** the target
+  list (falls back to `TEST_USER_EMAIL` / `TEST_USER_PASSWORD`).
+
+**Safety behavior:**
+
+- The script signs in with the publishable key as the owner, so Row-Level
+  Security stays a hard backstop - it can only ever write that user's own rows.
+- Requires an explicit `--list-id`; verifies the list exists and is owned by the
+  signed-in account.
+- Refuses to run if the list already has a food plan unless `--replace` is passed.
+  `--replace` deletes **only** `food_plans` for that list; the cascade clears its
+  meals / days / entries / targets, and nothing else. It never touches gear items,
+  list items, the list itself, or share state, and never writes packed state.
+- Re-runs reuse matching library foods by name + brand instead of cloning them.
+- Unknown nutrition stays blank (Instant coffee macros, Fruit leather) and a
+  measured zero stays zero (Olive oil sodium); the package and by-weight bases are
+  both represented.
+
+It prints a summary (foods created/reused, meals, days, entries, targets). Then
+**open the Food tab for that list** and review against "What you should see" below.
+
+## Option B - build it by hand (no credentials)
+
+### 1. Import the sample food library
 
 1. Open **Food Library** (`/food`).
 2. Open the **CSV format** help affordance and click **Download sample CSV**
@@ -29,7 +76,7 @@ side, Olive oil, Flour tortilla, Summer sausage, Cheddar cheese, Tuna packet,
 Dehydrated refried beans, Chocolate bar, Energy waffle, Peanut candies,
 Electrolyte mix, Fruit leather, Dark chocolate, and an Emergency ration bar.
 
-## 2. Create the plan
+### 2. Create the plan
 
 1. Open a gear list, go to its **Food** tab, and start a food plan.
 2. Set the schedule to **5-7 days** (use Edit schedule / Add day).
@@ -37,7 +84,7 @@ Electrolyte mix, Fruit leather, Dark chocolate, and an Emergency ration bar.
    the anchors that make a day count as "full"; On-trail food holds the day's
    snacks. (Add "On-trail food" with Add meal if it is not already present.)
 
-## 3. Populate representative days
+### 3. Populate representative days
 
 Add enough that the summary has real numbers and at least one full vs partial
 day. These two days mirror the design sample:
@@ -57,7 +104,7 @@ This exercises all three entry bases (servings, packages, weight) and includes a
 food with unknown macros (Instant coffee), so the summary's "incomplete" markers
 show up.
 
-## 4. Add Extras
+### 4. Add Extras
 
 Extras are packed-but-unscheduled food (not tied to a day or meal). Add:
 Emergency ration bar x1, Electrolyte mix x2, Instant coffee x2. They count toward
