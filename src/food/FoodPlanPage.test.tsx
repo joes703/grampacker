@@ -23,6 +23,7 @@ vi.mock('../lib/queries', () => ({
   queryKeys: {
     foodPlan: (listId: string) => ['food-plan', listId] as const,
     foodItems: () => ['food-items'] as const,
+    foodItemsLite: () => ['food-items-lite'] as const,
     foodPlanCopyOptions: (userId: string, targetListId: string) => ['food-plan-copy-options', userId, targetListId] as const,
     lists: () => ['lists'] as const,
   },
@@ -32,6 +33,7 @@ vi.mock('../lib/queries', () => ({
   createFoodPlan: vi.fn(),
   fetchFoodPlanCopyOptions: vi.fn(),
   copyFoodPlanToList: vi.fn(),
+  loadSampleFoodPlan: vi.fn(),
   invalidateFoodPlanCaches: vi.fn(),
   fetchFoodItems: vi.fn(),
   // entry writes
@@ -68,7 +70,7 @@ vi.mock('../auth/use-require-session', () => ({
 
 import {
   fetchFoodPlan, fetchFoodItems, createFoodPlan, fetchFoodPlanCopyOptions, copyFoodPlanToList,
-  upsertFoodPlanEntries, saveFoodPlanTargets,
+  loadSampleFoodPlan, upsertFoodPlanEntries, saveFoodPlanTargets,
 } from '../lib/queries'
 import FoodPlanPage from './FoodPlanPage'
 
@@ -250,6 +252,36 @@ describe('FoodPlanPage create flow', () => {
     renderPage()
 
     expect(await screen.findByText(/Track the food you'll carry/i)).toBeTruthy()
+  })
+
+  it('offers a Load sample plan action on the empty state', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(null)
+    vi.mocked(fetchFoodItems).mockResolvedValue([])
+    renderPage()
+
+    expect(await screen.findByRole('button', { name: 'Load sample plan' })).toBeTruthy()
+    expect(screen.getByText(/realistic 7-day sample menu/i)).toBeTruthy()
+  })
+
+  it('loads the sample plan into an empty list', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(null)
+    vi.mocked(fetchFoodItems).mockResolvedValue([])
+    vi.mocked(loadSampleFoodPlan).mockResolvedValue(makeDoc().plan)
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Load sample plan' }))
+
+    await waitFor(() => expect(loadSampleFoodPlan).toHaveBeenCalledWith('u1', 'L1'))
+  })
+
+  it('hides Load sample plan once a plan exists', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(makeDoc())
+    vi.mocked(fetchFoodItems).mockResolvedValue([])
+    renderPage()
+
+    // Wait for the populated document (the day section heading) to render.
+    await waitFor(() => expect(screen.getAllByText('Day 1').length).toBeGreaterThan(0))
+    expect(screen.queryByRole('button', { name: 'Load sample plan' })).toBeNull()
   })
 
   it('copies an existing food plan into an empty list', async () => {

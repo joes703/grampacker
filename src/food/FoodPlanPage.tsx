@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRequireSession } from '../auth/use-require-session'
 import { useDocumentTitle } from '../lib/use-document-title'
-import { queryKeys, fetchFoodPlan, createFoodPlan, copyFoodPlanToList, invalidateFoodPlanCaches, fetchLists } from '../lib/queries'
+import { queryKeys, fetchFoodPlan, createFoodPlan, copyFoodPlanToList, loadSampleFoodPlan, invalidateFoodPlanCaches, fetchLists } from '../lib/queries'
 import PrimaryButton from '../components/PrimaryButton'
 import ListWorkspaceTabs from '../lists/ListWorkspaceTabs'
 import CurrentListHeader from '../lists/CurrentListHeader'
@@ -55,6 +55,17 @@ export default function FoodPlanPage() {
     onSuccess: () => {
       setShowCopy(false)
       return invalidateFoodPlanCaches(qc, listId ?? '')
+    },
+  })
+  // First-party onboarding helper: loads the Wind River sample plan. It creates
+  // food_items too, so refresh the library caches alongside the plan caches.
+  const loadSampleMut = useMutation({
+    mutationFn: () => loadSampleFoodPlan(userId, listId ?? ''),
+    meta: { errorToast: "Couldn't load the sample plan. Please try again." },
+    onSuccess: () => {
+      invalidateFoodPlanCaches(qc, listId ?? '')
+      qc.invalidateQueries({ queryKey: queryKeys.foodItems() })
+      return qc.invalidateQueries({ queryKey: queryKeys.foodItemsLite() })
     },
   })
 
@@ -111,7 +122,18 @@ export default function FoodPlanPage() {
             >
               Copy existing plan
             </button>
+            <button
+              type="button"
+              onClick={() => loadSampleMut.mutate()}
+              disabled={loadSampleMut.isPending}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            >
+              {loadSampleMut.isPending ? 'Loading sample...' : 'Load sample plan'}
+            </button>
           </div>
+          <p className="mt-2 text-xs text-gray-500">
+            Load sample plan creates a realistic 7-day sample menu you can edit or delete.
+          </p>
           <p className="mt-3 text-sm">
             <Link to={`/lists/${listId}`} className="text-gray-500 hover:underline">Back to gear list</Link>
           </p>
