@@ -1,5 +1,7 @@
 import { publicSupabase, supabase } from '../supabase'
 import { randomTempId } from '../random-temp-id'
+import { fetchFoodItems } from './food'
+import { buildSampleFoodPlanPayload } from '../food/sample-plan'
 import { FOOD_PLAN_DAY_CAP, MEAL_DEFINITION_CAP, FOOD_PLAN_ENTRY_CAP } from '../caps'
 import type { FoodPlanStructure } from '../food/basis'
 import type {
@@ -256,6 +258,25 @@ export async function copyFoodPlanToList(userId: string, sourceFoodPlanId: strin
     p_user_id: userId,
     p_source_food_plan_id: sourceFoodPlanId,
     p_target_list_id: targetListId,
+  })
+  if (error) throw error
+  return data as FoodPlan
+}
+
+// ---- "Load sample plan" onboarding helper. Resolves the static Wind River
+// sample (src/lib/food/sample-plan.ts) into a payload - deduping foods against
+// the owner's current library - and hands it to the atomic
+// create_sample_food_plan RPC. The RPC re-validates ownership, that the list has
+// no plan, and every food reference before inserting the whole graph in one
+// transaction. Creates private, editable sample data; no share or pack state.
+export async function loadSampleFoodPlan(userId: string, listId: string): Promise<FoodPlan> {
+  const existing = await fetchFoodItems(userId)
+  const payload = buildSampleFoodPlanPayload({
+    existingFoods: existing.map((f) => ({ id: f.id, name: f.name, brand: f.brand, sort_order: f.sort_order })),
+    genId: randomTempId,
+  })
+  const { data, error } = await supabase.rpc('create_sample_food_plan', {
+    p_user_id: userId, p_list_id: listId, p_payload: payload,
   })
   if (error) throw error
   return data as FoodPlan
