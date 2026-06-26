@@ -11,7 +11,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, CalendarDays } from 'lucide-react'
 import {
-  queryKeys, fetchFoodItems, fetchFoodPlan,
+  queryKeys, fetchFoodItems, fetchFoodPlan, updateFoodItem, makeOptimisticUpdate, type FoodItemInput,
   upsertFoodPlanEntry, upsertFoodPlanEntries, updateFoodPlanEntry, deleteFoodPlanEntry,
   assertFoodPlanEntryWithinCap, type EntryAddition,
   addFoodPlanDay, deleteFoodPlanDay, updateDayType, assertFoodPlanDayWithinCap, duplicateFoodPlanDay,
@@ -27,6 +27,7 @@ import FoodPlanDaySection from './FoodPlanDaySection'
 import FoodPlanExtras from './FoodPlanExtras'
 import FoodPicker from './FoodPicker'
 import EntryAmountDialog, { type EntryAmountAlsoDay, type EntryAmountResult } from './EntryAmountDialog'
+import FoodItemDialog from './FoodItemDialog'
 import AddMealDialog from './AddMealDialog'
 import MoveCopyEntryDialog, { type MoveCopyTarget } from './MoveCopyEntryDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -114,6 +115,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const [showGrid, setShowGrid] = useState(false)
   const [showTargets, setShowTargets] = useState(false)
   const [reviewDayId, setReviewDayId] = useState<string | null>(null)
+  const [editFoodItemId, setEditFoodItemId] = useState<string | null>(null)
 
   function openMoveCopy(mode: 'move' | 'copy', entryId: string) {
     const entry = currentDoc.entries.find((e) => e.id === entryId)
@@ -203,6 +205,24 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     mutationFn: (id: string) => deleteFoodPlanEntry(id),
     meta: { errorToast: "Couldn't remove the food. Please try again." },
     onSuccess: invalidate,
+  })
+
+  // Edit the library food behind an entry (the gear-from-a-list pattern): a
+  // single food_items UPDATE that changes the food everywhere it is used.
+  // Optimistically patch the ['food-items'] cache so foodById - and every plan
+  // total derived from it - refreshes immediately; the helper also invalidates
+  // the lite + pack-signature caches the /lists packing projection reads. The
+  // visible optimistic rollback is the failure signal, so no error toast (the
+  // documented makeOptimisticUpdate policy).
+  const editFoodMut = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: FoodItemInput }) => updateFoodItem(id, patch),
+    ...makeOptimisticUpdate<FoodItem, { id: string; patch: FoodItemInput }>({
+      qc,
+      queryKey: queryKeys.foodItems(),
+      id: ({ id }) => id,
+      apply: (food, { patch }) => ({ ...food, ...patch }),
+      invalidateKeys: [queryKeys.foodItemsLite(), queryKeys.foodPackSignaturesAll()],
+    }),
   })
 
   const saveTargetsMut = useMutation({
@@ -311,6 +331,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const addTargetExisting = addTarget && pickedFood ? existingEntry(pickedFood, addTarget) : undefined
   const editingEntry = currentDoc.entries.find((e) => e.id === editEntryId) ?? null
   const editingFood = editingEntry ? foodById.get(editingEntry.food_item_id) : undefined
+  const editingFoodItem = editFoodItemId ? foodById.get(editFoodItemId) : undefined
   const reviewDayIndex = reviewDayId === null ? -1 : view.days.findIndex((day) => day.day.id === reviewDayId)
   const reviewDayView = reviewDayIndex >= 0 ? view.days[reviewDayIndex] : null
   const fullDayCount = view.days.filter((day) => day.dayType === 'full').length
@@ -437,6 +458,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
                       foodById={foodById}
                       onAddFoodToCell={(dayMealId) => setAddTarget({ kind: 'cell', dayMealId })}
                       onEditEntry={(entryId) => setEditEntryId(entryId)}
+                      onEditFood={(foodItemId) => setEditFoodItemId(foodItemId)}
                       onMoveEntry={(entryId) => openMoveCopy('move', entryId)}
                       onCopyEntry={(entryId) => openMoveCopy('copy', entryId)}
                       onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
@@ -459,6 +481,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
               foodById={foodById}
               onAddFood={() => setAddTarget({ kind: 'extra' })}
               onEditEntry={(entryId) => setEditEntryId(entryId)}
+              onEditFood={(foodItemId) => setEditFoodItemId(foodItemId)}
               onMoveEntry={(entryId) => openMoveCopy('move', entryId)}
               onCopyEntry={(entryId) => openMoveCopy('copy', entryId)}
               onRemoveEntry={(entryId) => removeMut.mutate(entryId)}
@@ -503,6 +526,15 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           saving={editMut.isPending}
           onSave={(r) => editMut.mutate({ id: editingEntry.id, basis: r.basis, amount: r.amount })}
           onClose={() => setEditEntryId(null)}
+        />
+      ) : null}
+      {editingFoodItem ? (
+        <FoodItemDialog
+          item={editingFoodItem}
+          saving={editFoodMut.isPending}
+          note="Edits apply to this food everywhere it's used - every plan entry with this food updates."
+          onSave={(patch) => editFoodMut.mutate({ id: editingFoodItem.id, patch }, { onSuccess: () => setEditFoodItemId(null) })}
+          onClose={() => setEditFoodItemId(null)}
         />
       ) : null}
       {confirmDeleteDayId ? (

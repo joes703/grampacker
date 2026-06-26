@@ -57,7 +57,7 @@ export const DAILY_TARGETS = [
   { metric: 'carbs',     mode: 'band',  min: 350, max: 550 },
   { metric: 'fiber',     mode: 'floor', value: 25 },
   { metric: 'sodium',    mode: 'band',  min: 2000, max: 5000 },
-  { metric: 'density',   mode: 'floor', value: 125, unit: 'kcal/oz' },
+  { metric: 'density',   mode: 'floor', value: 110, unit: 'kcal/oz' },
   { metric: 'potassium', mode: 'off' },
 ]
 
@@ -92,11 +92,15 @@ export const DAYS = [
     dinner: [E('strog', 'package', 1), E('oil', 'serving', 1)],
     happy: [E('choc', 'serving', 2)],
   } },
-  { n: 5, label: 'Day 5', note: null, omit: [], meals: {
-    breakfast: [E('oats', 'serving', 2), E('coffee', 'serving', 1), E('milk', 'serving', 1)],
-    ontrail: [E('clif', 'serving', 1), E('trailmix', 'weight', 45), E('lyte', 'serving', 1), E('tort', 'serving', 2), E('saus', 'weight', 56), E('cheese', 'weight', 56)],
-    recovery: [E('probar', 'serving', 1)],
-    dinner: [E('pasta', 'package', 1), E('tuna', 'serving', 1)],
+  // Day 5 is the curated "happy path" reference day: every food has complete
+  // macros (no coffee/leather) so all six daily targets grade, and the amounts
+  // land it inside every target including the calorie-density floor
+  // (~116 kcal/oz vs the 110 floor). Kept byte-identical to sample-plan.ts.
+  { n: 5, label: 'Day 5', note: 'Dialed-in day - on-target reference', omit: [], meals: {
+    breakfast: [E('oats', 'serving', 2), E('milk', 'serving', 1), E('pnut', 'serving', 1)],
+    ontrail: [E('clif', 'serving', 1), E('trailmix', 'weight', 45), E('tort', 'serving', 2), E('saus', 'weight', 56), E('cheese', 'weight', 56)],
+    recovery: [E('probar', 'serving', 1), E('snick', 'serving', 1)],
+    dinner: [E('pasta', 'package', 1), E('oil', 'serving', 1)],
     happy: [E('mms', 'serving', 1)],
   } },
   { n: 6, label: 'Day 6', note: null, omit: [], meals: {

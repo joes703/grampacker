@@ -21,13 +21,14 @@ import FoodPlanEntryRow from './FoodPlanEntryRow'
 // cache it does not subscribe to triggers a snap-back race against the awaited
 // cancelQueries in the reorder mutation's onMutate.
 export default function CellEntryReorder({
-  listId, userId, dayMealId, foodById, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry,
+  listId, userId, dayMealId, foodById, onEditEntry, onEditFood, onMoveEntry, onCopyEntry, onRemoveEntry,
 }: {
   listId: string
   userId: string
   dayMealId: string
   foodById: Map<string, FoodItem>
   onEditEntry?: (id: string) => void
+  onEditFood?: (foodItemId: string) => void
   onMoveEntry?: (id: string) => void
   onCopyEntry?: (id: string) => void
   onRemoveEntry?: (id: string) => void
@@ -75,6 +76,7 @@ export default function CellEntryReorder({
             entry={entry}
             food={foodById.get(entry.food_item_id)}
             onEdit={onEditEntry ? () => onEditEntry(entry.id) : undefined}
+            onEditFood={onEditFood ? () => onEditFood(entry.food_item_id) : undefined}
             onMove={onMoveEntry ? () => onMoveEntry(entry.id) : undefined}
             onCopy={onCopyEntry ? () => onCopyEntry(entry.id) : undefined}
             onRemove={onRemoveEntry ? () => onRemoveEntry(entry.id) : undefined}
@@ -89,11 +91,12 @@ export default function CellEntryReorder({
 // drag-handle, and forwards the outer ref + transform style + handle to the
 // presentational FoodPlanEntryRow. Must be rendered inside a SortableContext.
 function SortableEntryRow({
-  entry, food, onEdit, onMove, onCopy, onRemove,
+  entry, food, onEdit, onEditFood, onMove, onCopy, onRemove,
 }: {
   entry: FoodPlanEntry
   food: FoodItem | undefined
   onEdit?: () => void
+  onEditFood?: () => void
   onMove?: () => void
   onCopy?: () => void
   onRemove?: () => void
@@ -122,6 +125,7 @@ function SortableEntryRow({
       entry={entry}
       food={food}
       onEdit={onEdit}
+      onEditFood={onEditFood}
       onMove={onMove}
       onCopy={onCopy}
       onRemove={onRemove}

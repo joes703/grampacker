@@ -1,18 +1,14 @@
 import { createPortal } from 'react-dom'
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useState } from 'react'
 import { Activity, Check, ChevronDown, ChevronRight, Copy, Info, MoreVertical, Plus, Trash2 } from 'lucide-react'
 import type { FoodItem, Meal } from '../lib/types'
 import type { DayView } from './useFoodPlanDocument'
 import {
-  FLAT_TABLE_EYEBROW, FLAT_TABLE_HEADER, FLAT_TABLE_NUMERIC_TEXT, FLAT_TABLE_SURFACE, POPOVER_SURFACE,
+  FLAT_TABLE_HEADER, FLAT_TABLE_SURFACE, POPOVER_SURFACE,
 } from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import RowIconButton from '../components/RowIconButton'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
-import { useWeightUnit } from '../lib/use-weight-unit'
-import { calorieDensityPerGram, nutrientTotals, totalWeight } from '../lib/food/nutrition'
-import { formatCalorieDensity } from './nutrition-format'
-import NutrientTotalCell from './NutrientTotalCell'
 import MealSection from './MealSection'
 import DayTotalsStrip from './DayTotalsStrip'
 
@@ -27,7 +23,7 @@ function dayTypeTitle(dayType: 'full' | 'partial', override: 'full' | 'partial' 
 }
 
 export default function FoodPlanDaySection({
-  dayView, dayIndex, listId, userId, foodById, onAddFoodToCell, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry,
+  dayView, dayIndex, listId, userId, foodById, onAddFoodToCell, onEditEntry, onEditFood, onMoveEntry, onCopyEntry, onRemoveEntry,
   onSetDayType, onDeleteDay, onDuplicate, onReviewNutrition, allMeals, onOmitMeal, onDeleteMeal, onRestoreMeal,
   dragHandle, outerRef, outerStyle, embedded = false,
 }: {
@@ -38,6 +34,7 @@ export default function FoodPlanDaySection({
   foodById: Map<string, FoodItem>
   onAddFoodToCell?: (dayMealId: string) => void
   onEditEntry?: (entryId: string) => void
+  onEditFood?: (foodItemId: string) => void
   onMoveEntry?: (entryId: string) => void
   onCopyEntry?: (entryId: string) => void
   onRemoveEntry?: (entryId: string) => void
@@ -132,6 +129,7 @@ export default function FoodPlanDaySection({
               foodById={foodById}
               onAddFood={onAddFoodToCell ? () => onAddFoodToCell(cell.dayMealId) : undefined}
               onEditEntry={onEditEntry}
+              onEditFood={onEditFood}
               onMoveEntry={onMoveEntry}
               onCopyEntry={onCopyEntry}
               onRemoveEntry={onRemoveEntry}
@@ -156,55 +154,12 @@ export default function FoodPlanDaySection({
               ))}
             </div>
           ) : null}
-          {/* Compact day footer: day-level macro strip only. Replaces the
-              per-meal nutrient strips that used to clutter every meal; the
-              detailed targets/derived metrics live in the review panel opened
-              from the day-header Review button (no duplicate footer CTA). */}
-          <DayNutritionFooter dayView={dayView} foodById={foodById} />
+          {/* No day-footer macro strip: the day header carries Cal/Weight
+              (DayTotalsStrip), and the full macro/target detail lives in the
+              all-days summary and the Review panel opened from the day header.
+              Removed here to cut the repeated nutrition clutter per day. */}
         </div>
       ) : null}
-    </div>
-  )
-}
-
-function FooterMetric({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
-      <span className={FLAT_TABLE_EYEBROW}>{label}</span>
-      {children}
-    </span>
-  )
-}
-
-// Compact per-day nutrition strip shown at the bottom of an open day. Mirrors
-// the prototype footer: calories (no label - kcal is the unit), protein, carbs,
-// fat, then sodium + calorie density on desktop. Raw day totals only; bands,
-// targets, and derived metrics (fat % / sugar % / ratios) stay in the
-// DayNutritionReview panel, opened from the day-header Review button. The
-// footer carries no Review CTA of its own - one Review affordance per day.
-function DayNutritionFooter({ dayView, foodById }: {
-  dayView: DayView
-  foodById: Map<string, FoodItem>
-}) {
-  const { weightUnit } = useWeightUnit()
-  const entries = dayView.cells.flatMap((c) => c.entries)
-  const totals = nutrientTotals(entries, foodById)
-  const weight = totalWeight(entries, foodById)
-  const density = calorieDensityPerGram(totals.calories, weight)
-  const nameForId = (id: string) => foodById.get(id)?.name ?? 'Unknown food'
-
-  return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-100 px-3 py-2 text-xs">
-      <NutrientTotalCell total={totals.calories} kind="calories" nameForId={nameForId} />
-      <FooterMetric label="P"><NutrientTotalCell total={totals.protein_grams} kind="grams" nameForId={nameForId} /></FooterMetric>
-      <FooterMetric label="C"><NutrientTotalCell total={totals.carbs_grams} kind="grams" nameForId={nameForId} /></FooterMetric>
-      <FooterMetric label="F"><NutrientTotalCell total={totals.fat_grams} kind="grams" nameForId={nameForId} /></FooterMetric>
-      <span className="hidden lg:contents">
-        <FooterMetric label="Na"><NutrientTotalCell total={totals.sodium_mg} kind="mg" nameForId={nameForId} /></FooterMetric>
-        <span className={`${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
-          {density === null ? '-' : formatCalorieDensity(density, weightUnit)}
-        </span>
-      </span>
     </div>
   )
 }

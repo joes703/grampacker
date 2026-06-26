@@ -18,7 +18,7 @@ import CellEntryReorder from './CellEntryReorder'
 // more - that detail moved to the Day nutrition review panel so the document
 // reads as day totals -> meal totals -> entry quantity/calories/weight.
 export default function MealSection({
-  cell, listId, userId, foodById, onAddFood, onEditEntry, onMoveEntry, onCopyEntry, onRemoveEntry, onOmit, onDeleteMeal,
+  cell, listId, userId, foodById, onAddFood, onEditEntry, onEditFood, onMoveEntry, onCopyEntry, onRemoveEntry, onOmit, onDeleteMeal,
 }: {
   cell: CellView
   listId: string
@@ -26,6 +26,7 @@ export default function MealSection({
   foodById: Map<string, FoodItem>
   onAddFood?: () => void
   onEditEntry?: (entryId: string) => void
+  onEditFood?: (foodItemId: string) => void
   onMoveEntry?: (entryId: string) => void
   onCopyEntry?: (entryId: string) => void
   onRemoveEntry?: (entryId: string) => void
@@ -70,6 +71,7 @@ export default function MealSection({
         dayMealId={cell.dayMealId}
         foodById={foodById}
         onEditEntry={onEditEntry}
+        onEditFood={onEditFood}
         onMoveEntry={onMoveEntry}
         onCopyEntry={onCopyEntry}
         onRemoveEntry={onRemoveEntry}

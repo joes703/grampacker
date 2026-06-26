@@ -188,16 +188,17 @@ describe('FoodPlanDaySection', () => {
     expect(onReviewNutrition).toHaveBeenCalledTimes(1)
   })
 
-  it('exposes a single Review affordance per day - no duplicate footer CTA', () => {
+  it('drops the day-footer macro strip but keeps the header Review affordance', () => {
     renderSection(dayViewWithFood(), { foodById: new Map([['f1', food]]), onReviewNutrition: vi.fn() })
 
     // The header keeps the compact Review button...
     expect(screen.getByRole('button', { name: 'Review Day 1 nutrition' })).toBeInTheDocument()
-    // ...and the day footer no longer renders its own "Review nutrition" CTA.
-    expect(screen.queryByRole('button', { name: 'Review nutrition' })).not.toBeInTheDocument()
-    // The footer macro strip it shared the row with is still present (the "P"
-    // eyebrow is unique to the footer; the header strip labels only Cal/Weight).
-    expect(screen.getByText('P')).toBeInTheDocument()
+    // ...but the repeated day-footer macro strip is gone. Its "P" / "C" / "F"
+    // eyebrow labels were unique to that strip (the header labels only
+    // Cal/Weight), so their absence proves the strip no longer renders.
+    expect(screen.queryByText('P')).not.toBeInTheDocument()
+    expect(screen.queryByText('C')).not.toBeInTheDocument()
+    expect(screen.queryByText('F')).not.toBeInTheDocument()
   })
 
   it('keeps collapse and restore behavior when embedded in the plan document', () => {

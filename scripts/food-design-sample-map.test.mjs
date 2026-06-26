@@ -53,8 +53,8 @@ describe('mapBasis', () => {
 })
 
 describe('densityKcalPerGram', () => {
-  it('converts the design 125 kcal/oz daily target to canonical kcal/g', () => {
-    expect(densityKcalPerGram(125)).toBeCloseTo(4.409, 3)
+  it('converts the design 110 kcal/oz daily target to canonical kcal/g', () => {
+    expect(densityKcalPerGram(110)).toBeCloseTo(3.880, 3)
   })
 })
 
@@ -126,7 +126,7 @@ describe('buildSeedPlan structure', () => {
     )
     const density = dailyTargets.find((t) => t.metric === 'calorie_density')
     expect(density.mode).toBe('min')
-    expect(density.target_min).toBeCloseTo(4.409, 3)
+    expect(density.target_min).toBeCloseTo(3.880, 3)
     const calories = dailyTargets.find((t) => t.metric === 'calories')
     expect(calories.mode).toBe('range')
     expect(calories.target_min).toBe(3000)

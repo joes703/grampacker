@@ -1,5 +1,5 @@
 import { useId, useMemo, useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronRight, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, X } from 'lucide-react'
 import type { FoodItem, FoodPlanDailyTarget, MealTarget, MealTargetMetric } from '../lib/types'
 import type { DayView } from '../lib/food/view'
 import {
@@ -17,7 +17,7 @@ import { useWeightUnit } from '../lib/use-weight-unit'
 import { formatCalorieDensity, formatDailyTargetBand, formatMealTargetBand, formatPct, formatRatio } from './nutrition-format'
 import NutrientTotalCell, { WeightCell, type NutrientCellKind } from './NutrientTotalCell'
 import TargetStatusMark from './TargetStatusMark'
-import { FLAT_TABLE_HEADER, FLAT_TABLE_NUMERIC_TEXT, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import { FLAT_TABLE_EYEBROW, FLAT_TABLE_NUMERIC_TEXT, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 
 const REVIEW_COLS: { key: NutrientKey; label: string; kind: NutrientCellKind }[] = [
   { key: 'calories', label: 'Calories', kind: 'calories' },
@@ -64,6 +64,7 @@ export default function DayNutritionReview({
   const densityTarget = activeDailyTargets.find((target) => target.metric === 'calorie_density')
   const nameForId = (id: string) => foodById.get(id)?.name ?? 'Unknown food'
   const partial = dayView.dayType === 'partial'
+  const hasTargets = activeDailyTargets.length > 0 || mealTargets.length > 0
 
   return (
     <aside
@@ -88,6 +89,8 @@ export default function DayNutritionReview({
           <span><span className="text-gray-400">Density </span>{formatCalorieDensity(density, weightUnit)}</span>
         </div>
 
+        {hasTargets ? <StatusLegend /> : null}
+
         {partial ? (
           <div className="mb-3 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-600">
             <strong className="font-medium text-gray-800">Partial day.</strong>{' '}
@@ -95,61 +98,52 @@ export default function DayNutritionReview({
           </div>
         ) : null}
 
+        {/* One row per metric (label / day total + status / target). The old
+            layout transposed metrics into columns and stamped the flex-based
+            FLAT_TABLE_HEADER onto a real <tr>, which broke column alignment and
+            overflowed this narrow panel. A vertical table reads at any width and
+            keeps the status mark beside the value it grades. */}
         <section className="mb-4">
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
             {partial ? 'Day totals - full-day targets for reference' : 'Day vs daily targets'}
           </h3>
-          <div className="overflow-x-auto rounded border border-gray-200">
+          <div className="overflow-hidden rounded border border-gray-200">
             <table className="w-full text-sm">
               <thead>
-                <tr className={FLAT_TABLE_HEADER}>
-                  <th scope="col" className="px-2 py-1.5 text-left font-medium">Metric</th>
-                  <th scope="col" className="px-2 py-1.5 text-right font-medium">Weight</th>
-                  {REVIEW_COLS.map((col) => (
-                    <th key={col.key} scope="col" className="px-2 py-1.5 text-right font-medium">{col.label}</th>
-                  ))}
-                  <th scope="col" className="px-2 py-1.5 text-right font-medium">Density</th>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th scope="col" className={`px-3 py-1.5 text-left ${FLAT_TABLE_EYEBROW}`}>Metric</th>
+                  <th scope="col" className={`px-3 py-1.5 text-right ${FLAT_TABLE_EYEBROW}`}>Day total</th>
+                  <th scope="col" className={`px-3 py-1.5 text-right ${FLAT_TABLE_EYEBROW}`}>Target</th>
                 </tr>
               </thead>
               <tbody>
-                {activeDailyTargets.length > 0 ? (
-                  <tr aria-label="Daily target" className="border-t border-gray-200 text-xs text-gray-500">
-                    <th scope="row" className="px-2 py-1.5 text-left font-medium">Daily target</th>
-                    <td className="px-2 py-1.5" />
-                    {REVIEW_COLS.map((col) => {
-                      const metric = dailyMetricForNutrientKey(col.key)
-                      const target = metric ? activeDailyTargets.find((candidate) => candidate.metric === metric) : undefined
-                      return (
-                        <td key={col.key} className={`px-2 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>
-                          {target ? formatDailyTargetBand(target.metric, target.mode, target.target_min, target.target_max, weightUnit) : ''}
-                        </td>
-                      )
-                    })}
-                    <td className={`px-2 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>
-                      {densityTarget
-                        ? formatDailyTargetBand('calorie_density', densityTarget.mode, densityTarget.target_min, densityTarget.target_max, weightUnit)
-                        : ''}
-                    </td>
-                  </tr>
-                ) : null}
-                <tr aria-label="Day total" className="border-t border-gray-100">
-                  <th scope="row" className="px-2 py-1.5 text-left font-medium">Day total</th>
-                  <td className="px-2 py-1.5 text-right"><WeightCell weight={weight} weightUnit={weightUnit} nameForId={nameForId} /></td>
-                  {REVIEW_COLS.map((col) => {
-                    const metric = dailyMetricForNutrientKey(col.key)
-                    const target = metric ? resolvedDaily.get(metric) : undefined
-                    return (
-                      <td key={col.key} className="px-2 py-1.5 text-right">
-                        <NutrientTotalCell total={totals[col.key]} kind={col.kind} nameForId={nameForId} />
-                        {target ? <TargetStatusMark status={target.status} /> : null}
-                      </td>
-                    )
-                  })}
-                  <td className={`px-2 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>
-                    {formatCalorieDensity(density, weightUnit)}
-                    {resolvedDaily.get('calorie_density') ? <TargetStatusMark status={resolvedDaily.get('calorie_density')!.status} /> : null}
-                  </td>
-                </tr>
+                <DailyMetricRow label="Weight">
+                  <WeightCell weight={weight} weightUnit={weightUnit} nameForId={nameForId} />
+                </DailyMetricRow>
+                {REVIEW_COLS.map((col) => {
+                  const metric = dailyMetricForNutrientKey(col.key)
+                  const target = metric ? resolvedDaily.get(metric) : undefined
+                  const band = metric ? activeDailyTargets.find((candidate) => candidate.metric === metric) : undefined
+                  return (
+                    <DailyMetricRow
+                      key={col.key}
+                      label={col.label}
+                      targetText={band ? formatDailyTargetBand(band.metric, band.mode, band.target_min, band.target_max, weightUnit) : ''}
+                    >
+                      <NutrientTotalCell total={totals[col.key]} kind={col.kind} nameForId={nameForId} />
+                      {target ? <TargetStatusMark status={target.status} /> : null}
+                    </DailyMetricRow>
+                  )
+                })}
+                <DailyMetricRow
+                  label="Calorie density"
+                  targetText={densityTarget
+                    ? formatDailyTargetBand('calorie_density', densityTarget.mode, densityTarget.target_min, densityTarget.target_max, weightUnit)
+                    : ''}
+                >
+                  <span className={`${FLAT_TABLE_NUMERIC_TEXT} text-gray-900`}>{formatCalorieDensity(density, weightUnit)}</span>
+                  {resolvedDaily.get('calorie_density') ? <TargetStatusMark status={resolvedDaily.get('calorie_density')!.status} /> : null}
+                </DailyMetricRow>
               </tbody>
             </table>
           </div>
@@ -227,9 +221,8 @@ function MealReviewRow({
       {open ? (
         <div id={bodyId} className="px-8 pb-3 text-xs text-gray-500">
           <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1">
-            <BreakdownStat label="Cal">
-              <NutrientTotalCell total={totals.calories} kind="calories" nameForId={nameForId} />
-            </BreakdownStat>
+            {/* Calories carry their own unit (kcal) - no redundant "Cal" label. */}
+            <span><NutrientTotalCell total={totals.calories} kind="calories" nameForId={nameForId} /></span>
             <BreakdownStat label="Protein">
               <NutrientTotalCell total={totals.protein_grams} kind="grams" nameForId={nameForId} />
             </BreakdownStat>
@@ -245,19 +238,27 @@ function MealReviewRow({
           </div>
           {targetRows.length > 0 ? (
             <table className="w-full max-w-xl text-xs" aria-label={`${cell.meal.name} targets`}>
+              <thead>
+                <tr className="text-gray-400">
+                  <th scope="col" className="py-1 pr-3 text-left font-medium">Target</th>
+                  <th scope="col" className="px-3 py-1 text-right font-medium">This meal</th>
+                  <th scope="col" className="px-3 py-1 text-right font-medium">Goal</th>
+                  <th scope="col" className="py-1 pl-3 text-right font-medium"><span className="sr-only">Status</span></th>
+                </tr>
+              </thead>
               <tbody>
                 {targetRows.map((target) => (
                   <tr key={target.metric} className="border-t border-gray-100">
-                    <th scope="row" className="py-1 pr-3 text-left font-medium text-gray-600">
+                    <th scope="row" className="py-1.5 pr-3 text-left font-medium text-gray-600">
                       {formatMealTargetName(target.metric)}
                     </th>
-                    <td className={`px-3 py-1 text-right ${FLAT_TABLE_NUMERIC_TEXT}`}>
+                    <td className={`px-3 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-900`}>
                       {formatMealTargetValue(target)}
                     </td>
-                    <td className={`px-3 py-1 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-400`}>
+                    <td className={`px-3 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-400`}>
                       {formatMealTargetBand(target.metric, target.mode, target.target_min, target.target_max)}
                     </td>
-                    <td className="py-1 pl-3 text-right">
+                    <td className="py-1.5 pl-3 text-right">
                       <TargetStatusMark status={target.status} />
                     </td>
                   </tr>
@@ -273,6 +274,35 @@ function MealReviewRow({
 
 function BreakdownStat({ label, children }: { label: string; children: ReactNode }) {
   return <span><span className="text-gray-400">{label} </span>{children}</span>
+}
+
+// One metric row in the day-vs-daily-targets table: label / day total (value +
+// status mark) / target band. A real table row (no flex), so the three columns
+// align down the panel.
+function DailyMetricRow({ label, targetText = '', children }: { label: string; targetText?: string; children: ReactNode }) {
+  return (
+    <tr className="border-t border-gray-100">
+      <th scope="row" className="px-3 py-1.5 text-left font-medium text-gray-600">{label}</th>
+      <td className="whitespace-nowrap px-3 py-1.5 text-right">{children}</td>
+      <td className={`whitespace-nowrap px-3 py-1.5 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-400`}>{targetText}</td>
+    </tr>
+  )
+}
+
+// Visible key for the status arrows (the colored glyphs are easy to misread
+// without it). Mirrors TargetStatusMark's rose/amber so the legend and the marks
+// read as the same language.
+function StatusLegend() {
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500">
+      <span className="inline-flex items-center gap-1">
+        <ArrowUp size={12} aria-hidden="true" className="text-rose-600" /> over target
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <ArrowDown size={12} aria-hidden="true" className="text-amber-600" /> under target
+      </span>
+    </div>
+  )
 }
 
 function formatMealTargetSummary(targets: ResolvedTarget<MealTargetMetric>[]): string {
