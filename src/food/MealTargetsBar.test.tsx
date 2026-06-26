@@ -26,6 +26,14 @@ describe('MealTargetsBar', () => {
     render(<MealTargetsBar entries={[entry('f')]} foodById={foods} mealTargets={targets} />)
     expect(screen.getByText('over target')).toBeInTheDocument()
   })
+  it('shows calories as "<n> kcal" with no redundant "Cal" label', () => {
+    const foods = new Map([['f', food({ calories_per_serving: 400 })]])
+    render(<MealTargetsBar entries={[entry('f')]} foodById={foods} mealTargets={[]} />)
+    // The value carries its own unit...
+    expect(screen.getByText('400 kcal')).toBeInTheDocument()
+    // ...so there is no standalone "Cal" prefix (would read "Cal 400 kcal").
+    expect(screen.queryByText('Cal')).not.toBeInTheDocument()
+  })
   it('renders an IncompleteMarker naming the food (not a dash) when an input nutrient is missing', async () => {
     const user = userEvent.setup()
     const foods = new Map([['f', food({ sodium_mg: null })]]) // breaks only Na density -> exactly one marker

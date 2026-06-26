@@ -22,8 +22,12 @@ const formatPctFmt = (n: number) => formatPct(n)
 const formatRatioFmt = (n: number) => formatRatio(n)
 const formatNaFmt = (n: number) => formatSodiumDensity(n)
 
-function Stat({ label, children }: { label: string; children: ReactNode }) {
-  return <span className="whitespace-nowrap"><span className="text-gray-400">{label} </span>{children}</span>
+function Stat({ label, children }: { label?: string; children: ReactNode }) {
+  return (
+    <span className="whitespace-nowrap">
+      {label ? <span className="text-gray-400">{label} </span> : null}{children}
+    </span>
+  )
 }
 
 export default function MealTargetsBar({ entries, foodById, mealTargets }: {
@@ -45,7 +49,10 @@ export default function MealTargetsBar({ entries, foodById, mealTargets }: {
 
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-0.5 px-3 pb-1 text-xs text-gray-500">
-      <Stat label="Cal">{num(totals.calories, 'calories')}{mark('calories')}</Stat>
+      {/* Calories self-identify via their "kcal" unit, so no "Cal" label - it
+          would read "Cal 2745 kcal". The other stats keep labels because their
+          values (g, %, ratio) do not say what they measure. */}
+      <Stat>{num(totals.calories, 'calories')}{mark('calories')}</Stat>
       <Stat label="Protein">{num(totals.protein_grams, 'grams')}{mark('protein')}</Stat>
       <Stat label="Fat%"><DerivedCell dv={fat} fmt={formatPctFmt} nameForId={nameForId} reason="missing fat, carbs, or protein" />{mark('fat_pct')}</Stat>
       <Stat label="Sugar%"><DerivedCell dv={sugar} fmt={formatPctFmt} nameForId={nameForId} reason="missing sugar, fat, carbs, or protein" />{mark('sugar_pct')}</Stat>
