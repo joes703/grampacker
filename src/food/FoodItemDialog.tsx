@@ -14,6 +14,10 @@ type Props = {
   onSave: (patch: FoodItemInput) => void
   onClose: () => void
   onDeleteFromInventory?: () => void
+  // Optional contextual banner. Used when the dialog is opened from a food-plan
+  // entry to warn that this is a library edit (it changes the food everywhere
+  // it's used, not just the one entry).
+  note?: string
 }
 
 // Parse a free-text numeric field into a non-negative number or null
@@ -51,6 +55,7 @@ export default function FoodItemDialog({
   onSave,
   onClose,
   onDeleteFromInventory,
+  note,
 }: Props) {
   const isEdit = item !== undefined
   const heading = isEdit ? 'Edit food' : 'Add food'
@@ -146,6 +151,11 @@ export default function FoodItemDialog({
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-6 space-y-4 pb-4">
+          {note ? (
+            <p className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              {note}
+            </p>
+          ) : null}
           <label className="block">
             <span className={labelClass}>Name</span>
             <input

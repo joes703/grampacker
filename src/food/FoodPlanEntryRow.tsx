@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { CircleMinus, Copy, FolderInput, MoreVertical, Pencil } from 'lucide-react'
+import { Apple, CircleMinus, Copy, FolderInput, MoreVertical, Pencil } from 'lucide-react'
 import type { FoodItem, FoodPlanEntry } from '../lib/types'
 import {
   FLAT_TABLE_BODY_TEXT, FLAT_TABLE_QUANTITY_TEXT, FLAT_TABLE_ROW,
@@ -44,11 +44,12 @@ function quantityText(entry: FoodPlanEntry, food: FoodItem | undefined): string 
 // genuinely-known weight stays known. On mobile the quantity + calories collapse
 // into a subtitle under the name; the weight column stays visible.
 export default function FoodPlanEntryRow({
-  entry, food, onEdit, onMove, onCopy, onRemove, dragHandle, outerRef, outerStyle,
+  entry, food, onEdit, onEditFood, onMove, onCopy, onRemove, dragHandle, outerRef, outerStyle,
 }: {
   entry: FoodPlanEntry
   food: FoodItem | undefined
   onEdit?: () => void
+  onEditFood?: () => void
   onMove?: () => void
   onCopy?: () => void
   onRemove?: () => void
@@ -57,7 +58,11 @@ export default function FoodPlanEntryRow({
   outerStyle?: React.CSSProperties
 }) {
   const { weightUnit } = useWeightUnit()
-  const showKebab = Boolean(onEdit || onMove || onCopy || onRemove)
+  // "Edit food item" only makes sense when we actually resolved the library food
+  // behind this entry, so gate it on `food`: a missing definition never opens an
+  // empty edit dialog. The other entry actions stay available regardless.
+  const editFood = food ? onEditFood : undefined
+  const showKebab = Boolean(onEdit || editFood || onMove || onCopy || onRemove)
   const oneFood = new Map<string, FoodItem>(food ? [[food.id, food]] : [])
   const calories = nutrientTotal([entry], oneFood, 'calories')
   const weight = totalWeight([entry], oneFood)
@@ -97,7 +102,7 @@ export default function FoodPlanEntryRow({
       </span>
 
       <span className="flex w-7 shrink-0 items-center justify-center">
-        {showKebab ? <EntryKebab onEdit={onEdit} onMove={onMove} onCopy={onCopy} onRemove={onRemove} /> : null}
+        {showKebab ? <EntryKebab onEdit={onEdit} onEditFood={editFood} onMove={onMove} onCopy={onCopy} onRemove={onRemove} /> : null}
       </span>
     </div>
   )
@@ -109,11 +114,13 @@ export default function FoodPlanEntryRow({
 // state so only one menu can be open per row.
 function EntryKebab({
   onEdit,
+  onEditFood,
   onMove,
   onCopy,
   onRemove,
 }: {
   onEdit?: () => void
+  onEditFood?: () => void
   onMove?: () => void
   onCopy?: () => void
   onRemove?: () => void
@@ -140,6 +147,11 @@ function EntryKebab({
           {onEdit && (
             <RowMenuItem icon={<Pencil size={13} />} onClick={() => { close(); onEdit() }}>
               Edit quantity
+            </RowMenuItem>
+          )}
+          {onEditFood && (
+            <RowMenuItem icon={<Apple size={13} />} onClick={() => { close(); onEditFood() }}>
+              Edit food item
             </RowMenuItem>
           )}
           {onMove && (

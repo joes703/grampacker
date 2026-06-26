@@ -96,6 +96,23 @@ describe('FoodPlanEntryRow', () => {
     expect(onRemove).toHaveBeenCalledTimes(1)
   })
 
+  it('exposes Edit food item and fires onEditFood (withheld when the food is unknown)', () => {
+    const onEditFood = vi.fn()
+    const { rerender } = render(
+      <FoodPlanEntryRow entry={makeEntry()} food={makeFood()} onEdit={vi.fn()} onEditFood={onEditFood} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Entry options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit food item' }))
+    expect(onEditFood).toHaveBeenCalledTimes(1)
+
+    // No resolved food definition -> the library-edit action is hidden so we
+    // never open an empty dialog. Other actions still render.
+    rerender(<FoodPlanEntryRow entry={makeEntry()} food={undefined} onEdit={vi.fn()} onEditFood={onEditFood} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Entry options' }))
+    expect(screen.queryByRole('menuitem', { name: 'Edit food item' })).not.toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Edit quantity' })).toBeInTheDocument()
+  })
+
   it('renders no kebab in the read-only (no-callback) case', () => {
     render(<FoodPlanEntryRow entry={makeEntry()} food={makeFood()} />)
     expect(screen.queryByRole('button', { name: 'Entry options' })).not.toBeInTheDocument()

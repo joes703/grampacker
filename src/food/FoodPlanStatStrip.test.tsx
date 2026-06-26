@@ -57,4 +57,25 @@ describe('FoodPlanStatStrip', () => {
     render(<FoodPlanStatStrip summary={summarizeTrip(view, foods)} foodById={foods} />)
     expect(screen.getByText(/kcal\/oz/)).toBeInTheDocument()
   })
+
+  it('shows the selected unit primary + the alternate unit muted, and swaps on toggle', () => {
+    const summary = summarizeTrip(view, foods)
+
+    // g selected: grams primary (gray-900), ounces muted (gray-400); density too.
+    setWeightUnit('g')
+    const { unmount } = render(<FoodPlanStatStrip summary={summary} foodById={foods} />)
+    expect(screen.getByText('300 g')).toHaveClass('text-gray-900')
+    expect(screen.getByText('10.6 oz')).toHaveClass('text-gray-400')
+    expect(screen.getByText('2.00 kcal/g')).toHaveClass('text-gray-900')
+    expect(screen.getByText('56.7 kcal/oz')).toHaveClass('text-gray-400')
+    unmount()
+
+    // oz selected: primary/secondary swap.
+    setWeightUnit('oz')
+    render(<FoodPlanStatStrip summary={summary} foodById={foods} />)
+    expect(screen.getByText('10.6 oz')).toHaveClass('text-gray-900')
+    expect(screen.getByText('300 g')).toHaveClass('text-gray-400')
+    expect(screen.getByText('56.7 kcal/oz')).toHaveClass('text-gray-900')
+    expect(screen.getByText('2.00 kcal/g')).toHaveClass('text-gray-400')
+  })
 })

@@ -30,7 +30,10 @@ function DayTotalsStrip({
   const nameForId = (id: string) => foodById.get(id)?.name ?? 'Unknown food'
   return (
     <span className="flex items-center gap-3 text-xs text-gray-500">
-      <span className="flex items-center gap-1"><span className="text-gray-400">Cal</span>
+      {/* Calories carry their own unit (kcal), so no redundant "Cal" label -
+          standardized on kcal across the compact strips. Weight keeps a label
+          because "100 g" alone does not say what it measures. */}
+      <span className="flex items-center gap-1">
         <NutrientTotalCell total={calories} kind="calories" nameForId={nameForId} /></span>
       <span className="flex items-center gap-1"><span className="text-gray-400">Weight</span>
         <WeightCell weight={weight} weightUnit={weightUnit} nameForId={nameForId} /></span>

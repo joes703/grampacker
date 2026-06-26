@@ -134,9 +134,37 @@ describe('DayNutritionReview', () => {
     expect(screen.getByRole('heading', { name: 'Day 1 nutrition review' })).toBeInTheDocument()
     expect(screen.getByText(/Partial day/)).toBeInTheDocument()
     expect(screen.getByText(/Daily targets are shown as neutral reference/)).toBeInTheDocument()
-    expect(screen.getByRole('row', { name: /Daily target/ })).toHaveTextContent('<= 300 kcal')
+    // The calorie daily target shows its band inline on the metric row, but as a
+    // neutral reference on a partial day: no over/under mark on that row.
+    const calRow = screen.getByRole('row', { name: /Calories/ })
+    expect(calRow).toHaveTextContent('<= 300 kcal')
+    expect(within(calRow).queryByText('over target')).toBeNull()
+    expect(within(calRow).queryByText('under target')).toBeNull()
+    // The meal target is still graded.
     expect(screen.getByRole('button', { name: /Dinner/ })).toHaveTextContent('over target')
-    expect(screen.getAllByText('over target')).toHaveLength(1)
+  })
+
+  it('lays daily targets out as an aligned table, not a flex row (alignment regression)', () => {
+    render(
+      <DayNutritionReview
+        dayView={dayView}
+        dayIndex={0}
+        foodById={new Map([['food1', food]])}
+        dailyTargets={dailyTargets}
+        mealTargets={[]}
+        onClose={() => {}}
+      />,
+    )
+
+    // Real column headers, one row per metric: the previous layout stamped the
+    // flex-based FLAT_TABLE_HEADER onto a <tr>, which broke column alignment.
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent)
+    expect(headers).toEqual(expect.arrayContaining(['Metric', 'Day total', 'Target']))
+    expect(screen.getByRole('row', { name: /Calories/ })).toHaveTextContent('<= 300 kcal')
+    // No table row may carry the flex utility (the regressed alignment bug).
+    for (const row of screen.getAllByRole('row')) {
+      expect(row.className).not.toMatch(/\bflex\b/)
+    }
   })
 
   it('expands a meal to show its nutrient breakdown', async () => {
@@ -154,7 +182,9 @@ describe('DayNutritionReview', () => {
 
     await user.click(screen.getByRole('button', { name: /Dinner/ }))
 
-    expect(screen.getByText('Cal')).toBeInTheDocument()
+    // Calories standardize on "kcal" with no redundant "Cal" label in the
+    // breakdown; the value carries the unit.
+    expect(screen.queryByText('Cal')).not.toBeInTheDocument()
     expect(screen.getAllByText('400 kcal').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Sodium').length).toBeGreaterThan(0)
     expect(screen.getAllByText('800 mg').length).toBeGreaterThan(1)

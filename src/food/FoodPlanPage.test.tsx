@@ -19,14 +19,22 @@ import type {
 // FoodPicker, EntryAmountDialog, MoveCopyEntryDialog, CellEntryReorder,
 // useFoodReorder, FoodPlanDaySection, MealSection, FoodPlanExtras, AddMealDialog,
 // ScheduleGridDialog). Missing one throws at import time.
-vi.mock('../lib/queries', () => ({
+vi.mock('../lib/queries', async () => {
+  // Real optimistic helper (supabase-free) so FoodPlanDocument's food-item edit
+  // actually patches the ['food-items'] cache and invalidates the lite + pack-
+  // signature keys the way it does in production.
+  const optimistic = await vi.importActual<typeof import('../lib/queries/optimistic')>('../lib/queries/optimistic')
+  return {
   queryKeys: {
     foodPlan: (listId: string) => ['food-plan', listId] as const,
     foodItems: () => ['food-items'] as const,
     foodItemsLite: () => ['food-items-lite'] as const,
+    foodPackSignaturesAll: () => ['food-pack-signatures'] as const,
     foodPlanCopyOptions: (userId: string, targetListId: string) => ['food-plan-copy-options', userId, targetListId] as const,
     lists: () => ['lists'] as const,
   },
+  makeOptimisticUpdate: optimistic.makeOptimisticUpdate,
+  updateFoodItem: vi.fn().mockResolvedValue(undefined),
   // page + document data
   fetchFoodPlan: vi.fn(),
   fetchLists: vi.fn().mockResolvedValue([]),
@@ -62,7 +70,8 @@ vi.mock('../lib/queries', () => ({
   bulkUpdateSortOrder: vi.fn(),
   // targets
   saveFoodPlanTargets: vi.fn().mockResolvedValue(undefined),
-}))
+  }
+})
 
 vi.mock('../auth/use-require-session', () => ({
   useRequireSession: () => ({ userId: 'u1' }),
@@ -70,7 +79,7 @@ vi.mock('../auth/use-require-session', () => ({
 
 import {
   fetchFoodPlan, fetchFoodItems, createFoodPlan, fetchFoodPlanCopyOptions, copyFoodPlanToList,
-  loadSampleFoodPlan, upsertFoodPlanEntries, saveFoodPlanTargets,
+  loadSampleFoodPlan, upsertFoodPlanEntries, saveFoodPlanTargets, updateFoodItem,
 } from '../lib/queries'
 import FoodPlanPage from './FoodPlanPage'
 
@@ -411,7 +420,11 @@ describe('FoodPlanPage rendering', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Review Day 1 nutrition' }))
 
     expect(await screen.findByRole('heading', { name: 'Day 1 nutrition review' })).toBeInTheDocument()
-    expect(screen.getByRole('row', { name: 'Day total' })).toHaveTextContent('160 kcal')
+    // The day-vs-targets table now lists one row per metric; the calorie total
+    // lives on the Calories row (scoped to the review panel - the all-days
+    // summary table also has a Calories row).
+    const panel = screen.getByLabelText('Day 1 nutrition review panel')
+    expect(within(panel).getByRole('row', { name: /Calories/ })).toHaveTextContent('160 kcal')
 
     fireEvent.click(screen.getByRole('button', { name: 'Close nutrition review' }))
 
@@ -579,5 +592,50 @@ describe('FoodPlanPage loading state', () => {
     renderPage()
 
     expect(await screen.findByTestId('food-plan-loading')).toBeInTheDocument()
+  })
+})
+
+describe('FoodPlanPage edit food item from an entry', () => {
+  it('opens FoodItemDialog, edits the library food globally, and refreshes nutrition + caches', async () => {
+    // Library food + one entry referencing it. updateFoodItem mutates the shared
+    // food object so a post-invalidate refetch returns the edited value (mirrors
+    // a real persisted write), keeping the optimistic display stable.
+    const food = makeFood({ id: 'f1', name: 'Oats', calories_per_serving: 100, serving_weight_grams: 50 })
+    const entry = makeEntry({ id: 'e1', food_item_id: 'f1', day_meal_id: 'dm-b', basis: 'servings', amount: 2 })
+    vi.mocked(fetchFoodPlan).mockResolvedValue(makeDoc([entry]))
+    // mockReset drains any leftover one-shot return (the loading-state test queues
+    // a never-resolving promise that clearAllMocks does not clear) before we set
+    // the resolved value for this test.
+    vi.mocked(fetchFoodItems).mockReset()
+    vi.mocked(fetchFoodItems).mockResolvedValue([food])
+    vi.mocked(updateFoodItem).mockImplementation(async (_id, patch) => { Object.assign(food, patch) })
+
+    const qc = renderPage()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+
+    // 2 servings x 100 kcal = 200 kcal before the edit.
+    expect(await screen.findByTestId('entry-calories')).toHaveTextContent('200 kcal')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Entry options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit food item' }))
+
+    // The library dialog opens, prefilled, with the "affects every entry" note.
+    expect(await screen.findByRole('heading', { name: 'Edit food' })).toBeTruthy()
+    expect(screen.getByText(/every plan entry with this food/i)).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText(/Calories/), { target: { value: '250' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    // Saves a true global food_items UPDATE (not an entry-local override).
+    await waitFor(() => expect(updateFoodItem).toHaveBeenCalledWith('f1', expect.objectContaining({ calories_per_serving: 250 })))
+
+    // Optimistic patch flows through foodById: 2 x 250 = 500 kcal.
+    await waitFor(() => expect(screen.getByTestId('entry-calories')).toHaveTextContent('500 kcal'))
+
+    // Library + packing-projection caches invalidate so /lists + pack signatures refresh.
+    const invalidated = invalidateSpy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey))
+    expect(invalidated).toContain(JSON.stringify(['food-items']))
+    expect(invalidated).toContain(JSON.stringify(['food-items-lite']))
+    expect(invalidated).toContain(JSON.stringify(['food-pack-signatures']))
   })
 })

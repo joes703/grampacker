@@ -32,4 +32,6 @@ it('shows a compact day header: calories and weight only (macros live in the sum
   expect(screen.getByText('100 g')).toBeInTheDocument()    // 2 servings * 50 g, default 'g' unit
   expect(screen.queryByText('Carbs')).not.toBeInTheDocument()
   expect(screen.queryByText('Density')).not.toBeInTheDocument()
+  // Calories standardize on "kcal" - no redundant "Cal" label prefix.
+  expect(screen.queryByText('Cal')).not.toBeInTheDocument()
 })
