@@ -95,7 +95,7 @@ describe('buildSampleFoodPlanPayload schedule + targets', () => {
     )
     const density = daily_targets.find((t) => t.metric === 'calorie_density')!
     expect(density.mode).toBe('min')
-    expect(density.target_min).toBeCloseTo(densityKcalPerGram(125), 6)
+    expect(density.target_min).toBeCloseTo(densityKcalPerGram(110), 6)
   })
 
   it('builds 4 meal targets (Happy hour has none)', () => {
@@ -150,9 +150,8 @@ describe('sample plan day completeness and target grading', () => {
     for (const metric of GRADED_MACROS) {
       expect(statusOf(day.resolved, metric)).toBe('pass')
     }
-    // Calorie density still grades (it is computed, not 'incomplete'); it is the
-    // one realistic near-miss on this otherwise on-target day.
-    expect(statusOf(day.resolved, 'calorie_density')).not.toBe('incomplete')
+    // Calorie density passes too: this is a truly all-green day, no warnings.
+    expect(statusOf(day.resolved, 'calorie_density')).toBe('pass')
   })
 
   it('keeps at least one full day with incomplete nutrition (a warning day)', () => {
