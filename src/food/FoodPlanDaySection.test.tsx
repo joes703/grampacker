@@ -194,8 +194,9 @@ describe('FoodPlanDaySection', () => {
     // The header keeps the compact Review button...
     expect(screen.getByRole('button', { name: 'Review Day 1 nutrition' })).toBeInTheDocument()
     // ...but the repeated day-footer macro strip is gone. Its "P" / "C" / "F"
-    // eyebrow labels were unique to that strip (the header labels only
-    // Cal/Weight), so their absence proves the strip no longer renders.
+    // eyebrow labels were unique to that strip (the header shows only the
+    // calorie total and weight), so their absence proves the strip no longer
+    // renders.
     expect(screen.queryByText('P')).not.toBeInTheDocument()
     expect(screen.queryByText('C')).not.toBeInTheDocument()
     expect(screen.queryByText('F')).not.toBeInTheDocument()

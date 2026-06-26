@@ -13,8 +13,8 @@ import CellEntryReorder from './CellEntryReorder'
 // One meal divider + its entries in the Food Plan document (design Approach D).
 // The divider is a gray-50 sub-strip: an indented uppercase eyebrow meal name,
 // the entry count, the meal calorie total (desktop), then the add-food control
-// and the kebab on the right. The per-meal nutrient strip (Cal / Protein /
-// Fat% / Sugar% / Carb:Pro / Na density) deliberately does NOT live here any
+// and the kebab on the right. The per-meal nutrient strip (calories / protein /
+// fat% / sugar% / carb:pro / Na density) deliberately does NOT live here any
 // more - that detail moved to the Day nutrition review panel so the document
 // reads as day totals -> meal totals -> entry quantity/calories/weight.
 export default function MealSection({

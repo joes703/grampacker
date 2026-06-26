@@ -154,10 +154,11 @@ export default function FoodPlanDaySection({
               ))}
             </div>
           ) : null}
-          {/* No day-footer macro strip: the day header carries Cal/Weight
-              (DayTotalsStrip), and the full macro/target detail lives in the
-              all-days summary and the Review panel opened from the day header.
-              Removed here to cut the repeated nutrition clutter per day. */}
+          {/* No day-footer macro strip: the day header carries the calorie
+              total and weight (DayTotalsStrip), and the full macro/target
+              detail lives in the all-days summary and the Review panel opened
+              from the day header. Removed here to cut the repeated nutrition
+              clutter per day. */}
         </div>
       ) : null}
     </div>
