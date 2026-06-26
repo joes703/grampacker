@@ -15,6 +15,7 @@ import {
   upsertFoodPlanEntry, upsertFoodPlanEntries, updateFoodPlanEntry, deleteFoodPlanEntry,
   assertFoodPlanEntryWithinCap, type EntryAddition,
   addFoodPlanDay, deleteFoodPlanDay, updateDayType, assertFoodPlanDayWithinCap, duplicateFoodPlanDay,
+  deleteFoodPlan,
   addMealDefinition, deleteMeal, deleteDayMeal, addDayMeal, assertMealDefinitionWithinCap,
   saveFoodPlanTargets, type TargetsSavePayload,
   invalidateFoodPlanCaches,
@@ -116,6 +117,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
   const [showTargets, setShowTargets] = useState(false)
   const [reviewDayId, setReviewDayId] = useState<string | null>(null)
   const [editFoodItemId, setEditFoodItemId] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   function openMoveCopy(mode: 'move' | 'copy', entryId: string) {
     const entry = currentDoc.entries.find((e) => e.id === entryId)
@@ -283,6 +285,23 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     meta: { errorToast: "Couldn't duplicate the day. Please try again." },
     onSuccess: invalidate,
   })
+  // Delete the whole food plan. The DB cascades this plan's meals, days,
+  // day_meals, entries, daily/meal targets, and packed-food state; food_items
+  // (the library), the gear list, and gear are referenced the other way and are
+  // left untouched. On success we refresh the plan + pack caches so the page
+  // falls back to the empty state, plus the copy-options lists where this plan
+  // was offered as a source for other lists.
+  const deletePlanMut = useMutation({
+    mutationFn: () => deleteFoodPlan(currentDoc.plan.id),
+    meta: { errorToast: "Couldn't delete the food plan. Please try again." },
+    onSuccess: () => {
+      invalidateFoodPlanCaches(qc, listId)
+      qc.invalidateQueries({ queryKey: queryKeys.foodPackState(listId) })
+      // Prefix match: invalidate this user's copy-options for every target list.
+      qc.invalidateQueries({ queryKey: ['food-plan-copy-options', userId] })
+      setShowDeleteConfirm(false)
+    },
+  })
   const dayTypeMut = useMutation({
     mutationFn: (v: { dayId: string; override: 'full' | 'partial' | null }) => updateDayType(v.dayId, v.override),
     meta: { errorToast: "Couldn't change the day type. Please try again." },
@@ -406,6 +425,16 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
             className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
           >
             Targets
+          </button>
+          {/* Deliberately quiet (no border/fill, red only on hover) so deleting
+              the whole plan never reads as a primary action. The confirm dialog
+              is the real safety gate. */}
+          <button
+            type="button"
+            onClick={() => setShowDeleteConfirm(true)}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-700"
+          >
+            Delete plan
           </button>
         </div>
       </div>
@@ -582,6 +611,16 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           saving={saveTargetsMut.isPending}
           onSave={(p) => saveTargetsMut.mutate(p)}
           onClose={() => setShowTargets(false)}
+        />
+      ) : null}
+      {showDeleteConfirm ? (
+        <ConfirmDialog
+          title="Delete food plan?"
+          message="This permanently deletes this plan's schedule, meals, entries, targets, and packed-food checks. It does not delete your gear list or any food library items. This cannot be undone."
+          confirmLabel="Delete food plan"
+          dangerous
+          onCancel={() => setShowDeleteConfirm(false)}
+          onConfirm={() => deletePlanMut.mutate()}
         />
       ) : null}
     </div>
