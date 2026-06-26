@@ -65,7 +65,7 @@ export default function FoodImportPreviewDialog({
               <th className="px-4 py-2 text-left">#</th>
               <th className="px-3 py-2 text-left">Name</th>
               <th className="px-3 py-2 text-right">Serving (g)</th>
-              <th className="px-3 py-2 text-right">Cal</th>
+              <th className="px-3 py-2 text-right">Calories</th>
               <th className="px-3 py-2 text-left">Status</th>
             </tr>
           </thead>
