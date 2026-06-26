@@ -100,11 +100,17 @@ export const DAYS: ProtoDay[] = [
     dinner: [E('strog', 'package', 1), E('oil', 'serving', 1)],
     happy: [E('choc', 'serving', 2)],
   } },
-  { n: 5, label: 'Day 5', note: null, omit: [], meals: {
-    breakfast: [E('oats', 'serving', 2), E('coffee', 'serving', 1), E('milk', 'serving', 1)],
-    ontrail: [E('clif', 'serving', 1), E('trailmix', 'weight', 45), E('lyte', 'serving', 1), E('tort', 'serving', 2), E('saus', 'weight', 56), E('cheese', 'weight', 56)],
-    recovery: [E('probar', 'serving', 1)],
-    dinner: [E('pasta', 'package', 1), E('tuna', 'serving', 1)],
+  // Day 5 is the curated "happy path" reference day: every food has complete
+  // macros (no coffee/leather), so all six daily targets actually grade, and the
+  // amounts land it inside the calorie/protein/carbs/fiber/sodium bands. Calorie
+  // density still falls just short - a realistic single near-miss on an
+  // otherwise on-target day. The other full days keep coffee (incomplete macros)
+  // so the warning/incomplete states stay visible for testing.
+  { n: 5, label: 'Day 5', note: 'Dialed-in day - on-target reference', omit: [], meals: {
+    breakfast: [E('oats', 'serving', 2), E('milk', 'serving', 1)],
+    ontrail: [E('clif', 'serving', 1), E('trailmix', 'weight', 45), E('tort', 'serving', 2), E('saus', 'weight', 56), E('cheese', 'weight', 56)],
+    recovery: [E('probar', 'serving', 1), E('snick', 'serving', 1)],
+    dinner: [E('pasta', 'package', 1), E('tuna', 'serving', 1), E('oil', 'serving', 1)],
     happy: [E('mms', 'serving', 1)],
   } },
   { n: 6, label: 'Day 6', note: null, omit: [], meals: {
