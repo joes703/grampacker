@@ -30,6 +30,7 @@ vi.mock('../lib/queries', async () => {
     foodItems: () => ['food-items'] as const,
     foodItemsLite: () => ['food-items-lite'] as const,
     foodPackSignaturesAll: () => ['food-pack-signatures'] as const,
+    foodPackState: (listId: string) => ['food-pack-state', listId] as const,
     foodPlanCopyOptions: (userId: string, targetListId: string) => ['food-plan-copy-options', userId, targetListId] as const,
     lists: () => ['lists'] as const,
   },
@@ -56,6 +57,8 @@ vi.mock('../lib/queries', async () => {
   updateDayType: vi.fn(),
   assertFoodPlanDayWithinCap: () => {},
   duplicateFoodPlanDay: vi.fn(),
+  // plan delete
+  deleteFoodPlan: vi.fn().mockResolvedValue(undefined),
   // meal writes
   addMealDefinition: vi.fn(),
   deleteMeal: vi.fn(),
@@ -80,6 +83,7 @@ vi.mock('../auth/use-require-session', () => ({
 import {
   fetchFoodPlan, fetchFoodItems, createFoodPlan, fetchFoodPlanCopyOptions, copyFoodPlanToList,
   loadSampleFoodPlan, upsertFoodPlanEntries, saveFoodPlanTargets, updateFoodItem,
+  deleteFoodPlan, invalidateFoodPlanCaches,
 } from '../lib/queries'
 import FoodPlanPage from './FoodPlanPage'
 
@@ -637,5 +641,83 @@ describe('FoodPlanPage edit food item from an entry', () => {
     expect(invalidated).toContain(JSON.stringify(['food-items']))
     expect(invalidated).toContain(JSON.stringify(['food-items-lite']))
     expect(invalidated).toContain(JSON.stringify(['food-pack-signatures']))
+  })
+})
+
+describe('FoodPlanPage delete food plan', () => {
+  it('shows no Delete plan action in the empty state', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(null)
+    vi.mocked(fetchFoodItems).mockReset()
+    vi.mocked(fetchFoodItems).mockResolvedValue([])
+    renderPage()
+
+    // The empty state offers Start / Copy / Load sample - never Delete.
+    expect(await screen.findByRole('button', { name: 'Load sample plan' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /delete plan/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /delete food plan/i })).not.toBeInTheDocument()
+  })
+
+  it('offers Delete plan once a plan exists, behind a confirm that spares gear + library', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(makeDoc())
+    vi.mocked(fetchFoodItems).mockReset()
+    vi.mocked(fetchFoodItems).mockResolvedValue([])
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete plan' }))
+
+    expect(await screen.findByRole('heading', { name: 'Delete food plan?' })).toBeInTheDocument()
+    // Copy is explicit about what is - and is NOT - deleted.
+    expect(screen.getByText(/schedule, meals, entries, targets, and packed-food checks/i)).toBeInTheDocument()
+    expect(screen.getByText(/does not delete your gear list or any food library items/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete food plan' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+  })
+
+  it('confirming deletes this plan by id and leaves the food library untouched', async () => {
+    vi.mocked(fetchFoodPlan).mockResolvedValue(makeDoc())
+    vi.mocked(fetchFoodItems).mockReset()
+    vi.mocked(fetchFoodItems).mockResolvedValue([])
+    const qc = renderPage()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete plan' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete food plan' }))
+
+    // Deletes exactly this plan (the DB cascades its children); the food-plan
+    // query is invalidated so the page can fall back to the empty state.
+    await waitFor(() => expect(invalidateFoodPlanCaches).toHaveBeenCalledWith(qc, 'L1'))
+    expect(deleteFoodPlan).toHaveBeenCalledWith('plan1')
+    // Pack state for this list + this user's copy-options are refreshed too.
+    const invalidated = invalidateSpy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey))
+    expect(invalidated).toContain(JSON.stringify(['food-pack-state', 'L1']))
+    expect(invalidated).toContain(JSON.stringify(['food-plan-copy-options', 'u1']))
+    // Nothing touches the food library: no food-item write helper is invoked.
+    expect(updateFoodItem).not.toHaveBeenCalled()
+  })
+
+  it('returns to the empty state + sample loader after a successful delete', async () => {
+    // Gate the plan fetch on the actual delete: a plan exists until deleteFoodPlan
+    // runs, then the row is gone. Deterministic regardless of refetch counts.
+    let deleted = false
+    vi.mocked(deleteFoodPlan).mockImplementation(async () => { deleted = true })
+    vi.mocked(fetchFoodPlan).mockImplementation(async () => (deleted ? null : makeDoc()))
+    vi.mocked(fetchFoodItems).mockReset()
+    vi.mocked(fetchFoodItems).mockResolvedValue([])
+    // Give the (otherwise no-op) invalidation helper its real behavior so the
+    // delete actually refetches the plan and the page falls back to empty.
+    vi.mocked(invalidateFoodPlanCaches).mockImplementation((client, lid) => {
+      client.invalidateQueries({ queryKey: ['food-plan', lid] })
+    })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete plan' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete food plan' }))
+
+    // Empty state (and the sample loader) are reachable again after deletion.
+    expect(await screen.findByRole('heading', { name: 'No food plan yet' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Load sample plan' })).toBeInTheDocument()
+
+    vi.mocked(invalidateFoodPlanCaches).mockReset()
+    vi.mocked(deleteFoodPlan).mockReset()
   })
 })
