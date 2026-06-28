@@ -149,4 +149,83 @@ describe('useFoodProjection', () => {
       { type: 'error' },
     )
   })
+
+  // The packing projection is the integration surface for "edit a food item from
+  // the plan": that edit invalidates the lite + signature caches (asserted in
+  // FoodPlanPage.test.tsx), and the refetched current_signature is what these
+  // tests pin against the stored packed_signature. The row only reads as packed
+  // when the two match, so a food edit that shifts the signature silently
+  // un-packs the row until the user re-checks it.
+  it('reads a row as packed when the stored signature still matches the current one', async () => {
+    h.fetchFoodPlan.mockResolvedValue(doc([entry({ id: 'e1', food_item_id: 'bar', amount: 2 })]))
+    h.fetchFoodItemsLite.mockResolvedValue([food({ id: 'bar', name: 'Bar' })])
+    h.fetchFoodPackSignatures.mockResolvedValue([{ food_item_id: 'bar', current_signature: '80|40' }])
+    h.fetchFoodPackState.mockResolvedValue([{ food_item_id: 'bar', is_packed: true, packed_signature: '80|40' }])
+    const { Wrapper } = wrapper()
+    const { result } = renderHook(() => useFoodProjection('u1', 'l1'), { wrapper: Wrapper })
+
+    await waitFor(() => expect(result.current.rows).toHaveLength(1))
+    const [row] = result.current.rows
+    if (row?.state !== 'complete') throw new Error('expected a complete row')
+    expect(row.packed).toBe(true)
+    expect(result.current.packedTotal).toBe(1)
+  })
+
+  it('treats a packed row as unpacked once a food edit makes the stored signature stale', async () => {
+    h.fetchFoodPlan.mockResolvedValue(doc([entry({ id: 'e1', food_item_id: 'bar', amount: 2 })]))
+    h.fetchFoodItemsLite.mockResolvedValue([food({ id: 'bar', name: 'Bar' })])
+    // The food was edited (e.g. serving weight changed), so the refetched current
+    // signature has moved on...
+    h.fetchFoodPackSignatures.mockResolvedValue([{ food_item_id: 'bar', current_signature: '80|50' }])
+    // ...but the stored pack state still carries the pre-edit signature.
+    h.fetchFoodPackState.mockResolvedValue([{ food_item_id: 'bar', is_packed: true, packed_signature: '80|40' }])
+    const { Wrapper } = wrapper()
+    const { result } = renderHook(() => useFoodProjection('u1', 'l1'), { wrapper: Wrapper })
+
+    await waitFor(() => expect(result.current.rows).toHaveLength(1))
+    const [row] = result.current.rows
+    if (row?.state !== 'complete') throw new Error('expected a complete row')
+    // Signature mismatch -> the row must NOT read as packed (recheck needed),
+    // but it is still packable because it has a current signature.
+    expect(row.packed).toBe(false)
+    expect(row.packable).toBe(true)
+    expect(result.current.packedTotal).toBe(0)
+    expect(result.current.packableTotal).toBe(1)
+  })
+
+  it('drops packed + packable when a food edit leaves the food unpackable (null signature)', async () => {
+    h.fetchFoodPlan.mockResolvedValue(doc([entry({ id: 'e1', food_item_id: 'bar', amount: 2 })]))
+    h.fetchFoodItemsLite.mockResolvedValue([food({ id: 'bar', name: 'Bar' })])
+    // A null current signature means the edited food is no longer packable...
+    h.fetchFoodPackSignatures.mockResolvedValue([{ food_item_id: 'bar', current_signature: null }])
+    // ...even though stale pack state still claims it was packed.
+    h.fetchFoodPackState.mockResolvedValue([{ food_item_id: 'bar', is_packed: true, packed_signature: '80|40' }])
+    const { Wrapper } = wrapper()
+    const { result } = renderHook(() => useFoodProjection('u1', 'l1'), { wrapper: Wrapper })
+
+    await waitFor(() => expect(result.current.rows).toHaveLength(1))
+    const [row] = result.current.rows
+    if (row?.state !== 'complete') throw new Error('expected a complete row')
+    expect(row.packable).toBe(false)
+    expect(row.packed).toBe(false)
+    expect(result.current.packedTotal).toBe(0)
+  })
+
+  it('returns the empty no-plan projection when the food plan is gone (post-delete)', async () => {
+    // After Delete food plan, fetchFoodPlan(listId) refetches to null.
+    h.fetchFoodPlan.mockResolvedValue(null)
+    const { Wrapper } = wrapper()
+    const { result } = renderHook(() => useFoodProjection('u1', 'l1'), { wrapper: Wrapper })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.hasPlan).toBe(false)
+    expect(result.current.rows).toEqual([])
+    expect(result.current.packableTotal).toBe(0)
+    expect(result.current.packedTotal).toBe(0)
+    // The lite / signature / pack-state queries are gated on hasPlan, so a
+    // deleted-plan projection issues no further fetches.
+    expect(h.fetchFoodItemsLite).not.toHaveBeenCalled()
+    expect(h.fetchFoodPackSignatures).not.toHaveBeenCalled()
+    expect(h.fetchFoodPackState).not.toHaveBeenCalled()
+  })
 })

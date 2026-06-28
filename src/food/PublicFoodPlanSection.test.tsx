@@ -132,5 +132,15 @@ describe('PublicFoodPlanSection', () => {
     expect(screen.queryByRole('button', { name: 'Meal options' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /drag to reorder/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /add food/i })).not.toBeInTheDocument()
+    // The entry kebab (Edit quantity / Edit food item / Move / Copy / Remove,
+    // grown in #134) is owner-only - the public entry rows get no callbacks, so
+    // the kebab trigger never renders.
+    expect(screen.queryByRole('button', { name: 'Entry options' })).not.toBeInTheDocument()
+    // Plan-level destructive + target-editing controls stay private too
+    // (Delete plan landed in #136; Targets opens the owner's editor dialog).
+    expect(screen.queryByRole('button', { name: /delete (food )?plan/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Targets' })).not.toBeInTheDocument()
+    // No public copy affordance for the shared plan (public copy was removed).
+    expect(screen.queryByRole('button', { name: /copy/i })).not.toBeInTheDocument()
   })
 })
