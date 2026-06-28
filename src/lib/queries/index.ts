@@ -28,7 +28,6 @@ export {
   makeOptimisticReorder,
   makeOptimisticInsert,
   makeOptimisticUpdate,
-  makeOptimisticUpdateWithFanout,
   makeOptimisticDelete,
   makeOptimisticBulkDelete,
   makeOptimisticBulkMove,

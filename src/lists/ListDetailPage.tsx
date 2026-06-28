@@ -63,11 +63,9 @@ import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
 import { computeWeightBreakdown, withProjectedFood } from '../lib/weight-breakdown'
 import {
-  fanOutGearListItemsCaches,
-  rollbackListItemsCaches,
-  invalidateListItemsCaches,
-  patchAffectsListItemsView,
-} from './list-items-fan-out'
+  makeOptimisticGearItemDelete,
+  makeOptimisticGearItemUpdate,
+} from '../lib/queries/gear-list-items-fan-out'
 import { randomTempId } from '../lib/random-temp-id'
 import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
@@ -414,78 +412,28 @@ function ListDetailInner({
     }),
   })
 
-  // Editing gear from a list writes to gear_items so the change propagates
-  // to the gear library and every list that uses the same item. The
-  // ['list-items', *] fan-out is what closes B-2: without it, an immediate
-  // reorder after a category change reads stale embedded category_id and
-  // writes corrupted sort_order.
+  // Editing gear from a list writes to gear_items so the change propagates to
+  // the gear library and every list that embeds the same gear. The helper owns
+  // both cache surfaces, including rollback and narrow invalidation.
+  const gearUpdateHelper = makeOptimisticGearItemUpdate(qc)
   const updateGearItemMut = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateGearItem>[1] }) =>
       updateGearItem(id, patch),
-    onMutate: ({ id, patch }) => {
-      qc.cancelQueries({ queryKey: queryKeys.gearItems() })
-      const previousGear = qc.getQueryData<GearItem[]>(queryKeys.gearItems())
-      qc.setQueryData<GearItem[]>(queryKeys.gearItems(), (curr) =>
-        curr ? curr.map((g) => (g.id === id ? { ...g, ...patch } : g)) : curr,
-      )
-      // Skip the cross-cache fan-out when the patch doesn't touch any
-      // gear field that list_items projects via its embedded gear_item
-      // join (name, description, weight_grams, category_id). A
-      // sort_order- or cost-only edit can't change anything the list
-      // view renders; the gear-items cache update above is enough.
-      const listSnapshots = patchAffectsListItemsView(patch)
-        ? fanOutGearListItemsCaches(qc, id, (items) =>
-            items.map((item) =>
-              item.gear_item_id === id
-                ? { ...item, gear_item: { ...item.gear_item, ...patch } }
-                : item,
-            ),
-          )
-        : []
-      return { previousGear, listSnapshots }
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.previousGear) qc.setQueryData(queryKeys.gearItems(), ctx.previousGear)
-      if (ctx?.listSnapshots) rollbackListItemsCaches(qc, ctx.listSnapshots)
-    },
-    onSettled: (_data, _err, _vars, ctx) => {
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      if (ctx?.listSnapshots) invalidateListItemsCaches(qc, ctx.listSnapshots)
-    },
+    ...gearUpdateHelper,
   })
 
   // Delete a gear item entirely (gear library and every list that uses it).
-  // gear_items.id is referenced by list_items with ON DELETE CASCADE on
-  // gear_item_id, so deleting a gear_item also removes every list_item that
-  // references it. makeOptimisticDelete only touches the ['gear-items']
-  // cache; the ['list-items', *] fan-out is what makes the row vanish on
-  // /lists/:id immediately instead of waiting for the settled refetch.
-  const deleteHelper = makeOptimisticDelete<GearItem, string>({
-    qc,
-    queryKey: queryKeys.gearItems(),
-    id: (id) => id,
-  })
+  // The DB cascades list_items rows; the helper mirrors that immediately in
+  // every affected list-items cache and rolls both surfaces back together.
+  const deleteHelper = makeOptimisticGearItemDelete(qc)
   const deleteGearItemMut = useMutation({
     mutationFn: deleteGearItem,
-    onMutate: (id: string) => {
-      const helperCtx = deleteHelper.onMutate(id)
-      const listSnapshots = fanOutGearListItemsCaches(qc, id, (items) =>
-        items.filter((item) => item.gear_item_id !== id),
-      )
-      return { ...helperCtx, listSnapshots }
-    },
+    onMutate: deleteHelper.onMutate,
     onError: (err, vars, ctx) => {
       deleteHelper.onError(err, vars, ctx)
-      if (ctx?.listSnapshots) rollbackListItemsCaches(qc, ctx.listSnapshots)
       showToast("Couldn't delete that item. Please try again.", { type: 'error' })
     },
-    onSettled: (_data, _err, _vars, ctx) => {
-      // Dual invalidation: ON DELETE CASCADE on list_items.gear_item_id
-      // means the gear-item delete also removes its list_items rows, so
-      // both caches need to refetch (gear library + every list it was on).
-      deleteHelper.onSettled()
-      if (ctx?.listSnapshots) invalidateListItemsCaches(qc, ctx.listSnapshots)
-    },
+    onSettled: deleteHelper.onSettled,
   })
 
   // List Detail "Quick Add" is the per-category "Add new item" affordance
