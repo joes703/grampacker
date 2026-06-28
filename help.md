@@ -109,6 +109,30 @@ The **List options** button (in the list toolbar on desktop, in the bottom actio
 
 Pack mode controls like Add ready checks and Show unpacked only live in Pack mode itself.
 
+## Food planning
+
+grampacker can plan a trip's food alongside the gear. You keep a library of foods, then add them to a per-list food plan to see calories and nutrition per meal and per day. The plan's food also feeds into the list's consumable weight.
+
+### Food library
+
+The **Food** page is your reusable library of foods, the same way the **Gear** page is your gear inventory. Add a food with its serving weight, calories, and any nutrition details you want to track, then edit it later from the same page.
+
+You can import foods from a CSV and export your library to a CSV. The **CSV format** button shows the columns grampacker expects, so you can prepare a spreadsheet that imports cleanly. At minimum a food needs a name; a serving weight and calories make it usable for weight and nutrition totals.
+
+### Food plans
+
+Open a list and switch to the **Food plan** tab. If the list has no plan yet, choose **Start food plan** to begin from scratch or **Load sample plan** to fill in an example you can edit.
+
+A plan is organized into days and meals. Add foods from your library to a meal and set how much: servings, packages, or a weight. Edit a food's quantity from its row at any time. You can also choose **Edit food item** on a plan row to change the underlying library food (serving weight, calories, and so on); that edit updates the food everywhere it is used.
+
+To start over, use **Delete plan**. Deleting a food plan removes the plan's schedule, meals, entries, targets, and packed-food checks. It does not delete your gear list or any foods in your library, so you can load the sample plan or start a new one afterward.
+
+### Packing food
+
+A list's food plan contributes its food as projected consumable weight, so your pack weight reflects what you are carrying to eat. In Pack mode you can check food off as you pack it, just like gear.
+
+Packing a food records the food and the quantity you packed. If you later change that food (for example its serving weight) or its quantity in the plan, the packed check may no longer match, and grampacker asks you to recheck it so a stale amount is never shown as packed.
+
 ## Sharing a list
 
 You can create a public read-only link for a list.
@@ -120,6 +144,8 @@ Public links are read-only. Other people cannot edit your list.
 Turn the public link off to stop sharing the list.
 
 Public lists may be discoverable, so only share lists you are comfortable making public.
+
+If a list has a food plan, the **Include food plan** toggle in the Sharing section adds a read-only Food plan tab to the public link. With it off, a shared list still shows your planned food as a single aggregate Food weight row rather than the itemized plan. Either way the public view is read-only: there is no way for someone to copy your list or food plan.
 
 ## Importing and exporting
 
