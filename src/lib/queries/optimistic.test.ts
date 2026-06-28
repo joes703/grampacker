@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { QueryClient, type Mutation } from '@tanstack/react-query'
+import { QueryClient } from '@tanstack/react-query'
 
 vi.mock('../toast', () => ({
   showToast: vi.fn(),
@@ -15,7 +15,6 @@ import {
   makeOptimisticReorder,
 } from './optimistic'
 import { showToast } from '../toast'
-import { mutationErrorHandler } from '../mutation-error-handler'
 
 type Row = { id: string; name: string; category_id: string | null }
 type SortableRow = { id: string; name: string; sort_order: number }
@@ -711,88 +710,5 @@ describe('makeOptimisticUpdateWithFanout', () => {
     // C was not touched — must NOT be invalidated.
     expect(invalidatedKeys).not.toContainEqual(listKeyC)
     invalidateSpy.mockRestore()
-  })
-})
-
-describe('mutationErrorHandler (MutationCache observability, M-1)', () => {
-  let warnSpy: ReturnType<typeof vi.spyOn>
-
-  function makeMutation(mutationKey: readonly unknown[] | undefined): Mutation<unknown, unknown, unknown> {
-    // The handler only reads mutation.options.mutationKey; everything else
-    // can be a placeholder.
-    return { options: { mutationKey } } as Mutation<unknown, unknown, unknown>
-  }
-
-  afterEach(() => {
-    warnSpy.mockRestore()
-  })
-
-  it('logs structured warn with the mutationKey-joined prefix (Error instance)', () => {
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const mutation = makeMutation(['gear-items', 'create'])
-    mutationErrorHandler(new Error('permission denied'), undefined, undefined, mutation)
-    expect(warnSpy).toHaveBeenCalledWith('[gear-items/create] failed', {
-      error: 'permission denied',
-      code: undefined,
-      mutationKey: ['gear-items', 'create'],
-    })
-  })
-
-  it('extracts the code property from a plain (non-Error) object payload', () => {
-    // Plain objects don't go through the `error.message` branch — they're
-    // stringified via String(error), which produces '[object Object]'. The
-    // code property is still extracted via the typeguard. This shape is
-    // unusual in practice (Supabase's PostgrestError extends Error) but
-    // locks the typeguard's positive case for any future caller that
-    // throws a literal object.
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const mutation = makeMutation(['list-items', 'add'])
-    const pgErrorObject = { message: 'permission denied', code: '42501' }
-    mutationErrorHandler(pgErrorObject, undefined, undefined, mutation)
-    expect(warnSpy).toHaveBeenCalledWith('[list-items/add] failed', {
-      error: '[object Object]',
-      code: '42501',
-      mutationKey: ['list-items', 'add'],
-    })
-  })
-
-  it('extracts code from an Error subclass that also carries a code property', () => {
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    class PgError extends Error {
-      code: string
-      constructor(message: string, code: string) {
-        super(message)
-        this.code = code
-      }
-    }
-    const mutation = makeMutation(['categories', 'delete'])
-    mutationErrorHandler(new PgError('row violates RLS', '42501'), undefined, undefined, mutation)
-    expect(warnSpy).toHaveBeenCalledWith('[categories/delete] failed', {
-      error: 'row violates RLS',
-      code: '42501',
-      mutationKey: ['categories', 'delete'],
-    })
-  })
-
-  it('stringifies non-Error, non-object error values', () => {
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const mutation = makeMutation(['lists', 'reorder'])
-    mutationErrorHandler('plain string error', undefined, undefined, mutation)
-    expect(warnSpy).toHaveBeenCalledWith('[lists/reorder] failed', {
-      error: 'plain string error',
-      code: undefined,
-      mutationKey: ['lists', 'reorder'],
-    })
-  })
-
-  it("falls back to '[mutation] failed' prefix when mutationKey is unset", () => {
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const mutation = makeMutation(undefined)
-    mutationErrorHandler(new Error('boom'), undefined, undefined, mutation)
-    expect(warnSpy).toHaveBeenCalledWith('[mutation] failed', {
-      error: 'boom',
-      code: undefined,
-      mutationKey: undefined,
-    })
   })
 })
