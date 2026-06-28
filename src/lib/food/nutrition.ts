@@ -1,5 +1,5 @@
 import { effectiveServings } from './basis'
-import type { FoodItem } from '../types'
+import type { FoodItem, FoodPlanEntry } from '../types'
 
 export const MISSING_FOOD_LABEL = 'Missing food definition'
 
@@ -26,7 +26,9 @@ export type WeightTotal =
   | { state: 'complete'; grams: number }
   | { state: 'incomplete'; missingFoodIds: string[] }
 
-type NutEntry = { food_item_id: string; basis: 'servings' | 'packages' | 'weight'; amount: number }
+// Only the three columns the totals read; derived from the canonical row so the
+// nutrition input can't drift from FoodPlanEntry (matches ProjectionEntry).
+type NutEntry = Pick<FoodPlanEntry, 'food_item_id' | 'basis' | 'amount'>
 
 function foodNutrientValue(food: FoodItem, key: NutrientKey): number | null {
   if (key === 'calories') return food.calories_per_serving
