@@ -15,8 +15,8 @@ const queryClient = new QueryClient({
       staleTime: 1000 * 30,
       // Default retry is 3 with exponential backoff (~7s offline thrash).
       // Skip retries while offline; keep one retry when online to absorb a
-      // transient blip. Offline reads have no cache to fall back on now that
-      // the service worker is gone, so retrying offline cannot help.
+      // transient blip. An offline read has no local data to fall back on,
+      // so retrying while offline cannot help.
       retry: (failureCount) =>
         typeof navigator !== 'undefined' && !navigator.onLine ? false : failureCount < 1,
       refetchOnWindowFocus: false,

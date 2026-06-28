@@ -80,7 +80,7 @@ auto-merge for changes touching:
 
 - auth, sessions, passkeys, or account behavior
 - RLS, database schema, migrations, or Supabase configuration
-- the legacy service-worker kill-worker (`public/sw.js`) or browser cache behavior
+- browser cache behavior
 - sharing/public-link behavior
 - import/export data semantics
 - dependency major updates
