@@ -304,6 +304,34 @@ describe('gear item optimistic fan-out helpers', () => {
     ])
   })
 
+  it('rolls back gear_items and touched list item caches for a failed delete', () => {
+    const { qc } = seedGearFanout()
+    const gearBefore = qc.getQueryData<GearItem[]>(queryKeys.gearItems())
+    const listBefore = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems('list-A'))
+    const helper = makeOptimisticGearItemDelete(qc)
+
+    const ctx = helper.onMutate('g-1')
+    helper.onError(new Error('boom'), 'g-1', ctx)
+
+    expect(qc.getQueryData<GearItem[]>(queryKeys.gearItems())).toEqual(gearBefore)
+    expect(qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems('list-A'))).toEqual(listBefore)
+  })
+
+  it('invalidates gear_items and only touched list item caches on settled delete', () => {
+    const { qc } = seedGearFanout()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    const helper = makeOptimisticGearItemDelete(qc)
+
+    const ctx = helper.onMutate('g-1')
+    helper.onSettled(undefined, null, 'g-1', ctx)
+    const invalidatedKeys = invalidateSpy.mock.calls.map(([arg]) => (arg as { queryKey: readonly unknown[] }).queryKey)
+
+    expect(invalidatedKeys).toContainEqual(queryKeys.gearItems())
+    expect(invalidatedKeys).toContainEqual(queryKeys.listItems('list-A'))
+    expect(invalidatedKeys).toContainEqual(queryKeys.listItems('list-B'))
+    expect(invalidatedKeys).not.toContainEqual(queryKeys.listItems('list-C'))
+  })
+
   it('bulk-deletes gear items from gear_items and every affected list item cache', () => {
     const { qc } = seedGearFanout()
     const helper = makeOptimisticGearItemsBulkDelete(qc)
@@ -316,6 +344,38 @@ describe('gear item optimistic fan-out helpers', () => {
     ])
     expect(qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems('list-B'))).toEqual([])
     expect(qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems('list-C'))).toEqual([])
+  })
+
+  it('rolls back gear_items and touched list item caches for a failed bulk delete', () => {
+    const { qc } = seedGearFanout()
+    const gearBefore = qc.getQueryData<GearItem[]>(queryKeys.gearItems())
+    const listABefore = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems('list-A'))
+    const listCBefore = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems('list-C'))
+    const helper = makeOptimisticGearItemsBulkDelete(qc)
+    const input = ['g-1', 'g-3']
+
+    const ctx = helper.onMutate(input)
+    helper.onError(new Error('boom'), input, ctx)
+
+    expect(qc.getQueryData<GearItem[]>(queryKeys.gearItems())).toEqual(gearBefore)
+    expect(qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems('list-A'))).toEqual(listABefore)
+    expect(qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems('list-C'))).toEqual(listCBefore)
+  })
+
+  it('invalidates gear_items and only touched list item caches on settled bulk delete', () => {
+    const { qc } = seedGearFanout()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    const helper = makeOptimisticGearItemsBulkDelete(qc)
+    const input = ['g-1', 'g-3']
+
+    const ctx = helper.onMutate(input)
+    helper.onSettled(undefined, null, input, ctx)
+    const invalidatedKeys = invalidateSpy.mock.calls.map(([arg]) => (arg as { queryKey: readonly unknown[] }).queryKey)
+
+    expect(invalidatedKeys).toContainEqual(queryKeys.gearItems())
+    expect(invalidatedKeys).toContainEqual(queryKeys.listItems('list-A'))
+    expect(invalidatedKeys).toContainEqual(queryKeys.listItems('list-B'))
+    expect(invalidatedKeys).toContainEqual(queryKeys.listItems('list-C'))
   })
 
   it('bulk-moves gear items in gear_items and every embedded list item cache', () => {
@@ -356,5 +416,21 @@ describe('gear item optimistic fan-out helpers', () => {
 
     expect(qc.getQueryData<GearItem[]>(queryKeys.gearItems())).toEqual(gearBefore)
     expect(qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems('list-A'))).toEqual(listBefore)
+  })
+
+  it('invalidates gear_items and only touched list item caches on settled bulk move', () => {
+    const { qc } = seedGearFanout()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    const helper = makeOptimisticGearItemsBulkCategoryMove(qc)
+    const input = { ids: ['g-1', 'g-2'], categoryId: 'cat-new' }
+
+    const ctx = helper.onMutate(input)
+    helper.onSettled(undefined, null, input, ctx)
+    const invalidatedKeys = invalidateSpy.mock.calls.map(([arg]) => (arg as { queryKey: readonly unknown[] }).queryKey)
+
+    expect(invalidatedKeys).toContainEqual(queryKeys.gearItems())
+    expect(invalidatedKeys).toContainEqual(queryKeys.listItems('list-A'))
+    expect(invalidatedKeys).toContainEqual(queryKeys.listItems('list-B'))
+    expect(invalidatedKeys).not.toContainEqual(queryKeys.listItems('list-C'))
   })
 })
