@@ -29,8 +29,6 @@ export {
   makeOptimisticInsert,
   makeOptimisticUpdate,
   makeOptimisticDelete,
-  makeOptimisticBulkDelete,
-  makeOptimisticBulkMove,
 } from './optimistic'
 export {
   fetchCategories,
