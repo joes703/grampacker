@@ -4,6 +4,7 @@ import type { FoodItem, FoodPlanDailyTarget, MealTarget, MealTargetMetric } from
 import type { DayView } from '../lib/food/view'
 import {
   nutrientTotals, totalWeight, calorieDensityPerGram,
+  MISSING_FOOD_LABEL,
   type NutrientKey,
 } from '../lib/food/nutrition'
 import {
@@ -62,7 +63,7 @@ export default function DayNutritionReview({
   const resolvedDaily = resolveDailyTargets(dailyTargets, totals, density, dayView.dayType)
   const activeDailyTargets = dailyTargets.filter((target) => target.mode !== 'off')
   const densityTarget = activeDailyTargets.find((target) => target.metric === 'calorie_density')
-  const nameForId = (id: string) => foodById.get(id)?.name ?? 'Unknown food'
+  const nameForId = (id: string) => foodById.get(id)?.name ?? MISSING_FOOD_LABEL
   const partial = dayView.dayType === 'partial'
   const hasTargets = activeDailyTargets.length > 0 || mealTargets.length > 0
 

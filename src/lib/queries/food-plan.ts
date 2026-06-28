@@ -6,7 +6,7 @@ import { FOOD_PLAN_DAY_CAP, MEAL_DEFINITION_CAP, FOOD_PLAN_ENTRY_CAP } from '../
 import type { FoodPlanStructure } from '../food/basis'
 import type {
   FoodPlan, Meal, FoodPlanDay, DayMeal, FoodPlanEntry, FoodPlanDocument, EntryBasis,
-  FoodPlanDailyTarget, MealTarget, DailyTargetInput, MealTargetInput,
+  FoodPlanDailyTarget, MealTarget,
   DailyTargetMetric, MealTargetMetric, TargetMode, PublicFoodPlanDocument,
   TargetDefault,
 } from '../types'
@@ -388,38 +388,6 @@ export function assertMealDefinitionWithinCap(existingMeals: number): void {
 }
 export function assertFoodPlanEntryWithinCap(existingEntries: number): void {
   if (existingEntries >= FOOD_PLAN_ENTRY_CAP) throw new Error(`This plan already has the maximum ${FOOD_PLAN_ENTRY_CAP} entries.`)
-}
-
-// ---- Single-row, full-row target writes. RLS authorizes; ON CONFLICT updates
-// the per-metric row in place. Input omits id so identity is never overwritten.
-export async function upsertDailyTarget(target: DailyTargetInput): Promise<void> {
-  // Allowlist the columns we forward: even if a caller leaks an id at runtime,
-  // it is never sent, so ON CONFLICT can never overwrite the row's identity.
-  const { user_id, food_plan_id, metric, mode, target_min, target_max } = target
-  const payload = { user_id, food_plan_id, metric, mode, target_min, target_max }
-  const { error } = await supabase
-    .from('food_plan_daily_targets')
-    .upsert(payload, { onConflict: 'food_plan_id,metric' })
-  if (error) throw error
-}
-
-export async function deleteDailyTarget(id: string): Promise<void> {
-  const { error } = await supabase.from('food_plan_daily_targets').delete().eq('id', id)
-  if (error) throw error
-}
-
-export async function upsertMealTarget(target: MealTargetInput): Promise<void> {
-  const { user_id, food_plan_id, meal_id, metric, mode, target_min, target_max } = target
-  const payload = { user_id, food_plan_id, meal_id, metric, mode, target_min, target_max }
-  const { error } = await supabase
-    .from('meal_targets')
-    .upsert(payload, { onConflict: 'meal_id,metric' })
-  if (error) throw error
-}
-
-export async function deleteMealTarget(id: string): Promise<void> {
-  const { error } = await supabase.from('meal_targets').delete().eq('id', id)
-  if (error) throw error
 }
 
 export type TargetsSavePayload = {

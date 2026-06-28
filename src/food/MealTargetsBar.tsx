@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react'
 import type { FoodItem, FoodPlanEntry, MealTarget, MealTargetMetric } from '../lib/types'
 import {
+  MISSING_FOOD_LABEL,
   nutrientTotals, fatPct, sugarPct, carbProteinRatio, sodiumDensity, derivedValue,
   type DerivedValue, type NutrientTotal,
 } from '../lib/food/nutrition'
@@ -38,7 +39,7 @@ export default function MealTargetsBar({ entries, foodById, mealTargets }: {
   // filters `mealTargets` fresh per cell, which would bust the barrier anyway.)
   const totals = useMemo(() => nutrientTotals(entries, foodById), [entries, foodById])
   const resolved = resolveMealTargets(mealTargets, totals)
-  const nameForId = (id: string) => foodById.get(id)?.name ?? 'Unknown food'
+  const nameForId = (id: string) => foodById.get(id)?.name ?? MISSING_FOOD_LABEL
   const mark = (m: MealTargetMetric) => { const rt = resolved.get(m); return rt ? <TargetStatusMark status={rt.status} /> : null }
   const num = (t: NutrientTotal, kind: 'calories' | 'grams') => <NutrientTotalCell total={t} kind={kind} nameForId={nameForId} />
 

@@ -11,6 +11,7 @@ import {
   type FoodPackStateRow,
 } from '../lib/queries'
 import { projectFoodPlan, totalProjectedConsumableGrams } from '../lib/food/projection'
+import { MISSING_FOOD_LABEL } from '../lib/food/nutrition'
 import { showToast } from '../lib/toast'
 import type { FoodItemLite } from '../lib/types'
 import type { FoodProjectionDisplayRow } from './FoodProjectionSection'
@@ -43,7 +44,6 @@ export function useFoodProjection(userId: string, listId: string) {
   const foodsQuery = useQuery({
     queryKey: queryKeys.foodItemsLite(),
     queryFn: () => fetchFoodItemsLite(userId),
-    enabled: hasPlan,
   })
   const signaturesQuery = useQuery({
     queryKey: queryKeys.foodPackSignatures(listId),
@@ -76,7 +76,7 @@ export function useFoodProjection(userId: string, listId: string) {
 
   const rows = useMemo<FoodProjectionDisplayRow[]>(() => projectionRows.map((row) => {
     const food = row.food
-    const name = food?.name ?? 'Unknown food'
+    const name = food?.name ?? MISSING_FOOD_LABEL
     const brand = food?.brand ?? null
     if (row.state === 'incomplete') {
       return { foodItemId: row.foodItemId, state: 'incomplete', name, brand, reason: row.reason }
@@ -164,8 +164,8 @@ export function useFoodProjection(userId: string, listId: string) {
     packableTotal: rows.filter((r) => r.state === 'complete').length,
     packedTotal: rows.filter((r) => r.state === 'complete' && r.packed).length,
     hasPlan,
-    isLoading: planQuery.isLoading || foodsQuery.isLoading || (hasPlan && (signaturesQuery.isLoading || packStateQuery.isLoading)),
-    isError: planQuery.isError || foodsQuery.isError || signaturesQuery.isError || packStateQuery.isError,
+    isLoading: planQuery.isLoading || (hasPlan && (foodsQuery.isLoading || signaturesQuery.isLoading || packStateQuery.isLoading)),
+    isError: planQuery.isError || (hasPlan && (foodsQuery.isError || signaturesQuery.isError || packStateQuery.isError)),
     togglePacked: (foodItemId: string, next: boolean) => togglePacked.mutate({ foodItemId, next }),
     resetPackedFoods,
   }

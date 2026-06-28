@@ -2,7 +2,7 @@ import { PackagePlus, Plus } from 'lucide-react'
 import type { FoodItem, FoodPlanEntry } from '../lib/types'
 import { FLAT_TABLE_SURFACE, FLAT_TABLE_HEADER } from '../components/flat-table-styles'
 import { useWeightUnit } from '../lib/use-weight-unit'
-import { totalWeight } from '../lib/food/nutrition'
+import { MISSING_FOOD_LABEL, totalWeight } from '../lib/food/nutrition'
 import { WeightCell } from './NutrientTotalCell'
 import FoodPlanEntryRow from './FoodPlanEntryRow'
 
@@ -20,7 +20,7 @@ export default function FoodPlanExtras({
   embedded?: boolean
 }) {
   const { weightUnit } = useWeightUnit()
-  const nameForId = (id: string) => foodById.get(id)?.name ?? 'Unknown food'
+  const nameForId = (id: string) => foodById.get(id)?.name ?? MISSING_FOOD_LABEL
 
   return (
     <div

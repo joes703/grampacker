@@ -69,7 +69,7 @@ describe('FoodPlanEntryRow', () => {
   it('shows incomplete markers (never a fake zero) when the food definition is missing', () => {
     render(<FoodPlanEntryRow entry={makeEntry()} food={undefined} />)
 
-    expect(screen.getByText('Unknown food')).toBeInTheDocument()
+    expect(screen.getByText('Missing food definition')).toBeInTheDocument()
     const cal = screen.getByTestId('entry-calories')
     expect(within(cal).queryByText(/kcal/)).not.toBeInTheDocument()
     expect(within(cal).getByRole('button', { name: /missing this nutrient/i })).toBeInTheDocument()

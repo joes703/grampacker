@@ -1,6 +1,8 @@
 import { effectiveServings } from './basis'
 import type { FoodItem } from '../types'
 
+export const MISSING_FOOD_LABEL = 'Missing food definition'
+
 // 'calories' maps to calories_per_serving; every other key is the FoodItem
 // column of the same name. This is also the canonical iteration order.
 export type NutrientKey =

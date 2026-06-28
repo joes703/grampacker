@@ -3,7 +3,7 @@ import { AlertTriangle } from 'lucide-react'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import { FLAT_TABLE_NUMERIC_TEXT, POPOVER_SURFACE } from '../components/flat-table-styles'
 import { formatTotalWeight, type WeightUnit } from '../lib/weight'
-import type { NutrientTotal, WeightTotal } from '../lib/food/nutrition'
+import { MISSING_FOOD_LABEL, type NutrientTotal, type WeightTotal } from '../lib/food/nutrition'
 
 export type NutrientCellKind = 'calories' | 'grams' | 'mg'
 
@@ -43,7 +43,7 @@ export function IncompleteMarker({
 }) {
   const { open, openMenu, close, triggerRef, menuRef, menuPos } =
     useAnchoredMenu({ variant: 'right-flush', menuWidth: 224 })
-  const names = missingFoodIds.map((id) => nameForId?.(id) ?? 'Unknown food')
+  const names = missingFoodIds.map((id) => nameForId?.(id) ?? MISSING_FOOD_LABEL)
   const n = missingFoodIds.length
   const label = `${n} food${n === 1 ? '' : 's'} ${reason}`
   return (

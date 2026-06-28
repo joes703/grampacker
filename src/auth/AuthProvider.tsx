@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
@@ -85,7 +85,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // satisfy exhaustive-deps without re-running the effect.
   }, [queryClient])
 
-  return <AuthContext.Provider value={{ session, loading }}>{children}</AuthContext.Provider>
+  const value = useMemo(() => ({ session, loading }), [session, loading])
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

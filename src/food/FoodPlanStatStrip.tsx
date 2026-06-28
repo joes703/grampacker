@@ -1,7 +1,7 @@
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { formatTotalWeight } from '../lib/weight'
 import { formatCalorieDensity } from './nutrition-format'
-import type { TripSummary } from '../lib/food/nutrition'
+import { MISSING_FOOD_LABEL, type TripSummary } from '../lib/food/nutrition'
 import type { FoodItem } from '../lib/types'
 import { WeightCell } from './NutrientTotalCell'
 import { FLAT_TABLE_EYEBROW } from '../components/flat-table-styles'
@@ -23,7 +23,7 @@ export default function FoodPlanStatStrip({
   // both packed weight and calorie density read in g and oz at a glance. Both
   // lines derive from weightUnit, so a toggle swaps primary/secondary together.
   const altUnit = weightUnit === 'g' ? 'oz' : 'g'
-  const nameForId = (id: string) => foodById.get(id)?.name ?? 'Unknown food'
+  const nameForId = (id: string) => foodById.get(id)?.name ?? MISSING_FOOD_LABEL
   const { fullDays, totalDays, totals } = summary.fullDayAverage
   const avgCal = totals.calories
   const avgComplete = avgCal.state === 'complete' && fullDays > 0

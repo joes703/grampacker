@@ -2,25 +2,31 @@
 
 The throwaway "test" food plan that gets created during development is usually
 just a named plan with empty meals, which is useless for reviewing the Food Plan
-UI. This recipe builds a realistic plan by hand from the bundled sample food
-library, so a reviewer sees populated stat cards, an all-days summary with real
+UI. This recipe loads or builds a realistic plan from the bundled sample food
+data, so a reviewer sees populated stat cards, an all-days summary with real
 numbers, and day / meal / entry rows.
 
 **There is no general food-plan import, and adding one is intentionally out of
-scope.** Only the Food **Library** has a CSV import. Two ways to get a realistic
-plan: a one-command dev seed (Option A, fastest, needs your account login), or
-build it by hand from the imported sample library (Option B, no credentials).
-(Importing a whole plan - days, meals, scheduled entries, targets - is a separate,
-unbuilt feature; the seed below is a throwaway developer tool, not that feature.)
+scope.** Only the Food **Library** has a CSV import. The normal smoke-test path is
+the in-app **Load sample plan** button. If you specifically need to exercise the
+CSV import path, use the manual library-import recipe below.
 
-## Option A - one-command seed (fastest)
+## Option A - in-app sample plan (recommended)
 
-`npm run seed:food-design` loads the entire Claude Design "Wind River high route"
-sample (22 foods, 5 meals, a 7-day schedule with all entries, 3 extras, and daily
-+ meal targets) into one existing list you name. It is a **developer/owner
-smoke-test seed, not a general import feature**, and adds no production UI.
+1. Open a list and switch to its **Food plan** tab.
+2. If the list already has a food plan you do not need, use **Delete plan** first.
+   That deletes only the plan graph: schedule, meals, entries, targets, and
+   packed-food checks. It does not delete the list or the Food Library.
+3. Click **Load sample plan**.
 
-**Run it:**
+This loads the Claude Design "Wind River high route" sample into the list: foods,
+meals, seven days, entries, extras, daily targets, and meal targets. It is a
+first-party onboarding/smoke-test helper, not a general plan importer.
+
+## Option B - developer seed script
+
+Use this only when testing outside the UI. It writes the same sample plan into one
+existing list you name.
 
 ```
 npm run seed:food-design -- --list-id <list-uuid>
@@ -56,7 +62,7 @@ Get `<list-uuid>` from the list's URL (`/lists/<uuid>`) or `/lists/<uuid>/food`.
 It prints a summary (foods created/reused, meals, days, entries, targets). Then
 **open the Food tab for that list** and review against "What you should see" below.
 
-## Option B - build it by hand (no credentials)
+## Option C - build it by hand from CSV
 
 ### 1. Import the sample food library
 

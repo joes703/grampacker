@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react'
 import { useWeightUnit } from '../lib/use-weight-unit'
-import { nutrientTotal, totalWeight } from '../lib/food/nutrition'
+import { MISSING_FOOD_LABEL, nutrientTotal, totalWeight } from '../lib/food/nutrition'
 import NutrientTotalCell, { WeightCell } from './NutrientTotalCell'
 import type { FoodItem } from '../lib/types'
 import type { DayView } from '../lib/food/view'
@@ -27,7 +27,7 @@ function DayTotalsStrip({
       weight: totalWeight(entries, foodById),
     }
   }, [dayView, foodById])
-  const nameForId = (id: string) => foodById.get(id)?.name ?? 'Unknown food'
+  const nameForId = (id: string) => foodById.get(id)?.name ?? MISSING_FOOD_LABEL
   return (
     <span className="flex items-center gap-3 text-xs text-gray-500">
       {/* Calories carry their own unit (kcal), so no redundant "Cal" label -

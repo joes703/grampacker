@@ -214,6 +214,7 @@ describe('useFoodProjection', () => {
   it('returns the empty no-plan projection when the food plan is gone (post-delete)', async () => {
     // After Delete food plan, fetchFoodPlan(listId) refetches to null.
     h.fetchFoodPlan.mockResolvedValue(null)
+    h.fetchFoodItemsLite.mockResolvedValue([])
     const { Wrapper } = wrapper()
     const { result } = renderHook(() => useFoodProjection('u1', 'l1'), { wrapper: Wrapper })
 
@@ -222,9 +223,25 @@ describe('useFoodProjection', () => {
     expect(result.current.rows).toEqual([])
     expect(result.current.packableTotal).toBe(0)
     expect(result.current.packedTotal).toBe(0)
-    // The lite / signature / pack-state queries are gated on hasPlan, so a
-    // deleted-plan projection issues no further fetches.
-    expect(h.fetchFoodItemsLite).not.toHaveBeenCalled()
+    // The lite food query is independent of the plan and intentionally starts
+    // in parallel. Signatures and pack-state remain gated because they are
+    // plan-scoped.
+    expect(h.fetchFoodItemsLite).toHaveBeenCalledWith('u1')
+    expect(h.fetchFoodPackSignatures).not.toHaveBeenCalled()
+    expect(h.fetchFoodPackState).not.toHaveBeenCalled()
+  })
+
+  it('ignores lite-food failures when the list has no food plan', async () => {
+    h.fetchFoodPlan.mockResolvedValue(null)
+    h.fetchFoodItemsLite.mockRejectedValue(new Error('food library unavailable'))
+    const { Wrapper } = wrapper()
+    const { result } = renderHook(() => useFoodProjection('u1', 'l1'), { wrapper: Wrapper })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.hasPlan).toBe(false)
+    expect(result.current.isError).toBe(false)
+    expect(result.current.rows).toEqual([])
+    expect(h.fetchFoodItemsLite).toHaveBeenCalledWith('u1')
     expect(h.fetchFoodPackSignatures).not.toHaveBeenCalled()
     expect(h.fetchFoodPackState).not.toHaveBeenCalled()
   })
