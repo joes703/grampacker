@@ -8,6 +8,7 @@ import {
   MAX_CSV_ROWS,
 } from './csv'
 import type { Category, GearItem, ListItemWithGear } from './types'
+import { MAX_LIST_ITEM_QUANTITY } from './caps'
 
 // Smoke test: representative gear-list rows should round-trip through
 // listItemsToCsv → parseListCsv with the user-visible columns intact.
@@ -103,21 +104,21 @@ describe('csv round-trip', () => {
     },
   ]
 
-  it('parses quantity from common header names and clamps to [1, 9999]', () => {
+  it(`parses quantity from common header names and clamps to [1, ${MAX_LIST_ITEM_QUANTITY}]`, () => {
     const csv = [
       'name,weight_grams,qty',
       'Item A,10,1',
       'Item B,10,6',
       'Item C,10,2',
-      'Item D,10,9999',
-      'Item E,10,99999',  // over cap → clamped
-      'Item F,10,0',      // under min → 1
-      'Item G,10,',       // blank → 1
-      'Item H,10,abc',    // NaN → 1
+      `Item D,10,${MAX_LIST_ITEM_QUANTITY}`,       // exactly at cap
+      `Item E,10,${MAX_LIST_ITEM_QUANTITY + 1}`,   // over cap -> clamped
+      'Item F,10,0',      // under min -> 1
+      'Item G,10,',       // blank -> 1
+      'Item H,10,abc',    // NaN -> 1
     ].join('\r\n')
     const parsed = parseListCsv(csv)
     if (typeof parsed === 'string') throw new Error(parsed)
-    expect(parsed.map((r) => r.quantity)).toEqual([1, 6, 2, 9999, 9999, 1, 1, 1])
+    expect(parsed.map((r) => r.quantity)).toEqual([1, 6, 2, MAX_LIST_ITEM_QUANTITY, MAX_LIST_ITEM_QUANTITY, 1, 1, 1])
   })
 
   it('preserves user-visible fields across serialize → parse', () => {

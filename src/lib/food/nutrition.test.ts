@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { nutrientTotal, nutrientTotals, totalWeight, NUTRIENT_KEYS, derivedValue } from './nutrition'
-import type { FoodItem, FoodPlanEntry } from '../types'
+import {
+  nutrientTotal, nutrientTotals, totalWeight, NUTRIENT_KEYS, derivedValue,
+  calorieDensityPerGram, carbProteinRatio, fatPct, sugarPct, sodiumDensity, summarizeTrip,
+} from './nutrition'
+import type { FoodItem, FoodPlanEntry, Meal, FoodPlanDay } from '../types'
+import type { FoodPlanView } from './view'
 
 function food(p: Partial<FoodItem>): FoodItem {
   return {
@@ -70,10 +74,6 @@ describe('nutrientTotals', () => {
     expect(r.calories).toEqual({ state: 'complete', value: 100 })
   })
 })
-
-import { calorieDensityPerGram, carbProteinRatio, fatPct, sugarPct, sodiumDensity, summarizeTrip } from './nutrition'
-import type { FoodPlanView } from './view'
-import type { Meal, FoodPlanDay } from '../types'
 
 function meal(id: string): Meal {
   return { id, user_id: 'u', food_plan_id: 'p', name: id, anchor_role: null, is_default: false, sort_order: 0, created_at: '', updated_at: '' }
