@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react'
-import { GEAR_STATUS_MENU_OPTIONS, type GearStatus } from '../lib/gear-status'
-import { ROW_MENU_ITEM_BASE } from '../components/RowMenuItem'
+import { GEAR_STATUS_MENU_OPTIONS, type GearStatus } from '../../lib/gear-status'
+import { ROW_MENU_ITEM_BASE } from '../RowMenuItem'
 
 type Props = {
   current: GearStatus

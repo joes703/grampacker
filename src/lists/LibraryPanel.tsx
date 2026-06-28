@@ -15,7 +15,7 @@ import {
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
-import GearStatusBadge from '../gear/GearStatusBadge'
+import GearStatusBadge from '../components/gear/GearStatusBadge'
 
 type Props = {
   gearItems: GearItem[]
