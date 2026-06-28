@@ -11,13 +11,19 @@ import type { FoodItem, FoodPlanDocument as Doc, FoodPlanEntry } from '../lib/ty
 // reuses its sort_order and skips the cap, move passes the source id while copy
 // passes null, copy into an empty target charges the cap while copy onto the same
 // food does not, and every mutation settles through `invalidate`.
+//
+// The mocks are typed via vi.fn<FnType>() (a function-type annotation, so no
+// unused-param bindings) which makes `.mock.calls[i]` a typed tuple. An untyped
+// `() => ...` impl makes the call args an empty tuple, which tsc -b then refuses
+// to read - the failure npm run build catches but vitest's transpile does not.
+type EntryAdditionArg = { entry: Record<string, unknown>; preserve_basis: unknown }
 
 const h = vi.hoisted(() => ({
-  upsertFoodPlanEntry: vi.fn(async () => ({})),
-  upsertFoodPlanEntries: vi.fn(async () => [] as unknown[]),
-  updateFoodPlanEntry: vi.fn(async () => undefined),
-  deleteFoodPlanEntry: vi.fn(async () => undefined),
-  assertFoodPlanEntryWithinCap: vi.fn(),
+  upsertFoodPlanEntry: vi.fn<(userId: string, addition: Record<string, unknown>, preserveBasis: unknown, moveSourceId: unknown) => Promise<unknown>>(),
+  upsertFoodPlanEntries: vi.fn<(userId: string, additions: { entry: Record<string, unknown>; preserve_basis: unknown }[]) => Promise<unknown>>(),
+  updateFoodPlanEntry: vi.fn<(id: string, patch: unknown) => Promise<void>>(),
+  deleteFoodPlanEntry: vi.fn<(id: string) => Promise<void>>(),
+  assertFoodPlanEntryWithinCap: vi.fn<(existingEntries: number) => void>(),
 }))
 
 vi.mock('../lib/queries', () => h)
@@ -59,6 +65,13 @@ function setup(currentDoc: Doc) {
   return { result, invalidate }
 }
 
+// `.mock.calls[0]` is `Tuple | undefined` under noUncheckedIndexedAccess; the
+// preceding waitFor proves the call happened, so a non-null assert is honest.
+function firstAddBatch(): EntryAdditionArg[] {
+  const [, additions] = h.upsertFoodPlanEntries.mock.calls[0]!
+  return additions
+}
+
 afterEach(() => vi.clearAllMocks())
 
 describe('useFoodPlanEntryActions', () => {
@@ -79,7 +92,8 @@ describe('useFoodPlanEntryActions', () => {
       })
 
       await waitFor(() => expect(h.upsertFoodPlanEntries).toHaveBeenCalled())
-      const [uid, additions] = h.upsertFoodPlanEntries.mock.calls[0] as [string, { entry: FoodPlanEntry; preserve_basis: unknown }[]]
+      const [uid] = h.upsertFoodPlanEntries.mock.calls[0]!
+      const additions = firstAddBatch()
       expect(uid).toBe('u1')
       expect(additions).toHaveLength(1)
       expect(additions[0]!.entry).toMatchObject({
@@ -103,7 +117,7 @@ describe('useFoodPlanEntryActions', () => {
       })
 
       await waitFor(() => expect(h.upsertFoodPlanEntries).toHaveBeenCalled())
-      const [, additions] = h.upsertFoodPlanEntries.mock.calls[0] as [string, { entry: FoodPlanEntry; preserve_basis: unknown }[]]
+      const additions = firstAddBatch()
       expect(additions[0]!.entry.sort_order).toBe(7)
       expect(additions[0]!.preserve_basis).toBe('servings')
       // newCount is 0 (the only target already holds the food), so no cap charge.
@@ -120,7 +134,7 @@ describe('useFoodPlanEntryActions', () => {
       })
 
       await waitFor(() => expect(h.upsertFoodPlanEntries).toHaveBeenCalled())
-      const [, additions] = h.upsertFoodPlanEntries.mock.calls[0] as [string, { entry: FoodPlanEntry }[]]
+      const additions = firstAddBatch()
       expect(additions.map((a) => a.entry.day_meal_id)).toEqual(['dm-b1', 'dm-b2'])
       // cap = existing(0) + newCount(2) - 1 = 1
       expect(h.assertFoodPlanEntryWithinCap).toHaveBeenCalledWith(1)
@@ -157,7 +171,7 @@ describe('useFoodPlanEntryActions', () => {
       result.current.moveCopyMut.mutate({ entry: e, target: { kind: 'extra' }, preserveBasis: null, isMove: true })
 
       await waitFor(() => expect(h.upsertFoodPlanEntry).toHaveBeenCalled())
-      const [uid, addition, preserve, moveSrc] = h.upsertFoodPlanEntry.mock.calls[0] as [string, FoodPlanEntry, unknown, unknown]
+      const [uid, addition, preserve, moveSrc] = h.upsertFoodPlanEntry.mock.calls[0]!
       expect(uid).toBe('u1')
       expect(addition).toMatchObject({ is_extra: true, day_meal_id: null, food_item_id: 'f1', basis: 'weight', amount: 50 })
       expect(preserve).toBeNull()
@@ -173,7 +187,7 @@ describe('useFoodPlanEntryActions', () => {
       result.current.moveCopyMut.mutate({ entry: e, target: { kind: 'cell', dayMealId: 'dm-l' }, preserveBasis: 'servings', isMove: false })
 
       await waitFor(() => expect(h.upsertFoodPlanEntry).toHaveBeenCalled())
-      const [, addition, preserve, moveSrc] = h.upsertFoodPlanEntry.mock.calls[0] as [string, FoodPlanEntry, unknown, unknown]
+      const [, addition, preserve, moveSrc] = h.upsertFoodPlanEntry.mock.calls[0]!
       expect(addition).toMatchObject({ day_meal_id: 'dm-l', is_extra: false, food_item_id: 'f1' })
       expect(preserve).toBe('servings')
       expect(moveSrc).toBeNull()
