@@ -18,7 +18,7 @@ import {
   verticalListSortingStrategy,
   arrayMove,
 } from '@dnd-kit/sortable'
-import { useQuery, useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { Plus, Search, X } from 'lucide-react'
 import { useRequireSession } from '../auth/use-require-session'
@@ -45,12 +45,9 @@ import {
   makeOptimisticReorder,
   makeOptimisticInsert,
   makeOptimisticUpdate,
-  makeOptimisticUpdateWithFanout,
   makeOptimisticDelete,
-  makeOptimisticBulkDelete,
-  makeOptimisticBulkMove,
 } from '../lib/queries'
-import type { Category, GearItem, ListItemWithGear } from '../lib/types'
+import type { Category, GearItem } from '../lib/types'
 import { MAX_CATEGORY_NAME } from '../lib/caps'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
 import { randomTempId } from '../lib/random-temp-id'
@@ -75,6 +72,12 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import { useDocumentTitle } from '../lib/use-document-title'
+import {
+  makeOptimisticGearItemUpdate,
+  makeOptimisticGearItemDelete,
+  makeOptimisticGearItemsBulkCategoryMove,
+  makeOptimisticGearItemsBulkDelete,
+} from '../lib/queries/gear-list-items-fan-out'
 
 type DialogState =
   | { type: 'create-item'; categoryId?: string | null }
@@ -252,58 +255,24 @@ export default function GearLibraryPage() {
     }),
   })
 
-  // Gear edits fan out into every active list-items cache that embeds the
-  // patched gear via the gear_item join — without the fan-out, an immediate
-  // reorder after a category change would read stale embedded category_id
-  // and write corrupted sort_order. The fields that need fan-out are the
-  // ones embedded by GEAR_ITEM_AUTH_SELECT (name, description, weight_grams,
-  // category_id, status). makeOptimisticUpdateWithFanout owns the
-  // cancel-snapshot-write-rollback-settle lifecycle across both caches; the
-  // join shape (FK match, embed property) stays here as the caller-authored
-  // matchJoined / applyJoined.
+  // Gear writes are rendered from two cache surfaces: the account gear library
+  // and any open list view embedding that gear through list_items.gear_item.
+  // The helper owns the cancel/snapshot/write/rollback/invalidate lifecycle
+  // for both surfaces so this page doesn't have to know the join shape.
+  const gearUpdateHelper = makeOptimisticGearItemUpdate(qc)
   const editItem = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateGearItem>[1] }) =>
       updateGearItem(id, patch),
-    ...makeOptimisticUpdateWithFanout<
-      GearItem,
-      ListItemWithGear,
-      { id: string; patch: Parameters<typeof updateGearItem>[1] }
-    >({
-      qc,
-      queryKey: queryKeys.gearItems(),
-      fanoutQueryKeyPrefix: queryKeys.listItemsAll(),
-      id: ({ id }) => id,
-      applyPrimary: (gear, { patch }) => ({ ...gear, ...patch }),
-      matchJoined: (item, { id }) => item.gear_item_id === id,
-      applyJoined: (item, { patch }) => ({
-        ...item,
-        gear_item: { ...item.gear_item, ...patch },
-      }),
-    }),
+    ...gearUpdateHelper,
   })
 
+  const gearDeleteHelper = makeOptimisticGearItemDelete(qc)
   const removeItem = useMutation({
     mutationFn: deleteGearItem,
-    // CASCADE removes the matching list_items rows in the DB; invalidate
-    // ['list-items'] so any open list view refetches and drops them.
-    ...makeOptimisticDelete<GearItem, string>({
-      qc,
-      queryKey: queryKeys.gearItems(),
-      invalidateKeys: [queryKeys.listItemsAll()],
-      id: (id) => id,
-    }),
+    ...gearDeleteHelper,
   })
 
-  // Bulk gear-items delete. The helper handles snapshot/optimistic-filter/
-  // rollback against ['gear-items']. List-items invalidation is narrowed to
-  // only the caches that actually contained one of the deleted ids (their
-  // server-side rows cascade away). exitSelectMode runs only on success so
-  // a failed bulk leaves the user's selection intact for retry.
-  const bulkDeleteHelper = makeOptimisticBulkDelete<GearItem, string[]>({
-    qc,
-    queryKey: queryKeys.gearItems(),
-    ids: (ids) => ids,
-  })
+  const bulkDeleteHelper = makeOptimisticGearItemsBulkDelete(qc)
   const bulkDelete = useMutation({
     mutationFn: bulkDeleteGearItems,
     onMutate: bulkDeleteHelper.onMutate,
@@ -312,73 +281,20 @@ export default function GearLibraryPage() {
       showToast("Couldn't delete the selected items. Please try again.", { type: 'error' })
     },
     onSuccess: () => exitSelectMode(),
-    onSettled: (_data, _err, ids) => {
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      if (!ids) return
-      const idSet = new Set(ids)
-      const affected = qc.getQueryCache()
-        .findAll({ queryKey: queryKeys.listItemsAll() })
-        .filter((q) =>
-          (q.state.data as ListItemWithGear[] | undefined)?.some((i) => idSet.has(i.gear_item_id)),
-        )
-      for (const q of affected) qc.invalidateQueries({ queryKey: q.queryKey })
-    },
+    onSettled: bulkDeleteHelper.onSettled,
   })
 
-  // Bulk gear-items category move. Helper handles ['gear-items'] snapshot/
-  // optimistic-apply/rollback. The list-items fan-out below is the B-2-at-
-  // scale fix: without it, an immediate reorder in the destination category
-  // after a bulk move corrupts sort_order the same way single edits did.
-  const bulkMoveHelper = makeOptimisticBulkMove<GearItem, { ids: string[]; categoryId: string | null }>({
-    qc,
-    queryKey: queryKeys.gearItems(),
-    ids: (input) => input.ids,
-    apply: (item, input) => ({ ...item, category_id: input.categoryId }),
-  })
+  const bulkMoveHelper = makeOptimisticGearItemsBulkCategoryMove(qc)
   const bulkMove = useMutation({
     mutationFn: ({ ids, categoryId }: { ids: string[]; categoryId: string | null }) =>
       bulkMoveToCategoryGearItems(ids, categoryId),
-    onMutate: (input) => {
-      const gearCtx = bulkMoveHelper.onMutate(input)
-      const idSet = new Set(input.ids)
-      const affected = qc.getQueryCache()
-        .findAll({ queryKey: queryKeys.listItemsAll() })
-        .filter((q) =>
-          (q.state.data as ListItemWithGear[] | undefined)?.some((i) => idSet.has(i.gear_item_id)),
-        )
-      const listSnapshots: { key: QueryKey; data: ListItemWithGear[] | undefined }[] = []
-      for (const q of affected) {
-        const key = q.queryKey
-        qc.cancelQueries({ queryKey: key })
-        listSnapshots.push({ key, data: qc.getQueryData<ListItemWithGear[]>(key) })
-        qc.setQueryData<ListItemWithGear[]>(key, (curr) =>
-          curr?.map((item) =>
-            idSet.has(item.gear_item_id)
-              ? { ...item, gear_item: { ...item.gear_item, category_id: input.categoryId } }
-              : item,
-          ),
-        )
-      }
-      return { ...gearCtx, listSnapshots }
-    },
+    onMutate: bulkMoveHelper.onMutate,
     onError: (err, vars, ctx) => {
       bulkMoveHelper.onError(err, vars, ctx)
-      if (ctx?.listSnapshots) {
-        for (const { key, data } of ctx.listSnapshots) {
-          qc.setQueryData(key, data)
-        }
-      }
       showToast("Couldn't move the selected items. Please try again.", { type: 'error' })
     },
     onSuccess: () => exitSelectMode(),
-    onSettled: (_data, _err, _vars, ctx) => {
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      if (ctx?.listSnapshots) {
-        for (const { key } of ctx.listSnapshots) {
-          qc.invalidateQueries({ queryKey: key })
-        }
-      }
-    },
+    onSettled: bulkMoveHelper.onSettled,
   })
 
   const createListFromSelectionMut = useMutation({

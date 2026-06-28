@@ -50,7 +50,8 @@ export type ListItem = {
 //   - ListItemWithGear.gear_item (the embedded Pick), just below
 //   - GEAR_ITEM_AUTH_SELECT (the PostgREST nested-join column string),
 //     lib/queries/projections.ts
-//   - patchAffectsListItemsView's field gate, lists/list-items-fan-out.ts
+//   - patchAffectsListItemsView's field gate,
+//     lib/queries/gear-list-items-fan-out.ts
 // `id` is the join key (always projected, never the target of a gear edit), so
 // it is added back only where the wire/type shape needs it - not in this
 // editable-field set. shared-projections.test.ts locks the derivation.

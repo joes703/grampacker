@@ -105,7 +105,7 @@ import { fetchCategories, fetchSharedListCategories } from './categories'
 import { fetchSharedFoodPlan, fetchSharedFoodSummary } from './food-plan'
 import { GEAR_ITEM_AUTH_SELECT } from './projections'
 import { EMBEDDED_GEAR_FIELDS } from '../types'
-import { patchAffectsListItemsView } from '../../lists/list-items-fan-out'
+import { patchAffectsListItemsView } from './gear-list-items-fan-out'
 
 // Helper: parse the column list inside the `gear_item:gear_items(...)`
 // nested join substring and return a trimmed, sorted array. Lets tests
@@ -186,7 +186,7 @@ describe('gear-item projection constants', () => {
 })
 
 // The list_items.gear_item join (GEAR_ITEM_AUTH_SELECT) and the private
-// EMBEDDED_GEAR_FIELDS set inside list-items-fan-out.ts must stay in sync:
+// EMBEDDED_GEAR_FIELDS set inside gear-list-items-fan-out.ts must stay in sync:
 // EMBEDDED_GEAR_FIELDS is exactly the set of gear_items columns a gear-edit
 // patch can change that the list view actually renders. patchAffectsListItemsView
 // is the public gate that consumes that set to decide whether a gear mutation
