@@ -1,14 +1,14 @@
 import { useState, type FormEvent } from 'react'
 import { Check, CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } from 'lucide-react'
-import type { Category, GearItem } from '../lib/types'
-import { DEFAULT_GEAR_STATUS, type GearStatus } from '../lib/gear-status'
-import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
-import { FLAT_TABLE_EYEBROW, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
-import FormLabel from '../components/FormLabel'
-import Modal from '../components/Modal'
-import PrimaryButton from '../components/PrimaryButton'
-import WeightInput from '../components/WeightInput'
-import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH, MAX_CATEGORY_NAME } from '../lib/caps'
+import type { Category, GearItem } from '../../lib/types'
+import { DEFAULT_GEAR_STATUS, type GearStatus } from '../../lib/gear-status'
+import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../../lib/row-indicator-styles'
+import { FLAT_TABLE_EYEBROW, ROW_CONTROL_TARGET } from '../flat-table-styles'
+import FormLabel from '../FormLabel'
+import Modal from '../Modal'
+import PrimaryButton from '../PrimaryButton'
+import WeightInput from '../WeightInput'
+import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH, MAX_CATEGORY_NAME } from '../../lib/caps'
 
 export type GearPatch = {
   name: string

@@ -1,5 +1,6 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
-import type { ListItemWithGear } from '../lib/types'
+import { EMBEDDED_GEAR_FIELDS, type ListItemWithGear } from '../lib/types'
+import { queryKeys } from '../lib/queries/keys'
 
 // Gear mutations from the list-detail page propagate to every `['list-items', *]`
 // query cache that contains a list_item referencing the changed gear_item.
@@ -13,26 +14,19 @@ import type { ListItemWithGear } from '../lib/types'
 // rollback, and returning the snapshots so the mutation's onError and
 // onSettled handlers can rollback or invalidate.
 
-// Subset of gear_items columns that are projected into private
-// list_items.gear_item via the PostgREST join (see fetchListItems /
-// fetchAllUserListItems).
-// A gear-edit patch that doesn't touch any of these fields cannot change
-// anything the list view renders, so its fan-out across every
-// ['list-items', *] cache is wasted work. CLAUDE.md "Cache invalidation
-// rules" calls this out explicitly for sort_order: gear_items.sort_order
-// changes are invisible to list_items consumers, which order by their own
-// list_items.sort_order column.
-const EMBEDDED_GEAR_FIELDS: ReadonlySet<string> = new Set([
-  'name',
-  'description',
-  'weight_grams',
-  'category_id',
-  'status',
-])
+// The gear_items columns projected into private list_items.gear_item (see
+// fetchListItems / fetchAllUserListItems) come from the canonical
+// EMBEDDED_GEAR_FIELDS tuple in lib/types.ts. A gear-edit patch that doesn't
+// touch any of these fields cannot change anything the list view renders, so
+// its fan-out across every ['list-items', *] cache is wasted work. CLAUDE.md
+// "Cache invalidation rules" calls this out explicitly for sort_order:
+// gear_items.sort_order changes are invisible to list_items consumers, which
+// order by their own list_items.sort_order column.
+const EMBEDDED_GEAR_FIELD_SET: ReadonlySet<string> = new Set(EMBEDDED_GEAR_FIELDS)
 
 export function patchAffectsListItemsView(patch: Record<string, unknown>): boolean {
   for (const key of Object.keys(patch)) {
-    if (EMBEDDED_GEAR_FIELDS.has(key)) return true
+    if (EMBEDDED_GEAR_FIELD_SET.has(key)) return true
   }
   return false
 }
@@ -45,7 +39,7 @@ export function fanOutGearListItemsCaches(
   apply: (items: ListItemWithGear[]) => ListItemWithGear[],
 ): ListItemsSnapshot[] {
   const affected = qc.getQueryCache()
-    .findAll({ queryKey: ['list-items'] })
+    .findAll({ queryKey: queryKeys.listItemsAll() })
     .filter((q) =>
       (q.state.data as ListItemWithGear[] | undefined)?.some((i) => i.gear_item_id === gearItemId),
     )

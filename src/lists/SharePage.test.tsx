@@ -13,6 +13,10 @@ vi.mock('../lib/queries', () => ({
   queryKeys: {
     sharedFoodSummary: (slug: string) => ['shared-food-summary', slug],
     sharedFoodPlan: (slug: string) => ['shared-food-plan', slug],
+    sharedList: (slug: string | undefined) => ['shared-list', slug],
+    sharedListItems: (listId: string | undefined) => ['shared-list-items', listId],
+    sharedListCategories: (listId: string | undefined, categoryIdsKey: string) =>
+      ['shared-list-categories', listId, categoryIdsKey],
   },
   fetchSharedList: vi.fn(),
   fetchSharedListItems: vi.fn(async () => []),

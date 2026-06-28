@@ -1,4 +1,4 @@
-import { gearStatusVisual, type GearStatus } from '../lib/gear-status'
+import { gearStatusVisual, type GearStatus } from '../../lib/gear-status'
 
 type Props = {
   status: GearStatus

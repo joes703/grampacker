@@ -14,7 +14,6 @@ import {
   queryKeys, fetchFoodItems, fetchFoodPlan, updateFoodItem, makeOptimisticUpdate, type FoodItemInput,
   upsertFoodPlanEntry, upsertFoodPlanEntries, updateFoodPlanEntry, deleteFoodPlanEntry,
   assertFoodPlanEntryWithinCap, type EntryAddition,
-  addFoodPlanDay, deleteFoodPlanDay, updateDayType, assertFoodPlanDayWithinCap, duplicateFoodPlanDay,
   deleteFoodPlan,
   addMealDefinition, deleteMeal, deleteDayMeal, addDayMeal, assertMealDefinitionWithinCap,
   saveFoodPlanTargets, type TargetsSavePayload,
@@ -23,6 +22,7 @@ import {
 import { randomTempId } from '../lib/random-temp-id'
 import type { EntryBasis, FoodItem, FoodPlanEntry, Meal, FoodPlanDocument as Doc } from '../lib/types'
 import { useFoodPlanView } from './useFoodPlanDocument'
+import { useFoodPlanDayActions } from './use-food-plan-day-actions'
 import { useFoodReorder } from './useFoodReorder'
 import FoodPlanDaySection from './FoodPlanDaySection'
 import FoodPlanExtras from './FoodPlanExtras'
@@ -255,36 +255,9 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     onSuccess: () => { setMoveCopy(null); return invalidate() },
   })
 
-  const addDayMut = useMutation({
-    mutationFn: () => {
-      assertFoodPlanDayWithinCap(currentDoc.days.length)
-      const sortOrder = currentDoc.days.reduce((m, d) => Math.max(m, d.sort_order + 1), 0)
-      return addFoodPlanDay(userId, currentDoc.plan.id, sortOrder)
-    },
-    meta: { errorToast: "Couldn't add a day. Please try again." },
-    onSuccess: invalidate,
-  })
-  const deleteDayMut = useMutation({
-    mutationFn: (dayId: string) => deleteFoodPlanDay(dayId),
-    meta: { errorToast: "Couldn't delete the day. Please try again." },
-    onSuccess: invalidate,
-  })
-  const duplicateDayMut = useMutation({
-    mutationFn: (dayId: string) => {
-      assertFoodPlanDayWithinCap(currentDoc.days.length)
-      const sourceEntryCount = view.days
-        .find((day) => day.day.id === dayId)
-        ?.cells.reduce((total, cell) => total + cell.entries.length, 0) ?? 0
-      if (sourceEntryCount > 0) {
-        assertFoodPlanEntryWithinCap(currentDoc.entries.length + sourceEntryCount - 1)
-      }
-      const sortOrder = currentDoc.days.reduce((m, d) => Math.max(m, d.sort_order + 1), 0)
-      // server copies the LIVE source day (schedule + entries) by id
-      return duplicateFoodPlanDay(userId, dayId, sortOrder)
-    },
-    meta: { errorToast: "Couldn't duplicate the day. Please try again." },
-    onSuccess: invalidate,
-  })
+  const { addDayMut, deleteDayMut, duplicateDayMut, dayTypeMut } =
+    useFoodPlanDayActions(userId, currentDoc, view, invalidate)
+
   // Delete the whole food plan. The DB cascades this plan's meals, days,
   // day_meals, entries, daily/meal targets, and packed-food state; food_items
   // (the library), the gear list, and gear are referenced the other way and are
@@ -302,12 +275,6 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
       setShowDeleteConfirm(false)
     },
   })
-  const dayTypeMut = useMutation({
-    mutationFn: (v: { dayId: string; override: 'full' | 'partial' | null }) => updateDayType(v.dayId, v.override),
-    meta: { errorToast: "Couldn't change the day type. Please try again." },
-    onSuccess: invalidate,
-  })
-
   const addMealMut = useMutation({
     mutationFn: (name: string) => {
       assertMealDefinitionWithinCap(currentDoc.meals.length)

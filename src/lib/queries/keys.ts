@@ -15,12 +15,23 @@ export const queryKeys = {
   foodPlanCopyOptions: (userId: string, targetListId: string) => ['food-plan-copy-options', userId, targetListId] as const,
   sharedFoodSummary: (slug: string) => ['shared-food-summary', slug] as const,
   sharedFoodPlan: (slug: string) => ['shared-food-plan', slug] as const,
+  // Public /r/:slug read caches. Params accept undefined because SharePage
+  // keys these off `slug` / `list?.id` before either has resolved; the queries
+  // are `enabled`-gated, so the undefined key is never actually populated.
+  sharedList: (slug: string | undefined) => ['shared-list', slug] as const,
+  sharedListItems: (listId: string | undefined) => ['shared-list-items', listId] as const,
+  sharedListCategories: (listId: string | undefined, categoryIdsKey: string) =>
+    ['shared-list-categories', listId, categoryIdsKey] as const,
   foodPackSignaturesAll: () => ['food-pack-signatures'] as const,
   foodPackSignatures: (listId: string) => ['food-pack-signatures', listId] as const,
   foodPackStateAll: () => ['food-pack-state'] as const,
   foodPackState: (listId: string) => ['food-pack-state', listId] as const,
   lists: () => ['lists'] as const,
   listItems: (listId: string) => ['list-items', listId] as const,
+  // Prefix key for fan-out scans / broad invalidation across every per-list
+  // ['list-items', listId] cache (mirrors the foodPlansAll / foodPackSignaturesAll
+  // pattern). Used by the gear-mutation fan-out and the GearLibraryPage bulk paths.
+  listItemsAll: () => ['list-items'] as const,
   // User-scoped so a same-tab account switch can't surface the previous
   // user's passkey metadata from cache (the global 30s staleTime would
   // otherwise serve it without a refetch).

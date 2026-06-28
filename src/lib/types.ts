@@ -44,13 +44,30 @@ export type ListItem = {
   updated_at: string
 }
 
+// Single source of truth for the gear_items columns a list_item embeds via the
+// gear_item join. Several places must enumerate this set and stay in lockstep;
+// all of them derive from this tuple instead of re-listing the columns:
+//   - ListItemWithGear.gear_item (the embedded Pick), just below
+//   - GEAR_ITEM_AUTH_SELECT (the PostgREST nested-join column string),
+//     lib/queries/projections.ts
+//   - patchAffectsListItemsView's field gate, lists/list-items-fan-out.ts
+// `id` is the join key (always projected, never the target of a gear edit), so
+// it is added back only where the wire/type shape needs it - not in this
+// editable-field set. shared-projections.test.ts locks the derivation.
+export const EMBEDDED_GEAR_FIELDS = [
+  'name',
+  'description',
+  'weight_grams',
+  'category_id',
+  'status',
+] as const
+
+export type EmbeddedGearField = (typeof EMBEDDED_GEAR_FIELDS)[number]
+
 // ListItem joined with its source GearItem. Always present: gear_item_id is
 // NOT NULL with ON DELETE CASCADE, so a list_item cannot outlive its gear.
 export type ListItemWithGear = ListItem & {
-  gear_item: Pick<
-    GearItem,
-    'id' | 'name' | 'description' | 'weight_grams' | 'category_id' | 'status'
-  >
+  gear_item: Pick<GearItem, 'id' | EmbeddedGearField>
 }
 
 export type Category = {

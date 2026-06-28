@@ -22,8 +22,8 @@ import {
   FLAT_TABLE_ROW,
   POPOVER_SURFACE,
 } from '../components/flat-table-styles'
-import GearStatusBadge from './GearStatusBadge'
-import GearStatusMenuItems from './GearStatusMenuItems'
+import GearStatusBadge from '../components/gear/GearStatusBadge'
+import GearStatusMenuItems from '../components/gear/GearStatusMenuItems'
 
 type Props = {
   item: GearItem
