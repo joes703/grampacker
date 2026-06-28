@@ -1,6 +1,9 @@
-import type { EntryBasis, FoodItemLite } from '../types'
+import type { EntryBasis, FoodItemLite, FoodPlanEntry } from '../types'
 
-export type ProjectionEntry = { food_item_id: string; basis: EntryBasis; amount: number }
+// The projection reads only these three columns of an entry. Derive from
+// FoodPlanEntry (rather than restating the shape) so a basis/amount change to
+// the canonical row can't silently drift from the projection input.
+export type ProjectionEntry = Pick<FoodPlanEntry, 'food_item_id' | 'basis' | 'amount'>
 
 // One derived row per distinct food across ALL entries (days, meals, Extras).
 // Discriminated like the nutrition totals: an incomplete row carries NO grams, so

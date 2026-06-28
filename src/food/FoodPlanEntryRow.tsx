@@ -10,18 +10,15 @@ import RowIconButton from '../components/RowIconButton'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { MISSING_FOOD_LABEL, nutrientTotal, totalWeight } from '../lib/food/nutrition'
+import { trimNumber } from '../lib/format-number'
 import NutrientTotalCell, { WeightCell } from './NutrientTotalCell'
-
-function formatAmount(n: number): string {
-  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(3)))
-}
 
 // Basis-aware quantity text (design 3.1 grammar): plain servings, a package
 // count resolved to its servings, or a gram weight. "package -> servings" keeps
 // the entered package count visible AND the resolved servings, so the row never
-// hides which basis the owner picked.
+// hides which basis the owner picked. Entry amounts show up to 3 decimals.
 function quantityText(entry: FoodPlanEntry, food: FoodItem | undefined): string {
-  const amt = formatAmount(entry.amount)
+  const amt = trimNumber(entry.amount, 3)
   switch (entry.basis) {
     case 'servings':
       return `${amt} ${entry.amount === 1 ? 'serving' : 'servings'}`
@@ -30,7 +27,7 @@ function quantityText(entry: FoodPlanEntry, food: FoodItem | undefined): string 
     case 'packages': {
       const pkg = `${amt} ${entry.amount === 1 ? 'package' : 'packages'}`
       const spp = food?.servings_per_package
-      if (spp && spp > 0) return `${pkg} (${formatAmount(entry.amount * spp)} serv)`
+      if (spp && spp > 0) return `${pkg} (${trimNumber(entry.amount * spp, 3)} serv)`
       return pkg
     }
   }

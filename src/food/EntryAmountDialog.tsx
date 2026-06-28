@@ -3,6 +3,7 @@ import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import type { EntryBasis, FoodItem, FoodPlanEntry } from '../lib/types'
 import { effectiveServings } from '../lib/food/basis'
+import { trimNumber } from '../lib/format-number'
 
 export type EntryAmountResult = { basis: EntryBasis; amount: number; preserveBasis: EntryBasis | null; alsoDayMealIds: string[] }
 export type EntryAmountAlsoDay = { id: string; dayMealId: string | null; label: string; omitted?: boolean }
@@ -16,10 +17,6 @@ const BASIS_LABEL: Record<EntryBasis, string> = { servings: 'Servings', packages
 // Concise labels for the segmented basis control. The "(g)" qualifier stays on
 // BASIS_LABEL for the merge note / preservation note / keep-total radios.
 const BASIS_SEGMENT_LABEL: Record<EntryBasis, string> = { servings: 'Servings', packages: 'Packages', weight: 'Weight' }
-
-function formatDerivedNumber(n: number): string {
-  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)))
-}
 
 export default function EntryAmountDialog({
   food, existing, initial, alsoDays, saving = false, onSave, onClose,
@@ -116,7 +113,7 @@ export default function EntryAmountDialog({
         {derived ? (
           <div className="space-y-1 text-xs">
             <p className="text-gray-500 tabular-nums">
-              = {formatDerivedNumber(derived.servings)} servings - {Math.round(derived.weightG)} g - {Math.round(derived.kcal)} kcal
+              = {trimNumber(derived.servings, 2)} servings - {Math.round(derived.weightG)} g - {Math.round(derived.kcal)} kcal
             </p>
             <p className="text-gray-400">
               Entered as {BASIS_LABEL[basis].toLowerCase()} - that basis is kept; the rest is derived from the library item.

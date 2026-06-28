@@ -12,6 +12,7 @@ import {
 } from '../lib/queries'
 import { projectFoodPlan, totalProjectedConsumableGrams } from '../lib/food/projection'
 import { MISSING_FOOD_LABEL } from '../lib/food/nutrition'
+import { trimNumber } from '../lib/format-number'
 import { showToast } from '../lib/toast'
 import type { FoodItemLite } from '../lib/types'
 import type { FoodProjectionDisplayRow } from './FoodProjectionSection'
@@ -20,7 +21,7 @@ type ToggleVars = { foodItemId: string; next: boolean }
 type ToggleContext = { previous: FoodPackStateRow[] | undefined }
 
 function formatServings(n: number): string {
-  const rounded = Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, '')
+  const rounded = trimNumber(n, 1)
   return `${rounded} serving${rounded === '1' ? '' : 's'}`
 }
 

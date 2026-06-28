@@ -10,18 +10,12 @@ import {
   POPOVER_SURFACE,
 } from '../components/flat-table-styles'
 import type { FoodItem } from '../lib/types'
+import { formatServingDescriptor } from './serving-format'
 
 type Props = {
   food: FoodItem
   onEdit: (food: FoodItem) => void
   onDelete: (food: FoodItem) => void
-}
-
-function servingSummary(f: FoodItem): string {
-  const base = f.serving_description
-    ? `${f.serving_description} (${f.serving_weight_grams} g)`
-    : `${f.serving_weight_grams} g`
-  return `${base} - ${f.calories_per_serving} kcal`
 }
 
 export default function FoodItemRow({ food, onEdit, onDelete }: Props) {
@@ -33,7 +27,7 @@ export default function FoodItemRow({ food, onEdit, onDelete }: Props) {
         <p className="truncate font-normal text-gray-900">{food.name}</p>
         <p className={`truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}>
           {food.brand ? `${food.brand} - ` : ''}
-          {servingSummary(food)}
+          {formatServingDescriptor(food, { withWeight: true, withCalories: true })}
         </p>
       </div>
       <FoodRowKebab

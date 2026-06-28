@@ -12,6 +12,7 @@ import {
 import type { FoodItem } from '../lib/types'
 import { FLAT_TABLE_ROW } from '../components/flat-table-styles'
 import FoodItemDialog from './FoodItemDialog'
+import { formatServingDescriptor } from './serving-format'
 
 type PickerTab = 'recent' | 'inPlan' | 'az'
 
@@ -25,10 +26,6 @@ const TAB_HINT: Record<PickerTab, string> = {
   recent: 'Recently added to your library',
   inPlan: 'Already in this plan',
   az: 'All foods, alphabetical',
-}
-
-function servingDescriptor(food: FoodItem): string {
-  return food.serving_description ?? `${food.serving_weight_grams} g`
 }
 
 export default function FoodPicker({
@@ -128,7 +125,7 @@ export default function FoodPicker({
                 </span>
                 <span className="ml-3 shrink-0 text-right text-xs text-gray-400 tabular-nums">
                   <span className="block">{f.calories_per_serving} kcal</span>
-                  <span className="block">{servingDescriptor(f)}</span>
+                  <span className="block">{formatServingDescriptor(f, { withWeight: false, withCalories: false })}</span>
                 </span>
               </button>
             ))
