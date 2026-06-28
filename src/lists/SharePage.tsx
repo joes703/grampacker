@@ -35,14 +35,14 @@ export default function SharePage() {
   const [activeTab, setActiveTab] = useState<'gear' | 'food'>('gear')
 
   const { data: list, isLoading: listLoading, isError: listError } = useQuery({
-    queryKey: ['shared-list', slug],
+    queryKey: queryKeys.sharedList(slug),
     queryFn: () => fetchSharedList(slug!),
     enabled: Boolean(slug),
   })
   useDocumentTitle(list?.name ?? null)
 
   const { data: items = [], isLoading: itemsLoading, isError: itemsError } = useQuery({
-    queryKey: ['shared-list-items', list?.id],
+    queryKey: queryKeys.sharedListItems(list?.id),
     // Safe non-null: `enabled: Boolean(list?.id)` gates the queryFn so it
     // only runs after fetchSharedList resolved with a real list.
     queryFn: () => fetchSharedListItems(list!.id),
@@ -60,7 +60,7 @@ export default function SharePage() {
   )
 
   const { data: categories = [], isError: categoriesError } = useQuery({
-    queryKey: ['shared-list-categories', list?.id, categoryIds.toSorted().join(',')],
+    queryKey: queryKeys.sharedListCategories(list?.id, categoryIds.toSorted().join(',')),
     queryFn: () => fetchSharedListCategories(categoryIds),
     enabled: Boolean(list?.id) && categoryIds.length > 0,
   })

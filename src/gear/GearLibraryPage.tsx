@@ -221,7 +221,7 @@ export default function GearLibraryPage() {
     ...makeOptimisticDelete<Category, string>({
       qc,
       queryKey: queryKeys.categories(),
-      invalidateKeys: [queryKeys.gearItems(), ['list-items']],
+      invalidateKeys: [queryKeys.gearItems(), queryKeys.listItemsAll()],
       id: (id) => id,
     }),
   })
@@ -271,7 +271,7 @@ export default function GearLibraryPage() {
     >({
       qc,
       queryKey: queryKeys.gearItems(),
-      fanoutQueryKeyPrefix: ['list-items'],
+      fanoutQueryKeyPrefix: queryKeys.listItemsAll(),
       id: ({ id }) => id,
       applyPrimary: (gear, { patch }) => ({ ...gear, ...patch }),
       matchJoined: (item, { id }) => item.gear_item_id === id,
@@ -289,7 +289,7 @@ export default function GearLibraryPage() {
     ...makeOptimisticDelete<GearItem, string>({
       qc,
       queryKey: queryKeys.gearItems(),
-      invalidateKeys: [['list-items']],
+      invalidateKeys: [queryKeys.listItemsAll()],
       id: (id) => id,
     }),
   })
@@ -317,7 +317,7 @@ export default function GearLibraryPage() {
       if (!ids) return
       const idSet = new Set(ids)
       const affected = qc.getQueryCache()
-        .findAll({ queryKey: ['list-items'] })
+        .findAll({ queryKey: queryKeys.listItemsAll() })
         .filter((q) =>
           (q.state.data as ListItemWithGear[] | undefined)?.some((i) => idSet.has(i.gear_item_id)),
         )
@@ -342,7 +342,7 @@ export default function GearLibraryPage() {
       const gearCtx = bulkMoveHelper.onMutate(input)
       const idSet = new Set(input.ids)
       const affected = qc.getQueryCache()
-        .findAll({ queryKey: ['list-items'] })
+        .findAll({ queryKey: queryKeys.listItemsAll() })
         .filter((q) =>
           (q.state.data as ListItemWithGear[] | undefined)?.some((i) => idSet.has(i.gear_item_id)),
         )

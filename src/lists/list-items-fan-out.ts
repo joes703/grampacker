@@ -1,5 +1,6 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
 import type { ListItemWithGear } from '../lib/types'
+import { queryKeys } from '../lib/queries/keys'
 
 // Gear mutations from the list-detail page propagate to every `['list-items', *]`
 // query cache that contains a list_item referencing the changed gear_item.
@@ -45,7 +46,7 @@ export function fanOutGearListItemsCaches(
   apply: (items: ListItemWithGear[]) => ListItemWithGear[],
 ): ListItemsSnapshot[] {
   const affected = qc.getQueryCache()
-    .findAll({ queryKey: ['list-items'] })
+    .findAll({ queryKey: queryKeys.listItemsAll() })
     .filter((q) =>
       (q.state.data as ListItemWithGear[] | undefined)?.some((i) => i.gear_item_id === gearItemId),
     )
