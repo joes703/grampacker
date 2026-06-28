@@ -117,7 +117,7 @@ grampacker can plan a trip's food alongside the gear. You keep a library of food
 
 The **Food** page is your reusable library of foods, the same way the **Gear** page is your gear inventory. Add a food with its serving weight, calories, and any nutrition details you want to track, then edit it later from the same page.
 
-You can import foods from a CSV and export your library to a CSV. The **CSV format** button shows the columns grampacker expects, so you can prepare a spreadsheet that imports cleanly. At minimum a food needs a name; a serving weight and calories make it usable for weight and nutrition totals.
+You can import foods from a CSV and export your library to a CSV. The **CSV format** button shows the columns grampacker expects, so you can prepare a spreadsheet that imports cleanly. At minimum, a food needs a name, serving weight, and calories. Other nutrition fields are optional but improve targets and review.
 
 ### Food plans
 
