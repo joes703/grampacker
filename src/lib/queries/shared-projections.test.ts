@@ -104,6 +104,7 @@ import { fetchSharedListItems, fetchListItems, fetchAllUserListItems } from './l
 import { fetchCategories, fetchSharedListCategories } from './categories'
 import { fetchSharedFoodPlan, fetchSharedFoodSummary } from './food-plan'
 import { GEAR_ITEM_AUTH_SELECT } from './projections'
+import { EMBEDDED_GEAR_FIELDS } from '../types'
 import { patchAffectsListItemsView } from '../../lists/list-items-fan-out'
 
 // Helper: parse the column list inside the `gear_item:gear_items(...)`
@@ -165,6 +166,22 @@ describe('gear-item projection constants', () => {
     expect(GEAR_ITEM_AUTH_SELECT).not.toContain('purchase_date')
     expect(GEAR_ITEM_AUTH_SELECT).not.toContain('user_id')
     expect(GEAR_ITEM_AUTH_SELECT).not.toContain('*')
+  })
+
+  it('derives GEAR_ITEM_AUTH_SELECT from the canonical EMBEDDED_GEAR_FIELDS tuple', () => {
+    // Single source of truth (lib/types.ts). The auth select is `id` (the join
+    // key) plus the editable embedded fields; the ListItemWithGear Pick and the
+    // fan-out field gate derive from the same tuple, so the three cannot drift.
+    expect([...EMBEDDED_GEAR_FIELDS]).toEqual([
+      'name',
+      'description',
+      'weight_grams',
+      'category_id',
+      'status',
+    ])
+    expect(GEAR_ITEM_AUTH_SELECT).toBe(
+      `gear_item:gear_items(${['id', ...EMBEDDED_GEAR_FIELDS].join(', ')})`,
+    )
   })
 })
 
