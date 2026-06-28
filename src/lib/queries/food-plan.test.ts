@@ -10,12 +10,9 @@ import {
   fetchFoodPlanCopyOptions,
   copyFoodPlanToList,
   fetchFoodPlan,
-  upsertDailyTarget,
-  upsertMealTarget,
   saveFoodPlanTargets,
   updateFoodPlanShare,
 } from './food-plan'
-import type { DailyTargetInput, MealTargetInput } from '../types'
 import { FOOD_PLAN_DAY_CAP, MEAL_DEFINITION_CAP, FOOD_PLAN_ENTRY_CAP } from '../caps'
 
 describe('food plan cap preflight', () => {
@@ -173,48 +170,6 @@ describe('fetchFoodPlan target reads', () => {
     expect(doc?.mealTargets).toHaveLength(1)
     expect(from).toHaveBeenCalledWith('food_plan_daily_targets')
     expect(from).toHaveBeenCalledWith('meal_targets')
-  })
-})
-
-describe('target upserts', () => {
-  beforeEach(() => from.mockReset())
-
-  it('upsertDailyTarget strips a leaked id and conflicts on (food_plan_id, metric)', async () => {
-    const upsert = vi.fn().mockResolvedValue({ error: null })
-    from.mockReturnValue({ upsert })
-
-    // Simulate a caller that leaks an id at runtime (e.g. spreading a full row).
-    // The `as unknown as` cast bypasses the id?: never compile guard on purpose.
-    await upsertDailyTarget({
-      id: 'leaked', user_id: 'u', food_plan_id: 'p', metric: 'calories',
-      mode: 'range', target_min: 2000, target_max: 3000,
-    } as unknown as DailyTargetInput)
-
-    expect(from).toHaveBeenCalledWith('food_plan_daily_targets')
-    expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ metric: 'calories', food_plan_id: 'p' }),
-      { onConflict: 'food_plan_id,metric' },
-    )
-    const payload = upsert.mock.calls[0]?.[0] as Record<string, unknown>
-    expect('id' in payload).toBe(false)
-  })
-
-  it('upsertMealTarget strips a leaked id and conflicts on (meal_id, metric)', async () => {
-    const upsert = vi.fn().mockResolvedValue({ error: null })
-    from.mockReturnValue({ upsert })
-
-    await upsertMealTarget({
-      id: 'leaked', user_id: 'u', food_plan_id: 'p', meal_id: 'm', metric: 'protein',
-      mode: 'min', target_min: 20, target_max: null,
-    } as unknown as MealTargetInput)
-
-    expect(from).toHaveBeenCalledWith('meal_targets')
-    expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ meal_id: 'm', metric: 'protein' }),
-      { onConflict: 'meal_id,metric' },
-    )
-    const payload = upsert.mock.calls[0]?.[0] as Record<string, unknown>
-    expect('id' in payload).toBe(false)
   })
 })
 

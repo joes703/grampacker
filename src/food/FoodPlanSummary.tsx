@@ -3,7 +3,7 @@ import { ChevronDown, ChevronUp, PackagePlus, Table as TableIcon } from 'lucide-
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { type WeightUnit } from '../lib/weight'
 import type { FoodItem, FoodPlanDailyTarget, DailyTargetMetric } from '../lib/types'
-import type { GroupSummary, NutrientKey, NutrientTotal, TripSummary } from '../lib/food/nutrition'
+import { MISSING_FOOD_LABEL, type GroupSummary, type NutrientKey, type NutrientTotal, type TripSummary } from '../lib/food/nutrition'
 import { resolveDailyTargets, dailyMetricForNutrientKey, type ResolvedTarget } from '../lib/food/targets'
 import { formatCalorieDensity, formatDailyTargetBand } from './nutrition-format'
 import TargetStatusMark from './TargetStatusMark'
@@ -114,7 +114,7 @@ export default function FoodPlanSummary({
   const activeDailyTargets = dailyTargets.filter((t) => t.mode !== 'off')
   const densityTarget = activeDailyTargets.find((t) => t.metric === 'calorie_density')
   const cols = showMore ? [...DEFAULT_COLS, ...OPTIONAL_COLS] : DEFAULT_COLS
-  const nameForId = (id: string) => foodById.get(id)?.name ?? 'Unknown food'
+  const nameForId = (id: string) => foodById.get(id)?.name ?? MISSING_FOOD_LABEL
 
   return (
     <section className={FLAT_TABLE_SURFACE}>

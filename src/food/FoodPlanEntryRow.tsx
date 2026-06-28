@@ -9,7 +9,7 @@ import { RowMenuItem } from '../components/RowMenuItem'
 import RowIconButton from '../components/RowIconButton'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import { useWeightUnit } from '../lib/use-weight-unit'
-import { nutrientTotal, totalWeight } from '../lib/food/nutrition'
+import { MISSING_FOOD_LABEL, nutrientTotal, totalWeight } from '../lib/food/nutrition'
 import NutrientTotalCell, { WeightCell } from './NutrientTotalCell'
 
 function formatAmount(n: number): string {
@@ -66,7 +66,7 @@ export default function FoodPlanEntryRow({
   const oneFood = new Map<string, FoodItem>(food ? [[food.id, food]] : [])
   const calories = nutrientTotal([entry], oneFood, 'calories')
   const weight = totalWeight([entry], oneFood)
-  const nameForId = () => food?.name ?? 'Unknown food'
+  const nameForId = () => food?.name ?? MISSING_FOOD_LABEL
   const qty = quantityText(entry, food)
 
   return (
@@ -81,7 +81,7 @@ export default function FoodPlanEntryRow({
       <span className="flex w-5 shrink-0 items-center justify-center">{dragHandle}</span>
 
       <span className="min-w-0 flex-1">
-        <span className={`block truncate ${FLAT_TABLE_BODY_TEXT} text-gray-900`}>{food?.name ?? 'Unknown food'}</span>
+        <span className={`block truncate ${FLAT_TABLE_BODY_TEXT} text-gray-900`}>{food?.name ?? MISSING_FOOD_LABEL}</span>
         {/* Mobile subtitle: quantity + calories (the desktop columns are hidden
             below lg). Weight keeps its own column on every viewport. */}
         <span className="mt-0.5 flex items-center gap-1 text-xs text-gray-400 lg:hidden">

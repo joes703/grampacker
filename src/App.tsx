@@ -19,6 +19,7 @@ const queryClient = new QueryClient({
       // the service worker is gone, so retrying offline cannot help.
       retry: (failureCount) =>
         typeof navigator !== 'undefined' && !navigator.onLine ? false : failureCount < 1,
+      refetchOnWindowFocus: false,
     },
   },
   mutationCache: new MutationCache({ onError: mutationErrorHandler }),

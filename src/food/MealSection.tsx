@@ -6,7 +6,7 @@ import { FLAT_TABLE_EYEBROW, POPOVER_SURFACE } from '../components/flat-table-st
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import RowIconButton from '../components/RowIconButton'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
-import { nutrientTotal } from '../lib/food/nutrition'
+import { MISSING_FOOD_LABEL, nutrientTotal } from '../lib/food/nutrition'
 import NutrientTotalCell from './NutrientTotalCell'
 import CellEntryReorder from './CellEntryReorder'
 
@@ -35,7 +35,7 @@ export default function MealSection({
 }) {
   const count = cell.entries.length
   const mealCalories = nutrientTotal(cell.entries, foodById, 'calories')
-  const nameForId = (id: string) => foodById.get(id)?.name ?? 'Unknown food'
+  const nameForId = (id: string) => foodById.get(id)?.name ?? MISSING_FOOD_LABEL
 
   return (
     <section>
