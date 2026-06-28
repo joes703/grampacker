@@ -388,4 +388,4 @@ class:
 
 After a density change, verify mobile and desktop separately. In particular, check
 the gear picker drawer because it is lazy-loaded and can appear stale until the
-PWA/browser session fully reloads.
+browser session fully reloads.

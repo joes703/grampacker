@@ -1,10 +1,17 @@
-// Self-destroying service worker. This REPLACES the former Workbox SW at the
-// same /sw.js URL. A returning client still controlled by the old SW fetches
-// this script on its next navigation (the SW script itself is revalidated
-// from network), installs it, and it then wipes all caches and unregisters
-// itself. KEEP THIS FILE INDEFINITELY: if /sw.js ever 404s, the old SW's
-// update check fails and leaves the stale precached shell controlling the
-// page forever. See docs/superpowers/plans/2026-06-14-offline-pwa-removal.md
+// Legacy service-worker KILL-WORKER - intentionally retained. This is NOT
+// active PWA/offline/install behavior: grampacker is an online-only web app
+// and registers no service worker. This self-destroying worker exists ONLY to
+// tear down the former Workbox SW for returning clients still controlled by
+// it. It REPLACES that old SW at the same /sw.js URL: such a client revalidates
+// this script from network on its next navigation, installs it, and it then
+// wipes all caches and unregisters itself.
+//
+// DO NOT DELETE. KEEP THIS FILE INDEFINITELY: if /sw.js ever 404s, the old
+// SW's update check fails and leaves the stale precached shell controlling the
+// page forever, stranding the user on a dead app. A guard test
+// (src/lib/legacy-sw-kill-worker.test.ts) fails the build if this file is
+// removed or stops self-destructing, so a future "dead code" sweep cannot drop
+// it by accident. See docs/superpowers/plans/2026-06-14-offline-pwa-removal.md
 // section 4 for the full rationale.
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting())
