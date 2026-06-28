@@ -2,9 +2,38 @@ import { describe, it, expect } from 'vitest'
 import { projectFoodPlan, totalProjectedConsumableGrams } from './projection'
 import type { FoodItem, FoodItemLite } from '../types'
 
-const oats = { id: 'o', serving_weight_grams: 50, servings_per_package: 4 } as FoodItem
-const bar = { id: 'b', serving_weight_grams: 40, servings_per_package: null } as FoodItem
-const noSpp = { id: 'n', serving_weight_grams: 30, servings_per_package: null } as FoodItem
+// A real FoodItem factory instead of `{...} as FoodItem`: the cast hid every
+// field projectFoodPlan doesn't read, so a future required column on FoodItem
+// would silently keep compiling here. The factory fills a complete row and
+// only takes the fields each case actually varies.
+function food(over: Partial<FoodItem> & { id: string }): FoodItem {
+  return {
+    user_id: 'u',
+    name: `food-${over.id}`,
+    brand: null,
+    serving_description: null,
+    serving_weight_grams: 50,
+    calories_per_serving: 100,
+    servings_per_package: null,
+    fat_grams: null,
+    saturated_fat_grams: null,
+    carbs_grams: null,
+    fiber_grams: null,
+    sugar_grams: null,
+    protein_grams: null,
+    sodium_mg: null,
+    potassium_mg: null,
+    notes: null,
+    sort_order: 0,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+    ...over,
+  }
+}
+
+const oats = food({ id: 'o', serving_weight_grams: 50, servings_per_package: 4 })
+const bar = food({ id: 'b', serving_weight_grams: 40, servings_per_package: null })
+const noSpp = food({ id: 'n', serving_weight_grams: 30, servings_per_package: null })
 const foods = new Map<string, FoodItem>([['o', oats], ['b', bar], ['n', noSpp]])
 
 describe('projectFoodPlan', () => {

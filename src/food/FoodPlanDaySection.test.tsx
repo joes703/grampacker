@@ -196,10 +196,12 @@ describe('FoodPlanDaySection', () => {
     // ...but the repeated day-footer macro strip is gone. Its "P" / "C" / "F"
     // eyebrow labels were unique to that strip (the header shows only the
     // calorie total and weight), so their absence proves the strip no longer
-    // renders.
-    expect(screen.queryByText('P')).not.toBeInTheDocument()
-    expect(screen.queryByText('C')).not.toBeInTheDocument()
-    expect(screen.queryByText('F')).not.toBeInTheDocument()
+    // renders. Scope the lookup to this day section so an unrelated single
+    // "P"/"C"/"F" elsewhere on a future page can't make this pass or fail.
+    const daySection = screen.getByTestId('food-day-day1')
+    expect(within(daySection).queryByText('P')).not.toBeInTheDocument()
+    expect(within(daySection).queryByText('C')).not.toBeInTheDocument()
+    expect(within(daySection).queryByText('F')).not.toBeInTheDocument()
   })
 
   it('keeps collapse and restore behavior when embedded in the plan document', () => {
