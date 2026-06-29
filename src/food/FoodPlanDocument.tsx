@@ -12,25 +12,23 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, CalendarDays } from 'lucide-react'
 import {
   queryKeys, fetchFoodItems, fetchFoodPlan, updateFoodItem, makeOptimisticUpdate, type FoodItemInput,
-  upsertFoodPlanEntry, upsertFoodPlanEntries, updateFoodPlanEntry, deleteFoodPlanEntry,
-  assertFoodPlanEntryWithinCap, type EntryAddition,
   deleteFoodPlan,
   addMealDefinition, deleteMeal, deleteDayMeal, addDayMeal, assertMealDefinitionWithinCap,
   saveFoodPlanTargets, type TargetsSavePayload,
   invalidateFoodPlanCaches,
 } from '../lib/queries'
-import { randomTempId } from '../lib/random-temp-id'
-import type { EntryBasis, FoodItem, FoodPlanEntry, Meal, FoodPlanDocument as Doc } from '../lib/types'
+import type { FoodItem, FoodPlanEntry, Meal, FoodPlanDocument as Doc } from '../lib/types'
 import { useFoodPlanView } from './useFoodPlanDocument'
 import { useFoodPlanDayActions } from './use-food-plan-day-actions'
+import { useFoodPlanEntryActions, type AddTarget } from './use-food-plan-entry-actions'
 import { useFoodReorder } from './useFoodReorder'
 import FoodPlanDaySection from './FoodPlanDaySection'
 import FoodPlanExtras from './FoodPlanExtras'
 import FoodPicker from './FoodPicker'
-import EntryAmountDialog, { type EntryAmountAlsoDay, type EntryAmountResult } from './EntryAmountDialog'
+import EntryAmountDialog, { type EntryAmountAlsoDay } from './EntryAmountDialog'
 import FoodItemDialog from './FoodItemDialog'
 import AddMealDialog from './AddMealDialog'
-import MoveCopyEntryDialog, { type MoveCopyTarget } from './MoveCopyEntryDialog'
+import MoveCopyEntryDialog from './MoveCopyEntryDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ScheduleGridDialog, { type ScheduleToggle } from './ScheduleGridDialog'
 import FoodPlanSummary from './FoodPlanSummary'
@@ -41,8 +39,6 @@ import DayNutritionReview from './DayNutritionReview'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import { summarizeTrip } from '../lib/food/nutrition'
 import { FLAT_TABLE_SURFACE, FLAT_TABLE_EYEBROW } from '../components/flat-table-styles'
-
-type AddTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
 
 export default function FoodPlanDocument({ listId, userId, doc }: { listId: string; userId: string; doc: Doc }) {
   // Colocate the food-plan subscription here: the day/meal reorder DndContexts
@@ -124,20 +120,6 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     if (entry) setMoveCopy({ mode, entry })
   }
 
-  function entryAtTarget(foodId: string, target: AddTarget) {
-    return currentDoc.entries.find((e) =>
-      e.food_item_id === foodId &&
-      (target.kind === 'extra' ? e.is_extra : !e.is_extra && e.day_meal_id === target.dayMealId))
-  }
-  function existingEntry(food: FoodItem, target: AddTarget) {
-    return entryAtTarget(food.id, target)
-  }
-  function nextEntrySort(target: AddTarget): number {
-    const siblings = currentDoc.entries.filter((e) =>
-      target.kind === 'extra' ? e.is_extra : e.day_meal_id === target.dayMealId)
-    return siblings.reduce((max, e) => Math.max(max, e.sort_order + 1), 0)
-  }
-
   // Stable so FoodPicker's `foods.filter((f) => usedFoodIds.has(f.id))` memo
   // (FoodPicker.tsx:69) actually holds across this component's re-renders.
   const usedFoodIds = useMemo(
@@ -163,51 +145,13 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     return out
   }
 
-  const addMut = useMutation({
-    mutationFn: async (v: { food: FoodItem; target: AddTarget; result: EntryAmountResult }) => {
-      const targets: AddTarget[] = v.target.kind === 'cell'
-        ? [v.target, ...v.result.alsoDayMealIds.map((id) => ({ kind: 'cell' as const, dayMealId: id }))]
-        : [v.target]
-      const newCount = targets.filter((t) => !existingEntry(v.food, t)).length
-      if (newCount > 0) {
-        assertFoodPlanEntryWithinCap(currentDoc.entries.length + newCount - 1)
-      }
-      const additions = targets.map((t) => {
-        const prior = existingEntry(v.food, t)
-        const addition: EntryAddition = {
-          id: randomTempId(), food_plan_id: currentDoc.plan.id,
-          day_meal_id: t.kind === 'cell' ? t.dayMealId : null,
-          is_extra: t.kind === 'extra', food_item_id: v.food.id,
-          basis: v.result.basis, amount: v.result.amount,
-          sort_order: prior?.sort_order ?? nextEntrySort(t),
-        }
-        return { entry: addition, preserve_basis: v.result.preserveBasis }
-      })
-      await upsertFoodPlanEntries(userId, additions)
-    },
-    meta: { errorToast: "Couldn't add the food. Please try again." },
-    onSuccess: () => {
-      setPickedFood(null)
-      setAddTarget(null)
-      return invalidate()
-    },
-  })
-
-  const editMut = useMutation({
-    mutationFn: (v: { id: string; basis: EntryBasis; amount: number }) =>
-      updateFoodPlanEntry(v.id, { basis: v.basis, amount: v.amount }),
-    meta: { errorToast: "Couldn't update the food. Please try again." },
-    onSuccess: () => {
-      setEditEntryId(null)
-      return invalidate()
-    },
-  })
-
-  const removeMut = useMutation({
-    mutationFn: (id: string) => deleteFoodPlanEntry(id),
-    meta: { errorToast: "Couldn't remove the food. Please try again." },
-    onSuccess: invalidate,
-  })
+  // Entry write paths (add/upsert, edit basis+amount, delete, move/copy) live in
+  // useFoodPlanEntryActions. The dialogs they back stay owned here, so each
+  // mutate call site closes its dialog via mutate-time onSuccess (see the
+  // EntryAmountDialog/MoveCopyEntryDialog handlers below); removeMut has no
+  // dialog. existingEntry is reused below to feed the add dialog's `existing`.
+  const { addMut, editMut, removeMut, moveCopyMut, existingEntry } =
+    useFoodPlanEntryActions(userId, currentDoc, invalidate)
 
   // Edit the library food behind an entry (the gear-from-a-list pattern): a
   // single food_items UPDATE that changes the food everywhere it is used.
@@ -234,25 +178,6 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
       setShowTargets(false)
       return invalidate()
     },
-  })
-
-  const moveCopyMut = useMutation({
-    mutationFn: (v: { entry: FoodPlanEntry; target: MoveCopyTarget; preserveBasis: EntryBasis | null; isMove: boolean }) => {
-      if (!v.isMove && !entryAtTarget(v.entry.food_item_id, v.target)) {
-        assertFoodPlanEntryWithinCap(currentDoc.entries.length)
-      }
-      const addition: EntryAddition = {
-        id: randomTempId(), food_plan_id: currentDoc.plan.id,
-        day_meal_id: v.target.kind === 'cell' ? v.target.dayMealId : null,
-        is_extra: v.target.kind === 'extra',
-        food_item_id: v.entry.food_item_id, basis: v.entry.basis, amount: v.entry.amount,
-        // append at the destination (ignored by the server on a merge)
-        sort_order: nextEntrySort(v.target),
-      }
-      return upsertFoodPlanEntry(userId, addition, v.preserveBasis, v.isMove ? v.entry.id : null)
-    },
-    meta: { errorToast: "Couldn't move or copy the food. Please try again." },
-    onSuccess: () => { setMoveCopy(null); return invalidate() },
   })
 
   const { addDayMut, deleteDayMut, duplicateDayMut, dayTypeMut } =
@@ -511,7 +436,10 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           existing={addTargetExisting}
           alsoDays={addTarget.kind === 'cell' ? computeAlsoDays(addTarget) : undefined}
           saving={addMut.isPending}
-          onSave={(r) => addMut.mutate({ food: pickedFood, target: addTarget, result: r })}
+          onSave={(r) => addMut.mutate(
+            { food: pickedFood, target: addTarget, result: r },
+            { onSuccess: () => { setPickedFood(null); setAddTarget(null) } },
+          )}
           onClose={() => { setPickedFood(null); setAddTarget(null) }}
         />
       ) : null}
@@ -520,7 +448,10 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           food={editingFood}
           initial={{ basis: editingEntry.basis, amount: editingEntry.amount }}
           saving={editMut.isPending}
-          onSave={(r) => editMut.mutate({ id: editingEntry.id, basis: r.basis, amount: r.amount })}
+          onSave={(r) => editMut.mutate(
+            { id: editingEntry.id, basis: r.basis, amount: r.amount },
+            { onSuccess: () => setEditEntryId(null) },
+          )}
           onClose={() => setEditEntryId(null)}
         />
       ) : null}
@@ -562,7 +493,10 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           entry={moveCopy.entry}
           food={foodById.get(moveCopy.entry.food_item_id)!}
           view={view}
-          onConfirm={(r) => moveCopyMut.mutate({ entry: moveCopy.entry, target: r.target, preserveBasis: r.preserveBasis, isMove: moveCopy.mode === 'move' })}
+          onConfirm={(r) => moveCopyMut.mutate(
+            { entry: moveCopy.entry, target: r.target, preserveBasis: r.preserveBasis, isMove: moveCopy.mode === 'move' },
+            { onSuccess: () => setMoveCopy(null) },
+          )}
           onClose={() => setMoveCopy(null)}
         />
       ) : null}
