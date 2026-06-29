@@ -69,6 +69,16 @@ describe('useFoodPlanMealActions', () => {
       expect(h.assertMealDefinitionWithinCap).toHaveBeenCalledWith(2)
       await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(1))
     })
+
+    it('throws before addMealDefinition when at the meal cap', async () => {
+      h.assertMealDefinitionWithinCap.mockImplementationOnce(() => { throw new Error('cap') })
+      const { result } = setup(doc([]))
+
+      result.current.addMealMut.mutate('Lunch')
+
+      await waitFor(() => expect(result.current.addMealMut.isError).toBe(true))
+      expect(h.addMealDefinition).not.toHaveBeenCalled()
+    })
   })
 
   describe('omitMealMut', () => {

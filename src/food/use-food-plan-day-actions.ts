@@ -5,7 +5,7 @@ import {
   duplicateFoodPlanDay,
   updateDayType,
   assertFoodPlanDayWithinCap,
-  assertFoodPlanEntryWithinCap,
+  assertFoodPlanEntriesWithinCap,
 } from '../lib/queries'
 import type { FoodPlanDocument as Doc } from '../lib/types'
 import { useFoodPlanView } from './useFoodPlanDocument'
@@ -39,13 +39,13 @@ export function useFoodPlanDayActions(
   })
   const duplicateDayMut = useMutation({
     mutationFn: (dayId: string) => {
+      // Duplicating a day adds one day AND copies all the source day's entries,
+      // so it charges both caps.
       assertFoodPlanDayWithinCap(currentDoc.days.length)
       const sourceEntryCount = view.days
         .find((day) => day.day.id === dayId)
         ?.cells.reduce((total, cell) => total + cell.entries.length, 0) ?? 0
-      if (sourceEntryCount > 0) {
-        assertFoodPlanEntryWithinCap(currentDoc.entries.length + sourceEntryCount - 1)
-      }
+      assertFoodPlanEntriesWithinCap(currentDoc.entries.length, sourceEntryCount)
       const sortOrder = currentDoc.days.reduce((m, d) => Math.max(m, d.sort_order + 1), 0)
       // server copies the LIVE source day (schedule + entries) by id
       return duplicateFoodPlanDay(userId, dayId, sortOrder)

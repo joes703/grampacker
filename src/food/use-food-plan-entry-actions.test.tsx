@@ -23,7 +23,11 @@ const h = vi.hoisted(() => ({
   upsertFoodPlanEntries: vi.fn<(userId: string, additions: { entry: Record<string, unknown>; preserve_basis: unknown }[]) => Promise<unknown>>(),
   updateFoodPlanEntry: vi.fn<(id: string, patch: unknown) => Promise<void>>(),
   deleteFoodPlanEntry: vi.fn<(id: string) => Promise<void>>(),
-  assertFoodPlanEntryWithinCap: vi.fn<(existingEntries: number) => void>(),
+  // F9: the entry-add cap now routes through assertFoodPlanEntriesWithinCap,
+  // which owns the "existing + addCount - 1" arithmetic and the add-nothing
+  // no-op. These tests assert the hook reports the right (existingCount,
+  // addCount); the threshold/no-op behavior is covered in food-plan.test.ts.
+  assertFoodPlanEntriesWithinCap: vi.fn<(existingCount: number, addCount: number) => void>(),
 }))
 
 vi.mock('../lib/queries', () => h)
@@ -101,8 +105,8 @@ describe('useFoodPlanEntryActions', () => {
         food_item_id: 'f1', basis: 'servings', amount: 2, sort_order: 0,
       })
       expect(additions[0]!.preserve_basis).toBeNull()
-      // cap = existing(2) + newCount(1) - 1 = 2
-      expect(h.assertFoodPlanEntryWithinCap).toHaveBeenCalledWith(2)
+      // adds 1 new entry to a plan with 2 existing entries.
+      expect(h.assertFoodPlanEntriesWithinCap).toHaveBeenCalledWith(2, 1)
       await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(1))
     })
 
@@ -120,8 +124,9 @@ describe('useFoodPlanEntryActions', () => {
       const additions = firstAddBatch()
       expect(additions[0]!.entry.sort_order).toBe(7)
       expect(additions[0]!.preserve_basis).toBe('servings')
-      // newCount is 0 (the only target already holds the food), so no cap charge.
-      expect(h.assertFoodPlanEntryWithinCap).not.toHaveBeenCalled()
+      // newCount is 0 (the only target already holds the food): the hook reports
+      // addCount 0, which the helper treats as a no-op (no cap charge).
+      expect(h.assertFoodPlanEntriesWithinCap).toHaveBeenCalledWith(1, 0)
     })
 
     it('multi-day add fans out to each also-day and charges the cap once for the new count', async () => {
@@ -136,8 +141,22 @@ describe('useFoodPlanEntryActions', () => {
       await waitFor(() => expect(h.upsertFoodPlanEntries).toHaveBeenCalled())
       const additions = firstAddBatch()
       expect(additions.map((a) => a.entry.day_meal_id)).toEqual(['dm-b1', 'dm-b2'])
-      // cap = existing(0) + newCount(2) - 1 = 1
-      expect(h.assertFoodPlanEntryWithinCap).toHaveBeenCalledWith(1)
+      // adds 2 new entries (both also-days) to an empty plan.
+      expect(h.assertFoodPlanEntriesWithinCap).toHaveBeenCalledWith(0, 2)
+    })
+
+    it('throws before upserting when the add would exceed the cap', async () => {
+      h.assertFoodPlanEntriesWithinCap.mockImplementationOnce(() => { throw new Error('cap') })
+      const { result } = setup(doc([]))
+
+      result.current.addMut.mutate({
+        food,
+        target: { kind: 'cell', dayMealId: 'dm-b' },
+        result: { basis: 'servings', amount: 1, preserveBasis: null, alsoDayMealIds: [] },
+      })
+
+      await waitFor(() => expect(result.current.addMut.isError).toBe(true))
+      expect(h.upsertFoodPlanEntries).not.toHaveBeenCalled()
     })
   })
 
@@ -176,7 +195,8 @@ describe('useFoodPlanEntryActions', () => {
       expect(addition).toMatchObject({ is_extra: true, day_meal_id: null, food_item_id: 'f1', basis: 'weight', amount: 50 })
       expect(preserve).toBeNull()
       expect(moveSrc).toBe('e1')
-      expect(h.assertFoodPlanEntryWithinCap).not.toHaveBeenCalled()
+      // a move adds nothing: the hook reports addCount 0.
+      expect(h.assertFoodPlanEntriesWithinCap).toHaveBeenCalledWith(1, 0)
       await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(1))
     })
 
@@ -191,8 +211,8 @@ describe('useFoodPlanEntryActions', () => {
       expect(addition).toMatchObject({ day_meal_id: 'dm-l', is_extra: false, food_item_id: 'f1' })
       expect(preserve).toBe('servings')
       expect(moveSrc).toBeNull()
-      // copy into a cell that does not already hold the food charges the cap.
-      expect(h.assertFoodPlanEntryWithinCap).toHaveBeenCalledWith(1)
+      // copy into a cell that does not already hold the food adds 1 entry.
+      expect(h.assertFoodPlanEntriesWithinCap).toHaveBeenCalledWith(1, 1)
     })
 
     it('copy onto a target that already holds the food skips the cap', async () => {
@@ -203,7 +223,8 @@ describe('useFoodPlanEntryActions', () => {
       result.current.moveCopyMut.mutate({ entry: e, target: { kind: 'cell', dayMealId: 'dm-l' }, preserveBasis: 'servings', isMove: false })
 
       await waitFor(() => expect(h.upsertFoodPlanEntry).toHaveBeenCalled())
-      expect(h.assertFoodPlanEntryWithinCap).not.toHaveBeenCalled()
+      // copy onto an occupied target merges: the hook reports addCount 0.
+      expect(h.assertFoodPlanEntriesWithinCap).toHaveBeenCalledWith(2, 0)
     })
   })
 

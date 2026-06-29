@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import {
   upsertFoodPlanEntry, upsertFoodPlanEntries, updateFoodPlanEntry, deleteFoodPlanEntry,
-  assertFoodPlanEntryWithinCap, type EntryAddition,
+  assertFoodPlanEntriesWithinCap, type EntryAddition,
 } from '../lib/queries'
 import { randomTempId } from '../lib/random-temp-id'
 import type { EntryBasis, FoodItem, FoodPlanEntry, FoodPlanDocument as Doc } from '../lib/types'
@@ -63,9 +63,7 @@ export function useFoodPlanEntryActions(
         ? [v.target, ...v.result.alsoDayMealIds.map((id) => ({ kind: 'cell' as const, dayMealId: id }))]
         : [v.target]
       const newCount = targets.filter((t) => !existingEntry(v.food, t)).length
-      if (newCount > 0) {
-        assertFoodPlanEntryWithinCap(currentDoc.entries.length + newCount - 1)
-      }
+      assertFoodPlanEntriesWithinCap(currentDoc.entries.length, newCount)
       const additions = targets.map((t) => {
         const prior = existingEntry(v.food, t)
         const addition: EntryAddition = {
@@ -98,9 +96,10 @@ export function useFoodPlanEntryActions(
 
   const moveCopyMut = useMutation({
     mutationFn: (v: { entry: FoodPlanEntry; target: MoveCopyTarget; preserveBasis: EntryBasis | null; isMove: boolean }) => {
-      if (!v.isMove && !entryAtTarget(v.entry.food_item_id, v.target)) {
-        assertFoodPlanEntryWithinCap(currentDoc.entries.length)
-      }
+      // A move adds nothing; a copy onto an occupied target merges. Only a copy
+      // into an empty target adds one entry.
+      const addCount = !v.isMove && !entryAtTarget(v.entry.food_item_id, v.target) ? 1 : 0
+      assertFoodPlanEntriesWithinCap(currentDoc.entries.length, addCount)
       const addition: EntryAddition = {
         id: randomTempId(), food_plan_id: currentDoc.plan.id,
         day_meal_id: v.target.kind === 'cell' ? v.target.dayMealId : null,
