@@ -157,7 +157,7 @@ From Settings, you can export your account data as a zip file. The export includ
 
 ## Mobile use
 
-grampacker works in a mobile browser and can be added to your home screen so it opens like an app.
+grampacker works in any mobile browser. There is no separate app to install.
 
 ## Account and privacy
 
