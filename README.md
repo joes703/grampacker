@@ -11,7 +11,7 @@ Live at <https://grampacker.app>. Personal project, free to use.
 - Plan trip food from a reusable food library, with per-meal and per-day calories and nutrition plus projected food weight.
 - Share read-only public lists and mark unfinished lists as drafts.
 - Import Lighterpack-compatible CSV files and export list or gear data.
-- Install the app to your home screen and sign in with a password or passkey.
+- Sign in with a password or passkey.
 
 ## Stack
 

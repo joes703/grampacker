@@ -6,6 +6,12 @@ Synthesis of seven parallel audit tracks (behavioral, duplication, drift, dead-c
 
 > **Resolution status (updated 2026-06-07):** 19 of 21 "C" findings are fixed across PRs #29, #31, #32, #33, #34, #37, #38. Two are closed as WON'T FIX: **C-11** (shared status-badge color is intentional) and **C-18** (AGENTS.md is overwritten by the claude-mem codex watch, which has no per-project disable - an external-tool limitation; AGENTS.md stays gitignored and `CLAUDE.md` is the canonical tracked instruction file). **C-13** is fixed for the part that mattered (list-mutation/import consolidation); the within-category slice-based DnD remains accepted, documented tech debt. Per-finding notes are inline below.
 
+> **Status as of 2026-06-29 (after the architecture/performance cleanup):** Some findings below now describe code that has since been removed and should be read as historical. The original analysis is preserved unchanged; this note supersedes it where they conflict:
+> - **PWA/offline removal (PR #143)** deleted `public/sw.js`, `src/lib/offline-packed-queue.ts`, `src/lib/sw-teardown.ts`, the web-app manifest, and the PWA `<meta>` tags. The app is now online-only. Findings that target that code - **C-14** and **C-15** (`offline-packed-queue.ts` dead aliases / v1->v2 migration path) and **C-19** (PWA manifest copy) - now refer to files that no longer exist; treat them as resolved-by-deletion. The only remaining connectivity code is `src/lib/use-online.ts`.
+> - Public gear sharing **no longer uses a `GEAR_ITEM_PUBLIC_SELECT` constant**; it was replaced by curated public views plus runtime forbidden-column guards. References to that constant in this report (e.g. section 7 and the C-12 evidence) describe a since-removed mechanism. `GEAR_ITEM_AUTH_SELECT` still exists and is still locked by `shared-projections.test.ts`.
+> - **C-18** remains accurate: `AGENTS.md` is still gitignored and overwritten by the claude-mem watch; `CLAUDE.md` is the canonical tracked instruction file.
+> - This report's own track-based finding IDs (e.g. "track-7 F3", "track-6 F3") are unrelated to the separate architecture-review F-numbers (F3/F4/F6/F9); do not conflate them.
+
 ---
 
 ## 1. Executive summary
