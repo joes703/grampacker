@@ -13,7 +13,6 @@ import { GripVertical, CalendarDays } from 'lucide-react'
 import {
   queryKeys, fetchFoodItems, fetchFoodPlan, updateFoodItem, makeOptimisticUpdate, type FoodItemInput,
   deleteFoodPlan,
-  addMealDefinition, deleteMeal, deleteDayMeal, addDayMeal, assertMealDefinitionWithinCap,
   saveFoodPlanTargets, type TargetsSavePayload,
   invalidateFoodPlanCaches,
 } from '../lib/queries'
@@ -21,6 +20,7 @@ import type { FoodItem, FoodPlanEntry, Meal, FoodPlanDocument as Doc } from '../
 import { useFoodPlanView } from './useFoodPlanDocument'
 import { useFoodPlanDayActions } from './use-food-plan-day-actions'
 import { useFoodPlanEntryActions, type AddTarget } from './use-food-plan-entry-actions'
+import { useFoodPlanMealActions } from './use-food-plan-meal-actions'
 import { useFoodReorder } from './useFoodReorder'
 import FoodPlanDaySection from './FoodPlanDaySection'
 import FoodPlanExtras from './FoodPlanExtras'
@@ -30,7 +30,7 @@ import FoodItemDialog from './FoodItemDialog'
 import AddMealDialog from './AddMealDialog'
 import MoveCopyEntryDialog from './MoveCopyEntryDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
-import ScheduleGridDialog, { type ScheduleToggle } from './ScheduleGridDialog'
+import ScheduleGridDialog from './ScheduleGridDialog'
 import FoodPlanSummary from './FoodPlanSummary'
 import FoodPlanStatStrip from './FoodPlanStatStrip'
 import FoodPlanSkeleton from './FoodPlanSkeleton'
@@ -200,44 +200,12 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
       setShowDeleteConfirm(false)
     },
   })
-  const addMealMut = useMutation({
-    mutationFn: (name: string) => {
-      assertMealDefinitionWithinCap(currentDoc.meals.length)
-      const sortOrder = currentDoc.meals.reduce((m, x) => Math.max(m, x.sort_order + 1), 0)
-      return addMealDefinition(userId, currentDoc.plan.id, name, sortOrder)
-    },
-    meta: { errorToast: "Couldn't add the meal. Please try again." },
-    onSuccess: () => {
-      setShowAddMeal(false)
-      return invalidate()
-    },
-  })
-  const omitMealMut = useMutation({
-    mutationFn: (dayMealId: string) => deleteDayMeal(dayMealId),
-    meta: { errorToast: "Couldn't omit the meal. Please try again." },
-    onSuccess: invalidate,
-  })
-  const restoreMealMut = useMutation({
-    mutationFn: (v: { dayId: string; mealId: string }) => addDayMeal(userId, currentDoc.plan.id, v.dayId, v.mealId),
-    meta: { errorToast: "Couldn't restore the meal. Please try again." },
-    onSuccess: invalidate,
-  })
-  const deleteMealMut = useMutation({
-    mutationFn: (mealId: string) => deleteMeal(mealId),
-    meta: { errorToast: "Couldn't delete the meal. Please try again." },
-    onSuccess: invalidate,
-  })
-  const toggleCellMut = useMutation({
-    mutationFn: async (v: ScheduleToggle) => {
-      if (v.on) {
-        await addDayMeal(userId, currentDoc.plan.id, v.dayId, v.mealId)
-      } else {
-        await deleteDayMeal(v.dayMealId ?? '')
-      }
-    },
-    meta: { errorToast: "Couldn't update the schedule. Please try again." },
-    onSuccess: invalidate,
-  })
+  // Meal-definition + schedule write paths (add/omit/restore/delete meal, toggle
+  // a schedule cell) live in useFoodPlanMealActions. The only dialog here is the
+  // add-meal dialog, which closes at its mutate call site via mutate-time
+  // onSuccess (see the AddMealDialog handler below).
+  const { addMealMut, omitMealMut, restoreMealMut, deleteMealMut, toggleCellMut } =
+    useFoodPlanMealActions(userId, currentDoc, invalidate)
 
   const addTargetExisting = addTarget && pickedFood ? existingEntry(pickedFood, addTarget) : undefined
   const editingEntry = currentDoc.entries.find((e) => e.id === editEntryId) ?? null
@@ -475,7 +443,11 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
         />
       ) : null}
       {showAddMeal ? (
-        <AddMealDialog saving={addMealMut.isPending} onSave={(name) => addMealMut.mutate(name)} onClose={() => setShowAddMeal(false)} />
+        <AddMealDialog
+          saving={addMealMut.isPending}
+          onSave={(name) => addMealMut.mutate(name, { onSuccess: () => setShowAddMeal(false) })}
+          onClose={() => setShowAddMeal(false)}
+        />
       ) : null}
       {confirmDeleteMealId ? (
         <ConfirmDialog
