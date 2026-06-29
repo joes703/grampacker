@@ -17,7 +17,9 @@ const h = vi.hoisted(() => ({
   duplicateFoodPlanDay: vi.fn(async () => ({})),
   updateDayType: vi.fn(async () => ({})),
   assertFoodPlanDayWithinCap: vi.fn(),
-  assertFoodPlanEntryWithinCap: vi.fn(),
+  // F9: duplicate-day now charges the entry cap through the shared
+  // assertFoodPlanEntriesWithinCap(existingCount, addCount) helper.
+  assertFoodPlanEntriesWithinCap: vi.fn(),
 }))
 
 vi.mock('../lib/queries', () => h)
@@ -94,7 +96,7 @@ describe('useFoodPlanDayActions', () => {
     await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(1))
   })
 
-  it('duplicateDayMut counts the source day entries for the cap and appends', async () => {
+  it('duplicateDayMut charges both the day cap and the entry cap, then appends', async () => {
     const days = [day('d1', 0), day('d2', 1)]
     // Source day d1 has two entries; total entries in the doc is two.
     const entries = [entry('e1'), entry('e2')]
@@ -103,10 +105,32 @@ describe('useFoodPlanDayActions', () => {
     result.current.duplicateDayMut.mutate('d1')
 
     await waitFor(() => expect(h.duplicateFoodPlanDay).toHaveBeenCalledWith('u1', 'd1', 2))
-    // doc has 2 entries + 2 from the duplicated source - 1 = 3 (the cap helper's
-    // "adding N more" contract, mirrored from the original inline closure).
-    expect(h.assertFoodPlanEntryWithinCap).toHaveBeenCalledWith(3)
+    // adds 1 day (2 existing) and copies the source day's 2 entries (2 existing).
+    expect(h.assertFoodPlanDayWithinCap).toHaveBeenCalledWith(2)
+    expect(h.assertFoodPlanEntriesWithinCap).toHaveBeenCalledWith(2, 2)
     await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(1))
+  })
+
+  it('addDayMut throws before addFoodPlanDay when at the day cap', async () => {
+    h.assertFoodPlanDayWithinCap.mockImplementationOnce(() => { throw new Error('cap') })
+    const days = [day('d1', 0)]
+    const { result } = setup(doc(days), view(days, []))
+
+    result.current.addDayMut.mutate()
+
+    await waitFor(() => expect(result.current.addDayMut.isError).toBe(true))
+    expect(h.addFoodPlanDay).not.toHaveBeenCalled()
+  })
+
+  it('duplicateDayMut throws before duplicateFoodPlanDay when at the day cap', async () => {
+    h.assertFoodPlanDayWithinCap.mockImplementationOnce(() => { throw new Error('cap') })
+    const days = [day('d1', 0)]
+    const { result } = setup(doc(days), view(days, []))
+
+    result.current.duplicateDayMut.mutate('d1')
+
+    await waitFor(() => expect(result.current.duplicateDayMut.isError).toBe(true))
+    expect(h.duplicateFoodPlanDay).not.toHaveBeenCalled()
   })
 
   it('dayTypeMut updates the override and invalidates', async () => {

@@ -5,6 +5,7 @@ import {
   assertFoodPlanDayWithinCap,
   assertMealDefinitionWithinCap,
   assertFoodPlanEntryWithinCap,
+  assertFoodPlanEntriesWithinCap,
   upsertFoodPlanEntries,
   createFoodPlan,
   fetchFoodPlanCopyOptions,
@@ -22,6 +23,21 @@ describe('food plan cap preflight', () => {
   })
   it('throws at the meal cap', () => { expect(() => assertMealDefinitionWithinCap(MEAL_DEFINITION_CAP)).toThrow(/meals/i) })
   it('throws at the entry cap', () => { expect(() => assertFoodPlanEntryWithinCap(FOOD_PLAN_ENTRY_CAP)).toThrow(/entries/i) })
+})
+
+describe('assertFoodPlanEntriesWithinCap (adding N)', () => {
+  it('is a no-op when adding nothing, even at the cap', () => {
+    expect(() => assertFoodPlanEntriesWithinCap(FOOD_PLAN_ENTRY_CAP, 0)).not.toThrow()
+    expect(() => assertFoodPlanEntriesWithinCap(FOOD_PLAN_ENTRY_CAP, -1)).not.toThrow()
+  })
+  it('allows a batch that lands exactly on the cap', () => {
+    expect(() => assertFoodPlanEntriesWithinCap(FOOD_PLAN_ENTRY_CAP - 2, 2)).not.toThrow()
+    expect(() => assertFoodPlanEntriesWithinCap(FOOD_PLAN_ENTRY_CAP - 1, 1)).not.toThrow()
+  })
+  it('throws when the batch would exceed the cap', () => {
+    expect(() => assertFoodPlanEntriesWithinCap(FOOD_PLAN_ENTRY_CAP - 2, 3)).toThrow(/entries/i)
+    expect(() => assertFoodPlanEntriesWithinCap(FOOD_PLAN_ENTRY_CAP, 1)).toThrow(/entries/i)
+  })
 })
 
 describe('upsertFoodPlanEntries', () => {

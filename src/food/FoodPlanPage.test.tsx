@@ -51,6 +51,7 @@ vi.mock('../lib/queries', async () => {
   updateFoodPlanEntry: vi.fn(),
   deleteFoodPlanEntry: vi.fn(),
   assertFoodPlanEntryWithinCap: () => {},
+  assertFoodPlanEntriesWithinCap: () => {},
   // day writes
   addFoodPlanDay: vi.fn(),
   deleteFoodPlanDay: vi.fn(),

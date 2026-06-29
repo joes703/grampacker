@@ -389,6 +389,19 @@ export function assertMealDefinitionWithinCap(existingMeals: number): void {
 export function assertFoodPlanEntryWithinCap(existingEntries: number): void {
   if (existingEntries >= FOOD_PLAN_ENTRY_CAP) throw new Error(`This plan already has the maximum ${FOOD_PLAN_ENTRY_CAP} entries.`)
 }
+// Assert that adding `addCount` more entries keeps the plan within the entry cap.
+// Entries are the only structural element added in variable-size batches (a
+// single add can fan out across days; a duplicated day copies all its entries),
+// so the add/move-copy/duplicate-day write paths each previously hand-rolled the
+// same "existing + addCount - 1" arithmetic and the "adding nothing is a no-op"
+// guard. Centralizing both here gives that cap one owner the call sites can't
+// drift from; it delegates to assertFoodPlanEntryWithinCap for the single
+// threshold + message. (Day/meal caps add one unit at a time, so they keep
+// calling their bare primitive directly.)
+export function assertFoodPlanEntriesWithinCap(existingCount: number, addCount: number): void {
+  if (addCount <= 0) return
+  assertFoodPlanEntryWithinCap(existingCount + addCount - 1)
+}
 
 export type TargetsSavePayload = {
   dailyUpserts: { metric: DailyTargetMetric; mode: TargetMode; target_min: number | null; target_max: number | null }[]
