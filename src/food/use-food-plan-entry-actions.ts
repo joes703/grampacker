@@ -5,13 +5,18 @@ import {
 } from '../lib/queries'
 import { randomTempId } from '../lib/random-temp-id'
 import type { EntryBasis, FoodItem, FoodPlanEntry, FoodPlanDocument as Doc } from '../lib/types'
-import type { EntryAmountResult } from './EntryAmountDialog'
-import type { MoveCopyTarget } from './MoveCopyEntryDialog'
 
 // Where a new/edited entry lands: a scheduled cell (its day_meal row) or the
 // plan-wide Extras bucket. Lives here because every entry-write path keys off it
 // and FoodPlanDocument now imports it back for its add-dialog state.
 export type AddTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
+type EntryAmountActionResult = {
+  basis: EntryBasis
+  amount: number
+  preserveBasis: EntryBasis | null
+  alsoDayMealIds: string[]
+}
+type MoveCopyTarget = { kind: 'cell'; dayMealId: string } | { kind: 'extra' }
 
 // Entry-level write paths for FoodPlanDocument, lifted out of the page component
 // following the use-food-plan-day-actions precedent (PR #140) to keep shrinking
@@ -53,7 +58,7 @@ export function useFoodPlanEntryActions(
   }
 
   const addMut = useMutation({
-    mutationFn: async (v: { food: FoodItem; target: AddTarget; result: EntryAmountResult }) => {
+    mutationFn: async (v: { food: FoodItem; target: AddTarget; result: EntryAmountActionResult }) => {
       const targets: AddTarget[] = v.target.kind === 'cell'
         ? [v.target, ...v.result.alsoDayMealIds.map((id) => ({ kind: 'cell' as const, dayMealId: id }))]
         : [v.target]
