@@ -12,8 +12,6 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, CalendarDays } from 'lucide-react'
 import {
   queryKeys, fetchFoodItems, fetchFoodPlan, updateFoodItem, makeOptimisticUpdate, type FoodItemInput,
-  deleteFoodPlan,
-  saveFoodPlanTargets, type TargetsSavePayload,
   invalidateFoodPlanCaches,
 } from '../lib/queries'
 import type { FoodItem, FoodPlanEntry, Meal, FoodPlanDocument as Doc } from '../lib/types'
@@ -21,6 +19,7 @@ import { useFoodPlanView } from './useFoodPlanDocument'
 import { useFoodPlanDayActions } from './use-food-plan-day-actions'
 import { useFoodPlanEntryActions, type AddTarget } from './use-food-plan-entry-actions'
 import { useFoodPlanMealActions } from './use-food-plan-meal-actions'
+import { useFoodPlanPlanActions } from './use-food-plan-plan-actions'
 import { useFoodReorder } from './useFoodReorder'
 import FoodPlanDaySection from './FoodPlanDaySection'
 import FoodPlanExtras from './FoodPlanExtras'
@@ -171,35 +170,18 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
     }),
   })
 
-  const saveTargetsMut = useMutation({
-    mutationFn: (p: TargetsSavePayload) => saveFoodPlanTargets(userId, currentDoc.plan.id, p),
-    meta: { errorToast: "Couldn't save targets. Please try again." },
-    onSuccess: () => {
-      setShowTargets(false)
-      return invalidate()
-    },
-  })
-
   const { addDayMut, deleteDayMut, duplicateDayMut, dayTypeMut } =
     useFoodPlanDayActions(userId, currentDoc, view, invalidate)
 
-  // Delete the whole food plan. The DB cascades this plan's meals, days,
-  // day_meals, entries, daily/meal targets, and packed-food state; food_items
-  // (the library), the gear list, and gear are referenced the other way and are
-  // left untouched. On success we refresh the plan + pack caches so the page
-  // falls back to the empty state, plus the copy-options lists where this plan
-  // was offered as a source for other lists.
-  const deletePlanMut = useMutation({
-    mutationFn: () => deleteFoodPlan(currentDoc.plan.id),
-    meta: { errorToast: "Couldn't delete the food plan. Please try again." },
-    onSuccess: () => {
-      invalidateFoodPlanCaches(qc, listId)
-      qc.invalidateQueries({ queryKey: queryKeys.foodPackState(listId) })
-      // Prefix match: invalidate this user's copy-options for every target list.
-      qc.invalidateQueries({ queryKey: ['food-plan-copy-options', userId] })
-      setShowDeleteConfirm(false)
-    },
+  // Plan-level write paths (save targets, delete the whole plan) live in
+  // useFoodPlanPlanActions. deletePlanMut needs direct cache invalidation beyond
+  // the shared invalidate callback (food pack state + copy options), so the hook
+  // takes the QueryClient. Both dialogs close at their mutate call site via
+  // mutate-time onSuccess (see the TargetsDialog / delete-confirm handlers below).
+  const { saveTargetsMut, deletePlanMut } = useFoodPlanPlanActions({
+    userId, listId, currentDoc, queryClient: qc, invalidate,
   })
+
   // Meal-definition + schedule write paths (add/omit/restore/delete meal, toggle
   // a schedule cell) live in useFoodPlanMealActions. The only dialog here is the
   // add-meal dialog, which closes at its mutate call site via mutate-time
@@ -482,7 +464,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           dailyTargets={currentDoc.dailyTargets}
           mealTargets={currentDoc.mealTargets}
           saving={saveTargetsMut.isPending}
-          onSave={(p) => saveTargetsMut.mutate(p)}
+          onSave={(p) => saveTargetsMut.mutate(p, { onSuccess: () => setShowTargets(false) })}
           onClose={() => setShowTargets(false)}
         />
       ) : null}
@@ -493,7 +475,7 @@ export default function FoodPlanDocument({ listId, userId, doc }: { listId: stri
           confirmLabel="Delete food plan"
           dangerous
           onCancel={() => setShowDeleteConfirm(false)}
-          onConfirm={() => deletePlanMut.mutate()}
+          onConfirm={() => deletePlanMut.mutate(undefined, { onSuccess: () => setShowDeleteConfirm(false) })}
         />
       ) : null}
     </div>
