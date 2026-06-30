@@ -27,6 +27,14 @@ export const queryKeys = {
   foodPackStateAll: () => ['food-pack-state'] as const,
   foodPackState: (listId: string) => ['food-pack-state', listId] as const,
   lists: () => ['lists'] as const,
+  // Head-count of the user's lists, deliberately a child of `lists` so that
+  // every existing `invalidateQueries({ queryKey: queryKeys.lists() })` on a
+  // list create/delete/update also refreshes the count through TanStack's
+  // prefix matching - no separate invalidation call is needed at any mutation
+  // site. Mirrors the listItemsAll/listItems and foodPlansAll/foodPlan shape.
+  // (getQueryData is exact-match, so reading ['lists'] still returns List[],
+  // never the count.)
+  listCount: () => ['lists', 'count'] as const,
   listItems: (listId: string) => ['list-items', listId] as const,
   // Prefix key for fan-out scans / broad invalidation across every per-list
   // ['list-items', listId] cache (mirrors the foodPlansAll / foodPackSignaturesAll

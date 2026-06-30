@@ -64,6 +64,7 @@ export {
 export type { FoodItemInput, FoodItemLite } from './food'
 export {
   fetchLists,
+  fetchListCount,
   fetchSharedList,
   createList,
   nextListSortOrder,

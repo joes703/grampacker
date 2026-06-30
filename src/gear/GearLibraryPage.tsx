@@ -27,6 +27,7 @@ import {
   fetchCategories,
   fetchGearItems,
   fetchLists,
+  fetchListCount,
   createCategory,
   nextCategorySortOrder,
   nextGearItemSortOrder,
@@ -47,7 +48,7 @@ import {
   makeOptimisticUpdate,
   makeOptimisticDelete,
 } from '../lib/queries'
-import type { Category, GearItem } from '../lib/types'
+import type { Category, GearItem, List } from '../lib/types'
 import { MAX_CATEGORY_NAME } from '../lib/caps'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
 import { randomTempId } from '../lib/random-temp-id'
@@ -128,9 +129,13 @@ export default function GearLibraryPage() {
     queryKey: queryKeys.gearItems(),
     queryFn: () => fetchGearItems(userId),
   })
-  const { data: lists = [] } = useQuery({
-    queryKey: queryKeys.lists(),
-    queryFn: () => fetchLists(userId),
+  // The page only renders the list count (the create-from-selection cap gate),
+  // so it subscribes to a head-count rather than every list row. The rows are
+  // fetched lazily inside createListFromSelectionMut when they're actually
+  // needed (to pick the next sort_order slot).
+  const { data: listCount = 0 } = useQuery({
+    queryKey: queryKeys.listCount(),
+    queryFn: () => fetchListCount(userId),
   })
 
   // O(1) id lookups for DnD callbacks and DragOverlay rendering. See
@@ -298,8 +303,14 @@ export default function GearLibraryPage() {
   })
 
   const createListFromSelectionMut = useMutation({
-    mutationFn: ({ name, description, ids }: { name: string; description: string | null; ids: string[] }) =>
-      createListFromSelection(userId, name, description, ids, nextListSortOrder(lists)),
+    mutationFn: async ({ name, description, ids }: { name: string; description: string | null; ids: string[] }) => {
+      // create-from-selection needs the existing lists' sort_order to pick the
+      // next slot. fetchQuery resolves them cached-if-fresh / fetched-if-missing
+      // (same pattern as use-list-import-mutation), so the page can subscribe to
+      // just the count instead of holding every list row for a rarely-read value.
+      const lists = await qc.fetchQuery<List[]>({ queryKey: queryKeys.lists(), queryFn: () => fetchLists(userId) })
+      return createListFromSelection(userId, name, description, ids, nextListSortOrder(lists))
+    },
     meta: { errorToast: "Couldn't create the list. Please try again." },
     onSuccess: (newList) => {
       qc.invalidateQueries({ queryKey: queryKeys.lists() })
@@ -837,7 +848,7 @@ export default function GearLibraryPage() {
       {dialog?.type === 'create-list-from-selection' && (
         <CreateListFromSelectionDialog
           selectedCount={selectedIds.size}
-          existingListCount={lists.length}
+          existingListCount={listCount}
           saving={createListFromSelectionMut.isPending}
           onSubmit={(name, description) =>
             createListFromSelectionMut.mutate({ name, description, ids: Array.from(selectedIds) })
