@@ -66,6 +66,20 @@ export async function fetchLists(userId: string): Promise<List[]> {
   return data
 }
 
+// Owner-scoped head-count of the user's lists. GearLibraryPage renders only the
+// number of lists (the create-from-selection cap gate); it reads this instead of
+// pulling every row through fetchLists just to call `.length`. `head: true` tells
+// PostgREST to return the exact count with no row payload. Same `user_id` scoping
+// as fetchLists so the two queries observe identical ownership.
+export async function fetchListCount(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('lists')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+  if (error) throw error
+  return count ?? 0
+}
+
 // Public read (shared list, no auth). Reads through a curated DB view
 // that physically omits private base-table columns (user_id, is_shared,
 // sort_order, ready_checks_enabled, timestamps). See SECURITY.md "Public
