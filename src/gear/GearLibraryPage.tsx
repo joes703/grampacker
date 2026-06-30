@@ -28,10 +28,6 @@ import {
   fetchGearItems,
   fetchLists,
   fetchListCount,
-  createCategory,
-  nextCategorySortOrder,
-  updateCategory,
-  deleteCategory,
   reorderCategories,
   bulkDeleteGearItems,
   bulkMoveToCategoryGearItems,
@@ -40,14 +36,10 @@ import {
   nextListSortOrder,
   importGearItems,
   makeOptimisticReorder,
-  makeOptimisticInsert,
-  makeOptimisticUpdate,
-  makeOptimisticDelete,
 } from '../lib/queries'
 import type { Category, GearItem, List } from '../lib/types'
 import { MAX_CATEGORY_NAME } from '../lib/caps'
 import { gearItemsToCsv, downloadCsv, parseGearCsv, type GearCsvRow } from '../lib/csv'
-import { randomTempId } from '../lib/random-temp-id'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
@@ -74,6 +66,7 @@ import {
   makeOptimisticGearItemsBulkDelete,
 } from '../lib/queries/gear-list-items-fan-out'
 import { useGearItemActions } from './use-gear-item-actions'
+import { useGearCategoryActions } from './use-gear-category-actions'
 
 type DialogState =
   | { type: 'create-item'; categoryId?: string | null }
@@ -186,48 +179,14 @@ export default function GearLibraryPage() {
     qc.invalidateQueries({ queryKey: queryKeys.categories() })
     qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
   }
-  const addCategory = useMutation({
-    mutationFn: (name: string) =>
-      createCategory(userId, name, nextCategorySortOrder(categories)),
-    ...makeOptimisticInsert<Category, string>({
-      qc,
-      queryKey: queryKeys.categories(),
-      // Server assigns is_default=false for user-created categories
-      // (defaults are seeded). Placeholder mirrors that.
-      optimistic: (name) => ({
-        id: `temp-${randomTempId()}`,
-        user_id: userId,
-        name,
-        sort_order: nextCategorySortOrder(categories),
-        is_default: false,
-        created_at: new Date().toISOString(),
-      }),
-    }),
-  })
-
-  const renameCategory = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => updateCategory(id, { name }),
-    ...makeOptimisticUpdate<Category, { id: string; name: string }>({
-      qc,
-      queryKey: queryKeys.categories(),
-      id: ({ id }) => id,
-      apply: (item, { name }) => ({ ...item, name }),
-    }),
-  })
-
-  const removeCategory = useMutation({
-    mutationFn: deleteCategory,
-    // Deleting a category cascades to gear_items.category_id (SET NULL),
-    // which is embedded in list_items via the gear join — invalidate both
-    // side caches so open gear / list views reflect the new uncategorized
-    // state once the round-trip settles.
-    ...makeOptimisticDelete<Category, string>({
-      qc,
-      queryKey: queryKeys.categories(),
-      invalidateKeys: [queryKeys.gearItems(), queryKeys.listItemsAll()],
-      id: (id) => id,
-    }),
-  })
+  // Category write actions (add / rename / delete) live in a dedicated hook; it
+  // owns the optimistic insert/update/delete, including the delete's cross-cache
+  // invalidation that re-renders gear/list views after the DB sets the affected
+  // gear_items.category_id to NULL. The page keeps category reorder (in the
+  // useReorderable hook), the commitNewCategory glue, and the stable handler
+  // layer that feeds memoized sections (it destructures renameCategory.mutate /
+  // removeCategory.mutate below).
+  const { addCategory, renameCategory, removeCategory } = useGearCategoryActions(userId, categories)
 
   // Gear-item write actions (add / edit / delete) live in a dedicated hook; it
   // owns the optimistic insert and the gear-specific fan-out update/delete
