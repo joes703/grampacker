@@ -30,13 +30,9 @@ import {
   fetchListCount,
   createCategory,
   nextCategorySortOrder,
-  nextGearItemSortOrder,
   updateCategory,
   deleteCategory,
   reorderCategories,
-  createGearItem,
-  updateGearItem,
-  deleteGearItem,
   bulkDeleteGearItems,
   bulkMoveToCategoryGearItems,
   reorderGearItems,
@@ -74,11 +70,10 @@ import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import { useDocumentTitle } from '../lib/use-document-title'
 import {
-  makeOptimisticGearItemUpdate,
-  makeOptimisticGearItemDelete,
   makeOptimisticGearItemsBulkCategoryMove,
   makeOptimisticGearItemsBulkDelete,
 } from '../lib/queries/gear-list-items-fan-out'
+import { useGearItemActions } from './use-gear-item-actions'
 
 type DialogState =
   | { type: 'create-item'; categoryId?: string | null }
@@ -234,48 +229,12 @@ export default function GearLibraryPage() {
     }),
   })
 
-  const addItem = useMutation({
-    mutationFn: (data: Parameters<typeof createGearItem>[1]) =>
-      createGearItem(userId, data, nextGearItemSortOrder(allItems)),
-    ...makeOptimisticInsert<GearItem, Parameters<typeof createGearItem>[1]>({
-      qc,
-      queryKey: queryKeys.gearItems(),
-      optimistic: (data) => {
-        const now = new Date().toISOString()
-        return {
-          id: `temp-${randomTempId()}`,
-          user_id: userId,
-          category_id: data.category_id,
-          name: data.name,
-          description: data.description,
-          weight_grams: data.weight_grams,
-          cost: data.cost,
-          purchase_date: data.purchase_date,
-          status: data.status,
-          sort_order: nextGearItemSortOrder(allItems),
-          created_at: now,
-          updated_at: now,
-        }
-      },
-    }),
-  })
-
-  // Gear writes are rendered from two cache surfaces: the account gear library
-  // and any open list view embedding that gear through list_items.gear_item.
-  // The helper owns the cancel/snapshot/write/rollback/invalidate lifecycle
-  // for both surfaces so this page doesn't have to know the join shape.
-  const gearUpdateHelper = makeOptimisticGearItemUpdate(qc)
-  const editItem = useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateGearItem>[1] }) =>
-      updateGearItem(id, patch),
-    ...gearUpdateHelper,
-  })
-
-  const gearDeleteHelper = makeOptimisticGearItemDelete(qc)
-  const removeItem = useMutation({
-    mutationFn: deleteGearItem,
-    ...gearDeleteHelper,
-  })
+  // Gear-item write actions (add / edit / delete) live in a dedicated hook; it
+  // owns the optimistic insert and the gear-specific fan-out update/delete
+  // lifecycle. The page keeps the dialog state, the stable handler layer that
+  // feeds memoized rows/sections (it destructures editItem.mutate below), and
+  // the add/edit/delete dialogs close at the mutate call site.
+  const { addItem, editItem, removeItem } = useGearItemActions(userId, allItems)
 
   const bulkDeleteHelper = makeOptimisticGearItemsBulkDelete(qc)
   const bulkDelete = useMutation({
