@@ -28,11 +28,6 @@ import {
   fetchCategories,
   createCategory,
   nextCategorySortOrder,
-  nextGearItemSortOrder,
-  nextListItemSortOrder,
-  addGearItemToList,
-  updateListItem,
-  deleteListItem,
   updateList,
   reorderListItems,
   updateGearItem,
@@ -40,10 +35,8 @@ import {
   makeOptimisticReorder,
   makeOptimisticInsert,
   makeOptimisticUpdate,
-  makeOptimisticDelete,
   type ListItemPatch,
 } from '../lib/queries'
-import { supabase } from '../lib/supabase'
 import type { Category, GearItem, ListItemWithGear, List } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
@@ -78,6 +71,7 @@ import PackingProgress from './PackingProgress'
 import FoodProjectionSection from './FoodProjectionSection'
 import { useFoodProjection } from './useFoodProjection'
 import { useListResetActions } from './use-list-reset-actions'
+import { useListItemActions } from './use-list-item-actions'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
 import CategoryGroup from './CategoryGroup'
@@ -299,81 +293,17 @@ function ListDetailInner({
     }),
   })
 
-  const addMut = useMutation({
-    mutationFn: (item: GearItem) =>
-      addGearItemToList(listId, userId, item.id, nextListItemSortOrder(listItems)),
-    ...makeOptimisticInsert<ListItemWithGear, GearItem>({
-      qc,
-      queryKey: queryKeys.listItems(listId),
-      optimistic: (item) => {
-        const now = new Date().toISOString()
-        return {
-          // Temp id replaced by the server row on settled refetch. The
-          // randomTempId() suffix avoids any collision with real ids.
-          id: `temp-${randomTempId()}`,
-          list_id: listId,
-          user_id: userId,
-          gear_item_id: item.id,
-          gear_item: {
-            id: item.id,
-            name: item.name,
-            description: item.description,
-            weight_grams: item.weight_grams,
-            category_id: item.category_id,
-            status: item.status,
-          },
-          quantity: 1,
-          is_worn: false,
-          is_consumable: false,
-          is_packed: false,
-          is_ready: false,
-          sort_order: nextListItemSortOrder(listItems),
-          created_at: now,
-          updated_at: now,
-        }
-      },
-    }),
-  })
-
-  // mutationKey is used by the onSettled override below to detect sibling
-  // updates still in flight. Two parallel updateMut calls (e.g. tapping
-  // Packed then Ready in quick succession) each carry their own PATCH; the
-  // first to settle fires invalidateQueries, which races the second PATCH
-  // and can overwrite its optimistic value with stale server data. Gating
-  // the invalidate on "no other update-list-item mutations are pending"
-  // makes only the LAST settled call refetch — by then both server writes
-  // are durable.
-  const updateMutKey = ['update-list-item', listId] as const
-  const updateMutOptimistic = makeOptimisticUpdate<
-    ListItemWithGear,
-    { itemId: string; patch: ListItemPatch }
-  >({
-    qc,
-    queryKey: queryKeys.listItems(listId),
-    id: ({ itemId }) => itemId,
-    apply: (item, { patch }) => ({ ...item, ...patch }),
-  })
-  const updateMut = useMutation({
-    mutationKey: updateMutKey,
-    mutationFn: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) =>
-      updateListItem(itemId, patch),
-    ...updateMutOptimistic,
-    onSettled: () => {
-      // qc.isMutating excludes mutations that have already entered settled
-      // state (success/error) by the time their own onSettled runs, so a
-      // non-zero count means at least one sibling is still pending.
-      if (qc.isMutating({ mutationKey: updateMutKey }) > 0) return
-      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
-    },
-  })
-
-  const deleteMut = useMutation({
-    mutationFn: deleteListItem,
-    ...makeOptimisticDelete<ListItemWithGear, string>({
-      qc,
-      queryKey: queryKeys.listItems(listId),
-      id: (itemId) => itemId,
-    }),
+  // List-item write actions (add existing gear / update fields / delete / Quick
+  // Add new gear+item) live in a dedicated hook; it owns the optimistic
+  // insert/update/delete wiring, the update sibling-in-flight invalidation gate,
+  // and addNewItem's dual-cache invalidation + errorToast. The page keeps the
+  // stable handler/memo layer that reads these raw mutations' `.mutate` through
+  // the live binding (onLibraryAdd/onLibraryRemove/onAddNewItem, sharedGroupProps),
+  // the addingNewItemRef double-fire guard, DnD/reorder, dialog orchestration,
+  // and the gear/category/notes/ready-checks mutations.
+  const { addItem, updateItem, deleteItem, addNewItem } = useListItemActions(listId, userId, {
+    listItems,
+    gearItems,
   })
 
   const reorderItemsMut = useMutation({
@@ -435,55 +365,11 @@ function ListDetailInner({
     onSettled: deleteHelper.onSettled,
   })
 
-  // List Detail "Quick Add" is the per-category "Add new item" affordance
-  // (desktop inline AddItemRow or mobile QuickAddItemModal, both driven by
-  // useQuickAddForm). It creates a gear_item (so the item also lands in the
-  // gear library) and the matching list_item together, under the category
-  // whose section the user added from.
-  //
-  // Quick Add intentionally collects only the fields needed to put a new
-  // item on this list: name, description, weight, quantity, worn,
-  // consumable. Full inventory details like cost and purchase date live in
-  // GearItemDialog, not here. They are deliberately out of scope for Quick
-  // Add, not missing by accident.
-  //
-  // The add_gear_item_with_list_item RPC matches that contract exactly: one
-  // round-trip that inserts both rows atomically, with cost/purchase_date
-  // fixed at null. SECURITY INVOKER as of 20260514202025_reduce_security_definer
-  // (was DEFINER when introduced); ownership is enforced by the inline
-  // auth.uid() check on p_user_id plus RLS on gear_items/list_items running
-  // under the invoker. Pure cache-invalidate on success; the RPC return value
-  // (gear_item_id, list_item_id) is unused because the invalidate refetches
-  // both queries.
-  const addNewItemMut = useMutation({
-    mutationFn: async ({ categoryId, data }: { categoryId: string | null; data: AddItemData }) => {
-      const { error } = await supabase.rpc('add_gear_item_with_list_item', {
-        p_user_id: userId,
-        p_name: data.name,
-        p_description: data.description,
-        p_weight_grams: data.weight_grams,
-        p_category_id: categoryId,
-        p_gear_sort_order: nextGearItemSortOrder(gearItems),
-        p_list_id: listId,
-        p_list_item_sort_order: nextListItemSortOrder(listItems),
-        p_quantity: data.quantity,
-        p_is_worn: data.is_worn,
-        p_is_consumable: data.is_consumable,
-      })
-      if (error) throw error
-    },
-    meta: { errorToast: "Couldn't add that item. Please try again." },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
-    },
-  })
-
   // Guards against the inline Quick Add row firing twice when the user
   // commits the same draft rapidly (Enter then blur, or two Enter presses).
   // Each press fires a fresh add_gear_item_with_list_item RPC; without a
   // gate the second succeeds and creates a duplicate gear_item +
-  // list_item. addNewItemMut.isPending lives on a fresh useMutation result
+  // list_item. addNewItem.isPending lives on a fresh useMutation result
   // each render, so reading it through a [] -deps useCallback closure is
   // stale; a ref is the stable handle.
   const addingNewItemRef = useRef(false)
@@ -627,20 +513,20 @@ function ListDetailInner({
 
   // Stable callbacks for LibraryPanel. Inline arrows would mint fresh
   // references on every parent render and defeat LibraryPanel's React.memo
-  // on the inner CategoryGroup. addMut / deleteMut follow the same
+  // on the inner CategoryGroup. addItem / deleteItem follow the same
   // mutation-ref convention as sharedGroupProps below — `.mutate` is read
   // through the live binding at call time, never depended on directly.
   const onLibraryAdd = useCallback(
-    (item: GearItem) => addMut.mutate(item),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- addMut is a TanStack mutation result; .mutate is stable, the wrapper is not
+    (item: GearItem) => addItem.mutate(item),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- addItem is a TanStack mutation result; .mutate is stable, the wrapper is not
     [],
   )
   const onLibraryRemove = useCallback(
     (item: GearItem) => {
       const li = listItemsRef.current.find((l) => l.gear_item_id === item.id)
-      if (li) deleteMut.mutate(li.id)
+      if (li) deleteItem.mutate(li.id)
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deleteMut see addMut note; listItemsRef is a ref (always-stable)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deleteItem see addItem note; listItemsRef is a ref (always-stable)
     [],
   )
 
@@ -648,18 +534,18 @@ function ListDetailInner({
   // Phase 5 widened CategoryGroup's onAddItem signature from
   // (data) => void to (categoryId, data) => void so we can pass ONE
   // memoized handler to both the categorized and uncategorized call
-  // sites instead of two fresh inline arrows. addNewItemMut see prior
+  // sites instead of two fresh inline arrows. addNewItem see prior
   // mutation-ref convention.
   const onAddNewItem = useCallback(
     (categoryId: string | null, data: AddItemData) => {
       if (addingNewItemRef.current) return
       addingNewItemRef.current = true
-      addNewItemMut.mutate(
+      addNewItem.mutate(
         { categoryId, data },
         { onSettled: () => { addingNewItemRef.current = false } },
       )
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- addNewItemMut: see addMut note
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- addNewItem: see addItem note
     [],
   )
 
@@ -668,10 +554,10 @@ function ListDetailInner({
   //
   // Mutation refs are intentionally NOT in deps. TanStack Query rebuilds the
   // useMutation result object on every render (the wrapper is fresh; only
-  // the internal `.mutate` callback is stable), so depending on `updateMut`
+  // the internal `.mutate` callback is stable), so depending on `updateItem`
   // etc. would defeat the memo and re-create this bag every render. Calling
   // `.mutate` through the live binding is safe: the closure resolves
-  // `updateMut.mutate` at call time, which is always the current stable ref.
+  // `updateItem.mutate` at call time, which is always the current stable ref.
   // setDialog (the React useState setter) is React-guaranteed stable.
   const sharedGroupProps = useMemo(
     () => ({
@@ -681,8 +567,8 @@ function ListDetailInner({
       isBelowLg,
       sortable: true,
       showUnpackedOnly,
-      onUpdate: (itemId: string, patch: ListItemPatch) => updateMut.mutate({ itemId, patch }),
-      onDelete: (itemId: string) => deleteMut.mutate(itemId),
+      onUpdate: (itemId: string, patch: ListItemPatch) => updateItem.mutate({ itemId, patch }),
+      onDelete: (itemId: string) => deleteItem.mutate(itemId),
       onSaveGearName: (gearId: string, n: string) =>
         updateGearItemMut.mutate({ id: gearId, patch: { name: n } }),
       onSaveGearDescription: (gearId: string, d: string) =>
@@ -1045,7 +931,7 @@ function ListDetailInner({
                 }
               : undefined
           }
-          saving={updateGearItemMut.isPending || updateMut.isPending}
+          saving={updateGearItemMut.isPending || updateItem.isPending}
           saveError={dialog.saveError}
           onClose={() => setDialog(null)}
           onCreateCategory={(categoryName) => addCategoryMut.mutateAsync(categoryName)}
@@ -1063,7 +949,7 @@ function ListDetailInner({
             }
             if (listPatch && listTarget) {
               try {
-                await updateMut.mutateAsync({ itemId: listTarget.id, patch: listPatch })
+                await updateItem.mutateAsync({ itemId: listTarget.id, patch: listPatch })
               } catch {
                 setDialog({
                   ...dialog,
@@ -1079,7 +965,7 @@ function ListDetailInner({
             editDialogListItem
               ? () => {
                   setDialog(null)
-                  deleteMut.mutate(editDialogListItem.id)
+                  deleteItem.mutate(editDialogListItem.id)
                 }
               : undefined
           }
