@@ -80,6 +80,7 @@ export {
   fetchAllUserListItems,
   fetchSharedListItems,
   addGearItemToList,
+  addGearItemWithListItem,
   updateListItem,
   deleteListItem,
   reorderListItems,
@@ -88,7 +89,7 @@ export {
   importListFromCsv,
   nextListItemSortOrder,
 } from './list-items'
-export type { ListItemPatch } from './list-items'
+export type { ListItemPatch, AddGearItemWithListItemParams } from './list-items'
 export {
   GEAR_ITEM_CAP,
   LIST_ITEM_CAP,

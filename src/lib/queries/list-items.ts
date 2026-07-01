@@ -271,6 +271,47 @@ export async function addGearItemToList(
   return data
 }
 
+export type AddGearItemWithListItemParams = {
+  userId: string
+  name: string
+  description: string | null
+  weightGrams: number
+  categoryId: string | null
+  gearSortOrder: number
+  listId: string
+  listItemSortOrder: number
+  quantity: number
+  isWorn: boolean
+  isConsumable: boolean
+}
+
+// Quick Add: create a gear_item and a list_item together in one atomic RPC
+// (add_gear_item_with_list_item). SECURITY INVOKER as of migration
+// 20260514202025_reduce_security_definer; ownership is enforced by the inline
+// auth.uid() check on p_user_id plus RLS on gear_items/list_items under the
+// invoker. cost/purchase_date are fixed at null by the RPC (Quick Add is a
+// reduced field set - full inventory details live in GearItemDialog). The RPC
+// return value (gear_item_id, list_item_id) is unused; callers invalidate the
+// gear + list-items caches to pick up both new rows.
+export async function addGearItemWithListItem(
+  params: AddGearItemWithListItemParams,
+): Promise<void> {
+  const { error } = await supabase.rpc('add_gear_item_with_list_item', {
+    p_user_id: params.userId,
+    p_name: params.name,
+    p_description: params.description,
+    p_weight_grams: params.weightGrams,
+    p_category_id: params.categoryId,
+    p_gear_sort_order: params.gearSortOrder,
+    p_list_id: params.listId,
+    p_list_item_sort_order: params.listItemSortOrder,
+    p_quantity: params.quantity,
+    p_is_worn: params.isWorn,
+    p_is_consumable: params.isConsumable,
+  })
+  if (error) throw error
+}
+
 export type ListItemPatch = Partial<
   Pick<ListItem, 'quantity' | 'is_worn' | 'is_consumable' | 'is_packed' | 'is_ready'>
 >
