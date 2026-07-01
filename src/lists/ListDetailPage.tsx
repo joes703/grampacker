@@ -26,18 +26,13 @@ import {
   fetchListItems,
   fetchGearItems,
   fetchCategories,
-  createCategory,
-  nextCategorySortOrder,
   updateList,
   reorderListItems,
-  updateGearItem,
-  deleteGearItem,
   makeOptimisticReorder,
-  makeOptimisticInsert,
   makeOptimisticUpdate,
   type ListItemPatch,
 } from '../lib/queries'
-import type { Category, GearItem, ListItemWithGear, List } from '../lib/types'
+import type { GearItem, ListItemWithGear, List } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useLatestRef } from '../lib/use-latest-ref'
@@ -48,16 +43,10 @@ import {
   getListIdFromListPath,
 } from '../lib/last-list-path'
 import { parseDnDId } from '../lib/dnd-ids'
-import { showToast } from '../lib/toast'
 import { assignSortOrderSlots } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
 import { computeWeightBreakdown, withProjectedFood } from '../lib/weight-breakdown'
-import {
-  makeOptimisticGearItemDelete,
-  makeOptimisticGearItemUpdate,
-} from '../lib/queries/gear-list-items-fan-out'
-import { randomTempId } from '../lib/random-temp-id'
 import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
@@ -72,6 +61,7 @@ import FoodProjectionSection from './FoodProjectionSection'
 import { useFoodProjection } from './useFoodProjection'
 import { useListResetActions } from './use-list-reset-actions'
 import { useListItemActions } from './use-list-item-actions'
+import { useListGearActions } from './use-list-gear-actions'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
 import CategoryGroup from './CategoryGroup'
@@ -277,21 +267,15 @@ function ListDetailInner({
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
-  const addCategoryMut = useMutation({
-    mutationFn: (name: string) => createCategory(userId, name, nextCategorySortOrder(categories)),
-    ...makeOptimisticInsert<Category, string>({
-      qc,
-      queryKey: queryKeys.categories(),
-      optimistic: (name) => ({
-        id: `temp-${randomTempId()}`,
-        user_id: userId,
-        name,
-        sort_order: nextCategorySortOrder(categories),
-        is_default: false,
-        created_at: new Date().toISOString(),
-      }),
-    }),
-  })
+  // Gear/category inventory writes reachable from this list (edit gear, delete
+  // gear from inventory, create a category from the edit-gear dialog) live in a
+  // dedicated hook; it owns the F1 gear-specific fan-out wiring across the
+  // ['gear-items'] + every ['list-items', *] cache, the delete-gear error toast,
+  // and the category optimistic insert. The page keeps the raw mutations' stable
+  // `.mutate` reads (sharedGroupProps.onSaveGear*/onSetGearStatus), the edit-gear
+  // dialog's sequential gear-then-list save orchestration + saveError state, and
+  // the delete-gear confirm + returnDialog restore.
+  const { updateGearItem, deleteGearItem, addCategory } = useListGearActions(userId, categories)
 
   // List-item write actions (add existing gear / update fields / delete / Quick
   // Add new gear+item) live in a dedicated hook; it owns the optimistic
@@ -339,30 +323,6 @@ function ListDetailInner({
       id: () => listId,
       apply: (item) => ({ ...item, ready_checks_enabled: !item.ready_checks_enabled }),
     }),
-  })
-
-  // Editing gear from a list writes to gear_items so the change propagates to
-  // the gear library and every list that embeds the same gear. The helper owns
-  // both cache surfaces, including rollback and narrow invalidation.
-  const gearUpdateHelper = makeOptimisticGearItemUpdate(qc)
-  const updateGearItemMut = useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateGearItem>[1] }) =>
-      updateGearItem(id, patch),
-    ...gearUpdateHelper,
-  })
-
-  // Delete a gear item entirely (gear library and every list that uses it).
-  // The DB cascades list_items rows; the helper mirrors that immediately in
-  // every affected list-items cache and rolls both surfaces back together.
-  const deleteHelper = makeOptimisticGearItemDelete(qc)
-  const deleteGearItemMut = useMutation({
-    mutationFn: deleteGearItem,
-    onMutate: deleteHelper.onMutate,
-    onError: (err, vars, ctx) => {
-      deleteHelper.onError(err, vars, ctx)
-      showToast("Couldn't delete that item. Please try again.", { type: 'error' })
-    },
-    onSettled: deleteHelper.onSettled,
   })
 
   // Guards against the inline Quick Add row firing twice when the user
@@ -570,11 +530,11 @@ function ListDetailInner({
       onUpdate: (itemId: string, patch: ListItemPatch) => updateItem.mutate({ itemId, patch }),
       onDelete: (itemId: string) => deleteItem.mutate(itemId),
       onSaveGearName: (gearId: string, n: string) =>
-        updateGearItemMut.mutate({ id: gearId, patch: { name: n } }),
+        updateGearItem.mutate({ id: gearId, patch: { name: n } }),
       onSaveGearDescription: (gearId: string, d: string) =>
-        updateGearItemMut.mutate({ id: gearId, patch: { description: d } }),
+        updateGearItem.mutate({ id: gearId, patch: { description: d } }),
       onSaveGearWeight: (gearId: string, w: number) =>
-        updateGearItemMut.mutate({ id: gearId, patch: { weight_grams: w } }),
+        updateGearItem.mutate({ id: gearId, patch: { weight_grams: w } }),
       onEditGearItem: (gearId: string) => {
         const g = gearItemsRef.current.find((x) => x.id === gearId)
         const li = listItemsRef.current.find((l) => l.gear_item.id === gearId)
@@ -584,11 +544,11 @@ function ListDetailInner({
         const g = gearItemsRef.current.find((x) => x.id === gearId)
         if (g) setDialog({ type: 'delete-gear', candidate: g })
       },
-      // Quick status — same updateGearItemMut path the dialog uses, so the
+      // Quick status - same updateGearItem path the dialog uses, so the
       // existing list-items fan-out (gear_item.status is in the embedded
       // projection) keeps open list views consistent.
       onSetGearStatus: (gearId: string, status: GearItem['status']) =>
-        updateGearItemMut.mutate({ id: gearId, patch: { status } }),
+        updateGearItem.mutate({ id: gearId, patch: { status } }),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above re: mutation refs
     [mode, list?.ready_checks_enabled, weightUnit, isBelowLg, showUnpackedOnly],
@@ -915,7 +875,7 @@ function ListDetailInner({
           but the list_item is unchanged — surfaced via dialog.saveError so
           the user can retry (PATCH is idempotent on the gear side) or
           close to keep the partial result intentionally.
-          updateGearItemMut already invalidates ['list-items'] (broad) so
+          updateGearItem already invalidates ['list-items'] (broad) so
           other lists pick up the change. */}
       {dialog?.type === 'edit-gear' && (
         <GearItemDialog
@@ -931,10 +891,10 @@ function ListDetailInner({
                 }
               : undefined
           }
-          saving={updateGearItemMut.isPending || updateItem.isPending}
+          saving={updateGearItem.isPending || updateItem.isPending}
           saveError={dialog.saveError}
           onClose={() => setDialog(null)}
-          onCreateCategory={(categoryName) => addCategoryMut.mutateAsync(categoryName)}
+          onCreateCategory={(categoryName) => addCategory.mutateAsync(categoryName)}
           onSave={async (gearPatch, listPatch) => {
             const gearTarget = dialog.gear
             const listTarget = dialog.listItem
@@ -942,7 +902,7 @@ function ListDetailInner({
             // Spread the variant so we keep the targets while clearing saveError.
             setDialog({ ...dialog, saveError: null })
             try {
-              await updateGearItemMut.mutateAsync({ id: gearTarget.id, patch: gearPatch })
+              await updateGearItem.mutateAsync({ id: gearTarget.id, patch: gearPatch })
             } catch {
               setDialog({ ...dialog, saveError: "Couldn't save gear changes. No changes were applied." })
               return
@@ -997,7 +957,7 @@ function ListDetailInner({
           onConfirm={() => {
             const target = dialog.candidate
             setDialog(null)
-            deleteGearItemMut.mutate(target.id)
+            deleteGearItem.mutate(target.id)
           }}
         />
       )}
