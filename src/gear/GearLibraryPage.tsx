@@ -29,8 +29,6 @@ import {
   fetchLists,
   fetchListCount,
   reorderCategories,
-  bulkDeleteGearItems,
-  bulkMoveToCategoryGearItems,
   reorderGearItems,
   createListFromSelection,
   nextListSortOrder,
@@ -47,7 +45,6 @@ import { useToggleSet } from '../lib/use-toggle-set'
 import { groupGearItemsByCategory, assignSortOrderSlots } from '../lib/grouping'
 import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
-import { showToast } from '../lib/toast'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
 import GearItemRow from './GearItemRow'
 import GearItemDialog from '../components/gear/GearItemDialog'
@@ -61,12 +58,9 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import { useDocumentTitle } from '../lib/use-document-title'
-import {
-  makeOptimisticGearItemsBulkCategoryMove,
-  makeOptimisticGearItemsBulkDelete,
-} from '../lib/queries/gear-list-items-fan-out'
 import { useGearItemActions } from './use-gear-item-actions'
 import { useGearCategoryActions } from './use-gear-category-actions'
+import { useGearBulkActions } from './use-gear-bulk-actions'
 
 type DialogState =
   | { type: 'create-item'; categoryId?: string | null }
@@ -195,30 +189,12 @@ export default function GearLibraryPage() {
   // the add/edit/delete dialogs close at the mutate call site.
   const { addItem, editItem, removeItem } = useGearItemActions(userId, allItems)
 
-  const bulkDeleteHelper = makeOptimisticGearItemsBulkDelete(qc)
-  const bulkDelete = useMutation({
-    mutationFn: bulkDeleteGearItems,
-    onMutate: bulkDeleteHelper.onMutate,
-    onError: (err, vars, ctx) => {
-      bulkDeleteHelper.onError(err, vars, ctx)
-      showToast("Couldn't delete the selected items. Please try again.", { type: 'error' })
-    },
-    onSuccess: () => exitSelectMode(),
-    onSettled: bulkDeleteHelper.onSettled,
-  })
-
-  const bulkMoveHelper = makeOptimisticGearItemsBulkCategoryMove(qc)
-  const bulkMove = useMutation({
-    mutationFn: ({ ids, categoryId }: { ids: string[]; categoryId: string | null }) =>
-      bulkMoveToCategoryGearItems(ids, categoryId),
-    onMutate: bulkMoveHelper.onMutate,
-    onError: (err, vars, ctx) => {
-      bulkMoveHelper.onError(err, vars, ctx)
-      showToast("Couldn't move the selected items. Please try again.", { type: 'error' })
-    },
-    onSuccess: () => exitSelectMode(),
-    onSettled: bulkMoveHelper.onSettled,
-  })
+  // Bulk gear write actions (delete selected / move selected to a category) live
+  // in a dedicated hook; it owns the gear-specific bulk fan-out lifecycle and the
+  // failure toast. The page keeps selection UI state (selectMode / selectedIds /
+  // exitSelectMode); select mode is exited on success at the mutate call site,
+  // alongside the dialog close, so the hook never touches selection state.
+  const { bulkDelete, bulkMove } = useGearBulkActions()
 
   const createListFromSelectionMut = useMutation({
     mutationFn: async ({ name, description, ids }: { name: string; description: string | null; ids: string[] }) => {
@@ -598,7 +574,7 @@ export default function GearLibraryPage() {
           onDeselectAll={clearSelected}
           onCreateList={() => setDialog({ type: 'create-list-from-selection' })}
           onMoveToCategory={() => setDialog({ type: 'bulk-move' })}
-          onDelete={() => bulkDelete.mutate(Array.from(selectedIds))}
+          onDelete={() => bulkDelete.mutate(Array.from(selectedIds), { onSuccess: exitSelectMode })}
         />
       )}
 
@@ -756,7 +732,10 @@ export default function GearLibraryPage() {
           count={selectedIds.size}
           onMove={(categoryId) =>
             bulkMove.mutate({ ids: Array.from(selectedIds), categoryId }, {
-              onSuccess: () => setDialog(null),
+              onSuccess: () => {
+                exitSelectMode()
+                setDialog(null)
+              },
             })
           }
           onClose={() => setDialog(null)}
