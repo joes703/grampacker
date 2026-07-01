@@ -33,8 +33,6 @@ import {
   addGearItemToList,
   updateListItem,
   deleteListItem,
-  resetPackedForList,
-  resetReadyForList,
   updateList,
   reorderListItems,
   updateGearItem,
@@ -79,6 +77,7 @@ import PrintListHeader from './PrintListHeader'
 import PackingProgress from './PackingProgress'
 import FoodProjectionSection from './FoodProjectionSection'
 import { useFoodProjection } from './useFoodProjection'
+import { useListResetActions } from './use-list-reset-actions'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
 import CategoryGroup from './CategoryGroup'
@@ -551,69 +550,13 @@ function ListDetailInner({
     reorderItemsMut.mutate(assignSortOrderSlots(reordered))
   }
 
-  // Field-scoped snapshot + rollback. resetPacked and resetReady are
-  // genuinely independent (different fields, different RPCs), so they
-  // must be safe to interleave. The earlier whole-row `previous`
-  // snapshot wasn't: a rollback restored every field on the row, so a
-  // failing reset would stomp the other reset's optimistic clear (or
-  // its already-server-committed clear before invalidate refetched).
-  //
-  // The fix: each reset only snapshots the ids whose own field was
-  // true at the moment of clear, and on failure flips ONLY that field
-  // back. The other reset's writes pass through untouched. No mutex
-  // needed; the operations compose.
-  async function resetPacked() {
-    // Optimistic clear — flip is_packed=false on every cached item so the UI
-    // updates immediately, then issue a single PATCH and invalidate to settle.
-    await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
-    const snapshot = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
-    const wasPackedIds = snapshot
-      ? new Set(snapshot.filter((i) => i.is_packed).map((i) => i.id))
-      : new Set<string>()
-    qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-      curr ? curr.map((i) => (i.is_packed ? { ...i, is_packed: false } : i)) : curr,
-    )
-    try {
-      await resetPackedForList(listId)
-    } catch {
-      // Restore only is_packed=true on the ids we cleared. Any concurrent
-      // resetReady write on those same rows survives because we never
-      // touch is_ready here.
-      qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-        curr ? curr.map((i) => (wasPackedIds.has(i.id) ? { ...i, is_packed: true } : i)) : curr,
-      )
-      // Non-optimistic action: surface the failure and CONSUME it. onReset() is
-      // called fire-and-forget from PackingProgress (() => void), so rethrowing
-      // would be an unhandled rejection.
-      showToast("Couldn't reset packed items. Please try again.", { type: 'error' })
-    } finally {
-      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
-    }
-    await foodProjection.resetPackedFoods()
-  }
-
-  // Mirror of resetPacked for Ready Checks. Reset Ready and Reset Packed
-  // are independent: clearing one MUST NOT clear the other on the cache.
-  async function resetReady() {
-    await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
-    const snapshot = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
-    const wasReadyIds = snapshot
-      ? new Set(snapshot.filter((i) => i.is_ready).map((i) => i.id))
-      : new Set<string>()
-    qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-      curr ? curr.map((i) => (i.is_ready ? { ...i, is_ready: false } : i)) : curr,
-    )
-    try {
-      await resetReadyForList(listId)
-    } catch {
-      qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-        curr ? curr.map((i) => (wasReadyIds.has(i.id) ? { ...i, is_ready: true } : i)) : curr,
-      )
-      showToast("Couldn't reset ready checks. Please try again.", { type: 'error' })
-    } finally {
-      qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
-    }
-  }
+  // Pack/Ready reset actions live in a dedicated hook; it owns the field-scoped
+  // cancel/snapshot/optimistic-clear/rollback/invalidate lifecycle on the
+  // ['list-items', listId] cache (resetPacked and resetReady each restore only
+  // their own field on failure, so they compose), the failure toasts, and the
+  // food-projection packed reset. The page keeps the PackingProgress wiring, the
+  // per-item toggles, and the ready-checks-enabled toggle.
+  const { resetPacked, resetReady } = useListResetActions(listId, foodProjection.resetPackedFoods)
 
 
   // ── Derived data ───────────────────────────────────────────────────────────
