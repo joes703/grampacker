@@ -31,11 +31,13 @@ import { type AddItemData } from './use-quick-add-form'
 // mutation wrapper is fresh each render but `.mutate` is stable. Do NOT wrap
 // these in callbacks here; that would defeat the memo boundary.
 //
-// `updateItem` keeps the sibling-in-flight invalidation gate verbatim: two
-// parallel updates (e.g. tapping Packed then Ready quickly) each carry their own
-// PATCH; letting the first to settle invalidate would race the second and
-// overwrite its optimistic value with stale server data. The gate defers the
-// refetch to the LAST-settled call (when no sibling update is still pending).
+// `updateItem` keeps the sibling-in-flight invalidation gate: two parallel
+// updates (e.g. tapping Packed then Ready quickly) each carry their own PATCH;
+// letting an early settle invalidate would race a sibling write and overwrite
+// its optimistic value with stale server data. In TanStack Query v5, onSettled
+// runs before the settling mutation leaves the pending set, so this guard also
+// skips the settling mutation itself. These small field patches rely on the
+// optimistic cache update instead of a post-settle refetch.
 //
 // The page keeps: the addingNewItemRef double-fire guard (a UI/event concern),
 // dialog orchestration, DnD/reorder, gear/category/notes/ready-checks mutations,
@@ -109,9 +111,9 @@ export function useListItemActions(
       updateListItem(itemId, patch),
     ...updateMutOptimistic,
     onSettled: () => {
-      // qc.isMutating excludes mutations that have already entered settled
-      // state (success/error) by the time their own onSettled runs, so a
-      // non-zero count means at least one sibling is still pending.
+      // onSettled runs while this mutation is still counted as pending, so this
+      // guard skips both sibling-in-flight refetches and the settling mutation's
+      // own refetch.
       if (qc.isMutating({ mutationKey: updateMutKey }) > 0) return
       qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
     },
