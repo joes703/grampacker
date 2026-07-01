@@ -84,14 +84,15 @@ export function useListItemActions(
     }),
   })
 
-  // mutationKey is used by the onSettled override below to detect sibling
-  // updates still in flight. Two parallel updateItem calls (e.g. tapping
-  // Packed then Ready in quick succession) each carry their own PATCH; the
-  // first to settle fires invalidateQueries, which races the second PATCH
-  // and can overwrite its optimistic value with stale server data. Gating
-  // the invalidate on "no other update-list-item mutations are pending"
-  // makes only the LAST settled call refetch - by then both server writes
-  // are durable.
+  // mutationKey is used by the onSettled override below to avoid refetching
+  // while updateItem mutations are settling. Two parallel updateItem calls
+  // (e.g. tapping Packed then Ready in quick succession) each carry their own
+  // PATCH; an early invalidate can race a sibling write and overwrite its
+  // optimistic value with stale server data. In TanStack Query v5, onSettled
+  // runs before the settling mutation leaves the pending set, so this guard
+  // also skips the settling mutation itself. Net effect: these small field
+  // patches rely on the optimistic cache update instead of a post-settle
+  // refetch, which is the behavior covered by the hook test.
   const updateMutKey = ['update-list-item', listId] as const
   const updateMutOptimistic = makeOptimisticUpdate<
     ListItemWithGear,
