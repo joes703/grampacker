@@ -1,7 +1,6 @@
 // Canonical "Wind River high route" sample Food plan for the in-app "Load sample
-// plan" onboarding helper. The dataset is a faithful port of the Claude Design
-// study fixture (docs/design/Grampacker Food Planning/fp/data.jsx) and mirrors
-// scripts/food-design-sample-data.mjs row-for-row - a parity test
+// plan" onboarding helper. The dataset is a faithful port of the approved
+// Claude Design study fixture and mirrors scripts/food-design-sample-data.mjs row-for-row - a parity test
 // (scripts/sample-plan-parity.test.mjs) fails if the two drift. null = genuinely
 // unknown (NEVER stored as 0); 0 = a measured zero (e.g. olive oil sodium).
 //

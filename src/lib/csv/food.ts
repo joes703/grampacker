@@ -56,9 +56,8 @@ export function foodItemsToCsv(items: FoodItem[]): string {
   return toCsv(rows)
 }
 
-// Realistic sample library ported from the Claude Design food study
-// (docs/design/Grampacker Food Planning/fp/data.jsx): one 7-day backpacking
-// trip's worth of foods. Deliberately mixes packaged foods, by-weight foods
+// Realistic sample library ported from the approved Claude Design food study:
+// one 7-day backpacking trip's worth of foods. Deliberately mixes packaged foods, by-weight foods
 // (no servings_per_package), foods with genuinely-unknown macros (null, NEVER
 // 0 - e.g. instant coffee), and real zeros (olive oil sodium). Expanded from a
 // 5-item placeholder so the sample doubles as useful smoke-test data for the

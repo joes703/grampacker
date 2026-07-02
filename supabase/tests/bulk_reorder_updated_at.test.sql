@@ -14,7 +14,7 @@
 -- Why this lives in pgTAP: the contract previously had coverage ONLY in the
 -- env-gated Vitest integration file (src/lib/queries.bulk-reorder.test.ts,
 -- `describe.skip` unless TEST_USER_* is set), which runs in no CI loop. This
--- suite is its CI home (DB Tests). See docs/testing/2026-06-27-test-suite-audit.md.
+-- suite is its CI home (DB Tests).
 --
 -- Determinism: now() is constant within a transaction, so a "bump" would set
 -- updated_at to the same instant an INSERT default would, making preserve and

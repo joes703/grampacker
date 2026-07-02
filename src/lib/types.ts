@@ -136,9 +136,8 @@ export type FoodItem = {
 // Narrow read shape for the packing projection (/lists/:id). That projection
 // computes packed weight + effective servings only - it never reads the
 // nutrient columns - so it fetches 6 columns instead of all 18.
-// calories_per_serving is not read today; it is included for parity with the
-// audit's column set and to give a future projection-pack calorie line headroom
-// without a new shape. See docs/performance-review-2026-06-16.md P2.
+// calories_per_serving is not read today; it is included so a future
+// projection-pack calorie line can land without splitting this shape again.
 export type FoodItemLite = Pick<
   FoodItem,
   | 'id'
