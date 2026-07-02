@@ -284,7 +284,8 @@ function ListDetailInner({
   // stable handler/memo layer that reads these raw mutations' `.mutate` through
   // the live binding (onLibraryAdd/onLibraryRemove/onAddNewItem, sharedGroupProps),
   // the addingNewItemRef double-fire guard, DnD/reorder, dialog orchestration,
-  // and the gear/category/notes/ready-checks mutations.
+  // and the inline notes/ready-checks list-field mutations. (Gear/category
+  // writes now live in useListGearActions, above.)
   const { addItem, updateItem, deleteItem, addNewItem } = useListItemActions(listId, userId, {
     listItems,
     gearItems,
