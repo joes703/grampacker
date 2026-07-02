@@ -1,7 +1,7 @@
 // Canonical "Wind River high route" sample dataset for the Food Plan smoke-test
-// seed. A faithful ASCII port of the Claude Design study fixture at
-// `docs/design/Grampacker Food Planning/fp/data.jsx` (em dashes -> " - ", curly
-// quotes -> straight, multiplication signs -> x). This module is PURE DATA only:
+// seed. A faithful ASCII port of the approved Claude Design study fixture
+// (em dashes -> " - ", curly quotes -> straight, multiplication signs -> x).
+// This module is PURE DATA only:
 // the prototype's field names (cal/perPkg/servingWeightG/serving/basis 'serving'
 // |'package'|'weight') are preserved here and translated to production DB columns
 // by `food-design-sample-map.mjs`. null = genuinely unknown (NEVER stored as 0);

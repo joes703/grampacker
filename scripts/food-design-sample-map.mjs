@@ -9,9 +9,9 @@
 // 'protein','fat_pct','sugar_pct','carb_protein_ratio'); both target tables use
 // mode IN ('range','min','max','off') with target_min/target_max.
 
-// Grams per ounce. Mirrors OZ in `docs/design/.../fp/data.jsx` and the canonical
-// conversion behind `inputToKcalPerGram` in src/food/nutrition-format.ts. Kept
-// inline because this .mjs script cannot import the TS app module at runtime.
+// Grams per ounce. Mirrors the sample dataset and the canonical conversion
+// behind `inputToKcalPerGram` in src/food/nutrition-format.ts. Kept inline
+// because this .mjs script cannot import the TS app module at runtime.
 const OZ = 28.3495
 
 const emptyToNull = (s) => (s == null || s === '' ? null : s)
