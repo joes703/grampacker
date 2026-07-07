@@ -45,7 +45,7 @@ Portability rules (enforced by convention + review):
 |---|---|---|
 | hono | 4.12.28 | router/middleware; no v5 exists |
 | @hono/node-server | 2.0.8 | Node target adapter |
-| drizzle-orm / drizzle-kit | 1.0.0-rc.4 (`@rc`) | DELIBERATE RC: stable is 0.45.x, 1.0 has breaking changes; starting on 0.x means migrating a month in. Zero users makes RC churn acceptable. |
+| drizzle-orm / drizzle-kit | 0.45.2 (orm) / 0.31.10 (kit) | Reversed same day: better-auth peers on `^0.45.2` and its adapter uses Drizzle 0.x internals. Upgrade trigger is better-auth's peer range admitting Drizzle 1.x. |
 | better-auth | 1.6.23 | email/password, sessions, passkey plugin; 1.7 is a minor |
 | wrangler | 4.107.0 | dev + deploy |
 | vite | 8.1.3 | Rolldown era |
@@ -60,7 +60,7 @@ Portability rules (enforced by convention + review):
 | @dnd-kit/core 6.3.1 + sortable 10 + utilities 3 | transplant as-is | @dnd-kit/react is still 0.5.x; existing deferral stands |
 | better-sqlite3 or node:sqlite | decide at Node-target time | not needed day one; drizzle 1.0 is growing node:sqlite support |
 
-Known pothole: better-auth's CLI schema generator has an open interop issue with Drizzle 1.x output (better-auth#10317). Mitigation: hand-write the better-auth tables in our Drizzle schema (preferable anyway for migration hygiene).
+Known pothole resolved by the Drizzle downgrade: better-auth's CLI schema generator had an open interop issue with Drizzle 1.x output (better-auth#10317), but works cleanly against Drizzle 0.45 (proven in PR #5). Hand-writing the auth tables was not needed.
 
 ## 5. What transplants vs what is written fresh
 
@@ -82,7 +82,7 @@ Principle (strengthened per external review, 2026-07-07): authorization must be 
 - Boundary by construction: handlers receive an authenticated context exposing only user-scoped repositories (`repos.forUser(session.userId)`). The DB factory and schema are importable only by the repository layer (ESLint import boundary, not just review discipline).
 - Route authorization matrix: every route documents resource, auth mode (session / fresh-session / anon), ownership path (direct user_id or via parent), allowed methods, and returned DTO. The matrix DRIVES the test suite (section 7).
 - Child-resource ownership: scoped repositories filter by user_id on every table (all child tables carry user_id today; that ports), and parent-path consistency (this item belongs to THIS list) is validated in the repository. Composite same-owner FKs port to SQLite as the structural backstop against cross-owner stitching (ADR 12 continuity).
-- Sessions: better-auth cookie sessions - httpOnly, Secure, SameSite=Strict, session rotation on privilege changes, revocation on password change. Removes the current localStorage-token exposure. Bearer tokens are out of scope until a CLI/API consumer exists.
+- Sessions: better-auth cookie sessions - httpOnly, Secure, SameSite=Strict, session rotation on privilege changes, revocation on password change. Long-lived sliding expiry (30 days, refreshed on activity) - deliberate convenience call for low-sensitivity data (decision 13.2). Removes the current localStorage-token exposure. Bearer tokens are out of scope until a CLI/API consumer exists.
 - CSRF, explicitly: same-origin only (no CORS headers at all), SameSite=Strict, strict Origin check on every unsafe method, PLUS a required custom request header on unsafe `/api/*` calls as belt-and-braces.
 - XSS is still load-bearing: httpOnly cookies stop token theft, not same-origin actions performed by injected script. The existing discipline carries verbatim: CSP, react-markdown with no raw HTML, no dangerouslySetInnerHTML, no eval.
 - Security response headers: the SET ports from today's `public/_headers` (CSP, X-Content-Type-Options, X-Frame-Options + frame-ancestors 'none', Referrer-Policy, Permissions-Policy, HSTS, COOP), but the OWNER changes - that file is a Pages convention and dies with Pages. One shared header map applied by the Worker to both the SPA shell and `/api/*` responses; an integration test asserts the set on an HTML route AND an API route so it cannot silently drop. The CSP gets simpler: connect-src loses the two Supabase origins (API is same-origin now); script-src keeps the Cloudflare insights beacon only if Web Analytics stays. Framing stays denied everywhere including the share page (that is today's behavior; revisit deliberately if embedding is ever wanted).
@@ -92,8 +92,8 @@ Principle (strengthened per external review, 2026-07-07): authorization must be 
 - Things Supabase silently provided that we now own: verification/reset token generation (better-auth), account-enumeration posture (keep current documented trade-offs), password hashing params, the above rate limiting.
 - Passkeys: rpId stays `grampacker.app`. No credential migration needed (no users); owner re-registers.
 - Caps and DB backstops: friendly client-side checks (existing) + authoritative repository checks + SQLite constraints (FKs incl. composite, UNIQUEs, CHECKs: worn_xor_consumable, lengths, weights) + cap triggers where cheap. App-layer checks give friendly errors; constraints catch programmer mistakes.
-- Secrets: only the better-auth secret, as a Worker secret / env var. Nothing in the client bundle. Auth email (verification/reset) goes through Cloudflare Email Service's `send_email` binding - no API key exists at all. Email sits behind an `EmailSender` interface (portability rule 3, same as the DB factory): the Node target uses the service's REST API or a swapped Resend/SMTP implementation.
-- External checklist: SECURITY.md is written against MDN's web security docs (https://developer.mozilla.org/en-US/docs/Web/Security - attacks / defenses / practical implementation guides) at phase 1, and re-swept before the public share ships (phase 4). Topic-level gap check done 2026-07-07: this section already covered the app-shaped topics (CSRF, IDOR, XSS, cookies, CORS posture, input validation, supply chain); the two deltas it surfaced were header ownership (bullet above) and the phase-7 DNS cleanup. Not applicable by construction, recorded so we do not re-litigate: SSRF (no user-controlled outbound URLs; auth email leaves via the send_email binding, not HTTP), SRI (all assets same-origin + content-hashed by Vite), mixed content (HTTPS-only + HSTS), local network access, user activation.
+- Secrets: better-auth secret + Resend API key, as Worker secrets / env vars. Nothing in the client bundle. Auth email (verification/reset) goes to arbitrary signup addresses, so the transport is Resend's free tier (3,000/month, 100/day, verified 2026-07-07) behind an `EmailSender` interface (portability rule 3, same as the DB factory) - any HTTP-API provider is a one-file swap. Cloudflare Email Service was adopted and un-adopted the same day (decisions 13.1/13.2): its free path only covers verified destination addresses, which public signup breaks.
+- External checklist: SECURITY.md is written against MDN's web security docs (https://developer.mozilla.org/en-US/docs/Web/Security - attacks / defenses / practical implementation guides) at phase 1, and re-swept before the public share ships (phase 4). Topic-level gap check done 2026-07-07: this section already covered the app-shaped topics (CSRF, IDOR, XSS, cookies, CORS posture, input validation, supply chain); the two deltas it surfaced were header ownership (bullet above) and the phase-7 DNS cleanup. Not applicable by construction, recorded so we do not re-litigate: SSRF (the server's only outbound HTTP is Resend's fixed API endpoint; no user-controlled URLs), SRI (all assets same-origin + content-hashed by Vite), mixed content (HTTPS-only + HSTS), local network access, user activation.
 
 ## 7. Testing strategy
 
@@ -138,13 +138,12 @@ Docs-as-we-go: STACK.md at phase 0; SECURITY.md during phase 1; SPEC.md annotati
 
 | Risk | Mitigation |
 |---|---|
-| Drizzle rc.4 churn before GA | zero users; pin exact rc, upgrade deliberately; schema is small |
-| better-auth CLI x Drizzle 1.x interop | hand-write auth tables in our schema |
+| Drizzle 0.x -> 1.x migration later | small schema, better-auth will cross first; upgrade when its peer range admits 1.x |
 | D1 batch-only transactions | portability rule 1 (plan-then-atomic-apply); atomicity tests |
 | Workers CPU limits | CSV parsing stays client-side; server handles only structured writes |
 | Session/CSRF mistakes (new territory) | SECURITY.md before code; better-auth defaults; integration tests per route class |
 | better-auth acquired by Vercel (announced 2026-07-07) | Net positive for framework longevity (monetization pressure removed, Auth.js consolidated, bigger team; MIT + in-process + auth tables in OUR schema = no hosted dependency, fork is the floor). Watch item: Vercel/Cloudflare rivalry could slow Workers-runtime attention; mitigated by pinned versions + Workers-pool integration tests gating every upgrade. |
-| Cloudflare Email Sending is beta | Only auth email depends on it, sent exclusively to verified destination addresses (free on all plans, no quota; the verification step doubles as the invite gate for a gated-registration app). EmailSender interface makes Resend/SMTP a one-file swap if the beta shifts terms. |
+| Public signup = abuse surface (bot accounts, verification-email bombing) | DB-backed rate limiting on signup/auth routes from day one (per-IP and per-email); email verification required before sign-in, so unverified accounts are inert; Resend's 100/day cap bounds the email blast radius; Turnstile is PARKED with a trigger (add on first observed abuse). |
 | Scope creep | PARKED.md + parity-first rule |
 | Food-planning port size | it is phase 5, after the pattern is proven on three simpler surfaces |
 
@@ -160,4 +159,8 @@ Docs-as-we-go: STACK.md at phase 0; SECURITY.md during phase 1; SPEC.md annotati
 
 ## 13. Later decisions
 
-1. (2026-07-07) Auth email: Cloudflare Email Service instead of Resend. Rationale: sends to verified destination addresses are free on ALL plans with no quota, and grampacker's only recipients are its account holders - verifying each account email doubles as the invite gate. The `send_email` Workers binding needs no API key (secret count drops to one); a REST API keeps the Node target viable. Beta status is accepted because the blast radius is one recoverable email type and the `EmailSender` interface makes Resend/SMTP a one-file swap (risk table). Vendor surface shrinks to Cloudflare + GitHub.
+1. (2026-07-07) Auth email: Cloudflare Email Service instead of Resend. Rationale: sends to verified destination addresses are free on ALL plans with no quota, and grampacker's only recipients are its account holders - verifying each account email doubles as the invite gate. The `send_email` Workers binding needs no API key (secret count drops to one); a REST API keeps the Node target viable. Beta status is accepted because the blast radius is one recoverable email type and the `EmailSender` interface makes Resend/SMTP a one-file swap (risk table). Vendor surface shrinks to Cloudflare + GitHub. **AMENDED same day by decision 2.**
+2. (2026-07-07, amends decision 1) Registration is PUBLIC - product call, not a security compromise. That kills Cloudflare Email's free path (verified destinations only; arbitrary recipients require Workers Paid at $5/mo), and cost-zero wins: auth email is Resend's free tier (3,000/month, 100/day, 1 custom domain - verified current 2026-07-07) behind the unchanged `EmailSender` interface. Decision 1's invite-gate pairing is void; signup protection is rate limiting + required email verification instead (risk table). Re-adopt Cloudflare Email only if the account is ever on Workers Paid anyway.
+3. (2026-07-07) Login methods: email/password + passkeys. No email OTP / magic links - passkeys are the passwordless path, and magic links add email abuse surface for no capability passkeys do not cover. Social login: Google parked (config-level later add if a reason appears); Apple rejected while cost-zero holds (requires the $99/year Apple Developer Program). Dev-time passkeys on workers.dev are throwaways - rpId becomes grampacker.app at cutover and the owner re-registers (same posture as the old app's preview limitation).
+4. (2026-07-07) Sessions: 30-day sliding expiry, generous on purpose - no sensitive data, favor convenience. Auth tables: better-auth CLI generation worked cleanly after the Drizzle downgrade; hand-writing was not needed.
+5. (2026-07-07) Drizzle RC reversed to 0.45.2 stable after better-auth's peer range and shipped adapter rejected 1.0-rc; evidence in PR #5 commit 1 and STACK.md.
