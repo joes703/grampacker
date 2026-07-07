@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "grampacker",
+  "main": "./server/index.ts",
+  "compatibility_date": "2026-07-07",
+  "assets": {
+    // Non-API requests are served from the built SPA; unknown paths fall
+    // back to index.html so client-side routing works on deep links.
+    "not_found_handling": "single-page-application",
+    // /api/* always reaches the Worker, even if a static file shadows it.
+    "run_worker_first": ["/api/*"],
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "grampacker",
+      // Placeholder: local dev (Miniflare) provisions a local SQLite from
+      // this binding without contacting Cloudflare. Replace with the real id
+      // from `wrangler d1 create grampacker` before the first deploy.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
