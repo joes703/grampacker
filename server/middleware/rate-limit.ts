@@ -85,8 +85,14 @@ export const authRateLimit = createMiddleware<{ Bindings: Env }>(
       )
     }
 
-    // Opportunistic sweep so stale buckets do not accumulate forever.
-    if (Math.random() < 0.01) {
+    // Deterministic sweep: whenever any bucket starts a new window
+    // (count reset to 1), clear rows whose window started more than
+    // MAX_WINDOW_MS ago - those are expired for every scope. Bound:
+    // a stale row lives at most MAX_WINDOW_MS past its window start,
+    // so the table stays proportional to buckets touched in the last
+    // day. Deliberately no window_start index: the sweep is rare and
+    // the table small, while an index would tax every upsert.
+    if (row.count === 1) {
       await db.delete(rateLimits).where(lt(rateLimits.windowStart, now - MAX_WINDOW_MS))
     }
 
