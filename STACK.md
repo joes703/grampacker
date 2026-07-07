@@ -22,20 +22,23 @@ dist-tags the same day. `npm ci` for CI/deploy installs; `.npmrc` sets
 | typescript | 6.0.3 | `tsc -b` over three noEmit projects (app / worker / node). TS 7 native compiler is trial-not-adopt. |
 | vitest | 4.1.10 | v5 still beta (5.0.0-beta.6 at scaffold). No test runner on betas. |
 
+## Installed during phase 1
+
+| Package | Version | Why / notes |
+| --- | --- | --- |
+| @cloudflare/vitest-pool-workers | 0.18.1 | API integration tests against real workerd + D1 (peers vitest ^4.1.0). 0.18 API: `cloudflareTest()` Vite plugin (not `defineWorkersConfig`), types at the `/types` subpath, env is `Cloudflare.Env`. |
+| eslint | 10.6.0 | Baseline lint plus the security import boundary: fail-closed over all of server/ (data layer, middleware, composition root, and tests are the explicit exemptions) - no DB factory/schema, drizzle-orm, repo constructors, or auth imports; dynamic import() banned; eslint-disable comments neutralized via noInlineConfig. Runs inside `npm run build` (gates deploys) and in CI (gates merges). |
+| typescript-eslint | 8.63.0 | Flat-config recommended rules + `@typescript-eslint/no-restricted-imports` (allowTypeImports keeps repo row-type imports legal in routes). |
+| eslint-plugin-react-hooks | 7.1.1 | Hooks correctness for the SPA (`src/**`). eslint-plugin-jsx-a11y stays excluded until a release supports ESLint 10 peers (same deferral as the old repo). |
+
 ## Arriving in later phases (pin at install time, re-verify dist-tags then)
 
 - @better-auth/passkey (1.6.23, version-locked to better-auth; the plugin
   was extracted from core) - later in phase 1, after password sessions
   prove out. Its table is already in the initial auth migration.
-- @cloudflare/vitest-pool-workers (0.18.1 at check; peers vitest ^4.1.0,
-  compatible with our 4.1.10) - phase 1, API integration tests against
-  real workerd + D1.
 - @tanstack/react-query (5.101.2), react-router (8.1.0), lucide-react,
   @dnd-kit classic (core 6 / sortable 10 / utilities 3), react-markdown -
   phase 2+ with the SPA transplant.
-- eslint (10.6.0) + typescript-eslint + the import-boundary rules - phase 1.
-  eslint-plugin-jsx-a11y stays excluded until a release supports ESLint 10
-  peers (same deferral as the old repo).
 
 ## Upgrade policy
 
