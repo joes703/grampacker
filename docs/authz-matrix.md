@@ -17,3 +17,12 @@ Cross-cutting, tested in `server/routes/me.test.ts`:
 - Session-gated routes 401 without a cookie (`server/middleware/session.ts`).
 - Handlers receive user-scoped repositories only; ownership is fixed
   server-side and never read from the client.
+
+Rate limiting, tested in `server/middleware/rate-limit.test.ts`:
+
+- POST `/api/auth/*` is limited per client IP (`CF-Connecting-IP`), fixed
+  windows in the `rate_limits` table: sign-up 10/day, email-sending
+  endpoints 5/day (guards the Resend free tier), sign-in 10/10min,
+  everything else 30/10min. Over budget -> 429 + `Retry-After`. GETs
+  (get-session, the verify-email link) are never limited. Budgets live in
+  `server/middleware/rate-limit.ts`.

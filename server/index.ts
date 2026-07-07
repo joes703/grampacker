@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm'
 import { createAuth } from './auth'
 import { createDb } from './db'
 import { csrfProtection } from './middleware/csrf'
+import { authRateLimit } from './middleware/rate-limit'
 import { meRoutes } from './routes/me'
 import type { HealthResponse } from '../shared/health'
 
@@ -14,6 +15,11 @@ const app = new Hono<{ Bindings: Env }>().basePath('/api')
 // Origin. Registered first so no later route can be added in front of it;
 // it skips /api/auth/* internally (better-auth validates origins itself).
 app.use('*', csrfProtection)
+
+// Abuse posture: POST /api/auth/* is rate limited per client IP before
+// better-auth sees the request (its own limiter is explicitly disabled in
+// authOptions - one mechanism, ours).
+app.use('/auth/*', authRateLimit)
 
 // better-auth owns everything under /api/auth/* (sign-up, sign-in, sign-out,
 // verification, reset). It does its own origin checking against baseURL.

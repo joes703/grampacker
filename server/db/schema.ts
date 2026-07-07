@@ -5,3 +5,4 @@
 // (see server/auth-schema.config.ts) - regenerate rather than hand-edit,
 // so the tables cannot drift from what better-auth's runtime expects.
 export * from './auth-schema'
+export * from './app-schema'
