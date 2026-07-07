@@ -50,6 +50,14 @@ export function authOptions(env: Env) {
         sameSite: 'strict' as const,
       },
     },
+    rateLimit: {
+      // Rate limiting is owned by our middleware
+      // (server/middleware/rate-limit.ts) so there is exactly one
+      // mechanism, shared with future non-auth routes. Left unset this
+      // would silently self-enable in production with per-isolate MEMORY
+      // storage - useless on Workers and confusing to debug.
+      enabled: false,
+    },
   }
 }
 
