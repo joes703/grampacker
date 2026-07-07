@@ -14,7 +14,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "types": []
+    "types": ["@cloudflare/vitest-pool-workers/types"]
   },
   "include": ["server", "shared", "worker-configuration.d.ts"]
 }
