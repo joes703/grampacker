@@ -11,19 +11,39 @@ export default tseslint.config(
   },
   {
     // Security-by-construction import boundary (REWRITE_PLAN.md section 5):
-    // route handlers receive user-scoped repositories from c.get('repos'),
-    // attached by requireSession. They must not be able to reach the DB,
-    // the schema, or auth directly - the repository layer and middleware
-    // are the only importers. server/index.ts (composition root) and the
-    // middleware/repo layers are intentionally outside this boundary.
-    files: ['server/routes/**'],
+    // handlers receive user-scoped repositories from c.get('repos'),
+    // attached by requireSession. They must not reach the DB, the schema,
+    // or auth directly. Fail closed: the boundary covers ALL server code;
+    // the data layer, middleware, composition root, and tests are the only
+    // exemptions, listed explicitly below. A new server directory is inside
+    // the boundary by default.
+    //
+    // Known residual (accepted): a specifier-based lint cannot follow
+    // re-exports, so an exempted module could launder a forbidden import.
+    // The exempt list is small and reviewed; this rule is drift protection,
+    // not a sandbox.
+    files: ['server/**'],
+    ignores: [
+      'server/db/**', // owns the schema and the drizzle factory
+      'server/repos/**', // the only constructor of scoped data access
+      'server/middleware/**', // builds repos/session, hands them to handlers
+      'server/auth.ts', // better-auth wiring, consumed via middleware
+      'server/auth-schema.config.ts', // CLI-only schema generator config
+      'server/index.ts', // composition root: mounts auth, /health db ping
+      'server/test/**', // test helpers seed the DB directly
+      'server/**/*.test.ts',
+    ],
+    linterOptions: {
+      // The boundary cannot be waived with eslint-disable comments.
+      noInlineConfig: true,
+    },
     rules: {
       '@typescript-eslint/no-restricted-imports': [
         'error',
         {
           patterns: [
             {
-              group: ['**/db', '**/db/**', 'drizzle-orm', 'drizzle-orm/*'],
+              group: ['**/db', '**/db/**', 'drizzle-orm', 'drizzle-orm/**'],
               message:
                 "Route handlers must not touch the database or schema. Use the scoped repositories from c.get('repos').",
             },
@@ -34,11 +54,19 @@ export default tseslint.config(
                 "Only the session middleware constructs repositories. Handlers read them from c.get('repos'); type-only imports are allowed.",
             },
             {
-              group: ['**/auth', 'better-auth', 'better-auth/*', '@better-auth/*'],
+              group: ['**/auth', 'better-auth', 'better-auth/**', '@better-auth/**'],
               message:
                 'Auth is mounted in server/index.ts and consumed via requireSession. Handlers must not call better-auth directly.',
             },
           ],
+        },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression',
+          message:
+            'Dynamic import() is invisible to the import boundary. Use static imports in server code.',
         },
       ],
     },

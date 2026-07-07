@@ -27,7 +27,7 @@ dist-tags the same day. `npm ci` for CI/deploy installs; `.npmrc` sets
 | Package | Version | Why / notes |
 | --- | --- | --- |
 | @cloudflare/vitest-pool-workers | 0.18.1 | API integration tests against real workerd + D1 (peers vitest ^4.1.0). 0.18 API: `cloudflareTest()` Vite plugin (not `defineWorkersConfig`), types at the `/types` subpath, env is `Cloudflare.Env`. |
-| eslint | 10.6.0 | Baseline lint plus the security import boundary: route handlers cannot import the DB factory, schema, drizzle-orm, repo constructors, or auth (eslint.config.js). Runs inside `npm run build`, so the boundary gates deploys. |
+| eslint | 10.6.0 | Baseline lint plus the security import boundary: fail-closed over all of server/ (data layer, middleware, composition root, and tests are the explicit exemptions) - no DB factory/schema, drizzle-orm, repo constructors, or auth imports; dynamic import() banned; eslint-disable comments neutralized via noInlineConfig. Runs inside `npm run build` (gates deploys) and in CI (gates merges). |
 | typescript-eslint | 8.63.0 | Flat-config recommended rules + `@typescript-eslint/no-restricted-imports` (allowTypeImports keeps repo row-type imports legal in routes). |
 | eslint-plugin-react-hooks | 7.1.1 | Hooks correctness for the SPA (`src/**`). eslint-plugin-jsx-a11y stays excluded until a release supports ESLint 10 peers (same deferral as the old repo). |
 
