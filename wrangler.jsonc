@@ -3,6 +3,9 @@
   "name": "grampacker",
   "main": "./server/index.ts",
   "compatibility_date": "2026-07-07",
+  // better-auth needs node:crypto and AsyncLocalStorage; with a 2024-09-23+
+  // compatibility date this enables the full built-in Node.js compat layer.
+  "compatibility_flags": ["nodejs_compat"],
   "assets": {
     // Non-API requests are served from the built SPA; unknown paths fall
     // back to index.html so client-side routing works on deep links.
@@ -10,6 +13,11 @@
     // /api/* always reaches the Worker, even if a static file shadows it.
     "run_worker_first": ["/api/*"],
     "binding": "ASSETS"
+  },
+  "vars": {
+    // Production values; .dev.vars overrides in local dev.
+    "BETTER_AUTH_URL": "https://grampacker.joes-account.workers.dev",
+    "EMAIL_FROM": "grampacker <no-reply@grampacker.app>"
   },
   "d1_databases": [
     {

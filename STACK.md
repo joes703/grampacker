@@ -9,8 +9,9 @@ dist-tags the same day. `npm ci` for CI/deploy installs; `.npmrc` sets
 | Package | Version | Why / notes |
 | --- | --- | --- |
 | hono | 4.12.28 | API framework. v4 line is the stable consensus; no v5 announced. |
-| drizzle-orm | 1.0.0-rc.4 | ORM. Deliberate RC adoption to skip the 0.x -> 1.0 migration (decision 2026-07-07). v1 dropped the v0 `{ schema }` constructor config in favor of `relations`; wire it when tables land. |
-| drizzle-kit | 1.0.0-rc.4 | Migration generator. Generate-only locally; `wrangler d1 migrations apply` applies. |
+| drizzle-orm | 0.45.2 | ORM. Was 1.0.0-rc.4 for one day: better-auth peers on `^0.45.2` (even better-auth 1.7.0-rc.1 does), so the RC bet was reversed 2026-07-07 before any schema existed. Upgrade trigger: better-auth's peer range admitting drizzle 1.x - 1.0 will be GA by then. |
+| drizzle-kit | 0.31.10 | Migration generator. Generate-only locally; `wrangler d1 migrations apply` applies. Carries the esbuild <=0.24.2 dev-server advisory (GHSA-67mh-4wv8-2f99) via its vendored config loader - accepted: dev-only CLI, never runs an esbuild serve process, nothing ships to production. |
+| better-auth | 1.6.23 | Auth core (email/password, sessions, email verification). Vercel-acquisition watch item: gate upgrades on Workers-pool integration tests. |
 | zod | 4.4.3 | DTO schemas in `shared/`, validated on both sides of the API. |
 | react / react-dom | 19.2.7 | Same major as the SPA being transplanted. |
 | wrangler | 4.107.0 | Exactly matches @cloudflare/vite-plugin's peer floor (`^4.107.0`). |
@@ -23,10 +24,12 @@ dist-tags the same day. `npm ci` for CI/deploy installs; `.npmrc` sets
 
 ## Arriving in later phases (pin at install time, re-verify dist-tags then)
 
-- better-auth (1.6.23 at scaffold) - phase 1. Vercel acquisition watch item:
-  pin versions, gate upgrades on Workers-pool integration tests.
-- @cloudflare/vitest-pool-workers - phase 1, API integration tests against
-  real workerd + D1. Verify its vitest peer range at install.
+- @better-auth/passkey (1.6.23, version-locked to better-auth; the plugin
+  was extracted from core) - later in phase 1, after password sessions
+  prove out. Its table is already in the initial auth migration.
+- @cloudflare/vitest-pool-workers (0.18.1 at check; peers vitest ^4.1.0,
+  compatible with our 4.1.10) - phase 1, API integration tests against
+  real workerd + D1.
 - @tanstack/react-query (5.101.2), react-router (8.1.0), lucide-react,
   @dnd-kit classic (core 6 / sortable 10 / utilities 3), react-markdown -
   phase 2+ with the SPA transplant.
@@ -37,15 +40,16 @@ dist-tags the same day. `npm ci` for CI/deploy installs; `.npmrc` sets
 ## Upgrade policy
 
 - Exact pins, no ranges. Renovate/deps PRs bump deliberately.
-- No core infra on beta/RC - drizzle 1.0.0-rc.4 is the single deliberate
-  exception (recorded in REWRITE_PLAN.md section 12); move to 1.0.0 GA when
-  it ships.
+- No core infra on beta/RC. No exceptions remain: the one-day drizzle RC
+  experiment (adopted and reversed 2026-07-07 when better-auth's peer range
+  rejected it) is recorded in REWRITE_PLAN.md section 13.
 - Major bumps re-verify `rm -rf node_modules && npm ci` before merging
   (peer-dep failures fail closed; never --legacy-peer-deps).
 
 ## Watch list
 
-- drizzle-orm/kit 1.0.0 GA (leave RC as soon as it exists)
+- drizzle 1.x: the upgrade trigger is better-auth's peer range admitting it
+  (GA will long since have shipped by then)
 - vitest 5 GA
 - @dnd-kit/react 1.0 (classic line transplants until then)
 - eslint-plugin-jsx-a11y with ESLint 10 peer support
