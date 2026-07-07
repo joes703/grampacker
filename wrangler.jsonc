@@ -15,10 +15,10 @@
     {
       "binding": "DB",
       "database_name": "grampacker",
-      // Placeholder: local dev (Miniflare) provisions a local SQLite from
-      // this binding without contacting Cloudflare. Replace with the real id
-      // from `wrangler d1 create grampacker` before the first deploy.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // Created 2026-07-07 via `wrangler d1 create grampacker` (region WNAM).
+      // Local dev never contacts this database - Miniflare provisions a
+      // local SQLite from the binding.
+      "database_id": "a5e96c0f-3165-4fa5-a654-efa71a94589d",
       "migrations_dir": "migrations"
     }
   ],
