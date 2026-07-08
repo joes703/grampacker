@@ -14,9 +14,20 @@
     "run_worker_first": ["/api/*"],
     "binding": "ASSETS"
   },
+  // Pre-cutover custom domain: deploying claims next.grampacker.app in the
+  // zone automatically (it is in the same Cloudflare account). Needed so
+  // passkeys can register against the real rpID (grampacker.app) before
+  // cutover; the apex stays on the old Pages app until phase 7.
+  "routes": [
+    { "pattern": "next.grampacker.app", "custom_domain": true }
+  ],
   "vars": {
     // Production values; .dev.vars overrides in local dev.
-    "BETTER_AUTH_URL": "https://grampacker.joes-account.workers.dev",
+    // BETTER_AUTH_URL is the single canonical origin: better-auth origin
+    // validation and the CSRF middleware both check against it, so the
+    // workers.dev URL still serves the SPA but refuses writes. WebAuthn
+    // requires the real domain anyway.
+    "BETTER_AUTH_URL": "https://next.grampacker.app",
     "EMAIL_FROM": "grampacker <no-reply@grampacker.app>"
   },
   "d1_databases": [

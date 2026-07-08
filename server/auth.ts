@@ -1,7 +1,17 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { passkey } from '@better-auth/passkey'
 import { createDb } from './db'
 import { createEmailSender } from './email'
+
+// WebAuthn relying-party id. Must be the serving origin's registrable
+// domain (or a suffix of it): grampacker.app for both next.grampacker.app
+// (pre-cutover) and grampacker.app (after), so credentials registered
+// before cutover keep working after it. Dev stays on localhost.
+function passkeyRpId(baseUrl: string): string {
+  const { hostname } = new URL(baseUrl)
+  return hostname.endsWith('grampacker.app') ? 'grampacker.app' : hostname
+}
 
 // Shared between the runtime factory below and the CLI schema config
 // (auth-schema.config.ts). Schema-affecting options (adapter provider,
@@ -58,6 +68,13 @@ export function authOptions(env: Env) {
       // storage - useless on Workers and confusing to debug.
       enabled: false,
     },
+    plugins: [
+      passkey({
+        rpID: passkeyRpId(env.BETTER_AUTH_URL),
+        rpName: 'grampacker',
+        origin: env.BETTER_AUTH_URL,
+      }),
+    ],
   }
 }
 

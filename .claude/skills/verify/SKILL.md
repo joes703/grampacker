@@ -37,3 +37,25 @@ description: Drive the running grampacker app in a real browser to verify auth/U
 - Sign-up creates NO session while the account is unverified; the
   verification link signs in and redirects (callbackURL /sign-in ->
   RedirectIfSession -> home).
+
+## Passkeys
+
+Playwright can drive the full WebAuthn ceremony headlessly via a CDP
+virtual authenticator:
+
+```js
+const cdp = await page.context().newCDPSession(page)
+await cdp.send('WebAuthn.enable')
+await cdp.send('WebAuthn.addVirtualAuthenticator', {
+  options: {
+    protocol: 'ctap2', transport: 'internal',
+    hasResidentKey: true, hasUserVerification: true,
+    isUserVerified: true, automaticPresenceSimulation: true,
+  },
+})
+```
+
+Register from the home Passkeys section, sign out, then 'Sign in with a
+passkey' completes without any prompt. Dev rpID is localhost (derived
+from BETTER_AUTH_URL). With no credential on the authenticator the
+sign-in fails fast with the cancelled-error copy - useful as a probe.
