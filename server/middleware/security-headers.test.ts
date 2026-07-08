@@ -24,6 +24,7 @@ describe('security headers', () => {
     for (const directive of [
       "default-src 'self'",
       "script-src 'self'",
+      "style-src 'self'",
       "connect-src 'self'",
       "frame-ancestors 'none'",
       "base-uri 'self'",
@@ -31,6 +32,9 @@ describe('security headers', () => {
     ]) {
       expect(csp).toContain(directive)
     }
+    // React styles go through the CSSOM, so nothing needs inline
+    // allowances - keep it that way.
+    expect(csp).not.toContain('unsafe-inline')
     // The Supabase origins and the insights beacon died with the old stack.
     expect(csp).not.toContain('supabase')
     expect(csp).not.toContain('cloudflareinsights')

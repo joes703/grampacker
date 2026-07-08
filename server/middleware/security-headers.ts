@@ -15,9 +15,12 @@ import { createMiddleware } from 'hono/factory'
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
-  // One external stylesheet, but React style attributes count as
-  // inline style for CSP purposes.
-  "style-src 'self' 'unsafe-inline'",
+  // Strict on purpose: React sets style={} props through the CSSOM
+  // (element.style), which CSP does not block - 'unsafe-inline' is only
+  // needed for parser-inserted style attributes and <style> tags, and
+  // the app has neither (Codex review, PR #11). If a transplanted
+  // component ever breaks styling under preview, loosen deliberately.
+  "style-src 'self'",
   "img-src 'self' data: blob:",
   "connect-src 'self'",
   "font-src 'self' data:",

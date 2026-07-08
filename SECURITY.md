@@ -88,8 +88,9 @@ Four independent layers, tested in `server/routes/me.test.ts`:
 
 - `npm ci` everywhere, `ignore-scripts=true` + `save-exact=true` in
   `.npmrc`, exact pins, no core infra on beta/RC.
-- GitHub Actions pinned to full commit SHAs; `pull_request` only (never
-  `pull_request_target`); private repo.
+- GitHub Actions pinned to full commit SHAs; triggers are `pull_request`
+  and `push` to main - never `pull_request_target` (which would run
+  workflows with secrets against fork code); private repo.
 
 ## Deferred - known gaps with triggers
 
