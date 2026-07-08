@@ -1,56 +1,76 @@
-import { useEffect, useState } from 'react'
-import { healthResponseSchema } from '../shared/health'
+import type { ReactNode } from 'react'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { authClient } from './lib/auth-client'
+import SignInPage from './auth/SignInPage'
+import SignUpPage from './auth/SignUpPage'
+import ForgotPasswordPage from './auth/ForgotPasswordPage'
+import ResetPasswordPage from './auth/ResetPasswordPage'
+import HomePage from './home/HomePage'
 
-type ApiHealth = 'checking' | 'ok' | 'down'
-
-const HEALTH_STYLE: Record<ApiHealth, string> = {
-  checking: 'bg-gray-100 text-gray-600',
-  ok: 'bg-emerald-100 text-emerald-800',
-  down: 'bg-rose-100 text-rose-800',
+// Gate rule: never unmount children on a PENDING session. The auth client
+// refetches the session after every auth mutation, and an isPending ->
+// null render would unmount the page mid-flow and wipe its local state
+// (e.g. the sign-up "check your email" card). Blank only the initial
+// load, where there is no data yet.
+function RequireSession({ children }: { children: ReactNode }) {
+  const { data: session, isPending } = authClient.useSession()
+  if (isPending && !session) return null
+  if (!session) return <Navigate to="/sign-in" replace />
+  return children
 }
 
-const HEALTH_LABEL: Record<ApiHealth, string> = {
-  checking: 'checking api...',
-  ok: 'api + d1 healthy',
-  down: 'api unreachable',
+// Signed-in users have no business on the auth forms; this is also what
+// lands a freshly verified user on home (the verification link's
+// callbackURL is /sign-in and verifying creates a session). Renders the
+// form during the initial session fetch (anon is the common case) rather
+// than unmounting it on every refetch.
+function RedirectIfSession({ children }: { children: ReactNode }) {
+  const { data: session } = authClient.useSession()
+  if (session) return <Navigate to="/" replace />
+  return children
 }
 
 export default function App() {
-  const [health, setHealth] = useState<ApiHealth>('checking')
-
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/health')
-      .then((res) =>
-        res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`)),
-      )
-      .then((body) => {
-        if (cancelled) return
-        const parsed = healthResponseSchema.safeParse(body)
-        setHealth(parsed.success && parsed.data.ok ? 'ok' : 'down')
-      })
-      .catch(() => {
-        if (!cancelled) setHealth('down')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   return (
-    <main className="mx-auto flex min-h-screen max-w-lg flex-col items-center justify-center gap-4 px-4">
-      <h1 className="text-3xl font-bold tracking-tight text-gray-900">
-        grampacker
-      </h1>
-      <p className="text-center text-sm text-gray-600">
-        Rewrite scaffold: Hono + Drizzle + D1 behind a Vite SPA. The real app
-        transplants in from phase 2.
-      </p>
-      <span
-        className={`rounded-full px-3 py-1 text-xs font-medium ${HEALTH_STYLE[health]}`}
-      >
-        {HEALTH_LABEL[health]}
-      </span>
-    </main>
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <RequireSession>
+              <HomePage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="/sign-in"
+          element={
+            <RedirectIfSession>
+              <SignInPage />
+            </RedirectIfSession>
+          }
+        />
+        <Route
+          path="/sign-up"
+          element={
+            <RedirectIfSession>
+              <SignUpPage />
+            </RedirectIfSession>
+          }
+        />
+        <Route
+          path="/forgot-password"
+          element={
+            <RedirectIfSession>
+              <ForgotPasswordPage />
+            </RedirectIfSession>
+          }
+        />
+        {/* Not session-gated in either direction: a signed-in user clicking
+            a reset link should still be able to set a new password. */}
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
