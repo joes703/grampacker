@@ -9,6 +9,7 @@ const PASSWORD = 'a-long-test-password-123'
 const SIGN_IN_LIMIT = 10
 const SIGN_UP_LIMIT = 10
 const EMAIL_SEND_LIMIT = 5
+const AUTH_DEFAULT_LIMIT = 30
 const SIGN_IN_WINDOW_MS = 10 * 60 * 1000
 
 function authPost(path: string, body: unknown, ip: string) {
@@ -181,21 +182,23 @@ describe('auth rate limiting', () => {
     expect((await signIn(ip)).status).toBe(429)
   })
 
-  it('non-POST methods are not limited and not served by better-auth', async () => {
+  it('the limiter is method-agnostic: OPTIONS shares the bucket', async () => {
+    // Fail-closed posture: every method is limited unless it is an
+    // allowlisted read-only GET. An OPTIONS never reaches a handler
+    // (the auth mount only registers GET and POST) but still counts.
     const ip = '203.0.113.10'
+    const options = () =>
+      app.request(
+        '/api/auth/sign-in/email',
+        { method: 'OPTIONS', headers: { 'cf-connecting-ip': ip } },
+        env,
+      )
+    expect((await options()).status).toBe(404)
+
     for (let i = 0; i <= SIGN_IN_LIMIT; i++) {
       await signIn(ip)
     }
-    expect((await signIn(ip)).status).toBe(429)
-
-    const options = await app.request(
-      '/api/auth/sign-in/email',
-      { method: 'OPTIONS', headers: { 'cf-connecting-ip': ip } },
-      env,
-    )
-    expect(options.status).not.toBe(429)
-    // The auth mount only registers GET and POST.
-    expect(options.status).toBe(404)
+    expect((await options()).status).toBe(429)
   })
 
   it('a new window sweeps buckets expired for every scope, keeps active ones', async () => {
@@ -224,18 +227,49 @@ describe('auth rate limiting', () => {
     expect(fresh).not.toBeNull()
   })
 
-  it('GET auth requests are never limited', async () => {
-    const ip = '203.0.113.6'
-    for (let i = 0; i <= SIGN_IN_LIMIT; i++) {
-      await signIn(ip)
+  it('challenge-generating GETs are limited and stop writing challenges', async () => {
+    // Regression for the PR #10 blocker: the passkey plugin's
+    // /passkey/generate-authenticate-options is an UNAUTHENTICATED GET
+    // that writes a verification row per call. The old exempt-all-GETs
+    // rule left it as an unguarded write path. Prove the GET itself
+    // consumes budget, gets cut off, and that a blocked request writes
+    // no verification row.
+    const ip = '203.0.113.12'
+    const challenge = () =>
+      app.request(
+        '/api/auth/passkey/generate-authenticate-options',
+        { headers: { 'cf-connecting-ip': ip } },
+        env,
+      )
+    for (let i = 0; i < AUTH_DEFAULT_LIMIT; i++) {
+      expect((await challenge()).status).not.toBe(429)
     }
-    expect((await signIn(ip)).status).toBe(429)
+    const before = await env.DB.prepare(
+      'select count(*) as n from verification',
+    ).first<{ n: number }>()
+    const blocked = await challenge()
+    expect(blocked.status).toBe(429)
+    const after = await env.DB.prepare(
+      'select count(*) as n from verification',
+    ).first<{ n: number }>()
+    expect(after?.n).toBe(before?.n)
+  })
 
-    const res = await app.request(
+  it('allowlisted read-only GETs are never limited', async () => {
+    // Exhaust the shared default 'auth' bucket for this IP with cheap
+    // sign-out POSTs, then confirm the session poll still passes while
+    // a non-allowlisted request on the same bucket is refused.
+    const ip = '203.0.113.6'
+    for (let i = 0; i <= AUTH_DEFAULT_LIMIT; i++) {
+      await authPost('/api/auth/sign-out', {}, ip)
+    }
+    expect((await authPost('/api/auth/sign-out', {}, ip)).status).toBe(429)
+
+    const session = await app.request(
       '/api/auth/get-session',
       { headers: { 'cf-connecting-ip': ip } },
       env,
     )
-    expect(res.status).toBe(200)
+    expect(session.status).toBe(200)
   })
 })

@@ -37,15 +37,32 @@ function ruleFor(path: string): Rule {
   return AUTH_DEFAULT
 }
 
-// Limits unsafe (POST) auth requests per client IP. GETs (get-session,
-// the verify-email link) stay unlimited. CF-Connecting-IP is set by
-// Cloudflare's edge and cannot be spoofed through it; it is absent in
-// local dev and tests unless injected, where everything shares one
-// bucket ('local'). The Node deployment target must map its trusted
-// client-IP source to the same header.
+// GET is NOT read-only in better-auth: the passkey plugin's
+// /passkey/generate-*-options endpoints are GETs that write a challenge
+// row to the verification table (generate-authenticate-options without
+// even a session). So the limiter is fail-closed across ALL methods,
+// with an explicit allowlist of pure-read GETs that clients hit
+// routinely and that must never 429 (the session poll fires after every
+// auth mutation). A new endpoint is limited until it earns a spot here.
+const READ_ONLY_GET_PATHS = new Set([
+  '/api/auth/get-session',
+  '/api/auth/passkey/list-user-passkeys',
+])
+
+// Limits auth requests per client IP, every method except allowlisted
+// read-only GETs. CF-Connecting-IP is set by Cloudflare's edge and
+// cannot be spoofed through it; it is absent in local dev and tests
+// unless injected, where everything shares one bucket ('local'). The
+// Node deployment target must map its trusted client-IP source to the
+// same header.
 export const authRateLimit = createMiddleware<{ Bindings: Env }>(
   async (c, next) => {
-    if (c.req.method !== 'POST') return next()
+    if (
+      (c.req.method === 'GET' || c.req.method === 'HEAD') &&
+      READ_ONLY_GET_PATHS.has(c.req.path)
+    ) {
+      return next()
+    }
 
     const rule = ruleFor(c.req.path)
     const ip = c.req.header('cf-connecting-ip') ?? 'local'

@@ -8,9 +8,13 @@ import { createEmailSender } from './email'
 // domain (or a suffix of it): grampacker.app for both next.grampacker.app
 // (pre-cutover) and grampacker.app (after), so credentials registered
 // before cutover keep working after it. Dev stays on localhost.
-function passkeyRpId(baseUrl: string): string {
+// Exact-or-dot-boundary match: a bare endsWith would also match
+// lookalikes such as evilgrampacker.app. Exported for tests.
+export function passkeyRpId(baseUrl: string): string {
   const { hostname } = new URL(baseUrl)
-  return hostname.endsWith('grampacker.app') ? 'grampacker.app' : hostname
+  return hostname === 'grampacker.app' || hostname.endsWith('.grampacker.app')
+    ? 'grampacker.app'
+    : hostname
 }
 
 // Shared between the runtime factory below and the CLI schema config
