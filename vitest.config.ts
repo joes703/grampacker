@@ -6,5 +6,9 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     include: ['shared/**/*.test.ts', 'src/**/*.test.{ts,tsx}'],
+    // Default environment stays `node`. Component tests opt into jsdom
+    // per-file with a leading `// @vitest-environment jsdom` comment
+    // (ported convention from the old repo).
+    setupFiles: ['./vitest.setup.ts'],
   },
 })

@@ -53,6 +53,30 @@ BEFORE building. Auth writes fail under preview (origin mismatch with
 the prod BETTER_AUTH_URL - expected); shell render + zero console CSP
 violations is the check. Restore .dev.vars after.
 
+## Gear page (/gear)
+
+- Item dialog fields have stable ids: `#gi-name`, `#gi-desc`, `#gi-weight`,
+  `#gi-cat`, `#gi-status`; submit is `dialog[open] button[type=submit]`
+  (disabled while the name is empty).
+- Row kebab trigger: `[aria-label="Item options"]`; category kebab:
+  `[aria-label="Category options"]`. Menu rows are `role=menuitem` EXCEPT
+  the quick-status rows, which are `role=menuitemradio`.
+- Always suffix menu selectors with `:visible` - the closed
+  MobileOptionsModal keeps a hidden copy of GearOptionsContent in the DOM,
+  so `[role=menuitem]:has-text(...)` matches two elements.
+- Status badges are compact (icon-only): assert
+  `[aria-label="Needs repair"]` etc., NOT `text=`.
+- Select-mode row toggles: `[aria-label="Select <ItemName>"]`. The bulk
+  move dialog is a `<select>` + a Move button, not per-category buttons.
+- DnD: item rows reorder headlessly via KEYBOARD (focus the row's
+  `[aria-label="Drag to reorder"]`, Space / ArrowDown / Space). The
+  CATEGORY grip does NOT respond to keyboard drag (tabIndex=-1 grip);
+  drive categories with a mouse drag: mouse.down on the grip, move ~25px
+  to beat the 5px activation constraint, glide to the target header,
+  mouse.up.
+- After any write, hard `page.reload()` and re-assert - optimistic UI
+  masks server rejections (CLAUDE.md rule).
+
 ## Passkeys
 
 Playwright can drive the full WebAuthn ceremony headlessly via a CDP

@@ -1,0 +1,510 @@
+import { useState, type FormEvent } from 'react'
+import { Check, CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } from 'lucide-react'
+import type { Category, GearItem } from '../../lib/types'
+import { DEFAULT_GEAR_STATUS, type GearStatus } from '../../lib/gear-status'
+import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../../lib/row-indicator-styles'
+import { FLAT_TABLE_EYEBROW, ROW_CONTROL_TARGET } from '../flat-table-styles'
+import FormLabel from '../FormLabel'
+import Modal from '../Modal'
+import PrimaryButton from '../PrimaryButton'
+import WeightInput from '../WeightInput'
+import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH, MAX_CATEGORY_NAME } from '../../lib/caps'
+
+export type GearPatch = {
+  name: string
+  description: string | null
+  weightGrams: number
+  categoryId: string | null
+  cost: number | null
+  purchaseDate: string | null
+  status: GearStatus
+}
+
+export type ListContextPatch = {
+  quantity: number
+  is_worn: boolean
+  is_consumable: boolean
+}
+
+type Props = {
+  categories: Category[]
+  item?: GearItem
+  defaultCategoryId?: string | null
+  /** When provided, the dialog renders an "On this list" section with
+   *  quantity / worn / consumable fields, and onSave receives a second
+   *  argument with the list-item patch. Omitted from the gear-library
+   *  edit path; the bottom section doesn't render and onSave's second
+   *  argument is null. */
+  listContext?: ListContextPatch
+  onSave: (gearPatch: GearPatch, listPatch: ListContextPatch | null) => void
+  onCreateCategory?: (name: string) => Promise<Category>
+  onClose: () => void
+  saving?: boolean
+  /** Mobile-only (< lg) action buttons. Both render only when listContext
+   *  is also provided (i.e. the dialog was opened from a list). On desktop
+   *  these actions are reached via the row kebab. */
+  onRemoveFromList?: () => void
+  onDeleteFromInventory?: () => void
+  /** Save-time error surfaced from the parent. Rendered inline in the dialog
+   *  body so the user sees it without a toast and can retry without losing
+   *  their edits. Owned by the parent since it knows which mutation failed
+   *  and what state the DB is left in. */
+  saveError?: string | null
+}
+
+export default function GearItemDialog({
+  categories,
+  item,
+  defaultCategoryId = null,
+  listContext,
+  onSave,
+  onCreateCategory,
+  onClose,
+  saving = false,
+  onRemoveFromList,
+  onDeleteFromInventory,
+  saveError = null,
+}: Props) {
+  const [name, setName] = useState(item?.name ?? '')
+  const [description, setDescription] = useState(item?.description ?? '')
+  const [weightGrams, setWeightGrams] = useState(item?.weightGrams ?? 0)
+  const [categoryId, setCategoryId] = useState<string | null>(
+    item?.categoryId ?? defaultCategoryId,
+  )
+  // Cost is held as a string so the user can type freely (e.g. "89.",
+  // "89.9") without React fighting the cursor; parsed to number on
+  // submit. Empty string → null. Initial value is the existing cost
+  // formatted to two decimals so editing doesn't drift the display.
+  const [cost, setCost] = useState(
+    item?.cost != null ? item.cost.toFixed(2) : '',
+  )
+  // purchaseDate is already an ISO YYYY-MM-DD string in the model and
+  // the <input type="date"> contract — no parsing needed.
+  const [purchaseDate, setPurchaseDate] = useState(item?.purchaseDate ?? '')
+  const [status, setStatus] = useState<GearStatus>(item?.status ?? DEFAULT_GEAR_STATUS)
+  const [quantity, setQuantity] = useState(listContext?.quantity ?? 1)
+  const [worn, setWorn] = useState(listContext?.is_worn ?? false)
+  const [consumable, setConsumable] = useState(listContext?.is_consumable ?? false)
+  const [newCategoryOpen, setNewCategoryOpen] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [creatingCategory, setCreatingCategory] = useState(false)
+  const [categoryError, setCategoryError] = useState<string | null>(null)
+
+  // Form state is initialized from props by the useState initializers above;
+  // there is no reset effect because the dialog is keyed on the target's id
+  // at every call site (ListDetailPage, GearLibraryPage), so switching to a
+  // different target remounts the component with fresh state by construction.
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    const trimmedCost = cost.trim()
+    const parsedCost = trimmedCost === '' ? NaN : parseFloat(trimmedCost)
+    const trimmedDate = purchaseDate.trim()
+    const gearPatch: GearPatch = {
+      name: name.trim(),
+      description: description.trim() || null,
+      weightGrams: Math.max(0, Math.min(weightGrams, MAX_ITEM_WEIGHT_GRAMS)),
+      categoryId: categoryId,
+      // Blank / NaN / negative → null, never 0. Same rule as parseCost
+      // in csv.ts so manual entry and CSV import agree.
+      cost: !isFinite(parsedCost) || parsedCost < 0
+        ? null
+        : Math.round(parsedCost * 100) / 100,
+      // <input type="date"> emits ISO YYYY-MM-DD already; trust the
+      // shape and only collapse blanks to null.
+      purchaseDate: trimmedDate === '' ? null : trimmedDate,
+      status,
+    }
+    const listPatch: ListContextPatch | null = listContext
+      ? {
+          quantity: Math.max(1, Math.min(MAX_LIST_ITEM_QUANTITY, Math.round(quantity) || 1)),
+          is_worn: worn,
+          is_consumable: consumable,
+        }
+      : null
+    onSave(gearPatch, listPatch)
+  }
+
+  // Worn/consumable XOR: ticking one unticks the other. Reflects the DB
+  // CHECK constraint (worn_xor_consumable) and matches the in-row toggle
+  // semantics on desktop.
+  function toggleWorn() {
+    const next = !worn
+    setWorn(next)
+    if (next) setConsumable(false)
+  }
+  function toggleConsumable() {
+    const next = !consumable
+    setConsumable(next)
+    if (next) setWorn(false)
+  }
+
+  async function handleCreateCategory() {
+    const trimmed = newCategoryName.trim()
+    if (!trimmed || !onCreateCategory) return
+    setCreatingCategory(true)
+    setCategoryError(null)
+    try {
+      const created = await onCreateCategory(trimmed)
+      setCategoryId(created.id)
+      setNewCategoryName('')
+      setNewCategoryOpen(false)
+    } catch {
+      setCategoryError("Couldn't create category. Please try again.")
+    } finally {
+      setCreatingCategory(false)
+    }
+  }
+
+  const isEdit = Boolean(item)
+  const heading = isEdit ? 'Edit item' : 'New item'
+
+  return (
+    // max-h-[90vh] + flex column lets the dialog cap its height and split
+    // into header / scrollable body / sticky footer. On viewports tall
+    // enough to fit the form (most desktops), the body just doesn't
+    // scroll. On mobile, the body scrolls and Save/Cancel stay reachable
+    // at the bottom of the modal without the user hunting for them.
+    <Modal
+      open
+      onClose={onClose}
+      title={heading}
+      className="w-[calc(100vw-2rem)] max-w-md max-h-[90vh] overflow-hidden"
+      closeOnBackdropClick={false}
+    >
+      <form onSubmit={handleSubmit} className="flex max-h-[90vh] min-h-0 flex-col">
+        {/* Header — sits above the scroll region so the close button
+            never disappears as the user scrolls the form. */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-3 shrink-0">
+          <h2 className="text-base font-semibold text-gray-900">{heading}</h2>
+          <button type="button" onClick={onClose} aria-label="Close" className={`${ROW_CONTROL_TARGET} text-gray-400 hover:text-gray-600`}>
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Scroll region — flex-1 min-h-0 is the standard recipe for a
+            flex child that can shrink AND grow inside its parent's flex
+            constraints. Without min-h-0 the child would refuse to be
+            smaller than its content and the overflow-y-auto would
+            never kick in. */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 space-y-4">
+          <div>
+            <FormLabel htmlFor="gi-name">
+              Name
+            </FormLabel>
+            <input
+              id="gi-name"
+              type="text"
+              required
+              maxLength={MAX_NAME_LENGTH}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              autoFocus
+            />
+          </div>
+          <div>
+            <FormLabel htmlFor="gi-desc">
+              Description
+            </FormLabel>
+            <textarea
+              id="gi-desc"
+              maxLength={MAX_DESC_LENGTH}
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+          </div>
+          <div className="flex gap-4">
+            <div className="w-40 min-w-0">
+              <FormLabel htmlFor="gi-weight">
+                Weight
+              </FormLabel>
+              <WeightInput
+                inputId="gi-weight"
+                grams={weightGrams}
+                onChange={setWeightGrams}
+                className="w-full"
+                inputClassName="flex-1 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <FormLabel htmlFor="gi-cat">
+                Category
+              </FormLabel>
+              <select
+                id="gi-cat"
+                value={categoryId ?? ''}
+                onChange={(e) => {
+                  if (e.target.value === '__new_category__') {
+                    setNewCategoryOpen(true)
+                    setCategoryError(null)
+                  } else {
+                    setCategoryId(e.target.value || null)
+                  }
+                }}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Uncategorized</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+                {onCreateCategory && <option value="__new_category__">+ New category</option>}
+              </select>
+              {newCategoryOpen && (
+                <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Category name"
+                    maxLength={MAX_CATEGORY_NAME}
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void handleCreateCategory()
+                      }
+                      if (e.key === 'Escape') {
+                        setNewCategoryName('')
+                        setNewCategoryOpen(false)
+                        setCategoryError(null)
+                      }
+                    }}
+                    className="w-full min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <PrimaryButton
+                    type="button"
+                    onClick={() => void handleCreateCategory()}
+                    disabled={creatingCategory || !newCategoryName.trim()}
+                    aria-label="Create category"
+                    size="icon"
+                    disabledOpacity="40"
+                  >
+                    <Check size={16} />
+                  </PrimaryButton>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewCategoryName('')
+                      setNewCategoryOpen(false)
+                      setCategoryError(null)
+                    }}
+                    aria-label="Cancel new category"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+              {categoryError && <p className="mt-1 text-xs text-red-600">{categoryError}</p>}
+            </div>
+          </div>
+          {/* Cost + Purchase date. Keep the same two-column mobile rhythm
+              as Weight + Category above, but force every grid child/input
+              to min-w-0 so native date controls cannot overflow the modal. */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="min-w-0">
+              <FormLabel htmlFor="gi-cost">
+                Cost (USD)
+              </FormLabel>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+                  $
+                </span>
+                <input
+                  id="gi-cost"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.01"
+                  placeholder=""
+                  value={cost}
+                  onChange={(e) => setCost(e.target.value)}
+                  className="w-full min-w-0 rounded-lg border border-gray-300 pl-6 pr-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="min-w-0">
+              <FormLabel htmlFor="gi-pdate">
+                Purchase date
+              </FormLabel>
+              <input
+                id="gi-pdate"
+                type="date"
+                value={purchaseDate}
+                onChange={(e) => setPurchaseDate(e.target.value)}
+                className="block w-full min-w-0 max-w-full appearance-none rounded-lg border border-gray-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div>
+            <FormLabel htmlFor="gi-status">
+              Status
+            </FormLabel>
+            <select
+              id="gi-status"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as GearStatus)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="active">Active</option>
+              <option value="needs_repair">Needs repair</option>
+              <option value="loaned_out">Loaned out</option>
+              <option value="need_to_buy">Need to buy</option>
+            </select>
+          </div>
+
+          {/* List-context section — quantity / worn / consumable. Only shown
+              when the dialog was opened from a list (listContext provided).
+              The gear-library edit path omits listContext, so this section
+              doesn't render and the dialog stays as it was. */}
+          {listContext && (
+            <div className="border-t border-gray-200 pt-4 space-y-3">
+              <p className={FLAT_TABLE_EYEBROW}>
+                On this list
+              </p>
+              <div>
+                <FormLabel htmlFor="gi-qty">
+                  Quantity
+                </FormLabel>
+                <div className="inline-flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                    disabled={quantity <= 1}
+                    aria-label="Decrease quantity"
+                    className="inline-flex w-11 h-11 items-center justify-center rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Minus size={16} />
+                  </button>
+                  <input
+                    id="gi-qty"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={MAX_LIST_ITEM_QUANTITY}
+                    value={quantity}
+                    onChange={(e) =>
+                      setQuantity(Math.max(1, Math.min(MAX_LIST_ITEM_QUANTITY, parseInt(e.target.value, 10) || 1)))
+                    }
+                    className="w-16 h-11 rounded-lg border border-gray-300 px-2 text-center text-base tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((q) => Math.min(MAX_LIST_ITEM_QUANTITY, q + 1))}
+                    disabled={quantity >= MAX_LIST_ITEM_QUANTITY}
+                    aria-label="Increase quantity"
+                    className="inline-flex w-11 h-11 items-center justify-center rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={worn}
+                    onChange={toggleWorn}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                  />
+                  <Shirt size={14} className={WORN_ICON_CLASS} />
+                  <span className="text-sm text-gray-700">Worn (not added to pack weight)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={consumable}
+                    onChange={toggleConsumable}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                  />
+                  <UtensilsCrossed size={14} className={CONSUMABLE_ICON_CLASS} />
+                  <span className="text-sm text-gray-700">Consumable (food, fuel, water)</span>
+                </label>
+              </div>
+              {/* Remove from list — list-scoped membership action, sits in
+                  the "On this list" section near quantity/worn/consumable
+                  rather than buried in the bottom destructive row. Calm-red
+                  treatment (not the louder Delete-from-inventory red): it's a
+                  removal, but reversible — the gear item stays in inventory. */}
+              {onRemoveFromList && (
+                <button
+                  type="button"
+                  onClick={onRemoveFromList}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                >
+                  <CircleMinus size={14} />
+                  Remove from list
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Mobile-only Delete from inventory. The destructive action stays
+              at the bottom of the dialog so it can't be tapped by accident
+              while editing fields; "Remove from list" moved into the "On
+              this list" section above because it's list-scoped, not global.
+              On desktop these actions are reached via the row kebab; the
+              wrapper is `lg:hidden`. Cancel of the delete confirm restores
+              this dialog (see ListDetailPage / GearLibraryPage delete state
+              `returnDialog`). */}
+          {onDeleteFromInventory && (
+            <div className="lg:hidden border-t border-gray-200 pt-4">
+              <button
+                type="button"
+                onClick={onDeleteFromInventory}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
+              >
+                <Trash2 size={14} />
+                Delete from inventory
+              </button>
+            </div>
+          )}
+
+          {saveError && (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            >
+              {saveError}
+            </div>
+          )}
+
+          {/* Bottom padding so the last form field has breathing room
+              above the sticky footer. */}
+          <div className="h-2" aria-hidden="true" />
+        </div>
+
+        {/* Sticky footer — Cancel / Save. Stays visible at the bottom of
+            the modal even when the scroll region above scrolls. Inside
+            the form so Enter from any field still submits. The
+            safe-area padding handles iOS home-indicator overlap when the
+            dialog snaps to the bottom on short viewports. */}
+        <div
+          className="shrink-0 border-t border-gray-100 bg-white px-6 py-3"
+          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+        >
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+            >
+              Cancel
+            </button>
+            <PrimaryButton
+              type="submit"
+              disabled={saving || !name.trim()}
+            >
+              {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Add item'}
+            </PrimaryButton>
+          </div>
+        </div>
+      </form>
+    </Modal>
+  )
+}

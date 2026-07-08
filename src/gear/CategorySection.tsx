@@ -1,0 +1,385 @@
+import { memo, useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
+import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Check, X, MoreVertical } from 'lucide-react'
+import type { Category, GearItem } from '../lib/types'
+import type { WeightUnit } from '../lib/weight'
+import { asButtonRef } from '../lib/dnd'
+import { makeDnDId } from '../lib/dnd-ids'
+import { useAnchoredMenu } from '../lib/use-anchored-menu'
+import { SortableGearItemRow } from './GearItemRow'
+import RowIconButton from '../components/RowIconButton'
+import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
+import {
+  FLAT_TABLE_BODY_TEXT,
+  FLAT_TABLE_EYEBROW,
+  FLAT_TABLE_HEADER,
+  FLAT_TABLE_HEADER_COUNT,
+  FLAT_TABLE_HEADER_TITLE,
+  FLAT_TABLE_SURFACE,
+  INLINE_EDIT_FOCUS_RING,
+  POPOVER_SURFACE,
+  ROW_CONTROL_TARGET,
+} from '../components/flat-table-styles'
+
+type CategorySectionProps = {
+  category: Category | null // null = Uncategorized
+  items: GearItem[]
+  weightUnit: WeightUnit
+  isBelowLg: boolean
+  collapsed: boolean
+  // Receives the collapse key so the page can pass ONE stable toggle identity
+  // to every section (the section binds its own key). Keeps memo real.
+  onToggleCollapse: (key: string) => void
+  selectMode: boolean
+  selectedIds: Set<string>
+  onToggleSelect: (id: string) => void
+  onInlineSave: (id: string, patch: Partial<Pick<GearItem, 'name' | 'description'>>) => void
+  onEditItem: (item: GearItem) => void
+  onDeleteItem: (item: GearItem) => void
+  onSetItemStatus: (id: string, status: GearItem['status']) => void
+  onRenameCategory: (id: string, name: string) => void
+  onDeleteCategory: (category: Category) => void
+  /** Threaded to each SortableGearItemRow as `reorderPending` so the gear-
+   *  item drag handles disable while the gear-item reorder mutation is in
+   *  flight. Distinct from the category-level reorderPending on
+   *  SortableCategorySection (which gates the section's own drag). */
+  itemReorderPending?: boolean
+}
+
+function CategorySectionInner(
+  props: CategorySectionProps & {
+    dragHandleRef?: (node: HTMLButtonElement | null) => void
+    dragHandleListeners?: DraggableSyntheticListeners
+    dragHandleAttributes?: DraggableAttributes
+  },
+) {
+  const {
+    category,
+    items,
+    weightUnit,
+    isBelowLg,
+    collapsed,
+    onToggleCollapse,
+    selectMode,
+    selectedIds,
+    onToggleSelect,
+    onInlineSave,
+    onEditItem,
+    onDeleteItem,
+    onSetItemStatus,
+    onRenameCategory,
+    onDeleteCategory,
+    itemReorderPending,
+    dragHandleRef,
+    dragHandleListeners,
+    dragHandleAttributes,
+  } = props
+
+  const [renaming, setRenaming] = useState(false)
+  const [renameDraft, setRenameDraft] = useState(category?.name ?? '')
+  const renameInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (renaming) renameInputRef.current?.focus()
+  }, [renaming])
+
+  function commitRename() {
+    const trimmed = renameDraft.trim()
+    if (trimmed && category && trimmed !== category.name) {
+      onRenameCategory(category.id, trimmed)
+    }
+    setRenaming(false)
+  }
+
+  const isUncategorized = category === null
+  const name = category?.name ?? 'Uncategorized'
+  // Stable id for the collapsible items region so the chevron button can
+  // announce aria-controls.
+  const regionId = `gear-cat-region-${category?.id ?? 'uncategorized'}`
+  // Matches the page's collapse-Set key derivation (group.category?.id ??
+  // '__uncategorized__'); the section binds it onto the stable onToggleCollapse.
+  const collapseKey = category?.id ?? '__uncategorized__'
+
+  return (
+    // Each category renders as its own flat-table card (FLAT_TABLE_SURFACE);
+    // GearLibraryPage composes the gaps between cards.
+    <div className={FLAT_TABLE_SURFACE}>
+      {/* Category header — flat section divider (bg-gray-50 + bottom border),
+          matching the gear-picker reference grammar. */}
+      <div className={`${FLAT_TABLE_HEADER} gap-1 px-2 py-0 ${
+        // gap-1 + px-2 is a deliberate tighter variant than the canonical
+        // FLAT_TABLE_HEADER_PADDING (gap-1.5 + px-3): this header carries an
+        // extra drag-handle column on the left and a per-category kebab on
+        // the right, so the tighter horizontal padding gives those controls
+        // room without forcing the strip to wrap. Vertical py-0 lets the
+        // shared header height (FLAT_TABLE_HEADER) own the band height.
+        //
+        // Collapsed: header is the card's only child, so its divider border
+        // would double with the card's bottom border. Drop it.
+        collapsed ? 'border-b-0' : ''
+      }`}>
+        {/* Drag handle — only for real categories */}
+        {!isUncategorized && dragHandleRef ? (
+          <RowIconButton
+            ref={dragHandleRef}
+            {...dragHandleListeners}
+            {...dragHandleAttributes}
+            tabIndex={-1}
+            variant="dragHandle"
+            ariaLabel="Drag to reorder"
+            icon={<GripVertical size={16} />}
+          />
+        ) : (
+          <span className="w-5" />
+        )}
+
+        {/* Collapse toggle - sized for touch on mobile (40x40, the minimum
+            comfortable target on phone hardware) and tightened on desktop
+            where mouse precision is higher. The chevron is the only
+            collapse affordance; the name button next to it triggers
+            rename, not collapse, so the two intents stay separate. */}
+        <button
+          onClick={() => onToggleCollapse(collapseKey)}
+          aria-expanded={!collapsed}
+          aria-controls={regionId}
+          aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
+          className={`${ROW_CONTROL_TARGET} text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0`}
+        >
+          {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+        </button>
+
+        {/* Category name / rename input */}
+        {renaming ? (
+          <input
+            ref={renameInputRef}
+            value={renameDraft}
+            onChange={(e) => setRenameDraft(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitRename()
+              if (e.key === 'Escape') {
+                setRenameDraft(category?.name ?? '')
+                setRenaming(false)
+              }
+            }}
+            className={`flex-1 rounded border border-blue-400 bg-white px-1.5 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-medium ${INLINE_EDIT_FOCUS_RING}`}
+          />
+        ) : (
+          category && !selectMode ? (
+            <button
+              type="button"
+              onClick={() => {
+                setRenameDraft(category.name)
+                setRenaming(true)
+              }}
+              title="Rename category"
+              className={`flex-1 min-w-0 rounded px-1 py-0.5 text-left ${FLAT_TABLE_HEADER_TITLE} hover:bg-gray-200`}
+            >
+              <span className="truncate">{name}</span>
+              <span className={`ml-1.5 ${FLAT_TABLE_HEADER_COUNT}`}>({items.length})</span>
+            </button>
+          ) : (
+            <span className={`flex-1 select-none ${FLAT_TABLE_HEADER_TITLE}`}>
+              {name}
+              <span className={`ml-1.5 ${FLAT_TABLE_HEADER_COUNT}`}>({items.length})</span>
+            </span>
+          )
+        )}
+
+        {/* Header actions — hidden in select mode */}
+        {!selectMode && !renaming && (
+          <div
+            className={`flex items-center gap-1.5 ml-auto ${
+              items.length > 0 && !collapsed ? 'lg:pr-1' : ''
+            }`}
+          >
+            {/* Desktop column labels — widths and gap mirror GearItemRow's
+               right-side columns (w-20 cost, w-24 purchase date, w-24
+               weight, w-7 kebab) so labels sit directly above row values.
+               lg:pr-1 nudges the block 4px left to absorb the header's
+               px-2 vs the row's px-3 outer-padding difference. lg:contents
+               flattens the labels into the parent flex on desktop so the
+               parent's gap-1.5 applies between every column. Suppressed
+               on mobile, when the category is collapsed, on empty
+               categories, and in select mode (the parent !selectMode
+               gate handles that — the row reshapes there: checkbox added,
+               kebab removed, so labels would no longer match columns). */}
+            {items.length > 0 && !collapsed && (
+              <div aria-hidden="true" className="hidden lg:contents">
+                <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_EYEBROW}`}>Price</span>
+                <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_EYEBROW}`}>Purchased</span>
+                <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_EYEBROW}`}>Weight</span>
+                {/* Uncategorized has no category-level kebab in the header,
+                   but item rows still render a per-row kebab in non-select
+                   mode. Without this spacer, the labels above would slide
+                   2.125rem (w-7 + gap-1.5) right of the row column edges. */}
+                {!category && <span className="shrink-0 w-7" />}
+              </div>
+            )}
+            {category && (
+              <CategoryKebab
+                onRename={() => {
+                  setRenameDraft(category.name)
+                  setRenaming(true)
+                }}
+                onDelete={() => onDeleteCategory(category)}
+              />
+            )}
+          </div>
+        )}
+
+        {renaming && (
+          <div className="flex items-center gap-0.5 ml-auto">
+            <RowIconButton
+              variant="success"
+              onClick={commitRename}
+              title="Confirm rename"
+              ariaLabel="Confirm rename"
+              icon={<Check size={14} />}
+            />
+            <RowIconButton
+              onClick={() => {
+                setRenameDraft(category?.name ?? '')
+                setRenaming(false)
+              }}
+              title="Cancel rename"
+              ariaLabel="Cancel rename"
+              icon={<X size={14} />}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Items */}
+      {!collapsed && (
+        <div id={regionId}>
+          {items.length === 0 ? (
+            <p className={`py-2 px-3 ${FLAT_TABLE_BODY_TEXT} text-gray-400 italic`}>No items</p>
+          ) : (
+            // Per-category SortableContext — items reorder within their own
+            // category only. Each row's useSortable resolves to this list.
+            <SortableContext items={items.map((i) => makeDnDId('gear-item', i.id))} strategy={verticalListSortingStrategy}>
+              {items.map((item) => (
+                // Forward the page's stable callback identities straight through
+                // (the row binds its own item/id internally). No per-row closures
+                // here, so memo(SortableGearItemRow) holds: only `selected`
+                // changes for the one toggled row on a selection change.
+                <SortableGearItemRow
+                  key={item.id}
+                  item={item}
+                  weightUnit={weightUnit}
+                  isBelowLg={isBelowLg}
+                  selectMode={selectMode}
+                  reorderPending={itemReorderPending}
+                  selected={selectedIds.has(item.id)}
+                  onToggleSelect={onToggleSelect}
+                  onInlineSave={onInlineSave}
+                  onEdit={onEditItem}
+                  onDelete={onDeleteItem}
+                  onSetStatus={onSetItemStatus}
+                />
+              ))}
+            </SortableContext>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CategoryKebab({
+  onRename,
+  onDelete,
+}: {
+  onRename: () => void
+  onDelete: () => void
+}) {
+  const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
+    useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
+
+  return (
+    <>
+      <RowIconButton
+        ref={triggerRef}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (menuOpen) close()
+          else openMenu()
+        }}
+        ariaLabel="Category options"
+        icon={<MoreVertical size={14} />}
+      />
+
+      {menuOpen && menuPos && 'left' in menuPos && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
+          style={{ top: menuPos.top, left: menuPos.left }}
+        >
+          <RowMenuItem icon={<Pencil size={13} />} onClick={() => { close(); onRename() }}>
+            Rename
+          </RowMenuItem>
+          <RowMenuSeparator />
+          <RowMenuItem icon={<Trash2 size={13} />} onClick={() => { close(); onDelete() }} tone="danger">
+            Delete category
+          </RowMenuItem>
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
+// Sortable wrapper used for real categories (not Uncategorized). The `id`
+// prop is the bare category uuid; we wrap it with makeDnDId here so callers
+// don't have to know about the typed-id convention. `reorderPending`
+// disables the handle while a previous reorder mutation is still in flight,
+// preventing the rollback-clobber race when two reorders overlap.
+// memo'd so an unrelated page-state churn (typing a new-category name, opening
+// a dialog, toggling the weight unit) skips the whole section subtree - the page
+// passes stable callback identities and a stable `items` reference (groups are
+// useMemo'd), so the only props that change are the ones that should re-render a
+// section: this category's own `collapsed`/`selectedIds`/`selectMode`/`items`.
+// useSortable still re-renders this on category drag regardless of memo.
+export const SortableCategorySection = memo(function SortableCategorySection(
+  props: CategorySectionProps & { id: string; reorderPending?: boolean },
+) {
+  const { id, reorderPending, ...rest } = props
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: makeDnDId('category', id), disabled: reorderPending })
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+      }}
+    >
+      <CategorySectionInner
+        {...rest}
+        dragHandleRef={asButtonRef(setActivatorNodeRef)}
+        dragHandleListeners={listeners}
+        dragHandleAttributes={attributes}
+      />
+    </div>
+  )
+})
+
+// Non-sortable version for Uncategorized. memo'd for the same reason as the
+// sortable variant: skip the Uncategorized subtree on unrelated page churn.
+export const StaticCategorySection = memo(function StaticCategorySection(props: CategorySectionProps) {
+  return <CategorySectionInner {...props} />
+})
