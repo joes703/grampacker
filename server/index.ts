@@ -5,6 +5,8 @@ import { createDb } from './db'
 import { csrfProtection } from './middleware/csrf'
 import { authRateLimit } from './middleware/rate-limit'
 import { securityHeaders } from './middleware/security-headers'
+import { categoryRoutes } from './routes/categories'
+import { gearItemRoutes } from './routes/gear-items'
 import { meRoutes } from './routes/me'
 import type { HealthResponse } from '../shared/health'
 
@@ -40,6 +42,8 @@ api.use('/auth/*', authRateLimit)
 api.on(['GET', 'POST'], '/auth/*', (c) => createAuth(c.env).handler(c.req.raw))
 
 api.route('/me', meRoutes)
+api.route('/categories', categoryRoutes)
+api.route('/gear-items', gearItemRoutes)
 
 api.get('/health', async (c) => {
   // Round-trips through Drizzle to the D1 binding, so a green health check

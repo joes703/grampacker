@@ -9,6 +9,14 @@ resources). A route without a row, or a row without tests, fails review.
 | `/api/health` | GET | anon | - | - | `HealthResponse` | dev/deploy smoke |
 | `/api/auth/*` | GET, POST | better-auth | n/a (owns its tables) | better-auth | better-auth | better-auth's own origin validation (verified: forged origin -> 403 INVALID_ORIGIN); flow covered in `server/test/auth-helpers.ts` |
 | `/api/me` | GET, PUT | session | self only (`user.id = session.userId`, fixed in repo) | `UpdateMeRequest` (PUT) | `MeResponse` | `server/routes/me.test.ts` |
+| `/api/categories` | GET, POST | session | own rows only (repo-scoped) | `CreateCategoryRequest` (POST) | `CategoryResponse[]` / `CategoryResponse` | `server/routes/categories.test.ts` |
+| `/api/categories/order` | PUT | session | every id owned or 404, zero writes | `ReorderRequest` | 204 | `server/routes/categories.test.ts` |
+| `/api/categories/:id` | PATCH, DELETE | session | own row or 404; DELETE uncategorizes its gear in the same transaction | `UpdateCategoryRequest` (PATCH) | `CategoryResponse` / 204 | `server/routes/categories.test.ts` |
+| `/api/gear-items` | GET, POST | session | own rows only; POST validates category ownership (composite FK backstop) | `CreateGearItemRequest` (POST) | `GearItemResponse[]` / `GearItemResponse` | `server/routes/gear-items.test.ts` |
+| `/api/gear-items/order` | PUT | session | every id owned or 404, zero writes | `ReorderRequest` | 204 | `server/routes/gear-items.test.ts` |
+| `/api/gear-items/bulk-delete` | POST | session | every id owned or 404, zero writes | `BulkDeleteRequest` | 204 | `server/routes/gear-items.test.ts` |
+| `/api/gear-items/bulk-move` | POST | session | every id + target category owned, else 404/400, zero writes | `BulkMoveRequest` | 204 | `server/routes/gear-items.test.ts` |
+| `/api/gear-items/:id` | PATCH, DELETE | session | own row or 404; PATCH validates category ownership | `UpdateGearItemRequest` (PATCH) | `GearItemResponse` / 204 | `server/routes/gear-items.test.ts` |
 | `/*` (assets catch-all) | any | anon | - (static files / SPA shell via ASSETS binding; the binding itself serves GET/HEAD only) | - | - | `server/middleware/security-headers.test.ts` (shell + header coverage) |
 
 Cross-cutting, tested in `server/routes/me.test.ts`:
