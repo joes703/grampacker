@@ -8,10 +8,14 @@ import type { MobileBottomBarItem } from '../components/MobileBottomBar'
 //
 // Active-state rules live here so all callers stay aligned:
 //   - Gear active on /gear
-//   - Lists active on /lists and /lists/:id (any subroute, including
-//     /pack). Pack mode is URL state on a list, not a global
-//     destination; the in-page Pack pill on List Detail carries that
-//     signal locally.
+//
+// TRANSPLANT NOTE (phase 3): /lists does not exist on this stack yet, so
+// the Lists slot renders as a disabled button (the same pattern as
+// MobilePrimaryNav's contextless Add/Options slots) instead of a link
+// that would fall through to the wildcard redirect. When the lists slice
+// transplants, this slot becomes the old repo's link again:
+//   { type: 'link', to: '/lists', label: 'Lists', ...,
+//     active: pathname === '/lists' || pathname.startsWith('/lists/') }
 export function buildMobileDestinationItems(pathname: string): MobileBottomBarItem[] {
   return [
     {
@@ -23,12 +27,12 @@ export function buildMobileDestinationItems(pathname: string): MobileBottomBarIt
       active: pathname === '/gear',
     },
     {
-      type: 'link',
-      to: '/lists',
+      type: 'button',
       label: 'Lists',
       icon: <ListChecks size={18} />,
-      ariaLabel: 'Lists',
-      active: pathname === '/lists' || pathname.startsWith('/lists/'),
+      onClick: () => {},
+      disabled: true,
+      ariaLabel: 'Lists (coming soon)',
     },
   ]
 }
