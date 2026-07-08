@@ -310,7 +310,8 @@ describe('/api/gear-items authorization matrix', () => {
     })
     expect(at500.status).toBe(201)
 
-    // ...the 501st gets the friendly 422 from the repo pre-check...
+    // ...the 501st gets a friendly 422: the DB trigger fires and the repo
+    // maps its error (single enforcement point, no read-then-insert race).
     const over = await apiRequest(cookie, 'POST', '/api/gear-items', {
       name: 'One too many',
     })
