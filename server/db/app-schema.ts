@@ -119,3 +119,101 @@ export const gearItems = sqliteTable(
     ),
   ],
 )
+
+// Pack lists. slug is minted server-side at insert (6-char base62,
+// crypto-random) and lives in the schema from day one even though the
+// public share routes are a later slice - adding a NOT NULL UNIQUE
+// column later would force a table rebuild, and rebuilds silently drop
+// the hand-written cap trigger (see the 0003 caveat above). is_shared
+// stays false until the share slice ships its routes. is_draft defaults
+// true (the old app's final behavior): a label only, never a lock.
+// The 100-per-user cap trigger lives in migration 0004; same caveats as
+// the gear cap trigger.
+export const lists = sqliteTable(
+  'lists',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    slug: text('slug').notNull(),
+    isShared: integer('is_shared', { mode: 'boolean' }).notNull().default(false),
+    groupWorn: integer('group_worn', { mode: 'boolean' }).notNull().default(false),
+    readyChecksEnabled: integer('ready_checks_enabled', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    isDraft: integer('is_draft', { mode: 'boolean' }).notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at').notNull(), // epoch ms
+    updatedAt: integer('updated_at').notNull(), // epoch ms, repo-maintained
+  },
+  (t) => [
+    // Composite-FK target for same-owner references from list_items.
+    unique('lists_id_user_unique').on(t.id, t.userId),
+    unique('lists_slug_unique').on(t.slug),
+    index('lists_user_sort_idx').on(t.userId, t.sortOrder, t.name),
+    check('lists_name_length', sql`length(${t.name}) between 1 and 256`),
+    check(
+      'lists_description_length',
+      sql`${t.description} is null or length(${t.description}) <= 2000`,
+    ),
+    check('lists_slug_shape', sql`length(${t.slug}) = 6`),
+  ],
+)
+
+// List membership rows. Weight/cost/etc. live only on gear_items - the
+// list reads them through the join (the old repo dropped its duplicated
+// weight_grams column for exactly this reason). Both parent FKs are
+// composite same-owner AND cascading: deleting a list removes its rows,
+// deleting a gear item removes it from every list (old-app behavior).
+// Cascade is safe where gear->categories' SET NULL was not - a cascade
+// deletes the whole row, so the "can't null one column of a composite
+// FK" problem never arises. No UNIQUE(list_id, gear_item_id): the old
+// schema allowed the same gear twice in a list, and quantity is not a
+// substitute for that in every workflow. The 300-per-list cap trigger
+// lives in migration 0004.
+export const listItems = sqliteTable(
+  'list_items',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    listId: text('list_id').notNull(),
+    gearItemId: text('gear_item_id').notNull(),
+    quantity: integer('quantity').notNull().default(1),
+    isWorn: integer('is_worn', { mode: 'boolean' }).notNull().default(false),
+    isConsumable: integer('is_consumable', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    isPacked: integer('is_packed', { mode: 'boolean' }).notNull().default(false),
+    isReady: integer('is_ready', { mode: 'boolean' }).notNull().default(false),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at').notNull(), // epoch ms
+    updatedAt: integer('updated_at').notNull(), // epoch ms, repo-maintained
+  },
+  (t) => [
+    index('list_items_user_list_sort_idx').on(t.userId, t.listId, t.sortOrder),
+    // Leading list_id: the cap trigger's count and (later) the share
+    // fetch both filter by list alone.
+    index('list_items_list_sort_idx').on(t.listId, t.sortOrder),
+    index('list_items_gear_item_user_idx').on(t.gearItemId, t.userId),
+    foreignKey({
+      name: 'list_items_list_same_owner_fk',
+      columns: [t.listId, t.userId],
+      foreignColumns: [lists.id, lists.userId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'list_items_gear_same_owner_fk',
+      columns: [t.gearItemId, t.userId],
+      foreignColumns: [gearItems.id, gearItems.userId],
+    }).onDelete('cascade'),
+    check('list_items_quantity_range', sql`${t.quantity} between 1 and 9999`),
+    check(
+      'list_items_worn_xor_consumable',
+      sql`not (${t.isWorn} and ${t.isConsumable})`,
+    ),
+  ],
+)
