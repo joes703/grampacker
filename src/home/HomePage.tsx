@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { healthResponseSchema } from '../../shared/health'
+import { apiFetch } from '../lib/api'
 import { authClient } from '../lib/auth-client'
 import PasskeySection from './PasskeySection'
 
@@ -29,14 +30,9 @@ export default function HomePage() {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/health')
-      .then((res) =>
-        res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`)),
-      )
+    apiFetch('/health', healthResponseSchema)
       .then((body) => {
-        if (cancelled) return
-        const parsed = healthResponseSchema.safeParse(body)
-        setHealth(parsed.success && parsed.data.ok ? 'ok' : 'down')
+        if (!cancelled) setHealth(body.ok ? 'ok' : 'down')
       })
       .catch(() => {
         if (!cancelled) setHealth('down')

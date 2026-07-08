@@ -101,6 +101,7 @@ describe('gear queries hit the documented endpoints', () => {
       url: '/api/gear-items/g1',
       method: 'PATCH',
       body: { categoryId: null, name: 'Tarp' },
+      csrf: '1',
     })
   })
 
@@ -121,6 +122,7 @@ describe('gear queries hit the documented endpoints', () => {
       url: '/api/gear-items/bulk-delete',
       method: 'POST',
       body: { ids: ['a', 'b'] },
+      csrf: '1',
     })
 
     fn = mockFetch(204)
@@ -129,6 +131,7 @@ describe('gear queries hit the documented endpoints', () => {
       url: '/api/gear-items/bulk-move',
       method: 'POST',
       body: { ids: ['a'], categoryId: null },
+      csrf: '1',
     })
 
     fn = mockFetch(204)
@@ -137,6 +140,7 @@ describe('gear queries hit the documented endpoints', () => {
       url: '/api/gear-items/order',
       method: 'PUT',
       body: [{ id: 'a', sortOrder: 1 }],
+      csrf: '1',
     })
   })
 })
@@ -153,6 +157,7 @@ describe('category queries hit the documented endpoints', () => {
       url: '/api/categories',
       method: 'POST',
       body: { name: 'Shelter' },
+      csrf: '1',
     })
 
     fn = mockFetch(200, CATEGORY_ROW)
@@ -161,6 +166,7 @@ describe('category queries hit the documented endpoints', () => {
       url: '/api/categories/c1',
       method: 'PATCH',
       body: { name: 'Sleep' },
+      csrf: '1',
     })
 
     fn = mockFetch(204)
@@ -168,6 +174,7 @@ describe('category queries hit the documented endpoints', () => {
     expect(requestOf(fn)).toMatchObject({
       url: '/api/categories/c1',
       method: 'DELETE',
+      csrf: '1',
     })
 
     fn = mockFetch(204)
@@ -176,6 +183,7 @@ describe('category queries hit the documented endpoints', () => {
       url: '/api/categories/order',
       method: 'PUT',
       body: [{ id: 'c1', sortOrder: 0 }],
+      csrf: '1',
     })
   })
 
