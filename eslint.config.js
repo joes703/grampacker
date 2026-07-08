@@ -5,6 +5,23 @@ export default tseslint.config(
   { ignores: ['dist', '.wrangler', 'worker-configuration.d.ts'] },
   ...tseslint.configs.recommended,
   {
+    // A dropped promise in a Worker is a silently swallowed error (and
+    // on the SPA side, a mutation nobody observes). tsc does not catch
+    // these; only the type-aware lint rule does. Scoped to source files
+    // covered by the tsconfigs - the flat-config files themselves are
+    // plain JS and stay outside the type-checked program.
+    files: ['src/**/*.{ts,tsx}', 'server/**/*.ts', 'shared/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'error',
+    },
+  },
+  {
     files: ['src/**'],
     plugins: { 'react-hooks': reactHooks },
     rules: reactHooks.configs.recommended.rules,

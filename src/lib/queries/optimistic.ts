@@ -138,9 +138,9 @@ function makeRollback<T>(opts: CommonOpts) {
 
 function makeSettled(opts: CommonOpts) {
   return () => {
-    opts.qc.invalidateQueries({ queryKey: opts.queryKey })
+    void opts.qc.invalidateQueries({ queryKey: opts.queryKey })
     if (opts.invalidateKeys) {
-      for (const k of opts.invalidateKeys) opts.qc.invalidateQueries({ queryKey: k })
+      for (const k of opts.invalidateKeys) void opts.qc.invalidateQueries({ queryKey: k })
     }
   }
 }
@@ -164,7 +164,7 @@ export function makeOptimisticInsert<TList extends { id: string }, TInput>(opts:
   const { qc, queryKey, optimistic, merge } = opts
   return {
     onMutate: (input: TInput): OptimisticContext<TList> => {
-      qc.cancelQueries({ queryKey })
+      void qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<TList[]>(queryKey)
       const next = optimistic(input)
       qc.setQueryData<TList[]>(queryKey, (curr) => {
@@ -188,7 +188,7 @@ export function makeOptimisticUpdate<TList extends { id: string }, TInput>(opts:
   const { qc, queryKey, id, apply } = opts
   return {
     onMutate: (input: TInput): OptimisticContext<TList> => {
-      qc.cancelQueries({ queryKey })
+      void qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<TList[]>(queryKey)
       const targetId = id(input)
       qc.setQueryData<TList[]>(queryKey, (curr) => {
@@ -210,7 +210,7 @@ export function makeOptimisticDelete<TList extends { id: string }, TInput>(opts:
   const { qc, queryKey, id } = opts
   return {
     onMutate: (input: TInput): OptimisticContext<TList> => {
-      qc.cancelQueries({ queryKey })
+      void qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<TList[]>(queryKey)
       const targetId = id(input)
       qc.setQueryData<TList[]>(queryKey, (curr) => {
@@ -235,7 +235,7 @@ export function makeOptimisticBulkDelete<TList extends { id: string }, TInput>(o
   const { qc, queryKey, ids } = opts
   return {
     onMutate: (input: TInput): OptimisticContext<TList> => {
-      qc.cancelQueries({ queryKey })
+      void qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<TList[]>(queryKey)
       const idSet = new Set(ids(input))
       qc.setQueryData<TList[]>(queryKey, (curr) => {
@@ -259,7 +259,7 @@ export function makeOptimisticBulkUpdate<TList extends { id: string }, TInput>(o
   const { qc, queryKey, ids, apply } = opts
   return {
     onMutate: (input: TInput): OptimisticContext<TList> => {
-      qc.cancelQueries({ queryKey })
+      void qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<TList[]>(queryKey)
       const idSet = new Set(ids(input))
       qc.setQueryData<TList[]>(queryKey, (curr) => {
@@ -385,7 +385,7 @@ export function makeOptimisticReorder<T extends { id: string; sortOrder: number 
 ) {
   return {
     onMutate: (updates: { id: string; sortOrder: number }[]) => {
-      qc.cancelQueries({ queryKey })
+      void qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<T[]>(queryKey)
 
       // Validate the payload before writing the cache. DEV throws (loud
@@ -429,7 +429,7 @@ export function makeOptimisticReorder<T extends { id: string; sortOrder: number 
       showToast("Couldn't save the new order. Please try again.", { type: 'error' })
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey })
+      void qc.invalidateQueries({ queryKey })
     },
   }
 }
