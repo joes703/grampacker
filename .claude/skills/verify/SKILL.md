@@ -41,6 +41,18 @@ description: Drive the running grampacker app in a real browser to verify auth/U
   verification link signs in and redirects (callbackURL /sign-in ->
   RedirectIfSession -> home).
 
+## Production-mode preview (CSP)
+
+Dev drops the CSP (Vite HMR needs inline scripts), so CSP must be
+verified against the BUILT app: hide .dev.vars, `npm run build`, then
+`npx vite preview --port 4173`. GOTCHA: the cloudflare vite plugin
+copies .dev.vars into dist/grampacker/.dev.vars AT BUILD TIME and
+preview loads it, overriding wrangler.jsonc vars - a build made while
+.dev.vars exists previews in dev mode no matter what. Hide the file
+BEFORE building. Auth writes fail under preview (origin mismatch with
+the prod BETTER_AUTH_URL - expected); shell render + zero console CSP
+violations is the check. Restore .dev.vars after.
+
 ## Passkeys
 
 Playwright can drive the full WebAuthn ceremony headlessly via a CDP

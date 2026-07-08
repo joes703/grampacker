@@ -10,8 +10,12 @@
     // Non-API requests are served from the built SPA; unknown paths fall
     // back to index.html so client-side routing works on deep links.
     "not_found_handling": "single-page-application",
-    // /api/* always reaches the Worker, even if a static file shadows it.
-    "run_worker_first": ["/api/*"],
+    // EVERY request goes through the Worker so the security-header
+    // middleware covers the SPA shell and static assets, not just /api/*
+    // (server/middleware/security-headers.ts). Costs one Worker
+    // invocation per asset request - fine at this traffic, and it ports
+    // to the Node target where the server fronts static files anyway.
+    "run_worker_first": true,
     "binding": "ASSETS"
   },
   // Pre-cutover custom domain: deploying claims next.grampacker.app in the

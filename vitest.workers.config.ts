@@ -20,6 +20,13 @@ export default defineConfig(async () => {
             BETTER_AUTH_SECRET: 'test-only-secret-at-least-32-chars-long!',
             BETTER_AUTH_URL: 'http://localhost:5173',
           },
+          // The real assets directory only exists after a build; tests
+          // get a one-file fixture so the ASSETS binding (and the
+          // security-header middleware in front of it) is exercisable.
+          assets: {
+            directory: './server/test/fixtures/assets',
+            binding: 'ASSETS',
+          },
         },
       }),
     ],

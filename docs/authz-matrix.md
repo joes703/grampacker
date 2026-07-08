@@ -9,6 +9,7 @@ resources). A route without a row, or a row without tests, fails review.
 | `/api/health` | GET | anon | - | - | `HealthResponse` | dev/deploy smoke |
 | `/api/auth/*` | GET, POST | better-auth | n/a (owns its tables) | better-auth | better-auth | better-auth's own origin validation (verified: forged origin -> 403 INVALID_ORIGIN); flow covered in `server/test/auth-helpers.ts` |
 | `/api/me` | GET, PUT | session | self only (`user.id = session.userId`, fixed in repo) | `UpdateMeRequest` (PUT) | `MeResponse` | `server/routes/me.test.ts` |
+| `/*` (assets catch-all) | any | anon | - (static files / SPA shell via ASSETS binding; the binding itself serves GET/HEAD only) | - | - | `server/middleware/security-headers.test.ts` (shell + header coverage) |
 
 Cross-cutting, tested in `server/routes/me.test.ts`:
 
@@ -20,9 +21,18 @@ Cross-cutting, tested in `server/routes/me.test.ts`:
 
 Rate limiting, tested in `server/middleware/rate-limit.test.ts`:
 
-- POST `/api/auth/*` is limited per client IP (`CF-Connecting-IP`), fixed
+- `/api/auth/*` is limited per client IP (`CF-Connecting-IP`), fixed
   windows in the `rate_limits` table: sign-up 10/day, email-sending
   endpoints 5/day (guards the Resend free tier), sign-in 10/10min,
-  everything else 30/10min. Over budget -> 429 + `Retry-After`. GETs
-  (get-session, the verify-email link) are never limited. Budgets live in
-  `server/middleware/rate-limit.ts`.
+  everything else 30/10min. Over budget -> 429 + `Retry-After`.
+- Fail-closed across ALL methods since PR #10: better-auth GETs are not
+  read-only (the passkey challenge endpoint is an unauthenticated GET
+  that writes a verification row). Only the allowlisted pure-read GETs
+  (`get-session`, `passkey/list-user-passkeys`) are exempt. Budgets and
+  the allowlist live in `server/middleware/rate-limit.ts`.
+
+Response headers, tested in `server/middleware/security-headers.test.ts`:
+
+- Every response (SPA shell, assets, API, errors) carries the shared
+  security-header map (`server/middleware/security-headers.ts`);
+  `run_worker_first: true` means no path bypasses the Worker.
