@@ -36,8 +36,10 @@ CREATE TABLE `gear_items` (
 CREATE INDEX `gear_items_user_sort_idx` ON `gear_items` (`user_id`,`sort_order`,`name`);--> statement-breakpoint
 CREATE UNIQUE INDEX `gear_items_id_user_unique` ON `gear_items` (`id`,`user_id`);--> statement-breakpoint
 -- Hand-added (drizzle has no trigger DSL; the snapshot does not track
--- this). Backstop for the repo's friendly cap check in
--- server/repos/gear-items.ts - keep the two limits in lockstep.
+-- this - any future migration that rebuilds gear_items must recreate it).
+-- This trigger is the SINGLE enforcement point for the cap;
+-- server/repos/gear-items.ts maps its message to a friendly 422. Keep the
+-- message text in lockstep with isCapError() there.
 CREATE TRIGGER `gear_items_user_cap`
 BEFORE INSERT ON `gear_items`
 WHEN (SELECT count(*) FROM `gear_items` WHERE `user_id` = NEW.`user_id`) >= 500

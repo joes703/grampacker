@@ -63,12 +63,24 @@ export type GearWriteResult =
 export const GEAR_ITEM_CAP = 500
 
 // The trigger's RAISE(ABORT) text arrives wrapped (DrizzleQueryError ->
-// D1_ERROR -> the SQLite message), so walk the cause chain.
-function isCapError(err: unknown): boolean {
-  for (let e: unknown = err; e instanceof Error; e = e.cause) {
-    if (e.message.includes('gear item cap exceeded')) return true
+// D1_ERROR -> the SQLite message). Match ONLY the root cause: the outer
+// DrizzleQueryError message embeds the bound params, so matching any link
+// in the chain would let user-controlled text (an item literally named
+// 'gear item cap exceeded') misclassify an unrelated insert failure as the
+// cap (Codex finding, PR #14). The raw SQLite message never embeds values,
+// and requiring the trigger's constraint marker pins it to RAISE(ABORT).
+// Exported for the false-positive/true-positive unit tests; the live
+// 501st-item test pins the REAL error shape workerd produces.
+export function isCapError(err: unknown): boolean {
+  let root: unknown = err
+  while (root instanceof Error && root.cause instanceof Error) {
+    root = root.cause
   }
-  return false
+  return (
+    root instanceof Error &&
+    root.message.includes('gear item cap exceeded') &&
+    root.message.includes('SQLITE_CONSTRAINT_TRIGGER')
+  )
 }
 
 export function createGearItemsRepo(db: Db, userId: string) {

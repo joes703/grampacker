@@ -5,6 +5,7 @@ import {
   gearItemResponseSchema,
   type GearItemResponse,
 } from '../../shared/gear'
+import { isCapError } from '../repos/gear-items'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
@@ -323,6 +324,35 @@ describe('/api/gear-items authorization matrix', () => {
         `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ('bypass', '${userId}', 'Bypass', 0, 'active', 0, 0, 0)`,
       ).run(),
     ).rejects.toThrow(/cap/)
+  })
+
+  it('isCapError matches only the root SQLite trigger error, never wrapper params', () => {
+    // Drizzle's wrapper message embeds the bound params, so an item
+    // literally NAMED like the trigger message must not turn an unrelated
+    // failure (here: the composite-FK race) into a false 422.
+    const fkRoot = new Error(
+      'FOREIGN KEY constraint failed: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_FOREIGNKEY)',
+    )
+    const fkD1 = new Error('D1_ERROR: FOREIGN KEY constraint failed', {
+      cause: fkRoot,
+    })
+    const fkWrapper = new Error(
+      'Failed query: insert into "gear_items" ... params: abc,gear item cap exceeded (500 per user): SQLITE_CONSTRAINT_TRIGGER,0,active',
+      { cause: fkD1 },
+    )
+    expect(isCapError(fkWrapper)).toBe(false)
+
+    // The real trigger shape (pinned live by the 501st-item test above).
+    const capRoot = new Error(
+      'gear item cap exceeded (500 per user): SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_TRIGGER)',
+    )
+    const capD1 = new Error(`D1_ERROR: ${capRoot.message}`, { cause: capRoot })
+    const capWrapper = new Error('Failed query: insert into "gear_items" ...', {
+      cause: capD1,
+    })
+    expect(isCapError(capWrapper)).toBe(true)
+    expect(isCapError(new Error('unrelated'))).toBe(false)
+    expect(isCapError(null)).toBe(false)
   })
 
   it('validation: bounds, dates, money, status, oversized arrays', async () => {
