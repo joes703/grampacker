@@ -15,9 +15,9 @@ export function useSignOut() {
     setSigningOut(true)
     try {
       await authClient.signOut()
-      navigate('/sign-in')
+      void navigate('/sign-in')
     } catch {
-      navigate('/sign-in')
+      void navigate('/sign-in')
     } finally {
       setSigningOut(false)
     }

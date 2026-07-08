@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { sql } from 'drizzle-orm'
 import { createAuth } from './auth'
 import { createDb } from './db'
+import { apiBodyLimit } from './middleware/body-limit'
 import { csrfProtection } from './middleware/csrf'
 import { authRateLimit } from './middleware/rate-limit'
 import { securityHeaders } from './middleware/security-headers'
@@ -22,6 +23,12 @@ const app = new Hono<{ Bindings: Env }>()
 app.use('*', securityHeaders)
 
 const api = new Hono<{ Bindings: Env }>()
+
+// Oversized bodies are refused (413) before any middleware or handler
+// can consume them - including better-auth, which reads c.req.raw
+// itself. Registered first on purpose: a 413 must not cost rate-limit
+// budget or depend on auth state.
+api.use('*', apiBodyLimit)
 
 // Unsafe methods on our routes require the custom header + a matching
 // Origin. Registered first so no later route can be added in front of it;

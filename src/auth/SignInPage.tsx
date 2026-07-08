@@ -37,7 +37,7 @@ export default function SignInPage() {
         setError(authErrorMessage(signInError, 'Sign-in failed. Please try again.'))
         return
       }
-      navigate('/')
+      void navigate('/')
     } catch {
       setError('Sign-in failed. Please try again.')
     } finally {
@@ -55,7 +55,7 @@ export default function SignInPage() {
         setError(authErrorMessage(result.error, 'Passkey sign-in failed.'))
         return
       }
-      navigate('/')
+      void navigate('/')
     } catch {
       // Most common path: the user dismissed the browser's passkey prompt.
       setError('Passkey sign-in was cancelled or failed.')

@@ -78,6 +78,10 @@ Four independent layers, tested in `server/routes/me.test.ts`:
 
 ## Input validation
 
+- Request bodies on `/api/*` are capped at 128 KB
+  (`server/middleware/body-limit.ts`), registered before CSRF, rate
+  limiting, and auth so oversized payloads are refused (413) without
+  being read, without auth state, and without spending rate budget.
 - zod DTOs in `shared/` validate on both sides of the API; response
   shapes are pinned by tests so drift fails CI.
 - SQLite constraints (FKs, UNIQUEs, CHECKs) land with each schema slice
