@@ -1,4 +1,4 @@
-import { and, asc, count, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { GearStatus } from '../../shared/gear'
 import type { Db } from '../db'
 import { categories, gearItems } from '../db/schema'
@@ -56,9 +56,32 @@ export type GearWriteResult =
   | { ok: true; row: GearItemRow }
   | { ok: false; reason: 'cap_exceeded' | 'invalid_category' | 'not_found' }
 
-// Mirrors the old DB trigger's cap; the repo check gives the friendly 422,
-// the trigger (migration 0003) is the backstop if a race slips past.
+// The DB trigger in migration 0003 is the SINGLE enforcement point for the
+// cap - no read-then-insert race to lose (Codex finding, PR #13). The repo
+// maps the trigger's RAISE(ABORT) message to a friendly result; keep this
+// constant, the trigger's WHEN clause, and its message in lockstep.
 export const GEAR_ITEM_CAP = 500
+
+// The trigger's RAISE(ABORT) text arrives wrapped (DrizzleQueryError ->
+// D1_ERROR -> the SQLite message). Match ONLY the root cause: the outer
+// DrizzleQueryError message embeds the bound params, so matching any link
+// in the chain would let user-controlled text (an item literally named
+// 'gear item cap exceeded') misclassify an unrelated insert failure as the
+// cap (Codex finding, PR #14). The raw SQLite message never embeds values,
+// and requiring the trigger's constraint marker pins it to RAISE(ABORT).
+// Exported for the false-positive/true-positive unit tests; the live
+// 501st-item test pins the REAL error shape workerd produces.
+export function isCapError(err: unknown): boolean {
+  let root: unknown = err
+  while (root instanceof Error && root.cause instanceof Error) {
+    root = root.cause
+  }
+  return (
+    root instanceof Error &&
+    root.message.includes('gear item cap exceeded') &&
+    root.message.includes('SQLITE_CONSTRAINT_TRIGGER')
+  )
+}
 
 export function createGearItemsRepo(db: Db, userId: string) {
   async function ownsCategory(categoryId: string): Promise<boolean> {
@@ -93,33 +116,31 @@ export function createGearItemsRepo(db: Db, userId: string) {
       if (input.categoryId !== null && !(await ownsCategory(input.categoryId))) {
         return { ok: false, reason: 'invalid_category' }
       }
-      const [{ n } = { n: 0 }] = await db
-        .select({ n: count() })
-        .from(gearItems)
-        .where(eq(gearItems.userId, userId))
-      if (n >= GEAR_ITEM_CAP) {
-        return { ok: false, reason: 'cap_exceeded' }
-      }
       const now = Date.now()
-      const [row] = await db
-        .insert(gearItems)
-        .values({
-          id: crypto.randomUUID(),
-          userId,
-          categoryId: input.categoryId,
-          name: input.name,
-          description: input.description,
-          weightGrams: input.weightGrams,
-          costCents: input.costCents,
-          purchaseDate: input.purchaseDate,
-          status: input.status,
-          sortOrder: sql`coalesce((select max(${gearItems.sortOrder}) + 1 from ${gearItems} where ${gearItems.userId} = ${userId}), 0)`,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning(cols)
-      if (!row) throw new Error('gear item insert returned no row')
-      return { ok: true, row }
+      try {
+        const [row] = await db
+          .insert(gearItems)
+          .values({
+            id: crypto.randomUUID(),
+            userId,
+            categoryId: input.categoryId,
+            name: input.name,
+            description: input.description,
+            weightGrams: input.weightGrams,
+            costCents: input.costCents,
+            purchaseDate: input.purchaseDate,
+            status: input.status,
+            sortOrder: sql`coalesce((select max(${gearItems.sortOrder}) + 1 from ${gearItems} where ${gearItems.userId} = ${userId}), 0)`,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning(cols)
+        if (!row) throw new Error('gear item insert returned no row')
+        return { ok: true, row }
+      } catch (err) {
+        if (isCapError(err)) return { ok: false, reason: 'cap_exceeded' }
+        throw err
+      }
     },
 
     async update(

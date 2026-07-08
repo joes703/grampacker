@@ -62,7 +62,10 @@ export const categories = sqliteTable(
 // (setting user_id null would violate NOT NULL), so the FK is NO ACTION
 // and category deletion is a repo-owned atomic batch: [uncategorize gear,
 // delete category]. The 500-per-user cap trigger lives in migration 0003
-// (drizzle has no trigger DSL); the repo pre-checks it for a friendly 422.
+// (drizzle has no trigger DSL) and is the single enforcement point; the
+// repo maps its error to a friendly 422. CAUTION: the drizzle snapshot
+// does not know the trigger exists - any future migration that rebuilds
+// gear_items (SQLite ALTERs via table recreate) must recreate it by hand.
 export const gearItems = sqliteTable(
   'gear_items',
   {
