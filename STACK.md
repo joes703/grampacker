@@ -32,12 +32,13 @@ dist-tags the same day. `npm ci` for CI/deploy installs; `.npmrc` sets
 | eslint-plugin-react-hooks | 7.1.1 | Hooks correctness for the SPA (`src/**`). eslint-plugin-jsx-a11y stays excluded until a release supports ESLint 10 peers (same deferral as the old repo). |
 | react-router | 8.1.0 | Pulled forward from the phase-2 list: the auth email links (verify, reset) land on real URL paths, which needs a router. Declarative mode only. |
 | @better-auth/passkey | 1.6.23 | WebAuthn passkeys, version-locked to better-auth (the plugin was extracted from core). Its table was NOT in the initial auth migration (an earlier note here claimed otherwise) - migration 0002 adds it via CLI regeneration. rpID derives from BETTER_AUTH_URL: grampacker.app for any *.grampacker.app host, so pre-cutover credentials survive the apex flip. |
+| @tanstack/react-query | 5.101.2 | Phase 2: SPA cache/mutation layer, same major+minor the old app runs. Client defaults ported (30s staleTime, single retry, no focus refetch); the global mutation error handler arrives with the Toast system in the UI transplant. |
 
 ## Arriving in later phases (pin at install time, re-verify dist-tags then)
 
-- @tanstack/react-query (5.101.2), lucide-react, @dnd-kit classic
-  (core 6 / sortable 10 / utilities 3), react-markdown - phase 2+ with
-  the SPA transplant.
+- lucide-react, @dnd-kit classic (core 6 / sortable 10 / utilities 3),
+  react-markdown - with the gear UI transplant (phase 2 step 3) and later
+  slices.
 
 ## Upgrade policy
 

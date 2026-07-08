@@ -94,6 +94,12 @@ export const createGearItemRequestSchema = z
   })
   .strict()
 export type CreateGearItemRequest = z.infer<typeof createGearItemRequestSchema>
+// What a CLIENT passes: the schema's defaults make everything but name
+// optional on the way in (z.infer above is the post-parse shape the server
+// sees, with every default filled).
+export type CreateGearItemRequestInput = z.input<
+  typeof createGearItemRequestSchema
+>
 
 // PATCH semantics: absent = unchanged, null = clear (nullable fields only).
 export const updateGearItemRequestSchema = z
