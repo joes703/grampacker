@@ -1,0 +1,305 @@
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import type { Db } from '../db'
+import { gearItems, listItems, lists } from '../db/schema'
+import { isTriggerAbort, isUniqueViolation } from './db-errors'
+
+const cols = {
+  id: lists.id,
+  name: lists.name,
+  description: lists.description,
+  slug: lists.slug,
+  isShared: lists.isShared,
+  groupWorn: lists.groupWorn,
+  readyChecksEnabled: lists.readyChecksEnabled,
+  isDraft: lists.isDraft,
+  sortOrder: lists.sortOrder,
+  createdAt: lists.createdAt,
+  updatedAt: lists.updatedAt,
+}
+
+export type ListRow = {
+  id: string
+  name: string
+  description: string | null
+  slug: string
+  isShared: boolean
+  groupWorn: boolean
+  readyChecksEnabled: boolean
+  isDraft: boolean
+  sortOrder: number
+  createdAt: number // epoch ms
+  updatedAt: number // epoch ms
+}
+
+// PATCH semantics: undefined = unchanged, null = clear (nullable fields).
+// isShared is absent on purpose - the public-share slice owns that flag.
+export type UpdateListPatch = {
+  name?: string
+  description?: string | null
+  groupWorn?: boolean
+  readyChecksEnabled?: boolean
+  isDraft?: boolean
+}
+
+export type ListWriteResult =
+  | { ok: true; row: ListRow }
+  | { ok: false; reason: 'cap_exceeded' | 'not_found' }
+
+export type FromSelectionResult =
+  | { ok: true; row: ListRow }
+  | { ok: false; reason: 'cap_exceeded' | 'invalid_gear' }
+
+// The 0004 trigger is the single enforcement point; keep in lockstep
+// with its WHEN clause and message (same discipline as GEAR_ITEM_CAP).
+export const LIST_CAP = 100
+
+export function isListCapError(err: unknown): boolean {
+  return isTriggerAbort(err, 'list cap exceeded')
+}
+
+const SLUG_ALPHABET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+// A fresh slug colliding twice is already ~1-in-2^71; five failures in a
+// row means something is broken, not unlucky - throw and let it 500.
+const SLUG_ATTEMPTS = 5
+
+// 6-char base62 share slug, minted server-side (the old repo generated
+// client-side and retried on 23505; server-side removes that trust).
+// b % 62 carries a tiny modulo bias (256 = 4*62 + 8); acceptable for a
+// share URL - effective entropy stays ~35.7 of 35.8 bits.
+export function generateSlug(): string {
+  const bytes = new Uint8Array(6)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => SLUG_ALPHABET[b % 62]).join('')
+}
+
+// "(copy)" suffix must not push the name past the 256 CHECK; the old
+// Postgres RPC had the same latent overflow, fixed here rather than
+// ported.
+function copyName(name: string): string {
+  return `${name.slice(0, 249)} (copy)`
+}
+
+export function createListsRepo(db: Db, userId: string) {
+  async function ownsAllListIds(ids: string[]): Promise<boolean> {
+    const owned = await db
+      .select({ id: lists.id })
+      .from(lists)
+      .where(and(eq(lists.userId, userId), inArray(lists.id, ids)))
+    return owned.length === ids.length
+  }
+
+  function nextSortOrder() {
+    return sql`coalesce((select max(${lists.sortOrder}) + 1 from ${lists} where ${lists.userId} = ${userId}), 0)`
+  }
+
+  return {
+    async list(): Promise<ListRow[]> {
+      return db
+        .select(cols)
+        .from(lists)
+        .where(eq(lists.userId, userId))
+        .orderBy(asc(lists.sortOrder), asc(lists.name))
+    },
+
+    async create(name: string): Promise<ListWriteResult> {
+      for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt++) {
+        const now = Date.now()
+        try {
+          const [row] = await db
+            .insert(lists)
+            .values({
+              id: crypto.randomUUID(),
+              userId,
+              name,
+              slug: generateSlug(),
+              sortOrder: nextSortOrder(),
+              createdAt: now,
+              updatedAt: now,
+            })
+            .returning(cols)
+          if (!row) throw new Error('list insert returned no row')
+          return { ok: true, row }
+        } catch (err) {
+          if (isUniqueViolation(err, 'lists.slug')) continue
+          if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
+          throw err
+        }
+      }
+      throw new Error('slug generation exhausted retries')
+    },
+
+    async update(id: string, patch: UpdateListPatch): Promise<ListWriteResult> {
+      const set: Record<string, unknown> = { updatedAt: Date.now() }
+      if (patch.name !== undefined) set.name = patch.name
+      if (patch.description !== undefined) set.description = patch.description
+      if (patch.groupWorn !== undefined) set.groupWorn = patch.groupWorn
+      if (patch.readyChecksEnabled !== undefined)
+        set.readyChecksEnabled = patch.readyChecksEnabled
+      if (patch.isDraft !== undefined) set.isDraft = patch.isDraft
+      const [row] = await db
+        .update(lists)
+        .set(set)
+        .where(and(eq(lists.id, id), eq(lists.userId, userId)))
+        .returning(cols)
+      return row ? { ok: true, row } : { ok: false, reason: 'not_found' }
+    },
+
+    // The composite FK cascades membership rows; gear itself is untouched.
+    async remove(id: string): Promise<boolean> {
+      const rows = await db
+        .delete(lists)
+        .where(and(eq(lists.id, id), eq(lists.userId, userId)))
+        .returning({ id: lists.id })
+      return rows.length > 0
+    },
+
+    // sortOrder ONLY - a reorder must not bump updatedAt (product rule
+    // ported from the old repo's sort_order_no_op_preserves_updated_at).
+    async reorder(
+      updates: { id: string; sortOrder: number }[],
+    ): Promise<boolean> {
+      if (!(await ownsAllListIds(updates.map((u) => u.id)))) return false
+      const [first, ...rest] = updates.map((u) =>
+        db
+          .update(lists)
+          .set({ sortOrder: u.sortOrder })
+          .where(and(eq(lists.id, u.id), eq(lists.userId, userId))),
+      )
+      if (!first) return true // unreachable: DTO enforces min(1)
+      await db.batch([first, ...rest])
+      return true
+    },
+
+    // Deep copy: name gets "(copy)", every membership row is copied
+    // (including packed/ready state - old duplicate_list behavior), and
+    // isShared/isDraft deliberately reset to false/true so a copy is
+    // never silently public.
+    async duplicate(id: string): Promise<ListWriteResult> {
+      const [source] = await db
+        .select(cols)
+        .from(lists)
+        .where(and(eq(lists.id, id), eq(lists.userId, userId)))
+        .limit(1)
+      if (!source) return { ok: false, reason: 'not_found' }
+      const items = await db
+        .select({
+          gearItemId: listItems.gearItemId,
+          quantity: listItems.quantity,
+          isWorn: listItems.isWorn,
+          isConsumable: listItems.isConsumable,
+          isPacked: listItems.isPacked,
+          isReady: listItems.isReady,
+          sortOrder: listItems.sortOrder,
+        })
+        .from(listItems)
+        .where(and(eq(listItems.listId, id), eq(listItems.userId, userId)))
+
+      for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt++) {
+        const newId = crypto.randomUUID()
+        const now = Date.now()
+        const insertList = db
+          .insert(lists)
+          .values({
+            id: newId,
+            userId,
+            name: copyName(source.name),
+            description: source.description,
+            slug: generateSlug(),
+            isShared: false,
+            groupWorn: source.groupWorn,
+            readyChecksEnabled: source.readyChecksEnabled,
+            isDraft: true,
+            sortOrder: nextSortOrder(),
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning(cols)
+        const insertItems = items.map((it) =>
+          db.insert(listItems).values({
+            id: crypto.randomUUID(),
+            userId,
+            listId: newId,
+            gearItemId: it.gearItemId,
+            quantity: it.quantity,
+            isWorn: it.isWorn,
+            isConsumable: it.isConsumable,
+            isPacked: it.isPacked,
+            isReady: it.isReady,
+            sortOrder: it.sortOrder,
+            createdAt: now,
+            updatedAt: now,
+          }),
+        )
+        try {
+          const [inserted] = await db.batch([insertList, ...insertItems])
+          const row = inserted[0]
+          if (!row) throw new Error('list duplicate returned no row')
+          return { ok: true, row }
+        } catch (err) {
+          if (isUniqueViolation(err, 'lists.slug')) continue
+          if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
+          throw err
+        }
+      }
+      throw new Error('slug generation exhausted retries')
+    },
+
+    // Gear-page "Create list from selection". All-or-nothing: one
+    // non-owned gear id rejects the whole call with zero writes; the
+    // batch is a real transaction on D1. Item order follows the array.
+    async createFromSelection(
+      name: string,
+      gearItemIds: string[],
+    ): Promise<FromSelectionResult> {
+      const owned = await db
+        .select({ id: gearItems.id })
+        .from(gearItems)
+        .where(
+          and(eq(gearItems.userId, userId), inArray(gearItems.id, gearItemIds)),
+        )
+      if (owned.length !== gearItemIds.length) {
+        return { ok: false, reason: 'invalid_gear' }
+      }
+
+      for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt++) {
+        const newId = crypto.randomUUID()
+        const now = Date.now()
+        const insertList = db
+          .insert(lists)
+          .values({
+            id: newId,
+            userId,
+            name,
+            slug: generateSlug(),
+            sortOrder: nextSortOrder(),
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning(cols)
+        const insertItems = gearItemIds.map((gearItemId, i) =>
+          db.insert(listItems).values({
+            id: crypto.randomUUID(),
+            userId,
+            listId: newId,
+            gearItemId,
+            sortOrder: i,
+            createdAt: now,
+            updatedAt: now,
+          }),
+        )
+        try {
+          const [inserted] = await db.batch([insertList, ...insertItems])
+          const row = inserted[0]
+          if (!row) throw new Error('list from-selection returned no row')
+          return { ok: true, row }
+        } catch (err) {
+          if (isUniqueViolation(err, 'lists.slug')) continue
+          if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
+          throw err
+        }
+      }
+      throw new Error('slug generation exhausted retries')
+    },
+  }
+}
