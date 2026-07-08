@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { healthResponseSchema } from '../../shared/health'
 import { authClient } from '../lib/auth-client'
+import PasskeySection from './PasskeySection'
 
 type ApiHealth = 'checking' | 'ok' | 'down'
 
@@ -88,6 +89,7 @@ export default function HomePage() {
         >
           {HEALTH_LABEL[health]}
         </span>
+        <PasskeySection />
       </div>
     </main>
   )

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
-import { authClient } from '../lib/auth-client'
+import { authClient, passkeysSupported } from '../lib/auth-client'
 import { authErrorMessage } from './auth-errors'
 import { AuthCard, ErrorText, FIELD, LABEL, PRIMARY_BUTTON, TEXT_LINK } from './auth-ui'
 
@@ -17,6 +17,7 @@ export default function SignInPage() {
   const [error, setError] = useState<string | null>(null)
   const [needsVerification, setNeedsVerification] = useState(false)
   const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle')
+  const [passkeyPending, setPasskeyPending] = useState(false)
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -26,9 +27,10 @@ export default function SignInPage() {
     try {
       const { error: signInError } = await authClient.signIn.email({ email, password })
       if (signInError) {
-        if (signInError.status === 403) {
-          // EMAIL_NOT_VERIFIED: the account exists but is inert until the
-          // emailed link is clicked. Offer a resend.
+        if (signInError.code === 'EMAIL_NOT_VERIFIED') {
+          // The account exists but is inert until the emailed link is
+          // clicked. Offer a resend. (Matched by code, not status:
+          // better-auth uses 403 for other refusals too.)
           setNeedsVerification(true)
           return
         }
@@ -40,6 +42,25 @@ export default function SignInPage() {
       setError('Sign-in failed. Please try again.')
     } finally {
       setPending(false)
+    }
+  }
+
+  async function handlePasskeySignIn() {
+    if (passkeyPending) return
+    setPasskeyPending(true)
+    setError(null)
+    try {
+      const result = await authClient.signIn.passkey()
+      if (result?.error) {
+        setError(authErrorMessage(result.error, 'Passkey sign-in failed.'))
+        return
+      }
+      navigate('/')
+    } catch {
+      // Most common path: the user dismissed the browser's passkey prompt.
+      setError('Passkey sign-in was cancelled or failed.')
+    } finally {
+      setPasskeyPending(false)
     }
   }
 
@@ -145,6 +166,23 @@ export default function SignInPage() {
           {pending ? 'Signing in...' : 'Sign in'}
         </button>
       </form>
+      {passkeysSupported() && (
+        <>
+          <div className="my-4 flex items-center gap-3 text-xs text-gray-400">
+            <div className="h-px flex-1 bg-gray-200" />
+            or
+            <div className="h-px flex-1 bg-gray-200" />
+          </div>
+          <button
+            type="button"
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => void handlePasskeySignIn()}
+            disabled={passkeyPending}
+          >
+            {passkeyPending ? 'Waiting for passkey...' : 'Sign in with a passkey'}
+          </button>
+        </>
+      )}
       <div className="mt-4 space-y-1 text-sm text-gray-600">
         <p>
           No account?{' '}

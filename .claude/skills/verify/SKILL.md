@@ -30,10 +30,35 @@ description: Drive the running grampacker app in a real browser to verify auth/U
   route gates in `src/App.tsx` must never unmount children on a pending
   refetch (see the gate comment there - regression looks like form state
   vanishing after a successful submit).
-- The rate limiter shares one `local` bucket for all headerless traffic.
+- The rate limiter shares one `local` bucket for all headerless traffic,
+  and it is fail-closed across methods: GETs count too unless allowlisted
+  (get-session, list-user-passkeys). Long drives with many verify-email
+  or passkey-challenge GETs eat the default 30/10min auth bucket.
   Driving 429 probes locks sign-in for 10 minutes; clean up after:
   `npx wrangler d1 execute grampacker --local --command "delete from rate_limits"`.
   To simulate distinct clients instead, set a `cf-connecting-ip` header.
 - Sign-up creates NO session while the account is unverified; the
   verification link signs in and redirects (callbackURL /sign-in ->
   RedirectIfSession -> home).
+
+## Passkeys
+
+Playwright can drive the full WebAuthn ceremony headlessly via a CDP
+virtual authenticator:
+
+```js
+const cdp = await page.context().newCDPSession(page)
+await cdp.send('WebAuthn.enable')
+await cdp.send('WebAuthn.addVirtualAuthenticator', {
+  options: {
+    protocol: 'ctap2', transport: 'internal',
+    hasResidentKey: true, hasUserVerification: true,
+    isUserVerified: true, automaticPresenceSimulation: true,
+  },
+})
+```
+
+Register from the home Passkeys section, sign out, then 'Sign in with a
+passkey' completes without any prompt. Dev rpID is localhost (derived
+from BETTER_AUTH_URL). With no credential on the authenticator the
+sign-in fails fast with the cancelled-error copy - useful as a probe.
