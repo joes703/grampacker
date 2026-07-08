@@ -6,7 +6,7 @@ import { securityHeaderMap } from './security-headers'
 // Prod-like env: /api/health never touches better-auth, so overriding the
 // canonical origin is safe and makes the middleware emit the full
 // production set (the test default is localhost = dev mode).
-const prodEnv = { ...env, BETTER_AUTH_URL: 'https://next.grampacker.app' }
+const prodEnv = { ...env, BETTER_AUTH_URL: 'https://grampacker.app' }
 
 describe('security headers', () => {
   it('dev mode drops exactly one header: the CSP', () => {

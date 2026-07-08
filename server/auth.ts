@@ -5,9 +5,9 @@ import { createDb } from './db'
 import { createEmailSender } from './email'
 
 // WebAuthn relying-party id. Must be the serving origin's registrable
-// domain (or a suffix of it): grampacker.app for both next.grampacker.app
-// (pre-cutover) and grampacker.app (after), so credentials registered
-// before cutover keep working after it. Dev stays on localhost.
+// domain (or a suffix of it): grampacker.app for the apex and any
+// grampacker.app subdomain, so credentials keep working if the serving
+// host ever changes within the zone. Dev stays on localhost.
 // Exact-or-dot-boundary match: a bare endsWith would also match
 // lookalikes such as evilgrampacker.app. Exported for tests.
 export function passkeyRpId(baseUrl: string): string {

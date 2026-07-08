@@ -18,12 +18,14 @@
     "run_worker_first": true,
     "binding": "ASSETS"
   },
-  // Pre-cutover custom domain: deploying claims next.grampacker.app in the
-  // zone automatically (it is in the same Cloudflare account). Needed so
-  // passkeys can register against the real rpID (grampacker.app) before
-  // cutover; the apex stays on the old Pages app until phase 7.
+  // Apex cutover (decided 2026-07-08): the old Supabase app's data was all
+  // test data, so there is no migration workstream and no reason for a
+  // staging subdomain - grampacker.app IS this app. Deploying claims the
+  // custom domain automatically PROVIDED the domain has first been
+  // detached from the old Cloudflare Pages project (dashboard step;
+  // a domain cannot be bound to two projects at once).
   "routes": [
-    { "pattern": "next.grampacker.app", "custom_domain": true }
+    { "pattern": "grampacker.app", "custom_domain": true }
   ],
   "vars": {
     // Production values; .dev.vars overrides in local dev.
@@ -31,7 +33,7 @@
     // validation and the CSRF middleware both check against it, so the
     // workers.dev URL still serves the SPA but refuses writes. WebAuthn
     // requires the real domain anyway.
-    "BETTER_AUTH_URL": "https://next.grampacker.app",
+    "BETTER_AUTH_URL": "https://grampacker.app",
     "EMAIL_FROM": "grampacker <no-reply@grampacker.app>"
   },
   "d1_databases": [
