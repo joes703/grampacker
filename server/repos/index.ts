@@ -1,4 +1,6 @@
 import type { Db } from '../db'
+import { createCategoriesRepo } from './categories'
+import { createGearItemsRepo } from './gear-items'
 import { createUsersRepo } from './users'
 
 // The ONLY constructor of user-scoped data access. The session middleware
@@ -9,6 +11,8 @@ import { createUsersRepo } from './users'
 export function reposForUser(db: Db, userId: string) {
   return {
     users: createUsersRepo(db, userId),
+    categories: createCategoriesRepo(db, userId),
+    gearItems: createGearItemsRepo(db, userId),
   }
 }
 
