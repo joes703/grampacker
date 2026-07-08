@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { authClient } from './lib/auth-client'
 import SignInPage from './auth/SignInPage'
@@ -6,6 +7,22 @@ import SignUpPage from './auth/SignUpPage'
 import ForgotPasswordPage from './auth/ForgotPasswordPage'
 import ResetPasswordPage from './auth/ResetPasswordPage'
 import HomePage from './home/HomePage'
+
+// Query defaults ported from the old app: 30s staleTime keeps rapid
+// navigation off the network, a single retry smooths transient blips
+// without hammering a down server, and focus refetch stays off (the data
+// is single-user; nothing changes behind your back). The global mutation
+// error handler (meta.errorToast) arrives with the Toast system in the
+// UI transplant.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 30,
+      retry: (failureCount) => failureCount < 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+})
 
 // Gate rule: never unmount children on a PENDING session. The auth client
 // refetches the session after every auth mutation, and an isPending ->
@@ -32,45 +49,47 @@ function RedirectIfSession({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <RequireSession>
-              <HomePage />
-            </RequireSession>
-          }
-        />
-        <Route
-          path="/sign-in"
-          element={
-            <RedirectIfSession>
-              <SignInPage />
-            </RedirectIfSession>
-          }
-        />
-        <Route
-          path="/sign-up"
-          element={
-            <RedirectIfSession>
-              <SignUpPage />
-            </RedirectIfSession>
-          }
-        />
-        <Route
-          path="/forgot-password"
-          element={
-            <RedirectIfSession>
-              <ForgotPasswordPage />
-            </RedirectIfSession>
-          }
-        />
-        {/* Not session-gated in either direction: a signed-in user clicking
-            a reset link should still be able to set a new password. */}
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <RequireSession>
+                <HomePage />
+              </RequireSession>
+            }
+          />
+          <Route
+            path="/sign-in"
+            element={
+              <RedirectIfSession>
+                <SignInPage />
+              </RedirectIfSession>
+            }
+          />
+          <Route
+            path="/sign-up"
+            element={
+              <RedirectIfSession>
+                <SignUpPage />
+              </RedirectIfSession>
+            }
+          />
+          <Route
+            path="/forgot-password"
+            element={
+              <RedirectIfSession>
+                <ForgotPasswordPage />
+              </RedirectIfSession>
+            }
+          />
+          {/* Not session-gated in either direction: a signed-in user clicking
+              a reset link should still be able to set a new password. */}
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </QueryClientProvider>
   )
 }

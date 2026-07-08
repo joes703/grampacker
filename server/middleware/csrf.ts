@@ -1,9 +1,8 @@
 import { createMiddleware } from 'hono/factory'
-
-// The SPA's fetch wrapper sends this on every unsafe request. A cross-site
-// attacker cannot add a custom header without a CORS preflight, and this
-// server never emits CORS headers, so the preflight can never pass.
-export const CSRF_HEADER = 'x-grampacker-request'
+// The header name lives in shared/ so the SPA fetch wrapper and this
+// middleware cannot drift. Re-exported for existing server-side importers.
+export { CSRF_HEADER } from '../../shared/api'
+import { CSRF_HEADER } from '../../shared/api'
 
 // Belt-and-braces CSRF for our API routes (SameSite=Strict cookies are the
 // first layer). better-auth routes are skipped - better-auth does its own

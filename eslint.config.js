@@ -10,6 +10,31 @@ export default tseslint.config(
     rules: reactHooks.configs.recommended.rules,
   },
   {
+    // src/lib/api.ts is the SPA's single door to /api/*: it owns the
+    // anti-CSRF header, error normalization, and DTO validation. A raw
+    // fetch() call site silently skips all three (Codex finding, PR #15).
+    // better-auth traffic goes through authClient, never a hand-rolled
+    // fetch, so banning the identifier outright costs nothing.
+    files: ['src/**'],
+    ignores: ['src/lib/api.ts', 'src/**/*.test.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.name='fetch']",
+          message:
+            'Use apiFetch/apiFetchVoid from src/lib/api.ts - raw fetch skips the CSRF header, error normalization, and DTO validation.',
+        },
+        {
+          selector:
+            "CallExpression[callee.property.name='fetch'][callee.object.name='window']",
+          message:
+            'Use apiFetch/apiFetchVoid from src/lib/api.ts - raw fetch skips the CSRF header, error normalization, and DTO validation.',
+        },
+      ],
+    },
+  },
+  {
     // Security-by-construction import boundary (REWRITE_PLAN.md section 5):
     // handlers receive user-scoped repositories from c.get('repos'),
     // attached by requireSession. They must not reach the DB, the schema,
