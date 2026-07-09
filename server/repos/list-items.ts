@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db'
 import { categories, gearItems, listItems, lists } from '../db/schema'
 import { isTriggerAbort } from './db-errors'
@@ -321,18 +321,19 @@ export function createListItemsRepo(db: Db, userId: string) {
       listId: string,
       updates: { id: string; sortOrder: number }[],
     ): Promise<boolean> {
+      // Owned-set membership, not inArray over the input: D1 caps bound
+      // parameters at 100 per query and the reorder DTO allows
+      // LIST_ITEM_CAP (300) ids (see chunk-ids.ts). The per-list cap
+      // bounds the scan at 300 rows.
       const ids = updates.map((u) => u.id)
-      const owned = await db
+      const ownedRows = await db
         .select({ id: listItems.id })
         .from(listItems)
         .where(
-          and(
-            eq(listItems.listId, listId),
-            eq(listItems.userId, userId),
-            inArray(listItems.id, ids),
-          ),
+          and(eq(listItems.listId, listId), eq(listItems.userId, userId)),
         )
-      if (owned.length !== ids.length) return false
+      const owned = new Set(ownedRows.map((r) => r.id))
+      if (!ids.every((id) => owned.has(id))) return false
       const [first, ...rest] = updates.map((u) =>
         db
           .update(listItems)

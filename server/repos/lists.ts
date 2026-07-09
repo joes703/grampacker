@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db'
 import { gearItems, listItems, lists } from '../db/schema'
 import { isTriggerAbort, isUniqueViolation } from './db-errors'
@@ -81,12 +81,17 @@ function copyName(name: string): string {
 }
 
 export function createListsRepo(db: Db, userId: string) {
+  // Owned-set membership, not inArray over the input: D1 caps bound
+  // parameters at 100 per query and the reorder DTO allows LIST_CAP (100)
+  // ids - which with userId is already 101 params (see chunk-ids.ts). The
+  // list cap bounds the scan at 100 rows.
   async function ownsAllListIds(ids: string[]): Promise<boolean> {
-    const owned = await db
+    const ownedRows = await db
       .select({ id: lists.id })
       .from(lists)
-      .where(and(eq(lists.userId, userId), inArray(lists.id, ids)))
-    return owned.length === ids.length
+      .where(eq(lists.userId, userId))
+    const owned = new Set(ownedRows.map((r) => r.id))
+    return ids.every((id) => owned.has(id))
   }
 
   function nextSortOrder() {
@@ -253,13 +258,15 @@ export function createListsRepo(db: Db, userId: string) {
       description: string | null,
       gearItemIds: string[],
     ): Promise<FromSelectionResult> {
-      const owned = await db
+      // Owned-set membership, not inArray over the selection: D1 caps
+      // bound parameters at 100 per query and the DTO allows up to 300
+      // gear ids (see chunk-ids.ts). The gear cap bounds the scan at 500.
+      const ownedRows = await db
         .select({ id: gearItems.id })
         .from(gearItems)
-        .where(
-          and(eq(gearItems.userId, userId), inArray(gearItems.id, gearItemIds)),
-        )
-      if (owned.length !== gearItemIds.length) {
+        .where(eq(gearItems.userId, userId))
+      const owned = new Set(ownedRows.map((r) => r.id))
+      if (!gearItemIds.every((id) => owned.has(id))) {
         return { ok: false, reason: 'invalid_gear' }
       }
 

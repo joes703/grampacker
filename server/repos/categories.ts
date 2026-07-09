@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db'
 import { categories, gearItems } from '../db/schema'
 
@@ -83,16 +83,19 @@ export function createCategoriesRepo(db: Db, userId: string) {
     // All-or-nothing: every id must be an owned row (ids are deduped by
     // the DTO) or nothing is written. The per-row updates are additionally
     // user-scoped, so a row deleted between check and batch just updates
-    // nothing - no cross-user write is expressible.
+    // nothing - no cross-user write is expressible. Owned-set membership,
+    // not inArray over the input: D1 caps bound parameters at 100 per
+    // query and the reorder DTO allows 500 ids (see chunk-ids.ts).
     async reorder(
       updates: { id: string; sortOrder: number }[],
     ): Promise<boolean> {
       const ids = updates.map((u) => u.id)
-      const owned = await db
+      const ownedRows = await db
         .select({ id: categories.id })
         .from(categories)
-        .where(and(eq(categories.userId, userId), inArray(categories.id, ids)))
-      if (owned.length !== ids.length) return false
+        .where(eq(categories.userId, userId))
+      const owned = new Set(ownedRows.map((r) => r.id))
+      if (!ids.every((id) => owned.has(id))) return false
       const [first, ...rest] = updates.map((u) =>
         db
           .update(categories)

@@ -769,6 +769,61 @@ describe('caps and slug integrity', () => {
     expect(gearAfter).toBe(gearBefore)
   })
 
+  it('bulk surfaces above 100 ids work (D1 binds max 100 params/query)', async () => {
+    // Regression for the inArray param fan-out (see chunk-ids.ts): lists
+    // reorder at the full LIST_CAP (100 ids + userId = 101 params),
+    // from-selection with 150 gear ids, and list-items reorder at 150.
+    const { cookie } = await signUpVerifiedUser('lists-many@example.com', 'M')
+    const userId = await userIdFor(cookie)
+
+    // from-selection with 150 gear ids (list #1 of the eventual 100).
+    const gearValues = Array.from({ length: 150 }, (_, i) => {
+      return `('selmany-${i}', '${userId}', 'Sel gear ${i}', 0, 'active', ${i}, 0, 0)`
+    }).join(',')
+    await env.DB.prepare(
+      `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${gearValues}`,
+    ).run()
+    const gearIds = Array.from({ length: 150 }, (_, i) => `selmany-${i}`)
+    const sel = await apiRequest(cookie, 'POST', '/api/lists/from-selection', {
+      name: 'Big selection',
+      gearItemIds: gearIds,
+    })
+    expect(sel.status).toBe(201)
+    const bigList = (await sel.json()) as { id: string }
+    const items = await getItems(cookie, bigList.id)
+    expect(items).toHaveLength(150)
+
+    // List-items reorder at 150.
+    const reorderItems = await apiRequest(
+      cookie,
+      'PUT',
+      `/api/lists/${bigList.id}/items/order`,
+      items.map((it, i) => ({ id: it.id, sortOrder: 149 - i })),
+    )
+    expect(reorderItems.status).toBe(204)
+
+    // Lists reorder at exactly LIST_CAP: 99 seeded + the selection list
+    // (seeding 100 first would make from-selection the 101st and 422).
+    const listValues = Array.from({ length: 99 }, (_, i) => {
+      return `('listmany-${i}', '${userId}', 'List ${i}', 'LM${String(i).padStart(4, '0')}', 0, 0, 0, 1, ${i + 10}, 0, 0)`
+    }).join(',')
+    await env.DB.prepare(
+      `insert into lists (id, user_id, name, slug, is_shared, group_worn, ready_checks_enabled, is_draft, sort_order, created_at, updated_at) values ${listValues}`,
+    ).run()
+    const reorderIds = [
+      bigList.id,
+      ...Array.from({ length: 99 }, (_, i) => `listmany-${i}`),
+    ]
+    const reorderLists = await apiRequest(cookie, 'PUT', '/api/lists/order',
+      reorderIds.map((id, i) => ({ id, sortOrder: 99 - i })),
+    )
+    expect(reorderLists.status).toBe(204)
+    // bigList got the highest slot, so it sorts last now.
+    const after = await getLists(cookie)
+    expect(after).toHaveLength(100)
+    expect(after[99]?.name).toBe('Big selection')
+  })
+
   it('slugs are unique at the DB level with the matcher-visible error shape', async () => {
     const { cookie } = await signUpVerifiedUser('lists-slug@example.com', 'S')
     const userId = await userIdFor(cookie)
