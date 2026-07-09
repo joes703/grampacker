@@ -95,7 +95,15 @@ export default function InlineTitle({ name, onSave, editTrigger, onEditingChange
           }}
           onBlur={() => commitOnce(() => commit({ explicit: false }))}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') commitOnce(() => commit({ explicit: true }))
+            if (e.key === 'Enter') {
+              // An empty explicit commit shows the inline error and keeps
+              // the session open. Once the error is visible, a repeat
+              // Enter's setError is a same-value update React bails out
+              // of - no re-render, no guard re-arm - so this path must
+              // not consume the guard or it would eat the next Escape.
+              if (draft.trim()) commitOnce(() => commit({ explicit: true }))
+              else commit({ explicit: true })
+            }
             if (e.key === 'Escape') commitOnce(cancel)
           }}
           aria-invalid={error !== null}

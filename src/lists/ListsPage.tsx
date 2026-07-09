@@ -277,6 +277,11 @@ function NewListInline({
           if (e.key === 'Enter') commitOnce(onSubmit)
           if (e.key === 'Escape') commitOnce(onCancel)
         }}
+        // Disabled while the create is in flight, matching the panel's
+        // NewListInlineRow: the guard re-arms after the isPending
+        // re-render (by design), so a second Enter mid-flight would
+        // otherwise submit a duplicate.
+        disabled={saving}
         className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
       <button

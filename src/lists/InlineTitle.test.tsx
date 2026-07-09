@@ -42,6 +42,20 @@ describe('InlineTitle commit-once', () => {
     expect(screen.getByText('Trip list')).toBeTruthy()
   })
 
+  it('repeated empty Enter does not eat the next Escape', () => {
+    const { onSave, input } = openEditor()
+    // The second Enter's setError is a same-value update React bails out
+    // of - no re-render, no guard re-arm - so the Enter path must not
+    // consume the guard on the invalid branch.
+    fireEvent.change(input, { target: { value: '   ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(screen.getByText("List name can't be empty")).toBeTruthy()
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(screen.getByText('Trip list')).toBeTruthy()
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
   it('validation failure keeps the session usable: error, fix, save', () => {
     const { onSave, input } = openEditor()
     // Explicit save of an empty name renders the inline error and stays in
