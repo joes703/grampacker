@@ -44,6 +44,17 @@ type FanOutOpts = {
 // Snapshot-and-apply across every per-list cache that references one of
 // the changed gear ids. Untouched caches are neither cancelled nor
 // snapshotted - their identity must not churn.
+//
+// findAll matches by prefix, so it would also return a bare
+// ['list-items'] query or any longer-keyed one holding an arbitrary
+// shape. onMutate runs AFTER the gear cache write, so throwing here
+// (e.g. .some on non-array data) would skip returning the rollback
+// context and strand the optimistic gear change. Only the exact
+// two-element per-list shape with array data may pass.
+function isPerListItemsQuery(key: QueryKey, data: unknown): boolean {
+  return key.length === 2 && typeof key[1] === 'string' && Array.isArray(data)
+}
+
 function fanOutListItemsCaches(
   qc: QueryClient,
   gearItemIds: ReadonlySet<string>,
@@ -52,10 +63,12 @@ function fanOutListItemsCaches(
   const affected = qc
     .getQueryCache()
     .findAll({ queryKey: queryKeys.listItemsAll() })
-    .filter((q) =>
-      (q.state.data as ListItemWithGear[] | undefined)?.some((i) =>
-        gearItemIds.has(i.gearItemId),
-      ),
+    .filter(
+      (q) =>
+        isPerListItemsQuery(q.queryKey, q.state.data) &&
+        (q.state.data as ListItemWithGear[]).some((i) =>
+          gearItemIds.has(i.gearItemId),
+        ),
     )
   const snapshots: ListItemsSnapshot[] = []
   for (const q of affected) {

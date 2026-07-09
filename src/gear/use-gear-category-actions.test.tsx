@@ -32,6 +32,7 @@ const h = vi.hoisted(() => ({
   queryKeys: {
     categories: () => ['categories'] as const,
     gearItems: () => ['gear-items'] as const,
+    listItemsAll: () => ['list-items'] as const,
   },
   createCategory: vi.fn<(name: string) => Promise<unknown>>(),
   renameCategory: vi.fn<(id: string, name: string) => Promise<void>>(),
@@ -136,17 +137,17 @@ describe('useGearCategoryActions', () => {
       await waitFor(() => expect(h.deleteCategory).toHaveBeenCalledWith('c1'))
     })
 
-    it('invalidates the gear-items cache so uncategorized items re-render after the server-side uncategorize', () => {
+    it('invalidates the gear-items and list-items caches so uncategorized items re-render after the server-side uncategorize', () => {
       setup()
       const opts = h.makeOptimisticDelete.mock.calls[0]![0]
       // The delete removes only the category row from ['categories']; the
       // server sets gear_items.categoryId to NULL in the same transaction
-      // (it does NOT delete gear). Invalidating the gear cache is what
-      // refreshes the now-uncategorized items. (The old repo also
-      // invalidated ['list-items'] here; that returns with the lists slice
-      // in phase 3.)
+      // (it does NOT delete gear). Invalidating the gear cache refreshes
+      // the now-uncategorized items, and the ['list-items'] prefix covers
+      // every per-list cache embedding the same gear DTO through
+      // list_items.gearItem.
       expect(opts.queryKey).toEqual(['categories'])
-      expect(opts.invalidateKeys).toEqual([['gear-items']])
+      expect(opts.invalidateKeys).toEqual([['gear-items'], ['list-items']])
       expect(opts.id('c1')).toBe('c1')
     })
   })

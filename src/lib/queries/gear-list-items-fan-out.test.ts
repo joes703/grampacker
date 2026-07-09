@@ -10,6 +10,7 @@ import {
   makeOptimisticGearItemDelete,
   makeOptimisticGearItemsBulkDelete,
   makeOptimisticGearItemsBulkCategoryMove,
+  type GearFanOutContext,
 } from './gear-list-items-fan-out'
 import { queryKeys } from './keys'
 import { showToast } from '../toast'
@@ -203,6 +204,69 @@ describe('makeOptimisticGearItemsBulkDelete', () => {
     // And the caches are back.
     expect(gearCache(qc).map((g) => g.id)).toEqual(['g1', 'g2', 'g3'])
     expect(itemsOf(qc, 'l2')).toHaveLength(1)
+  })
+})
+
+// findAll matches ['list-items'] as a PREFIX, so the fan-out also sees a
+// bare ['list-items'] query, longer keys, and non-string list ids - none
+// of which hold the per-list array shape. If reading one of those threw
+// inside onMutate (after the gear write, before the context returns),
+// the rollback contract would break. These pin that only the exact
+// ['list-items', string] shape with array data is ever touched.
+describe('fan-out cache discovery hardening', () => {
+  function poison(qc: QueryClient) {
+    // Bare prefix key holding non-array garbage.
+    qc.setQueryData(queryKeys.listItemsAll(), { not: 'an array' })
+    // Longer key whose array data WOULD match g1 if shape were ignored.
+    qc.setQueryData(
+      ['list-items', 'l1', 'extra'],
+      [listItem({ id: 'li-x', listId: 'l1', gearItemId: 'g1' })],
+    )
+    // Two-element key with a non-string second element.
+    qc.setQueryData(['list-items', 42], [listItem({ id: 'li-y', gearItemId: 'g1' })])
+  }
+
+  it('skips non-per-list caches without throwing and still fans out', () => {
+    const { qc } = seed()
+    poison(qc)
+    const bareBefore = qc.getQueryData(queryKeys.listItemsAll())
+    const longBefore = qc.getQueryData(['list-items', 'l1', 'extra'])
+    const numBefore = qc.getQueryData(['list-items', 42])
+    const { onMutate } = makeOptimisticGearItemUpdate({ qc })
+
+    const ctx = onMutate({ id: 'g1', patch: { name: 'Mid' } })
+
+    // The malformed caches keep identity: never cancelled, snapshotted,
+    // or written.
+    expect(qc.getQueryData(queryKeys.listItemsAll())).toBe(bareBefore)
+    expect(qc.getQueryData(['list-items', 'l1', 'extra'])).toBe(longBefore)
+    expect(qc.getQueryData(['list-items', 42])).toBe(numBefore)
+    expect(ctx.listSnapshots.map((s) => s.key)).toEqual([
+      queryKeys.listItems('l1'),
+      queryKeys.listItems('l2'),
+    ])
+    // The real fan-out still happened around them.
+    expect(itemsOf(qc, 'l1').find((i) => i.gearItemId === 'g1')?.gearItem.name)
+      .toBe('Mid')
+    expect(itemsOf(qc, 'l2')[0]?.gearItem.name).toBe('Mid')
+  })
+
+  it('every helper onMutate returns a rollback context despite garbage caches', () => {
+    const cases: ((qc: QueryClient) => GearFanOutContext)[] = [
+      (qc) => makeOptimisticGearItemUpdate({ qc })
+        .onMutate({ id: 'g1', patch: { name: 'Mid' } }),
+      (qc) => makeOptimisticGearItemDelete({ qc }).onMutate('g1'),
+      (qc) => makeOptimisticGearItemsBulkDelete({ qc }).onMutate(['g1']),
+      (qc) => makeOptimisticGearItemsBulkCategoryMove({ qc })
+        .onMutate({ ids: ['g1'], categoryId: 'c9' }),
+    ]
+    for (const fire of cases) {
+      const { qc } = seed()
+      poison(qc)
+      const ctx = fire(qc)
+      expect(ctx.previousGear).toBeDefined()
+      expect(ctx.listSnapshots.length).toBeGreaterThan(0)
+    }
   })
 })
 
