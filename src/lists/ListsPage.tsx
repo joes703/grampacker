@@ -29,6 +29,7 @@ import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortab
 import type { List } from '../lib/types'
 import DraftBadge from '../components/DraftBadge'
 import { useDocumentTitle } from '../lib/use-document-title'
+import { useCommitOnce } from '../lib/use-commit-once'
 import { useNow } from '../lib/use-now'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -263,6 +264,7 @@ function NewListInline({
   onCancel: () => void
   saving: boolean
 }) {
+  const commitOnce = useCommitOnce()
   return (
     <div className="flex items-center gap-2">
       <input
@@ -272,9 +274,14 @@ function NewListInline({
         value={draft}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') onSubmit()
-          if (e.key === 'Escape') onCancel()
+          if (e.key === 'Enter') commitOnce(onSubmit)
+          if (e.key === 'Escape') commitOnce(onCancel)
         }}
+        // Disabled while the create is in flight, matching the panel's
+        // NewListInlineRow: the guard re-arms after the isPending
+        // re-render (by design), so a second Enter mid-flight would
+        // otherwise submit a duplicate.
+        disabled={saving}
         className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
       <button
@@ -363,6 +370,7 @@ function ListRow({
   const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
     useAnchoredMenu({ variant: 'right-flush', menuWidth: 176 })
   const renameInputRef = useRef<HTMLInputElement>(null)
+  const commitOnce = useCommitOnce()
 
   useEffect(() => {
     if (renaming) renameInputRef.current?.select()
@@ -399,10 +407,10 @@ function ListRow({
           value={renameDraft}
           onChange={(e) => onRenameDraftChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') onSubmitRename()
-            if (e.key === 'Escape') onCancelRename()
+            if (e.key === 'Enter') commitOnce(onSubmitRename)
+            if (e.key === 'Escape') commitOnce(onCancelRename)
           }}
-          onBlur={onSubmitRename}
+          onBlur={() => commitOnce(onSubmitRename)}
           className={`flex-1 min-w-0 ${LIST_RENAME_INPUT_CLASS}`}
         />
       </li>

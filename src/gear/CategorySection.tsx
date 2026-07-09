@@ -12,6 +12,7 @@ import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import { SortableGearItemRow } from './GearItemRow'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
+import { useCommitOnce } from '../lib/use-commit-once'
 import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
@@ -81,6 +82,7 @@ function CategorySectionInner(
   const [renaming, setRenaming] = useState(false)
   const [renameDraft, setRenameDraft] = useState(category?.name ?? '')
   const renameInputRef = useRef<HTMLInputElement>(null)
+  const commitOnce = useCommitOnce()
 
   useEffect(() => {
     if (renaming) renameInputRef.current?.focus()
@@ -157,12 +159,14 @@ function CategorySectionInner(
             ref={renameInputRef}
             value={renameDraft}
             onChange={(e) => setRenameDraft(e.target.value)}
-            onBlur={commitRename}
+            onBlur={() => commitOnce(commitRename)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') commitRename()
+              if (e.key === 'Enter') commitOnce(commitRename)
               if (e.key === 'Escape') {
-                setRenameDraft(category?.name ?? '')
-                setRenaming(false)
+                commitOnce(() => {
+                  setRenameDraft(category?.name ?? '')
+                  setRenaming(false)
+                })
               }
             }}
             className={`flex-1 rounded border border-blue-400 bg-white px-1.5 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-medium ${INLINE_EDIT_FOCUS_RING}`}

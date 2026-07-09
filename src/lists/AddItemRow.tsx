@@ -9,6 +9,7 @@ import {
 } from '../components/flat-table-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
 import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
+import { useCommitOnce } from '../lib/use-commit-once'
 
 type Props = {
   onSubmit: (data: AddItemData) => void
@@ -37,6 +38,8 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
     buildData,
   } = useQuickAddForm()
 
+  const commitOnce = useCommitOnce()
+
   function commit() {
     const data = buildData()
     if (!data) return
@@ -44,8 +47,12 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
   }
 
   function handleKey(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') commit()
-    if (e.key === 'Escape') onCancel()
+    // Enter on a blank name is a no-op (buildData() returns null), so it
+    // must not consume the once-guard: nothing re-renders on that path,
+    // and a consumed guard would eat the next Escape until a keystroke
+    // re-armed it.
+    if (e.key === 'Enter' && name.trim()) commitOnce(commit)
+    if (e.key === 'Escape') commitOnce(onCancel)
   }
 
   // Commit (or cancel, if name is empty) when focus leaves the entire row —
@@ -54,8 +61,10 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
   // shouldn't commit yet.
   function handleRowBlur(e: React.FocusEvent<HTMLDivElement>) {
     if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
-    if (name.trim()) commit()
-    else onCancel()
+    commitOnce(() => {
+      if (name.trim()) commit()
+      else onCancel()
+    })
   }
 
   return (

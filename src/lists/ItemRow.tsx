@@ -30,6 +30,7 @@ import GearStatusBadge from '../components/gear/GearStatusBadge'
 import GearStatusMenuItems from '../components/gear/GearStatusMenuItems'
 import { WornIcon, ConsumableIcon } from './list-item-flags'
 import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY } from '../lib/caps'
+import { useCommitOnce } from '../lib/use-commit-once'
 import PackModeCheckbox from './PackModeCheckbox'
 
 // Single source of truth for a list item row. Used by both the authenticated
@@ -144,6 +145,7 @@ export default function ItemRow({
     setQtyDraft(String(item.quantity))
   }
   const qtyInputRef = useRef<HTMLInputElement>(null)
+  const commitOnce = useCommitOnce()
 
   useEffect(() => {
     if (editingWeight) weightInputRef.current?.focus()
@@ -418,10 +420,10 @@ export default function ItemRow({
             max={MAX_LIST_ITEM_QUANTITY}
             value={qtyDraft}
             onChange={(e) => setQtyDraft(e.target.value)}
-            onBlur={commitQty}
+            onBlur={() => commitOnce(commitQty)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') commitQty()
-              if (e.key === 'Escape') { setQtyDraft(String(item.quantity)); setEditingQty(false) }
+              if (e.key === 'Enter') commitOnce(commitQty)
+              if (e.key === 'Escape') commitOnce(() => { setQtyDraft(String(item.quantity)); setEditingQty(false) })
             }}
             className={`shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums ${INLINE_EDIT_FOCUS_RING}`}
           />
@@ -446,10 +448,10 @@ export default function ItemRow({
             inputRef={weightInputRef}
             grams={weightDraftGrams}
             onChange={setWeightDraftGrams}
-            onBlur={commitWeight}
+            onBlur={() => commitOnce(commitWeight)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') commitWeight()
-              if (e.key === 'Escape') { setWeightDraftGrams(itemWeight); setEditingWeight(false) }
+              if (e.key === 'Enter') commitOnce(commitWeight)
+              if (e.key === 'Escape') commitOnce(() => { setWeightDraftGrams(itemWeight); setEditingWeight(false) })
             }}
             className="shrink-0 w-24"
             inputClassName={`flex-1 min-w-0 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums ${INLINE_EDIT_FOCUS_RING}`}

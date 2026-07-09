@@ -8,6 +8,7 @@ import { RowMenuItem } from '../components/RowMenuItem'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToggleSwitch from '../components/ToggleSwitch'
 import { INLINE_EDIT_FOCUS_RING, PANEL_TOGGLE_LABEL } from '../components/flat-table-styles'
+import { useCommitOnce } from '../lib/use-commit-once'
 import { useCurrentListActions } from './use-current-list-actions'
 
 type Props = { list: List }
@@ -85,6 +86,8 @@ export default function ListSettingsPanel({ list }: Props) {
     }
   }, [renaming])
 
+  const commitOnce = useCommitOnce()
+
   function startRename() {
     setDraft(list.name)
     setRenaming(true)
@@ -142,10 +145,10 @@ export default function ListSettingsPanel({ list }: Props) {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitRename()
-                  if (e.key === 'Escape') cancelRename()
+                  if (e.key === 'Enter') commitOnce(commitRename)
+                  if (e.key === 'Escape') commitOnce(cancelRename)
                 }}
-                onBlur={commitRename}
+                onBlur={() => commitOnce(commitRename)}
                 maxLength={120}
                 aria-label="List name"
                 className={`w-full rounded border border-blue-400 px-2 py-1 text-sm ${INLINE_EDIT_FOCUS_RING}`}
