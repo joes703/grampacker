@@ -27,10 +27,15 @@ import {
   fetchGearItems,
   fetchLists,
   createListFromSelection,
+  importGearItems,
   reorderCategories,
   reorderGearItems,
   makeOptimisticReorder,
 } from '../lib/queries'
+import { gearItemsToCsv, parseGearCsv, downloadCsv, type GearCsvRow } from '../lib/csv'
+import { planGearImport } from '../lib/csv/import-plan'
+import { useCsvFileInput } from '../lib/use-csv-file-input'
+import { showToast } from '../lib/toast'
 import type { Category, GearItem } from '../lib/types'
 import { MAX_CATEGORY_NAME } from '../lib/caps'
 import { useWeightUnit } from '../lib/use-weight-unit'
@@ -41,6 +46,8 @@ import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
 import GearItemRow from './GearItemRow'
+import GearImportPreviewDialog from './GearImportPreviewDialog'
+import Modal from '../components/Modal'
 import GearItemDialog from '../components/gear/GearItemDialog'
 import BulkMoveCategoryDialog from './BulkMoveCategoryDialog'
 import BulkActionsToolbar from './BulkActionsToolbar'
@@ -54,9 +61,6 @@ import { useGearItemActions } from './use-gear-item-actions'
 import { useGearCategoryActions } from './use-gear-category-actions'
 import { useGearBulkActions } from './use-gear-bulk-actions'
 
-// TRANSPLANT NOTE: the old repo's DialogState also had CSV variants
-// ('import-explainer' / 'import-preview' / 'import-error' — return at
-// phase 2 step 4).
 type DialogState =
   | { type: 'create-item'; categoryId?: string | null }
   | { type: 'edit-item'; item: GearItem }
@@ -69,6 +73,9 @@ type DialogState =
   | { type: 'delete-category'; category: Category }
   | { type: 'add-category' }
   | { type: 'bulk-move' }
+  | { type: 'import-explainer' }
+  | { type: 'import-preview'; rows: GearCsvRow[] }
+  | { type: 'import-error'; message: string }
 
 
 export default function GearLibraryPage() {
@@ -142,6 +149,54 @@ export default function GearLibraryPage() {
     setNewCategoryName('')
     setDialog(null)
   }
+
+  // ── CSV import/export ─────────────────────────────────────────────────────────
+  const {
+    inputRef: importInputRef,
+    onChange: handleImportFile,
+    openPicker: openImportPicker,
+  } = useCsvFileInput<GearCsvRow>(
+    parseGearCsv,
+    {
+      onParsed: (rows) => setDialog({ type: 'import-preview', rows }),
+      onError: (message) => setDialog({ type: 'import-error', message }),
+    },
+  )
+
+  function handleExport() {
+    try {
+      const csv = gearItemsToCsv(allItems, categories)
+      downloadCsv('gear-library.csv', csv)
+    } catch {
+      showToast("Couldn't export the gear library. Please try again.", { type: 'error' })
+    }
+  }
+
+  // Confirmed import: plan against the current library snapshot (dedup +
+  // category resolution, see src/lib/csv/import-plan.ts), then one POST -
+  // the server creates categories + items atomically. Rows that all match
+  // existing gear plan to zero new items; skip the POST (the endpoint
+  // rejects empty imports) and just close.
+  const importItems = useMutation({
+    mutationFn: async (rows: GearCsvRow[]) => {
+      const plan = planGearImport(rows, categories, allItems)
+      if (plan.newItems.length === 0) return
+      await importGearItems({ categories: plan.newCategories, items: plan.newItems })
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.categories() })
+      void qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
+      setDialog(null)
+    },
+    // Surface failures (e.g. the 500-item cap) in the existing
+    // import-error dialog instead of leaving the preview open with no
+    // feedback.
+    onError: (err) =>
+      setDialog({
+        type: 'import-error',
+        message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
+      }),
+  })
 
   // ── Mutations ─────────────────────────────────────────────────────────────────
   // Category write actions (add / rename / delete) live in a dedicated hook; it
@@ -361,6 +416,16 @@ export default function GearLibraryPage() {
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="print:pb-0">
+      {/* Hidden file input for CSV import. Mounted at the page level so
+          it's always reachable via importInputRef.current.click(), even
+          while the explainer dialog is unmounting. */}
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={handleImportFile}
+      />
       {/* Page header. NavBar renders "Gear" as the route heading, so the
           in-content title is dropped. Both viewports expose only the
           frequent actions (search + New item + Select + Options);
@@ -469,6 +534,9 @@ export default function GearLibraryPage() {
             </button>
             <GearOptionsButton
               onNewCategory={() => setDialog({ type: 'add-category' })}
+              onImport={() => setDialog({ type: 'import-explainer' })}
+              onExport={handleExport}
+              canExport={allItems.length > 0}
               onCollapseAll={() => resetCollapsed(collapsibleKeys)}
               onExpandAll={expandAll}
               canCollapseExpand={collapsibleKeys.length > 0}
@@ -502,6 +570,7 @@ export default function GearLibraryPage() {
       ) : allItems.length === 0 && categories.length === 0 ? (
         <GearLibraryEmptyState
           onCreateItem={() => setDialog({ type: 'create-item' })}
+          onImport={() => setDialog({ type: 'import-explainer' })}
           onCreateCategory={() => setDialog({ type: 'add-category' })}
         />
       ) : (() => {
@@ -665,6 +734,62 @@ export default function GearLibraryPage() {
         />
       )}
 
+      {dialog?.type === 'import-explainer' && (
+        <Modal open onClose={() => setDialog(null)} title="Import gear inventory" className="w-full max-w-md">
+          <div className="p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-3">Import gear inventory</h2>
+            <p className="text-sm text-gray-600 mb-3">
+              Adds gear directly to your library without creating a list. Useful for importing an existing inventory of gear you own.
+            </p>
+            <p className="text-sm text-gray-600 mb-5">
+              Quantity, worn, and consumable settings from the CSV are ignored. Those apply to list items, not the inventory itself.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDialog(null)}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <PrimaryButton
+                type="button"
+                onClick={() => { setDialog(null); openImportPicker() }}
+              >
+                Continue
+              </PrimaryButton>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {dialog?.type === 'import-error' && (
+        <Modal open onClose={() => setDialog(null)} title="Import error" className="w-full max-w-sm">
+          <div className="p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-2">Import error</h2>
+            <p className="text-sm text-red-600 mb-4">{dialog.message}</p>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setDialog(null)}
+                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {dialog?.type === 'import-preview' && (
+        <GearImportPreviewDialog
+          rows={dialog.rows}
+          saving={importItems.isPending}
+          onConfirm={(rows) => importItems.mutate(rows)}
+          onClose={() => setDialog(null)}
+        />
+      )}
+
       {dialog?.type === 'bulk-move' && (
         <BulkMoveCategoryDialog
           categories={categories}
@@ -689,6 +814,9 @@ export default function GearLibraryPage() {
       <MobileGearActionBar
         onNewItem={() => setDialog({ type: 'create-item' })}
         onNewCategory={() => setDialog({ type: 'add-category' })}
+        onImport={() => setDialog({ type: 'import-explainer' })}
+        onExport={handleExport}
+        canExport={allItems.length > 0}
         onCollapseAll={() => resetCollapsed(collapsibleKeys)}
         onExpandAll={expandAll}
         canCollapseExpand={collapsibleKeys.length > 0}
@@ -697,20 +825,20 @@ export default function GearLibraryPage() {
   )
 }
 
-// TRANSPLANT NOTE (phase 2 step 4): the old repo's empty state also had an
-// "Import CSV" button; it returns with the CSV slice.
 function GearLibraryEmptyState({
   onCreateItem,
+  onImport,
   onCreateCategory,
 }: {
   onCreateItem: () => void
+  onImport: () => void
   onCreateCategory: () => void
 }) {
   return (
     <section className="rounded-lg border border-dashed border-gray-300 bg-white px-5 py-8 text-center">
       <h2 className="text-base font-semibold text-gray-900">No gear yet</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
-        Add your first item or create a category to start organizing your gear library.
+        Add your first item, import a CSV, or create a category to start organizing your gear library.
       </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
         <button
@@ -720,6 +848,13 @@ function GearLibraryEmptyState({
         >
           <Plus size={16} />
           Add item
+        </button>
+        <button
+          type="button"
+          onClick={onImport}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Import CSV
         </button>
         <button
           type="button"

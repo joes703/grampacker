@@ -1,7 +1,10 @@
-import { ChevronsDownUp, ChevronsUpDown, FolderPlus } from 'lucide-react'
+import { ChevronsDownUp, ChevronsUpDown, Download, FolderPlus, Upload } from 'lucide-react'
 
 type Props = {
   onNewCategory: () => void
+  onImport: () => void
+  onExport: () => void
+  canExport: boolean
   onCollapseAll: () => void
   onExpandAll: () => void
   canCollapseExpand: boolean
@@ -14,11 +17,11 @@ type Props = {
 // by MobileGearActionBar's modal and by GearOptionsButton's desktop popover
 // so the rare/utility actions live in one place. Each row is an OptionRow
 // that fires `onAction()` (dismiss host) then the bound handler.
-//
-// TRANSPLANT NOTE (phase 2 step 4): the old repo also listed "Import from
-// CSV" / "Export to CSV" rows here; they return with the CSV slice.
 export default function GearOptionsContent({
   onNewCategory,
+  onImport,
+  onExport,
+  canExport,
   onCollapseAll,
   onExpandAll,
   canCollapseExpand,
@@ -33,6 +36,13 @@ export default function GearOptionsContent({
   return (
     <div role="menu" aria-label="Gear options" className="space-y-1">
       <OptionRow icon={<FolderPlus size={16} />} label="New category" onClick={run(onNewCategory)} />
+      <OptionRow icon={<Upload size={16} />} label="Import from CSV" onClick={run(onImport)} />
+      <OptionRow
+        icon={<Download size={16} />}
+        label="Export to CSV"
+        onClick={run(onExport)}
+        disabled={!canExport}
+      />
       <div className="my-2 border-t border-gray-100" />
       <OptionRow
         icon={<ChevronsDownUp size={16} />}

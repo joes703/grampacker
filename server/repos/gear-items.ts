@@ -42,6 +42,24 @@ export type CreateGearItemInput = {
   status: GearStatus
 }
 
+export type ImportGearCategoryInput = { tempId: string; name: string }
+
+export type ImportGearItemInput = {
+  name: string
+  description: string | null
+  weightGrams: number
+  costCents: number | null
+  purchaseDate: string | null
+  category:
+    | { kind: 'existing'; id: string }
+    | { kind: 'new'; tempId: string }
+    | null
+}
+
+export type ImportGearResult =
+  | { ok: true; createdCategories: number; createdItems: number }
+  | { ok: false; reason: 'invalid_category' | 'cap_exceeded' }
+
 // PATCH semantics: undefined = unchanged, null = clear (nullable fields).
 export type UpdateGearItemPatch = {
   name?: string
@@ -128,6 +146,108 @@ export function createGearItemsRepo(db: Db, userId: string) {
       } catch (err) {
         if (isCapError(err)) return { ok: false, reason: 'cap_exceeded' }
         throw err
+      }
+    },
+
+    // Atomic CSV import: every write lands in ONE db.batch (a real SQLite
+    // transaction on D1). The old app created categories before the gear
+    // insert non-atomically, so a mid-flight failure orphaned the
+    // categories - here a cap abort on any item rolls back the new
+    // categories too. Ownership of every referenced existing category is
+    // checked first with zero writes on failure. No cap preflight on
+    // purpose: the trigger stays the single enforcement point (see
+    // GEAR_ITEM_CAP above).
+    async importBatch(input: {
+      categories: ImportGearCategoryInput[]
+      items: ImportGearItemInput[]
+    }): Promise<ImportGearResult> {
+      const existingIds = new Set(
+        input.items.flatMap((i) =>
+          i.category?.kind === 'existing' ? [i.category.id] : [],
+        ),
+      )
+      if (existingIds.size > 0) {
+        // Membership-checked against ALL owned category ids rather than an
+        // inArray(...) of the referenced ids: D1 caps bound parameters at
+        // 100 per query, and a valid import can reference more distinct
+        // categories than that (Codex finding, PR #26). One bound param
+        // regardless of import size.
+        const ownedRows = await db
+          .select({ id: categories.id })
+          .from(categories)
+          .where(eq(categories.userId, userId))
+        const owned = new Set(ownedRows.map((r) => r.id))
+        for (const id of existingIds) {
+          if (!owned.has(id)) {
+            return { ok: false, reason: 'invalid_category' }
+          }
+        }
+      }
+
+      const newCategories = input.categories.map((c) => ({
+        tempId: c.tempId,
+        id: crypto.randomUUID(),
+        name: c.name,
+      }))
+      const idByTempId = new Map(newCategories.map((c) => [c.tempId, c.id]))
+      const resolveCategoryId = (
+        ref: ImportGearItemInput['category'],
+      ): string | null => {
+        if (ref === null) return null
+        if (ref.kind === 'existing') return ref.id
+        const id = idByTempId.get(ref.tempId)
+        // Unreachable: the DTO refine rejects unknown tempIds.
+        if (!id) throw new Error(`unknown category tempId: ${ref.tempId}`)
+        return id
+      }
+
+      const now = Date.now()
+      // Statements in a batch run sequentially inside one transaction, so
+      // each max(sortOrder)+1 subquery sees the rows inserted before it -
+      // both appended blocks come out contiguous, past the existing max.
+      const statements = [
+        ...newCategories.map((c) =>
+          db.insert(categories).values({
+            id: c.id,
+            userId,
+            name: c.name,
+            sortOrder: sql`coalesce((select max(${categories.sortOrder}) + 1 from ${categories} where ${categories.userId} = ${userId}), 0)`,
+            createdAt: now,
+          }),
+        ),
+        ...input.items.map((item) =>
+          db.insert(gearItems).values({
+            id: crypto.randomUUID(),
+            userId,
+            categoryId: resolveCategoryId(item.category),
+            name: item.name,
+            description: item.description,
+            weightGrams: item.weightGrams,
+            costCents: item.costCents,
+            purchaseDate: item.purchaseDate,
+            // Status is app-internal only; CSV import does not carry it.
+            status: 'active',
+            sortOrder: sql`coalesce((select max(${gearItems.sortOrder}) + 1 from ${gearItems} where ${gearItems.userId} = ${userId}), 0)`,
+            createdAt: now,
+            updatedAt: now,
+          }),
+        ),
+      ]
+      const [first, ...rest] = statements
+      if (!first) {
+        // Unreachable: the DTO enforces min(1) items.
+        return { ok: true, createdCategories: 0, createdItems: 0 }
+      }
+      try {
+        await db.batch([first, ...rest])
+      } catch (err) {
+        if (isCapError(err)) return { ok: false, reason: 'cap_exceeded' }
+        throw err
+      }
+      return {
+        ok: true,
+        createdCategories: input.categories.length,
+        createdItems: input.items.length,
       }
     },
 
