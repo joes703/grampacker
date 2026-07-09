@@ -1,10 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import type { Category, GearItem } from '../types'
 import type { GearCsvRow } from './gear'
+import type { ListCsvRow } from './list'
+import { GEAR_ITEM_CAP, LIST_ITEM_CAP } from '../caps'
 import {
   planNewCategories,
   planGearResolution,
   planGearImport,
+  planListImport,
+  assertListImportWithinCaps,
   type CategoryRef,
 } from './import-plan'
 
@@ -210,5 +214,158 @@ describe('planGearImport', () => {
     expect(ids).toHaveLength(2)
     expect(new Set(ids).size).toBe(2)
     expect(ids.every((id) => id.length > 0)).toBe(true)
+  })
+})
+
+// ── list import ──────────────────────────────────────────────────────────────
+
+function makeListRow(over: Partial<ListCsvRow> & { name: string }): ListCsvRow {
+  return {
+    name: over.name,
+    description: over.description ?? null,
+    weightGrams: over.weightGrams ?? 0,
+    categoryName: over.categoryName ?? '',
+    quantity: over.quantity ?? 1,
+    isWorn: over.isWorn ?? false,
+    isConsumable: over.isConsumable ?? false,
+  }
+}
+
+describe('planListImport', () => {
+  it('reuses existing library gear as a ref instead of skipping the row', () => {
+    const existingCats = [makeCategory({ id: 'cat-shelter', name: 'Shelter' })]
+    const existingGear = [
+      makeGearItem({ id: 'g-tarp', name: 'Tarp', weightGrams: 240, categoryId: 'cat-shelter' }),
+    ]
+    const rows = [
+      makeListRow({ name: 'Tarp', weightGrams: 240, categoryName: 'shelter', quantity: 1 }),
+      makeListRow({ name: 'Stove', weightGrams: 85, categoryName: 'Shelter', quantity: 2 }),
+    ]
+    const plan = planListImport(rows, existingCats, existingGear, makeGenId())
+    // Matched row becomes an existing-gear ref (this is the gear-import
+    // semantics difference: a dedup hit is a reuse, not a skip).
+    expect(plan.items).toHaveLength(2)
+    expect(plan.items[0]?.gear).toEqual({ kind: 'existing', id: 'g-tarp' })
+    expect(plan.reusedGearCount).toBe(1)
+    // Unmatched row plans new gear referenced by tempId.
+    expect(plan.newGear).toHaveLength(1)
+    expect(plan.newGear[0]).toMatchObject({
+      tempId: 'id-1', name: 'Stove', weightGrams: 85,
+      category: { kind: 'existing', id: 'cat-shelter' },
+    })
+    expect(plan.items[1]?.gear).toEqual({ kind: 'new', tempId: 'id-1' })
+    expect(plan.newCategories).toEqual([])
+  })
+
+  it('carries quantity/isWorn/isConsumable through and numbers sortOrder by row index', () => {
+    const rows = [
+      makeListRow({ name: 'Shoes', weightGrams: 600, quantity: 1, isWorn: true }),
+      makeListRow({ name: 'Trail mix', weightGrams: 50, quantity: 3, isConsumable: true }),
+    ]
+    const plan = planListImport(rows, [], [], makeGenId())
+    expect(plan.items[0]).toMatchObject({ quantity: 1, isWorn: true, isConsumable: false, sortOrder: 0 })
+    expect(plan.items[1]).toMatchObject({ quantity: 3, isWorn: false, isConsumable: true, sortOrder: 1 })
+  })
+
+  it('creates new categories with refs shared across gear entries', () => {
+    const rows = [
+      makeListRow({ name: 'Pot', weightGrams: 120, categoryName: 'Kitchen' }),
+      makeListRow({ name: 'Spork', weightGrams: 10, categoryName: 'kitchen' }),
+    ]
+    const plan = planListImport(rows, [], [], makeGenId())
+    expect(plan.newCategories).toEqual([{ tempId: 'id-1', name: 'Kitchen' }])
+    expect(plan.newGear.map((g) => g.category)).toEqual([
+      { kind: 'new', tempId: 'id-1' },
+      { kind: 'new', tempId: 'id-1' },
+    ])
+  })
+
+  it('treats within-CSV duplicates as separate new gear, but the same existing gear twice as two refs', () => {
+    const existingGear = [makeGearItem({ id: 'g-1', name: 'Socks', weightGrams: 60 })]
+    const rows = [
+      makeListRow({ name: 'Socks', weightGrams: 60 }),
+      makeListRow({ name: 'Socks', weightGrams: 60 }),
+      makeListRow({ name: 'Buff', weightGrams: 35 }),
+      makeListRow({ name: 'Buff', weightGrams: 35 }),
+    ]
+    const plan = planListImport(rows, [], existingGear, makeGenId())
+    // Existing match: both rows ref the same library gear.
+    expect(plan.items[0]?.gear).toEqual({ kind: 'existing', id: 'g-1' })
+    expect(plan.items[1]?.gear).toEqual({ kind: 'existing', id: 'g-1' })
+    expect(plan.reusedGearCount).toBe(2)
+    // Within-CSV dup: dedup is against the EXISTING library only, so two
+    // separate new gear entries (matching user typing intent).
+    expect(plan.newGear).toHaveLength(2)
+    expect(plan.items[2]?.gear).toEqual({ kind: 'new', tempId: plan.newGear[0]?.tempId })
+    expect(plan.items[3]?.gear).toEqual({ kind: 'new', tempId: plan.newGear[1]?.tempId })
+  })
+
+  it('ignores empty-name rows so sortOrder stays contiguous over the named rows', () => {
+    const rows = [
+      makeListRow({ name: 'Kept', weightGrams: 10 }),
+      makeListRow({ name: '   ', weightGrams: 20 }),
+      makeListRow({ name: 'Also kept', weightGrams: 30 }),
+    ]
+    const plan = planListImport(rows, [], [], makeGenId())
+    expect(plan.items.map((i) => i.sortOrder)).toEqual([0, 1])
+    expect(plan.newGear.map((g) => g.name)).toEqual(['Kept', 'Also kept'])
+  })
+
+  it('a row in a brand-new category never matches existing gear (tempId feeds the dedup key)', () => {
+    const existingGear = [makeGearItem({ id: 'g-1', name: 'Tarp', weightGrams: 240, categoryId: null })]
+    const rows = [makeListRow({ name: 'Tarp', weightGrams: 240, categoryName: 'Brand New' })]
+    const plan = planListImport(rows, [], existingGear, makeGenId())
+    expect(plan.reusedGearCount).toBe(0)
+    expect(plan.newGear).toHaveLength(1)
+    expect(plan.newCategories).toHaveLength(1)
+  })
+})
+
+describe('assertListImportWithinCaps', () => {
+  function planOf(itemCount: number, newGearCount: number) {
+    return {
+      newCategories: [],
+      newGear: Array.from({ length: newGearCount }, (_, i) => ({
+        tempId: `t-${i}`, name: `G${i}`, description: null, weightGrams: 0, category: null,
+      })),
+      items: Array.from({ length: itemCount }, (_, i) => ({
+        gear: { kind: 'new', tempId: `t-${i}` } as const,
+        quantity: 1, isWorn: false, isConsumable: false, sortOrder: i,
+      })),
+      reusedGearCount: 0,
+    }
+  }
+
+  it('passes at exactly the caps', () => {
+    expect(() => assertListImportWithinCaps(planOf(LIST_ITEM_CAP, 0), 0)).not.toThrow()
+    expect(() => assertListImportWithinCaps(planOf(1, 1), GEAR_ITEM_CAP - 1)).not.toThrow()
+  })
+
+  it('rejects an over-cap item count with the old copy (list cap checked first)', () => {
+    expect(() => assertListImportWithinCaps(planOf(LIST_ITEM_CAP + 1, 0), GEAR_ITEM_CAP)).toThrow(
+      `A single list can hold at most ${LIST_ITEM_CAP} items; this file has ${LIST_ITEM_CAP + 1}. Split it across multiple lists.`,
+    )
+  })
+
+  it('rejects an import that would push the inventory over the gear cap', () => {
+    expect(() => assertListImportWithinCaps(planOf(2, 2), GEAR_ITEM_CAP - 1)).toThrow(
+      `This import would add 2 new gear items to your ${GEAR_ITEM_CAP - 1} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Remove some items or split the file into smaller batches.`,
+    )
+    // Singular form for a single new item.
+    expect(() => assertListImportWithinCaps(planOf(1, 1), GEAR_ITEM_CAP)).toThrow(
+      /would add 1 new gear item to your/,
+    )
+  })
+
+  it('reused refs do not count toward the gear cap', () => {
+    const plan = {
+      ...planOf(5, 0),
+      items: Array.from({ length: 5 }, (_, i) => ({
+        gear: { kind: 'existing', id: `g-${i}` } as const,
+        quantity: 1, isWorn: false, isConsumable: false, sortOrder: i,
+      })),
+      reusedGearCount: 5,
+    }
+    expect(() => assertListImportWithinCaps(plan, GEAR_ITEM_CAP)).not.toThrow()
   })
 })

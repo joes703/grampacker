@@ -86,6 +86,7 @@ describe('/api/lists authorization matrix', () => {
       ['POST', '/api/lists', { name: 'X' }],
       ['PUT', '/api/lists/order', [{ id: 'x', sortOrder: 0 }]],
       ['POST', '/api/lists/from-selection', { name: 'X', gearItemIds: ['x'] }],
+      ['POST', '/api/lists/import', { name: 'X', categories: [], gear: [], items: [{ gear: { kind: 'existing', id: 'x' }, sortOrder: 0 }] }],
       ['POST', '/api/lists/some-id/duplicate', undefined],
       ['PATCH', '/api/lists/some-id', { name: 'X' }],
       ['DELETE', '/api/lists/some-id', undefined],
@@ -822,6 +823,198 @@ describe('caps and slug integrity', () => {
     const after = await getLists(cookie)
     expect(after).toHaveLength(100)
     expect(after[99]?.name).toBe('Big selection')
+  })
+
+  it('import: list + categories + gear + items land atomically with CSV row-index sort orders', async () => {
+    const { cookie } = await signUpVerifiedUser('lists-import@example.com', 'I')
+    const catRes = await apiRequest(cookie, 'POST', '/api/categories', { name: 'Shelter' })
+    const shelter = (await catRes.json()) as { id: string }
+    const tentId = await createGear(cookie, 'Tent')
+
+    const res = await apiRequest(cookie, 'POST', '/api/lists/import', {
+      name: 'PCT section',
+      categories: [{ tempId: 'cat-0', name: 'Cooking' }],
+      gear: [
+        {
+          tempId: 'gear-0',
+          name: 'Stove',
+          description: 'Canister top',
+          weightGrams: 85,
+          category: { kind: 'new', tempId: 'cat-0' },
+        },
+        { tempId: 'gear-1', name: 'Headlamp', category: null },
+        {
+          tempId: 'gear-2',
+          name: 'Stakes',
+          weightGrams: 60,
+          category: { kind: 'existing', id: shelter.id },
+        },
+      ],
+      items: [
+        // sortOrders 0,2,3,4: the gap at 1 is a dropped empty-name CSV
+        // row and must survive the round trip (old-repo parity).
+        { gear: { kind: 'existing', id: tentId }, quantity: 2, isWorn: true, sortOrder: 0 },
+        { gear: { kind: 'new', tempId: 'gear-0' }, isConsumable: true, sortOrder: 2 },
+        { gear: { kind: 'new', tempId: 'gear-1' }, sortOrder: 3 },
+        { gear: { kind: 'new', tempId: 'gear-2' }, quantity: 6, sortOrder: 4 },
+      ],
+    })
+    expect(res.status).toBe(201)
+    const list = listResponseSchema.parse(await res.json())
+    expect(list.name).toBe('PCT section')
+
+    const items = await getItems(cookie, list.id)
+    expect(items.map((i) => i.sortOrder)).toEqual([0, 2, 3, 4])
+    expect(items[0]).toMatchObject({ gearItemId: tentId, quantity: 2, isWorn: true, isConsumable: false })
+    expect(items[1]).toMatchObject({ quantity: 1, isWorn: false, isConsumable: true })
+    expect(items[3]).toMatchObject({ quantity: 6 })
+
+    // The new gear landed in the library with resolved category ids.
+    const gear = (await (await apiRequest(cookie, 'GET', '/api/gear-items')).json()) as {
+      name: string
+      categoryId: string | null
+    }[]
+    expect(gear).toHaveLength(4) // Tent + 3 imported
+    const cats = (await (await apiRequest(cookie, 'GET', '/api/categories')).json()) as {
+      id: string
+      name: string
+    }[]
+    expect(cats.map((c) => c.name)).toEqual(['Shelter', 'Cooking'])
+    const cooking = cats.find((c) => c.name === 'Cooking')
+    expect(gear.find((g) => g.name === 'Stove')?.categoryId).toBe(cooking?.id)
+    expect(gear.find((g) => g.name === 'Headlamp')?.categoryId).toBeNull()
+    expect(gear.find((g) => g.name === 'Stakes')?.categoryId).toBe(shelter.id)
+  })
+
+  it('import: foreign category or gear refs are 400 with zero writes', async () => {
+    const a = await signUpVerifiedUser('lists-import-a@example.com', 'A')
+    const b = await signUpVerifiedUser('lists-import-b@example.com', 'B')
+    const bCatRes = await apiRequest(b.cookie, 'POST', '/api/categories', { name: 'Bs' })
+    const bCat = (await bCatRes.json()) as { id: string }
+    const bGear = await createGear(b.cookie, 'Foreign tent')
+
+    const viaCategory = await apiRequest(a.cookie, 'POST', '/api/lists/import', {
+      name: 'Sneaky',
+      categories: [],
+      gear: [{ tempId: 'g0', name: 'X', category: { kind: 'existing', id: bCat.id } }],
+      items: [{ gear: { kind: 'new', tempId: 'g0' }, sortOrder: 0 }],
+    })
+    expect(viaCategory.status).toBe(400)
+
+    const viaGear = await apiRequest(a.cookie, 'POST', '/api/lists/import', {
+      name: 'Sneaky 2',
+      categories: [],
+      gear: [],
+      items: [{ gear: { kind: 'existing', id: bGear }, sortOrder: 0 }],
+    })
+    expect(viaGear.status).toBe(400)
+
+    expect(await getLists(a.cookie)).toHaveLength(0)
+    expect(
+      (await (await apiRequest(a.cookie, 'GET', '/api/gear-items')).json()) as unknown[],
+    ).toHaveLength(0)
+  })
+
+  it('import over the gear cap rolls back the WHOLE batch: no list, categories, or gear orphans', async () => {
+    const { cookie } = await signUpVerifiedUser('lists-import-cap@example.com', 'C')
+    const userId = await userIdFor(cookie)
+
+    const values = Array.from({ length: 499 }, (_, i) => {
+      return `('importcap-${i}', '${userId}', 'Seed ${i}', 0, 'active', ${i}, 0, 0)`
+    }).join(',')
+    await env.DB.prepare(
+      `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
+    ).run()
+
+    // 499 existing + 2 new = 501: the gear cap trigger aborts mid-batch.
+    // The old app's RPC was atomic and this must stay atomic: the list
+    // row, the new category, AND the first gear row all roll back.
+    const res = await apiRequest(cookie, 'POST', '/api/lists/import', {
+      name: 'Doomed',
+      categories: [{ tempId: 'c0', name: 'Orphan-to-be' }],
+      gear: [
+        { tempId: 'g0', name: 'Fits', category: { kind: 'new', tempId: 'c0' } },
+        { tempId: 'g1', name: 'One too many', category: null },
+      ],
+      items: [
+        { gear: { kind: 'new', tempId: 'g0' }, sortOrder: 0 },
+        { gear: { kind: 'new', tempId: 'g1' }, sortOrder: 1 },
+      ],
+    })
+    expect(res.status).toBe(422)
+    expect(await getLists(cookie)).toHaveLength(0)
+    expect(
+      (await (await apiRequest(cookie, 'GET', '/api/categories')).json()) as unknown[],
+    ).toHaveLength(0)
+    expect(
+      (await (await apiRequest(cookie, 'GET', '/api/gear-items')).json()) as unknown[],
+    ).toHaveLength(499)
+  })
+
+  it('import with 120 existing-gear refs clears the D1 param limit', async () => {
+    const { cookie } = await signUpVerifiedUser('lists-import-wide@example.com', 'W')
+    const userId = await userIdFor(cookie)
+
+    const values = Array.from({ length: 120 }, (_, i) => {
+      return `('importwide-${i}', '${userId}', 'Wide ${i}', 0, 'active', ${i}, 0, 0)`
+    }).join(',')
+    await env.DB.prepare(
+      `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
+    ).run()
+
+    // 120 ids would blow D1's 100-bound-param cap if the ownership
+    // precheck used inArray; the owned-set approach keeps it at one
+    // param regardless of import size (local D1 enforces the cap, so a
+    // regression here goes red for real).
+    const res = await apiRequest(cookie, 'POST', '/api/lists/import', {
+      name: 'Wide import',
+      categories: [],
+      gear: [],
+      items: Array.from({ length: 120 }, (_, i) => ({
+        gear: { kind: 'existing', id: `importwide-${i}` },
+        sortOrder: i,
+      })),
+    })
+    expect(res.status).toBe(201)
+    const list = (await res.json()) as ListBody
+    expect(await getItems(cookie, list.id)).toHaveLength(120)
+  })
+
+  it('import validation: tempId wiring, flags, quantity, sortOrders', async () => {
+    const { cookie } = await signUpVerifiedUser('lists-import-v@example.com', 'V')
+    const gearId = await createGear(cookie, 'Real')
+    const existingItem = { gear: { kind: 'existing', id: gearId }, sortOrder: 0 }
+    for (const body of [
+      // unknown gear tempId
+      { name: 'L', categories: [], gear: [], items: [{ gear: { kind: 'new', tempId: 'ghost' }, sortOrder: 0 }] },
+      // declared gear nothing references
+      { name: 'L', categories: [], gear: [{ tempId: 'orphan', name: 'X' }], items: [existingItem] },
+      // unknown category tempId
+      { name: 'L', categories: [], gear: [{ tempId: 'g0', name: 'X', category: { kind: 'new', tempId: 'ghost' } }], items: [{ gear: { kind: 'new', tempId: 'g0' }, sortOrder: 0 }] },
+      // declared category nothing references
+      { name: 'L', categories: [{ tempId: 'c0', name: 'Orphan' }], gear: [], items: [existingItem] },
+      // duplicate category tempIds
+      { name: 'L', categories: [{ tempId: 'dup', name: 'A' }, { tempId: 'dup', name: 'B' }], gear: [{ tempId: 'g0', name: 'X', category: { kind: 'new', tempId: 'dup' } }], items: [{ gear: { kind: 'new', tempId: 'g0' }, sortOrder: 0 }] },
+      // duplicate gear tempIds
+      { name: 'L', categories: [], gear: [{ tempId: 'dup', name: 'A' }, { tempId: 'dup', name: 'B' }], items: [{ gear: { kind: 'new', tempId: 'dup' }, sortOrder: 0 }] },
+      // worn + consumable both true
+      { name: 'L', categories: [], gear: [], items: [{ gear: { kind: 'existing', id: gearId }, isWorn: true, isConsumable: true, sortOrder: 0 }] },
+      // quantity bounds
+      { name: 'L', categories: [], gear: [], items: [{ gear: { kind: 'existing', id: gearId }, quantity: 0, sortOrder: 0 }] },
+      { name: 'L', categories: [], gear: [], items: [{ gear: { kind: 'existing', id: gearId }, quantity: 10000, sortOrder: 0 }] },
+      // duplicate sortOrders
+      { name: 'L', categories: [], gear: [], items: [{ gear: { kind: 'existing', id: gearId }, sortOrder: 0 }, { gear: { kind: 'existing', id: gearId }, sortOrder: 0 }] },
+      // no items
+      { name: 'L', categories: [], gear: [], items: [] },
+      // over the item cap
+      { name: 'L', categories: [], gear: [], items: Array.from({ length: 301 }, (_, i) => ({ gear: { kind: 'existing', id: gearId }, sortOrder: i })) },
+      // unknown field
+      { name: 'L', categories: [], gear: [], items: [existingItem], extra: 1 },
+    ]) {
+      const res = await apiRequest(cookie, 'POST', '/api/lists/import', body)
+      expect(res.status, JSON.stringify(body).slice(0, 100)).toBe(400)
+    }
+    expect(await getLists(cookie)).toHaveLength(0)
   })
 
   it('slugs are unique at the DB level with the matcher-visible error shape', async () => {

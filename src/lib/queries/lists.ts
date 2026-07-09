@@ -1,6 +1,7 @@
 import {
   listResponseSchema,
   type CreateListFromSelectionRequest,
+  type ImportListRequestInput,
   type ListResponse,
   type ReorderListsRequest,
   type UpdateListRequest,
@@ -57,6 +58,19 @@ export async function createListFromSelection(
   input: CreateListFromSelectionRequest,
 ): Promise<List> {
   return apiFetch('/lists/from-selection', listResponseSchema, {
+    method: 'POST',
+    body: input,
+  })
+}
+
+// CSV import -> new list. The body is a fully-resolved import plan (see
+// src/lib/csv/import-plan.ts planListImport); the server creates the
+// list, new categories, new gear, and items in one atomic batch, so a
+// rejected or failed import leaves no orphans behind.
+export async function importListFromCsv(
+  input: ImportListRequestInput,
+): Promise<List> {
+  return apiFetch('/lists/import', listResponseSchema, {
     method: 'POST',
     body: input,
   })

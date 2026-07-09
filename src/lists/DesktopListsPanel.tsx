@@ -15,12 +15,17 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { CopyPlus, MoreVertical, Pencil, Plus, Trash2 } from 'lucide-react'
+import { CopyPlus, Download, MoreVertical, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import {
   queryKeys,
   fetchLists,
   reorderLists,
 } from '../lib/queries'
+import { parseListCsv, nameFromCsvFilename, type ListCsvRow } from '../lib/csv'
+import { useCsvFileInput } from '../lib/use-csv-file-input'
+import { useListImportMutation } from './use-list-import-mutation'
+import ListImportPreviewDialog from './ListImportPreviewDialog'
+import Modal from '../components/Modal'
 import { useCurrentListActions } from './use-current-list-actions'
 import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId } from '../lib/dnd-ids'
@@ -59,11 +64,6 @@ import type { List } from '../lib/types'
 //     open list, not in the Lists switcher.
 //   - The Duplicate is row-specific only (no header bulk Duplicate).
 //   - Mobile rendering. Bottom nav + /lists own that path today.
-//
-// TRANSPLANT NOTE (csv): the old repo's header plus-button opened an
-// anchored menu (New list / Import CSV) and the kebab carried Export CSV;
-// with the CSV slice deferred the plus button starts the new-list draft
-// directly. The menu shape returns with that slice.
 
 type Props = {
   // Initial seed for the local lists subscription. Lets the parent's
@@ -88,6 +88,8 @@ type DialogState =
   | { type: 'creating'; draft: string }
   | { type: 'renaming'; list: List; draft: string }
   | { type: 'confirm-delete'; list: List }
+  | { type: 'import-preview'; rows: ListCsvRow[]; filename: string }
+  | { type: 'import-error'; message: string }
 
 export default function DesktopListsPanel({
   lists: listsSeed,
@@ -97,10 +99,10 @@ export default function DesktopListsPanel({
   const navigate = useNavigate()
 
   // Shared current-list actions. Same code path used by ListsPage card kebab
-  // and the in-list List options popover, so create/rename/duplicate/delete
-  // semantics stay identical across surfaces. createListMut navigates on
-  // success; this panel owns closing the create dialog at the call site.
-  const { createListMut, submitCreateList, renameMut, duplicateMut, deleteListMut } =
+  // and the in-list List options popover, so create/rename/duplicate/delete/
+  // export semantics stay identical across surfaces. createListMut navigates
+  // on success; this panel owns closing the create dialog at the call site.
+  const { createListMut, submitCreateList, renameMut, duplicateMut, deleteListMut, exportCsv, exportingListId } =
     useCurrentListActions()
 
   // The reorder state machine — useQuery on ['lists'], useMutation on
@@ -130,6 +132,23 @@ export default function DesktopListsPanel({
 
   const [dialog, setDialog] = useState<DialogState | null>(null)
 
+  // Hidden file input + parser wiring for "Import CSV". The same
+  // useCsvFileInput hook every import surface uses, so parse/abort/error
+  // handling stays on one path.
+  const {
+    inputRef: importInputRef,
+    onChange: handleImportFile,
+    openPicker: openImportPicker,
+  } = useCsvFileInput<ListCsvRow>(parseListCsv, {
+    onParsed: (rows, filename) => setDialog({ type: 'import-preview', rows, filename }),
+    onError: (message) => setDialog({ type: 'import-error', message }),
+  })
+
+  // Shared import hook (plan/preflight/POST + invalidate/navigate); this
+  // panel owns closing the dialog on success and routing failures into the
+  // import-error dialog via the call-site onSuccess/onError below.
+  const importMut = useListImportMutation()
+
   // Desktop-only panel, so MouseSensor + KeyboardSensor is enough. No
   // TouchSensor: the surrounding aside is `hidden lg:flex`, and bringing it
   // to mobile would mean separate UX work (a card surface is the mobile
@@ -157,23 +176,87 @@ export default function DesktopListsPanel({
     })
   }
 
+  // Header plus-button menu: New list / Import CSV. Anchored to the plus
+  // button via useAnchoredMenu (same hook every row kebab uses), so dismiss
+  // semantics (outside mousedown, scroll, resize, escape) match every other
+  // popover in the app. Destructured because the lint plugin
+  // (react-hooks/refs) reads any nested `.menuPos` access as a ref access
+  // during render; pulling the values out at the top of the component sides
+  // with the row pattern already in use across the codebase.
+  const {
+    open: headerMenuOpen,
+    openMenu: openHeaderMenu,
+    close: closeHeaderMenu,
+    triggerRef: headerMenuTriggerRef,
+    menuRef: headerMenuRef,
+    menuPos: headerMenuPos,
+  } = useAnchoredMenu({ variant: 'right-flush', menuWidth: 176 })
+
   return (
     <div className={`flex flex-col ${FLAT_TABLE_SURFACE} ${className ?? ''}`}>
       {/* Section header — visually matches the gear picker's "Add from gear"
           eyebrow strip so the two surfaces read as siblings. The plus button
-          starts the inline new-list draft; a bare icon avoids competing
-          with the gear search field below. */}
+          opens a small menu (New list / Import CSV); a bare icon avoids
+          competing with the gear search field below. */}
       <div className="relative flex items-center gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2">
         <span className={FLAT_TABLE_EYEBROW}>Lists</span>
         <button
+          ref={headerMenuTriggerRef}
           type="button"
-          onClick={() => setDialog({ type: 'creating', draft: '' })}
-          aria-label="New list"
+          onClick={(e) => {
+            e.stopPropagation()
+            e.preventDefault()
+            if (headerMenuOpen) closeHeaderMenu()
+            else openHeaderMenu()
+          }}
+          aria-label="New list or import CSV"
+          aria-haspopup="menu"
+          aria-expanded={headerMenuOpen}
           className={`ml-auto ${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:bg-gray-200/60 hover:text-gray-800`}
         >
           <Plus size={14} />
         </button>
+        {headerMenuOpen && headerMenuPos && 'left' in headerMenuPos &&
+          createPortal(
+            <div
+              ref={headerMenuRef}
+              role="menu"
+              className={`fixed z-50 w-44 py-1 ${POPOVER_SURFACE}`}
+              style={{ top: headerMenuPos.top, left: headerMenuPos.left }}
+            >
+              <RowMenuItem
+                icon={<Plus size={13} />}
+                onClick={() => {
+                  closeHeaderMenu()
+                  setDialog({ type: 'creating', draft: '' })
+                }}
+              >
+                New list
+              </RowMenuItem>
+              <RowMenuItem
+                icon={<Upload size={13} />}
+                onClick={() => {
+                  closeHeaderMenu()
+                  openImportPicker()
+                }}
+              >
+                Import CSV
+              </RowMenuItem>
+            </div>,
+            document.body,
+          )}
       </div>
+
+      {/* Hidden CSV input. The file picker fires from openImportPicker(),
+          dispatched by the header menu. Re-using the existing useCsvFileInput
+          hook means no separate parser/abort/error path. */}
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={handleImportFile}
+      />
 
       {/* Inline "New list" draft input. Rendered as the first row of the
           scroll body so it sits visually adjacent to the rest of the list
@@ -232,6 +315,8 @@ export default function DesktopListsPanel({
                   }}
                   onCancelRename={() => setDialog(null)}
                   onDuplicate={() => duplicateMut.mutate(list)}
+                  onExport={() => void exportCsv(list)}
+                  exporting={exportingListId === list.id}
                   onDelete={() => setDialog({ type: 'confirm-delete', list })}
                 />
               ))}
@@ -251,6 +336,8 @@ export default function DesktopListsPanel({
                     onSubmitRename={() => {}}
                     onCancelRename={() => {}}
                     onDuplicate={() => {}}
+                    onExport={() => {}}
+                    exporting={false}
                     onDelete={() => {}}
                   />
                 </ul>
@@ -272,6 +359,49 @@ export default function DesktopListsPanel({
           onCancel={() => setDialog(null)}
           onConfirm={() => deleteListWithNavigation(dialog.list)}
         />
+      )}
+
+      {/* Import preview — reuses the existing ListImportPreviewDialog so
+          both import surfaces show the same confirmation UI. */}
+      {dialog?.type === 'import-preview' && (
+        <ListImportPreviewDialog
+          rows={dialog.rows}
+          saving={importMut.isPending}
+          onConfirm={() =>
+            importMut.mutate(
+              { name: nameFromCsvFilename(dialog.filename), rows: dialog.rows },
+              {
+                onSuccess: () => setDialog(null),
+                onError: (err) =>
+                  setDialog({
+                    type: 'import-error',
+                    message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
+                  }),
+              },
+            )
+          }
+          onClose={() => setDialog(null)}
+        />
+      )}
+
+      {/* Import error. Same plain modal shape ListsPage uses; intentionally
+          duplicated (it's four lines of JSX, not a shared component). */}
+      {dialog?.type === 'import-error' && (
+        <Modal open onClose={() => setDialog(null)} title="Import error" className="w-full max-w-sm">
+          <div className="p-6">
+            <h2 className="mb-2 text-base font-semibold text-gray-900">Import error</h2>
+            <p className="mb-4 text-sm text-red-600">{dialog.message}</p>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setDialog(null)}
+                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   )
@@ -323,6 +453,8 @@ type ListPanelRowProps = {
   onSubmitRename: () => void
   onCancelRename: () => void
   onDuplicate: () => void
+  onExport: () => void
+  exporting: boolean
   onDelete: () => void
   outerRef?: (el: HTMLElement | null) => void
   outerStyle?: React.CSSProperties
@@ -368,6 +500,8 @@ function ListPanelRow({
   onSubmitRename,
   onCancelRename,
   onDuplicate,
+  onExport,
+  exporting,
   onDelete,
   outerRef,
   outerStyle,
@@ -479,8 +613,16 @@ function ListPanelRow({
             >
               Duplicate
             </RowMenuItem>
-            {/* TRANSPLANT NOTE (csv): Export CSV row returns with that
-                slice. */}
+            <RowMenuItem
+              icon={<Download size={13} />}
+              onClick={() => {
+                close()
+                onExport()
+              }}
+              disabled={exporting}
+            >
+              {exporting ? 'Exporting…' : 'Export CSV'}
+            </RowMenuItem>
             <RowMenuSeparator />
             <RowMenuItem
               icon={<Trash2 size={13} />}

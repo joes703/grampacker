@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
-import { Plus } from 'lucide-react'
+import { Plus, Upload } from 'lucide-react'
 import {
   queryKeys,
   createList,
@@ -9,19 +9,37 @@ import {
 } from '../lib/queries'
 import type { List } from '../lib/types'
 import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
+import { useCsvFileInput } from '../lib/use-csv-file-input'
+import { parseListCsv, nameFromCsvFilename, type ListCsvRow } from '../lib/csv'
+import { useListImportMutation } from './use-list-import-mutation'
+import ListImportPreviewDialog from './ListImportPreviewDialog'
+import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 
 // Empty state shown to a brand-new user when they have zero lists.
-//
-// TRANSPLANT NOTE (csv): the old repo offered a second path here - import
-// a CSV which creates and populates a list in one go (useCsvFileInput,
-// ListImportPreviewDialog, importListFromCsv, the "or" divider and Import
-// CSV button). That returns with the CSV slice.
+// Two paths: name-and-create a blank list, or import a CSV which creates
+// a list and populates it in one go (mirrors the import button on the
+// lists page header for users who already have lists).
 export default function ListsEmptyState() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [importPreview, setImportPreview] = useState<{ rows: ListCsvRow[]; filename: string } | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+
+  const {
+    inputRef: importInputRef,
+    onChange: handleImportFile,
+    openPicker: openImportPicker,
+  } = useCsvFileInput<ListCsvRow>(parseListCsv, {
+    onParsed: (rows, filename) => setImportPreview({ rows, filename }),
+    onError: (message) => setImportError(message),
+  })
+
+  // Shared import hook (plan/preflight/POST + invalidate/navigate); this
+  // surface routes success/failure into its local dialog state.
+  const importMut = useListImportMutation()
 
   const createMut = useMutation({
     mutationFn: (n: string) => createList(n),
@@ -79,7 +97,70 @@ export default function ListsEmptyState() {
           </PrimaryButton>
         </div>
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+
+        <div className="mt-6 flex items-center gap-3 text-xs uppercase tracking-wide text-gray-400">
+          <span className="flex-1 border-t border-gray-200" />
+          or
+          <span className="flex-1 border-t border-gray-200" />
+        </div>
+
+        <button
+          type="button"
+          onClick={openImportPicker}
+          className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          <Upload size={14} /> Import CSV
+        </button>
+        <p className="mt-2 text-xs text-gray-500">
+          Lighterpack format works. The list is named from the file.
+        </p>
       </div>
+
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={handleImportFile}
+      />
+
+      {importPreview && (
+        <ListImportPreviewDialog
+          rows={importPreview.rows}
+          saving={importMut.isPending}
+          onConfirm={() =>
+            importMut.mutate(
+              { name: nameFromCsvFilename(importPreview.filename), rows: importPreview.rows },
+              {
+                onSuccess: () => setImportPreview(null),
+                onError: (err) => {
+                  setImportPreview(null)
+                  setImportError(err instanceof Error ? err.message : 'Could not import CSV. Try again.')
+                },
+              },
+            )
+          }
+          onClose={() => setImportPreview(null)}
+        />
+      )}
+
+      {importError && (
+        <Modal open onClose={() => setImportError(null)} title="Import error" className="w-full max-w-sm">
+          <div className="p-6">
+            <h2 className="mb-2 text-base font-semibold text-gray-900">Import error</h2>
+            <p className="mb-4 text-sm text-red-600">{importError}</p>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setImportError(null)}
+                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
-import { Copy, Pencil, Trash2 } from 'lucide-react'
+import { Copy, Download, Pencil, Trash2 } from 'lucide-react'
 import type { List } from '../lib/types'
 import { queryKeys, updateList, makeOptimisticUpdate } from '../lib/queries'
 import { RowMenuItem } from '../components/RowMenuItem'
@@ -15,7 +15,7 @@ type Props = { list: List }
 
 // Current-list management panel. Toggles for list-level settings stack
 // above a subtle divider; below the divider are list lifecycle actions
-// (Rename inline, Duplicate, Delete list).
+// (Rename inline, Duplicate, Export CSV, Delete list).
 //
 // Toggles:
 //   - Draft: label-only lifecycle state, shared with CurrentListHeader's
@@ -27,9 +27,6 @@ type Props = { list: List }
 // TRANSPLANT NOTE (share): the old panel rendered PrivacyPanel (the
 // sharing toggle + public URL row) below the toggles. That returns with
 // the public-share slice.
-// TRANSPLANT NOTE (csv): the old actions section had an Export CSV row
-// (exportCsv/exportingListId from useCurrentListActions). That returns
-// with the CSV slice.
 //
 // "Add ready checks" used to live here as a third toggle, but it is a
 // pack-mode-only feature and the panel itself is hidden in pack mode
@@ -64,7 +61,8 @@ export default function ListSettingsPanel({ list }: Props) {
     }),
   })
 
-  const { renameMut, duplicateMut, deleteListMut, draftMut } = useCurrentListActions()
+  const { renameMut, duplicateMut, deleteListMut, exportCsv, exportingListId, draftMut } = useCurrentListActions()
+  const exporting = exportingListId === list.id
 
   // Inline rename state. Mirrors InlineTitle's keyboard semantics
   // (Enter saves, Escape cancels, blur saves) but stays scoped to this
@@ -169,6 +167,14 @@ export default function ListSettingsPanel({ list }: Props) {
             inMenu={false}
           >
             Duplicate
+          </RowMenuItem>
+          <RowMenuItem
+            icon={<Download size={13} />}
+            onClick={() => void exportCsv(list)}
+            disabled={exporting}
+            inMenu={false}
+          >
+            {exporting ? 'Exporting…' : 'Export CSV'}
           </RowMenuItem>
           <RowMenuItem
             icon={<Trash2 size={13} />}
