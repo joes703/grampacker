@@ -1,4 +1,4 @@
-import type { Category, GearItem } from './types'
+import type { Category, GearItem, ListItemWithGear } from './types'
 
 export type CategoryGroup<T> = { category: Category | null; items: T[] }
 
@@ -84,12 +84,73 @@ export function groupByCategory<T>(
   return result
 }
 
-// TRANSPLANT NOTE (phase 3): the old repo also exported
-// groupListItemsByCategory (list-view grouping with the stability/prior
-// reference-reuse machinery and its listItemsArrayEqual comparator). That
-// half returns with the lists slice; the `stability` option on
-// groupByCategory stays because it is the extension point that grouping
-// depends on.
+// What "structurally identical" means for stability: same length AND for
+// each index i, items[i] is referentially identical OR has identical render-
+// affecting field values. Render-affecting fields for ListItemWithGear are
+// the per-list trip fields (sortOrder, quantity, isPacked, isReady,
+// isWorn, isConsumable) plus the embedded gearItem's id + weightGrams
+// + name + description + status. Description must be in the comparator
+// because desktop ItemRow renders and edits it — excluding it would let
+// memo skip the re-render after a description edit and leave stale text
+// on screen. isReady and status are in here for the same reason:
+// pack-mode rows render the Ready checkbox and ItemRow renders
+// GearStatusBadge from gearItem.status, so a status-only fanout update
+// must invalidate the items reference. Timestamps and other non-rendered
+// gearItem fields stay out.
+function listItemsArrayEqual(a: ListItemWithGear[], b: ListItemWithGear[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!
+    const y = b[i]!
+    if (x === y) continue
+    if (x.id !== y.id) return false
+    if (x.sortOrder !== y.sortOrder) return false
+    if (x.quantity !== y.quantity) return false
+    if (x.isPacked !== y.isPacked) return false
+    if (x.isReady !== y.isReady) return false
+    if (x.isWorn !== y.isWorn) return false
+    if (x.isConsumable !== y.isConsumable) return false
+    if (x.gearItem.id !== y.gearItem.id) return false
+    if (x.gearItem.weightGrams !== y.gearItem.weightGrams) return false
+    if (x.gearItem.name !== y.gearItem.name) return false
+    if (x.gearItem.description !== y.gearItem.description) return false
+    if (x.gearItem.status !== y.gearItem.status) return false
+  }
+  return true
+}
+
+/**
+ * Group list items by their gear item's category. Categories are emitted in
+ * `Category.sortOrder` order; items with no resolvable category fall into a
+ * trailing `category: null` group ("Uncategorized").
+ *
+ * Empty categories are filtered OUT — the list view shouldn't show category
+ * sections that contain none of this list's items. (This is the deliberate
+ * divergence from `groupGearItemsByCategory`, which retains them.)
+ *
+ * Stability: when `prior` is supplied, per-group references are reused for
+ * categories whose items are structurally identical to the prior call's
+ * output, AND the top-level `prior` array reference itself is returned when
+ * EVERY group is reused. The top-level identity invariant is load-bearing
+ * for `useGroupedListItems` — without it the hook's setState-during-render
+ * loop guard would never short-circuit.
+ *
+ * Implementation: single-pass bucket map keyed by categoryId (O(N+C)).
+ * The old repo's prior implementation used N filter passes (O(N×C)).
+ */
+export function groupListItemsByCategory(
+  items: ListItemWithGear[],
+  categories: Category[],
+  prior?: CategoryGroup<ListItemWithGear>[],
+): CategoryGroup<ListItemWithGear>[] {
+  const sortedCats = categories.toSorted((a, b) => a.sortOrder - b.sortOrder)
+  return groupByCategory(items, sortedCats, (item) => item.gearItem.categoryId, {
+    keepEmpty: false,
+    orphanPolicy: 'route-to-uncategorized',
+    stability: prior ? { prior, itemsEqual: listItemsArrayEqual } : undefined,
+  })
+}
 
 /**
  * Group gear-library items by their categoryId. Categories are emitted in

@@ -66,6 +66,9 @@ export type UpdateListRequest = z.infer<typeof updateListRequestSchema>
 export const createListFromSelectionRequestSchema = z
   .object({
     name: listNameSchema,
+    // Optional notes captured in the create dialog; null (or omitted)
+    // leaves the list's description empty, same as plain create.
+    description: descriptionSchema.nullable().default(null),
     gearItemIds: z
       .array(idSchema)
       .min(1)
@@ -114,8 +117,19 @@ export const quickAddListItemRequestSchema = z
     description: descriptionSchema.nullable().default(null),
     weightGrams: z.number().int().min(0).max(100000).default(0),
     categoryId: idSchema.nullable().default(null),
+    // Per-list membership fields the Quick-Add form exposes. Defaults
+    // mirror the DB column defaults so older/simpler clients can omit
+    // them. Both-true is statically impossible (refine below); there is
+    // no merged-row case here because the row is created fresh, so the
+    // refine is the full check (the DB CHECK stays as the backstop).
+    quantity: quantitySchema.default(1),
+    isWorn: z.boolean().default(false),
+    isConsumable: z.boolean().default(false),
   })
   .strict()
+  .refine((v) => !(v.isWorn === true && v.isConsumable === true), {
+    message: 'an item cannot be both worn and consumable',
+  })
 export type QuickAddListItemRequest = z.infer<
   typeof quickAddListItemRequestSchema
 >

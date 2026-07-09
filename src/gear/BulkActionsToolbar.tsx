@@ -1,4 +1,5 @@
-import { X } from 'lucide-react'
+import { ListPlus, X } from 'lucide-react'
+import { LIST_ITEM_CAP } from '../lib/caps'
 
 type Props = {
   selectedCount: number
@@ -8,6 +9,7 @@ type Props = {
   onClose: () => void
   onSelectAll: () => void
   onDeselectAll: () => void
+  onCreateList: () => void
   onMoveToCategory: () => void
   onDelete: () => void
 }
@@ -19,16 +21,15 @@ type Props = {
 // bottom-left (Select all) and bottom-right (actions) for one logical task.
 //
 // Layout:
-//   Desktop (≥md): single row. [✕] count [Select all/none] ··· [Move to category] [Delete]
+//   Desktop (≥md): single row. [✕] count [Select all/none] ··· [Move to category] [Create list] [Delete]
 //   Mobile (<md): two rows. Top: [✕] count [Select all/none]. Bottom: action buttons.
 //
 // With zero items selected the action buttons render disabled rather than
 // hidden — the user can see the available actions before making a
-// selection.
-//
-// TRANSPLANT NOTE (phase 3): the old repo also had a "Create list" action
-// (with its over-LIST_ITEM_CAP warning badge); it returns with the lists
-// slice.
+// selection. The LIST_ITEM_CAP cap warning matches the per-list limit
+// enforced server-side; it appears (with a red badge) only when
+// selectedCount > LIST_ITEM_CAP, and Create list disables once that cap
+// is exceeded.
 //
 // The Select-all / Select-none control is one-at-a-time: it shows "Select
 // none" only when every selectable item is already selected (and there's
@@ -44,9 +45,11 @@ export default function BulkActionsToolbar({
   onClose,
   onSelectAll,
   onDeselectAll,
+  onCreateList,
   onMoveToCategory,
   onDelete,
 }: Props) {
+  const overListCap = selectedCount > LIST_ITEM_CAP
   const allSelected = selectableTotal > 0 && selectedCount >= selectableTotal
   const noneSelected = selectedCount === 0
 
@@ -65,8 +68,15 @@ export default function BulkActionsToolbar({
           >
             <X size={16} />
           </button>
-          <span className="text-sm tabular-nums text-gray-600">
+          <span
+            className={`text-sm tabular-nums ${
+              overListCap
+                ? 'rounded-md bg-red-50 px-2 py-0.5 font-medium text-red-700'
+                : 'text-gray-600'
+            }`}
+          >
             {selectedCount} selected
+            {overListCap && ` · max ${LIST_ITEM_CAP} per list`}
           </span>
           {allSelected ? (
             <button onClick={onDeselectAll} className="text-sm text-gray-500 hover:underline">
@@ -93,6 +103,14 @@ export default function BulkActionsToolbar({
             className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
           >
             Move to category
+          </button>
+          <button
+            onClick={onCreateList}
+            disabled={noneSelected || overListCap}
+            title={overListCap ? `Lists can hold at most ${LIST_ITEM_CAP} items (you've selected ${selectedCount})` : undefined}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
+          >
+            <ListPlus size={14} /> Create list
           </button>
           <button
             onClick={onDelete}

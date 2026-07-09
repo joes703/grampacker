@@ -1,0 +1,68 @@
+import { useState } from 'react'
+import { Pencil } from 'lucide-react'
+import type { List } from '../lib/types'
+import DraftBadge from '../components/DraftBadge'
+import InlineTitle from './InlineTitle'
+import { useCurrentListActions } from './use-current-list-actions'
+
+type Props = {
+  list: List
+}
+
+// Current-list title + inline-rename header. Used by:
+//   - NavBar's mobile route heading (md:hidden) for the top-bar list name.
+//   - ListDetailPage's desktop list toolbar in the page body.
+//
+// List switching does NOT happen here — that's owned by the Lists page and
+// the Lists nav destination. This header only identifies the current list
+// and exposes rename via the pencil affordance. Click anywhere else on the
+// component is inert by design. The rename mutation comes from the shared
+// useCurrentListActions hook so the /lists card kebab, the in-list List
+// options panel, and this pencil all route through the same handler.
+export default function CurrentListHeader({ list }: Props) {
+  const { renameMut, draftMut } = useCurrentListActions()
+  const [editing, setEditing] = useState(false)
+  // Counter the pencil increments to push InlineTitle into edit mode. The
+  // counter idiom matches LibraryPanel's focusSearchTrigger.
+  const [editTrigger, setEditTrigger] = useState(0)
+
+  return (
+    <div className="group flex flex-1 min-w-0 items-center">
+      <div className="flex flex-1 min-w-0 items-center gap-2">
+        <InlineTitle
+          key={list.id}
+          name={list.name}
+          onSave={(v) => renameMut.mutate({ id: list.id, name: v })}
+          editTrigger={editTrigger}
+          onEditingChange={setEditing}
+        />
+        {!editing && list.isDraft && (
+          <button
+            type="button"
+            onClick={() => draftMut.mutate(list)}
+            aria-label="Draft. Mark list complete"
+            title="Mark list complete"
+            className="shrink-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            <DraftBadge />
+          </button>
+        )}
+      </div>
+      {!editing && (
+        <button
+          type="button"
+          onClick={() => setEditTrigger((t) => t + 1)}
+          aria-label="Rename list"
+          title="Rename list"
+          // 32x32 hit area (h-8 w-8) for touch comfort. opacity-100 at
+          // <md so touch users can always see it; md:opacity-0 +
+          // md:group-hover:opacity-100 hides it on desktop until the
+          // user hovers the header.
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-gray-400 opacity-100 transition-opacity hover:text-gray-600 md:opacity-0 md:group-hover:opacity-100"
+        >
+          <Pencil size={14} />
+        </button>
+      )}
+    </div>
+  )
+}

@@ -354,10 +354,35 @@ describe('lists CRUD', () => {
     })
     expect(res.status).toBe(201)
     const list = (await res.json()) as ListBody
+    // description omitted -> defaults to null, same as plain create.
+    expect(list.description).toBeNull()
 
     const items = await getItems(cookie, list.id)
     expect(items.map((i) => i.gearItemId)).toEqual([gearB, gearA])
     expect(items.map((i) => i.sortOrder)).toEqual([0, 1])
+  })
+
+  it('from-selection persists the optional description', async () => {
+    const { cookie } = await signUpVerifiedUser('lists-sel-desc@example.com', 'S')
+    const gearId = await createGear(cookie, 'Tent')
+
+    const res = await apiRequest(cookie, 'POST', '/api/lists/from-selection', {
+      name: 'Overnighter',
+      description: 'Two-night shakedown loadout',
+      gearItemIds: [gearId],
+    })
+    expect(res.status).toBe(201)
+    const list = (await res.json()) as ListBody
+    expect(list.description).toBe('Two-night shakedown loadout')
+
+    // Whitespace-only description is rejected (trim + min(1)) rather than
+    // silently stored as an empty string; send null to mean "no notes".
+    const blank = await apiRequest(cookie, 'POST', '/api/lists/from-selection', {
+      name: 'Blank notes',
+      description: '   ',
+      gearItemIds: [gearId],
+    })
+    expect(blank.status).toBe(400)
   })
 })
 
@@ -551,6 +576,63 @@ describe('list items', () => {
       await apiRequest(cookie, 'GET', '/api/gear-items')
     ).json()) as unknown[]
     expect(after.length).toBe(before)
+  })
+
+  it('quick-add accepts membership fields and rejects worn+consumable', async () => {
+    const { cookie } = await signUpVerifiedUser('items-qa2@example.com', 'Q')
+    const list = await createList(cookie, 'Pack')
+
+    // The Quick-Add form's per-list fields persist onto the membership row.
+    const res = await apiRequest(
+      cookie,
+      'POST',
+      `/api/lists/${list.id}/items/quick-add`,
+      { name: 'Trail bars', weightGrams: 250, quantity: 4, isConsumable: true },
+    )
+    expect(res.status).toBe(201)
+    const item = (await res.json()) as ItemBody
+    expect(item.quantity).toBe(4)
+    expect(item.isConsumable).toBe(true)
+    expect(item.isWorn).toBe(false)
+
+    // Omitted fields keep their defaults.
+    const plain = await apiRequest(
+      cookie,
+      'POST',
+      `/api/lists/${list.id}/items/quick-add`,
+      { name: 'Spork' },
+    )
+    expect(plain.status).toBe(201)
+    const plainItem = (await plain.json()) as ItemBody
+    expect(plainItem.quantity).toBe(1)
+    expect(plainItem.isWorn).toBe(false)
+    expect(plainItem.isConsumable).toBe(false)
+
+    // Statically-impossible both-true is rejected at the schema, and the
+    // refused call creates no gear row (nothing reached the batch).
+    const gearBefore = (await (
+      await apiRequest(cookie, 'GET', '/api/gear-items')
+    ).json()) as unknown[]
+    const both = await apiRequest(
+      cookie,
+      'POST',
+      `/api/lists/${list.id}/items/quick-add`,
+      { name: 'Impossible', isWorn: true, isConsumable: true },
+    )
+    expect(both.status).toBe(400)
+    const gearAfter = (await (
+      await apiRequest(cookie, 'GET', '/api/gear-items')
+    ).json()) as unknown[]
+    expect(gearAfter.length).toBe(gearBefore.length)
+
+    // Out-of-range quantity is rejected too.
+    const qty = await apiRequest(
+      cookie,
+      'POST',
+      `/api/lists/${list.id}/items/quick-add`,
+      { name: 'Too many', quantity: 10000 },
+    )
+    expect(qty.status).toBe(400)
   })
 
   it('item reorder respects sortOrder without bumping updatedAt', async () => {

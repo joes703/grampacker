@@ -31,9 +31,15 @@ vi.mock('../lib/queries', () => ({
   queryKeys: {
     categories: () => ['categories'],
     gearItems: () => ['gear-items'],
+    lists: () => ['lists'],
+    listItems: (id: string) => ['list-items', id],
   },
   fetchCategories: vi.fn(),
   fetchGearItems: h.fetchGearItems,
+  // The page subscribes to the lists cache for the create-list dialog's
+  // LIST_CAP warning; resolve empty so listCount renders as 0 here.
+  fetchLists: vi.fn(async () => []),
+  createListFromSelection: vi.fn(),
   reorderCategories: vi.fn(),
   reorderGearItems: vi.fn(),
   makeOptimisticReorder: vi.fn(() => ({})),

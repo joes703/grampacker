@@ -19,11 +19,14 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router'
 import { Plus, Search, X } from 'lucide-react'
 import {
   queryKeys,
   fetchCategories,
   fetchGearItems,
+  fetchLists,
+  createListFromSelection,
   reorderCategories,
   reorderGearItems,
   makeOptimisticReorder,
@@ -41,6 +44,7 @@ import GearItemRow from './GearItemRow'
 import GearItemDialog from '../components/gear/GearItemDialog'
 import BulkMoveCategoryDialog from './BulkMoveCategoryDialog'
 import BulkActionsToolbar from './BulkActionsToolbar'
+import CreateListFromSelectionDialog from './CreateListFromSelectionDialog'
 import MobileGearActionBar from './MobileGearActionBar'
 import GearOptionsButton from './GearOptionsButton'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -52,11 +56,11 @@ import { useGearBulkActions } from './use-gear-bulk-actions'
 
 // TRANSPLANT NOTE: the old repo's DialogState also had CSV variants
 // ('import-explainer' / 'import-preview' / 'import-error' — return at
-// phase 2 step 4) and 'create-list-from-selection' (returns with the
-// lists slice in phase 3).
+// phase 2 step 4).
 type DialogState =
   | { type: 'create-item'; categoryId?: string | null }
   | { type: 'edit-item'; item: GearItem }
+  | { type: 'create-list-from-selection' }
   // `returnDialog` lets the confirm dialog restore the prior dialog on
   // cancel — set when the delete is launched from inside GearItemDialog
   // so the user lands back in the edit form. Omitted (undefined) for
@@ -97,6 +101,16 @@ export default function GearLibraryPage() {
   const { data: allItems = [], isLoading, isError: gearItemsError } = useQuery({
     queryKey: queryKeys.gearItems(),
     queryFn: fetchGearItems,
+  })
+
+  // The create-list-from-selection dialog needs the existing list count for
+  // its LIST_CAP warning. Subscribe via `select` so this page re-renders on
+  // count changes only, instead of holding every list row for a rarely-read
+  // value. Shares the ['lists'] cache with the lists pages.
+  const { data: listCount = 0 } = useQuery({
+    queryKey: queryKeys.lists(),
+    queryFn: fetchLists,
+    select: (lists) => lists.length,
   })
 
   // O(1) id lookups for DnD callbacks and DragOverlay rendering. See
@@ -152,6 +166,23 @@ export default function GearLibraryPage() {
   // exitSelectMode); select mode is exited on success at the mutate call site,
   // alongside the dialog close, so the hook never touches selection state.
   const { bulkDelete, bulkMove } = useGearBulkActions()
+
+  // Create a list from the current selection. The server assigns the new
+  // list's sort slot and inserts the membership rows atomically (one D1
+  // batch; any foreign gear id rejects the whole call), so the client just
+  // posts name + description + ids and navigates into the result.
+  const navigate = useNavigate()
+  const createListFromSelectionMut = useMutation({
+    mutationFn: createListFromSelection,
+    meta: { errorToast: "Couldn't create the list. Please try again." },
+    onSuccess: (newList) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.lists() })
+      void qc.invalidateQueries({ queryKey: queryKeys.listItems(newList.id) })
+      setDialog(null)
+      exitSelectMode()
+      void navigate(`/lists/${newList.id}`)
+    },
+  })
 
   // ── Drag and drop ─────────────────────────────────────────────────────────────
   // See ListDetailPage for the rationale. MouseSensor drives the desktop
@@ -457,6 +488,7 @@ export default function GearLibraryPage() {
           onClose={exitSelectMode}
           onSelectAll={() => resetSelected(searchFiltered.map((i) => i.id))}
           onDeselectAll={clearSelected}
+          onCreateList={() => setDialog({ type: 'create-list-from-selection' })}
           onMoveToCategory={() => setDialog({ type: 'bulk-move' })}
           onDelete={() => bulkDelete.mutate(Array.from(selectedIds), { onSuccess: exitSelectMode })}
         />
@@ -614,6 +646,22 @@ export default function GearLibraryPage() {
           onConfirm={() => {
             removeCategory.mutate(dialog.category.id, { onSuccess: () => setDialog(null) })
           }}
+        />
+      )}
+
+      {dialog?.type === 'create-list-from-selection' && (
+        <CreateListFromSelectionDialog
+          selectedCount={selectedIds.size}
+          existingListCount={listCount}
+          saving={createListFromSelectionMut.isPending}
+          onSubmit={(name, description) =>
+            createListFromSelectionMut.mutate({
+              name,
+              description,
+              gearItemIds: Array.from(selectedIds),
+            })
+          }
+          onClose={() => setDialog(null)}
         />
       )}
 

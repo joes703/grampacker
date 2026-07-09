@@ -22,8 +22,8 @@ export type GearPatch = {
 
 export type ListContextPatch = {
   quantity: number
-  is_worn: boolean
-  is_consumable: boolean
+  isWorn: boolean
+  isConsumable: boolean
 }
 
 type Props = {
@@ -83,8 +83,8 @@ export default function GearItemDialog({
   const [purchaseDate, setPurchaseDate] = useState(item?.purchaseDate ?? '')
   const [status, setStatus] = useState<GearStatus>(item?.status ?? DEFAULT_GEAR_STATUS)
   const [quantity, setQuantity] = useState(listContext?.quantity ?? 1)
-  const [worn, setWorn] = useState(listContext?.is_worn ?? false)
-  const [consumable, setConsumable] = useState(listContext?.is_consumable ?? false)
+  const [worn, setWorn] = useState(listContext?.isWorn ?? false)
+  const [consumable, setConsumable] = useState(listContext?.isConsumable ?? false)
   const [newCategoryOpen, setNewCategoryOpen] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
   const [creatingCategory, setCreatingCategory] = useState(false)
@@ -118,8 +118,8 @@ export default function GearItemDialog({
     const listPatch: ListContextPatch | null = listContext
       ? {
           quantity: Math.max(1, Math.min(MAX_LIST_ITEM_QUANTITY, Math.round(quantity) || 1)),
-          is_worn: worn,
-          is_consumable: consumable,
+          isWorn: worn,
+          isConsumable: consumable,
         }
       : null
     onSave(gearPatch, listPatch)

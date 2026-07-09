@@ -160,7 +160,11 @@ listRoutes.post('/from-selection', async (c) => {
   if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
   const result = await c
     .get('repos')
-    .lists.createFromSelection(parsed.data.name, parsed.data.gearItemIds)
+    .lists.createFromSelection(
+      parsed.data.name,
+      parsed.data.description,
+      parsed.data.gearItemIds,
+    )
   if (!result.ok) {
     if (result.reason === 'invalid_gear') {
       return c.json({ error: 'Invalid gear item' }, 400)
