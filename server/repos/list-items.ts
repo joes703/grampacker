@@ -267,10 +267,20 @@ export function createListItemsRepo(db: Db, userId: string) {
         set.isConsumable = patch.isConsumable
       if (patch.isPacked !== undefined) set.isPacked = patch.isPacked
       if (patch.isReady !== undefined) set.isReady = patch.isReady
+      // listId in the WRITE's where-clause too, not just the SELECT
+      // above: today nothing can move an item between lists, but the
+      // write must stay parent-path-consistent by construction if that
+      // ever changes (Codex hardening note, PR #19).
       const [item] = await db
         .update(listItems)
         .set(set)
-        .where(and(eq(listItems.id, itemId), eq(listItems.userId, userId)))
+        .where(
+          and(
+            eq(listItems.id, itemId),
+            eq(listItems.listId, listId),
+            eq(listItems.userId, userId),
+          ),
+        )
         .returning(itemCols)
       if (!item) return { ok: false, reason: 'not_found' }
       const [gear] = await db

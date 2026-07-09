@@ -124,6 +124,7 @@ describe('/api/lists authorization matrix', () => {
         404,
       ],
       ['POST', `/api/lists/${aList.id}/items/reset-packed`, undefined, 404],
+      ['POST', `/api/lists/${aList.id}/items/reset-ready`, undefined, 404],
       [
         'PATCH',
         `/api/lists/${aList.id}/items/${aItem.id}`,
@@ -150,6 +151,19 @@ describe('/api/lists authorization matrix', () => {
       { gearItemId: aGear },
     )
     expect(add.status).toBe(400)
+
+    // ...nor quick-add into A's category (own list, foreign category).
+    const aCatRes = await apiRequest(a.cookie, 'POST', '/api/categories', {
+      name: 'A cat',
+    })
+    const aCat = (await aCatRes.json()) as { id: string }
+    const qa = await apiRequest(
+      b.cookie,
+      'POST',
+      `/api/lists/${bList.id}/items/quick-add`,
+      { name: 'Sneaky', categoryId: aCat.id },
+    )
+    expect(qa.status).toBe(400)
 
     // from-selection with any foreign id: 400 and ZERO writes.
     const before = (await getLists(b.cookie)).length
@@ -559,7 +573,9 @@ describe('list items', () => {
     expect(res.status).toBe(204)
     const items = await getItems(cookie, list.id)
     expect(items.map((i) => i.id)).toEqual([b.id, a.id])
+    // EVERY reordered row keeps its updatedAt, not just the first.
     expect(items.find((i) => i.id === a.id)?.updatedAt).toBe(a.updatedAt)
+    expect(items.find((i) => i.id === b.id)?.updatedAt).toBe(b.updatedAt)
   })
 
   it('reset-packed and reset-ready clear only their own flag', async () => {
