@@ -12,6 +12,10 @@ import { apiFetch, apiFetchVoid } from '../api'
 // cache invalidation port unchanged.
 export type ListItemWithGear = ListItemResponse
 
+// The per-list-item PATCH shape, under the name the old repo's hooks and
+// components already use.
+export type ListItemPatch = UpdateListItemRequest
+
 export async function fetchListItems(
   listId: string,
 ): Promise<ListItemWithGear[]> {

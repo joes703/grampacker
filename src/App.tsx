@@ -10,6 +10,8 @@ import ResetPasswordPage from './auth/ResetPasswordPage'
 import HomePage from './home/HomePage'
 import AppShell from './layout/AppShell'
 import GearLibraryPage from './gear/GearLibraryPage'
+import ListsPage from './lists/ListsPage'
+import ListDetailPage from './lists/ListDetailPage'
 import ToastViewport from './components/Toast'
 
 // Query defaults ported from the old app: 30s staleTime keeps rapid
@@ -71,6 +73,17 @@ export default function App() {
           >
             <Route path="/" element={<HomePage />} />
             <Route path="/gear" element={<GearLibraryPage />} />
+            {/* Lists pages stay eager (no React.lazy): they are post-login
+                primary destinations, so a lazy chunk hop on every nav would
+                cost more than it saves. Code splitting happens at the leaf
+                instead — ListSidebarDrawer (Radix Dialog chunk) and
+                NotesEditor's markdown renderer are lazy inside the pages.
+                Pack mode is a URL segment of the same detail page (see
+                ListDetailPage's mode derivation + legacy ?mode=pack
+                redirect). */}
+            <Route path="/lists" element={<ListsPage />} />
+            <Route path="/lists/:id" element={<ListDetailPage />} />
+            <Route path="/lists/:id/pack" element={<ListDetailPage />} />
           </Route>
           <Route
             path="/sign-in"

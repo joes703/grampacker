@@ -1,6 +1,8 @@
-import { Link, Outlet, useLocation } from 'react-router'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router'
 import { authClient } from '../lib/auth-client'
+import { readLastListPath } from '../lib/last-list-path'
 import { MobilePrimaryNavProvider } from './mobile-primary-nav-context'
+import { SidebarDrawerProvider } from './sidebar-drawer-context'
 import MobilePrimaryNav from './MobilePrimaryNav'
 import { useSignOut } from './use-sign-out'
 
@@ -17,9 +19,11 @@ import { useSignOut } from './use-sign-out'
 export default function AppShell() {
   const { data: session } = authClient.useSession()
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const { signingOut, signOut } = useSignOut()
 
   return (
+    <SidebarDrawerProvider>
     <MobilePrimaryNavProvider>
       <div className="min-h-screen bg-gray-50">
         <header className="border-b border-gray-200 bg-white">
@@ -36,6 +40,30 @@ export default function AppShell() {
                   }`}
                 >
                   Gear
+                </Link>
+                {/* Return-to-workspace shortcut: clicking Lists lands on
+                    the last opened list path (so workflows resume where
+                    the user left off), or /lists when no cached path
+                    exists. The onClick intercept handles the shortcut;
+                    falling through to the default target (/lists) covers
+                    the first-visit / no-cached-path case. Active on the
+                    card page and every list detail/pack URL. */}
+                <Link
+                  to="/lists"
+                  onClick={(e) => {
+                    const lastPath = readLastListPath()
+                    if (lastPath) {
+                      e.preventDefault()
+                      void navigate(lastPath)
+                    }
+                  }}
+                  className={`text-sm font-medium ${
+                    pathname === '/lists' || pathname.startsWith('/lists/')
+                      ? 'text-blue-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Lists
                 </Link>
               </nav>
             </div>
@@ -58,5 +86,6 @@ export default function AppShell() {
         <MobilePrimaryNav />
       </div>
     </MobilePrimaryNavProvider>
+    </SidebarDrawerProvider>
   )
 }

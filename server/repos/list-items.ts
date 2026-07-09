@@ -63,6 +63,9 @@ export type QuickAddInput = {
   description: string | null
   weightGrams: number
   categoryId: string | null
+  quantity: number
+  isWorn: boolean
+  isConsumable: boolean
 }
 
 export type ListItemWriteResult =
@@ -212,6 +215,9 @@ export function createListItemsRepo(db: Db, userId: string) {
           userId,
           listId,
           gearItemId: gearId,
+          quantity: input.quantity,
+          isWorn: input.isWorn,
+          isConsumable: input.isConsumable,
           sortOrder: nextItemSortOrder(listId),
           createdAt: now,
           updatedAt: now,

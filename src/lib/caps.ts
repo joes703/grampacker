@@ -10,9 +10,14 @@
 // specific, friendly message BEFORE a write hits the server. They do NOT
 // replace the authoritative enforcement; keep them in sync with it.
 //
-// TRANSPLANT NOTE: the old repo's file also carried the list caps
-// (LIST_CAP, LIST_ITEM_CAP) and the food caps; those constants return
-// with their slices.
+// TRANSPLANT NOTE: the old repo's file also carried the food caps;
+// those constants return with the food-plans slice.
+
+// The list caps are defined once in shared/lists.ts (the server's
+// enforcement lives next to its request schemas; the 0004 triggers
+// mirror them) and re-exported here so UI call sites keep the single
+// lib/caps import the old repo established.
+export { LIST_CAP, LIST_ITEM_CAP } from '../../shared/lists'
 
 // Max gear items in a user's inventory.
 export const GEAR_ITEM_CAP = 500

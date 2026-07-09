@@ -250,6 +250,7 @@ export function createListsRepo(db: Db, userId: string) {
     // batch is a real transaction on D1. Item order follows the array.
     async createFromSelection(
       name: string,
+      description: string | null,
       gearItemIds: string[],
     ): Promise<FromSelectionResult> {
       const owned = await db
@@ -271,6 +272,7 @@ export function createListsRepo(db: Db, userId: string) {
             id: newId,
             userId,
             name,
+            description,
             slug: generateSlug(),
             sortOrder: nextSortOrder(),
             createdAt: now,
