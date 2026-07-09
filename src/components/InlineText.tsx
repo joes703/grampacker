@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { INLINE_EDIT_FOCUS_RING } from './flat-table-styles'
+import { useCommitOnce } from '../lib/use-commit-once'
 
 type Props = {
   value: string
@@ -30,6 +31,7 @@ export default function InlineText({
     setDraft(value)
   }
   const inputRef = useRef<HTMLInputElement>(null)
+  const commitOnce = useCommitOnce()
 
   useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
 
@@ -45,10 +47,10 @@ export default function InlineText({
         ref={inputRef}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={save}
+        onBlur={() => commitOnce(save)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') save()
-          if (e.key === 'Escape') { setDraft(value); setEditing(false) }
+          if (e.key === 'Enter') commitOnce(save)
+          if (e.key === 'Escape') commitOnce(() => { setDraft(value); setEditing(false) })
         }}
         className={`rounded border border-blue-400 px-1 py-0.5 text-sm ${INLINE_EDIT_FOCUS_RING} ${className}`}
       />

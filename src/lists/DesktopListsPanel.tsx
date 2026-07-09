@@ -26,6 +26,7 @@ import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId } from '../lib/dnd-ids'
 import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
+import { useCommitOnce } from '../lib/use-commit-once'
 import DraftBadge from '../components/DraftBadge'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import {
@@ -291,6 +292,7 @@ function NewListInlineRow({
   onSubmit: () => void
   onCancel: () => void
 }) {
+  const commitOnce = useCommitOnce()
   return (
     <div className={`${FLAT_TABLE_ROW} w-full gap-2 px-3 py-0 bg-blue-50/40`}>
       <input
@@ -300,10 +302,10 @@ function NewListInlineRow({
         value={draft}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') onSubmit()
-          if (e.key === 'Escape') onCancel()
+          if (e.key === 'Enter') commitOnce(onSubmit)
+          if (e.key === 'Escape') commitOnce(onCancel)
         }}
-        onBlur={onSubmit}
+        onBlur={() => commitOnce(onSubmit)}
         disabled={saving}
         className="min-w-0 flex-1 rounded border border-blue-400 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
@@ -374,6 +376,7 @@ function ListPanelRow({
   const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
     useAnchoredMenu({ variant: 'right-flush', menuWidth: 176 })
   const renameInputRef = useRef<HTMLInputElement>(null)
+  const commitOnce = useCommitOnce()
 
   useEffect(() => {
     if (renaming) renameInputRef.current?.select()
@@ -400,10 +403,10 @@ function ListPanelRow({
           value={renameDraft}
           onChange={(e) => onRenameDraftChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') onSubmitRename()
-            if (e.key === 'Escape') onCancelRename()
+            if (e.key === 'Enter') commitOnce(onSubmitRename)
+            if (e.key === 'Escape') commitOnce(onCancelRename)
           }}
-          onBlur={onSubmitRename}
+          onBlur={() => commitOnce(onSubmitRename)}
           className={`min-w-0 flex-1 ${LIST_RENAME_INPUT_CLASS}`}
         />
       </li>
