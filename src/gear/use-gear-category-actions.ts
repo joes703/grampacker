@@ -23,8 +23,9 @@ import type { Category } from '../lib/types'
 // the category's gear in the same transaction (the SQLite port of the old
 // ON DELETE SET NULL cascade), so the optimistic delete invalidates the
 // gear-items cache for open gear views to re-render the now-uncategorized
-// items once the round-trip settles. (The old repo also invalidated
-// list-items here; that returns with the lists slice in phase 3.)
+// items once the round-trip settles. Every per-list cache embeds the full
+// gear DTO through list_items.gearItem, so those copies go stale for the
+// same reason; the list-items prefix invalidation refreshes them all.
 // `categories` seeds the optimistic placeholder's sort slot - the server
 // assigns the real sortOrder (max+1) and the placeholder computes the same
 // value from the cached rows.
@@ -61,7 +62,7 @@ export function useGearCategoryActions(categories: Category[]) {
     ...makeOptimisticDelete<Category, string>({
       qc,
       queryKey: queryKeys.categories(),
-      invalidateKeys: [queryKeys.gearItems()],
+      invalidateKeys: [queryKeys.gearItems(), queryKeys.listItemsAll()],
       id: (id) => id,
     }),
   })
