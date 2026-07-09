@@ -7,7 +7,6 @@ import {
   deleteListItem,
   nextListItemSortOrder,
   makeOptimisticInsert,
-  makeOptimisticUpdate,
   makeOptimisticDelete,
   type ListItemPatch,
 } from '../lib/queries'
@@ -29,13 +28,13 @@ import { type AddItemData } from './use-quick-add-form'
 // mutation wrapper is fresh each render but `.mutate` is stable. Do NOT wrap
 // these in callbacks here; that would defeat the memo boundary.
 //
-// `updateItem` keeps the sibling-in-flight invalidation gate: two parallel
-// updates (e.g. tapping Packed then Ready quickly) each carry their own PATCH;
-// letting an early settle invalidate would race a sibling write and overwrite
-// its optimistic value with stale server data. In TanStack Query v5, onSettled
-// runs before the settling mutation leaves the pending set, so this guard also
-// skips the settling mutation itself. These small field patches rely on the
-// optimistic cache update instead of a post-settle refetch.
+// `updateItem` carries a sibling-in-flight invalidation gate with
+// last-one-out semantics: two parallel updates (e.g. tapping Packed then
+// Ready quickly) each carry their own PATCH; letting an early settle
+// invalidate would race a sibling write and overwrite its optimistic value
+// with stale server data. The LAST update to settle DOES invalidate, so
+// every burst re-converges with server truth - see the mutation for the
+// full lifecycle rationale.
 //
 // The page keeps: the addingNewItemRef double-fire guard (a UI/event concern),
 // dialog orchestration, DnD/reorder, gear/category/notes/ready-checks mutations,
@@ -79,35 +78,59 @@ export function useListItemActions(
     }),
   })
 
-  // mutationKey is used by the onSettled override below to avoid refetching
-  // while updateItem mutations are settling. Two parallel updateItem calls
-  // (e.g. tapping Packed then Ready in quick succession) each carry their own
-  // PATCH; an early invalidate can race a sibling write and overwrite its
-  // optimistic value with stale server data. In TanStack Query v5, onSettled
-  // runs before the settling mutation leaves the pending set, so this guard
-  // also skips the settling mutation itself. Net effect: these small field
-  // patches rely on the optimistic cache update instead of a post-settle
-  // refetch, which is the behavior covered by the hook test.
+  // Hand-rolled FIELD-SCOPED optimistic lifecycle instead of
+  // makeOptimisticUpdate: the generic helper snapshots and restores the
+  // WHOLE cached array, so a failing patch's rollback would wipe every
+  // concurrent sibling's successful optimistic write (fail Packed while
+  // Ready succeeds on the same item -> the Ready tick vanishes). Here
+  // onMutate snapshots only the fields THIS patch touches and onError
+  // restores only those fields onto the CURRENT row, so concurrent patches
+  // compose - the same pattern as use-list-reset-actions' field-scoped
+  // rollbacks.
+  //
+  // mutationKey drives the last-one-out invalidation gate in onSettled. Two
+  // parallel updateItem calls (e.g. tapping Packed then Ready in quick
+  // succession) each carry their own PATCH; an invalidate fired while a
+  // sibling is still pending can refetch stale server data over the
+  // sibling's optimistic write. In TanStack Query v5, onSettled runs before
+  // the settling mutation leaves the pending set, so the settling mutation
+  // counts ITSELF in qc.isMutating - the "siblings still pending" check is
+  // therefore `> 1`, and exactly one invalidate fires per burst, after the
+  // final PATCH settles. That trailing refetch is what re-converges the
+  // cache with server truth when something external raced the optimistic
+  // writes (e.g. the edit-gear dialog saves gear first, whose fan-out
+  // invalidation refetches this list mid-save).
   const updateMutKey = ['update-list-item', listId] as const
-  const updateMutOptimistic = makeOptimisticUpdate<
-    ListItemWithGear,
-    { itemId: string; patch: ListItemPatch }
-  >({
-    qc,
-    queryKey: queryKeys.listItems(listId),
-    id: ({ itemId }) => itemId,
-    apply: (item, { patch }) => ({ ...item, ...patch }),
-  })
   const updateItem = useMutation({
     mutationKey: updateMutKey,
     mutationFn: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) =>
       updateListItem(listId, itemId, patch),
-    ...updateMutOptimistic,
+    onMutate: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) => {
+      void qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
+      const rows = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
+      const row = rows?.find((i) => i.id === itemId)
+      if (!row) return undefined
+      const patchKeys = (Object.keys(patch) as (keyof ListItemPatch)[]).filter(
+        (k) => patch[k] !== undefined,
+      )
+      const prevFields = Object.fromEntries(
+        patchKeys.map((k) => [k, row[k]]),
+      ) as Partial<ListItemWithGear>
+      qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
+        curr?.map((i) => (i.id === itemId ? { ...i, ...patch } : i)),
+      )
+      return { itemId, prevFields }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (!ctx) return
+      qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
+        curr?.map((i) => (i.id === ctx.itemId ? { ...i, ...ctx.prevFields } : i)),
+      )
+    },
     onSettled: () => {
-      // onSettled runs while this mutation is still counted as pending, so this
-      // guard skips both sibling-in-flight refetches and the settling mutation's
-      // own refetch.
-      if (qc.isMutating({ mutationKey: updateMutKey }) > 0) return
+      // `> 1` = true siblings still pending (the settling mutation counts
+      // itself); the last one out invalidates once for the whole burst.
+      if (qc.isMutating({ mutationKey: updateMutKey }) > 1) return
       void qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
     },
   })

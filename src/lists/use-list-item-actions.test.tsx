@@ -11,10 +11,15 @@ import { mutationErrorHandler } from '../lib/mutation-error-handler'
 // extraction exposed: the correct query helpers are called with the right args,
 // the optimistic helpers are wired to the ['list-items', listId] cache, addNewItem
 // maps AddItemData -> the quickAddListItem request and invalidates both
-// caches, and - the highest-value regression - the update sibling-in-flight gate
-// only lets the LAST-settled concurrent update refetch. The optimistic cache
-// lifecycle itself is owned/tested by optimistic.ts; here we mock those helpers
-// and assert wiring, not internals.
+// caches, and - the highest-value regressions - updateItem's hand-rolled
+// lifecycle: field-scoped rollbacks that compose under concurrency (a failing
+// patch restores ONLY its own fields, never a sibling's optimistic write) and
+// the last-one-out invalidation gate (no refetch while siblings are pending;
+// exactly one after the final settle, which is what re-converges the cache
+// with server truth after external races). add/delete's optimistic cache
+// lifecycle is owned/tested by optimistic.ts; those helpers stay mocked and
+// we assert wiring. updateItem's lifecycle is bespoke, so it runs against a
+// REAL QueryClient cache here.
 
 const LIST_ID = 'list-1'
 
@@ -32,7 +37,6 @@ const h = vi.hoisted(() => ({
   deleteListItem: vi.fn<(listId: string, itemId: string) => Promise<void>>(),
   nextListItemSortOrder: vi.fn<(items: unknown[]) => number>(),
   makeOptimisticInsert: vi.fn<(opts: InsertOpts) => Lifecycle>(),
-  makeOptimisticUpdate: vi.fn<(opts: { queryKey: unknown }) => Lifecycle>(),
   makeOptimisticDelete: vi.fn<(opts: { queryKey: unknown }) => Lifecycle>(),
 }))
 const toast = vi.hoisted(() => ({ showToast: vi.fn<(message: string, options?: unknown) => number>() }))
@@ -50,6 +54,15 @@ function gear(over: Partial<GearItem> = {}): GearItem {
   return {
     id: 'g1', categoryId: 'c1', name: 'Tent', description: null,
     weightGrams: 1200, cost: null, purchaseDate: null, status: 'active',
+    sortOrder: 0, createdAt: now, updatedAt: now, ...over,
+  }
+}
+
+function item(over: Partial<ListItemWithGear> = {}): ListItemWithGear {
+  const now = '2026-01-01T00:00:00.000Z'
+  return {
+    id: 'a', listId: LIST_ID, gearItemId: 'g1', gearItem: gear(),
+    quantity: 1, isWorn: false, isConsumable: false, isPacked: false, isReady: false,
     sortOrder: 0, createdAt: now, updatedAt: now, ...over,
   }
 }
@@ -89,7 +102,6 @@ const invalidationsFor = (spy: ReturnType<typeof vi.spyOn>, key: readonly unknow
 
 beforeEach(() => {
   h.makeOptimisticInsert.mockReturnValue(lifecycle())
-  h.makeOptimisticUpdate.mockReturnValue(lifecycle())
   h.makeOptimisticDelete.mockReturnValue(lifecycle())
   h.nextListItemSortOrder.mockReturnValue(5)
   h.addListItem.mockResolvedValue({ id: 'li-new' })
@@ -131,45 +143,40 @@ describe('useListItemActions', () => {
   })
 
   describe('updateItem', () => {
-    it('patches the list item by parent path + id and targets the list-items cache', async () => {
-      const { result } = setup()
+    it('patches the list item by parent path + id and writes the patch optimistically', async () => {
+      const qc = makeQc()
+      qc.setQueryData<ListItemWithGear[]>(['list-items', LIST_ID], [item({ id: 'a' })])
+      const result = renderWith(qc)
 
       result.current.updateItem.mutate({ itemId: 'a', patch: { isPacked: true } })
 
+      // Optimistic write lands before the PATCH resolves.
+      const rows = qc.getQueryData<ListItemWithGear[]>(['list-items', LIST_ID])!
+      expect(rows.find((i) => i.id === 'a')!.isPacked).toBe(true)
       await waitFor(() => expect(h.updateListItem).toHaveBeenCalledWith(LIST_ID, 'a', { isPacked: true }))
-      expect(h.makeOptimisticUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({ queryKey: ['list-items', LIST_ID] }),
-      )
     })
 
-    it('sibling-in-flight gate: concurrent updates never over-invalidate the list-items cache', async () => {
-      // The gate REPLACES makeOptimisticUpdate's default "invalidate list-items
-      // on every settle" (makeSettled) with a guarded invalidate: skip the
-      // refetch while any sibling update-list-item mutation is still pending, so
-      // rapid Packed-then-Ready taps can't have the first settle refetch stale
-      // server data over the second's optimistic value.
-      //
-      // Actual runtime (locked here as behavior we must preserve verbatim from
-      // the old repo): in TanStack Query v5 a mutation dispatches its `success`
-      // state AFTER options.onSettled runs (query-core mutation.ts: onSettled
-      // ~L137, success dispatch ~L144), so qc.isMutating({ mutationKey }) still
-      // counts the settling mutation ITSELF during its own onSettled. The `> 0`
-      // guard is therefore always true and the invalidate never fires - even for
-      // a single update. Net effect: the optimistic write is the source of truth
-      // for these field patches and no post-update refetch can race a sibling.
-      //
-      // So two concurrent updates settle with ZERO list-items invalidations. This
-      // still catches a regression that drops the gate: the bare makeSettled
-      // default would invalidate on each settle (count 2). The gate's stated
-      // intent ("only the LAST settled call refetches") differs from this runtime
-      // behavior; that discrepancy is deliberately left for a separate,
-      // non-refactor change.
+    it('last-one-out gate: no invalidate while a sibling is pending, exactly one after the final settle', async () => {
+      // The gate replaces the default "invalidate on every settle": a refetch
+      // fired while a sibling update-list-item mutation is still pending could
+      // land stale server data over the sibling's optimistic write. In TanStack
+      // Query v5 a mutation dispatches its `success` state AFTER
+      // options.onSettled runs, so qc.isMutating({ mutationKey }) counts the
+      // settling mutation ITSELF - the "siblings pending" check is `> 1`. The
+      // LAST settle invalidates once for the whole burst; that trailing refetch
+      // is what re-converges the cache with server truth when something
+      // external raced the optimistic writes (e.g. the edit-gear dialog's
+      // gear-save fan-out refetching this list mid-save).
       let resolveA!: () => void
       let resolveB!: () => void
       h.updateListItem
         .mockImplementationOnce(() => new Promise<void>((r) => { resolveA = () => r() }))
         .mockImplementationOnce(() => new Promise<void>((r) => { resolveB = () => r() }))
       const qc = makeQc()
+      qc.setQueryData<ListItemWithGear[]>(
+        ['list-items', LIST_ID],
+        [item({ id: 'a' }), item({ id: 'b' })],
+      )
       const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
       // Two observers on one QueryClient == two updates in flight against one
       // cache, the exact scenario the gate guards.
@@ -187,10 +194,55 @@ describe('useListItemActions', () => {
       await waitFor(() => expect(a.current.updateItem.isSuccess).toBe(true))
       expect(invalidationsFor(invalidateSpy, ['list-items', LIST_ID])).toBe(0)
 
-      // Last settles -> gate still skips (self-count), so no refetch races either write.
+      // Last settles -> exactly one invalidate for the whole burst.
       await act(async () => { resolveB() })
       await waitFor(() => expect(b.current.updateItem.isSuccess).toBe(true))
-      expect(invalidationsFor(invalidateSpy, ['list-items', LIST_ID])).toBe(0)
+      await waitFor(() =>
+        expect(invalidationsFor(invalidateSpy, ['list-items', LIST_ID])).toBe(1),
+      )
+    })
+
+    it('field-scoped rollback: a failing patch restores only its own fields, composing with a concurrent sibling on the SAME item', async () => {
+      // Regression for the whole-snapshot-rollback bug: with the generic
+      // makeOptimisticUpdate lifecycle, the failing Packed mutation's onError
+      // restored the entire pre-Packed array snapshot - wiping the concurrent
+      // Ready mutation's successful optimistic write on the same item, with no
+      // trailing invalidate to heal it. Field-scoped rollback restores ONLY
+      // isPacked onto the CURRENT row, so the Ready tick survives.
+      let rejectPacked!: (e: Error) => void
+      let resolveReady!: () => void
+      h.updateListItem
+        .mockImplementationOnce(() => new Promise<void>((_r, rej) => { rejectPacked = rej }))
+        .mockImplementationOnce(() => new Promise<void>((r) => { resolveReady = () => r() }))
+      const qc = makeQc()
+      qc.setQueryData<ListItemWithGear[]>(['list-items', LIST_ID], [item({ id: 'a' })])
+      const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+      const a = renderWith(qc)
+      const b = renderWith(qc)
+
+      await act(async () => {
+        a.current.updateItem.mutate({ itemId: 'a', patch: { isPacked: true } })
+        b.current.updateItem.mutate({ itemId: 'a', patch: { isReady: true } })
+      })
+      await waitFor(() => expect(h.updateListItem).toHaveBeenCalledTimes(2))
+      const read = () =>
+        qc.getQueryData<ListItemWithGear[]>(['list-items', LIST_ID])!.find((i) => i.id === 'a')!
+      // Both optimistic writes applied.
+      expect(read()).toMatchObject({ isPacked: true, isReady: true })
+
+      // Ready succeeds first (sibling still pending -> no invalidate yet).
+      await act(async () => { resolveReady() })
+      await waitFor(() => expect(b.current.updateItem.isSuccess).toBe(true))
+
+      // Packed fails last: rollback restores isPacked only; Ready's write
+      // survives; and as the last one out it still fires the converging
+      // invalidate.
+      await act(async () => { rejectPacked(new Error('boom')) })
+      await waitFor(() => expect(a.current.updateItem.isError).toBe(true))
+      expect(read()).toMatchObject({ isPacked: false, isReady: true })
+      await waitFor(() =>
+        expect(invalidationsFor(invalidateSpy, ['list-items', LIST_ID])).toBe(1),
+      )
     })
   })
 
