@@ -4,6 +4,7 @@ import {
   addListItemRequestSchema,
   createListFromSelectionRequestSchema,
   createListRequestSchema,
+  importListRequestSchema,
   quickAddListItemRequestSchema,
   reorderListItemsRequestSchema,
   reorderListsRequestSchema,
@@ -26,6 +27,11 @@ import type { ListRow } from '../repos/lists'
 //   POST   /api/lists/from-selection           - session - own gear only,
 //                                                all-or-nothing, zero writes
 //                                                on any foreign id
+//   POST   /api/lists/import                   - session - own category/gear
+//                                                refs only; creates list +
+//                                                categories + gear + items
+//                                                atomically, zero writes on
+//                                                any failure; 422 at caps
 //   POST   /api/lists/:id/duplicate            - session - own list or 404
 //   PATCH  /api/lists/:id                      - session - own list or 404
 //   DELETE /api/lists/:id                      - session - own list or 404;
@@ -168,6 +174,29 @@ listRoutes.post('/from-selection', async (c) => {
   if (!result.ok) {
     if (result.reason === 'invalid_gear') {
       return c.json({ error: 'Invalid gear item' }, 400)
+    }
+    return c.json({ error: 'List limit reached (100 per user)' }, 422)
+  }
+  return c.json(toListResponse(result.row), 201)
+})
+
+listRoutes.post('/import', async (c) => {
+  const raw = await c.req.json().catch(() => null)
+  const parsed = importListRequestSchema.safeParse(raw)
+  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const result = await c.get('repos').lists.importFromCsv(parsed.data)
+  if (!result.ok) {
+    if (result.reason === 'invalid_category') {
+      return c.json({ error: 'Invalid category' }, 400)
+    }
+    if (result.reason === 'invalid_gear') {
+      return c.json({ error: 'Invalid gear item' }, 400)
+    }
+    if (result.reason === 'gear_cap_exceeded') {
+      return c.json({ error: 'Gear item limit reached (500 per user)' }, 422)
+    }
+    if (result.reason === 'item_cap_exceeded') {
+      return c.json({ error: 'List item limit reached (300 per list)' }, 422)
     }
     return c.json({ error: 'List limit reached (100 per user)' }, 422)
   }

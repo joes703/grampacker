@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { gearItemResponseSchema } from './gear'
+import { gearItemResponseSchema, importCategoryRefSchema } from './gear'
 
 // DTO contracts for /api/lists and /api/lists/:id/items. Same rules as
 // shared/gear.ts: response schemas are the allowlist (user_id never
@@ -178,3 +178,113 @@ export const reorderListItemsRequestSchema = reorderSchema(LIST_ITEM_CAP)
 export type ReorderListItemsRequest = z.infer<
   typeof reorderListItemsRequestSchema
 >
+
+// ---------------------------------------------------------------- csv import
+
+// Atomic list import: new categories + new gear + the list + its items
+// land in ONE transaction (parity with the old app's
+// create_list_with_imported_items RPC). The client plans the import (CSV
+// parse + dedup against its library snapshot); tempIds link the layers:
+// gear entries reference not-yet-created categories, items reference
+// not-yet-created gear. Item sortOrder is the ORIGINAL CSV row index, so
+// dropped empty-name rows leave intentional gaps.
+const tempIdSchema = z.string().min(1).max(64)
+
+const importListCategorySchema = z
+  .object({ tempId: tempIdSchema, name: z.string().trim().min(1).max(128) })
+  .strict()
+
+export const importListGearRefSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('existing'), id: idSchema }).strict(),
+  z.object({ kind: z.literal('new'), tempId: tempIdSchema }).strict(),
+])
+export type ImportListGearRef = z.infer<typeof importListGearRefSchema>
+
+// New gear created by the import. No cost/purchaseDate (the list CSV
+// format does not carry them; the server inserts null) and no status
+// (server default), matching the gear-import contract.
+const importListGearEntrySchema = z
+  .object({
+    tempId: tempIdSchema,
+    name: z.string().trim().min(1).max(256),
+    description: z.string().trim().min(1).max(2000).nullable().default(null),
+    weightGrams: z.number().int().min(0).max(100000).default(0),
+    category: importCategoryRefSchema.nullable().default(null),
+  })
+  .strict()
+
+const importListItemSchema = z
+  .object({
+    gear: importListGearRefSchema,
+    quantity: quantitySchema.default(1),
+    isWorn: z.boolean().default(false),
+    isConsumable: z.boolean().default(false),
+    sortOrder: z.number().int().min(0).max(1_000_000_000),
+  })
+  .strict()
+  .refine((v) => !(v.isWorn === true && v.isConsumable === true), {
+    message: 'an item cannot be both worn and consumable',
+  })
+
+export const importListRequestSchema = z
+  .object({
+    name: listNameSchema,
+    categories: z.array(importListCategorySchema).max(LIST_ITEM_CAP),
+    gear: z.array(importListGearEntrySchema).max(LIST_ITEM_CAP),
+    items: z.array(importListItemSchema).min(1).max(LIST_ITEM_CAP),
+  })
+  .strict()
+  .superRefine((req, ctx) => {
+    const catTempIds = req.categories.map((c) => c.tempId)
+    if (!uniqueIds(catTempIds)) {
+      ctx.addIssue({ code: 'custom', message: 'duplicate category tempIds' })
+      return
+    }
+    const gearTempIds = req.gear.map((g) => g.tempId)
+    if (!uniqueIds(gearTempIds)) {
+      ctx.addIssue({ code: 'custom', message: 'duplicate gear tempIds' })
+      return
+    }
+    if (!uniqueIds(req.items.map((i) => i.sortOrder.toString()))) {
+      ctx.addIssue({ code: 'custom', message: 'duplicate item sortOrders' })
+      return
+    }
+    // Every symbolic ref must resolve, and every declared temp entity
+    // must be used - rejecting orphans keeps the endpoint from being a
+    // row-spam vector (same rule as the gear import).
+    const declaredCats = new Set(catTempIds)
+    const referencedCats = new Set<string>()
+    for (const g of req.gear) {
+      if (g.category?.kind !== 'new') continue
+      if (!declaredCats.has(g.category.tempId)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `unknown category tempId: ${g.category.tempId}`,
+        })
+        return
+      }
+      referencedCats.add(g.category.tempId)
+    }
+    if (referencedCats.size !== declaredCats.size) {
+      ctx.addIssue({ code: 'custom', message: 'unreferenced category tempId' })
+      return
+    }
+    const declaredGear = new Set(gearTempIds)
+    const referencedGear = new Set<string>()
+    for (const item of req.items) {
+      if (item.gear.kind !== 'new') continue
+      if (!declaredGear.has(item.gear.tempId)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `unknown gear tempId: ${item.gear.tempId}`,
+        })
+        return
+      }
+      referencedGear.add(item.gear.tempId)
+    }
+    if (referencedGear.size !== declaredGear.size) {
+      ctx.addIssue({ code: 'custom', message: 'unreferenced gear tempId' })
+    }
+  })
+export type ImportListRequest = z.infer<typeof importListRequestSchema>
+export type ImportListRequestInput = z.input<typeof importListRequestSchema>

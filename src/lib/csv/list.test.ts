@@ -1,0 +1,301 @@
+import { describe, it, expect } from 'vitest'
+import { listItemsToCsv, parseListCsv, nameFromCsvFilename } from './index'
+import type { Category, GearItem, ListItemWithGear } from '../types'
+import { MAX_LIST_ITEM_QUANTITY } from '../caps'
+
+// camelCase DTO builders (the new repo speaks camelCase end-to-end; unlike
+// the old repo these ARE the API response shapes, with no user_id).
+function makeCategory(over: Partial<Category> & { id: string; name: string }): Category {
+  return {
+    id: over.id,
+    name: over.name,
+    sortOrder: over.sortOrder ?? 0,
+    createdAt: over.createdAt ?? '2024-01-01',
+  }
+}
+
+function makeGear(over: Partial<GearItem> & { id: string; name: string }): GearItem {
+  return {
+    id: over.id,
+    categoryId: 'categoryId' in over ? over.categoryId ?? null : 'cat-shelter',
+    name: over.name,
+    description: over.description ?? null,
+    weightGrams: over.weightGrams ?? 100,
+    cost: over.cost ?? null,
+    purchaseDate: over.purchaseDate ?? null,
+    status: over.status ?? 'active',
+    sortOrder: over.sortOrder ?? 0,
+    createdAt: over.createdAt ?? '2024-01-01',
+    updatedAt: over.updatedAt ?? '2024-01-01',
+  }
+}
+
+function makeListItem(
+  over: Partial<ListItemWithGear> & { id: string; gearItem: GearItem },
+): ListItemWithGear {
+  return {
+    id: over.id,
+    listId: over.listId ?? 'l-1',
+    gearItemId: over.gearItem.id,
+    quantity: over.quantity ?? 1,
+    isWorn: over.isWorn ?? false,
+    isConsumable: over.isConsumable ?? false,
+    isPacked: over.isPacked ?? false,
+    isReady: over.isReady ?? false,
+    sortOrder: over.sortOrder ?? 0,
+    createdAt: over.createdAt ?? '2024-01-01',
+    updatedAt: over.updatedAt ?? '2024-01-01',
+    gearItem: over.gearItem,
+  }
+}
+
+// Smoke test: representative list rows should round-trip through
+// listItemsToCsv -> parseListCsv with the user-visible columns intact.
+// The DB-only fields (ids, listId, sortOrder, packed/ready) aren't in the
+// parse output by design - parseListCsv targets imports from third-party
+// tools too (Lighterpack), so it normalizes to ListCsvRow's shape.
+describe('list csv round-trip', () => {
+  const categories: Category[] = [
+    makeCategory({ id: 'cat-shelter', name: 'Shelter', sortOrder: 0 }),
+    makeCategory({ id: 'cat-kitchen', name: 'Kitchen', sortOrder: 1 }),
+  ]
+
+  const items: ListItemWithGear[] = [
+    makeListItem({
+      id: 'li-1',
+      quantity: 1,
+      sortOrder: 0,
+      gearItem: makeGear({
+        id: 'g-1', name: 'Tarp', description: 'cuben fiber',
+        weightGrams: 240, categoryId: 'cat-shelter',
+      }),
+    }),
+    makeListItem({
+      id: 'li-2',
+      quantity: 2,
+      isConsumable: true,
+      sortOrder: 1,
+      gearItem: makeGear({
+        id: 'g-2', name: 'Stove fuel canister', description: null,
+        weightGrams: 100, categoryId: 'cat-kitchen',
+      }),
+    }),
+    makeListItem({
+      id: 'li-3',
+      quantity: 1,
+      isWorn: true,
+      sortOrder: 2,
+      gearItem: makeGear({
+        id: 'g-3', name: 'Rain jacket, "shell"',
+        description: 'with comma + quotes for escapeCell',
+        weightGrams: 320, categoryId: null,
+      }),
+    }),
+  ]
+
+  it(`parses quantity from common header names and clamps to [1, ${MAX_LIST_ITEM_QUANTITY}]`, () => {
+    const csv = [
+      'name,weight_grams,qty',
+      'Item A,10,1',
+      'Item B,10,6',
+      'Item C,10,2',
+      `Item D,10,${MAX_LIST_ITEM_QUANTITY}`,       // exactly at cap
+      `Item E,10,${MAX_LIST_ITEM_QUANTITY + 1}`,   // over cap -> clamped
+      'Item F,10,0',      // under min -> 1
+      'Item G,10,',       // blank -> 1
+      'Item H,10,abc',    // NaN -> 1
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed.map((r) => r.quantity)).toEqual([1, 6, 2, MAX_LIST_ITEM_QUANTITY, MAX_LIST_ITEM_QUANTITY, 1, 1, 1])
+  })
+
+  it('preserves user-visible fields across serialize -> parse', () => {
+    const csv = listItemsToCsv(items, categories)
+    const parsed = parseListCsv(csv)
+    expect(typeof parsed).not.toBe('string')
+    if (typeof parsed === 'string') return // narrowing for TS
+
+    expect(parsed).toHaveLength(items.length)
+    parsed.forEach((row, i) => {
+      const src = items[i]!
+      expect(row.name).toBe(src.gearItem.name)
+      expect(row.description).toBe(src.gearItem.description)
+      expect(row.weightGrams).toBe(src.gearItem.weightGrams)
+      expect(row.quantity).toBe(src.quantity)
+      expect(row.isWorn).toBe(src.isWorn)
+      expect(row.isConsumable).toBe(src.isConsumable)
+      const expectedCat = src.gearItem.categoryId
+        ? categories.find((c) => c.id === src.gearItem.categoryId)?.name ?? ''
+        : ''
+      expect(row.categoryName).toBe(expectedCat)
+    })
+  })
+
+  it('parses Lighterpack-format CSV (Worn/Consumable literals, gram unit)', () => {
+    const csv = [
+      'Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable',
+      'Tarp,Shelter,cuben fiber,1,240,gram,,0,,',
+      'Stove fuel canister,Kitchen,,2,100,gram,,0,,Consumable',
+      'Rain jacket,Clothing,,1,320,gram,,0,Worn,',
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed).toHaveLength(3)
+    expect(parsed[0]).toMatchObject({
+      name: 'Tarp', description: 'cuben fiber', weightGrams: 240,
+      quantity: 1, categoryName: 'Shelter', isWorn: false, isConsumable: false,
+    })
+    expect(parsed[1]).toMatchObject({
+      name: 'Stove fuel canister', weightGrams: 100, quantity: 2,
+      isWorn: false, isConsumable: true,
+    })
+    expect(parsed[2]).toMatchObject({
+      name: 'Rain jacket', weightGrams: 320, quantity: 1,
+      isWorn: true, isConsumable: false,
+    })
+  })
+
+  it('clears BOTH flags when a row marks itself worn AND consumable', () => {
+    // worn/consumable exclusivity is a DB CHECK constraint: a list item can
+    // be at most one of worn/consumable. A CSV row that sets both would
+    // fail the insert, so parseListCsv silently normalizes by clearing
+    // both. The two single-flag control rows prove the clearing is specific
+    // to the both-set case and not a blanket suppression of either flag.
+    const csv = [
+      'Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable',
+      'Both flags,Shelter,,1,100,gram,,0,Worn,Consumable',
+      'Only worn,Clothing,,1,200,gram,,0,Worn,',
+      'Only consumable,Food,,1,50,gram,,0,,Consumable',
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed).toHaveLength(3)
+    // Both truthy -> both cleared.
+    expect(parsed[0]).toMatchObject({
+      name: 'Both flags', isWorn: false, isConsumable: false,
+    })
+    // Control: worn-only stays worn, consumable false.
+    expect(parsed[1]).toMatchObject({
+      name: 'Only worn', isWorn: true, isConsumable: false,
+    })
+    // Control: consumable-only stays consumable, worn false.
+    expect(parsed[2]).toMatchObject({
+      name: 'Only consumable', isWorn: false, isConsumable: true,
+    })
+  })
+
+  it('parses HikerHerd-style headers (notes for description, mixed case)', () => {
+    const csv = [
+      'Name,Category,Notes,Quantity,Weight,Unit,Worn,Consumable',
+      'Tarp,Shelter,cuben fiber,1,240,g,,',
+      'Trail mix,Food,nut and dried fruit blend,3,50,g,,yes',
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]).toMatchObject({
+      name: 'Tarp', description: 'cuben fiber', weightGrams: 240, quantity: 1,
+    })
+    expect(parsed[1]).toMatchObject({
+      name: 'Trail mix', description: 'nut and dried fruit blend',
+      weightGrams: 50, quantity: 3, isConsumable: true,
+    })
+  })
+
+  it('parses spelled-out unit aliases (ounce, pound, kilogram)', () => {
+    const csv = [
+      'name,weight,unit',
+      'Item A,3,ounce',      // 3 oz -> 85 g
+      'Item B,2.5,ounces',   // 2.5 oz -> 71 g
+      'Item C,1,pound',      // 1 lb -> 454 g
+      'Item D,2,pounds',     // 2 lb -> 907 g
+      'Item E,1.5,kilogram', // 1.5 kg -> 1500 g
+      'Item F,0.5,kilograms',// 0.5 kg -> 500 g
+      'Item G,100,gram',     // 100 g -> 100 g
+      'Item H,200,grams',    // 200 g -> 200 g
+      'Item I,50,',          // empty unit -> 50 g
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed.map((r) => r.weightGrams)).toEqual([
+      85, 71, 454, 907, 1500, 500, 100, 200, 50,
+    ])
+  })
+
+  it('parses CSV missing optional columns with sensible defaults', () => {
+    const csv = [
+      'name,weight',
+      'Bare item,150',
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]).toMatchObject({
+      name: 'Bare item',
+      description: null,
+      weightGrams: 150,
+      quantity: 1,          // default when qty column absent
+      categoryName: '',     // empty when category column absent
+      isWorn: false,        // empty when worn column absent
+      isConsumable: false,
+    })
+  })
+
+  it('returns an error string when a required column is missing', () => {
+    expect(parseListCsv('weight\n100')).toContain('Missing required column: "name"')
+    expect(parseListCsv('name\nTarp')).toContain('Missing required column: "weight_grams"')
+  })
+
+  it('silently drops rows with an empty name', () => {
+    const csv = [
+      'name,weight',
+      'Kept,100',
+      ',200',
+      '   ,300',
+      'Also kept,400',
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed.map((r) => r.name)).toEqual(['Kept', 'Also kept'])
+  })
+
+  it('emits the byte-exact Lighterpack-compatible export format', () => {
+    const csv = listItemsToCsv(items, categories)
+    const lines = csv.split('\r\n')
+    expect(lines[0]).toBe('Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable')
+
+    // Row index 0 - Tarp: isWorn=false, isConsumable=false. Lighterpack
+    // emits empty strings for false-flag rows. unit is the literal 'gram',
+    // url is empty, price is the numeric default 0.
+    expect(lines[1]).toBe('Tarp,Shelter,cuben fiber,1,240,gram,,0,,')
+
+    // Row index 1 - Stove fuel canister: isConsumable=true.
+    expect(lines[2]).toBe('Stove fuel canister,Kitchen,,2,100,gram,,0,,Consumable')
+
+    // Row index 2 - Rain jacket: isWorn=true, name has comma + embedded
+    // quotes (exercises escapeCell's quote-doubling). description has a +
+    // sign that is NOT a leading character - formula-injection escape only
+    // triggers on leading =, +, -, @, tab, CR.
+    expect(lines[3]).toBe(
+      '"Rain jacket, ""shell""",,with comma + quotes for escapeCell,1,320,gram,,0,Worn,',
+    )
+  })
+})
+
+describe('nameFromCsvFilename', () => {
+  it('strips the extension and any path prefix', () => {
+    expect(nameFromCsvFilename('PCT 2026.csv')).toBe('PCT 2026')
+    expect(nameFromCsvFilename('PCT 2026.CSV')).toBe('PCT 2026')
+    expect(nameFromCsvFilename('/tmp/exports/summer.csv')).toBe('summer')
+    expect(nameFromCsvFilename('C:\\Users\\joe\\winter.csv')).toBe('winter')
+  })
+
+  it('falls back to a generic label when nothing is left', () => {
+    expect(nameFromCsvFilename('.csv')).toBe('Imported list')
+    expect(nameFromCsvFilename('   .csv')).toBe('Imported list')
+    expect(nameFromCsvFilename('')).toBe('Imported list')
+  })
+
+  it('keeps non-csv extensions intact (only .csv is stripped)', () => {
+    expect(nameFromCsvFilename('gear.txt')).toBe('gear.txt')
+  })
+})

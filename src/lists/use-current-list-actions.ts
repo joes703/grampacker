@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import {
@@ -7,13 +7,17 @@ import {
   duplicateList,
   deleteList,
   createList,
+  fetchListItems,
+  fetchCategories,
   makeOptimisticUpdate,
   makeOptimisticDelete,
   makeOptimisticInsert,
   nextListSortOrder,
 } from '../lib/queries'
+import { listItemsToCsv, downloadCsv } from '../lib/csv'
 import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
-import type { List } from '../lib/types'
+import { showToast } from '../lib/toast'
+import type { Category, List } from '../lib/types'
 
 // createListMut variables: the name plus the append sortOrder snapshotted at
 // submit time. Carried together so the optimistic placeholder consumes one
@@ -25,16 +29,16 @@ type CreateListVars = { name: string; sortOrder: number }
 // Shared current-list actions hook. Both the /lists card kebab
 // (ListsPage) and the in-list List options popover/modal
 // (ListSettingsPanel) call this to get the same rename / duplicate /
-// delete handlers. Same mutations, same write paths, same
+// delete / exportCsv handlers. Same mutations, same write paths, same
 // optimistic-update shapes - one canonical code path, multiple entry
 // points.
-//
-// TRANSPLANT NOTE (csv): the old repo's hook also owned exportCsv +
-// exportingListId (fetch-or-cache items/categories, listItemsToCsv,
-// downloadCsv). That returns with the CSV slice.
 export function useCurrentListActions() {
   const qc = useQueryClient()
   const navigate = useNavigate()
+  // Which list has an export in flight (drives the kebab's "Exporting…"
+  // state). Per-list rather than boolean so a slow export on one list
+  // doesn't disable the action on every other card.
+  const [exportingListId, setExportingListId] = useState<string | null>(null)
 
   const renameMut = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => updateList(id, { name }),
@@ -129,5 +133,39 @@ export function useCurrentListActions() {
     }),
   })
 
-  return { createListMut, submitCreateList, renameMut, duplicateMut, deleteListMut, draftMut }
+  // Export a list's items to the Lighterpack-compatible CSV. Items and
+  // categories resolve via fetchQuery (warm cache within staleTime,
+  // fetched when cold) so the export works from any surface without that
+  // list's items being mounted.
+  const exportCsv = useCallback(
+    async (list: List) => {
+      setExportingListId(list.id)
+      try {
+        const [items, categories] = await Promise.all([
+          qc.fetchQuery({
+            queryKey: queryKeys.listItems(list.id),
+            queryFn: () => fetchListItems(list.id),
+          }),
+          qc.fetchQuery({
+            queryKey: queryKeys.categories(),
+            queryFn: fetchCategories,
+          }) as Promise<Category[]>,
+        ])
+        const csv = listItemsToCsv(items, categories)
+        downloadCsv(
+          `${list.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`,
+          csv,
+        )
+      } catch {
+        // Non-optimistic action with no snap-back: surface feedback and
+        // consume so the fire-and-forget call sites cannot reject.
+        showToast("Couldn't export the list. Please try again.", { type: 'error' })
+      } finally {
+        setExportingListId((current) => (current === list.id ? null : current))
+      }
+    },
+    [qc],
+  )
+
+  return { createListMut, submitCreateList, renameMut, duplicateMut, deleteListMut, exportCsv, exportingListId, draftMut }
 }

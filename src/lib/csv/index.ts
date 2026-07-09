@@ -15,7 +15,8 @@
 export { toCsv, downloadCsv, parseCsv, MAX_CSV_ROWS } from './core'
 export { gearItemsToCsv, parseGearCsv } from './gear'
 export type { GearCsvRow } from './gear'
+export { listItemsToCsv, parseListCsv, nameFromCsvFilename } from './list'
+export type { ListCsvRow } from './list'
 
-// list and food CSV exports (listItemsToCsv/parseListCsv,
-// foodItemsToCsv/parseFoodCsv, and their row types) return with their
-// respective slices.
+// food CSV exports (foodItemsToCsv/parseFoodCsv and their row type)
+// return with the food-planning slice.

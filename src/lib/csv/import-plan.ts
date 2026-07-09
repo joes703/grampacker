@@ -45,8 +45,14 @@
 // an item in the library and were therefore not re-created.
 
 import type { GearCsvRow } from './gear'
+import type { ListCsvRow } from './list'
 import type { Category, GearItem } from '../types'
-import { MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../caps'
+import {
+  GEAR_ITEM_CAP,
+  LIST_ITEM_CAP,
+  MAX_NAME_LENGTH,
+  MAX_DESC_LENGTH,
+} from '../caps'
 import { randomTempId } from '../random-temp-id'
 import { gearKey } from './sort-keys'
 
@@ -164,4 +170,132 @@ export function planGearImport(
   const { newCategories, refByLowerName } = planNewCategories(named, existingCategories, genId)
   const { newItems, skippedCount } = planGearResolution(named, existingGearItems, refByLowerName)
   return { newCategories, newItems, skippedCount }
+}
+
+// ── list import ──────────────────────────────────────────────────────────────
+//
+// Same planning core as the gear import, with one semantic difference: a
+// row that matches an existing library item is not a skip - it becomes a
+// list item REFERENCING that gear (the whole point of the dedup is to
+// reuse the library, not to drop the row). The plan's three arrays map
+// 1:1 onto the POST /api/lists/import request body; new gear carries a
+// client-minted tempId so items can reference not-yet-created gear, same
+// as gear entries reference not-yet-created categories.
+
+export type GearRef =
+  | { kind: 'existing'; id: string }
+  | { kind: 'new'; tempId: string }
+
+export type PlannedListGear = {
+  tempId: string
+  name: string
+  description: string | null
+  weightGrams: number
+  category: CategoryRef | null
+}
+
+export type PlannedListItem = {
+  gear: GearRef
+  quantity: number
+  isWorn: boolean
+  isConsumable: boolean
+  sortOrder: number
+}
+
+export type ListImportPlan = {
+  newCategories: PlannedNewCategory[]
+  newGear: PlannedListGear[]
+  items: PlannedListItem[]
+  // UI-only: rows that resolved to existing library gear instead of
+  // creating a new item ("Items already in the library won't be
+  // duplicated").
+  reusedGearCount: number
+}
+
+// Compose the full list-import plan: resolve categories, then resolve each
+// row to an existing gear id or a planned new gear entry, and build the
+// list item for every row. Item sortOrder is the row's index in the
+// name-filtered array (parseListCsv drops empty-name rows upstream, so in
+// practice this is contiguous - the server accepts gaps regardless).
+//
+// The endpoint's referential rules hold by construction: a row whose
+// category is NEW can never match existing gear (categoryRefId feeds the
+// tempId into gearKey), so every planned category is referenced by at
+// least one planned gear entry; every planned gear entry is referenced by
+// the item planned in the same iteration. Within-CSV duplicate rows
+// create separate gear entries (dedup is against the EXISTING library
+// only); the same existing gear matched twice becomes two list items,
+// both allowed by the endpoint.
+export function planListImport(
+  rows: ListCsvRow[],
+  existingCategories: Category[],
+  existingGearItems: GearItem[],
+  genId: () => string = randomTempId,
+): ListImportPlan {
+  const named = rows.filter((r) => r.name.trim().length > 0)
+  const { newCategories, refByLowerName } = planNewCategories(named, existingCategories, genId)
+
+  const existingByKey = new Map<string, string>()
+  for (const g of existingGearItems) {
+    existingByKey.set(gearKey(g.categoryId, g.name, g.weightGrams), g.id)
+  }
+
+  const newGear: PlannedListGear[] = []
+  const items: PlannedListItem[] = []
+  let reusedGearCount = 0
+
+  for (let i = 0; i < named.length; i++) {
+    const row = named[i]
+    if (!row) continue
+    const trimmedName = row.name.trim()
+    const ref = refByLowerName.get(row.categoryName.trim().toLowerCase()) ?? null
+    const key = gearKey(categoryRefId(ref), trimmedName, row.weightGrams)
+    const existingId = existingByKey.get(key)
+    let gear: GearRef
+    if (existingId) {
+      reusedGearCount++
+      gear = { kind: 'existing', id: existingId }
+    } else {
+      const tempId = genId()
+      newGear.push({
+        tempId,
+        name: trimmedName.slice(0, MAX_NAME_LENGTH),
+        description: row.description ? row.description.slice(0, MAX_DESC_LENGTH) : null,
+        weightGrams: row.weightGrams,
+        category: ref,
+      })
+      gear = { kind: 'new', tempId }
+    }
+    items.push({
+      gear,
+      quantity: row.quantity,
+      isWorn: row.isWorn,
+      isConsumable: row.isConsumable,
+      sortOrder: i,
+    })
+  }
+
+  return { newCategories, newGear, items, reusedGearCount }
+}
+
+// Throws a friendly Error if the planned import would exceed the per-list
+// item cap or the gear inventory cap. Runs BEFORE the POST so a rejected
+// over-cap import never reaches the server (the DB triggers remain
+// authoritative; this just yields a specific, actionable message instead
+// of a generic limit error).
+export function assertListImportWithinCaps(
+  plan: ListImportPlan,
+  existingGearCount: number,
+): void {
+  if (plan.items.length > LIST_ITEM_CAP) {
+    throw new Error(
+      `A single list can hold at most ${LIST_ITEM_CAP} items; this file has ${plan.items.length}. Split it across multiple lists.`,
+    )
+  }
+  const newGearCount = plan.newGear.length
+  if (existingGearCount + newGearCount > GEAR_ITEM_CAP) {
+    throw new Error(
+      `This import would add ${newGearCount} new gear item${newGearCount === 1 ? '' : 's'} to your ${existingGearCount} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Remove some items or split the file into smaller batches.`,
+    )
+  }
 }

@@ -16,12 +16,17 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { CopyPlus, MoreVertical, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { CopyPlus, Download, MoreVertical, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import {
   queryKeys,
   fetchLists,
   reorderLists,
 } from '../lib/queries'
+import { parseListCsv, nameFromCsvFilename, type ListCsvRow } from '../lib/csv'
+import { useCsvFileInput } from '../lib/use-csv-file-input'
+import { useListImportMutation } from './use-list-import-mutation'
+import ListImportPreviewDialog from './ListImportPreviewDialog'
+import Modal from '../components/Modal'
 import { useCurrentListActions } from './use-current-list-actions'
 import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId } from '../lib/dnd-ids'
@@ -44,10 +49,6 @@ import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import ListsEmptyState from './ListsEmptyState'
 import MobileListsActionBar from './MobileListsActionBar'
 
-// TRANSPLANT NOTE (csv): the old repo's page also owned CSV import
-// (useListImportMutation, parseListCsv, useCsvFileInput, the hidden file
-// input, the Import CSV header button, and the import-preview /
-// import-error dialog states). That returns with the CSV slice.
 // TRANSPLANT NOTE (share): the old kebab also had a Share... item opening
 // a PrivacyPanel modal (the share-list dialog state). That returns with
 // the public-share slice.
@@ -59,6 +60,8 @@ type DialogState =
   | { type: 'creating'; draft: string }
   | { type: 'renaming'; list: List; draft: string }
   | { type: 'confirm-delete'; list: List }
+  | { type: 'import-preview'; rows: ListCsvRow[]; filename: string }
+  | { type: 'import-error'; message: string }
 
 const LIST_HEADER_ACTION_CLASS =
   'inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50'
@@ -91,14 +94,29 @@ export default function ListsPage() {
 
   const [dialog, setDialog] = useState<DialogState | null>(null)
 
-  // Current-list lifecycle actions (create / rename / duplicate / delete).
-  // Shared with ListSettingsPanel via useCurrentListActions so both
-  // surfaces invoke the same handlers - one canonical code path, multiple
-  // entry points (card kebab here, List options popover/modal there).
-  // createListMut navigates on success; this page owns closing the create
-  // dialog via the call-site onSuccess.
-  const { createListMut, submitCreateList, renameMut, duplicateMut, deleteListMut } =
+  const {
+    inputRef: importInputRef,
+    onChange: handleImportFile,
+    openPicker: openImportPicker,
+  } = useCsvFileInput<ListCsvRow>(parseListCsv, {
+    onParsed: (rows, filename) => setDialog({ type: 'import-preview', rows, filename }),
+    onError: (message) => setDialog({ type: 'import-error', message }),
+  })
+
+  // Current-list lifecycle actions (create / rename / duplicate / delete /
+  // exportCsv). Shared with ListSettingsPanel via useCurrentListActions so
+  // both surfaces invoke the same handlers - one canonical code path,
+  // multiple entry points (card kebab here, List options popover/modal
+  // there). createListMut navigates on success; this page owns closing the
+  // create dialog via the call-site onSuccess.
+  const { createListMut, submitCreateList, renameMut, duplicateMut, deleteListMut, exportCsv, exportingListId } =
     useCurrentListActions()
+
+  // CSV-import-into-a-new-list. Shared hook owns the plan/preflight/POST
+  // data path plus the success invalidate+navigate; this page owns closing
+  // the dialog on success and routing failures into the import-error
+  // dialog via the call-site onSuccess/onError below.
+  const importMut = useListImportMutation()
 
   // See ListDetailPage for the rationale. List cards keep their always-
   // visible grip handle as the drag activator on every breakpoint, so on
@@ -138,19 +156,38 @@ export default function ListsPage() {
               saving={createListMut.isPending}
             />
           ) : (
-            /* List-management actions stay neutral here. A bright blue
-               primary button overpowered the otherwise flat gray/white
-               list manager. */
-            <button
-              type="button"
-              onClick={() => setDialog({ type: 'creating', draft: '' })}
-              className={LIST_HEADER_ACTION_CLASS}
-            >
-              <Plus size={14} /> New list
-            </button>
+            <>
+              {/* List-management actions stay neutral here. A bright blue
+                  primary button overpowered the otherwise flat gray/white
+                  list manager. */}
+              <button
+                type="button"
+                onClick={openImportPicker}
+                title="Import a CSV as a new list"
+                className={LIST_HEADER_ACTION_CLASS}
+              >
+                <Upload size={14} /> Import CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => setDialog({ type: 'creating', draft: '' })}
+                className={LIST_HEADER_ACTION_CLASS}
+              >
+                <Plus size={14} /> New list
+              </button>
+            </>
           )}
         </div>
       </div>
+
+      {/* Hidden input for Import CSV */}
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={handleImportFile}
+      />
 
       {/* Row list. Single bordered container with divide-y between rows —
           a compact list manager rather than a dashboard of cards. The
@@ -171,6 +208,8 @@ export default function ListsPage() {
             setDialog(null)
           },
           onCancelRename: () => setDialog(null),
+          onExport: () => void exportCsv(list),
+          exporting: exportingListId === list.id,
           onDuplicate: () => duplicateMut.mutate(list),
           onDelete: () => setDialog({ type: 'confirm-delete', list }),
         })
@@ -214,6 +253,8 @@ export default function ListsPage() {
                       onStartRename={() => {}}
                       onSubmitRename={() => {}}
                       onCancelRename={() => {}}
+                      onExport={() => {}}
+                      exporting={false}
                       onDuplicate={() => {}}
                       onDelete={() => {}}
                     />
@@ -241,11 +282,54 @@ export default function ListsPage() {
         />
       )}
 
+      {/* Import preview */}
+      {dialog?.type === 'import-preview' && (
+        <ListImportPreviewDialog
+          rows={dialog.rows}
+          saving={importMut.isPending}
+          onConfirm={() =>
+            importMut.mutate(
+              { name: nameFromCsvFilename(dialog.filename), rows: dialog.rows },
+              {
+                onSuccess: () => setDialog(null),
+                onError: (err) =>
+                  setDialog({
+                    type: 'import-error',
+                    message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
+                  }),
+              },
+            )
+          }
+          onClose={() => setDialog(null)}
+        />
+      )}
+
+      {/* Import error */}
+      {dialog?.type === 'import-error' && (
+        <Modal open onClose={() => setDialog(null)} title="Import error" className="w-full max-w-sm">
+          <div className="p-6">
+            <h2 className="mb-2 text-base font-semibold text-gray-900">Import error</h2>
+            <p className="mb-4 text-sm text-red-600">{dialog.message}</p>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setDialog(null)}
+                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Mobile-only bottom action bar — Gear / Lists / New / Options.
-          lg:hidden inside the component itself, so desktop never renders
-          it. */}
+          Import CSV lives behind the Options modal so the bottom bar
+          stays focused on "New list" as the primary action. lg:hidden
+          inside the component itself, so desktop never renders it. */}
       <MobileListsActionBar
         onNewList={() => setDialog({ type: 'creating', draft: '' })}
+        onImportCsv={openImportPicker}
       />
     </div>
   )
@@ -316,6 +400,8 @@ type ListRowProps = {
   onStartRename: () => void
   onSubmitRename: () => void
   onCancelRename: () => void
+  onExport: () => void
+  exporting: boolean
   onDuplicate: () => void
   onDelete: () => void
   // Sortable wrapper threads its dnd-kit ref + transform style + drag-
@@ -361,6 +447,8 @@ function ListRow({
   onStartRename,
   onSubmitRename,
   onCancelRename,
+  onExport,
+  exporting,
   onDuplicate,
   onDelete,
   outerRef,
@@ -467,8 +555,15 @@ function ListRow({
           >
             Rename
           </RowMenuItem>
-          {/* TRANSPLANT NOTE (share/csv): Share... and Export CSV rows
-              return with their slices. */}
+          {/* TRANSPLANT NOTE (share): the Share... row returns with the
+              public-share slice. */}
+          <RowMenuItem
+            icon={<Download size={13} />}
+            onClick={() => { close(); onExport() }}
+            disabled={exporting}
+          >
+            {exporting ? 'Exporting…' : 'Export CSV'}
+          </RowMenuItem>
           <RowMenuItem icon={<CopyPlus size={13} />} onClick={() => { close(); onDuplicate() }}>
             Duplicate
           </RowMenuItem>
