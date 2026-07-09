@@ -161,25 +161,26 @@ export function createGearItemsRepo(db: Db, userId: string) {
       categories: ImportGearCategoryInput[]
       items: ImportGearItemInput[]
     }): Promise<ImportGearResult> {
-      const existingIds = [
-        ...new Set(
-          input.items.flatMap((i) =>
-            i.category?.kind === 'existing' ? [i.category.id] : [],
-          ),
+      const existingIds = new Set(
+        input.items.flatMap((i) =>
+          i.category?.kind === 'existing' ? [i.category.id] : [],
         ),
-      ]
-      if (existingIds.length > 0) {
-        const owned = await db
+      )
+      if (existingIds.size > 0) {
+        // Membership-checked against ALL owned category ids rather than an
+        // inArray(...) of the referenced ids: D1 caps bound parameters at
+        // 100 per query, and a valid import can reference more distinct
+        // categories than that (Codex finding, PR #26). One bound param
+        // regardless of import size.
+        const ownedRows = await db
           .select({ id: categories.id })
           .from(categories)
-          .where(
-            and(
-              eq(categories.userId, userId),
-              inArray(categories.id, existingIds),
-            ),
-          )
-        if (owned.length !== existingIds.length) {
-          return { ok: false, reason: 'invalid_category' }
+          .where(eq(categories.userId, userId))
+        const owned = new Set(ownedRows.map((r) => r.id))
+        for (const id of existingIds) {
+          if (!owned.has(id)) {
+            return { ok: false, reason: 'invalid_category' }
+          }
         }
       }
 

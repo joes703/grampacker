@@ -479,6 +479,55 @@ describe('/api/gear-items authorization matrix', () => {
     expect(await listGear(cookie)).toHaveLength(499)
   })
 
+  it('import referencing >100 distinct existing categories works (D1 binds max 100 params/query)', async () => {
+    // Regression (Codex finding, PR #26): the ownership precheck used one
+    // inArray(...) over every referenced category id, which exceeds D1's
+    // 100-bound-parameters-per-query limit and blew up a valid import as
+    // an unmapped 500. The check now loads the user's owned ids with a
+    // single bound param and verifies membership in JS.
+    const { cookie } = await signUpVerifiedUser('gear-import-many@example.com', 'M')
+    const userId = await userIdFor(cookie)
+
+    // Seed 120 categories directly (the API path would be 120 round trips).
+    const values = Array.from({ length: 120 }, (_, i) => {
+      return `('manycat-${i}', '${userId}', 'Category ${i}', ${i}, 0)`
+    }).join(',')
+    await env.DB.prepare(
+      `insert into categories (id, user_id, name, sort_order, created_at) values ${values}`,
+    ).run()
+
+    const res = await apiRequest(cookie, 'POST', '/api/gear-items/import', {
+      categories: [],
+      items: Array.from({ length: 120 }, (_, i) => ({
+        name: `Item ${i}`,
+        category: { kind: 'existing', id: `manycat-${i}` },
+      })),
+    })
+    expect(res.status).toBe(201)
+    expect(importGearResponseSchema.parse(await res.json())).toEqual({
+      createdCategories: 0,
+      createdItems: 120,
+    })
+    expect(await listGear(cookie)).toHaveLength(120)
+
+    // The ownership guarantee survives the rewrite: one foreign ref among
+    // many still rejects with zero writes.
+    const other = await signUpVerifiedUser('gear-import-many-b@example.com', 'B')
+    const foreignCat = await createCategory(other.cookie, 'Foreign')
+    const bad = await apiRequest(cookie, 'POST', '/api/gear-items/import', {
+      categories: [],
+      items: [
+        ...Array.from({ length: 110 }, (_, i) => ({
+          name: `Again ${i}`,
+          category: { kind: 'existing', id: `manycat-${i}` },
+        })),
+        { name: 'Sneaky', category: { kind: 'existing', id: foreignCat } },
+      ],
+    })
+    expect(bad.status).toBe(400)
+    expect(await listGear(cookie)).toHaveLength(120)
+  })
+
   it('import validation: tempId wiring and bounds', async () => {
     const { cookie } = await signUpVerifiedUser('gear-import-v@example.com', 'V')
     for (const body of [
