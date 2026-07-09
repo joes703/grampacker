@@ -4,7 +4,7 @@
 // import is what brings the vitest module augmentation into tsc's
 // program for THIS file, so each matcher-using test stays self-typed.
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import PasskeySection from './PasskeySection'
 
@@ -98,10 +98,15 @@ describe('PasskeySection rename', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Rename' }))
     const input = screen.getByLabelText('Passkey name')
     fireEvent.change(input, { target: { value: 'travel key' } })
-    // Both events close over the same render's state (renaming set, busy
-    // false); only the synchronous ref guard can keep this to one call.
-    fireEvent.keyDown(input, { key: 'Enter' })
-    fireEvent.blur(input)
+    // One act = one event batch: sequential fireEvent calls flush a
+    // re-render between them (which unmounts the input and makes the
+    // blur a no-op even without the guard), so both events must land
+    // against the same render for this to be a real red test. Verified
+    // red against the unguarded code, green with the ref guard.
+    act(() => {
+      fireEvent.keyDown(input, { key: 'Enter' })
+      fireEvent.blur(input)
+    })
     await waitFor(() =>
       expect(h.updatePasskey).toHaveBeenCalledWith({
         id: 'pk1',
