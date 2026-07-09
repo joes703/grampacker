@@ -569,6 +569,42 @@ describe('/api/gear-items authorization matrix', () => {
     expect(await listCategories(cookie)).toHaveLength(0)
   })
 
+  it('bulk ops on >100 ids work (D1 binds max 100 params/query)', async () => {
+    // Regression: ownsAllGearIds and the bulk-delete/bulk-move write
+    // statements bound one param per id via inArray, so any bulk op on
+    // 101+ ids (DTOs allow 500) threw an unmapped D1 error. Prechecks now
+    // use owned-set membership; the writes are chunked inside one batch.
+    const { cookie } = await signUpVerifiedUser('gear-bulk-many@example.com', 'M')
+    const userId = await userIdFor(cookie)
+    const catId = await createCategory(cookie, 'Target')
+
+    const values = Array.from({ length: 150 }, (_, i) => {
+      return `('bulkmany-${i}', '${userId}', 'Bulk item ${i}', 0, 'active', ${i}, 0, 0)`
+    }).join(',')
+    await env.DB.prepare(
+      `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
+    ).run()
+    const ids = Array.from({ length: 150 }, (_, i) => `bulkmany-${i}`)
+
+    const move = await apiRequest(cookie, 'POST', '/api/gear-items/bulk-move', {
+      ids,
+      categoryId: catId,
+    })
+    expect(move.status).toBe(204)
+    expect((await listGear(cookie)).every((g) => g.categoryId === catId)).toBe(true)
+
+    const reorder = await apiRequest(cookie, 'PUT', '/api/gear-items/order',
+      ids.map((id, i) => ({ id, sortOrder: 149 - i })),
+    )
+    expect(reorder.status).toBe(204)
+
+    const del = await apiRequest(cookie, 'POST', '/api/gear-items/bulk-delete', {
+      ids,
+    })
+    expect(del.status).toBe(204)
+    expect(await listGear(cookie)).toHaveLength(0)
+  })
+
   it('validation: bounds, dates, money, status, oversized arrays', async () => {
     const { cookie } = await signUpVerifiedUser('gear-valid@example.com', 'V')
     for (const body of [

@@ -1,3 +1,4 @@
+import { env } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 import {
   categoryResponseSchema,
@@ -152,6 +153,33 @@ describe('/api/categories authorization matrix', () => {
     ).json()) as { name: string; categoryId: string | null }[]
     expect(gear.find((g) => g.name === 'Tent')?.categoryId).toBeNull()
     expect(gear.find((g) => g.name === 'Stove')?.categoryId).toBe(keep.id)
+  })
+
+  it('reorder of >100 categories works (D1 binds max 100 params/query)', async () => {
+    // Regression: the reorder ownership precheck bound one param per id
+    // via inArray (DTO allows 500), throwing an unmapped D1 error past
+    // 100. It now loads the owned set with a single bound param.
+    const { cookie } = await signUpVerifiedUser('cat-many@example.com', 'M')
+    const meRes = await apiRequest(cookie, 'GET', '/api/me')
+    const { id: userId } = (await meRes.json()) as { id: string }
+
+    const values = Array.from({ length: 120 }, (_, i) => {
+      return `('catmany-${i}', '${userId}', 'Cat ${i}', ${i}, 0)`
+    }).join(',')
+    await env.DB.prepare(
+      `insert into categories (id, user_id, name, sort_order, created_at) values ${values}`,
+    ).run()
+
+    const res = await apiRequest(cookie, 'PUT', '/api/categories/order',
+      Array.from({ length: 120 }, (_, i) => ({
+        id: `catmany-${i}`,
+        sortOrder: 119 - i,
+      })),
+    )
+    expect(res.status).toBe(204)
+    const after = await listCategories(cookie)
+    expect(after).toHaveLength(120)
+    expect(after[0]?.name).toBe('Cat 119') // reversed order applied
   })
 
   it('validation: empty, oversized, and unknown-key bodies are 400', async () => {

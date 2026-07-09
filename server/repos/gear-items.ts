@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { GearStatus } from '../../shared/gear'
 import type { Db } from '../db'
 import { categories, gearItems } from '../db/schema'
+import { chunkIds } from './chunk-ids'
 import { isTriggerAbort } from './db-errors'
 
 const cols = {
@@ -101,12 +102,17 @@ export function createGearItemsRepo(db: Db, userId: string) {
     return Boolean(row)
   }
 
+  // Membership-checked against ALL owned ids (one bound param) rather than
+  // inArray over the input: D1 caps bound parameters at 100 per query and
+  // the bulk DTOs allow up to 500 ids (see chunk-ids.ts). The gear cap
+  // bounds the scan at 500 rows.
   async function ownsAllGearIds(ids: string[]): Promise<boolean> {
-    const owned = await db
+    const ownedRows = await db
       .select({ id: gearItems.id })
       .from(gearItems)
-      .where(and(eq(gearItems.userId, userId), inArray(gearItems.id, ids)))
-    return owned.length === ids.length
+      .where(eq(gearItems.userId, userId))
+    const owned = new Set(ownedRows.map((r) => r.id))
+    return ids.every((id) => owned.has(id))
   }
 
   return {
@@ -288,13 +294,20 @@ export function createGearItemsRepo(db: Db, userId: string) {
 
     // Bulk ops are all-or-nothing: one non-owned id rejects the whole call
     // with zero writes (stricter than the old RLS silent-skip; the UI never
-    // legitimately sends foreign ids). Single statements are atomic on
-    // their own; no batch needed.
+    // legitimately sends foreign ids). The write is chunked to stay under
+    // D1's 100-bound-params-per-query cap (ids can reach 500) and batched
+    // so the chunks stay one transaction.
     async bulkDelete(ids: string[]): Promise<boolean> {
       if (!(await ownsAllGearIds(ids))) return false
-      await db
-        .delete(gearItems)
-        .where(and(eq(gearItems.userId, userId), inArray(gearItems.id, ids)))
+      const [first, ...rest] = chunkIds(ids).map((chunk) =>
+        db
+          .delete(gearItems)
+          .where(
+            and(eq(gearItems.userId, userId), inArray(gearItems.id, chunk)),
+          ),
+      )
+      if (!first) return true // unreachable: DTO enforces min(1)
+      await db.batch([first, ...rest])
       return true
     },
 
@@ -306,10 +319,17 @@ export function createGearItemsRepo(db: Db, userId: string) {
         return 'invalid_category'
       }
       if (!(await ownsAllGearIds(ids))) return 'not_found'
-      await db
-        .update(gearItems)
-        .set({ categoryId, updatedAt: Date.now() })
-        .where(and(eq(gearItems.userId, userId), inArray(gearItems.id, ids)))
+      const now = Date.now()
+      const [first, ...rest] = chunkIds(ids).map((chunk) =>
+        db
+          .update(gearItems)
+          .set({ categoryId, updatedAt: now })
+          .where(
+            and(eq(gearItems.userId, userId), inArray(gearItems.id, chunk)),
+          ),
+      )
+      if (!first) return 'ok' // unreachable: DTO enforces min(1)
+      await db.batch([first, ...rest])
       return 'ok'
     },
 
