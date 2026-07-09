@@ -59,6 +59,11 @@ export default function PasskeySection() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null)
+  // Synchronous re-entrancy guard for submitRename: Enter and blur can both
+  // fire against the same render, whose closure still sees renaming !== null
+  // and busy === false (state updates only land on re-render). A ref flips
+  // synchronously, so the second delivery bails before the network call.
+  const submittingRename = useRef(false)
   // Bump to refetch the list (after add/remove/rename).
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -119,19 +124,24 @@ export default function PasskeySection() {
     }
   }
 
-  // Clearing `renaming` before any await keeps the Enter+blur double-fire
-  // (Enter submits, the state swap blurs the input) a no-op on re-entry.
   async function submitRename() {
-    if (!renaming) return
+    if (!renaming || submittingRename.current) return
+    submittingRename.current = true
     const row = rows?.find((r) => r.id === renaming.id)
     const trimmed = renaming.draft.trim()
     setRenaming(null)
-    if (busy || !row || !trimmed) return
+    if (busy || !row || !trimmed) {
+      submittingRename.current = false
+      return
+    }
     // Submitting the label unchanged is a cancel, not a write - the input
     // is prefilled with the display label (which may be the provider name,
     // not a stored name), and blur submits.
     const display = row.name || authenticatorName(row.aaguid) || ''
-    if (trimmed === display) return
+    if (trimmed === display) {
+      submittingRename.current = false
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -148,6 +158,7 @@ export default function PasskeySection() {
       setError("Couldn't rename the passkey.")
     } finally {
       setBusy(false)
+      submittingRename.current = false
     }
   }
 

@@ -91,6 +91,27 @@ describe('PasskeySection rename', () => {
     await waitFor(() => expect(h.listUserPasskeys).toHaveBeenCalledTimes(2))
   })
 
+  it('submits once when Enter and blur are delivered against the same render', async () => {
+    listResolves([{ id: 'pk1', name: null, aaguid: ONEPASSWORD_AAGUID }])
+    h.updatePasskey.mockResolvedValue({ error: null })
+    render(<PasskeySection />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }))
+    const input = screen.getByLabelText('Passkey name')
+    fireEvent.change(input, { target: { value: 'travel key' } })
+    // Both events close over the same render's state (renaming set, busy
+    // false); only the synchronous ref guard can keep this to one call.
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.blur(input)
+    await waitFor(() =>
+      expect(h.updatePasskey).toHaveBeenCalledWith({
+        id: 'pk1',
+        name: 'travel key',
+      }),
+    )
+    await waitFor(() => expect(h.listUserPasskeys).toHaveBeenCalledTimes(2))
+    expect(h.updatePasskey).toHaveBeenCalledTimes(1)
+  })
+
   it('treats submitting the prefilled display label as a cancel, not a write', async () => {
     listResolves([{ id: 'pk1', name: null, aaguid: ONEPASSWORD_AAGUID }])
     render(<PasskeySection />)
