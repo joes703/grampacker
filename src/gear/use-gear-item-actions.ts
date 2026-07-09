@@ -6,8 +6,8 @@ import {
   deleteGearItem,
   nextGearItemSortOrder,
   makeOptimisticInsert,
-  makeOptimisticUpdate,
-  makeOptimisticDelete,
+  makeOptimisticGearItemUpdate,
+  makeOptimisticGearItemDelete,
 } from '../lib/queries'
 import { randomTempId } from '../lib/random-temp-id'
 import type { GearItem } from '../lib/types'
@@ -20,13 +20,11 @@ type GearItemPatch = Parameters<typeof updateGearItem>[1]
 // Gear-item write actions for GearLibraryPage: the three single gear-item
 // write mutations (add / edit / delete) plus their optimistic wiring.
 //
-// TRANSPLANT NOTE (phase 3 will revisit): the old repo composed the
-// gear-list-items fan-out helpers here because gear writes rendered from
-// two cache surfaces (the gear library AND any list embedding the gear
-// through list_items.gear_item). Lists don't exist yet in this codebase,
-// so edit/delete use the generic single-cache helpers; when the lists
-// slice transplants, the fan-out module comes with it and these two
-// mutations switch back.
+// Edit and delete render from two cache surfaces (the gear library AND
+// any open list view embedding the gear through list_items.gearItem), so
+// they use the gear-list-items fan-out helpers; insert stays on the
+// generic single-cache helper because a brand-new gear item cannot be in
+// any list yet.
 //
 // `allItems` seeds the optimistic insert placeholder's sort slot. The
 // SERVER assigns the real sortOrder on create (max+1); the client-side
@@ -63,31 +61,16 @@ export function useGearItemActions(allItems: GearItem[]) {
   const editItem = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: GearItemPatch }) =>
       updateGearItem(id, patch),
-    ...makeOptimisticUpdate<GearItem, { id: string; patch: GearItemPatch }>({
-      qc,
-      queryKey: queryKeys.gearItems(),
-      id: (input) => input.id,
-      // PATCH semantics: undefined = unchanged; strip undefined so the
-      // spread cannot overwrite a field with it.
-      apply: (item, { patch }) => {
-        const next = { ...item }
-        for (const [key, value] of Object.entries(patch)) {
-          if (value !== undefined) {
-            ;(next as Record<string, unknown>)[key] = value
-          }
-        }
-        return next
-      },
-    }),
+    // Fans the patch out to every list cache embedding this gear; the
+    // undefined-stripping PATCH merge lives inside the helper.
+    ...makeOptimisticGearItemUpdate({ qc }),
   })
 
   const removeItem = useMutation({
     mutationFn: (id: string) => deleteGearItem(id),
-    ...makeOptimisticDelete<GearItem, string>({
-      qc,
-      queryKey: queryKeys.gearItems(),
-      id: (input) => input,
-    }),
+    // The server cascades list_items on gear delete; the fan-out mirrors
+    // that by dropping the membership rows optimistically too.
+    ...makeOptimisticGearItemDelete({ qc }),
   })
 
   return { addItem, editItem, removeItem }

@@ -5,3 +5,5 @@
 export type { Category } from './queries/categories'
 export type { GearItem } from './queries/gear'
 export type { GearStatus } from '../../shared/gear'
+export type { List } from './queries/lists'
+export type { ListItemWithGear } from './queries/list-items'

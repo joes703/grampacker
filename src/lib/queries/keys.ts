@@ -6,4 +6,9 @@
 export const queryKeys = {
   categories: () => ['categories'] as const,
   gearItems: () => ['gear-items'] as const,
+  lists: () => ['lists'] as const,
+  listItems: (listId: string) => ['list-items', listId] as const,
+  // Partial-match prefix for cross-cache operations (the gear fan-out
+  // finds every per-list cache through this).
+  listItemsAll: () => ['list-items'] as const,
 }

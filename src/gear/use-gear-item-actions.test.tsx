@@ -9,28 +9,19 @@ import type { GearItem } from '../lib/types'
 // has no component test), so this locks the logic the extraction exposed: add
 // goes through createGearItem with the right optimistic placeholder (the SERVER
 // assigns the real sort slot; the placeholder computes the same value), and
-// edit/delete compose the GENERIC optimistic helpers on the gearItems cache.
-// (The old repo routed edit/delete through the gear-list-items fan-out helpers;
-// that boundary returns with the lists slice in phase 3.) The optimistic cache
-// lifecycle itself (rollback, invalidation) is owned and tested by
-// optimistic.test.ts; here we mock those helpers and assert only that the hook
-// wires the correct path + options.
+// edit/delete compose the gear-list-items FAN-OUT helpers (gear writes render
+// from the gear library AND any open list view). The fan-out cache lifecycle
+// itself (cross-cache snapshot, rollback, invalidation, PATCH merge) is owned
+// and tested by gear-list-items-fan-out.test.ts; here we mock the helpers and
+// assert only that the hook wires the correct path.
 
 type GearItemInput = Pick<
   GearItem,
   'name' | 'description' | 'weightGrams' | 'categoryId' | 'cost' | 'purchaseDate' | 'status'
 >
-type GearItemPatch = Partial<GearItemInput>
-type EditInput = { id: string; patch: GearItemPatch }
 type OptimisticLifecycle = { onMutate: () => unknown; onError: () => void; onSettled: () => void }
 type InsertOpts = { qc: unknown; queryKey: unknown; optimistic: (data: GearItemInput) => GearItem }
-type UpdateOpts = {
-  qc: unknown
-  queryKey: unknown
-  id: (input: EditInput) => string
-  apply: (item: GearItem, input: EditInput) => GearItem
-}
-type DeleteOpts = { qc: unknown; queryKey: unknown; id: (input: string) => string }
+type FanOutOpts = { qc: unknown; errorToast?: string }
 
 const h = vi.hoisted(() => ({
   queryKeys: { gearItems: () => ['gear-items'] as const },
@@ -39,8 +30,8 @@ const h = vi.hoisted(() => ({
   deleteGearItem: vi.fn<(id: string) => Promise<void>>(),
   nextGearItemSortOrder: vi.fn<(items: unknown[]) => number>(),
   makeOptimisticInsert: vi.fn<(opts: InsertOpts) => OptimisticLifecycle>(),
-  makeOptimisticUpdate: vi.fn<(opts: UpdateOpts) => OptimisticLifecycle>(),
-  makeOptimisticDelete: vi.fn<(opts: DeleteOpts) => OptimisticLifecycle>(),
+  makeOptimisticGearItemUpdate: vi.fn<(opts: FanOutOpts) => OptimisticLifecycle>(),
+  makeOptimisticGearItemDelete: vi.fn<(opts: FanOutOpts) => OptimisticLifecycle>(),
 }))
 
 vi.mock('../lib/queries', () => h)
@@ -69,13 +60,13 @@ function setup(allItems: GearItem[] = []) {
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   )
   const { result } = renderHook(() => useGearItemActions(allItems), { wrapper })
-  return { result }
+  return { result, qc }
 }
 
 beforeEach(() => {
   h.makeOptimisticInsert.mockReturnValue(lifecycle())
-  h.makeOptimisticUpdate.mockReturnValue(lifecycle())
-  h.makeOptimisticDelete.mockReturnValue(lifecycle())
+  h.makeOptimisticGearItemUpdate.mockReturnValue(lifecycle())
+  h.makeOptimisticGearItemDelete.mockReturnValue(lifecycle())
   h.nextGearItemSortOrder.mockReturnValue(7)
   h.createGearItem.mockResolvedValue({ id: 'g-new' })
   h.updateGearItem.mockResolvedValue(undefined)
@@ -99,6 +90,8 @@ describe('useGearItemActions', () => {
       // only the item fields.
       await waitFor(() => expect(h.createGearItem).toHaveBeenCalledWith(data))
       // Optimistic insert wired to ['gear-items'] - the cache it settles/invalidates.
+      // A brand-new gear item cannot be in any list yet, so insert stays
+      // on the single-cache helper (no fan-out).
       expect(h.makeOptimisticInsert).toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: ['gear-items'] }),
       )
@@ -123,28 +116,15 @@ describe('useGearItemActions', () => {
   })
 
   describe('editItem', () => {
-    it('updates by id through the generic optimistic update on the gear-items cache', async () => {
-      const { result } = setup()
+    it('updates by id through the gear fan-out (library + list caches)', async () => {
+      const { result, qc } = setup()
 
       result.current.editItem.mutate({ id: 'g1', patch: { name: 'New name' } })
 
       await waitFor(() => expect(h.updateGearItem).toHaveBeenCalledWith('g1', { name: 'New name' }))
-      expect(h.makeOptimisticUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({ queryKey: ['gear-items'] }),
-      )
-    })
-
-    it('applies the patch optimistically but never overwrites a field with undefined', () => {
-      setup()
-      const opts = h.makeOptimisticUpdate.mock.calls[0]![0]
-      expect(opts.id({ id: 'g9', patch: {} })).toBe('g9')
-      // PATCH semantics: undefined = unchanged. A patch that sets weight
-      // and leaves name undefined must not blank the cached name.
-      const next = opts.apply(gear({ name: 'Tent' }), {
-        id: 'g1',
-        patch: { weightGrams: 999, name: undefined },
-      })
-      expect(next).toMatchObject({ name: 'Tent', weightGrams: 999 })
+      // The fan-out helper receives the hook's QueryClient; no errorToast -
+      // single-item mutations rely on the global mutation error handler.
+      expect(h.makeOptimisticGearItemUpdate).toHaveBeenCalledWith({ qc })
     })
 
     it('forwards a status-only patch unchanged (the inline quick-status path)', async () => {
@@ -157,15 +137,13 @@ describe('useGearItemActions', () => {
   })
 
   describe('removeItem', () => {
-    it('deletes by id through the generic optimistic delete on the gear-items cache', async () => {
-      const { result } = setup()
+    it('deletes by id through the gear fan-out (cascade mirrors the server)', async () => {
+      const { result, qc } = setup()
 
       result.current.removeItem.mutate('g1')
 
       await waitFor(() => expect(h.deleteGearItem).toHaveBeenCalledWith('g1'))
-      expect(h.makeOptimisticDelete).toHaveBeenCalledWith(
-        expect.objectContaining({ queryKey: ['gear-items'] }),
-      )
+      expect(h.makeOptimisticGearItemDelete).toHaveBeenCalledWith({ qc })
     })
   })
 })
