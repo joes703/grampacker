@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 // Same-batch arbiter for inline edit inputs whose Enter, Escape, and blur
 // handlers all invoke commit/cancel closures from one render. When two of
@@ -22,10 +22,11 @@ export function useCommitOnce(): (fn: () => void) => void {
   useEffect(() => {
     consumed.current = false
   })
-  const guard = useRef((fn: () => void) => {
+  // Stable identity via useCallback; the ref is only touched inside the
+  // callback (event time), never during render (react-hooks/refs).
+  return useCallback((fn: () => void) => {
     if (consumed.current) return
     consumed.current = true
     fn()
-  })
-  return guard.current
+  }, [])
 }
