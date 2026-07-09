@@ -8,7 +8,7 @@ resources). A route without a row, or a row without tests, fails review.
 | --- | --- | --- | --- | --- | --- | --- |
 | `/api/health` | GET | anon | - | - | `HealthResponse` | dev/deploy smoke |
 | `/api/auth/*` | GET, POST | better-auth | n/a (owns its tables) | better-auth | better-auth | better-auth's own origin validation (verified: forged origin -> 403 INVALID_ORIGIN); flow covered in `server/test/auth-helpers.ts` |
-| `/api/me` | GET, PUT | session | self only (`user.id = session.userId`, fixed in repo) | `UpdateMeRequest` (PUT) | `MeResponse` | `server/routes/me.test.ts` |
+| `/api/me` | GET | session | self only (`user.id = session.userId`, fixed in repo) | - | `MeResponse` (no `name`: grampacker never stores one; `server/auth.ts` databaseHooks blank it) | `server/routes/me.test.ts` |
 | `/api/categories` | GET, POST | session | own rows only (repo-scoped) | `CreateCategoryRequest` (POST) | `CategoryResponse[]` / `CategoryResponse` | `server/routes/categories.test.ts` |
 | `/api/categories/order` | PUT | session | every id owned or 404, zero writes | `ReorderRequest` | 204 | `server/routes/categories.test.ts` |
 | `/api/categories/:id` | PATCH, DELETE | session | own row or 404; DELETE uncategorizes its gear in the same transaction | `UpdateCategoryRequest` (PATCH) | `CategoryResponse` / 204 | `server/routes/categories.test.ts` |
@@ -30,7 +30,7 @@ resources). A route without a row, or a row without tests, fails review.
 | `/api/lists/:id/items/:itemId` | PATCH, DELETE | session | item must belong to THIS list and user (parent-path consistency) or 404 | `UpdateListItemRequest` (PATCH) | `ListItemResponse` / 204 | `server/routes/lists.test.ts` |
 | `/*` (assets catch-all) | any | anon | - (static files / SPA shell via ASSETS binding; the binding itself serves GET/HEAD only) | - | - | `server/middleware/security-headers.test.ts` (shell + header coverage) |
 
-Cross-cutting, tested in `server/routes/me.test.ts`:
+Cross-cutting, tested in `server/middleware/csrf.test.ts`:
 
 - Unsafe methods on non-auth routes require the `x-grampacker-request`
   header and a matching `Origin` (`server/middleware/csrf.ts`).

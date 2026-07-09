@@ -42,7 +42,7 @@ export default function HomePage() {
   return (
     <div className="max-w-3xl">
       <p className="text-sm text-gray-700">
-        Signed in as <span className="font-medium">{session?.user.name}</span>.{' '}
+        Signed in as <span className="font-medium">{session?.user.email}</span>.{' '}
         Head to your <Link to="/gear" className="font-medium text-blue-600 hover:underline">gear library</Link>;
         lists arrive with the next phases.
       </p>
