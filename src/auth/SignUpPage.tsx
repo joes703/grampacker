@@ -5,7 +5,6 @@ import { authErrorMessage } from './auth-errors'
 import { AuthCard, ErrorText, FIELD, LABEL, PRIMARY_BUTTON, TEXT_LINK } from './auth-ui'
 
 export default function SignUpPage() {
-  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [pending, setPending] = useState(false)
@@ -20,10 +19,14 @@ export default function SignUpPage() {
     try {
       // Verification links land on /sign-in: on success the new session
       // redirects to home; on a bad link the error banner offers a resend.
+      // Deliberately no name collection: grampacker doesn't need or want it
+      // (data-minimization call, 2026-07-09). better-auth's sign-up schema
+      // requires the key but accepts an empty string (z.string(), no min
+      // length), and nothing in the app reads user.name.
       const { error: signUpError } = await authClient.signUp.email({
         email,
         password,
-        name,
+        name: '',
         callbackURL: '/sign-in',
       })
       if (signUpError) {
@@ -57,19 +60,6 @@ export default function SignUpPage() {
   return (
     <AuthCard title="Create your account">
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-        <div>
-          <label className={LABEL} htmlFor="name">
-            Name
-          </label>
-          <input
-            id="name"
-            className={FIELD}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            autoComplete="name"
-            required
-          />
-        </div>
         <div>
           <label className={LABEL} htmlFor="email">
             Email

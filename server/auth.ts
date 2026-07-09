@@ -54,6 +54,25 @@ export function authOptions(env: Env) {
         })
       },
     },
+    // Data minimization: grampacker never collects or stores a display
+    // name (2026-07-09). better-auth's user model requires the column and
+    // its sign-up/update endpoints accept a `name` field from any client,
+    // so blank it at this single choke point instead of trusting every
+    // client surface to omit it. The SPA's sign-up form has no name field
+    // and sends '' already; these hooks make that a server guarantee.
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (user: Record<string, unknown>) => ({
+            data: { ...user, name: '' },
+          }),
+        },
+        update: {
+          before: async (user: Record<string, unknown>) =>
+            'name' in user ? { data: { ...user, name: '' } } : undefined,
+        },
+      },
+    },
     session: {
       // Generous on purpose: no sensitive data (decision 13.2).
       expiresIn: 60 * 60 * 24 * 30, // 30 days

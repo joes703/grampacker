@@ -2,28 +2,12 @@ import { env } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 import app from '../index'
 import { meResponseSchema } from '../../shared/me'
-import { CSRF_HEADER } from '../middleware/csrf'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
-const ORIGIN = 'http://localhost:5173'
-
-function putMe(cookie: string, body: unknown, headers: Record<string, string> = {}) {
-  return app.request(
-    '/api/me',
-    {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Origin: ORIGIN,
-        [CSRF_HEADER]: '1',
-        Cookie: cookie,
-        ...headers,
-      },
-      body: JSON.stringify(body),
-    },
-    env,
-  )
-}
+// /api/me is GET-only: the former PUT existed solely to update the display
+// name, and grampacker no longer collects or stores one (data-minimization
+// call, 2026-07-09). The cross-cutting CSRF tests that used that PUT as
+// their vehicle live in server/middleware/csrf.test.ts now.
 
 describe('/api/me authorization matrix', () => {
   it('anon GET is 401', async () => {
@@ -39,8 +23,9 @@ describe('/api/me authorization matrix', () => {
     expect(body.email).toBe('me-owner@example.com')
     expect(body.emailVerified).toBe(true)
     // The allowlist holds: nothing beyond the DTO's keys leaves the server.
+    // No `name` - see the data-minimization note above.
     expect(Object.keys(body).sort()).toEqual(
-      ['createdAt', 'email', 'emailVerified', 'id', 'name'].sort(),
+      ['createdAt', 'email', 'emailVerified', 'id'].sort(),
     )
   })
 
@@ -56,59 +41,36 @@ describe('/api/me authorization matrix', () => {
     expect(bodyA.id).not.toBe(bodyB.id)
   })
 
-  it('PUT updates the name and returns the DTO', async () => {
-    const { cookie } = await signUpVerifiedUser('me-rename@example.com', 'Before')
-    const res = await putMe(cookie, { name: 'After' })
-    expect(res.status).toBe(200)
-    const body = meResponseSchema.parse(await res.json())
-    expect(body.name).toBe('After')
-  })
-
-  it('PUT without the custom header is 403', async () => {
-    const { cookie } = await signUpVerifiedUser('me-nocsrf@example.com', 'NoCsrf')
+  it('PUT is gone: unsafe methods on /api/me are JSON 404, not the SPA shell', async () => {
+    const { cookie } = await signUpVerifiedUser('me-noput@example.com', 'NoPut')
     const res = await app.request(
       '/api/me',
       {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Origin: ORIGIN,
+          Origin: 'http://localhost:5173',
+          'x-grampacker-request': '1',
           Cookie: cookie,
         },
-        body: JSON.stringify({ name: 'Blocked' }),
+        body: JSON.stringify({ name: 'ghost' }),
       },
       env,
     )
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
+    expect(res.headers.get('content-type')).toContain('application/json')
   })
+})
 
-  it('PUT with a forged origin is 403', async () => {
-    const { cookie } = await signUpVerifiedUser('me-origin@example.com', 'Origin')
-    const res = await putMe(cookie, { name: 'Blocked' }, { Origin: 'https://evil.example' })
-    expect(res.status).toBe(403)
-  })
-
-  it('anon PUT (with header, no session) is 401', async () => {
-    const res = await app.request(
-      '/api/me',
-      {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Origin: ORIGIN,
-          [CSRF_HEADER]: '1',
-        },
-        body: JSON.stringify({ name: 'Anon' }),
-      },
-      env,
-    )
-    expect(res.status).toBe(401)
-  })
-
-  it('PUT rejects invalid bodies with 400', async () => {
-    const { cookie } = await signUpVerifiedUser('me-invalid@example.com', 'Invalid')
-    expect((await putMe(cookie, { name: '' })).status).toBe(400)
-    expect((await putMe(cookie, { name: 'x'.repeat(121) })).status).toBe(400)
-    expect((await putMe(cookie, {})).status).toBe(400)
+describe('user name is never stored', () => {
+  it('sign-up posting a name stores an empty string (databaseHooks blank it server-side)', async () => {
+    // The helper deliberately still POSTS a name - better-auth's sign-up
+    // schema requires the key - so this drives the exact surface the
+    // databaseHooks guard: a client that submits a name anyway.
+    await signUpVerifiedUser('me-noname@example.com', 'Should Be Dropped')
+    const row = await env.DB.prepare('select name from user where email = ?')
+      .bind('me-noname@example.com')
+      .first<{ name: string }>()
+    expect(row?.name).toBe('')
   })
 })
