@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { authClient, passkeysSupported } from '../lib/auth-client'
 import { authErrorMessage } from '../auth/auth-errors'
 import { ErrorText } from '../auth/auth-ui'
+import { authenticatorName } from '../lib/passkey-authenticator-names'
 
 type PasskeyRow = {
   id: string
   name?: string | null
+  aaguid?: string | null
   createdAt?: Date | string
 }
 
@@ -15,11 +17,54 @@ function createdLabel(createdAt: PasskeyRow['createdAt']): string {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString()
 }
 
+// Inline rename input, same idiom as the list rename rows: select-on-open,
+// Enter submits, Escape cancels, blur submits.
+function RenameInput({
+  draft,
+  onDraftChange,
+  onSubmit,
+  onCancel,
+}: {
+  draft: string
+  onDraftChange: (v: string) => void
+  onSubmit: () => void
+  onCancel: () => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.select()
+  }, [])
+
+  return (
+    <input
+      ref={inputRef}
+      autoFocus
+      type="text"
+      value={draft}
+      aria-label="Passkey name"
+      onChange={(e) => onDraftChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onSubmit()
+        if (e.key === 'Escape') onCancel()
+      }}
+      onBlur={onSubmit}
+      className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
+    />
+  )
+}
+
 export default function PasskeySection() {
   const [rows, setRows] = useState<PasskeyRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  // Bump to refetch the list (after add/remove).
+  const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null)
+  // Synchronous re-entrancy guard for submitRename: Enter and blur can both
+  // fire against the same render, whose closure still sees renaming !== null
+  // and busy === false (state updates only land on re-render). A ref flips
+  // synchronously, so the second delivery bails before the network call.
+  const submittingRename = useRef(false)
+  // Bump to refetch the list (after add/remove/rename).
   const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
@@ -79,6 +124,44 @@ export default function PasskeySection() {
     }
   }
 
+  async function submitRename() {
+    if (!renaming || submittingRename.current) return
+    submittingRename.current = true
+    const row = rows?.find((r) => r.id === renaming.id)
+    const trimmed = renaming.draft.trim()
+    setRenaming(null)
+    if (busy || !row || !trimmed) {
+      submittingRename.current = false
+      return
+    }
+    // Submitting the label unchanged is a cancel, not a write - the input
+    // is prefilled with the display label (which may be the provider name,
+    // not a stored name), and blur submits.
+    const display = row.name || authenticatorName(row.aaguid) || ''
+    if (trimmed === display) {
+      submittingRename.current = false
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const { error: renameError } = await authClient.passkey.updatePasskey({
+        id: row.id,
+        name: trimmed,
+      })
+      if (renameError) {
+        setError(authErrorMessage(renameError, "Couldn't rename the passkey."))
+        return
+      }
+      setReloadKey((k) => k + 1)
+    } catch {
+      setError("Couldn't rename the passkey.")
+    } finally {
+      setBusy(false)
+      submittingRename.current = false
+    }
+  }
+
   if (!passkeysSupported()) return null
 
   return (
@@ -95,29 +178,69 @@ export default function PasskeySection() {
         {rows?.length === 0 && (
           <p className="text-sm text-gray-500">No passkeys yet.</p>
         )}
-        {rows?.map((row) => (
-          <div
-            key={row.id}
-            className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2"
-          >
-            <div className="text-sm text-gray-900">
-              {row.name || 'Passkey'}
-              {createdLabel(row.createdAt) && (
-                <span className="ml-2 text-xs text-gray-500">
-                  added {createdLabel(row.createdAt)}
-                </span>
+        {rows?.map((row) => {
+          // Label precedence: user-chosen name, then the authenticator the
+          // AAGUID identifies (1Password, Google Password Manager, ...),
+          // then the generic fallback. When a custom name wins, the
+          // authenticator moves into the detail line so provenance stays
+          // visible.
+          const provider = authenticatorName(row.aaguid)
+          const detail = [
+            row.name && provider ? provider : null,
+            createdLabel(row.createdAt) ? `added ${createdLabel(row.createdAt)}` : null,
+          ]
+            .filter(Boolean)
+            .join(' - ')
+          return (
+            <div
+              key={row.id}
+              className="flex items-center justify-between gap-3 rounded-md border border-gray-200 bg-white px-3 py-2"
+            >
+              {renaming?.id === row.id ? (
+                <RenameInput
+                  draft={renaming.draft}
+                  onDraftChange={(v) => setRenaming({ id: row.id, draft: v })}
+                  onSubmit={() => void submitRename()}
+                  onCancel={() => setRenaming(null)}
+                />
+              ) : (
+                <>
+                  <div className="min-w-0 text-sm text-gray-900">
+                    <span className="font-medium">
+                      {row.name || provider || 'Passkey'}
+                    </span>
+                    {detail && (
+                      <span className="ml-2 text-xs text-gray-500">{detail}</span>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <button
+                      type="button"
+                      className="text-sm font-medium text-gray-600 hover:underline disabled:opacity-50"
+                      onClick={() =>
+                        setRenaming({
+                          id: row.id,
+                          draft: row.name || provider || '',
+                        })
+                      }
+                      disabled={busy}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      type="button"
+                      className="text-sm font-medium text-rose-700 hover:underline disabled:opacity-50"
+                      onClick={() => void handleDelete(row.id)}
+                      disabled={busy}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </>
               )}
             </div>
-            <button
-              type="button"
-              className="text-sm font-medium text-rose-700 hover:underline disabled:opacity-50"
-              onClick={() => void handleDelete(row.id)}
-              disabled={busy}
-            >
-              Remove
-            </button>
-          </div>
-        ))}
+          )
+        })}
         <ErrorText message={error} />
         <button
           type="button"
