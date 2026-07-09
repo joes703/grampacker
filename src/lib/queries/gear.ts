@@ -1,7 +1,10 @@
 import {
   gearItemResponseSchema,
+  importGearResponseSchema,
   type CreateGearItemRequestInput,
   type GearItemResponse,
+  type ImportGearRequestInput,
+  type ImportGearResponse,
   type ReorderRequest,
   type UpdateGearItemRequest,
 } from '../../../shared/gear'
@@ -60,4 +63,17 @@ export async function bulkMoveToCategoryGearItems(
 
 export async function reorderGearItems(entries: ReorderRequest): Promise<void> {
   await apiFetchVoid('/gear-items/order', { method: 'PUT', body: entries })
+}
+
+// Atomic CSV import: new categories + new gear land in one server-side
+// transaction (the old app orphaned categories when the gear insert
+// failed). The request is the client-built plan (see src/lib/csv/
+// import-plan.ts); the server mints real ids for `new` category refs.
+export async function importGearItems(
+  request: ImportGearRequestInput,
+): Promise<ImportGearResponse> {
+  return apiFetch('/gear-items/import', importGearResponseSchema, {
+    method: 'POST',
+    body: request,
+  })
 }

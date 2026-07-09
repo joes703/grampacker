@@ -7,13 +7,16 @@ import GearOptionsContent from './GearOptionsContent'
 
 type Props = {
   onNewCategory: () => void
+  onImport: () => void
+  onExport: () => void
+  canExport: boolean
   onCollapseAll: () => void
   onExpandAll: () => void
   canCollapseExpand: boolean
 }
 
 // Desktop popover trigger for Gear page rare/utility actions (New category,
-// Collapse all, Expand all). Mirrors the ListSettingsButton shape:
+// Import/Export CSV, Collapse all, Expand all). Mirrors the ListSettingsButton shape:
 // usePortalPopover for dismiss + portal-rendered panel anchored to the
 // trigger's bottom-right. Hidden at <md because MobileGearActionBar owns
 // the equivalent surface there.

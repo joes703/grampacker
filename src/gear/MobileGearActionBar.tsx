@@ -12,6 +12,9 @@ type Props = {
   onNewItem: () => void
   /** Gear Options modal handlers — rare/utility actions. */
   onNewCategory: () => void
+  onImport: () => void
+  onExport: () => void
+  canExport: boolean
   onCollapseAll: () => void
   onExpandAll: () => void
   canCollapseExpand: boolean
@@ -36,6 +39,9 @@ type Props = {
 export default function MobileGearActionBar({
   onNewItem,
   onNewCategory,
+  onImport,
+  onExport,
+  canExport,
   onCollapseAll,
   onExpandAll,
   canCollapseExpand,
@@ -74,6 +80,9 @@ export default function MobileGearActionBar({
       >
         <GearOptionsContent
           onNewCategory={onNewCategory}
+          onImport={onImport}
+          onExport={onExport}
+          canExport={canExport}
           onCollapseAll={onCollapseAll}
           onExpandAll={onExpandAll}
           canCollapseExpand={canCollapseExpand}

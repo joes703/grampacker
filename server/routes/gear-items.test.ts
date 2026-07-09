@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   categoryResponseSchema,
   gearItemResponseSchema,
+  importGearResponseSchema,
+  type CategoryResponse,
   type GearItemResponse,
 } from '../../shared/gear'
 import { isCapError } from '../repos/gear-items'
@@ -28,6 +30,11 @@ async function createCategory(cookie: string, name: string): Promise<string> {
   return categoryResponseSchema.parse(await res.json()).id
 }
 
+async function listCategories(cookie: string): Promise<CategoryResponse[]> {
+  const res = await apiRequest(cookie, 'GET', '/api/categories')
+  return categoryResponseSchema.array().parse(await res.json())
+}
+
 async function userIdFor(cookie: string): Promise<string> {
   const res = await apiRequest(cookie, 'GET', '/api/me')
   const body = (await res.json()) as { id: string }
@@ -39,6 +46,7 @@ describe('/api/gear-items authorization matrix', () => {
     for (const [method, path, body] of [
       ['GET', '/api/gear-items', undefined],
       ['POST', '/api/gear-items', { name: 'X' }],
+      ['POST', '/api/gear-items/import', { categories: [], items: [{ name: 'X' }] }],
       ['PUT', '/api/gear-items/order', [{ id: 'a', sortOrder: 0 }]],
       ['POST', '/api/gear-items/bulk-delete', { ids: ['a'] }],
       ['POST', '/api/gear-items/bulk-move', { ids: ['a'], categoryId: null }],
@@ -353,6 +361,163 @@ describe('/api/gear-items authorization matrix', () => {
     expect(isCapError(capWrapper)).toBe(true)
     expect(isCapError(new Error('unrelated'))).toBe(false)
     expect(isCapError(null)).toBe(false)
+  })
+
+  it('import: categories + items land atomically with appended sort orders', async () => {
+    const { cookie } = await signUpVerifiedUser('gear-import@example.com', 'I')
+    const shelterId = await createCategory(cookie, 'Shelter')
+    await createGear(cookie, { name: 'Existing tent', categoryId: shelterId })
+
+    const res = await apiRequest(cookie, 'POST', '/api/gear-items/import', {
+      categories: [
+        { tempId: 'new-0', name: 'Cook' },
+        { tempId: 'new-1', name: 'Sleep' },
+      ],
+      items: [
+        {
+          name: 'Stove',
+          description: 'Canister top',
+          weightGrams: 85,
+          cost: 49.95,
+          purchaseDate: '2025-03-01',
+          category: { kind: 'new', tempId: 'new-0' },
+        },
+        {
+          name: 'Quilt',
+          description: null,
+          weightGrams: 620,
+          cost: null,
+          purchaseDate: null,
+          category: { kind: 'new', tempId: 'new-1' },
+        },
+        {
+          name: 'Stakes',
+          weightGrams: 60,
+          category: { kind: 'existing', id: shelterId },
+        },
+        { name: 'Mystery widget', category: null },
+      ],
+    })
+    expect(res.status).toBe(201)
+    expect(importGearResponseSchema.parse(await res.json())).toEqual({
+      createdCategories: 2,
+      createdItems: 4,
+    })
+
+    // New categories exist, appended past the existing max sort order.
+    const cats = await listCategories(cookie)
+    expect(cats.map((c) => [c.name, c.sortOrder])).toEqual([
+      ['Shelter', 0],
+      ['Cook', 1],
+      ['Sleep', 2],
+    ])
+    const cookId = cats.find((c) => c.name === 'Cook')?.id
+    const sleepId = cats.find((c) => c.name === 'Sleep')?.id
+
+    // Items appended contiguously past the pre-import max, tempIds
+    // resolved to the real category ids, status always the default.
+    const gear = await listGear(cookie)
+    expect(gear.map((g) => [g.name, g.sortOrder, g.categoryId])).toEqual([
+      ['Existing tent', 0, shelterId],
+      ['Stove', 1, cookId],
+      ['Quilt', 2, sleepId],
+      ['Stakes', 3, shelterId],
+      ['Mystery widget', 4, null],
+    ])
+    const stove = gear.find((g) => g.name === 'Stove')
+    expect(stove).toMatchObject({
+      description: 'Canister top',
+      weightGrams: 85,
+      cost: 49.95, // dollars in, dollars out (cents inside)
+      purchaseDate: '2025-03-01',
+      status: 'active',
+    })
+  })
+
+  it("import referencing someone else's category is 400 with zero writes", async () => {
+    const a = await signUpVerifiedUser('gear-import-a@example.com', 'A')
+    const b = await signUpVerifiedUser('gear-import-b@example.com', 'B')
+    const bCat = await createCategory(b.cookie, 'Bs')
+
+    const res = await apiRequest(a.cookie, 'POST', '/api/gear-items/import', {
+      categories: [{ tempId: 'new-0', name: 'Innocent' }],
+      items: [
+        { name: 'Fine', category: { kind: 'new', tempId: 'new-0' } },
+        { name: 'Sneaky', category: { kind: 'existing', id: bCat } },
+      ],
+    })
+    expect(res.status).toBe(400)
+    // The valid new category must not survive the rejected import.
+    expect(await listCategories(a.cookie)).toHaveLength(0)
+    expect(await listGear(a.cookie)).toHaveLength(0)
+  })
+
+  it('import over the cap rolls back the WHOLE batch, new categories included', async () => {
+    const { cookie } = await signUpVerifiedUser('gear-import-cap@example.com', 'C')
+    const userId = await userIdFor(cookie)
+
+    // Seed 499 rows directly (the API path would be 499 round trips).
+    const values = Array.from({ length: 499 }, (_, i) => {
+      return `('capseed-${i}', '${userId}', 'Seed item ${i}', 0, 'active', ${i}, 0, 0)`
+    }).join(',')
+    await env.DB.prepare(
+      `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
+    ).run()
+
+    // 499 existing + 2 imported = 501: the trigger aborts the batch. The
+    // old app created categories before gear non-atomically and orphaned
+    // them on exactly this failure; here the category rolls back too.
+    const res = await apiRequest(cookie, 'POST', '/api/gear-items/import', {
+      categories: [{ tempId: 'new-0', name: 'Doomed' }],
+      items: [
+        { name: 'Fits', category: { kind: 'new', tempId: 'new-0' } },
+        { name: 'One too many', category: null },
+      ],
+    })
+    expect(res.status).toBe(422)
+    expect(await listCategories(cookie)).toHaveLength(0)
+    expect(await listGear(cookie)).toHaveLength(499)
+  })
+
+  it('import validation: tempId wiring and bounds', async () => {
+    const { cookie } = await signUpVerifiedUser('gear-import-v@example.com', 'V')
+    for (const body of [
+      // duplicate tempIds
+      {
+        categories: [
+          { tempId: 'dup', name: 'A' },
+          { tempId: 'dup', name: 'B' },
+        ],
+        items: [{ name: 'x', category: { kind: 'new', tempId: 'dup' } }],
+      },
+      // reference to an undeclared tempId
+      {
+        categories: [],
+        items: [{ name: 'x', category: { kind: 'new', tempId: 'ghost' } }],
+      },
+      // declared category nothing references (category-spam guard)
+      {
+        categories: [{ tempId: 'orphan', name: 'Orphan' }],
+        items: [{ name: 'x', category: null }],
+      },
+      // no items
+      { categories: [], items: [] },
+      // over the row cap
+      {
+        categories: [],
+        items: Array.from({ length: 2001 }, (_, i) => ({ name: `n${i}` })),
+      },
+      // unknown field / bad nested shapes
+      { categories: [], items: [{ name: 'x' }], extra: 1 },
+      { categories: [], items: [{ name: 'x', category: { kind: 'existing' } }] },
+      { categories: [{ tempId: 't', name: '' }], items: [{ name: 'x', category: { kind: 'new', tempId: 't' } }] },
+      { categories: [], items: [{ name: 'x', cost: 12.999 }] },
+    ]) {
+      const res = await apiRequest(cookie, 'POST', '/api/gear-items/import', body)
+      expect(res.status, JSON.stringify(body).slice(0, 120)).toBe(400)
+    }
+    expect(await listGear(cookie)).toHaveLength(0)
+    expect(await listCategories(cookie)).toHaveLength(0)
   })
 
   it('validation: bounds, dates, money, status, oversized arrays', async () => {

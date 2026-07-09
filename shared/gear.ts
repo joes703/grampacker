@@ -152,3 +152,76 @@ export const bulkMoveRequestSchema = z
   })
   .strict()
 export type BulkMoveRequest = z.infer<typeof bulkMoveRequestSchema>
+
+// ---------------------------------------------------------------- csv import
+
+// Atomic gear-library import: new categories and new gear land in ONE
+// transaction (the old app created categories before the gear insert
+// non-atomically, so a mid-flight failure orphaned the categories). The
+// client plans the import (CSV parse + dedup against its library snapshot)
+// and references not-yet-created categories by a client-minted tempId; the
+// server mints the real ids. The item cap (2000) mirrors MAX_CSV_ROWS in
+// the client parser.
+const tempIdSchema = z.string().min(1).max(64)
+
+export const importCategoryRefSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('existing'), id: idSchema }).strict(),
+  z.object({ kind: z.literal('new'), tempId: tempIdSchema }).strict(),
+])
+export type ImportCategoryRef = z.infer<typeof importCategoryRefSchema>
+
+export const importGearRequestSchema = z
+  .object({
+    categories: z
+      .array(z.object({ tempId: tempIdSchema, name: categoryNameSchema }).strict())
+      .max(2000),
+    items: z
+      .array(
+        z
+          .object({
+            name: gearNameSchema,
+            description: descriptionSchema.nullable().default(null),
+            weightGrams: weightGramsSchema.default(0),
+            cost: costSchema.nullable().default(null),
+            purchaseDate: isoDateSchema.nullable().default(null),
+            category: importCategoryRefSchema.nullable().default(null),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(2000),
+  })
+  .strict()
+  .superRefine((req, ctx) => {
+    const tempIds = req.categories.map((c) => c.tempId)
+    if (!uniqueIds(tempIds)) {
+      ctx.addIssue({ code: 'custom', message: 'duplicate category tempIds' })
+      return
+    }
+    const declared = new Set(tempIds)
+    const referenced = new Set<string>()
+    for (const item of req.items) {
+      if (item.category?.kind !== 'new') continue
+      if (!declared.has(item.category.tempId)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `unknown category tempId: ${item.category.tempId}`,
+        })
+        return
+      }
+      referenced.add(item.category.tempId)
+    }
+    // Every declared category must be used - rejecting orphans keeps the
+    // endpoint from being a category-spam vector.
+    if (referenced.size !== declared.size) {
+      ctx.addIssue({ code: 'custom', message: 'unreferenced category tempId' })
+    }
+  })
+export type ImportGearRequest = z.infer<typeof importGearRequestSchema>
+export type ImportGearRequestInput = z.input<typeof importGearRequestSchema>
+
+export const importGearResponseSchema = z.object({
+  createdCategories: z.number().int(),
+  createdItems: z.number().int(),
+})
+export type ImportGearResponse = z.infer<typeof importGearResponseSchema>

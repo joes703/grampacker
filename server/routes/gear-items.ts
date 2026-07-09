@@ -4,10 +4,12 @@ import {
   bulkMoveRequestSchema,
   createGearItemRequestSchema,
   gearStatusSchema,
+  importGearRequestSchema,
   reorderRequestSchema,
   updateGearItemRequestSchema,
   type CreateGearItemRequest,
   type GearItemResponse,
+  type ImportGearResponse,
   type UpdateGearItemRequest,
 } from '../../shared/gear'
 import { requireSession, type SessionVars } from '../middleware/session'
@@ -22,6 +24,9 @@ import type {
 //   POST   /api/gear-items             - session - creates own row; 400 on
 //                                        non-owned category, 422 at the cap
 //   PUT    /api/gear-items/order       - session - own rows, all-or-nothing
+//   POST   /api/gear-items/import      - session - creates own rows; 400 on
+//                                        non-owned category, 422 at the cap,
+//                                        atomic (zero writes on failure)
 //   POST   /api/gear-items/bulk-delete - session - own rows, all-or-nothing
 //   POST   /api/gear-items/bulk-move   - session - own rows + own target
 //                                        category, all-or-nothing
@@ -112,6 +117,36 @@ gearItemRoutes.put('/order', async (c) => {
   const ok = await c.get('repos').gearItems.reorder(parsed.data)
   if (!ok) return c.json({ error: 'Not found' }, 404)
   return c.body(null, 204)
+})
+
+gearItemRoutes.post('/import', async (c) => {
+  const raw = await c.req.json().catch(() => null)
+  const parsed = importGearRequestSchema.safeParse(raw)
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request body' }, 400)
+  }
+  const result = await c.get('repos').gearItems.importBatch({
+    categories: parsed.data.categories,
+    items: parsed.data.items.map((item) => ({
+      name: item.name,
+      description: item.description,
+      weightGrams: item.weightGrams,
+      costCents: dollarsToCents(item.cost),
+      purchaseDate: item.purchaseDate,
+      category: item.category,
+    })),
+  })
+  if (!result.ok) {
+    if (result.reason === 'invalid_category') {
+      return c.json({ error: 'Invalid category' }, 400)
+    }
+    return c.json({ error: 'Gear item limit reached (500 per user)' }, 422)
+  }
+  const body: ImportGearResponse = {
+    createdCategories: result.createdCategories,
+    createdItems: result.createdItems,
+  }
+  return c.json(body, 201)
 })
 
 gearItemRoutes.post('/bulk-delete', async (c) => {

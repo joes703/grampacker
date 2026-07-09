@@ -227,8 +227,9 @@ describe('GearLibraryPage bulk success handling', () => {
     renderPage()
 
     expect(await screen.findByText('No gear yet')).toBeInTheDocument()
-    expect(screen.getByText('Add your first item or create a category to start organizing your gear library.')).toBeInTheDocument()
+    expect(screen.getByText('Add your first item, import a CSV, or create a category to start organizing your gear library.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add item' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Import CSV' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'New category' })).toBeInTheDocument()
   })
 
