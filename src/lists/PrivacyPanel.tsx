@@ -25,18 +25,36 @@ export default function PrivacyPanel({ list }: Props) {
   const qc = useQueryClient()
   const [copied, setCopied] = useState(false)
 
+  // The PATCH body and the optimistic apply both use the SAME explicit
+  // target value, resolved once in toggleSharing. A relative toggle here
+  // (mutationFn reading the rendered `list.isShared`) races: the
+  // optimistic update flips the cache immediately, but observer
+  // notifications are scheduled, so a second activation before this
+  // component re-renders would close over the stale prop and send the
+  // SAME body twice - from private, that leaves the list PUBLIC while
+  // the UI says private. A privacy control gets the belt-and-suspenders
+  // treatment: absolute target + disabled while a flip is in flight
+  // (which also stops two opposite PATCHes racing each other on the
+  // wire).
   const toggleMut = useMutation({
-    mutationFn: () => updateList(list.id, { isShared: !list.isShared }),
-    // apply ignores the void input and toggles based on the cache row's
-    // current isShared - the cache is the source of truth at apply time,
-    // so rapid double-toggles still track correctly.
-    ...makeOptimisticUpdate<List, void>({
+    mutationFn: (isShared: boolean) => updateList(list.id, { isShared }),
+    ...makeOptimisticUpdate<List, boolean>({
       qc,
       queryKey: queryKeys.lists(),
       id: () => list.id,
-      apply: (item) => ({ ...item, isShared: !item.isShared }),
+      apply: (item, isShared) => ({ ...item, isShared }),
     }),
   })
+
+  function toggleSharing() {
+    if (toggleMut.isPending) return
+    // Derive the target from the live cache row, not the rendered prop:
+    // some parents (ListSettingsPanel) pass a snapshot that can lag the
+    // cache by a scheduler tick.
+    const live =
+      qc.getQueryData<List[]>(queryKeys.lists())?.find((l) => l.id === list.id) ?? list
+    toggleMut.mutate(!live.isShared)
+  }
 
   const shareUrl = `${window.location.origin}/r/${list.slug}`
 
@@ -46,7 +64,8 @@ export default function PrivacyPanel({ list }: Props) {
         <span className={PANEL_TOGGLE_LABEL}>Sharing</span>
         <ToggleSwitch
           checked={list.isShared}
-          onChange={() => toggleMut.mutate()}
+          onChange={toggleSharing}
+          disabled={toggleMut.isPending}
           ariaLabel={list.isShared ? 'Disable public link' : 'Enable public link'}
         />
       </div>
