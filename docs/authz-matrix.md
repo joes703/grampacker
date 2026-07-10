@@ -23,13 +23,14 @@ resources). A route without a row, or a row without tests, fails review.
 | `/api/lists/from-selection` | POST | session | every gear id owned or 400, zero writes; atomic list+items batch | `CreateListFromSelectionRequest` | `ListResponse` | `server/routes/lists.test.ts` |
 | `/api/lists/import` | POST | session | every existing category/gear ref owned or 400, zero writes; creates list + categories + gear + items in one transaction; 422 at the list/gear caps | `ImportListRequest` | `ListResponse` | `server/routes/lists.test.ts` |
 | `/api/lists/:id/duplicate` | POST | session | own list or 404; copy resets `isShared`/`isDraft`, mints a fresh slug | - | `ListResponse` | `server/routes/lists.test.ts` |
-| `/api/lists/:id` | PATCH, DELETE | session | own list or 404; DELETE cascades membership rows (composite FK), never gear; `isShared` not patchable until the share slice | `UpdateListRequest` (PATCH) | `ListResponse` / 204 | `server/routes/lists.test.ts` |
+| `/api/lists/:id` | PATCH, DELETE | session | own list or 404; DELETE cascades membership rows (composite FK), never gear; `isShared` patchable (the share/unshare toggle) | `UpdateListRequest` (PATCH) | `ListResponse` / 204 | `server/routes/lists.test.ts` |
 | `/api/lists/:id/items` | GET, POST | session | own list or 404; POST validates gear ownership (400) + 422 at the 300-item cap | `AddListItemRequest` (POST) | `ListItemResponse[]` / `ListItemResponse` | `server/routes/lists.test.ts` |
 | `/api/lists/:id/items/quick-add` | POST | session | own list + own category; gear+item in one atomic batch, either cap 422s the whole call | `QuickAddListItemRequest` | `ListItemResponse` | `server/routes/lists.test.ts` |
 | `/api/lists/:id/items/order` | PUT | session | every item in THIS list or 404, zero writes; never bumps `updatedAt` | `ReorderListItemsRequest` | 204 | `server/routes/lists.test.ts` |
 | `/api/lists/:id/items/reset-packed` | POST | session | own list or 404 | - | 204 | `server/routes/lists.test.ts` |
 | `/api/lists/:id/items/reset-ready` | POST | session | own list or 404 | - | 204 | `server/routes/lists.test.ts` |
 | `/api/lists/:id/items/:itemId` | PATCH, DELETE | session | item must belong to THIS list and user (parent-path consistency) or 404 | `UpdateListItemRequest` (PATCH) | `ListItemResponse` / 204 | `server/routes/lists.test.ts` |
+| `/api/shares/:slug` | GET | anon | gated on `lists.is_shared`; unknown slug and unshared list are the same 404; response is the strict public allowlist (`SharedListResponse`: no user ids, no `isPacked`/`isReady`, no gear `status`/`cost`/`purchaseDate`, no timestamps), enforced field-by-field in the handler and asserted by forbidden-key tests | - | `SharedListResponse` | `server/routes/shares.test.ts` |
 | `/*` (assets catch-all) | any | anon | - (static files / SPA shell via ASSETS binding; the binding itself serves GET/HEAD only) | - | - | `server/middleware/security-headers.test.ts` (shell + header coverage) |
 
 Cross-cutting, tested in `server/middleware/csrf.test.ts`:

@@ -33,7 +33,9 @@ import type { ListRow } from '../repos/lists'
 //                                                atomically, zero writes on
 //                                                any failure; 422 at caps
 //   POST   /api/lists/:id/duplicate            - session - own list or 404
-//   PATCH  /api/lists/:id                      - session - own list or 404
+//   PATCH  /api/lists/:id                      - session - own list or 404;
+//                                                isShared patchable (the
+//                                                share/unshare toggle)
 //   DELETE /api/lists/:id                      - session - own list or 404;
 //                                                cascades membership rows
 //   GET    /api/lists/:id/items                - session - own list or 404

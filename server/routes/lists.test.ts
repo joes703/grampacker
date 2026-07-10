@@ -224,8 +224,10 @@ describe('lists CRUD', () => {
     })
     expect(((await clear.json()) as ListBody).description).toBeNull()
 
-    // Strictness: empty patch and unknown fields are 400s.
-    for (const bad of [{}, { isShared: true }, { name: '' }]) {
+    // Strictness: empty patch and unknown fields are 400s. (isShared used
+    // to be in this list; the share slice made it patchable - positive
+    // coverage lives in shares.test.ts.)
+    for (const bad of [{}, { slug: 'newslug' }, { name: '' }]) {
       const res = await apiRequest(
         cookie,
         'PATCH',

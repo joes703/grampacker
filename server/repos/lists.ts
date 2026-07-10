@@ -34,10 +34,10 @@ export type ListRow = {
 }
 
 // PATCH semantics: undefined = unchanged, null = clear (nullable fields).
-// isShared is absent on purpose - the public-share slice owns that flag.
 export type UpdateListPatch = {
   name?: string
   description?: string | null
+  isShared?: boolean
   groupWorn?: boolean
   readyChecksEnabled?: boolean
   isDraft?: boolean
@@ -173,6 +173,7 @@ export function createListsRepo(db: Db, userId: string) {
       const set: Record<string, unknown> = { updatedAt: Date.now() }
       if (patch.name !== undefined) set.name = patch.name
       if (patch.description !== undefined) set.description = patch.description
+      if (patch.isShared !== undefined) set.isShared = patch.isShared
       if (patch.groupWorn !== undefined) set.groupWorn = patch.groupWorn
       if (patch.readyChecksEnabled !== undefined)
         set.readyChecksEnabled = patch.readyChecksEnabled

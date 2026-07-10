@@ -12,6 +12,7 @@ import AppShell from './layout/AppShell'
 import GearLibraryPage from './gear/GearLibraryPage'
 import ListsPage from './lists/ListsPage'
 import ListDetailPage from './lists/ListDetailPage'
+import SharePage from './lists/SharePage'
 import ToastViewport from './components/Toast'
 
 // Query defaults ported from the old app: 30s staleTime keeps rapid
@@ -112,6 +113,11 @@ export default function App() {
           {/* Not session-gated in either direction: a signed-in user clicking
               a reset link should still be able to set a new password. */}
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          {/* Public share view: anonymous by design (the server gates on
+              is_shared), and deliberately outside AppShell - viewers get
+              the read-only document, not the app chrome. Signed-in users
+              opening someone's link see the same public view. */}
+          <Route path="/r/:slug" element={<SharePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <ToastViewport />

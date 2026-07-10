@@ -9,6 +9,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import ToggleSwitch from '../components/ToggleSwitch'
 import { INLINE_EDIT_FOCUS_RING, PANEL_TOGGLE_LABEL } from '../components/flat-table-styles'
 import { useCommitOnce } from '../lib/use-commit-once'
+import PrivacyPanel from './PrivacyPanel'
 import { useCurrentListActions } from './use-current-list-actions'
 
 type Props = { list: List }
@@ -23,10 +24,8 @@ type Props = { list: List }
 //   - Group worn items: moves worn items into their own grouped
 //     section across every view. Stays here because it affects normal
 //     list organization too, not just pack mode.
-//
-// TRANSPLANT NOTE (share): the old panel rendered PrivacyPanel (the
-// sharing toggle + public URL row) below the toggles. That returns with
-// the public-share slice.
+//   - Sharing: PrivacyPanel's inline body (toggle + url + Copy when
+//     public).
 //
 // "Add ready checks" used to live here as a third toggle, but it is a
 // pack-mode-only feature and the panel itself is hidden in pack mode
@@ -123,6 +122,8 @@ export default function ListSettingsPanel({ list }: Props) {
           ariaLabel="Group worn items"
         />
       </div>
+
+      <PrivacyPanel list={list} />
 
       {/* Actions section. The -mx-3 spans the popover's p-3 padding so
           the divider and action rows go edge-to-edge while RowMenuItem's

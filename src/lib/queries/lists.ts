@@ -1,12 +1,14 @@
 import {
   listResponseSchema,
+  sharedListResponseSchema,
   type CreateListFromSelectionRequest,
   type ImportListRequestInput,
   type ListResponse,
   type ReorderListsRequest,
+  type SharedListResponse,
   type UpdateListRequest,
 } from '../../../shared/lists'
-import { apiFetch, apiFetchVoid } from '../api'
+import { ApiError, apiFetch, apiFetchVoid } from '../api'
 
 // The SPA-side list type IS the shared DTO (see categories.ts for the
 // camelCase rationale). slug is server-minted; the client never invents
@@ -25,7 +27,6 @@ export async function createList(name: string): Promise<List> {
 }
 
 // PATCH semantics: absent = unchanged, null = clear (nullable fields).
-// isShared is not patchable until the share slice ships its routes.
 export async function updateList(
   id: string,
   patch: UpdateListRequest,
@@ -74,4 +75,22 @@ export async function importListFromCsv(
     method: 'POST',
     body: input,
   })
+}
+
+// Public share read (anon; the session cookie is simply irrelevant). The
+// 404 is the legitimate "this slug isn't a shared list" signal - unknown
+// slug and sharing-turned-off are the same response by design - and maps
+// to null so SharePage renders its friendly "List not found" copy. Every
+// OTHER error (network, 5xx) propagates so TanStack Query exposes the
+// failure and the page distinguishes a real outage from a bad link
+// (ported convention: the old fetchSharedList treated PGRST116 this way).
+export async function fetchSharedList(
+  slug: string,
+): Promise<SharedListResponse | null> {
+  try {
+    return await apiFetch(`/shares/${slug}`, sharedListResponseSchema)
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null
+    throw err
+  }
 }
