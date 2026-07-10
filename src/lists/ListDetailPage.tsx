@@ -58,6 +58,7 @@ import PackingProgress from './PackingProgress'
 import { useListResetActions } from './use-list-reset-actions'
 import { useListItemActions } from './use-list-item-actions'
 import { useListGearActions } from './use-list-gear-actions'
+import { useListFlagToggle } from './use-list-flag-toggle'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
 import CategoryGroup from './CategoryGroup'
@@ -322,17 +323,13 @@ function ListDetailInner({
   // Toggling the per-list "Add ready checks" flag. The control lives inline
   // at the top of PackingProgress now that List options is hidden in pack
   // mode; ListSettingsPanel used to own this mutation but the panel itself
-  // never renders in pack mode, so the mutation moves up here next to
-  // notesMut / reorder paths. Optimistic flip mirrors the prior shape
-  // exactly so the ToggleSwitch reflects the change immediately.
-  const readyChecksMut = useMutation({
-    mutationFn: () => updateList(listId, { readyChecksEnabled: !(list?.readyChecksEnabled ?? false) }),
-    ...makeOptimisticUpdate<List, void>({
-      qc,
-      queryKey: queryKeys.lists(),
-      id: () => listId,
-      apply: (item) => ({ ...item, readyChecksEnabled: !item.readyChecksEnabled }),
-    }),
+  // never renders in pack mode, so it lives up here next to notesMut /
+  // reorder paths. Routed through useListFlagToggle (absolute target +
+  // synchronous in-flight ref) so rapid double-toggles can't send a stale
+  // or duplicate PATCH; see the hook for the races the naive flip carries.
+  const readyChecksToggle = useListFlagToggle({
+    read: (target) => target.readyChecksEnabled,
+    patch: (readyChecksEnabled) => ({ readyChecksEnabled }),
   })
 
   // Guards against the inline Quick Add row firing twice when the user
@@ -693,7 +690,7 @@ function ListDetailInner({
                       ready: listItems.filter((i) => i.isReady).length,
                       enabled: list.readyChecksEnabled,
                       onResetReady: resetReady,
-                      onToggleEnabled: () => readyChecksMut.mutate(),
+                      onToggleEnabled: () => readyChecksToggle.toggle(list),
                     }}
                   />
                 </div>

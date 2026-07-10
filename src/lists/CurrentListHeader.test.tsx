@@ -7,7 +7,7 @@ import CurrentListHeader from './CurrentListHeader'
 vi.mock('./use-current-list-actions', () => ({
   useCurrentListActions: () => ({
     renameMut: { mutate: vi.fn() },
-    draftMut: { mutate: vi.fn() },
+    draftToggle: { toggle: vi.fn(), isPending: false },
   }),
 }))
 

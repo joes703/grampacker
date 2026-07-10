@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { Copy, Download, Pencil, Trash2 } from 'lucide-react'
 import type { List } from '../lib/types'
-import { queryKeys, updateList, makeOptimisticUpdate } from '../lib/queries'
 import { RowMenuItem } from '../components/RowMenuItem'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToggleSwitch from '../components/ToggleSwitch'
@@ -11,6 +9,7 @@ import { INLINE_EDIT_FOCUS_RING, PANEL_TOGGLE_LABEL } from '../components/flat-t
 import { useCommitOnce } from '../lib/use-commit-once'
 import PrivacyPanel from './PrivacyPanel'
 import { useCurrentListActions } from './use-current-list-actions'
+import { useListFlagToggle } from './use-list-flag-toggle'
 
 type Props = { list: List }
 
@@ -20,7 +19,7 @@ type Props = { list: List }
 //
 // Toggles:
 //   - Draft: label-only lifecycle state, shared with CurrentListHeader's
-//     pill via draftMut.
+//     pill via draftToggle.
 //   - Group worn items: moves worn items into their own grouped
 //     section across every view. Stays here because it affects normal
 //     list organization too, not just pack mode.
@@ -47,20 +46,17 @@ type Props = { list: List }
 // Modal on mobile via MobileListActionBar's Options slot. Both mount
 // points are themselves suppressed in pack mode.
 export default function ListSettingsPanel({ list }: Props) {
-  const qc = useQueryClient()
   const navigate = useNavigate()
 
-  const groupWornMut = useMutation({
-    mutationFn: () => updateList(list.id, { groupWorn: !list.groupWorn }),
-    ...makeOptimisticUpdate<List, void>({
-      qc,
-      queryKey: queryKeys.lists(),
-      id: () => list.id,
-      apply: (item) => ({ ...item, groupWorn: !item.groupWorn }),
-    }),
+  // Both flag toggles route through useListFlagToggle (absolute target +
+  // synchronous in-flight ref) so rapid double-toggles can't send a stale
+  // or duplicate PATCH; see the hook for the races the naive flip carries.
+  const groupWornToggle = useListFlagToggle({
+    read: (target) => target.groupWorn,
+    patch: (groupWorn) => ({ groupWorn }),
   })
 
-  const { renameMut, duplicateMut, deleteListMut, exportCsv, exportingListId, draftMut } = useCurrentListActions()
+  const { renameMut, duplicateMut, deleteListMut, exportCsv, exportingListId, draftToggle } = useCurrentListActions()
   const exporting = exportingListId === list.id
 
   // Inline rename state. Mirrors InlineTitle's keyboard semantics
@@ -110,7 +106,8 @@ export default function ListSettingsPanel({ list }: Props) {
         <span className={PANEL_TOGGLE_LABEL}>Draft</span>
         <ToggleSwitch
           checked={list.isDraft}
-          onChange={() => draftMut.mutate(list)}
+          onChange={() => draftToggle.toggle(list)}
+          disabled={draftToggle.isPending}
           ariaLabel="Draft"
         />
       </div>
@@ -118,7 +115,8 @@ export default function ListSettingsPanel({ list }: Props) {
         <span className={PANEL_TOGGLE_LABEL}>Group worn items</span>
         <ToggleSwitch
           checked={list.groupWorn}
-          onChange={() => groupWornMut.mutate()}
+          onChange={() => groupWornToggle.toggle(list)}
+          disabled={groupWornToggle.isPending}
           ariaLabel="Group worn items"
         />
       </div>

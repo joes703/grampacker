@@ -1,10 +1,9 @@
-import { useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 import type { List } from '../lib/types'
-import { queryKeys, updateList, makeOptimisticUpdate } from '../lib/queries'
 import ToggleSwitch from '../components/ToggleSwitch'
 import { PANEL_TOGGLE_LABEL } from '../components/flat-table-styles'
+import { useListFlagToggle } from './use-list-flag-toggle'
 
 type Props = { list: List }
 
@@ -19,57 +18,21 @@ type Props = { list: List }
 // back on revives the SAME url. Breaking a leaked link means duplicating
 // the list (fresh slug) and unsharing the original.
 //
+// The flip goes through useListFlagToggle (absolute target + synchronous
+// in-flight ref) - see that hook for the double-toggle races the naive
+// shape carries; on a privacy control they could leave a list PUBLIC
+// while the UI says private. disabled while pending is the visual layer
+// on top of the hook's guard.
+//
 // TRANSPLANT NOTE (food): the old panel had an "Include food plan" toggle
 // below the URL row (is_food_shared). That returns with the food slice.
 export default function PrivacyPanel({ list }: Props) {
-  const qc = useQueryClient()
   const [copied, setCopied] = useState(false)
 
-  // The PATCH body and the optimistic apply both use the SAME explicit
-  // target value, resolved once in toggleSharing. A relative toggle here
-  // (mutationFn reading the rendered `list.isShared`) races: the
-  // optimistic update flips the cache immediately, but observer
-  // notifications are scheduled, so a second activation before this
-  // component re-renders would close over the stale prop and send the
-  // SAME body twice - from private, that leaves the list PUBLIC while
-  // the UI says private. A privacy control gets the belt-and-suspenders
-  // treatment: absolute target + disabled while a flip is in flight
-  // (which also stops two opposite PATCHes racing each other on the
-  // wire).
-  const toggleMut = useMutation({
-    mutationFn: (isShared: boolean) => updateList(list.id, { isShared }),
-    ...makeOptimisticUpdate<List, boolean>({
-      qc,
-      queryKey: queryKeys.lists(),
-      id: () => list.id,
-      apply: (item, isShared) => ({ ...item, isShared }),
-    }),
+  const shareToggle = useListFlagToggle({
+    read: (l) => l.isShared,
+    patch: (isShared) => ({ isShared }),
   })
-
-  // Synchronous in-flight guard. toggleMut.isPending (and the disabled
-  // attribute it drives) is render-derived, so two activations inside the
-  // SAME commit window both read false - and because the first optimistic
-  // write updates the cache synchronously, the second would derive the
-  // OPPOSITE target and race it on the wire ({true} then {false}; out of
-  // order on the server = public after the user toggled back private).
-  // A ref flips synchronously, so the second same-tick activation is a
-  // no-op regardless of when React commits.
-  const flipInFlight = useRef(false)
-
-  function toggleSharing() {
-    if (flipInFlight.current) return
-    flipInFlight.current = true
-    // Derive the target from the live cache row, not the rendered prop:
-    // some parents (ListSettingsPanel) pass a snapshot that can lag the
-    // cache by a scheduler tick.
-    const live =
-      qc.getQueryData<List[]>(queryKeys.lists())?.find((l) => l.id === list.id) ?? list
-    toggleMut.mutate(!live.isShared, {
-      onSettled: () => {
-        flipInFlight.current = false
-      },
-    })
-  }
 
   const shareUrl = `${window.location.origin}/r/${list.slug}`
 
@@ -79,8 +42,8 @@ export default function PrivacyPanel({ list }: Props) {
         <span className={PANEL_TOGGLE_LABEL}>Sharing</span>
         <ToggleSwitch
           checked={list.isShared}
-          onChange={toggleSharing}
-          disabled={toggleMut.isPending}
+          onChange={() => shareToggle.toggle(list)}
+          disabled={shareToggle.isPending}
           ariaLabel={list.isShared ? 'Disable public link' : 'Enable public link'}
         />
       </div>
