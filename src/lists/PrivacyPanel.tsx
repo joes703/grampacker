@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, Copy } from 'lucide-react'
 import type { List } from '../lib/types'
@@ -46,14 +46,29 @@ export default function PrivacyPanel({ list }: Props) {
     }),
   })
 
+  // Synchronous in-flight guard. toggleMut.isPending (and the disabled
+  // attribute it drives) is render-derived, so two activations inside the
+  // SAME commit window both read false - and because the first optimistic
+  // write updates the cache synchronously, the second would derive the
+  // OPPOSITE target and race it on the wire ({true} then {false}; out of
+  // order on the server = public after the user toggled back private).
+  // A ref flips synchronously, so the second same-tick activation is a
+  // no-op regardless of when React commits.
+  const flipInFlight = useRef(false)
+
   function toggleSharing() {
-    if (toggleMut.isPending) return
+    if (flipInFlight.current) return
+    flipInFlight.current = true
     // Derive the target from the live cache row, not the rendered prop:
     // some parents (ListSettingsPanel) pass a snapshot that can lag the
     // cache by a scheduler tick.
     const live =
       qc.getQueryData<List[]>(queryKeys.lists())?.find((l) => l.id === list.id) ?? list
-    toggleMut.mutate(!live.isShared)
+    toggleMut.mutate(!live.isShared, {
+      onSettled: () => {
+        flipInFlight.current = false
+      },
+    })
   }
 
   const shareUrl = `${window.location.origin}/r/${list.slug}`

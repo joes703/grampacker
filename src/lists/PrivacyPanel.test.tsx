@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { List } from '../lib/types'
@@ -119,6 +119,41 @@ describe('PrivacyPanel', () => {
     expect(updateList).toHaveBeenCalledWith('list-1', { isShared: true })
     resolveFirst({ ...list, isShared: true })
     await waitFor(() => expect(toggle).not.toBeDisabled())
+  })
+
+  // Regression (Codex PR #29 re-review): isPending and the disabled
+  // attribute are render-derived, so two activations inside the same
+  // commit window both passed the old guard - and since the optimistic
+  // write flips the cache synchronously, the second derived the OPPOSITE
+  // target, putting {true} then {false} on the wire where out-of-order
+  // resolution ends public. The ref guard is synchronous; the second
+  // same-tick activation must be a complete no-op.
+  it('ignores a second activation in the same commit window (before React re-renders)', async () => {
+    updateList.mockResolvedValue({ ...list, isShared: true })
+    renderPanel()
+
+    const toggle = screen.getByRole('switch', { name: 'Enable public link' })
+    // Two synchronous clicks - no await between them, so React has not
+    // committed the pending/disabled state when the second one lands.
+    fireEvent.click(toggle)
+    fireEvent.click(toggle)
+
+    await waitFor(() => expect(updateList).toHaveBeenCalledTimes(1))
+    expect(updateList).toHaveBeenCalledWith('list-1', { isShared: true })
+  })
+
+  it('re-arms after the flip settles', async () => {
+    updateList.mockResolvedValue({ ...list, isShared: true })
+    renderPanel()
+
+    const toggle = screen.getByRole('switch', { name: 'Enable public link' })
+    fireEvent.click(toggle)
+    await waitFor(() => expect(updateList).toHaveBeenCalledTimes(1))
+    // Settled (mock resolved): the ref guard must have cleared so the
+    // next activation goes through.
+    await waitFor(() => expect(toggle).not.toBeDisabled())
+    fireEvent.click(toggle)
+    await waitFor(() => expect(updateList).toHaveBeenCalledTimes(2))
   })
 
   it('derives the PATCH target from the live cache row, not the rendered prop', async () => {
