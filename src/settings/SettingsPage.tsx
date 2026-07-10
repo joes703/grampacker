@@ -1,6 +1,8 @@
+import { Download } from 'lucide-react'
 import { TABLE_RADIUS, TABLE_SURFACE_BG, TABLE_STRONG_DIVIDER } from '../components/flat-table-styles'
 import { useDocumentTitle } from '../lib/use-document-title'
 import PasskeySection from './PasskeySection'
+import DownloadAllData from './DownloadAllData'
 
 // Account/settings hub, reached from the header cog. Restores the old
 // app's /settings surface: the new app has no home page (/ redirects to
@@ -31,6 +33,14 @@ export default function SettingsPage() {
           Section. Sections added by later slices use the titled form. */}
       <Section>
         <PasskeySection />
+      </Section>
+
+      <Section
+        title="Download all data"
+        subtitle="A zip with your gear library and one CSV per list"
+        icon={<Download size={16} />}
+      >
+        <DownloadAllData />
       </Section>
     </div>
   )
