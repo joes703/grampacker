@@ -24,8 +24,12 @@ import type { List } from '../lib/types'
 // value that failed strict validation). Fall back to fetchLists +
 // max-by-updatedAt.
 //
-// Empty path: zero lists (a brand-new verified account). Falls through to
-// /lists, which renders the lists empty state.
+// Empty/error path: zero lists (a brand-new verified account) OR a failed
+// fetch. Either way there is no list to land on, so fall through to
+// /lists, which owns the lists query and its own loading/empty/error UI.
+// Crucially we only return null while the fetch is GENUINELY in flight
+// (isLoading) - returning null on error too would leave `/` permanently
+// blank with no way forward.
 //
 // Hooks-order note: the cached-path check is read at render top, but
 // useQuery is called unconditionally with `enabled: !cachedPath` so the
@@ -42,17 +46,22 @@ export default function RootRedirect() {
 
   if (cachedPath) return <Navigate to={cachedPath} replace />
 
-  if (isLoading || !lists) return null
+  // Hold the render only while the fetch is in flight. On error the query
+  // settles with isLoading=false and lists=undefined, so we fall through
+  // to the /lists redirect below rather than rendering a blank page.
+  if (isLoading) return null
 
   // fetchLists orders by sortOrder then name; pick the most-recently-
   // touched list by max-by-updatedAt. localeCompare on the ISO-8601
   // timestamps is lexicographic-equivalent to chronological. Single-pass
   // reduce avoids the spread+sort allocation; intent reads as "find max"
-  // rather than "sort everything and take first."
-  const mostRecent = lists.reduce<List | null>(
-    (best, l) => (best === null || l.updatedAt.localeCompare(best.updatedAt) > 0 ? l : best),
-    null,
-  )
+  // rather than "sort everything and take first." `lists` is undefined on
+  // a failed fetch, so optional-chain to null and let /lists surface it.
+  const mostRecent =
+    lists?.reduce<List | null>(
+      (best, l) => (best === null || l.updatedAt.localeCompare(best.updatedAt) > 0 ? l : best),
+      null,
+    ) ?? null
   if (!mostRecent) return <Navigate to="/lists" replace />
   return <Navigate to={`/lists/${mostRecent.id}`} replace />
 }

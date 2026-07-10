@@ -100,4 +100,15 @@ describe('RootRedirect', () => {
 
     await waitFor(() => expect(screen.getByText('lists-page')).toBeInTheDocument())
   })
+
+  it('failed fetch (no cache) -> redirects to /lists instead of a blank page', async () => {
+    vi.mocked(readLastListPath).mockReturnValue(null)
+    vi.mocked(fetchLists).mockRejectedValue(new Error('network down'))
+    renderAt()
+
+    // The regression this pins: on error `lists` is undefined and
+    // isLoading is false, so RootRedirect must fall through to /lists
+    // (which owns the error UI) rather than returning null forever.
+    await waitFor(() => expect(screen.getByText('lists-page')).toBeInTheDocument())
+  })
 })
