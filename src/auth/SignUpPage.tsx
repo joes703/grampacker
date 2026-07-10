@@ -15,8 +15,15 @@ export default function SignUpPage() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (pending) return
-    setPending(true)
     setError(null)
+    // The form is noValidate, so the input's minLength is advisory only -
+    // enforce the shared minimum here so a short password is caught before
+    // the round-trip (the server rejects it too).
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
+      return
+    }
+    setPending(true)
     try {
       // Verification links land on /sign-in: on success the new session
       // redirects to home; on a bad link the error banner offers a resend.

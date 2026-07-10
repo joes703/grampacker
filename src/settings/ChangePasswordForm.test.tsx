@@ -112,4 +112,31 @@ describe('ChangePasswordForm submission', () => {
       await screen.findByText('Too many attempts. Please wait a bit and try again.'),
     ).toBeInTheDocument()
   })
+
+  it('ignores a second submit while one is in flight (no duplicate call)', async () => {
+    // Never resolves: the first submit stays pending for the whole test.
+    changePassword.mockReturnValue(new Promise<never>(() => {}))
+    render(<ChangePasswordForm />)
+    fill({ current: 'oldpassword', next: 'newpassword1', confirm: 'newpassword1' })
+    // Two synchronous submits (Enter can fire even with the button disabled);
+    // the synchronous ref guard must block the second.
+    submit()
+    submit()
+    await waitFor(() => expect(changePassword).toHaveBeenCalledTimes(1))
+  })
+
+  it('recovers from a thrown rejection instead of sticking on "Updating..."', async () => {
+    changePassword.mockRejectedValue(new Error('network exploded'))
+    render(<ChangePasswordForm />)
+    fill({ current: 'oldpassword', next: 'newpassword1', confirm: 'newpassword1' })
+    submit()
+
+    expect(
+      await screen.findByText("Couldn't change your password. Please try again."),
+    ).toBeInTheDocument()
+    // busy reset in finally: the button is back to its idle label and enabled
+    // (fields are still filled on error), so the form is usable again.
+    const button = screen.getByRole('button', { name: 'Change password' })
+    expect(button).not.toBeDisabled()
+  })
 })

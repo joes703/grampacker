@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { MIN_PASSWORD_LENGTH } from '../../shared/auth'
 import { authClient } from '../lib/auth-client'
 import { authErrorMessage } from '../auth/auth-errors'
@@ -18,9 +18,15 @@ export default function ChangePasswordForm() {
   const [confirm, setConfirm] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  // Synchronous in-flight guard: the button is disabled while busy, but a
+  // form is still submittable via Enter/programmatic submit, and busy is
+  // render-derived (lags a synchronous double-submit). This ref blocks the
+  // second submit in the same tick so changePassword can't fire twice.
+  const submitting = useRef(false)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    if (submitting.current) return
     setMsg(null)
     if (!currentPassword) {
       setMsg({ kind: 'err', text: 'Enter your current password.' })
@@ -42,33 +48,41 @@ export default function ChangePasswordForm() {
       return
     }
 
+    submitting.current = true
     setBusy(true)
-    const { error } = await authClient.changePassword({
-      currentPassword,
-      newPassword: password,
-      // Signs out every OTHER session; this one is refreshed and kept.
-      revokeOtherSessions: true,
-    })
-    setBusy(false)
-
-    if (error) {
-      // A wrong current password comes back as INVALID_PASSWORD; name it
-      // precisely. Everything else defers to the shared mapper (429 copy +
-      // server message fallback).
-      setMsg({
-        kind: 'err',
-        text:
-          error.code === 'INVALID_PASSWORD'
-            ? 'Current password is incorrect.'
-            : authErrorMessage(error, "Couldn't change your password. Please try again."),
+    try {
+      const { error } = await authClient.changePassword({
+        currentPassword,
+        newPassword: password,
+        // Signs out every OTHER session; this one is refreshed and kept.
+        revokeOtherSessions: true,
       })
-      return
+      if (error) {
+        // A wrong current password comes back as INVALID_PASSWORD; name it
+        // precisely. Everything else defers to the shared mapper (429 copy
+        // + server message fallback).
+        setMsg({
+          kind: 'err',
+          text:
+            error.code === 'INVALID_PASSWORD'
+              ? 'Current password is incorrect.'
+              : authErrorMessage(error, "Couldn't change your password. Please try again."),
+        })
+        return
+      }
+      setCurrentPassword('')
+      setPassword('')
+      setConfirm('')
+      setMsg({ kind: 'ok', text: 'Password updated.' })
+    } catch {
+      // better-auth normally returns { error } rather than rejecting, but a
+      // thrown client/network failure must not strand the form in
+      // "Updating..." - surface a generic message and reset below.
+      setMsg({ kind: 'err', text: "Couldn't change your password. Please try again." })
+    } finally {
+      setBusy(false)
+      submitting.current = false
     }
-
-    setCurrentPassword('')
-    setPassword('')
-    setConfirm('')
-    setMsg({ kind: 'ok', text: 'Password updated.' })
   }
 
   return (

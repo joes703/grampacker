@@ -38,8 +38,15 @@ export default function ResetPasswordPage() {
     // The no-token case renders the "Link expired" branch and never this
     // form; the guard re-narrows for TypeScript inside the closure.
     if (pending || !token) return
-    setPending(true)
     setError(null)
+    // The form is noValidate, so the input's minLength is advisory only -
+    // enforce the shared minimum here so a short password is caught before
+    // the round-trip (the server rejects it too).
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
+      return
+    }
+    setPending(true)
     try {
       const { error: resetError } = await authClient.resetPassword({
         newPassword: password,
