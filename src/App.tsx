@@ -7,7 +7,8 @@ import SignInPage from './auth/SignInPage'
 import SignUpPage from './auth/SignUpPage'
 import ForgotPasswordPage from './auth/ForgotPasswordPage'
 import ResetPasswordPage from './auth/ResetPasswordPage'
-import HomePage from './home/HomePage'
+import RootRedirect from './layout/RootRedirect'
+import SettingsPage from './settings/SettingsPage'
 import AppShell from './layout/AppShell'
 import GearLibraryPage from './gear/GearLibraryPage'
 import ListsPage from './lists/ListsPage'
@@ -47,10 +48,11 @@ function RequireSession({ children }: { children: ReactNode }) {
 }
 
 // Signed-in users have no business on the auth forms; this is also what
-// lands a freshly verified user on home (the verification link's
-// callbackURL is /sign-in and verifying creates a session). Renders the
-// form during the initial session fetch (anon is the common case) rather
-// than unmounting it on every refetch.
+// lands a freshly verified user at `/` (the verification link's
+// callbackURL is /sign-in and verifying creates a session), where
+// RootRedirect sends them on to their most-recent list. Renders the form
+// during the initial session fetch (anon is the common case) rather than
+// unmounting it on every refetch.
 function RedirectIfSession({ children }: { children: ReactNode }) {
   const { data: session } = authClient.useSession()
   if (session) return <Navigate to="/" replace />
@@ -72,8 +74,11 @@ export default function App() {
               </RequireSession>
             }
           >
-            <Route path="/" element={<HomePage />} />
+            {/* No home page: `/` redirects to the most-recent list (or the
+                lists empty state for a brand-new account). See RootRedirect. */}
+            <Route path="/" element={<RootRedirect />} />
             <Route path="/gear" element={<GearLibraryPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             {/* Lists pages stay eager (no React.lazy): they are post-login
                 primary destinations, so a lazy chunk hop on every nav would
                 cost more than it saves. Code splitting happens at the leaf

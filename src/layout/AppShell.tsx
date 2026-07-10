@@ -1,4 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router'
+import { Settings } from 'lucide-react'
 import { authClient } from '../lib/auth-client'
 import { readLastListPath } from '../lib/last-list-path'
 import { MobilePrimaryNavProvider } from './mobile-primary-nav-context'
@@ -69,6 +70,20 @@ export default function AppShell() {
             </div>
             <div className="flex items-center gap-3">
               <span className="hidden sm:inline text-sm text-gray-600">{session?.user.email}</span>
+              {/* Settings lives in the header (all screen sizes): the mobile
+                  bottom bar is a fixed 4 slots (Gear/Lists/Add/Options)
+                  with no room for it, so the cog is the single entry point
+                  to /settings on every viewport. */}
+              <Link
+                to="/settings"
+                aria-label="Settings"
+                aria-current={pathname === '/settings' ? 'page' : undefined}
+                className={`rounded-md p-1.5 hover:bg-gray-50 ${
+                  pathname === '/settings' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Settings size={18} />
+              </Link>
               <button
                 type="button"
                 onClick={() => void signOut()}
