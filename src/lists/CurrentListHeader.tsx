@@ -20,7 +20,7 @@ type Props = {
 // useCurrentListActions hook so the /lists card kebab, the in-list List
 // options panel, and this pencil all route through the same handler.
 export default function CurrentListHeader({ list }: Props) {
-  const { renameMut, draftMut } = useCurrentListActions()
+  const { renameMut, draftToggle } = useCurrentListActions()
   const [editing, setEditing] = useState(false)
   // Counter the pencil increments to push InlineTitle into edit mode. The
   // counter idiom matches LibraryPanel's focusSearchTrigger.
@@ -39,7 +39,7 @@ export default function CurrentListHeader({ list }: Props) {
         {!editing && list.isDraft && (
           <button
             type="button"
-            onClick={() => draftMut.mutate(list)}
+            onClick={() => draftToggle.toggle(list)}
             aria-label="Draft. Mark list complete"
             title="Mark list complete"
             className="shrink-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"

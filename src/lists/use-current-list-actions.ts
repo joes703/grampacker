@@ -17,6 +17,7 @@ import {
 import { listItemsToCsv, downloadCsv } from '../lib/csv'
 import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { showToast } from '../lib/toast'
+import { useListFlagToggle } from './use-list-flag-toggle'
 import type { Category, List } from '../lib/types'
 
 // createListMut variables: the name plus the append sortOrder snapshotted at
@@ -58,19 +59,12 @@ export function useCurrentListActions() {
   // only - never locks editing. Optimistic on the ['lists'] cache; isDraft
   // does not affect list_items, so no ['list-items'] invalidation. Shared by
   // CurrentListHeader (the clickable "Mark list complete" pill) and
-  // ListSettingsPanel (the Draft toggle).
-  const draftMut = useMutation({
-    mutationFn: (target: List) => updateList(target.id, { isDraft: !target.isDraft }),
-    ...makeOptimisticUpdate<List, List>({
-      qc,
-      queryKey: queryKeys.lists(),
-      id: (target) => target.id,
-      apply: (item) => ({
-        ...item,
-        isDraft: !item.isDraft,
-        updatedAt: new Date().toISOString(),
-      }),
-    }),
+  // ListSettingsPanel (the Draft toggle). Routed through useListFlagToggle
+  // so rapid double-toggles can't send a stale or duplicate PATCH (see the
+  // hook for the two races the naive relative flip carries).
+  const draftToggle = useListFlagToggle({
+    read: (target) => target.isDraft,
+    patch: (isDraft) => ({ isDraft }),
   })
 
   // Create a new list. The append sortOrder is captured ONCE per invocation -
@@ -167,5 +161,5 @@ export function useCurrentListActions() {
     [qc],
   )
 
-  return { createListMut, submitCreateList, renameMut, duplicateMut, deleteListMut, exportCsv, exportingListId, draftMut }
+  return { createListMut, submitCreateList, renameMut, duplicateMut, deleteListMut, exportCsv, exportingListId, draftToggle }
 }
