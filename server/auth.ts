@@ -3,6 +3,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { passkey } from '@better-auth/passkey'
 import { createDb } from './db'
 import { createEmailSender } from './email'
+import { MIN_PASSWORD_LENGTH } from '../shared/auth'
 
 // WebAuthn relying-party id. Must be the serving origin's registrable
 // domain (or a suffix of it): grampacker.app for the apex and any
@@ -31,6 +32,9 @@ export function authOptions(env: Env) {
     basePath: '/api/auth',
     emailAndPassword: {
       enabled: true,
+      // The real password-length gate. Client forms mirror this constant so
+      // their validation can't drift from what the server accepts.
+      minPasswordLength: MIN_PASSWORD_LENGTH,
       // Public signup: unverified accounts must be inert (decision 13.2).
       requireEmailVerification: true,
       sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) => {
