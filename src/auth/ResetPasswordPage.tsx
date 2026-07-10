@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router'
+import { MIN_PASSWORD_LENGTH } from '../../shared/auth'
 import { authClient } from '../lib/auth-client'
 import { authErrorMessage } from './auth-errors'
 import { AuthCard, ErrorText, FIELD, LABEL, PRIMARY_BUTTON, TEXT_LINK } from './auth-ui'
@@ -87,10 +88,10 @@ export default function ResetPasswordPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="new-password"
-            minLength={8}
+            minLength={MIN_PASSWORD_LENGTH}
             required
           />
-          <p className="mt-1 text-xs text-gray-500">At least 8 characters.</p>
+          <p className="mt-1 text-xs text-gray-500">At least {MIN_PASSWORD_LENGTH} characters.</p>
         </div>
         <ErrorText message={error} />
         <button type="submit" className={PRIMARY_BUTTON} disabled={pending}>

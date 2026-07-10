@@ -1,8 +1,10 @@
-import { Download } from 'lucide-react'
+import { Download, KeyRound } from 'lucide-react'
+import { authClient } from '../lib/auth-client'
 import { TABLE_RADIUS, TABLE_SURFACE_BG, TABLE_STRONG_DIVIDER } from '../components/flat-table-styles'
 import { useDocumentTitle } from '../lib/use-document-title'
 import PasskeySection from './PasskeySection'
 import DownloadAllData from './DownloadAllData'
+import ChangePasswordForm from './ChangePasswordForm'
 
 // Account/settings hub, reached from the header cog. Restores the old
 // app's /settings surface: the new app has no home page (/ redirects to
@@ -23,10 +25,15 @@ import DownloadAllData from './DownloadAllData'
 //   - Default nutrition targets ..... returns with the food slice
 export default function SettingsPage() {
   useDocumentTitle('Settings')
+  const { data: session } = authClient.useSession()
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <h1 className="text-xl font-semibold text-gray-900">Settings</h1>
+
+      <Section title="Account" subtitle={session?.user.email} icon={<KeyRound size={16} />}>
+        <ChangePasswordForm />
+      </Section>
 
       {/* PasskeySection brings its own heading + description, so it sits in
           a bare card (Section with no title row) rather than a titled
