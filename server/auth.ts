@@ -3,6 +3,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { passkey } from '@better-auth/passkey'
 import { createDb } from './db'
 import { createEmailSender } from './email'
+import { createUsersRepo } from './repos/users'
 import { MIN_PASSWORD_LENGTH } from '../shared/auth'
 
 // WebAuthn relying-party id. Must be the serving origin's registrable
@@ -74,6 +75,34 @@ export function authOptions(env: Env) {
         update: {
           before: async (user: Record<string, unknown>) =>
             'name' in user ? { data: { ...user, name: '' } } : undefined,
+        },
+      },
+    },
+    user: {
+      // Settings > Danger zone. Password-gated account deletion: the client
+      // always sends the current password, which better-auth verifies
+      // (INVALID_PASSWORD on mismatch) before deleting. No
+      // sendDeleteAccountVerification, so the delete is immediate rather than
+      // an emailed-token round-trip. internalAdapter.deleteUser only removes
+      // session/account/user rows directly; the user's actual data (passkey,
+      // categories, gear_items, lists, list_items) is wiped by the ON DELETE
+      // CASCADE from user.id (see server/db/app-schema.ts). That total-erasure
+      // cascade is covered by server/auth-delete-user.test.ts.
+      deleteUser: {
+        enabled: true,
+        // The cascade cannot reach better-auth's `verification` table (keyed by
+        // identifier/value, not user_id), so auth artifacts that embed the user
+        // id (password-reset tokens, passkey challenges) would survive the
+        // delete. Purge them in BEFORE-delete, not after: better-auth runs this
+        // hook after it verifies the password but BEFORE the irreversible
+        // internalAdapter.deleteUser (see update-user.mjs delete-user route).
+        // So a purge failure aborts the whole delete and the user simply
+        // retries - rather than committing the account deletion and THEN failing
+        // the response with artifacts still present (the afterDelete hazard).
+        // Deleting these rows ahead of the user row is safe: verification has no
+        // FK to user, so there is no ordering constraint.
+        beforeDelete: async (deleted: { id: string }) => {
+          await createUsersRepo(db, deleted.id).purgeVerificationArtifacts()
         },
       },
     },

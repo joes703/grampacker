@@ -1,7 +1,10 @@
 import { env } from 'cloudflare:test'
 import app from '../index'
 
-const PASSWORD = 'a-long-test-password-123'
+// Exported so tests that re-verify the password (e.g. delete-account) drive
+// the exact credential these helpers signed the user up with.
+export const TEST_PASSWORD = 'a-long-test-password-123'
+const PASSWORD = TEST_PASSWORD
 const ORIGIN = 'http://localhost:5173'
 
 // Each helper-created user signs up from its own synthetic IP. Without
