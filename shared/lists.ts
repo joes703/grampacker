@@ -1,15 +1,11 @@
 import { z } from 'zod'
 import { gearItemResponseSchema, importCategoryRefSchema } from './gear'
 
-// DTO contracts for /api/lists and /api/lists/:id/items. Same rules as
-// shared/gear.ts: response schemas are the allowlist (user_id never
-// leaves the server), the DB re-enforces every bound below, and PATCH
-// semantics are absent = unchanged, null = clear.
-//
-// isShared is deliberately NOT in the update schema: the column exists
-// (schema day one, so no table rebuild later) but flipping it is the
-// public-share slice's job - exposing the toggle before /r/:slug exists
-// would let a list be "shared" with no page to see it on.
+// DTO contracts for /api/lists, /api/lists/:id/items and the public
+// /api/shares/:slug read. Same rules as shared/gear.ts: response schemas
+// are the allowlist (user_id never leaves the server), the DB re-enforces
+// every bound below, and PATCH semantics are absent = unchanged, null =
+// clear.
 
 // Caps mirror the 0004 triggers and CHECKs; the DB is authoritative.
 export const LIST_CAP = 100
@@ -53,6 +49,11 @@ export const updateListRequestSchema = z
   .object({
     name: listNameSchema.optional(),
     description: descriptionSchema.nullable().optional(),
+    // Flipping isShared is the whole share/unshare mechanism: the slug is
+    // minted at creation and never changes, so the toggle alone controls
+    // whether /api/shares/:slug answers. To break a leaked link, duplicate
+    // the list (fresh slug) and unshare the original.
+    isShared: z.boolean().optional(),
     groupWorn: z.boolean().optional(),
     readyChecksEnabled: z.boolean().optional(),
     isDraft: z.boolean().optional(),
@@ -157,6 +158,64 @@ export const updateListItemRequestSchema = z
     message: 'an item cannot be both worn and consumable',
   })
 export type UpdateListItemRequest = z.infer<typeof updateListItemRequestSchema>
+
+// ---------------------------------------------------------- public share read
+
+// GET /api/shares/:slug response - the ONE anonymous read surface. These
+// schemas ARE the public allowlist (the port of the old app's curated
+// public_gear_* views; see SECURITY.md "Public read paths" there): strictly
+// narrower than the authed DTOs above, and every widening is a security
+// decision, not a convenience. Deliberately absent, and asserted absent in
+// server/routes/shares.test.ts:
+//   - list:  id, slug, userId, isShared, sortOrder, readyChecksEnabled,
+//            timestamps (the client already knows the slug; the list id is
+//            an internal join handle the single-endpoint shape no longer
+//            needs to expose)
+//   - items: userId, listId, isPacked / isReady (the owner's private
+//            packing workflow), timestamps
+//   - gear:  id, status, cost, purchaseDate, sortOrder, timestamps
+//            (private inventory metadata; gearItemId on the item row is
+//            the row identity)
+//   - categories: userId, timestamps
+// groupWorn and isDraft are deliberately public: the share view honors the
+// owner's worn-grouping preference and shows the work-in-progress banner.
+export const publicListSchema = z.object({
+  name: z.string(),
+  description: z.string().nullable(),
+  groupWorn: z.boolean(),
+  isDraft: z.boolean(),
+})
+export type PublicList = z.infer<typeof publicListSchema>
+
+export const publicCategorySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  sortOrder: z.number().int(),
+})
+export type PublicCategory = z.infer<typeof publicCategorySchema>
+
+export const publicListItemSchema = z.object({
+  id: z.string(),
+  gearItemId: z.string(),
+  quantity: z.number().int(),
+  isWorn: z.boolean(),
+  isConsumable: z.boolean(),
+  sortOrder: z.number().int(),
+  gear: z.object({
+    name: z.string(),
+    description: z.string().nullable(),
+    weightGrams: z.number().int(),
+    categoryId: z.string().nullable(),
+  }),
+})
+export type PublicListItem = z.infer<typeof publicListItemSchema>
+
+export const sharedListResponseSchema = z.object({
+  list: publicListSchema,
+  categories: z.array(publicCategorySchema),
+  items: z.array(publicListItemSchema),
+})
+export type SharedListResponse = z.infer<typeof sharedListResponseSchema>
 
 // ------------------------------------------------------------------ reorders
 

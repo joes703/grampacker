@@ -16,7 +16,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { CopyPlus, Download, MoreVertical, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { CopyPlus, Download, Globe, MoreVertical, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import {
   queryKeys,
   fetchLists,
@@ -48,10 +48,7 @@ import {
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import ListsEmptyState from './ListsEmptyState'
 import MobileListsActionBar from './MobileListsActionBar'
-
-// TRANSPLANT NOTE (share): the old kebab also had a Share... item opening
-// a PrivacyPanel modal (the share-list dialog state). That returns with
-// the public-share slice.
+import PrivacyPanel from './PrivacyPanel'
 
 // Single discriminated union for every transient dialog/modal/inline-form on
 // this page. Mirrors the pattern in ListDetailPage / GearLibraryPage — `type`
@@ -60,6 +57,7 @@ type DialogState =
   | { type: 'creating'; draft: string }
   | { type: 'renaming'; list: List; draft: string }
   | { type: 'confirm-delete'; list: List }
+  | { type: 'share-list'; list: List }
   | { type: 'import-preview'; rows: ListCsvRow[]; filename: string }
   | { type: 'import-error'; message: string }
 
@@ -208,6 +206,7 @@ export default function ListsPage() {
             setDialog(null)
           },
           onCancelRename: () => setDialog(null),
+          onShare: () => setDialog({ type: 'share-list', list }),
           onExport: () => void exportCsv(list),
           exporting: exportingListId === list.id,
           onDuplicate: () => duplicateMut.mutate(list),
@@ -253,6 +252,7 @@ export default function ListsPage() {
                       onStartRename={() => {}}
                       onSubmitRename={() => {}}
                       onCancelRename={() => {}}
+                      onShare={() => {}}
                       onExport={() => {}}
                       exporting={false}
                       onDuplicate={() => {}}
@@ -263,6 +263,37 @@ export default function ListsPage() {
               ) : null}
             </DragOverlay>
           </DndContext>
+        )
+      })()}
+
+      {/* Share dialog. A plain Modal wrapping PrivacyPanel — the kebab
+          menu would fight a nested popover for outside-click dismissal,
+          and PrivacyPanel doesn't need anchoring to make sense. The
+          dialog reads the live List from the lists cache (rather than
+          the snapshot the kebab captured) so the public-link toggle
+          re-renders the panel's URL row optimistically after every flip. */}
+      {dialog?.type === 'share-list' && (() => {
+        const live = lists.find((l) => l.id === dialog.list.id) ?? dialog.list
+        return (
+          <Modal open onClose={() => setDialog(null)} title="Share list" className="w-full max-w-sm">
+            <div className="p-5">
+              <div className="mb-3 flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-base font-semibold text-gray-900">Share list</h2>
+                  <p className="mt-0.5 truncate text-xs text-gray-500">{live.name}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDialog(null)}
+                  aria-label="Close"
+                  className="rounded p-1 text-gray-400 hover:text-gray-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <PrivacyPanel list={live} />
+            </div>
+          </Modal>
         )
       })()}
 
@@ -400,6 +431,7 @@ type ListRowProps = {
   onStartRename: () => void
   onSubmitRename: () => void
   onCancelRename: () => void
+  onShare: () => void
   onExport: () => void
   exporting: boolean
   onDuplicate: () => void
@@ -447,6 +479,7 @@ function ListRow({
   onStartRename,
   onSubmitRename,
   onCancelRename,
+  onShare,
   onExport,
   exporting,
   onDuplicate,
@@ -555,8 +588,9 @@ function ListRow({
           >
             Rename
           </RowMenuItem>
-          {/* TRANSPLANT NOTE (share): the Share... row returns with the
-              public-share slice. */}
+          <RowMenuItem icon={<Globe size={13} />} onClick={() => { close(); onShare() }}>
+            Share…
+          </RowMenuItem>
           <RowMenuItem
             icon={<Download size={13} />}
             onClick={() => { close(); onExport() }}

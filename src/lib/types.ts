@@ -7,3 +7,12 @@ export type { GearItem } from './queries/gear'
 export type { GearStatus } from '../../shared/gear'
 export type { List } from './queries/lists'
 export type { ListItemWithGear } from './queries/list-items'
+// Public /r/:slug wire shapes - the strict share-view allowlist. SharePage
+// maps these narrow types to the wide ones above at ONE boundary point so
+// the shared rendering components keep unified signatures.
+export type {
+  PublicCategory,
+  PublicList,
+  PublicListItem,
+  SharedListResponse,
+} from '../../shared/lists'
