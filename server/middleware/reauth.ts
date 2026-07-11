@@ -5,8 +5,8 @@ import { createDb } from '../db'
 import { createFreshAuthRepo } from '../repos/fresh-auth'
 
 // POST /api/me/reauth - exchange the account password for a short-lived
-// fresh-auth proof bound to THIS session. Passkey mutations require it
-// (server/middleware/fresh-auth.ts).
+// fresh-auth proof bound to THIS session. Adding or removing a passkey
+// requires it (server/middleware/fresh-auth.ts).
 //
 // Lives in middleware rather than routes/me.ts on purpose: verifying a
 // password is a better-auth operation, and the import boundary

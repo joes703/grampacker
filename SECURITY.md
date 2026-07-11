@@ -95,11 +95,21 @@ Four independent layers, tested in `server/routes/me.test.ts`:
 
 ## Fresh auth (sudo mode)
 
-Every passkey MUTATION - add, remove, rename - requires a short-lived,
-server-verified proof that the user re-entered their password, on top of
-a valid session. Without it, a hijacked session alone could plant a
-permanent credential and hold access indefinitely, which is a strictly
-worse outcome than stealing a session that eventually expires.
+ADDING or REMOVING a passkey requires a short-lived, server-verified
+proof that the user re-entered their password, on top of a valid session.
+
+What that is protecting, concretely: sessions are 30-day sliding, so a
+stolen one expires. A passkey planted with a stolen session does not - it
+OUTLIVES the session and SURVIVES a password change, which makes it
+permanent, silent access. Password change and account deletion already
+demand the password; registering a new credential was the last remaining
+path to persistence that did not. Removal is gated on the same proof so
+an attacker cannot strip the owner's other sign-in methods.
+
+RENAME is deliberately NOT gated. It changes a display label; it cannot
+add, remove, or alter a credential, so a prompt there is friction with no
+threat behind it. ("Every passkey mutation requires fresh auth" is a
+tidier sentence, but tidiness is not a threat model.)
 
 - `POST /api/me/reauth` verifies the password against the `credential`
   account's stored hash (the same check better-auth's internal
@@ -109,9 +119,9 @@ worse outcome than stealing a session that eventually expires.
   authorize a mutation in another.
 - `server/middleware/fresh-auth.ts` enforces it BEFORE better-auth sees
   the request. Gated: `generate-register-options`, `verify-registration`,
-  `delete-passkey`, `update-passkey`. Not gated: the anonymous passkey
-  SIGN-IN ceremony (gating it would make passkey sign-in impossible) and
-  `list-user-passkeys` (a read).
+  `delete-passkey`. Not gated: `update-passkey` (a label), the anonymous
+  passkey SIGN-IN ceremony (gating it would make passkey sign-in
+  impossible), and `list-user-passkeys` (a read).
 - Lifecycle: sign-out and account deletion drop the proof via ON DELETE
   CASCADE from `session`; password reset does too
   (`revokeSessionsOnPasswordReset` deletes the sessions). A password

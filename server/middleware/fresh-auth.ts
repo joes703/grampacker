@@ -3,31 +3,40 @@ import { createAuth } from '../auth'
 import { createDb } from '../db'
 import { createFreshAuthRepo } from '../repos/fresh-auth'
 
-// The passkey endpoints that MUTATE the user's credential set. Gated on a
+// The passkey endpoints that change WHICH CREDENTIALS CAN SIGN IN. Gated on a
 // fresh-auth proof (POST /api/me/reauth) before better-auth ever sees the
-// request - a valid session alone is not enough to plant or remove a
-// credential.
+// request.
 //
-// The full plugin surface is seven endpoints; these are the four that manage
-// passkeys. Deliberately NOT gated:
+// What this is actually protecting: sessions are 30-day sliding, and a passkey
+// planted by a session thief OUTLIVES the session and SURVIVES a password
+// change - it is permanent, silent access. Password change and account
+// deletion already demand the password; adding a credential was the last
+// remaining path to persistence that did not. Removal is gated on the same
+// proof so an attacker cannot strip the owner's other sign-in methods.
+//
+// Deliberately NOT gated:
+//   - passkey/update-passkey
+//     RENAME. It is a display label. It cannot add, remove, or alter a
+//     credential, so a gate here buys exactly nothing and costs a password
+//     prompt. (It WAS gated briefly, on the theory that a rule without
+//     exceptions is easier to audit. That is an aesthetic argument dressed up
+//     as a security one - friction with no threat behind it.)
 //   - passkey/generate-authenticate-options, passkey/verify-authentication
-//     These are the SIGN-IN ceremony. The caller is anonymous by definition,
-//     so requiring a session - let alone a password - would make passkey
-//     sign-in impossible. (They do write rows: a challenge, and the signature
-//     counter. That is the sign-in flow working, not a management action.)
+//     The SIGN-IN ceremony. The caller is anonymous by definition, so
+//     requiring a session - let alone a password - would make passkey sign-in
+//     impossible. (They do write rows: a challenge, and the signature counter.
+//     That is sign-in working, not a management action.)
 //   - passkey/list-user-passkeys
 //     A read. Session is sufficient.
 //
-// Both register endpoints are gated, not just the first. Gating only
-// generate-register-options would still be sound today (verify-registration
-// needs a challenge that only generate mints), but it would leave the
-// invariant resting on a plugin internal. The rule stays flat and auditable:
-// every passkey mutation requires fresh auth.
+// Both REGISTER endpoints are gated, not just the first. Gating only
+// generate-register-options would be sound today (verify-registration needs a
+// challenge only generate mints), but it would rest the invariant on a plugin
+// internal.
 const GATED_PATHS = new Set([
   '/api/auth/passkey/generate-register-options',
   '/api/auth/passkey/verify-registration',
   '/api/auth/passkey/delete-passkey',
-  '/api/auth/passkey/update-passkey',
 ])
 
 export const requireFreshAuth = createMiddleware<{ Bindings: Env }>(
