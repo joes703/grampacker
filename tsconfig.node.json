@@ -8,5 +8,13 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "drizzle.config.ts"]
+  // Every root-level config file must be listed, or `npm run build` goes green
+  // while the config TypeScript rots. vitest.setup.ts is NOT here: it pulls in
+  // jest-dom matchers and needs the DOM lib, so it belongs to the app project.
+  "include": [
+    "vite.config.ts",
+    "vitest.config.ts",
+    "vitest.workers.config.ts",
+    "drizzle.config.ts"
+  ]
 }

@@ -18,5 +18,7 @@
     "isolatedModules": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "shared"]
+  // vitest.setup.ts lives here rather than in the node project: it imports
+  // jest-dom's matchers, which need the DOM lib.
+  "include": ["src", "shared", "vitest.setup.ts"]
 }
