@@ -3,19 +3,20 @@ import type { Db } from '../db'
 import { account, freshAuth } from '../db/schema'
 
 // "Sudo mode": a short-lived, server-verified proof that the user re-entered
-// their password. Passkey MUTATIONS require it
-// (server/middleware/fresh-auth.ts); passkey reads and the passkey sign-in
-// ceremony do not.
+// their password. ADDING or REMOVING a passkey requires it
+// (server/middleware/fresh-auth.ts); renaming, reading, and the passkey
+// sign-in ceremony do not.
 //
 // Why it exists: better-auth's passkey endpoints accept a valid session and
-// nothing more, so a hijacked session could silently plant a permanent
-// credential and keep access forever. Password change and account deletion
-// already demand the password; this closes the same hole for passkeys - the
-// gap SECURITY.md declared blocking for the settings slice.
+// nothing more. Sessions are 30-day sliding, so a stolen one expires - but a
+// passkey planted with it OUTLIVES the session and SURVIVES a password
+// change, which is permanent, silent access. Password change and account
+// deletion already demand the password; registering a credential was the last
+// path to persistence that did not.
 //
-// 10 minutes: long enough to add a passkey, rename it, and delete an old one
-// without retyping; short enough that a stolen session is unlikely to land
-// inside someone else's window.
+// 10 minutes: long enough to add a passkey and delete an old one without
+// retyping; short enough that a stolen session is unlikely to land inside
+// someone else's window.
 export const FRESH_AUTH_TTL_MS = 10 * 60 * 1000
 
 // Lifecycle. The proof is keyed by SESSION, so a proof earned in one session

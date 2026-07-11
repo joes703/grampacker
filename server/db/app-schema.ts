@@ -32,9 +32,9 @@ export const rateLimits = sqliteTable('rate_limits', {
 })
 
 // Short-lived proof that the user re-entered their password ("sudo mode").
-// Every passkey MUTATION requires an unexpired row here; passkey reads and
-// the sign-in ceremony do not. Without this, a hijacked session alone could
-// plant a permanent credential (SECURITY.md).
+// ADDING or REMOVING a passkey requires an unexpired row here; renames, reads
+// and the sign-in ceremony do not. Without this, a hijacked session alone
+// could plant a permanent credential (SECURITY.md).
 //
 // Keyed by SESSION, not user: a proof minted in one session must not
 // silently authorize another. The FK cascades, which is what makes the

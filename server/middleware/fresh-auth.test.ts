@@ -6,14 +6,14 @@ import { CSRF_HEADER } from '../../shared/api'
 
 const ORIGIN = 'http://localhost:5173'
 
-// The four passkey endpoints that MUTATE the credential set. If the plugin
-// ever grows a fifth, this list and server/middleware/fresh-auth.ts must both
-// learn about it - an ungated mutation endpoint makes the gate theater.
+// The passkey endpoints that CHANGE WHICH CREDENTIALS CAN SIGN IN. If the
+// plugin ever grows another, this list and server/middleware/fresh-auth.ts must
+// both learn about it - an ungated one makes the gate theater. (update-passkey
+// is NOT here: it renames a label, and is covered by the ungated test below.)
 const GATED = [
   '/api/auth/passkey/generate-register-options',
   '/api/auth/passkey/verify-registration',
   '/api/auth/passkey/delete-passkey',
-  '/api/auth/passkey/update-passkey',
 ]
 
 async function post(
@@ -58,7 +58,7 @@ async function grantProof(cookie: string, ip = '10.60.0.2'): Promise<void> {
 }
 
 describe('passkey fresh-auth gate', () => {
-  it('403s every passkey mutation when the session has no proof', async () => {
+  it('403s every credential change when the session has no proof', async () => {
     // The whole point: a valid session is NOT enough to plant or drop a
     // credential. Before this gate, each of these went straight through.
     const { cookie } = await signUpVerifiedUser('fa-gate@test.dev', '')
@@ -97,6 +97,16 @@ describe('passkey fresh-auth gate', () => {
     // are empty, so a 4xx from IT is expected) - what matters is that it is
     // no longer OUR 403.
     const res = await post(GATED[0]!, cookie)
+    expect(res.status).not.toBe(403)
+  })
+
+  it('leaves RENAME ungated for a session with no proof', async () => {
+    // A rename changes a display label. It cannot add, remove, or alter a
+    // credential, so the gate has nothing to protect here and would only cost
+    // the owner a password prompt. better-auth will reject this empty body on
+    // its own terms - what matters is that OUR gate did not.
+    const { cookie } = await signUpVerifiedUser('fa-rename@test.dev', '')
+    const res = await post('/api/auth/passkey/update-passkey', cookie, '10.60.0.6')
     expect(res.status).not.toBe(403)
   })
 

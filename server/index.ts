@@ -59,10 +59,11 @@ api.use('/auth/*', authRateLimit)
 api.use('/me/reauth', authRateLimit)
 api.post('/me/reauth', reauth)
 
-// Every passkey MUTATION requires a fresh-auth proof (POST /api/me/reauth),
-// checked before better-auth sees the request. A valid session alone must
-// not be enough to plant a permanent credential. Reads and the passkey
-// sign-in ceremony are untouched - see the middleware for the exact set.
+// ADDING or REMOVING a passkey requires a fresh-auth proof (POST
+// /api/me/reauth), checked before better-auth sees the request. A valid
+// session alone must not be enough to plant a permanent credential. Renames,
+// reads and the passkey sign-in ceremony are untouched - see the middleware
+// for the exact set and why.
 api.use('/auth/passkey/*', requireFreshAuth)
 
 // A password change leaves the current session alive, so its fresh-auth

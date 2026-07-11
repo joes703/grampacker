@@ -13,21 +13,19 @@ type PasskeyRow = {
   createdAt?: Date | string
 }
 
-// Every passkey mutation needs a server-side fresh-auth proof: a valid
-// session alone must not be able to plant a credential (SECURITY.md). The
-// server grants a 10-minute window from POST /api/me/reauth; we assume a
-// SHORTER one so we prompt before the server would reject, rather than after.
-// This clock is only an optimization - the server is the authority, and a 403
-// REAUTH_REQUIRED at any point re-opens the prompt.
+// Adding and removing a passkey need a server-side fresh-auth proof: a valid
+// session alone must not be able to plant a credential that would outlive it
+// (server/middleware/fresh-auth.ts). Renaming does not - it is a display
+// label. The server grants a 10-minute window from POST /api/me/reauth; we
+// assume a SHORTER one so we prompt before the server would reject, rather
+// than after. This clock is only an optimization - the server is the
+// authority, and a 403 REAUTH_REQUIRED at any point re-opens the prompt.
 const FRESH_AUTH_ASSUMED_MS = 9 * 60 * 1000
 
-// A passkey mutation, captured so it can be replayed after the user confirms
-// their password. Actions are data, not closures, so the retry path is
-// obvious and testable.
-type PasskeyAction =
-  | { kind: 'add' }
-  | { kind: 'delete'; id: string }
-  | { kind: 'rename'; id: string; name: string }
+// A gated passkey mutation, captured so it can be replayed after the user
+// confirms their password. Actions are data, not closures, so the retry path
+// is obvious and testable.
+type PasskeyAction = { kind: 'add' } | { kind: 'delete'; id: string }
 
 // The gate's refusal (server/middleware/fresh-auth.ts). better-auth's client
 // error type does not declare `code`, though it passes the field through, so
@@ -130,22 +128,16 @@ export default function PasskeySection() {
   // refuses for want of a fresh-auth proof, so the caller can prompt and
   // replay - every other outcome is terminal and already reported.
   async function runAction(action: PasskeyAction): Promise<'done' | 'reauth'> {
-    const failure = {
-      add: "Couldn't add the passkey.",
-      delete: "Couldn't remove the passkey.",
-      rename: "Couldn't rename the passkey.",
-    }[action.kind]
+    const failure =
+      action.kind === 'add'
+        ? "Couldn't add the passkey."
+        : "Couldn't remove the passkey."
 
     try {
       const result =
         action.kind === 'add'
           ? await authClient.passkey.addPasskey()
-          : action.kind === 'delete'
-            ? await authClient.passkey.deletePasskey({ id: action.id })
-            : await authClient.passkey.updatePasskey({
-                id: action.id,
-                name: action.name,
-              })
+          : await authClient.passkey.deletePasskey({ id: action.id })
 
       if (result?.error) {
         // The gate rejected us: the window lapsed mid-flight, or another tab
@@ -169,9 +161,9 @@ export default function PasskeySection() {
     }
   }
 
-  // The single door for every passkey mutation. If we believe the fresh-auth
-  // window is open, go straight through; otherwise park the action and ask
-  // for the password first.
+  // The single door for the GATED mutations (add, remove). If we believe the
+  // fresh-auth window is open, go straight through; otherwise park the action
+  // and ask for the password first. Rename does not come through here.
   async function requestAction(action: PasskeyAction) {
     if (busy || pending) return
     setError(null)
@@ -244,13 +236,25 @@ export default function PasskeySection() {
       submittingRename.current = false
       return
     }
+    setBusy(true)
+    setError(null)
     try {
-      // Rename is a mutation like any other, so it goes through the same gate.
-      // The rule is deliberately flat - "every passkey mutation requires fresh
-      // auth" - because a rule with exceptions is one nobody can audit.
-      await requestAction({ kind: 'rename', id: row.id, name: trimmed })
+      // No fresh-auth prompt here, unlike add and remove: a rename changes the
+      // label on a credential, never which credentials can sign in.
+      const result = await authClient.passkey.updatePasskey({
+        id: row.id,
+        name: trimmed,
+      })
+      if (result?.error) {
+        setError(authErrorMessage(result.error, "Couldn't rename the passkey."))
+        return
+      }
+      setReloadKey((k) => k + 1)
+    } catch {
+      setError("Couldn't rename the passkey.")
     } finally {
       submittingRename.current = false
+      setBusy(false)
     }
   }
 
@@ -336,16 +340,14 @@ export default function PasskeySection() {
         <ErrorText message={error} />
         {pending ? (
           // Confirming the password mints a short-lived server-side proof;
-          // the parked mutation replays as soon as it lands. Adding, removing
-          // and renaming all pass through here - a hijacked session must not
-          // be able to plant a credential on its own.
+          // the parked mutation replays as soon as it lands. Only adding and
+          // removing pass through here - a hijacked session must not be able
+          // to plant or strip a credential on its own.
           <form onSubmit={(e) => void submitReauth(e)} className="space-y-2">
             <p className="text-sm text-gray-600">
               {pending.kind === 'add'
                 ? 'Confirm your password to add a passkey.'
-                : pending.kind === 'delete'
-                  ? 'Confirm your password to remove this passkey.'
-                  : 'Confirm your password to rename this passkey.'}
+                : 'Confirm your password to remove this passkey.'}
             </p>
             <FormLabel htmlFor="reauth-password">Password</FormLabel>
             <input

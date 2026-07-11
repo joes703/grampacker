@@ -44,8 +44,8 @@ function listResolves(rows: unknown[]) {
   h.listUserPasskeys.mockResolvedValue({ data: rows, error: null })
 }
 
-// Every passkey mutation now opens a password prompt first (the fresh-auth
-// gate). Walk through it.
+// Adding and removing a passkey open a password prompt first (the fresh-auth
+// gate). Walk through it. Renaming does NOT - see the rename suite.
 async function confirmPassword(password = 'correct horse battery') {
   fireEvent.change(await screen.findByLabelText('Password'), {
     target: { value: password },
@@ -101,9 +101,6 @@ describe('PasskeySection rename', () => {
     const input = screen.getByLabelText('Passkey name')
     fireEvent.change(input, { target: { value: '  travel key  ' } })
     fireEvent.keyDown(input, { key: 'Enter' })
-    // The rename is parked behind the fresh-auth gate, not sent.
-    expect(h.updatePasskey).not.toHaveBeenCalled()
-    await confirmPassword()
     await waitFor(() =>
       expect(h.updatePasskey).toHaveBeenCalledWith({
         id: 'pk1',
@@ -112,6 +109,10 @@ describe('PasskeySection rename', () => {
     )
     // reloadKey bump: initial load + post-rename refetch.
     await waitFor(() => expect(h.listUserPasskeys).toHaveBeenCalledTimes(2))
+    // A rename is not gated: no password prompt, no fresh-auth proof minted.
+    // Renaming changes a label, never which credentials can sign in.
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument()
+    expect(h.apiFetchVoid).not.toHaveBeenCalled()
   })
 
   it('submits once when Enter and blur are delivered against the same render', async () => {
@@ -130,7 +131,6 @@ describe('PasskeySection rename', () => {
       fireEvent.keyDown(input, { key: 'Enter' })
       fireEvent.blur(input)
     })
-    await confirmPassword()
     await waitFor(() =>
       expect(h.updatePasskey).toHaveBeenCalledWith({
         id: 'pk1',
@@ -138,10 +138,8 @@ describe('PasskeySection rename', () => {
       }),
     )
     await waitFor(() => expect(h.listUserPasskeys).toHaveBeenCalledTimes(2))
-    // The point of the test: the double delivery still yields ONE write. The
-    // gate must not turn it into two parked actions either.
+    // The point of the test: the double delivery still yields ONE write.
     expect(h.updatePasskey).toHaveBeenCalledTimes(1)
-    expect(h.apiFetchVoid).toHaveBeenCalledTimes(1)
   })
 
   it('treats submitting the prefilled display label as a cancel, not a write', async () => {
@@ -179,7 +177,6 @@ describe('PasskeySection rename', () => {
     const input = screen.getByLabelText('Passkey name')
     fireEvent.change(input, { target: { value: 'new name' } })
     fireEvent.keyDown(input, { key: 'Enter' })
-    await confirmPassword()
     expect(await screen.findByText('nope')).toBeInTheDocument()
     expect(screen.getByText('work laptop')).toBeInTheDocument()
     // No refetch on failure: only the initial load.

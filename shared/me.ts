@@ -16,7 +16,7 @@ export const meResponseSchema = z.object({
 export type MeResponse = z.infer<typeof meResponseSchema>
 
 // POST /api/me/reauth - exchange the account password for a short-lived
-// fresh-auth proof ("sudo mode"), which passkey mutations require.
+// fresh-auth proof ("sudo mode"), which adding or removing a passkey requires.
 //
 // Deliberately NOT reusing the sign-up password rules (MIN_PASSWORD_LENGTH):
 // this verifies an EXISTING password, and applying today's length floor to it
