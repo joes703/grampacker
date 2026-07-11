@@ -128,6 +128,43 @@ Early candidates to discuss during review (not decided):
 
 Docs-as-we-go: STACK.md at phase 0; SECURITY.md during phase 1; SPEC.md annotations at each phase; ADMIN_RUNBOOK.md replacement at phase 7.
 
+### Status (2026-07-11)
+
+Phases shipped out of the planned order: the cutover happened early (phase 7's
+deploy step ran at the end of phase 1), and settings (6) shipped before food
+planning (5) because the app needed to be usable for a real trip first.
+
+| Phase | State |
+|---|---|
+| 0 Scaffold | done |
+| 1 Auth | done (cutover to grampacker.app 2026-07-08) |
+| 2 Gear library | done, incl. CSV import/export |
+| 3 Lists + pack mode | done |
+| 4 Public sharing | done (`/r/:slug`, read-only) |
+| **5 Food planning** | **NOT STARTED - the last feature** |
+| 6 Settings/account | done (passkeys, takeout, change password, delete account) |
+| 7 Teardown | Pages site deleted 2026-07-11; Supabase project deletion is the last step |
+
+Teardown notes (2026-07-11):
+
+- The old Cloudflare Pages project (`grampacker`, `grampacker.pages.dev`) is
+  DELETED, along with all 783 of its deployments. No DNS records pointed at it,
+  so the dangling-CNAME / subdomain-takeover risk never materialized.
+- GOTCHA worth keeping: `wrangler pages project delete` refuses with "too many
+  deployments", and `wrangler pages deployment list` silently shows only the
+  FIRST PAGE (it reported 25 when the true count was 783) with no pagination
+  flag, so the documented shell workaround misses everything past page 1. The
+  only reliable route is the REST API, paginating
+  `/pages/projects/<p>/deployments` yourself and deleting each with `?force=true`.
+  The active production deployment cannot be deleted while the project exists; it
+  goes when the project does.
+- The old repo (`joes703/grampacker-supabase`) is ARCHIVED, not deleted. It stays
+  read-only and MUST survive: it is the only remaining source for the unported
+  food-planning feature (22 of its 59 migrations are food-related, plus the UI
+  and its pgTAP tests). The hosted Supabase project is not needed to read it, and
+  `supabase start` can reproduce a local Postgres from those migrations if a
+  running reference is ever wanted.
+
 ## 10. Deployment
 
 - Primary: Cloudflare Workers (free tier), single Worker, D1, `wrangler deploy`.
