@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import { authClient } from '../lib/auth-client'
-import { authErrorMessage } from './auth-errors'
-import { AuthCard, ErrorText, PRIMARY_BUTTON, TEXT_LINK } from './auth-ui'
+import { AuthCard, PRIMARY_BUTTON, TEXT_LINK } from './auth-ui'
 import { MAGIC_LINK_PATH } from '../../shared/auth'
 
 // Where a magic-link email lands (shared/auth.ts MAGIC_LINK_PATH).
@@ -26,8 +24,10 @@ export default function MagicLinkPage() {
   // causes - reading searchParams on each render would hand back null after it.
   const [token] = useState(() => searchParams.get('token'))
 
+  // No error state: every failure is a 302 the browser follows to
+  // /sign-in?error=..., which SignInPage renders. There is nothing left to show
+  // here, and keeping a dead error branch would just imply otherwise.
   const [pending, setPending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   // A session-minting token has no business sitting in the address bar. Left
   // there it lands in browser history, in a screen share, and - because
@@ -44,29 +44,33 @@ export default function MagicLinkPage() {
     }
   }, [searchParams, navigate])
 
-  async function handleVerify() {
+  // A real browser NAVIGATION, not a fetch. That is a correctness requirement,
+  // not a style choice.
+  //
+  // better-auth's verify endpoint answers with a 302 on EVERY failure path
+  // (invalid, reused, expired -> `throw ctx.redirect(errorCallbackURL)`), and it
+  // only returns JSON on success when no callbackURL is given. Calling it with
+  // fetch means fetch silently FOLLOWS that redirect, lands on a 200 HTML page,
+  // and hands back no error at all - so the client concludes the sign-in worked,
+  // navigates home with no session, and the user is bounced back to /sign-in with
+  // nothing explaining why. The most common failure in the whole app (a link that
+  // was already used, or is more than 5 minutes old) would be a silent loop.
+  //
+  // Navigating lets the redirect do its job: on success the 302 carries the
+  // session cookie and lands on '/', and on failure it lands on
+  // /sign-in?error=... which SignInPage already renders as a banner.
+  //
+  // Scanner safety is unaffected: this runs on a CLICK. The emailed URL still
+  // points at this page, which has no side effects on load.
+  function handleVerify() {
     if (pending || !token) return
     setPending(true)
-    setError(null)
-    try {
-      const { error: verifyError } = await authClient.magicLink.verify({
-        query: { token },
-      })
-      if (verifyError) {
-        setError(
-          authErrorMessage(
-            verifyError,
-            'That link is invalid, already used, or expired. Request a new one.',
-          ),
-        )
-        return
-      }
-      void navigate('/')
-    } catch {
-      setError('That link is invalid, already used, or expired. Request a new one.')
-    } finally {
-      setPending(false)
-    }
+    const query = new URLSearchParams({
+      token,
+      callbackURL: '/',
+      errorCallbackURL: '/sign-in',
+    })
+    window.location.assign(`/api/auth/magic-link/verify?${query.toString()}`)
   }
 
   if (!token) {
@@ -90,11 +94,10 @@ export default function MagicLinkPage() {
         Confirm it is you to finish signing in on this device.
       </p>
       <div className="mt-4 space-y-3">
-        <ErrorText message={error} />
         <button
           type="button"
           className={PRIMARY_BUTTON}
-          onClick={() => void handleVerify()}
+          onClick={handleVerify}
           disabled={pending}
         >
           {pending ? 'Signing in...' : 'Sign in'}
