@@ -1,32 +1,36 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
-
-const h = vi.hoisted(() => ({
-  verify: vi.fn<(input: { query: { token: string } }) => Promise<{ error: unknown }>>(),
-}))
-
-vi.mock('../lib/auth-client', () => ({
-  authClient: { magicLink: { verify: h.verify } },
-}))
 
 import MagicLinkPage from './MagicLinkPage'
 import { MAGIC_LINK_PATH } from '../../shared/auth'
 
-afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
+const originalLocation = window.location
+let assignMock: ReturnType<typeof vi.fn>
+
+beforeEach(() => {
+  assignMock = vi.fn()
+  // The page only ever reads window.location.assign; a minimal stand-in avoids
+  // jsdom's "Not implemented: navigation" noise and lets us assert the target.
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    value: { assign: assignMock },
+  })
 })
 
-// Renders the page at a real route so useSearchParams and the replace-navigation
-// behave as they do in the app. The sibling routes exist so a successful verify
-// (which navigates to '/') has somewhere to land and can be asserted on.
+afterEach(() => {
+  cleanup()
+  Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
+})
+
+// Renders at a real route so useSearchParams and the replace-navigation behave as
+// they do in the app.
 //
 // The URL under MemoryRouter lives in the ROUTER, not in window.location - which
-// jsdom leaves at '/' no matter what the router does. Asserting the scrub against
-// window.location would therefore pass without the scrub existing at all, so the
-// current router URL is surfaced into the DOM and asserted from there.
+// jsdom leaves at '/' whatever the router does. Asserting the token scrub against
+// window.location would pass even with no scrub at all, so the router's current
+// URL is surfaced into the DOM and asserted from there.
 function LocationProbe() {
   const { pathname, search } = useLocation()
   return <div data-testid="location">{`${pathname}${search}`}</div>
@@ -39,7 +43,6 @@ function renderAt(url: string) {
     <MemoryRouter initialEntries={[url]}>
       <Routes>
         <Route path={MAGIC_LINK_PATH} element={<MagicLinkPage />} />
-        <Route path="/" element={<div>home</div>} />
         <Route path="/sign-in" element={<div>sign-in</div>} />
       </Routes>
       <LocationProbe />
@@ -49,82 +52,88 @@ function renderAt(url: string) {
 
 const signInButton = () => screen.getByRole('button', { name: 'Sign in' })
 
-describe('MagicLinkPage token handling', () => {
+// The endpoint the click must navigate to, with the redirect targets that make
+// better-auth's 302s land somewhere the SPA can handle.
+function expectedVerifyUrl(token: string) {
+  const query = new URLSearchParams({
+    token,
+    callbackURL: '/',
+    errorCallbackURL: '/sign-in',
+  })
+  return `/api/auth/magic-link/verify?${query.toString()}`
+}
+
+describe('MagicLinkPage', () => {
   it('does NOT verify on load - only on a real click', async () => {
-    // The reason this page exists. better-auth's verify endpoint is a
+    // The reason this page exists at all. better-auth's verify endpoint is a
     // side-effecting GET that consumes the single-use token, so if the email
     // linked straight at it, a mail scanner or link previewer fetching the URL
-    // would burn the token before the human - who is by definition already
-    // locked out - ever clicked. A bot that loads THIS page consumes nothing.
+    // would burn the token before the human - who is by definition already locked
+    // out - ever clicked. Loading THIS page consumes nothing.
     renderAt(`${MAGIC_LINK_PATH}?token=abc123`)
 
     // Give any stray effect a chance to fire before asserting the negative.
     await waitFor(() => expect(signInButton()).toBeInTheDocument())
-    expect(h.verify).not.toHaveBeenCalled()
+    expect(assignMock).not.toHaveBeenCalled()
   })
 
-  it('verifies with the token from the URL when clicked, then goes home', async () => {
-    h.verify.mockResolvedValue({ error: null })
+  it('NAVIGATES to verify on click (never fetches it)', async () => {
+    // A fetch would silently FOLLOW better-auth's error 302 to a 200 HTML page and
+    // report no error, so a spent or expired link would look like a success: the
+    // app would route home with no session and bounce the user back to /sign-in
+    // with nothing explaining why. A real navigation lets the 302 do its job -
+    // success carries the session cookie to '/', failure lands on
+    // /sign-in?error=... which SignInPage renders as a banner.
     renderAt(`${MAGIC_LINK_PATH}?token=abc123`)
 
     fireEvent.click(signInButton())
 
     await waitFor(() =>
-      expect(h.verify).toHaveBeenCalledWith({ query: { token: 'abc123' } }),
+      expect(assignMock).toHaveBeenCalledWith(expectedVerifyUrl('abc123')),
     )
-    expect(await screen.findByText('home')).toBeInTheDocument()
   })
 
   it('scrubs the token out of the URL but still holds it for the click', async () => {
     // A session-minting token must not linger in the address bar, in history, or
     // in the Referer of same-origin requests. It is scrubbed on mount - and the
-    // click must STILL work afterwards, which is the part that would break if the
-    // token were re-read from the URL on every render instead of captured once.
-    h.verify.mockResolvedValue({ error: null })
+    // click must STILL work afterwards, which is the half that would break if the
+    // token were re-read from the URL on each render instead of captured once.
     renderAt(`${MAGIC_LINK_PATH}?token=abc123`)
 
-    // The token was in the URL on arrival...
-    expect(h.verify).not.toHaveBeenCalled()
-    // ...and is gone from it once the scrub lands (a replace-navigation).
     await waitFor(() => expect(currentUrl()).toBe(MAGIC_LINK_PATH))
     expect(currentUrl()).not.toContain('abc123')
 
-    // And the click STILL works: the token is held in state, not re-read from a
-    // URL that no longer has it. This is the half that would silently break.
     fireEvent.click(signInButton())
     await waitFor(() =>
-      expect(h.verify).toHaveBeenCalledWith({ query: { token: 'abc123' } }),
+      expect(assignMock).toHaveBeenCalledWith(expectedVerifyUrl('abc123')),
     )
+  })
+
+  it('percent-encodes the token rather than splicing it into the URL raw', async () => {
+    // The token comes from a URL an attacker can hand the user. Concatenating it
+    // unescaped would let '&' or '#' in it forge extra query parameters - notably
+    // a callbackURL of the attacker's choosing.
+    renderAt(`${MAGIC_LINK_PATH}?token=a%26callbackURL%3Dhttps%3A%2F%2Fevil.test`)
+
+    fireEvent.click(signInButton())
+
+    await waitFor(() => expect(assignMock).toHaveBeenCalledTimes(1))
+    const target = assignMock.mock.calls[0]?.[0] as string
+    // Exactly one callbackURL, and it is ours.
+    expect(target.match(/callbackURL=/g)).toHaveLength(1)
+    expect(target).not.toContain('evil.test/')
+    expect(new URLSearchParams(target.split('?')[1]).get('callbackURL')).toBe('/')
   })
 
   it('shows the broken-link card when there is no token at all', () => {
     renderAt(MAGIC_LINK_PATH)
     expect(screen.getByRole('heading', { name: 'Broken link' })).toBeInTheDocument()
-    expect(h.verify).not.toHaveBeenCalled()
+    expect(assignMock).not.toHaveBeenCalled()
   })
 
-  it('reports a spent or expired link without pretending it worked', async () => {
-    // Single-use and 5 minutes. This is the common case for a link that was
-    // clicked twice, or clicked late - the user must be told to get a new one
-    // rather than being dropped on a page that looks signed-in but is not.
-    h.verify.mockResolvedValue({ error: { status: 400, code: 'INVALID_TOKEN' } })
-    renderAt(`${MAGIC_LINK_PATH}?token=spent`)
-
-    fireEvent.click(signInButton())
-
-    expect(await screen.findByText(/invalid, already used, or expired/i)).toBeInTheDocument()
-    expect(screen.queryByText('home')).not.toBeInTheDocument()
-  })
-
-  it('does not fire a second verify while one is in flight', async () => {
-    // The token is single-use: a double-click that sent two verifies would race,
-    // and the loser would report "invalid link" to a user who just signed in.
-    let resolve: (v: { error: unknown }) => void = () => {}
-    h.verify.mockReturnValue(
-      new Promise<{ error: unknown }>((r) => {
-        resolve = r
-      }),
-    )
+  it('does not fire a second navigation while one is in flight', async () => {
+    // The token is single-use. Two verifies would race, and the loser would report
+    // an invalid link to a user who just signed in.
     renderAt(`${MAGIC_LINK_PATH}?token=abc123`)
 
     // Hold the element: its label flips to "Signing in..." on the first click, so
@@ -134,8 +143,6 @@ describe('MagicLinkPage token handling', () => {
     fireEvent.click(button)
     fireEvent.click(button)
 
-    expect(h.verify).toHaveBeenCalledTimes(1)
-    resolve({ error: null })
-    expect(await screen.findByText('home')).toBeInTheDocument()
+    expect(assignMock).toHaveBeenCalledTimes(1)
   })
 })
