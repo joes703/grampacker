@@ -87,9 +87,19 @@ export function writeLastListPath(path: string): void {
   }
 }
 
+/**
+ * Forget the stored last-visited list. Removes BOTH the current key and
+ * the legacy `lastListId` key: a clear must leave nothing behind that a
+ * later read could migrate back into the new key. This is also the
+ * account-deletion teardown for last-list state - the hard reload on
+ * delete clears in-memory caches but not localStorage, so an account's
+ * list UUID would otherwise survive into the next session in this browser
+ * (RootRedirect would then redirect a future account into the dead list).
+ */
 export function clearLastListPath(): void {
   try {
     localStorage.removeItem(KEY)
+    localStorage.removeItem(LEGACY_KEY)
   } catch {
     // ignore
   }

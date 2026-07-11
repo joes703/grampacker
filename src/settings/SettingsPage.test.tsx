@@ -2,24 +2,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 
-// PasskeySection, DownloadAllData, and ChangePasswordForm each do their own
-// I/O (authClient.passkey.*, a QueryClient fetch, authClient.changePassword);
-// stub them so this test covers the settings shell, not their plumbing
-// (each has its own test file). authClient.useSession backs the Account
-// subtitle.
+// PasskeySection, DownloadAllData, ChangePasswordForm, and
+// DeleteAccountSection each do their own I/O (authClient.passkey.*, a
+// QueryClient fetch, authClient.changePassword/deleteUser, useNavigate); stub
+// them so this test covers the settings shell, not their plumbing (each has
+// its own test file). authClient.useSession backs the Account subtitle.
 vi.mock('../lib/auth-client', () => ({
   authClient: { useSession: () => ({ data: { user: { email: 'joe@example.com' } } }) },
 }))
 vi.mock('./PasskeySection', () => ({ default: () => <div>passkey-section</div> }))
 vi.mock('./DownloadAllData', () => ({ default: () => <div>download-all-data</div> }))
 vi.mock('./ChangePasswordForm', () => ({ default: () => <div>change-password-form</div> }))
+vi.mock('./DeleteAccountSection', () => ({ default: () => <div>delete-account-section</div> }))
 
 import SettingsPage from './SettingsPage'
 
 afterEach(() => cleanup())
 
 describe('SettingsPage', () => {
-  it('renders the Settings shell with Account, Passkeys, and Download sections', () => {
+  it('renders the Settings shell with Account, Passkeys, Download, and Delete sections', () => {
     render(<SettingsPage />)
     expect(screen.getByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument()
 
@@ -34,5 +35,9 @@ describe('SettingsPage', () => {
       screen.getByRole('heading', { name: 'Download all data', level: 2 }),
     ).toBeInTheDocument()
     expect(screen.getByText('download-all-data')).toBeInTheDocument()
+
+    // Danger zone: delete account.
+    expect(screen.getByRole('heading', { name: 'Delete account', level: 2 })).toBeInTheDocument()
+    expect(screen.getByText('delete-account-section')).toBeInTheDocument()
   })
 })

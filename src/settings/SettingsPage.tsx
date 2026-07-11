@@ -1,10 +1,11 @@
-import { Download, KeyRound } from 'lucide-react'
+import { Download, KeyRound, TriangleAlert } from 'lucide-react'
 import { authClient } from '../lib/auth-client'
 import { TABLE_RADIUS, TABLE_SURFACE_BG, TABLE_STRONG_DIVIDER } from '../components/flat-table-styles'
 import { useDocumentTitle } from '../lib/use-document-title'
 import PasskeySection from './PasskeySection'
 import DownloadAllData from './DownloadAllData'
 import ChangePasswordForm from './ChangePasswordForm'
+import DeleteAccountSection from './DeleteAccountSection'
 
 // Account/settings hub, reached from the header cog. Restores the old
 // app's /settings surface: the new app has no home page (/ redirects to
@@ -48,6 +49,15 @@ export default function SettingsPage() {
         icon={<Download size={16} />}
       >
         <DownloadAllData />
+      </Section>
+
+      <Section
+        title="Delete account"
+        subtitle="Permanently remove your account and all of its data"
+        icon={<TriangleAlert size={16} />}
+        danger
+      >
+        <DeleteAccountSection />
       </Section>
     </div>
   )

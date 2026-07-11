@@ -45,6 +45,33 @@ api.use('*', csrfProtection)
 // the allowlist in the middleware.
 api.use('/auth/*', authRateLimit)
 
+// Password gate for account deletion. better-auth's delete-user treats a
+// session younger than freshAge (default 24h) as re-authenticated and will
+// delete WITHOUT a password in that window, so the built-in endpoint alone does
+// not enforce the password the Settings UI collects - a walk-up attacker or any
+// same-origin script could POST an empty body and delete the account. Require a
+// non-empty password here, before better-auth sees the request; better-auth
+// then verifies it (INVALID_PASSWORD on mismatch). Read a CLONE so the original
+// request body stays intact for the handler below. Scoped to this one route, so
+// no global freshAge change (which also gates /list-sessions and passkey ops).
+api.use('/auth/delete-user', async (c, next) => {
+  if (c.req.method === 'POST') {
+    let password: unknown
+    try {
+      password = ((await c.req.raw.clone().json()) as { password?: unknown }).password
+    } catch {
+      password = undefined
+    }
+    if (typeof password !== 'string' || password.length === 0) {
+      return c.json(
+        { code: 'PASSWORD_REQUIRED', message: 'Your password is required to delete your account.' },
+        400,
+      )
+    }
+  }
+  return next()
+})
+
 // better-auth owns everything under /api/auth/* (sign-up, sign-in, sign-out,
 // verification, reset, passkeys). It does its own origin checking against
 // baseURL.

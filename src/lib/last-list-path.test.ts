@@ -93,6 +93,17 @@ describe('clearLastListPath', () => {
     clearLastListPath()
     expect(localStorage.getItem('lastListPath')).toBeNull()
   })
+
+  it('also removes the legacy lastListId key', () => {
+    // Account-deletion teardown depends on this: a clear that left the legacy
+    // key behind would let a deleted account's list id migrate back into the
+    // new key on the next read. Clear must scrub both.
+    localStorage.setItem('lastListPath', BARE_PATH)
+    localStorage.setItem('lastListId', UUID)
+    clearLastListPath()
+    expect(localStorage.getItem('lastListPath')).toBeNull()
+    expect(localStorage.getItem('lastListId')).toBeNull()
+  })
 })
 
 describe('getListIdFromListPath', () => {
