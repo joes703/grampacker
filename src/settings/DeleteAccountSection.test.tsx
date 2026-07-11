@@ -20,6 +20,7 @@ const originalLocation = window.location
 let assignMock: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
+  localStorage.clear()
   assignMock = vi.fn()
   // The component only ever reads window.location.assign; a minimal stand-in is
   // enough and avoids jsdom's "Not implemented: navigation" noise.
@@ -89,6 +90,40 @@ describe('DeleteAccountSection submission', () => {
     // A full-document navigation (not a client route change) is the teardown:
     // it discards the entire in-memory cache and session atom.
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith('/sign-in'))
+  })
+
+  it('clears the persisted last-list path (both keys) before reloading on success', async () => {
+    // The hard reload discards in-memory state but NOT localStorage, so the
+    // deleted account's list UUID would otherwise survive into the next
+    // session in this browser. Seed both the current and legacy keys and prove
+    // the delete teardown removes both.
+    const uuid = '11111111-1111-4111-8111-111111111111'
+    localStorage.setItem('lastListPath', `/lists/${uuid}`)
+    localStorage.setItem('lastListId', uuid)
+    deleteUser.mockResolvedValue({ error: null })
+    render(<DeleteAccountSection />)
+    fill({ password: 'a-long-test-password-123', confirm: 'delete' })
+    submit()
+
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith('/sign-in'))
+    expect(localStorage.getItem('lastListPath')).toBeNull()
+    expect(localStorage.getItem('lastListId')).toBeNull()
+  })
+
+  it('clears the persisted last-list path (both keys) on the indeterminate throw path', async () => {
+    // A throw means the irreversible delete may already have landed, so the
+    // catch biases to the same teardown - it must scrub localStorage too.
+    const uuid = '22222222-2222-4222-8222-222222222222'
+    localStorage.setItem('lastListPath', `/lists/${uuid}`)
+    localStorage.setItem('lastListId', uuid)
+    deleteUser.mockRejectedValue(new Error('network exploded'))
+    render(<DeleteAccountSection />)
+    fill({ password: 'a-long-test-password-123', confirm: 'delete' })
+    submit()
+
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith('/sign-in'))
+    expect(localStorage.getItem('lastListPath')).toBeNull()
+    expect(localStorage.getItem('lastListId')).toBeNull()
   })
 
   it('maps INVALID_PASSWORD to a precise message and does NOT reload', async () => {

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { authClient } from '../lib/auth-client'
 import { authErrorMessage } from '../auth/auth-errors'
+import { clearLastListPath } from '../lib/last-list-path'
 import FormLabel from '../components/FormLabel'
 
 // The word the user must type to arm the delete. Compared case-insensitively
@@ -26,6 +27,17 @@ export default function DeleteAccountSection() {
 
   const confirmed = confirm.trim().toLowerCase() === CONFIRM_WORD
   const canSubmit = password.length > 0 && confirmed
+
+  // Teardown for a deleted account. The hard reload discards in-memory
+  // React Query cache and the session atom, but NOT localStorage, so clear
+  // the persisted last-list path (both current and legacy keys) first -
+  // otherwise the deleted account's list UUID survives into the next
+  // session in this browser and RootRedirect would send a future account
+  // into the dead list route. Then hard-navigate to a fresh /sign-in.
+  function tearDownAndRedirect() {
+    clearLastListPath()
+    window.location.assign('/sign-in')
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -58,7 +70,7 @@ export default function DeleteAccountSection() {
       // tab. /sign-in then loads fresh with no session. Other open tabs fall
       // over on their next request (a 401), which is an acceptable trade for not
       // hand-maintaining a cross-tab teardown channel.
-      window.location.assign('/sign-in')
+      tearDownAndRedirect()
     } catch {
       // Indeterminate: better-auth normally returns { error } rather than
       // rejecting, so a throw here means a client/network failure - and the
@@ -67,7 +79,7 @@ export default function DeleteAccountSection() {
       // this is correct, and if it somehow survived, the reload just re-lands
       // through the normal session redirect - either way no stale account data
       // is left in memory.
-      window.location.assign('/sign-in')
+      tearDownAndRedirect()
     } finally {
       // Reached only when we did not navigate (the { error } return above); a
       // successful reload tears this component down before this runs.
