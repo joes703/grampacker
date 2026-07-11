@@ -23,19 +23,38 @@ const AUTH_DEFAULT: Rule = { scope: 'auth', limit: 30, windowMs: 10 * MINUTE }
 
 // Requesting a magic link is the single most abusable endpoint in a passwordless
 // app: it is unauthenticated, it sends mail on demand, and the mail it sends
-// grants a session. Two different abuses, and IP-keying only stops one:
+// grants a session. THREE distinct abuses, and no single key stops all three -
+// hence three buckets, all charged on every send, any one of which can 429.
 //
-//   1. Burn the Resend quota (100/day, free tier) or spray links at many
-//      addresses -> keyed by IP.
-//   2. Bomb ONE victim's inbox, or farm tokens for one account, from rotating
-//      IPs -> keyed by EMAIL. An IP-only limiter walks straight around this,
-//      which is why the per-email bucket exists.
+//   1. Drain the mail quota (Resend free tier is 100/day, and the quota is
+//      GLOBAL) -> keyed by nothing at all. A per-IP cap cannot do this job: at
+//      N/day per IP, a handful of IPs still exhausts the provider. This is the
+//      only bucket that actually guards the quota.
+//   2. Spray links at many addresses from one host -> keyed by IP.
+//   3. Bomb ONE victim's inbox, or farm tokens for one account, from rotating
+//      IPs -> keyed by EMAIL. An IP-keyed limiter walks straight around this
+//      (every request looks like a first-time caller), which is why the
+//      per-address bucket exists and why it is the one that must not be relaxed.
 //
-// Both are consumed on every send; either one can 429.
+// The GLOBAL bucket is the availability trade-off in this file, so it is written
+// down rather than discovered later: if it is ever drained, NOBODY can recover an
+// account until the window rolls. That is not worse than the mail quota running
+// out - the effect is identical - but it fails earlier and on purpose, and the
+// IP/address caps in front of it are what make draining it expensive. It is also
+// charged LAST (see the middleware), so requests the other two already refused
+// never spend it: it tracks mail actually sent, not attempts.
+//
+// Raise MAGIC_LINK_SEND_GLOBAL when the mail provider's quota rises (e.g. SES).
+// It is the one number tied to the provider.
+const MAGIC_LINK_SEND_GLOBAL: Rule = {
+  scope: 'magic-send-global',
+  limit: 90, // headroom under Resend's free 100/day
+  windowMs: DAY,
+}
 const MAGIC_LINK_SEND_IP: Rule = {
   scope: 'magic-send-ip',
-  limit: 20,
-  windowMs: DAY,
+  limit: 10,
+  windowMs: 10 * MINUTE,
 }
 const MAGIC_LINK_SEND_EMAIL: Rule = {
   scope: 'magic-send-email',
@@ -239,10 +258,17 @@ export const authRateLimit = createMiddleware<{ Bindings: Env }>(
     const byIp = await consume(db, rule, ip, now)
     if (byIp) return byIp
 
-    // A magic-link send is also charged to the TARGET ADDRESS, not just the
-    // sender's IP. Without this, an attacker rotating IPs bombs one victim's
-    // inbox at will - each IP looks like a first-time caller. Charged after the
-    // IP bucket so a flood from one host is cut off before we bother hashing.
+    // A magic-link send is charged to three buckets, and the ORDER is deliberate:
+    // narrowest and cheapest first, the shared quota last.
+    //
+    //   IP -> ADDRESS -> GLOBAL
+    //
+    // Charging GLOBAL last is what stops an attacker draining everyone's recovery
+    // path: a flood is already refused by the IP or address cap, and a refused
+    // request never reaches the global bucket, so it cannot spend mail budget it
+    // was never going to use. The global count therefore tracks mail actually
+    // sent, not attempts made. Reverse this order and a single host could 429 the
+    // whole app's recovery for a day.
     if (c.req.path === MAGIC_LINK_SEND_PATH) {
       const byEmail = await consume(
         db,
@@ -251,6 +277,9 @@ export const authRateLimit = createMiddleware<{ Bindings: Env }>(
         now,
       )
       if (byEmail) return byEmail
+
+      const byQuota = await consume(db, MAGIC_LINK_SEND_GLOBAL, 'all', now)
+      if (byQuota) return byQuota
     }
 
     return next()

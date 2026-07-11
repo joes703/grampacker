@@ -203,32 +203,59 @@ plugin ships its own limit rule - and it will **never fire**
 reasonably assume they are covered. We are not. The limits must be added to
 `server/middleware/rate-limit.ts` by hand.
 
-Two distinct abuses, and IP-keying only stops one:
+THREE distinct abuses, and no single key stops all three. All three buckets are
+charged on every send; any one can 429. (Retuned 2026-07-11 after shipping - see
+"charge order" below.)
 
-| Abuse | Key | Proposed budget |
+| Abuse | Key | Budget |
 | --- | --- | --- |
-| Attacker floods a victim's inbox / farms tokens | **email** | 5 / hour per address |
-| Attacker burns the Resend quota, or brute-forces | **IP** | 5 / 10 min, 20 / day |
+| Attacker drains the mail quota (it is GLOBAL) | **nothing - one shared bucket** | 90 / day |
+| Attacker sprays links at many addresses from one host | **IP** | 10 / 10 min |
+| Attacker floods a victim's inbox / farms tokens for one account | **email** | 5 / hour per address |
 | Token guessing on verify | IP | 10 / 10 min |
 
-The per-**email** bucket is new. Today's limiter is IP-keyed only, which an
-attacker rotating IPs walks straight around to bomb one person's inbox.
+The **global** bucket is the only one that guards the provider's quota, because
+the quota is itself global (Resend free tier: 100/day). A per-IP cap cannot do
+this job - at N/day per IP, a handful of IPs still drains the provider - which is
+why the original "20/day per IP" rule was replaced: it was a quota guard that did
+not guard the quota, and its 24-hour window was also the likeliest way for a
+legitimate user to lock themselves out for a day. It is the one number tied to
+the provider; raise it when the quota rises (e.g. moving to SES).
 
-The email key must be **normalized then HMAC'd**, and both halves matter:
+The per-**email** bucket is the one that cannot be IP-keyed: an attacker rotating
+IPs looks like a first-time caller on every request. It is an anti-abuse control,
+not a quota control, and should not be relaxed for convenience.
 
-- **Normalize first** (trim + lowercase). better-auth lowercases on create and
-  lookup (`db/internal-adapter.mjs:78,473`), so `Victim@x.com` and `victim@x.com`
-  are the same account. Keying the raw input would let an attacker walk around
-  the victim's bucket by varying case.
+**Charge order is IP -> email -> global, and it is load-bearing.** A request the
+narrower caps already refused never reaches the shared quota, so a flood cannot
+spend mail budget it was never going to use: the global count tracks mail actually
+SENT, not attempts made. Reverse the order and a single host could 429 the entire
+app's recovery path for a day.
+
+**Accepted trade-off:** a drained global bucket means nobody can recover an
+account until the window rolls. This is no worse than the provider's quota running
+out (identical effect), but it fails earlier and on purpose, and the two narrower
+caps in front of it are what make draining it expensive.
+
+The email key must be **normalized then HMAC'd**, and each half matters:
+
+- **Lowercase, but do NOT trim.** better-auth lowercases on create and lookup
+  (`db/internal-adapter.mjs:78,473`), so `Victim@x.com` and `victim@x.com` are the
+  same account - keying the raw input would let an attacker walk around the
+  victim's bucket by varying case. But it validates with `z.email()` and does NOT
+  trim, so `"victim@x.com "` is rejected and no mail is sent: trimming would fold
+  that rejected string onto the victim's real bucket and let an attacker burn the
+  victim's recovery budget without sending a single email. Match the identity
+  better-auth actually resolves - no more, no less.
 - **HMAC, not a bare hash**, with `BETTER_AUTH_SECRET` as the pepper. `rate_limits`
   would otherwise become a list of every address that ever requested a link, and
   a plain SHA-256 of an email address is trivially dictionary-reversible - it is
   not a secret, it is a lookup key.
 
-`EMAIL_SEND` is currently **5/day** to protect the Resend free tier (100/day).
-Magic links make email the primary recovery path, so 5/day would lock out a
-legitimate user having a bad day. The budgets above raise it deliberately, and
-the Resend quota becomes a real availability dependency - noted as accepted risk.
+The old `EMAIL_SEND` rule was **5/day**, sized for verification mail. Magic links
+make email the primary recovery path, so 5/day would lock out a legitimate user
+having a bad day. The budgets above raise it deliberately, and the mail provider
+becomes a real availability dependency - noted as accepted risk.
 
 `GET /api/auth/magic-link/verify` is a **GET that creates a user and a session**.
 It must never enter `READ_ONLY_GET_PATHS`. (This is the trap AGENTS.md already
