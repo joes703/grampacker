@@ -38,6 +38,13 @@ export function authOptions(env: Env) {
       minPasswordLength: MIN_PASSWORD_LENGTH,
       // Public signup: unverified accounts must be inert (decision 13.2).
       requireEmailVerification: true,
+      // A password reset is a recovery from a possibly-compromised credential,
+      // so every existing session for that user must die with the old password.
+      // Sessions are 30-day sliding (see below), so without this an attacker
+      // holding a stolen session cookie would keep access straight through the
+      // legitimate owner's reset. better-auth only revokes on reset when this
+      // is set (see reset-password route); default is to leave sessions live.
+      revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) => {
         await email.send({
           to: user.email,
