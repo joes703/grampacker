@@ -8,13 +8,26 @@ const ORIGIN = 'http://localhost:5173'
 // Budgets under test (mirrors server/middleware/rate-limit.ts).
 const SIGN_IN_LIMIT = 10
 const AUTH_DEFAULT_LIMIT = 30
-const MAGIC_SEND_IP_LIMIT = 20
+const MAGIC_SEND_IP_LIMIT = 10
 const MAGIC_SEND_EMAIL_LIMIT = 5
+const MAGIC_SEND_GLOBAL_LIMIT = 90
 const MAGIC_VERIFY_LIMIT = 10
 const DELETE_USER_LIMIT = 5
 const SIGN_IN_WINDOW_MS = 10 * 60 * 1000
 const SENSITIVE_WINDOW_MS = 10 * 60 * 1000
 const MAGIC_SEND_EMAIL_WINDOW_MS = 60 * 60 * 1000
+
+// The shared mail-quota bucket. Addressed directly by these tests: exhausting it
+// honestly would mean 90 sends, and seeding it is both faster and independent of
+// whatever earlier tests happened to send.
+const GLOBAL_KEY = 'magic-send-global:all'
+
+async function globalCount(): Promise<number> {
+  const row = await env.DB.prepare('select count as c from rate_limits where key = ?')
+    .bind(GLOBAL_KEY)
+    .first<{ c: number }>()
+  return row?.c ?? 0
+}
 
 // None of these need a valid session to exercise the limiter: it counts every
 // attempt BEFORE auth runs, so an anonymous burst (which the handler would
@@ -168,6 +181,50 @@ describe('auth rate limiting', () => {
     // Real address, fresh IP: still served. If the key trimmed, this would 429.
     const real = await sendMagicLink('198.51.103.200', victim)
     expect(real.status).not.toBe(429)
+  })
+
+  it('caps TOTAL mail sent, not just mail per IP (the quota guard)', async () => {
+    // The provider's quota is global (Resend free tier: 100/day), so only a global
+    // bucket can guard it. A per-IP cap cannot: at N/day per IP, a handful of IPs
+    // still drains the provider, and then nobody can recover an account.
+    //
+    // Seeded rather than exhausted honestly - 90 real sends would be slow, and
+    // seeding makes the test independent of whatever earlier tests already sent.
+    await env.DB.prepare(
+      'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
+    )
+      .bind(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT, Date.now())
+      .run()
+
+    // Fresh IP, fresh address: neither of the other two buckets can explain this.
+    const blocked = await sendMagicLink('198.51.150.1', 'quota-victim@example.com')
+    expect(blocked.status).toBe(429)
+
+    // And it really was the global bucket: clear it, and the same request is served.
+    await env.DB.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
+    const served = await sendMagicLink('198.51.150.2', 'quota-victim2@example.com')
+    expect(served.status).toBe(200)
+  })
+
+  it('a refused send does NOT spend global mail budget (charge order)', async () => {
+    // The property that keeps one attacker from denying recovery to everyone. The
+    // buckets are charged IP -> ADDRESS -> GLOBAL, so a request the IP cap already
+    // refused never reaches the shared quota. Reverse that order and a single host
+    // could burn the whole app's daily mail budget with requests that were never
+    // going to send anything.
+    //
+    // So: flood past the IP cap, and the global bucket must have moved by exactly
+    // the number of sends that were ALLOWED - not by the number attempted.
+    const before = await globalCount()
+    const ip = '198.51.151.1'
+    const attempts = MAGIC_SEND_IP_LIMIT + 5
+    for (let i = 0; i < attempts; i++) {
+      await sendMagicLink(ip, `order-${i}@example.com`)
+    }
+    const after = await globalCount()
+
+    expect(after - before).toBe(MAGIC_SEND_IP_LIMIT)
+    expect(after - before).toBeLessThan(attempts)
   })
 
   it('does not store the address in the clear', async () => {

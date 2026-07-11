@@ -51,18 +51,25 @@ Rate limiting, tested in `server/middleware/rate-limit.test.ts`:
 - `/api/auth/*` is limited per client IP (`CF-Connecting-IP`), fixed
   windows in the `rate_limits` table: sign-in 10/10min (which now means the
   passkey ceremony - it does NOT live under `/sign-in/*`, so it is matched by
-  path, not by prefix), magic-link send 20/day, magic-link verify 10/10min,
-  delete-user 5/10min, everything else 30/10min. Over budget -> 429 +
-  `Retry-After`.
-- **Magic-link send is charged to TWO buckets**: the caller's IP *and* the
-  target address (20/day and 5/hour respectively). IP alone does not cover it -
-  an attacker rotating IPs looks like a first-time caller on every request and
-  can bomb one victim's inbox at will. The per-address key is an HMAC of the
-  **lowercased** address (auth secret as the pepper): lowercased because
-  better-auth treats `Victim@` and `victim@` as one account, so keying the raw
-  string would hand out unlimited buckets for one inbox; HMAC'd because
-  `rate_limits.key` would otherwise become a plaintext list of every address
-  that ever asked for a link.
+  path, not by prefix), magic-link verify 10/10min, delete-user 5/10min,
+  everything else 30/10min. Over budget -> 429 + `Retry-After`.
+- **Magic-link send is charged to THREE buckets** - global (90/day), per-IP
+  (10/10min), per-address (5/hour) - because no single key stops all three
+  abuses:
+  - *global* guards the mail provider's quota, which is itself global (Resend
+    free tier is 100/day). A per-IP cap cannot: a handful of IPs still drains
+    the provider. This is the one number to raise when the quota rises (SES).
+  - *per-address* is the only one that stops inbox-bombing and token-farming
+    from rotating IPs, where every request looks like a first-time caller. Its
+    key is an HMAC of the **lowercased, untrimmed** address (auth secret as the
+    pepper): lowercased because better-auth treats `Victim@` and `victim@` as
+    one account; untrimmed because better-auth rejects `"victim@x.com "` outright,
+    so trimming would let junk charge the victim's real bucket; HMAC'd because
+    `rate_limits.key` would otherwise become a plaintext list of every address
+    that ever asked for a link.
+  - charge order is **IP -> address -> global**: a request the narrower caps
+    already refused never spends the shared quota, so the global count tracks
+    mail actually SENT, not attempts.
 - This limiter is the ONLY one. better-auth's own is disabled (`authOptions`),
   which means **the rate-limit rule the magic-link plugin ships never fires**.
   Reading the plugin source would suggest magic links are covered. They are not,

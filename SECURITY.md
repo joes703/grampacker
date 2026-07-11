@@ -71,19 +71,38 @@ Four independent layers, tested in `server/routes/me.test.ts`:
   GETs are not read-only (the passkey challenge endpoint is an
   unauthenticated GET that writes a row, and `magic-link/verify` is a GET
   that creates a user and mints a session). Budgets: sign-in 10/10min
-  (the passkey ceremony), magic-link send 20/day per IP, magic-link
-  verify 10/10min, delete-user 5/10min, default 30/10min. Single atomic
-  upsert (no lost updates under concurrency - proven by a 20-way burst
-  test), 429 + Retry-After.
-- **Requesting a magic link is charged to the target ADDRESS as well as
-  the caller's IP** (5/hour per address). This is the one limit that
-  cannot be IP-keyed: an attacker rotating IPs is a first-time caller
-  every time, and would bomb one victim's inbox - or farm tokens for one
-  account - without ever touching a bucket. The address key is an HMAC of
-  the lowercased address (`BETTER_AUTH_SECRET` as the pepper): lowercased
-  because better-auth treats `Victim@` and `victim@` as one account, and
-  HMAC'd so `rate_limits` never becomes a plaintext list of who uses the
-  app.
+  (the passkey ceremony), magic-link verify 10/10min, delete-user
+  5/10min, default 30/10min. Single atomic upsert (no lost updates under
+  concurrency - proven by a 20-way burst test), 429 + Retry-After.
+- **Requesting a magic link is charged to THREE buckets**, because no
+  single key stops all three abuses. All are charged on every send and
+  any one can 429: a **global** cap (90/day), a **per-IP** cap
+  (10/10min), and a **per-address** cap (5/hour).
+  - The **global** bucket is the only thing that guards the mail
+    provider's quota, which is itself global (Resend free tier: 100/day).
+    A per-IP cap cannot do that job - at N/day per IP, a handful of IPs
+    still drains the provider, and then nobody can recover an account.
+    This is the one number tied to the provider: raise it when the quota
+    rises (e.g. moving to SES).
+  - The **per-address** bucket is the one that cannot be IP-keyed: an
+    attacker rotating IPs is a first-time caller every time, and would
+    bomb one victim's inbox - or farm tokens for one account - without
+    ever touching a bucket. It is an anti-abuse control, not a quota
+    control, so it should not be relaxed for convenience. Its key is an
+    HMAC of the lowercased address (`BETTER_AUTH_SECRET` as the pepper):
+    lowercased because better-auth treats `Victim@` and `victim@` as one
+    account, and HMAC'd so `rate_limits` never becomes a plaintext list
+    of who uses the app.
+  - **Charge order is IP -> address -> global, and it is load-bearing.** A
+    request the first two already refused never reaches the shared quota,
+    so a flood cannot spend mail budget it was never going to use - the
+    global count tracks mail actually SENT, not attempts made. Reverse the
+    order and one host could 429 the whole app's recovery for a day.
+- **Accepted trade-off:** if the global bucket is drained, nobody can
+  recover an account until the window rolls. That is no worse than the
+  provider's quota running out - the effect is identical - but it fails
+  earlier and deliberately, and the two narrower caps in front of it are
+  what make draining it expensive.
 - The key **must not trim** the address, tempting as that looks.
   better-auth validates with `z.email()` and does not trim, so
   `"victim@x.com "` is rejected and no mail is sent - but a trimming key
