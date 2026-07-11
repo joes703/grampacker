@@ -9,6 +9,8 @@ resources). A route without a row, or a row without tests, fails review.
 | `/api/health` | GET | anon | - | - | `HealthResponse` | dev/deploy smoke |
 | `/api/auth/*` | GET, POST | better-auth | n/a (owns its tables) | better-auth | better-auth | better-auth's own origin validation (verified: forged origin -> 403 INVALID_ORIGIN); flow covered in `server/test/auth-helpers.ts` |
 | `/api/me` | GET | session | self only (`user.id = session.userId`, fixed in repo) | - | `MeResponse` (no `name`: grampacker never stores one; `server/auth.ts` databaseHooks blank it) | `server/routes/me.test.ts` |
+| `/api/me/reauth` | POST | session | self only; mints a fresh-auth proof bound to THIS session id | `ReauthRequest` | 204; 400 `INVALID_PASSWORD` (uniform for wrong password AND malformed body); 401 anon | `server/middleware/reauth.test.ts` |
+| `/api/auth/passkey/*` (mutations) | POST | session **+ fresh-auth proof** | `generate-register-options`, `verify-registration`, `delete-passkey`, `update-passkey` require an unexpired proof or 403 `REAUTH_REQUIRED`. NOT gated: `generate-authenticate-options` and `verify-authentication` (the anonymous sign-in ceremony), `list-user-passkeys` (a read) | better-auth | better-auth | `server/middleware/fresh-auth.test.ts` |
 | `/api/categories` | GET, POST | session | own rows only (repo-scoped) | `CreateCategoryRequest` (POST) | `CategoryResponse[]` / `CategoryResponse` | `server/routes/categories.test.ts` |
 | `/api/categories/order` | PUT | session | every id owned or 404, zero writes | `ReorderRequest` | 204 | `server/routes/categories.test.ts` |
 | `/api/categories/:id` | PATCH, DELETE | session | own row or 404; DELETE uncategorizes its gear in the same transaction | `UpdateCategoryRequest` (PATCH) | `CategoryResponse` / 204 | `server/routes/categories.test.ts` |
@@ -48,6 +50,16 @@ Rate limiting, tested in `server/middleware/rate-limit.test.ts`:
   endpoints 5/day (guards the Resend free tier), sign-in 10/10min,
   change-password and delete-user 5/10min each (own buckets), everything
   else 30/10min. Over budget -> 429 + `Retry-After`.
+- `POST /api/me/reauth` is limited too, on its own 5/10min bucket. It is
+  the only limited path outside `/api/auth/*`, and it needs the limiter
+  because it verifies the account password: unmetered, it would be the
+  cheapest password-guessing oracle in the app.
+- IPv6 clients are bucketed by **/64 prefix**, not exact address
+  (`server/middleware/client-ip.ts`): a single allocation holds 2^64
+  addresses, so keying the exact address would let any IPv6 client mint
+  unlimited budget. IPv4 stays exact, and IPv4-mapped IPv6
+  (`::ffff:1.2.3.4`) is unwrapped to its IPv4 address so those clients
+  neither escape their bucket nor all collapse into one.
 - Fail-closed across ALL methods since PR #10: better-auth GETs are not
   read-only (the passkey challenge endpoint is an unauthenticated GET
   that writes a verification row). Only the allowlisted pure-read GETs

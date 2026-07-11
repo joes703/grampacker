@@ -8,7 +8,7 @@ import {
   text,
   unique,
 } from 'drizzle-orm/sqlite-core'
-import { user } from './auth-schema'
+import { session, user } from './auth-schema'
 
 // App-owned tables. Auth tables live in auth-schema.ts (CLI-generated,
 // never hand-edited); everything the app itself owns goes here.
@@ -30,6 +30,37 @@ export const rateLimits = sqliteTable('rate_limits', {
   count: integer('count').notNull(),
   windowStart: integer('window_start').notNull(), // epoch ms
 })
+
+// Short-lived proof that the user re-entered their password ("sudo mode").
+// Every passkey MUTATION requires an unexpired row here; passkey reads and
+// the sign-in ceremony do not. Without this, a hijacked session alone could
+// plant a permanent credential (SECURITY.md).
+//
+// Keyed by SESSION, not user: a proof minted in one session must not
+// silently authorize another. The FK cascades, which is what makes the
+// proof expire early for free - sign-out deletes the session row, and
+// deleting the account deletes the sessions - so a proof can never outlive
+// the session that earned it. user_id is carried (also cascading) so a
+// password change can purge every proof for that user in one statement
+// without joining through session.
+export const freshAuth = sqliteTable(
+  'fresh_auth',
+  {
+    sessionId: text('session_id')
+      .primaryKey()
+      .references(() => session.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    expiresAt: integer('expires_at').notNull(), // epoch ms
+    // When the password was proven. Compared against the credential account's
+    // updated_at at CHECK time, so a proof minted with an old password is
+    // rejected even if the explicit purge-on-password-change never ran. The
+    // gate is fail-closed by construction rather than by cleanup.
+    grantedAt: integer('granted_at').notNull(), // epoch ms
+  },
+  (t) => [index('fresh_auth_user_idx').on(t.userId)],
+)
 
 // Gear categories. No seeding: "Uncategorized" is the UI rendering of a
 // null gear_items.category_id, not a row. The old schema's is_default

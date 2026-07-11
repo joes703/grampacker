@@ -14,3 +14,19 @@ export const meResponseSchema = z.object({
 })
 
 export type MeResponse = z.infer<typeof meResponseSchema>
+
+// POST /api/me/reauth - exchange the account password for a short-lived
+// fresh-auth proof ("sudo mode"), which passkey mutations require.
+//
+// Deliberately NOT reusing the sign-up password rules (MIN_PASSWORD_LENGTH):
+// this verifies an EXISTING password, and applying today's length floor to it
+// would reject users whose password predates the floor - a confusing failure
+// that looks like a wrong password. Length is the server's business at
+// sign-up; here, any non-empty string is a candidate and the hash decides.
+export const reauthRequestSchema = z
+  .object({
+    password: z.string().min(1),
+  })
+  .strict()
+
+export type ReauthRequest = z.infer<typeof reauthRequestSchema>

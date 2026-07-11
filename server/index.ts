@@ -4,7 +4,10 @@ import { createAuth } from './auth'
 import { createDb } from './db'
 import { apiBodyLimit } from './middleware/body-limit'
 import { csrfProtection } from './middleware/csrf'
+import { requireFreshAuth } from './middleware/fresh-auth'
 import { authRateLimit } from './middleware/rate-limit'
+import { reauth } from './middleware/reauth'
+import { createFreshAuthRepo } from './repos/fresh-auth'
 import { securityHeaders } from './middleware/security-headers'
 import { categoryRoutes } from './routes/categories'
 import { gearItemRoutes } from './routes/gear-items'
@@ -44,6 +47,42 @@ api.use('*', csrfProtection)
 // authOptions - one mechanism, ours). Fail-closed across methods; see
 // the allowlist in the middleware.
 api.use('/auth/*', authRateLimit)
+
+// /api/me/reauth verifies the account password, which makes it a
+// password-guessing oracle exactly like change-password and delete-user.
+// It lives outside /auth/*, so it needs the limiter mounted explicitly -
+// it would otherwise be the one unmetered way to test passwords.
+//
+// Registered BEFORE api.route('/me', meRoutes) so this handler wins: the
+// endpoint resolves its own session (it needs the session id to bind the
+// proof to) and never reaches the meRoutes sub-app.
+api.use('/me/reauth', authRateLimit)
+api.post('/me/reauth', reauth)
+
+// Every passkey MUTATION requires a fresh-auth proof (POST /api/me/reauth),
+// checked before better-auth sees the request. A valid session alone must
+// not be enough to plant a permanent credential. Reads and the passkey
+// sign-in ceremony are untouched - see the middleware for the exact set.
+api.use('/auth/passkey/*', requireFreshAuth)
+
+// A password change leaves the current session alive, so its fresh-auth
+// proof would outlive the password that earned it. Kill every proof for the
+// user once better-auth reports the change succeeded. (Password RESET needs
+// no equivalent: revokeSessionsOnPasswordReset deletes the sessions, and
+// fresh_auth cascades from session.)
+//
+// The session is read BEFORE the handler runs: afterwards the request's
+// cookie may no longer resolve, and we would lose the user id we need.
+api.use('/auth/change-password', async (c, next) => {
+  if (c.req.method !== 'POST') return next()
+  const session = await createAuth(c.env).api.getSession({
+    headers: c.req.raw.headers,
+  })
+  await next()
+  if (session && c.res.status === 200) {
+    await createFreshAuthRepo(createDb(c.env.DB)).revokeForUser(session.user.id)
+  }
+})
 
 // Password gate for account deletion. better-auth's delete-user treats a
 // session younger than freshAge (default 24h) as re-authenticated and will

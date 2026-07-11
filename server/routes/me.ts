@@ -6,6 +6,10 @@ import type { SelfRow } from '../repos/users'
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET /api/me - session - self row only - MeResponse
 //
+// POST /api/me/reauth is NOT here: it verifies a password, which is a
+// better-auth operation the import boundary keeps out of route handlers. It
+// is mounted from the composition root (server/middleware/reauth.ts).
+//
 // GET-only: the former PUT existed solely to update the display name, and
 // grampacker no longer collects or stores one (data-minimization call,
 // 2026-07-09). The cross-cutting CSRF tests that rode on that PUT live in
