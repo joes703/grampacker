@@ -381,6 +381,10 @@ describe('auth rate limiting', () => {
     // rule left it as an unguarded write path. Prove the GET itself
     // consumes budget, gets cut off, and that a blocked request writes
     // no verification row.
+    //
+    // It is metered on the SIGN_IN budget (10), not the default (30): passwordless
+    // makes this the primary front door, and it does not live under /sign-in/*, so
+    // it is matched by path rather than by prefix. Tighter than it was.
     const ip = '203.0.113.12'
     const challenge = () =>
       app.request(
@@ -388,7 +392,7 @@ describe('auth rate limiting', () => {
         { headers: { 'cf-connecting-ip': ip } },
         env,
       )
-    for (let i = 0; i < AUTH_DEFAULT_LIMIT; i++) {
+    for (let i = 0; i < SIGN_IN_LIMIT; i++) {
       expect((await challenge()).status).not.toBe(429)
     }
     const before = await env.DB.prepare(
