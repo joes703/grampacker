@@ -10,7 +10,15 @@ const SIGN_IN_LIMIT = 10
 const SIGN_UP_LIMIT = 10
 const EMAIL_SEND_LIMIT = 5
 const AUTH_DEFAULT_LIMIT = 30
+const SENSITIVE_LIMIT = 5
 const SIGN_IN_WINDOW_MS = 10 * 60 * 1000
+const SENSITIVE_WINDOW_MS = 10 * 60 * 1000
+
+// change-password/delete-user need no valid session to exercise the limiter:
+// it counts every attempt before auth runs, so an anonymous burst (which the
+// handler would 400/401) still consumes the bucket. A long newPassword keeps
+// change-password past the 12-char floor even though it never reaches that check.
+const NEW_PASSWORD = 'another-long-password-1'
 
 function authPost(path: string, body: unknown, ip: string) {
   return app.request(
@@ -46,6 +54,99 @@ describe('auth rate limiting', () => {
     expect(Number.isInteger(retryAfter)).toBe(true)
     expect(retryAfter).toBeGreaterThan(0)
     expect(retryAfter).toBeLessThanOrEqual(SIGN_IN_WINDOW_MS / 1000)
+  })
+
+  it('change-password gets its own tighter sensitive budget with Retry-After', async () => {
+    const ip = '203.0.113.20'
+    for (let i = 0; i < SENSITIVE_LIMIT; i++) {
+      const res = await authPost(
+        '/api/auth/change-password',
+        { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
+        ip,
+      )
+      expect(res.status).not.toBe(429)
+    }
+    const blocked = await authPost(
+      '/api/auth/change-password',
+      { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
+      ip,
+    )
+    expect(blocked.status).toBe(429)
+    expect(await blocked.json()).toEqual({ error: 'Too many requests' })
+    const retryAfter = Number(blocked.headers.get('Retry-After'))
+    expect(Number.isInteger(retryAfter)).toBe(true)
+    expect(retryAfter).toBeGreaterThan(0)
+    expect(retryAfter).toBeLessThanOrEqual(SENSITIVE_WINDOW_MS / 1000)
+  })
+
+  it('delete-user gets its own tighter sensitive budget with Retry-After', async () => {
+    const ip = '203.0.113.21'
+    for (let i = 0; i < SENSITIVE_LIMIT; i++) {
+      const res = await authPost('/api/auth/delete-user', { password: PASSWORD }, ip)
+      expect(res.status).not.toBe(429)
+    }
+    const blocked = await authPost('/api/auth/delete-user', { password: PASSWORD }, ip)
+    expect(blocked.status).toBe(429)
+    expect(await blocked.json()).toEqual({ error: 'Too many requests' })
+    const retryAfter = Number(blocked.headers.get('Retry-After'))
+    expect(Number.isInteger(retryAfter)).toBe(true)
+    expect(retryAfter).toBeGreaterThan(0)
+    expect(retryAfter).toBeLessThanOrEqual(SENSITIVE_WINDOW_MS / 1000)
+  })
+
+  it('sensitive endpoints keep independent buckets from each other', async () => {
+    const ip = '203.0.113.22'
+    // Exhaust change-password for this IP.
+    for (let i = 0; i <= SENSITIVE_LIMIT; i++) {
+      await authPost(
+        '/api/auth/change-password',
+        { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
+        ip,
+      )
+    }
+    expect(
+      (
+        await authPost(
+          '/api/auth/change-password',
+          { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
+          ip,
+        )
+      ).status,
+    ).toBe(429)
+    // delete-user on the SAME IP is untouched: distinct scope, distinct bucket.
+    expect((await authPost('/api/auth/delete-user', { password: PASSWORD }, ip)).status).not.toBe(
+      429,
+    )
+  })
+
+  it('sensitive endpoints cut off well before the generic auth bucket would', async () => {
+    // change-password stops at 5...
+    const sensitiveIp = '203.0.113.23'
+    for (let i = 0; i < SENSITIVE_LIMIT; i++) {
+      expect(
+        (
+          await authPost(
+            '/api/auth/change-password',
+            { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
+            sensitiveIp,
+          )
+        ).status,
+      ).not.toBe(429)
+    }
+    expect(
+      (
+        await authPost(
+          '/api/auth/change-password',
+          { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
+          sensitiveIp,
+        )
+      ).status,
+    ).toBe(429)
+    // ...while a generic auth endpoint on a fresh IP sails past 5 (budget 30).
+    const genericIp = '203.0.113.24'
+    for (let i = 0; i < SENSITIVE_LIMIT + 2; i++) {
+      expect((await authPost('/api/auth/sign-out', {}, genericIp)).status).not.toBe(429)
+    }
   })
 
   it('buckets are per IP: another client is unaffected', async () => {

@@ -46,7 +46,8 @@ Rate limiting, tested in `server/middleware/rate-limit.test.ts`:
 - `/api/auth/*` is limited per client IP (`CF-Connecting-IP`), fixed
   windows in the `rate_limits` table: sign-up 10/day, email-sending
   endpoints 5/day (guards the Resend free tier), sign-in 10/10min,
-  everything else 30/10min. Over budget -> 429 + `Retry-After`.
+  change-password and delete-user 5/10min each (own buckets), everything
+  else 30/10min. Over budget -> 429 + `Retry-After`.
 - Fail-closed across ALL methods since PR #10: better-auth GETs are not
   read-only (the passkey challenge endpoint is an unauthenticated GET
   that writes a verification row). Only the allowlisted pure-read GETs

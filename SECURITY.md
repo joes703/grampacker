@@ -69,7 +69,8 @@ Four independent layers, tested in `server/routes/me.test.ts`:
   GETs are not read-only (the passkey challenge endpoint is an
   unauthenticated GET that writes a row). Budgets: sign-up 10/day,
   email-sending 5/day (guards the Resend free quota), sign-in 10/10min,
-  default 30/10min. Single atomic upsert (no lost updates under
+  change-password/delete-user 5/10min (own buckets), default 30/10min.
+  Single atomic upsert (no lost updates under
   concurrency - proven by a 20-way burst test), 429 + Retry-After.
 - Cloudflare WAF is hardening on top, never the mechanism (portability
   rule: the limiter must work on the Node target too).
