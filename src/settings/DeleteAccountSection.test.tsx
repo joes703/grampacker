@@ -2,25 +2,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
-// Mock only the network call; authErrorMessage (../auth/auth-errors) stays real
+// Mock only the network calls; authErrorMessage (../auth/auth-errors) stays real
 // so the 429 mapping is exercised end to end. There is no client-side cache to
 // tear down: on success the component does a full-document navigation, which
 // discards the whole SPA (React Query cache + better-auth session atom) for
 // free, so the test replaces window.location with an assign() spy.
-vi.mock('../lib/auth-client', () => ({
-  authClient: { deleteUser: vi.fn() },
+const h = vi.hoisted(() => ({
+  deleteUser: vi.fn<(input: object) => Promise<{ error: unknown }>>(),
+  signInPasskey: vi.fn<() => Promise<{ error: unknown } | undefined>>(),
+  signInMagicLink: vi.fn<(input: { email: string }) => Promise<{ error: unknown }>>(),
 }))
 
-import { authClient } from '../lib/auth-client'
-import DeleteAccountSection from './DeleteAccountSection'
+vi.mock('../lib/auth-client', () => ({
+  authClient: {
+    deleteUser: h.deleteUser,
+    signIn: { passkey: h.signInPasskey, magicLink: h.signInMagicLink },
+    useSession: () => ({ data: { user: { email: 'joe@example.com' } } }),
+  },
+}))
 
-const deleteUser = vi.mocked(authClient.deleteUser)
+import DeleteAccountSection from './DeleteAccountSection'
 
 const originalLocation = window.location
 let assignMock: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   localStorage.clear()
+  vi.clearAllMocks()
   assignMock = vi.fn()
   // The component only ever reads window.location.assign; a minimal stand-in is
   // enough and avoids jsdom's "Not implemented: navigation" noise.
@@ -32,148 +40,176 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
-  vi.clearAllMocks()
   Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
 })
 
-function fill({ password, confirm }: { password?: string; confirm?: string }) {
-  if (password !== undefined)
-    fireEvent.change(screen.getByLabelText('Current password'), { target: { value: password } })
-  if (confirm !== undefined)
-    fireEvent.change(screen.getByLabelText('Type delete to confirm'), {
-      target: { value: confirm },
-    })
+function typeConfirm(value: string) {
+  fireEvent.change(screen.getByLabelText('Type delete to confirm'), {
+    target: { value },
+  })
 }
 
 function submit() {
   // Submit via the form so disabled-button cases (reachable via Enter) still
   // exercise the handler's own gate.
-  fireEvent.submit(screen.getByLabelText('Current password').closest('form')!)
+  fireEvent.submit(screen.getByLabelText('Type delete to confirm').closest('form')!)
 }
 
 const button = () => screen.getByRole('button', { name: 'Delete account' })
 
 describe('DeleteAccountSection gating', () => {
-  it('disables the button until both the password and the confirm word are present', () => {
+  it('never asks for a password: there is none to ask for', () => {
+    // The authorization gate moved to session freshness (server-side). A
+    // password field here would be collecting a credential the app does not
+    // have, and would be a lie about what protects the account.
+    render(<DeleteAccountSection />)
+    expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument()
+  })
+
+  it('disables the button until the confirm word is present', () => {
     render(<DeleteAccountSection />)
     expect(button()).toBeDisabled()
-    fill({ password: 'a-long-test-password-123' })
-    expect(button()).toBeDisabled()
-    fill({ confirm: 'delete' })
-    expect(button()).not.toBeDisabled()
+    typeConfirm('delete')
+    expect(button()).toBeEnabled()
   })
 
   it('accepts the confirm word case-insensitively', () => {
     render(<DeleteAccountSection />)
-    fill({ password: 'a-long-test-password-123', confirm: '  DELETE  ' })
-    expect(button()).not.toBeDisabled()
+    typeConfirm('  DeLeTe  ')
+    expect(button()).toBeEnabled()
   })
 
   it('does not call deleteUser when submitted (via Enter) without the confirm word', () => {
     render(<DeleteAccountSection />)
-    fill({ password: 'a-long-test-password-123', confirm: 'nope' })
     submit()
-    expect(deleteUser).not.toHaveBeenCalled()
+    expect(h.deleteUser).not.toHaveBeenCalled()
   })
 })
 
 describe('DeleteAccountSection submission', () => {
-  it('deletes the account and hard-reloads to /sign-in', async () => {
-    deleteUser.mockResolvedValue({ error: null })
+  it('deletes with NO password in the body and hard-reloads to /sign-in', async () => {
+    // The omission is the point: an empty body is what selects better-auth's
+    // freshness path. Sending a password would 400 (no credential account
+    // exists), so this assertion is load-bearing, not cosmetic.
+    h.deleteUser.mockResolvedValue({ error: null })
     render(<DeleteAccountSection />)
-    fill({ password: 'a-long-test-password-123', confirm: 'delete' })
-    submit()
+    typeConfirm('delete')
+    fireEvent.click(button())
 
-    await waitFor(() =>
-      expect(deleteUser).toHaveBeenCalledWith({ password: 'a-long-test-password-123' }),
-    )
-    // A full-document navigation (not a client route change) is the teardown:
-    // it discards the entire in-memory cache and session atom.
+    await waitFor(() => expect(h.deleteUser).toHaveBeenCalledWith({}))
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith('/sign-in'))
   })
 
   it('clears the persisted last-list path (both keys) before reloading on success', async () => {
-    // The hard reload discards in-memory state but NOT localStorage, so the
-    // deleted account's list UUID would otherwise survive into the next
-    // session in this browser. Seed both the current and legacy keys and prove
-    // the delete teardown removes both.
-    const uuid = '11111111-1111-4111-8111-111111111111'
-    localStorage.setItem('lastListPath', `/lists/${uuid}`)
-    localStorage.setItem('lastListId', uuid)
-    deleteUser.mockResolvedValue({ error: null })
+    // A hard reload discards the React Query cache and the session atom, but NOT
+    // localStorage - so the deleted account's list id would survive into the next
+    // account in this browser and RootRedirect would send it to a dead route.
+    localStorage.setItem('lastListPath', '/lists/abc')
+    localStorage.setItem('lastListId', 'abc')
+    h.deleteUser.mockResolvedValue({ error: null })
     render(<DeleteAccountSection />)
-    fill({ password: 'a-long-test-password-123', confirm: 'delete' })
-    submit()
+    typeConfirm('delete')
+    fireEvent.click(button())
 
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith('/sign-in'))
     expect(localStorage.getItem('lastListPath')).toBeNull()
     expect(localStorage.getItem('lastListId')).toBeNull()
   })
 
-  it('clears the persisted last-list path (both keys) on the indeterminate throw path', async () => {
-    // A throw means the irreversible delete may already have landed, so the
-    // catch biases to the same teardown - it must scrub localStorage too.
-    const uuid = '22222222-2222-4222-8222-222222222222'
-    localStorage.setItem('lastListPath', `/lists/${uuid}`)
-    localStorage.setItem('lastListId', uuid)
-    deleteUser.mockRejectedValue(new Error('network exploded'))
+  it('clears the persisted last-list path on the indeterminate throw path', async () => {
+    localStorage.setItem('lastListPath', '/lists/abc')
+    h.deleteUser.mockRejectedValue(new Error('network'))
     render(<DeleteAccountSection />)
-    fill({ password: 'a-long-test-password-123', confirm: 'delete' })
-    submit()
+    typeConfirm('delete')
+    fireEvent.click(button())
 
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith('/sign-in'))
     expect(localStorage.getItem('lastListPath')).toBeNull()
-    expect(localStorage.getItem('lastListId')).toBeNull()
   })
 
-  it('maps INVALID_PASSWORD to a precise message and does NOT reload', async () => {
-    deleteUser.mockResolvedValue({
-      error: { code: 'INVALID_PASSWORD', status: 400, message: 'Invalid password' },
-    })
+  it('offers re-authentication on a STALE session instead of failing', async () => {
+    // The passwordless equivalent of "your password is wrong": the session is
+    // simply too old to authorize this. The user must not be left staring at an
+    // error with no way forward - both routes back are offered.
+    h.deleteUser.mockResolvedValue({ error: { status: 400, code: 'SESSION_EXPIRED' } })
     render(<DeleteAccountSection />)
-    fill({ password: 'wrongpass1234', confirm: 'delete' })
-    submit()
+    typeConfirm('delete')
+    fireEvent.click(button())
 
-    expect(await screen.findByText('Password is incorrect.')).toBeInTheDocument()
+    expect(await screen.findByText(/Confirm it is you/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Use a passkey' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Email me a link' })).toBeInTheDocument()
     expect(assignMock).not.toHaveBeenCalled()
   })
 
-  it('maps a 429 through the shared auth-error mapper', async () => {
-    deleteUser.mockResolvedValue({ error: { status: 429 } })
+  it('re-authenticates with a passkey and replays the delete', async () => {
+    h.deleteUser.mockResolvedValueOnce({
+      error: { status: 400, code: 'SESSION_EXPIRED' },
+    })
+    h.deleteUser.mockResolvedValueOnce({ error: null })
+    h.signInPasskey.mockResolvedValue({ error: null })
     render(<DeleteAccountSection />)
-    fill({ password: 'a-long-test-password-123', confirm: 'delete' })
-    submit()
+    typeConfirm('delete')
+    fireEvent.click(button())
 
-    expect(
-      await screen.findByText('Too many attempts. Please wait a bit and try again.'),
-    ).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Use a passkey' }))
+
+    // Signing in again mints a fresh session; the parked delete then succeeds.
+    await waitFor(() => expect(h.signInPasskey).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(h.deleteUser).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith('/sign-in'))
+  })
+
+  it('falls back to an email link for an account with no passkey', async () => {
+    // Someone who signed in by email and never enrolled a passkey cannot
+    // re-assert one. Without this path they could never delete their account.
+    h.deleteUser.mockResolvedValue({ error: { status: 400, code: 'SESSION_EXPIRED' } })
+    h.signInMagicLink.mockResolvedValue({ error: null })
+    render(<DeleteAccountSection />)
+    typeConfirm('delete')
+    fireEvent.click(button())
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Email me a link' }))
+
+    await waitFor(() =>
+      expect(h.signInMagicLink).toHaveBeenCalledWith({ email: 'joe@example.com' }),
+    )
+    expect(await screen.findByText(/link sent to joe@example.com/i)).toBeInTheDocument()
+  })
+
+  it('maps a 429 through the shared auth-error mapper', async () => {
+    h.deleteUser.mockResolvedValue({ error: { status: 429, message: 'Too many requests' } })
+    render(<DeleteAccountSection />)
+    typeConfirm('delete')
+    fireEvent.click(button())
+
+    expect(await screen.findByText(/too many/i)).toBeInTheDocument()
     expect(assignMock).not.toHaveBeenCalled()
   })
 
   it('ignores a second submit while one is in flight (no duplicate call)', async () => {
-    deleteUser.mockReturnValue(new Promise<never>(() => {}))
+    let resolve: (v: { error: unknown }) => void = () => {}
+    h.deleteUser.mockReturnValue(
+      new Promise<{ error: unknown }>((r) => {
+        resolve = r
+      }),
+    )
     render(<DeleteAccountSection />)
-    fill({ password: 'a-long-test-password-123', confirm: 'delete' })
-    // Two synchronous submits (Enter can fire even with the button disabled);
-    // the synchronous ref guard must block the second.
+    typeConfirm('delete')
     submit()
     submit()
-    await waitFor(() => expect(deleteUser).toHaveBeenCalledTimes(1))
+
+    expect(h.deleteUser).toHaveBeenCalledTimes(1)
+    resolve({ error: null })
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith('/sign-in'))
   })
 
   it('hard-reloads to /sign-in when the delete throws (the deletion may have committed)', async () => {
-    // Indeterminate: better-auth normally returns { error } rather than
-    // rejecting, so a throw is a client/network failure and the irreversible
-    // deletion may already have landed. Bias to the same reload rather than
-    // leaving a possibly-deleted account's data in memory. No misleading error.
-    deleteUser.mockRejectedValue(new Error('network exploded'))
+    h.deleteUser.mockRejectedValue(new Error('network'))
     render(<DeleteAccountSection />)
-    fill({ password: 'a-long-test-password-123', confirm: 'delete' })
-    submit()
+    typeConfirm('delete')
+    fireEvent.click(button())
 
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith('/sign-in'))
-    expect(
-      screen.queryByText("Couldn't delete your account. Please try again."),
-    ).not.toBeInTheDocument()
   })
 })

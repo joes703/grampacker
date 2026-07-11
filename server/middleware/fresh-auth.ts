@@ -1,38 +1,42 @@
 import { createMiddleware } from 'hono/factory'
 import { createAuth } from '../auth'
-import { createDb } from '../db'
-import { createFreshAuthRepo } from '../repos/fresh-auth'
+import { FRESH_AGE_MS } from '../../shared/auth'
 
-// The passkey endpoints that change WHICH CREDENTIALS CAN SIGN IN. Gated on a
-// fresh-auth proof (POST /api/me/reauth) before better-auth ever sees the
-// request.
+// The passkey endpoints that change WHICH CREDENTIALS CAN SIGN IN. They need a
+// FRESH session, not merely a valid one.
 //
-// What this is actually protecting: sessions are 30-day sliding, and a passkey
-// planted by a session thief OUTLIVES the session and SURVIVES a password
-// change - it is permanent, silent access. Password change and account
-// deletion already demand the password; adding a credential was the last
-// remaining path to persistence that did not. Removal is gated on the same
-// proof so an attacker cannot strip the owner's other sign-in methods.
+// What this protects: sessions are 30-day sliding, and a passkey planted by a
+// session thief OUTLIVES the session - it is permanent, silent access. Removal
+// is gated on the same proof so an attacker cannot strip the owner's other
+// sign-in methods. Account deletion is gated the same way, natively, by
+// better-auth itself (see server/auth.ts user.deleteUser).
+//
+// "Fresh" = the session was CREATED within freshAge. In a passwordless app the
+// only way to create a session is to run a sign-in ceremony, so re-authenticating
+// means re-asserting a passkey (or redeeming a magic link) - which is exactly
+// the proof we want, and a stronger one than the password prompt it replaces.
+// There is no proof table and no POST /api/me/reauth any more: the session row
+// IS the proof. (The old fresh_auth table could not survive this change - its
+// check inner-joins the `credential` account, so with no password it would
+// match nothing and lock the owner out of their own passkeys.)
 //
 // Deliberately NOT gated:
 //   - passkey/update-passkey
-//     RENAME. It is a display label. It cannot add, remove, or alter a
-//     credential, so a gate here buys exactly nothing and costs a password
-//     prompt. (It WAS gated briefly, on the theory that a rule without
-//     exceptions is easier to audit. That is an aesthetic argument dressed up
-//     as a security one - friction with no threat behind it.)
+//     RENAME. It is a display label. The plugin writes only the `name` column,
+//     so it cannot add, remove, or alter a credential - a gate here buys nothing
+//     and costs the owner a ceremony.
 //   - passkey/generate-authenticate-options, passkey/verify-authentication
-//     The SIGN-IN ceremony. The caller is anonymous by definition, so
-//     requiring a session - let alone a password - would make passkey sign-in
-//     impossible. (They do write rows: a challenge, and the signature counter.
-//     That is sign-in working, not a management action.)
+//     The SIGN-IN ceremony. The caller is anonymous by definition, so requiring
+//     a session - let alone a fresh one - would make passkey sign-in impossible.
 //   - passkey/list-user-passkeys
 //     A read. Session is sufficient.
 //
-// Both REGISTER endpoints are gated, not just the first. Gating only
-// generate-register-options would be sound today (verify-registration needs a
-// challenge only generate mints), but it would rest the invariant on a plugin
-// internal.
+// Both REGISTER endpoints are listed even though the passkey plugin ALSO mounts
+// its own freshSessionMiddleware on them (registration.requireSession defaults
+// to true). The redundancy is deliberate: it keeps the whole gate readable in
+// one place, and a future flip of a plugin option cannot silently open a hole.
+// delete-passkey is the one the plugin does NOT protect, and it is the reason
+// this middleware has to exist at all.
 const GATED_PATHS = new Set([
   '/api/auth/passkey/generate-register-options',
   '/api/auth/passkey/verify-registration',
@@ -48,15 +52,13 @@ export const requireFreshAuth = createMiddleware<{ Bindings: Env }>(
     })
     if (!session) return c.json({ error: 'Unauthorized' }, 401)
 
-    const fresh = await createFreshAuthRepo(createDb(c.env.DB)).isFresh(
-      session.session.id,
-      Date.now(),
-    )
-    if (!fresh) {
+    // Fail closed on an unparseable timestamp rather than treating it as fresh.
+    const createdAt = new Date(session.session.createdAt).getTime()
+    if (Number.isNaN(createdAt) || Date.now() - createdAt >= FRESH_AGE_MS) {
       return c.json(
         {
           code: 'REAUTH_REQUIRED',
-          message: 'Confirm your password to manage passkeys.',
+          message: 'Confirm it is you before changing your passkeys.',
         },
         403,
       )

@@ -6,8 +6,6 @@ import { apiBodyLimit } from './middleware/body-limit'
 import { csrfProtection } from './middleware/csrf'
 import { requireFreshAuth } from './middleware/fresh-auth'
 import { authRateLimit } from './middleware/rate-limit'
-import { reauth } from './middleware/reauth'
-import { createFreshAuthRepo } from './repos/fresh-auth'
 import { securityHeaders } from './middleware/security-headers'
 import { categoryRoutes } from './routes/categories'
 import { gearItemRoutes } from './routes/gear-items'
@@ -48,73 +46,23 @@ api.use('*', csrfProtection)
 // the allowlist in the middleware.
 api.use('/auth/*', authRateLimit)
 
-// /api/me/reauth verifies the account password, which makes it a
-// password-guessing oracle exactly like change-password and delete-user.
-// It lives outside /auth/*, so it needs the limiter mounted explicitly -
-// it would otherwise be the one unmetered way to test passwords.
+// ADDING or REMOVING a passkey requires a FRESH session, checked before
+// better-auth sees the request. A valid session alone must not be enough to
+// plant a permanent credential. Renames, reads and the passkey sign-in ceremony
+// are untouched - see the middleware for the exact set and why.
 //
-// Registered BEFORE api.route('/me', meRoutes) so this handler wins: the
-// endpoint resolves its own session (it needs the session id to bind the
-// proof to) and never reaches the meRoutes sub-app.
-api.use('/me/reauth', authRateLimit)
-api.post('/me/reauth', reauth)
-
-// ADDING or REMOVING a passkey requires a fresh-auth proof (POST
-// /api/me/reauth), checked before better-auth sees the request. A valid
-// session alone must not be enough to plant a permanent credential. Renames,
-// reads and the passkey sign-in ceremony are untouched - see the middleware
-// for the exact set and why.
+// Account deletion is gated the same way, but by better-auth itself: with no
+// password in the body its delete-user route enforces session.freshAge directly
+// (server/auth.ts). That is why the PASSWORD_REQUIRED gate that used to sit here
+// is gone rather than merely rewritten - it existed to stop freshness ALONE from
+// authorizing a delete, back when a password was the real proof. Freshness IS
+// the proof now.
 api.use('/auth/passkey/*', requireFreshAuth)
 
-// A password change leaves the current session alive, so its fresh-auth
-// proof would outlive the password that earned it. Kill every proof for the
-// user once better-auth reports the change succeeded. (Password RESET needs
-// no equivalent: revokeSessionsOnPasswordReset deletes the sessions, and
-// fresh_auth cascades from session.)
-//
-// The session is read BEFORE the handler runs: afterwards the request's
-// cookie may no longer resolve, and we would lose the user id we need.
-api.use('/auth/change-password', async (c, next) => {
-  if (c.req.method !== 'POST') return next()
-  const session = await createAuth(c.env).api.getSession({
-    headers: c.req.raw.headers,
-  })
-  await next()
-  if (session && c.res.status === 200) {
-    await createFreshAuthRepo(createDb(c.env.DB)).revokeForUser(session.user.id)
-  }
-})
-
-// Password gate for account deletion. better-auth's delete-user treats a
-// session younger than freshAge (default 24h) as re-authenticated and will
-// delete WITHOUT a password in that window, so the built-in endpoint alone does
-// not enforce the password the Settings UI collects - a walk-up attacker or any
-// same-origin script could POST an empty body and delete the account. Require a
-// non-empty password here, before better-auth sees the request; better-auth
-// then verifies it (INVALID_PASSWORD on mismatch). Read a CLONE so the original
-// request body stays intact for the handler below. Scoped to this one route, so
-// no global freshAge change (which also gates /list-sessions and passkey ops).
-api.use('/auth/delete-user', async (c, next) => {
-  if (c.req.method === 'POST') {
-    let password: unknown
-    try {
-      password = ((await c.req.raw.clone().json()) as { password?: unknown }).password
-    } catch {
-      password = undefined
-    }
-    if (typeof password !== 'string' || password.length === 0) {
-      return c.json(
-        { code: 'PASSWORD_REQUIRED', message: 'Your password is required to delete your account.' },
-        400,
-      )
-    }
-  }
-  return next()
-})
-
-// better-auth owns everything under /api/auth/* (sign-up, sign-in, sign-out,
-// verification, reset, passkeys). It does its own origin checking against
-// baseURL.
+// better-auth owns everything under /api/auth/* (magic-link send and verify,
+// sign-out, passkeys). It does its own origin checking against baseURL. The
+// email+password routes are still mounted by the library but answer 400 -
+// there is no emailAndPassword config for them to run against.
 api.on(['GET', 'POST'], '/auth/*', (c) => createAuth(c.env).handler(c.req.raw))
 
 api.route('/me', meRoutes)

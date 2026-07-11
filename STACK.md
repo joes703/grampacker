@@ -11,7 +11,7 @@ dist-tags the same day. `npm ci` for CI/deploy installs; `.npmrc` sets
 | hono | 4.12.28 | API framework. v4 line is the stable consensus; no v5 announced. |
 | drizzle-orm | 0.45.2 | ORM. Was 1.0.0-rc.4 for one day: better-auth peers on `^0.45.2` (even better-auth 1.7.0-rc.1 does), so the RC bet was reversed 2026-07-07 before any schema existed. Upgrade trigger: better-auth's peer range admitting drizzle 1.x - 1.0 will be GA by then. |
 | drizzle-kit | 0.31.10 | Migration generator. Generate-only locally; `wrangler d1 migrations apply` applies. Carries the esbuild <=0.24.2 dev-server advisory (GHSA-67mh-4wv8-2f99) via its vendored config loader - accepted: dev-only CLI, never runs an esbuild serve process, nothing ships to production. |
-| better-auth | 1.6.23 | Auth core (email/password, sessions, email verification). Vercel-acquisition watch item: gate upgrades on Workers-pool integration tests. |
+| better-auth | 1.6.23 | Auth core: sessions, and the `magic-link` plugin (which ships INSIDE core - `better-auth/plugins/magic-link` - so passwordless auth added no dependency). Email/password was removed 2026-07-11; see `docs/passwordless-auth-design.md`. Vercel-acquisition watch item: gate upgrades on Workers-pool integration tests. |
 | zod | 4.4.3 | DTO schemas in `shared/`, validated on both sides of the API. |
 | react / react-dom | 19.2.7 | Same major as the SPA being transplanted. |
 | wrangler | 4.107.0 | Exactly matches @cloudflare/vite-plugin's peer floor (`^4.107.0`). |
@@ -30,7 +30,7 @@ dist-tags the same day. `npm ci` for CI/deploy installs; `.npmrc` sets
 | eslint | 10.6.0 | Baseline lint plus the security import boundary: fail-closed over all of server/ (data layer, middleware, composition root, and tests are the explicit exemptions) - no DB factory/schema, drizzle-orm, repo constructors, or auth imports; dynamic import() banned; eslint-disable comments neutralized via noInlineConfig. Runs inside `npm run build` (gates deploys) and in CI (gates merges). |
 | typescript-eslint | 8.63.0 | Flat-config recommended rules + `@typescript-eslint/no-restricted-imports` (allowTypeImports keeps repo row-type imports legal in routes). |
 | eslint-plugin-react-hooks | 7.1.1 | Hooks correctness for the SPA (`src/**`). eslint-plugin-jsx-a11y stays excluded until a release supports ESLint 10 peers (same deferral as the old repo). |
-| react-router | 8.1.0 | Pulled forward from the phase-2 list: the auth email links (verify, reset) land on real URL paths, which needs a router. Declarative mode only. |
+| react-router | 8.1.0 | Pulled forward from the phase-2 list: auth email links land on real URL paths, which needs a router. Now load-bearing for `/auth/magic` - the magic link points at the SPA rather than at better-auth's verify endpoint, so a mail scanner prefetching the URL cannot burn the single-use token. Declarative mode only. |
 | @better-auth/passkey | 1.6.23 | WebAuthn passkeys, version-locked to better-auth (the plugin was extracted from core). Its table was NOT in the initial auth migration (an earlier note here claimed otherwise) - migration 0002 adds it via CLI regeneration. rpID derives from BETTER_AUTH_URL: grampacker.app for any *.grampacker.app host, so pre-cutover credentials survive the apex flip. |
 | @tanstack/react-query | 5.101.2 | Phase 2: SPA cache/mutation layer, same major+minor the old app runs. Client defaults ported (30s staleTime, single retry, no focus refetch); the global mutation error handler arrives with the Toast system in the UI transplant. |
 

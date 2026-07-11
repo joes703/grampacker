@@ -3,22 +3,27 @@ import { describe, expect, it } from 'vitest'
 import app from '../index'
 
 const ORIGIN = 'http://localhost:5173'
-const PASSWORD = 'a-long-test-password-123'
 
 // Budgets under test (mirrors server/middleware/rate-limit.ts).
 const SIGN_IN_LIMIT = 10
-const SIGN_UP_LIMIT = 10
-const EMAIL_SEND_LIMIT = 5
 const AUTH_DEFAULT_LIMIT = 30
-const SENSITIVE_LIMIT = 5
+const MAGIC_SEND_IP_LIMIT = 20
+const MAGIC_SEND_EMAIL_LIMIT = 5
+const MAGIC_VERIFY_LIMIT = 10
+const DELETE_USER_LIMIT = 5
 const SIGN_IN_WINDOW_MS = 10 * 60 * 1000
 const SENSITIVE_WINDOW_MS = 10 * 60 * 1000
+const MAGIC_SEND_EMAIL_WINDOW_MS = 60 * 60 * 1000
 
-// change-password/delete-user need no valid session to exercise the limiter:
-// it counts every attempt before auth runs, so an anonymous burst (which the
-// handler would 400/401) still consumes the bucket. A long newPassword keeps
-// change-password past the 12-char floor even though it never reaches that check.
-const NEW_PASSWORD = 'another-long-password-1'
+// None of these need a valid session to exercise the limiter: it counts every
+// attempt BEFORE auth runs, so an anonymous burst (which the handler would
+// 400/401) still consumes the bucket.
+
+// Only ever sent to the DEAD /sign-in/email + /sign-up/email endpoints, which
+// better-auth still mounts but which now 400 (no emailAndPassword config). The
+// value is irrelevant - what is being tested is that a dead endpoint still costs
+// rate-limit budget. It is NOT a credential anything in this app accepts.
+const DEAD_PASSWORD = 'a-long-test-password-123'
 
 function authPost(path: string, body: unknown, ip: string) {
   return app.request(
@@ -36,8 +41,14 @@ function authPost(path: string, body: unknown, ip: string) {
   )
 }
 
-function signIn(ip: string, email = 'nobody@example.com') {
-  return authPost('/api/auth/sign-in/email', { email, password: PASSWORD }, ip)
+// The passkey ceremony is the primary sign-in surface now. It does NOT live
+// under /sign-in/*, which is exactly why it needs an explicit rule.
+function signIn(ip: string) {
+  return authPost('/api/auth/passkey/generate-authenticate-options', {}, ip)
+}
+
+function sendMagicLink(ip: string, email: string) {
+  return authPost('/api/auth/sign-in/magic-link', { email }, ip)
 }
 
 describe('auth rate limiting', () => {
@@ -56,21 +67,13 @@ describe('auth rate limiting', () => {
     expect(retryAfter).toBeLessThanOrEqual(SIGN_IN_WINDOW_MS / 1000)
   })
 
-  it('change-password gets its own tighter sensitive budget with Retry-After', async () => {
-    const ip = '203.0.113.20'
-    for (let i = 0; i < SENSITIVE_LIMIT; i++) {
-      const res = await authPost(
-        '/api/auth/change-password',
-        { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
-        ip,
-      )
+  it('delete-user gets its own tighter sensitive budget with Retry-After', async () => {
+    const ip = '203.0.113.21'
+    for (let i = 0; i < DELETE_USER_LIMIT; i++) {
+      const res = await authPost('/api/auth/delete-user', {}, ip)
       expect(res.status).not.toBe(429)
     }
-    const blocked = await authPost(
-      '/api/auth/change-password',
-      { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
-      ip,
-    )
+    const blocked = await authPost('/api/auth/delete-user', {}, ip)
     expect(blocked.status).toBe(429)
     expect(await blocked.json()).toEqual({ error: 'Too many requests' })
     const retryAfter = Number(blocked.headers.get('Retry-After'))
@@ -79,72 +82,111 @@ describe('auth rate limiting', () => {
     expect(retryAfter).toBeLessThanOrEqual(SENSITIVE_WINDOW_MS / 1000)
   })
 
-  it('delete-user gets its own tighter sensitive budget with Retry-After', async () => {
-    const ip = '203.0.113.21'
-    for (let i = 0; i < SENSITIVE_LIMIT; i++) {
-      const res = await authPost('/api/auth/delete-user', { password: PASSWORD }, ip)
+  it('the magic-link plugin is NOT self-policing: our limiter is the only one', async () => {
+    // better-auth's own limiter is disabled (authOptions), so the rate-limit
+    // rule the magic-link plugin ships never fires. If this test ever goes red
+    // because sends are suddenly unlimited, the cause is that someone deleted
+    // our rule assuming the plugin had it covered. It does not.
+    const ip = '203.0.113.30'
+    for (let i = 0; i < MAGIC_SEND_IP_LIMIT; i++) {
+      const res = await sendMagicLink(ip, `flood-${i}@example.com`)
       expect(res.status).not.toBe(429)
     }
-    const blocked = await authPost('/api/auth/delete-user', { password: PASSWORD }, ip)
+    const blocked = await sendMagicLink(ip, 'flood-over@example.com')
     expect(blocked.status).toBe(429)
-    expect(await blocked.json()).toEqual({ error: 'Too many requests' })
+    expect(Number(blocked.headers.get('Retry-After'))).toBeGreaterThan(0)
+  })
+
+  it('caps links PER ADDRESS, so rotating IPs cannot bomb one inbox', async () => {
+    // The attack the per-email bucket exists for. An IP-keyed limiter alone sees
+    // a first-time caller on every request and lets the flood through - the
+    // victim just watches their inbox fill up. Each request below comes from a
+    // DIFFERENT IP, so only the email bucket can stop it.
+    const victim = 'victim@example.com'
+    for (let i = 0; i < MAGIC_SEND_EMAIL_LIMIT; i++) {
+      const res = await sendMagicLink(`198.51.100.${i}`, victim)
+      expect(res.status, `send ${i}`).not.toBe(429)
+    }
+
+    const blocked = await sendMagicLink('198.51.100.200', victim)
+    expect(blocked.status).toBe(429)
     const retryAfter = Number(blocked.headers.get('Retry-After'))
-    expect(Number.isInteger(retryAfter)).toBe(true)
     expect(retryAfter).toBeGreaterThan(0)
-    expect(retryAfter).toBeLessThanOrEqual(SENSITIVE_WINDOW_MS / 1000)
+    expect(retryAfter).toBeLessThanOrEqual(MAGIC_SEND_EMAIL_WINDOW_MS / 1000)
+
+    // A different address from the same fresh IP still works: the bucket is the
+    // victim's, not a global kill switch.
+    expect((await sendMagicLink('198.51.100.201', 'bystander@example.com')).status).not.toBe(429)
+  })
+
+  it('normalizes the address, so case cannot walk around the victim bucket', async () => {
+    // better-auth lowercases emails, so Victim@ and victim@ are ONE account.
+    // Keying the raw string would hand an attacker an unlimited supply of
+    // buckets for the same inbox just by shifting case.
+    const lower = 'mixedcase@example.com'
+    const upper = 'MixedCase@Example.com'
+    for (let i = 0; i < MAGIC_SEND_EMAIL_LIMIT; i++) {
+      expect((await sendMagicLink(`198.51.101.${i}`, lower)).status).not.toBe(429)
+    }
+    // Same mailbox, different spelling, fresh IP: must still be refused.
+    expect((await sendMagicLink('198.51.101.200', upper)).status).toBe(429)
+  })
+
+  it('does not store the address in the clear', async () => {
+    // rate_limits would otherwise become a list of every address that ever asked
+    // for a link. The key is an HMAC of the normalized address (auth secret as
+    // the pepper), so a DB read leaks nothing.
+    const email = 'private@example.com'
+    await sendMagicLink('198.51.102.1', email)
+    const hit = await env.DB.prepare(
+      "select count(*) as n from rate_limits where key like '%' || ? || '%'",
+    )
+      .bind(email)
+      .first<{ n: number }>()
+    expect(hit?.n).toBe(0)
+  })
+
+  it('meters magic-link VERIFY: a side-effecting GET is not a free read', async () => {
+    // It creates a user and mints a session, so it must never be treated as a
+    // pure-read GET (the allowlist that exempts get-session and list-passkeys).
+    const ip = '203.0.113.31'
+    for (let i = 0; i < MAGIC_VERIFY_LIMIT; i++) {
+      const res = await app.request(
+        `/api/auth/magic-link/verify?token=bogus-${i}`,
+        { method: 'GET', headers: { Origin: ORIGIN, 'cf-connecting-ip': ip } },
+        env,
+      )
+      expect(res.status).not.toBe(429)
+    }
+    const blocked = await app.request(
+      '/api/auth/magic-link/verify?token=bogus-over',
+      { method: 'GET', headers: { Origin: ORIGIN, 'cf-connecting-ip': ip } },
+      env,
+    )
+    expect(blocked.status).toBe(429)
   })
 
   it('sensitive endpoints keep independent buckets from each other', async () => {
     const ip = '203.0.113.22'
-    // Exhaust change-password for this IP.
-    for (let i = 0; i <= SENSITIVE_LIMIT; i++) {
-      await authPost(
-        '/api/auth/change-password',
-        { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
-        ip,
-      )
+    // Exhaust delete-user for this IP.
+    for (let i = 0; i <= DELETE_USER_LIMIT; i++) {
+      await authPost('/api/auth/delete-user', {}, ip)
     }
-    expect(
-      (
-        await authPost(
-          '/api/auth/change-password',
-          { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
-          ip,
-        )
-      ).status,
-    ).toBe(429)
-    // delete-user on the SAME IP is untouched: distinct scope, distinct bucket.
-    expect((await authPost('/api/auth/delete-user', { password: PASSWORD }, ip)).status).not.toBe(
-      429,
-    )
+    expect((await authPost('/api/auth/delete-user', {}, ip)).status).toBe(429)
+    // Sign-in on the SAME IP is untouched: distinct scope, distinct bucket.
+    expect((await signIn(ip)).status).not.toBe(429)
   })
 
   it('sensitive endpoints cut off well before the generic auth bucket would', async () => {
-    // change-password stops at 5...
+    // delete-user stops at 5...
     const sensitiveIp = '203.0.113.23'
-    for (let i = 0; i < SENSITIVE_LIMIT; i++) {
-      expect(
-        (
-          await authPost(
-            '/api/auth/change-password',
-            { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
-            sensitiveIp,
-          )
-        ).status,
-      ).not.toBe(429)
+    for (let i = 0; i < DELETE_USER_LIMIT; i++) {
+      expect((await authPost('/api/auth/delete-user', {}, sensitiveIp)).status).not.toBe(429)
     }
-    expect(
-      (
-        await authPost(
-          '/api/auth/change-password',
-          { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
-          sensitiveIp,
-        )
-      ).status,
-    ).toBe(429)
+    expect((await authPost('/api/auth/delete-user', {}, sensitiveIp)).status).toBe(429)
     // ...while a generic auth endpoint on a fresh IP sails past 5 (budget 30).
     const genericIp = '203.0.113.24'
-    for (let i = 0; i < SENSITIVE_LIMIT + 2; i++) {
+    for (let i = 0; i < DELETE_USER_LIMIT + 2; i++) {
       expect((await authPost('/api/auth/sign-out', {}, genericIp)).status).not.toBe(429)
     }
   })
@@ -158,45 +200,30 @@ describe('auth rate limiting', () => {
     expect((await signIn('203.0.113.99')).status).not.toBe(429)
   })
 
-  it('sign-up has its own stricter daily budget', async () => {
+  it('still meters the dead password endpoints', async () => {
+    // /sign-up/email and /sign-in/email are still MOUNTED by better-auth; they
+    // just 400 now, because there is no emailAndPassword config for them to run
+    // against. A 400 is cheap, but it is not free - an unmetered dead endpoint is
+    // still an unmetered request, so they keep costing budget.
     const ip = '203.0.113.3'
-    for (let i = 0; i < SIGN_UP_LIMIT; i++) {
-      const res = await authPost(
-        '/api/auth/sign-up/email',
-        { email: `burst-${i}@example.com`, name: `Burst ${i}`, password: PASSWORD },
-        ip,
-      )
-      expect(res.status).toBe(200)
-    }
-    const blocked = await authPost(
+    const dead = await authPost(
       '/api/auth/sign-up/email',
-      { email: 'burst-over@example.com', name: 'Over', password: PASSWORD },
+      { email: 'nope@example.com', password: DEAD_PASSWORD },
       ip,
     )
-    expect(blocked.status).toBe(429)
-  })
+    expect(dead.status).toBe(400)
 
-  it('verification-email resends have their own budget', async () => {
-    // The account creation counts against sign-up, not email-send.
-    const signUp = await authPost(
-      '/api/auth/sign-up/email',
-      { email: 'resend@example.com', name: 'Resend', password: PASSWORD },
-      '203.0.113.4',
-    )
-    expect(signUp.status).toBe(200)
-
-    for (let i = 0; i < EMAIL_SEND_LIMIT; i++) {
-      const res = await authPost(
-        '/api/auth/send-verification-email',
-        { email: 'resend@example.com', callbackURL: '/' },
-        '203.0.113.4',
+    for (let i = 0; i < SIGN_IN_LIMIT; i++) {
+      await authPost(
+        '/api/auth/sign-up/email',
+        { email: `burst-${i}@example.com`, password: DEAD_PASSWORD },
+        ip,
       )
-      expect(res.status).toBe(200)
     }
     const blocked = await authPost(
-      '/api/auth/send-verification-email',
-      { email: 'resend@example.com', callbackURL: '/' },
-      '203.0.113.4',
+      '/api/auth/sign-up/email',
+      { email: 'burst-over@example.com', password: DEAD_PASSWORD },
+      ip,
     )
     expect(blocked.status).toBe(429)
   })
@@ -243,7 +270,7 @@ describe('auth rate limiting', () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
-          body: JSON.stringify({ email: 'nobody@example.com', password: PASSWORD }),
+          body: JSON.stringify({ email: 'nobody@example.com', password: DEAD_PASSWORD }),
         },
         env,
       )
@@ -265,7 +292,7 @@ describe('auth rate limiting', () => {
     // header) - and with the header it would 404. Never unlimited auth.
     const cased = await authPost(
       '/api/AUTH/sign-in/email',
-      { email: 'nobody@example.com', password: PASSWORD },
+      { email: 'nobody@example.com', password: DEAD_PASSWORD },
       '203.0.113.8',
     )
     expect(cased.status).toBe(403)
@@ -276,7 +303,7 @@ describe('auth rate limiting', () => {
     for (let i = 0; i <= SIGN_IN_LIMIT; i++) {
       await authPost(
         `/api/auth/sign-in/email?attempt=${i}`,
-        { email: 'nobody@example.com', password: PASSWORD },
+        { email: 'nobody@example.com', password: DEAD_PASSWORD },
         ip,
       )
     }

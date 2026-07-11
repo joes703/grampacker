@@ -1,10 +1,8 @@
-import { Download, KeyRound, TriangleAlert } from 'lucide-react'
-import { authClient } from '../lib/auth-client'
+import { Download, TriangleAlert } from 'lucide-react'
 import { TABLE_RADIUS, TABLE_SURFACE_BG, TABLE_STRONG_DIVIDER } from '../components/flat-table-styles'
 import { useDocumentTitle } from '../lib/use-document-title'
 import PasskeySection from './PasskeySection'
 import DownloadAllData from './DownloadAllData'
-import ChangePasswordForm from './ChangePasswordForm'
 import DeleteAccountSection from './DeleteAccountSection'
 
 // Account/settings hub, reached from the header cog. Restores the old
@@ -12,33 +10,25 @@ import DeleteAccountSection from './DeleteAccountSection'
 // the most-recent list via RootRedirect), so this is where account-level
 // controls live.
 //
-// TRANSPLANT NOTE: the old SettingsPage carried six sections. They land
-// across this batch of slices:
-//   - Passkeys ...................... here (moved off the retired HomePage)
-//   - Download all data (takeout) ... next slice
-//   - Account / change password ..... a later slice (better-auth
-//                                     changePassword; no server change)
-//   - Danger zone / delete account .. last slice (adds user.deleteUser to
-//                                     the better-auth config; relies on the
-//                                     user-id FK cascade to wipe all data)
-//   - Display / weight units ........ deferred (the g/oz control already
-//                                     lives on the pages + Share view)
+// There is no "Account / change password" section: grampacker stores no
+// password. Passkeys ARE the account's credentials, so the passkey section is
+// the account section - it is what you manage, and the email that identifies
+// you is shown there.
+//
+// Still deferred from the old app's six sections:
+//   - Display / weight units ........ the g/oz control already lives on the
+//                                     pages + Share view
 //   - Default nutrition targets ..... returns with the food slice
 export default function SettingsPage() {
   useDocumentTitle('Settings')
-  const { data: session } = authClient.useSession()
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <h1 className="text-xl font-semibold text-gray-900">Settings</h1>
 
-      <Section title="Account" subtitle={session?.user.email} icon={<KeyRound size={16} />}>
-        <ChangePasswordForm />
-      </Section>
-
       {/* PasskeySection brings its own heading + description, so it sits in
           a bare card (Section with no title row) rather than a titled
-          Section. Sections added by later slices use the titled form. */}
+          Section. */}
       <Section>
         <PasskeySection />
       </Section>

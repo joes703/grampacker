@@ -18,7 +18,8 @@ const h = vi.hoisted(() => ({
   >(),
   deletePasskey: vi.fn<(input: { id: string }) => Promise<{ error: unknown }>>(),
   addPasskey: vi.fn<() => Promise<{ error: unknown } | undefined>>(),
-  apiFetchVoid: vi.fn<(path: string, opts?: unknown) => Promise<void>>(),
+  signInPasskey: vi.fn<() => Promise<{ error: unknown } | undefined>>(),
+  signInMagicLink: vi.fn<(input: { email: string }) => Promise<{ error: unknown }>>(),
 }))
 
 vi.mock('../lib/auth-client', () => ({
@@ -29,28 +30,27 @@ vi.mock('../lib/auth-client', () => ({
       deletePasskey: h.deletePasskey,
       addPasskey: h.addPasskey,
     },
+    signIn: { passkey: h.signInPasskey, magicLink: h.signInMagicLink },
+    useSession: () => ({ data: { user: { email: 'joe@example.com' } } }),
   },
   passkeysSupported: () => true,
-}))
-
-// Only the network call is faked; ApiError stays real, because the component
-// distinguishes a wrong password (400) from a rate limit (429) by its status.
-vi.mock('../lib/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../lib/api')>()),
-  apiFetchVoid: h.apiFetchVoid,
 }))
 
 function listResolves(rows: unknown[]) {
   h.listUserPasskeys.mockResolvedValue({ data: rows, error: null })
 }
 
-// Adding and removing a passkey open a password prompt first (the fresh-auth
-// gate). Walk through it. Renaming does NOT - see the rename suite.
-async function confirmPassword(password = 'correct horse battery') {
-  fireEvent.change(await screen.findByLabelText('Password'), {
-    target: { value: password },
-  })
-  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+// The server's refusal when the session is too old to change the credential set.
+// Our own gate answers REAUTH_REQUIRED (delete-passkey); better-auth's
+// freshSessionMiddleware answers SESSION_NOT_FRESH (the register endpoints).
+// Both mean "re-authenticate", and the component must handle both.
+const STALE = { status: 403, code: 'REAUTH_REQUIRED', message: 'stale' }
+const STALE_BETTER_AUTH = { status: 403, code: 'SESSION_NOT_FRESH', message: 'stale' }
+
+// Re-authentication is a CEREMONY now, not a typed secret: signing in again
+// mints a new session, and a new session is a fresh one.
+async function confirmWithPasskey() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Use a passkey' }))
 }
 
 afterEach(() => {
@@ -59,9 +59,10 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  // Default: the password confirmation succeeds. Tests that care about a
-  // rejected password override this.
-  h.apiFetchVoid.mockResolvedValue(undefined)
+  // Default: re-authentication succeeds. Tests that care about a failure
+  // override this.
+  h.signInPasskey.mockResolvedValue({ error: null })
+  h.signInMagicLink.mockResolvedValue({ error: null })
 })
 
 describe('PasskeySection labels', () => {
@@ -109,10 +110,10 @@ describe('PasskeySection rename', () => {
     )
     // reloadKey bump: initial load + post-rename refetch.
     await waitFor(() => expect(h.listUserPasskeys).toHaveBeenCalledTimes(2))
-    // A rename is not gated: no password prompt, no fresh-auth proof minted.
-    // Renaming changes a label, never which credentials can sign in.
-    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument()
-    expect(h.apiFetchVoid).not.toHaveBeenCalled()
+    // A rename is not gated: no re-auth prompt, no ceremony. Renaming changes a
+    // label, never which credentials can sign in.
+    expect(screen.queryByRole('button', { name: 'Use a passkey' })).not.toBeInTheDocument()
+    expect(h.signInPasskey).not.toHaveBeenCalled()
   })
 
   it('submits once when Enter and blur are delivered against the same render', async () => {
@@ -185,98 +186,109 @@ describe('PasskeySection rename', () => {
 })
 
 describe('PasskeySection fresh-auth gate', () => {
-  it('will not add a passkey until the password is confirmed', async () => {
+  it('goes straight through on a FRESH session - no prompt at all', async () => {
+    // The common case. There is no client-side freshness clock: we just try, and
+    // the server decides. A user who signed in recently never sees a challenge.
     listResolves([])
     h.addPasskey.mockResolvedValue({ error: null })
     render(<PasskeySection />)
     fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }))
-
-    // The WebAuthn ceremony must not even start: a hijacked session should
-    // never get as far as the browser prompt.
-    expect(h.addPasskey).not.toHaveBeenCalled()
-    await confirmPassword()
 
     await waitFor(() => expect(h.addPasskey).toHaveBeenCalledTimes(1))
-    expect(h.apiFetchVoid).toHaveBeenCalledWith('/me/reauth', {
-      method: 'POST',
-      body: { password: 'correct horse battery' },
-    })
+    expect(screen.queryByRole('button', { name: 'Use a passkey' })).not.toBeInTheDocument()
+    expect(h.signInPasskey).not.toHaveBeenCalled()
   })
 
-  it('will not remove a passkey until the password is confirmed', async () => {
+  it('re-authenticates and replays the ADD when better-auth says the session is stale', async () => {
+    // The register endpoints are gated by better-auth's own middleware, which
+    // answers SESSION_NOT_FRESH - a different code from our delete gate. Missing
+    // it would strand "Add a passkey" on a raw error with no way forward.
+    // (One passkey already enrolled, so re-asserting one is possible here - the
+    // zero-passkey case is its own test below.)
     listResolves([{ id: 'pk1', name: 'work laptop', aaguid: null }])
-    h.deletePasskey.mockResolvedValue({ error: null })
-    render(<PasskeySection />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
-
-    expect(h.deletePasskey).not.toHaveBeenCalled()
-    await confirmPassword()
-    await waitFor(() => expect(h.deletePasskey).toHaveBeenCalledWith({ id: 'pk1' }))
-  })
-
-  it('reports a wrong password and does not run the mutation', async () => {
-    const { ApiError } = await import('../lib/api')
-    listResolves([])
-    h.addPasskey.mockResolvedValue({ error: null })
-    h.apiFetchVoid.mockRejectedValue(new ApiError(400, 'Incorrect password.'))
+    h.addPasskey.mockResolvedValueOnce({ error: STALE_BETTER_AUTH })
+    h.addPasskey.mockResolvedValueOnce({ error: null })
     render(<PasskeySection />)
     fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }))
-    await confirmPassword('wrong')
 
-    expect(await screen.findByText('Password is incorrect.')).toBeInTheDocument()
-    expect(h.addPasskey).not.toHaveBeenCalled()
-    // Still armed: the prompt stays open so the user can retry.
-    expect(screen.getByLabelText('Password')).toBeInTheDocument()
+    await confirmWithPasskey()
+
+    await waitFor(() => expect(h.signInPasskey).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(h.addPasskey).toHaveBeenCalledTimes(2))
   })
 
-  it('names the rate limit rather than blaming the password', async () => {
-    const { ApiError } = await import('../lib/api')
-    listResolves([])
-    h.apiFetchVoid.mockRejectedValue(new ApiError(429, 'Too many requests'))
-    render(<PasskeySection />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }))
-    await confirmPassword()
-
-    expect(
-      await screen.findByText('Too many attempts. Try again in a few minutes.'),
-    ).toBeInTheDocument()
-    expect(h.addPasskey).not.toHaveBeenCalled()
-  })
-
-  it('re-prompts when the server says the proof expired mid-flight', async () => {
+  it('re-authenticates and replays the REMOVE when our gate says the session is stale', async () => {
     listResolves([{ id: 'pk1', name: 'work laptop', aaguid: null }])
-    // The client thinks its window is open; the server disagrees. The gate is
-    // the authority, so the prompt must come back rather than the action being
-    // silently dropped.
-    h.deletePasskey.mockResolvedValueOnce({
-      error: { status: 403, code: 'REAUTH_REQUIRED', message: 'nope' },
-    })
+    h.deletePasskey.mockResolvedValueOnce({ error: STALE })
     h.deletePasskey.mockResolvedValueOnce({ error: null })
     render(<PasskeySection />)
     fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
-    await confirmPassword()
 
-    await waitFor(() => expect(h.deletePasskey).toHaveBeenCalledTimes(1))
-    // Prompt is back, not an error message.
-    expect(await screen.findByLabelText('Password')).toBeInTheDocument()
+    await confirmWithPasskey()
 
-    await confirmPassword()
+    await waitFor(() => expect(h.signInPasskey).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(h.deletePasskey).toHaveBeenCalledTimes(2))
-    expect(h.apiFetchVoid).toHaveBeenCalledTimes(2)
   })
 
-  it('does not re-prompt inside the window it believes is open', async () => {
+  it('offers ONLY the email route when the account has no passkey to re-assert', async () => {
+    // The bootstrap case, and the one that would otherwise be a dead end: a user
+    // who signed in by email days ago and never enrolled a passkey now wants to.
+    // Their session is stale, and "use a passkey" would be a door with no key.
+    listResolves([])
+    h.addPasskey.mockResolvedValue({ error: STALE_BETTER_AUTH })
+    render(<PasskeySection />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }))
+
+    expect(await screen.findByRole('button', { name: 'Email me a link' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Use a passkey' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Email me a link' }))
+    await waitFor(() =>
+      expect(h.signInMagicLink).toHaveBeenCalledWith({ email: 'joe@example.com' }),
+    )
+    expect(await screen.findByText(/link sent to joe@example.com/i)).toBeInTheDocument()
+  })
+
+  it('re-parks the action when the server refuses even after re-authentication', async () => {
+    // Signed out elsewhere mid-flight. The action must not be silently dropped.
     listResolves([{ id: 'pk1', name: 'work laptop', aaguid: null }])
-    h.deletePasskey.mockResolvedValue({ error: null })
-    h.addPasskey.mockResolvedValue({ error: null })
+    h.deletePasskey.mockResolvedValue({ error: STALE })
     render(<PasskeySection />)
     fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
-    await confirmPassword()
-    await waitFor(() => expect(h.deletePasskey).toHaveBeenCalledTimes(1))
+    await confirmWithPasskey()
 
-    // Second mutation, same window: straight through, no second password.
-    fireEvent.click(screen.getByRole('button', { name: 'Add a passkey' }))
-    await waitFor(() => expect(h.addPasskey).toHaveBeenCalledTimes(1))
-    expect(h.apiFetchVoid).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(h.deletePasskey).toHaveBeenCalledTimes(2))
+    // Prompt is back, not a dead end.
+    expect(await screen.findByRole('button', { name: 'Use a passkey' })).toBeInTheDocument()
+  })
+
+  it('reports a cancelled re-auth ceremony without running the mutation', async () => {
+    listResolves([{ id: 'pk1', name: 'work laptop', aaguid: null }])
+    h.deletePasskey.mockResolvedValue({ error: STALE })
+    h.signInPasskey.mockRejectedValue(new Error('user dismissed the prompt'))
+    render(<PasskeySection />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
+    await confirmWithPasskey()
+
+    expect(
+      await screen.findByText('Passkey confirmation was cancelled or failed.'),
+    ).toBeInTheDocument()
+    // One attempt (the original), not a replay.
+    expect(h.deletePasskey).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not treat an unrelated 403 as "just re-authenticate"', async () => {
+    // better-auth answers 403 for other reasons (a failed origin check). Keying
+    // on the status alone would turn a real refusal into an endless re-auth loop.
+    listResolves([{ id: 'pk1', name: 'work laptop', aaguid: null }])
+    h.deletePasskey.mockResolvedValue({
+      error: { status: 403, code: 'INVALID_ORIGIN', message: 'Invalid origin' },
+    })
+    render(<PasskeySection />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
+
+    expect(await screen.findByText('Invalid origin')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Use a passkey' })).not.toBeInTheDocument()
+    expect(h.signInPasskey).not.toHaveBeenCalled()
   })
 })
