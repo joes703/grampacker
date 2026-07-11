@@ -111,16 +111,21 @@ async function emailBucketKey(secret: string, email: string): Promise<string> {
 }
 
 // Reads the email a magic-link request is for, so it can be charged to that
-// address's bucket as well as the caller's IP. Hono caches the parsed body, so
-// this does not consume it for better-auth downstream.
+// address's bucket as well as the caller's IP.
+//
+// READ A CLONE. This is not defensive style, it is required: the route handler
+// passes the RAW request straight to better-auth (`createAuth(...).handler(
+// c.req.raw)` in server/index.ts), which bypasses Hono's body cache entirely.
+// Calling `c.req.json()` here would populate that cache by consuming
+// `raw`'s body stream, and better-auth would then throw "Body has already been
+// used" - a 500 on the send endpoint, i.e. nobody can sign in. A clone has its
+// own stream, so the original arrives untouched.
 //
 // A body we cannot read gets a stable key rather than a free pass: a malformed
 // send is still a request, and letting it skip the bucket would be a bypass.
-async function magicLinkEmail(c: {
-  req: { json: () => Promise<unknown> }
-}): Promise<string> {
+async function magicLinkEmail(c: { req: { raw: Request } }): Promise<string> {
   try {
-    const body = (await c.req.json()) as { email?: unknown }
+    const body = (await c.req.raw.clone().json()) as { email?: unknown }
     return typeof body.email === 'string' ? body.email : 'malformed'
   } catch {
     return 'malformed'

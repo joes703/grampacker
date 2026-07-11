@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 import app from '../index'
+import { lastEmailTo } from '../email/console'
 
 const ORIGIN = 'http://localhost:5173'
 
@@ -80,6 +81,24 @@ describe('auth rate limiting', () => {
     expect(Number.isInteger(retryAfter)).toBe(true)
     expect(retryAfter).toBeGreaterThan(0)
     expect(retryAfter).toBeLessThanOrEqual(SENSITIVE_WINDOW_MS / 1000)
+  })
+
+  it('reading the email for its bucket does NOT consume the body better-auth needs', async () => {
+    // REGRESSION (caught by CI, not by me). The route handler passes the RAW
+    // request to better-auth (`handler(c.req.raw)`), which bypasses Hono's body
+    // cache. The first cut of the per-email bucket called `c.req.json()`, which
+    // populates that cache BY CONSUMING raw's stream - so better-auth got a used
+    // body and threw "Body has already been used". Every magic-link send 500'd:
+    // nobody could sign in at all.
+    //
+    // The limiter tests all asserted `not.toBe(429)`, and a 500 is not a 429, so
+    // they stayed green through it. Hence this test asserts the send SUCCEEDS and
+    // that better-auth actually parsed the address out of the body - if the body
+    // were consumed, no email could name the right recipient.
+    const email = 'body-intact@example.com'
+    const res = await sendMagicLink('203.0.113.40', email)
+    expect(res.status).toBe(200)
+    expect(lastEmailTo(email)).toBeDefined()
   })
 
   it('the magic-link plugin is NOT self-policing: our limiter is the only one', async () => {
