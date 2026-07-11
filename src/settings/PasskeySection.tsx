@@ -3,12 +3,43 @@ import { authClient, passkeysSupported } from '../lib/auth-client'
 import { authErrorMessage } from '../auth/auth-errors'
 import { ErrorText } from '../auth/auth-ui'
 import { authenticatorName } from '../lib/passkey-authenticator-names'
+import FormLabel from '../components/FormLabel'
+import { ApiError, apiFetchVoid } from '../lib/api'
 
 type PasskeyRow = {
   id: string
   name?: string | null
   aaguid?: string | null
   createdAt?: Date | string
+}
+
+// Every passkey mutation needs a server-side fresh-auth proof: a valid
+// session alone must not be able to plant a credential (SECURITY.md). The
+// server grants a 10-minute window from POST /api/me/reauth; we assume a
+// SHORTER one so we prompt before the server would reject, rather than after.
+// This clock is only an optimization - the server is the authority, and a 403
+// REAUTH_REQUIRED at any point re-opens the prompt.
+const FRESH_AUTH_ASSUMED_MS = 9 * 60 * 1000
+
+// A passkey mutation, captured so it can be replayed after the user confirms
+// their password. Actions are data, not closures, so the retry path is
+// obvious and testable.
+type PasskeyAction =
+  | { kind: 'add' }
+  | { kind: 'delete'; id: string }
+  | { kind: 'rename'; id: string; name: string }
+
+// The gate's refusal (server/middleware/fresh-auth.ts). better-auth's client
+// error type does not declare `code`, though it passes the field through, so
+// narrow it here rather than trusting the declared shape. Both the status AND
+// the code are checked: better-auth has its own reasons to answer 403 (a
+// failed origin check, say), and those must not masquerade as "ask for the
+// password again".
+function isReauthRequired(error: { status: number }): boolean {
+  return (
+    error.status === 403 &&
+    (error as { code?: unknown }).code === 'REAUTH_REQUIRED'
+  )
 }
 
 function createdLabel(createdAt: PasskeyRow['createdAt']): string {
@@ -66,6 +97,14 @@ export default function PasskeySection() {
   const submittingRename = useRef(false)
   // Bump to refetch the list (after add/remove/rename).
   const [reloadKey, setReloadKey] = useState(0)
+  // The mutation waiting on a password confirmation, and the password being
+  // typed for it. Non-null pending == the prompt is open.
+  const [pending, setPending] = useState<PasskeyAction | null>(null)
+  const [password, setPassword] = useState('')
+  const submittingReauth = useRef(false)
+  // When we believe the server's fresh-auth window closes. Never persisted:
+  // a reload should re-prompt, and the server decides regardless.
+  const freshUntil = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -87,41 +126,104 @@ export default function PasskeySection() {
     }
   }, [reloadKey])
 
-  async function handleAdd() {
-    if (busy) return
-    setBusy(true)
-    setError(null)
+  // Runs a mutation against better-auth. Returns 'reauth' when the server
+  // refuses for want of a fresh-auth proof, so the caller can prompt and
+  // replay - every other outcome is terminal and already reported.
+  async function runAction(action: PasskeyAction): Promise<'done' | 'reauth'> {
+    const failure = {
+      add: "Couldn't add the passkey.",
+      delete: "Couldn't remove the passkey.",
+      rename: "Couldn't rename the passkey.",
+    }[action.kind]
+
     try {
-      const result = await authClient.passkey.addPasskey()
+      const result =
+        action.kind === 'add'
+          ? await authClient.passkey.addPasskey()
+          : action.kind === 'delete'
+            ? await authClient.passkey.deletePasskey({ id: action.id })
+            : await authClient.passkey.updatePasskey({
+                id: action.id,
+                name: action.name,
+              })
+
       if (result?.error) {
-        setError(authErrorMessage(result.error, "Couldn't add the passkey."))
-        return
+        // The gate rejected us: the window lapsed mid-flight, or another tab
+        // signed out. Drop our optimistic clock and let the caller prompt.
+        if (isReauthRequired(result.error)) {
+          freshUntil.current = 0
+          return 'reauth'
+        }
+        setError(authErrorMessage(result.error, failure))
+        return 'done'
       }
       setReloadKey((k) => k + 1)
+      return 'done'
     } catch {
-      // Most common path: the user dismissed the browser's passkey prompt.
-      setError('Passkey setup was cancelled or failed.')
+      // For 'add', the overwhelmingly common path here is the user dismissing
+      // the browser's passkey prompt - not a failure worth alarming about.
+      setError(
+        action.kind === 'add' ? 'Passkey setup was cancelled or failed.' : failure,
+      )
+      return 'done'
+    }
+  }
+
+  // The single door for every passkey mutation. If we believe the fresh-auth
+  // window is open, go straight through; otherwise park the action and ask
+  // for the password first.
+  async function requestAction(action: PasskeyAction) {
+    if (busy || pending) return
+    setError(null)
+
+    if (Date.now() >= freshUntil.current) {
+      setPending(action)
+      return
+    }
+
+    setBusy(true)
+    try {
+      if ((await runAction(action)) === 'reauth') setPending(action)
     } finally {
       setBusy(false)
     }
   }
 
-  async function handleDelete(id: string) {
-    if (busy) return
+  // Confirms the password, then replays the action that needed it.
+  async function submitReauth(e: React.FormEvent) {
+    e.preventDefault()
+    const action = pending
+    if (!action || submittingReauth.current || !password) return
+
+    submittingReauth.current = true
     setBusy(true)
     setError(null)
     try {
-      const { error: deleteError } = await authClient.passkey.deletePasskey({ id })
-      if (deleteError) {
-        setError(authErrorMessage(deleteError, "Couldn't remove the passkey."))
-        return
-      }
-      setReloadKey((k) => k + 1)
-    } catch {
-      setError("Couldn't remove the passkey.")
+      await apiFetchVoid('/me/reauth', { method: 'POST', body: { password } })
+      freshUntil.current = Date.now() + FRESH_AUTH_ASSUMED_MS
+      setPassword('')
+      setPending(null)
+      // If the server rejects even now, something changed underneath us
+      // (signed out elsewhere). Re-prompt rather than swallow it.
+      if ((await runAction(action)) === 'reauth') setPending(action)
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.status === 400
+          ? 'Password is incorrect.'
+          : err instanceof ApiError && err.status === 429
+            ? 'Too many attempts. Try again in a few minutes.'
+            : "Couldn't confirm your password.",
+      )
     } finally {
+      submittingReauth.current = false
       setBusy(false)
     }
+  }
+
+  function cancelReauth() {
+    setPending(null)
+    setPassword('')
+    setError(null)
   }
 
   async function submitRename() {
@@ -142,22 +244,12 @@ export default function PasskeySection() {
       submittingRename.current = false
       return
     }
-    setBusy(true)
-    setError(null)
     try {
-      const { error: renameError } = await authClient.passkey.updatePasskey({
-        id: row.id,
-        name: trimmed,
-      })
-      if (renameError) {
-        setError(authErrorMessage(renameError, "Couldn't rename the passkey."))
-        return
-      }
-      setReloadKey((k) => k + 1)
-    } catch {
-      setError("Couldn't rename the passkey.")
+      // Rename is a mutation like any other, so it goes through the same gate.
+      // The rule is deliberately flat - "every passkey mutation requires fresh
+      // auth" - because a rule with exceptions is one nobody can audit.
+      await requestAction({ kind: 'rename', id: row.id, name: trimmed })
     } finally {
-      setBusy(false)
       submittingRename.current = false
     }
   }
@@ -230,7 +322,7 @@ export default function PasskeySection() {
                     <button
                       type="button"
                       className="text-sm font-medium text-rose-700 hover:underline disabled:opacity-50"
-                      onClick={() => void handleDelete(row.id)}
+                      onClick={() => void requestAction({ kind: 'delete', id: row.id })}
                       disabled={busy}
                     >
                       Remove
@@ -242,14 +334,56 @@ export default function PasskeySection() {
           )
         })}
         <ErrorText message={error} />
-        <button
-          type="button"
-          className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          onClick={() => void handleAdd()}
-          disabled={busy}
-        >
-          {busy ? 'Working...' : 'Add a passkey'}
-        </button>
+        {pending ? (
+          // Confirming the password mints a short-lived server-side proof;
+          // the parked mutation replays as soon as it lands. Adding, removing
+          // and renaming all pass through here - a hijacked session must not
+          // be able to plant a credential on its own.
+          <form onSubmit={(e) => void submitReauth(e)} className="space-y-2">
+            <p className="text-sm text-gray-600">
+              {pending.kind === 'add'
+                ? 'Confirm your password to add a passkey.'
+                : pending.kind === 'delete'
+                  ? 'Confirm your password to remove this passkey.'
+                  : 'Confirm your password to rename this passkey.'}
+            </p>
+            <FormLabel htmlFor="reauth-password">Password</FormLabel>
+            <input
+              id="reauth-password"
+              autoFocus
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
+            />
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                disabled={busy || !password}
+              >
+                {busy ? 'Confirming...' : 'Confirm'}
+              </button>
+              <button
+                type="button"
+                className="text-sm font-medium text-gray-600 hover:underline"
+                onClick={cancelReauth}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button
+            type="button"
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            onClick={() => void requestAction({ kind: 'add' })}
+            disabled={busy}
+          >
+            {busy ? 'Working...' : 'Add a passkey'}
+          </button>
+        )}
       </div>
     </section>
   )

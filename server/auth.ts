@@ -1,4 +1,5 @@
 import { betterAuth } from 'better-auth'
+import { APIError } from 'better-auth/api'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { passkey } from '@better-auth/passkey'
 import { createDb } from './db'
@@ -136,6 +137,42 @@ export function authOptions(env: Env) {
         rpID: passkeyRpId(env.BETTER_AUTH_URL),
         rpName: 'grampacker',
         origin: env.BETTER_AUTH_URL,
+        // Ask the authenticator to verify the human (screen lock, PIN,
+        // biometric) rather than merely prove possession of the credential.
+        // WebAuthn's default is 'preferred', which silently degrades to no
+        // verification - so the Settings copy ("your device's screen lock or
+        // security key") would be a promise the server never checked.
+        authenticatorSelection: { userVerification: 'required' },
+        // ...and 'required' above is only a REQUEST hint. The plugin
+        // hardcodes requireUserVerification: false at both of its
+        // verification sites and exposes no option to change it, so a
+        // response with the UV flag clear is accepted no matter what we
+        // asked for. These hooks are the actual enforcement: they run
+        // BEFORE the passkey row is created (registration) and before the
+        // counter update and session creation (authentication), so throwing
+        // here leaves no partial state behind.
+        registration: {
+          afterVerification: ({ verification }) => {
+            if (!verification.registrationInfo?.userVerified) {
+              throw new APIError('BAD_REQUEST', {
+                code: 'USER_VERIFICATION_REQUIRED',
+                message:
+                  'This device did not verify it was you. Enable a screen lock, PIN, or biometric and try again.',
+              })
+            }
+          },
+        },
+        authentication: {
+          afterVerification: ({ verification }) => {
+            if (!verification.authenticationInfo.userVerified) {
+              throw new APIError('UNAUTHORIZED', {
+                code: 'USER_VERIFICATION_REQUIRED',
+                message:
+                  'This device did not verify it was you. Use your screen lock, PIN, or biometric, or sign in with your password.',
+              })
+            }
+          },
+        },
       }),
     ],
   }

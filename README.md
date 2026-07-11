@@ -12,11 +12,13 @@ and upgrade policy live in [STACK.md](./STACK.md). Deferred ideas live in
 ## Development
 
 ```sh
-npm install
+npm ci             # never `npm install` - it can rewrite the lockfile
 npm run dev        # SPA + /api/* Worker + local D1, one process (no Docker)
-npm test           # unit tests (vitest)
+npm test           # unit tests (vitest) + api tests (workers pool)
+npm run test:unit  # unit tests only
+npm run test:api   # api tests only (needs to bind a port)
 npm run typecheck  # wrangler types + tsc -b
-npm run build      # typecheck + client/worker production build
+npm run build      # typecheck + lint + client/worker production build
 ```
 
 `npm run build` is the pre-commit verification gate, same discipline as the

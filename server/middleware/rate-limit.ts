@@ -2,6 +2,7 @@ import { createMiddleware } from 'hono/factory'
 import { lt, sql } from 'drizzle-orm'
 import { createDb } from '../db'
 import { rateLimits } from '../db/schema'
+import { rateLimitIpKey } from './client-ip'
 
 type Rule = { scope: string; limit: number; windowMs: number }
 
@@ -38,6 +39,14 @@ const DELETE_USER: Rule = {
   limit: SENSITIVE_LIMIT,
   windowMs: SENSITIVE_WINDOW_MS,
 }
+// POST /api/me/reauth verifies the account password to mint a fresh-auth
+// proof, so it guesses passwords just as well as the two above. Same budget,
+// its own bucket. It is the only limited path outside /api/auth/*.
+const REAUTH: Rule = {
+  scope: 'reauth',
+  limit: SENSITIVE_LIMIT,
+  windowMs: SENSITIVE_WINDOW_MS,
+}
 
 // Longest window; rows older than this are dead and get swept.
 const MAX_WINDOW_MS = DAY
@@ -51,6 +60,7 @@ const EMAIL_SEND_PATHS = new Set([
 ])
 
 function ruleFor(path: string): Rule {
+  if (path === '/api/me/reauth') return REAUTH
   if (path === '/api/auth/change-password') return CHANGE_PASSWORD
   if (path === '/api/auth/delete-user') return DELETE_USER
   if (path.startsWith('/api/auth/sign-up')) return SIGN_UP
@@ -87,7 +97,11 @@ export const authRateLimit = createMiddleware<{ Bindings: Env }>(
     }
 
     const rule = ruleFor(c.req.path)
-    const ip = c.req.header('cf-connecting-ip') ?? 'local'
+    const rawIp = c.req.header('cf-connecting-ip')
+    // IPv6 is bucketed by /64, not by exact address - see client-ip.ts.
+    // Keying the raw address would let any IPv6 client rotate through its
+    // own prefix and mint unlimited budget.
+    const ip = rawIp === undefined ? 'local' : rateLimitIpKey(rawIp)
     const key = `${rule.scope}:${ip}`
     const now = Date.now()
     const cutoff = now - rule.windowMs

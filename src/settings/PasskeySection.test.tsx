@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   >(),
   deletePasskey: vi.fn<(input: { id: string }) => Promise<{ error: unknown }>>(),
   addPasskey: vi.fn<() => Promise<{ error: unknown } | undefined>>(),
+  apiFetchVoid: vi.fn<(path: string, opts?: unknown) => Promise<void>>(),
 }))
 
 vi.mock('../lib/auth-client', () => ({
@@ -32,8 +33,24 @@ vi.mock('../lib/auth-client', () => ({
   passkeysSupported: () => true,
 }))
 
+// Only the network call is faked; ApiError stays real, because the component
+// distinguishes a wrong password (400) from a rate limit (429) by its status.
+vi.mock('../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/api')>()),
+  apiFetchVoid: h.apiFetchVoid,
+}))
+
 function listResolves(rows: unknown[]) {
   h.listUserPasskeys.mockResolvedValue({ data: rows, error: null })
+}
+
+// Every passkey mutation now opens a password prompt first (the fresh-auth
+// gate). Walk through it.
+async function confirmPassword(password = 'correct horse battery') {
+  fireEvent.change(await screen.findByLabelText('Password'), {
+    target: { value: password },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
 }
 
 afterEach(() => {
@@ -42,6 +59,9 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Default: the password confirmation succeeds. Tests that care about a
+  // rejected password override this.
+  h.apiFetchVoid.mockResolvedValue(undefined)
 })
 
 describe('PasskeySection labels', () => {
@@ -81,6 +101,9 @@ describe('PasskeySection rename', () => {
     const input = screen.getByLabelText('Passkey name')
     fireEvent.change(input, { target: { value: '  travel key  ' } })
     fireEvent.keyDown(input, { key: 'Enter' })
+    // The rename is parked behind the fresh-auth gate, not sent.
+    expect(h.updatePasskey).not.toHaveBeenCalled()
+    await confirmPassword()
     await waitFor(() =>
       expect(h.updatePasskey).toHaveBeenCalledWith({
         id: 'pk1',
@@ -107,6 +130,7 @@ describe('PasskeySection rename', () => {
       fireEvent.keyDown(input, { key: 'Enter' })
       fireEvent.blur(input)
     })
+    await confirmPassword()
     await waitFor(() =>
       expect(h.updatePasskey).toHaveBeenCalledWith({
         id: 'pk1',
@@ -114,7 +138,10 @@ describe('PasskeySection rename', () => {
       }),
     )
     await waitFor(() => expect(h.listUserPasskeys).toHaveBeenCalledTimes(2))
+    // The point of the test: the double delivery still yields ONE write. The
+    // gate must not turn it into two parked actions either.
     expect(h.updatePasskey).toHaveBeenCalledTimes(1)
+    expect(h.apiFetchVoid).toHaveBeenCalledTimes(1)
   })
 
   it('treats submitting the prefilled display label as a cancel, not a write', async () => {
@@ -152,9 +179,107 @@ describe('PasskeySection rename', () => {
     const input = screen.getByLabelText('Passkey name')
     fireEvent.change(input, { target: { value: 'new name' } })
     fireEvent.keyDown(input, { key: 'Enter' })
+    await confirmPassword()
     expect(await screen.findByText('nope')).toBeInTheDocument()
     expect(screen.getByText('work laptop')).toBeInTheDocument()
     // No refetch on failure: only the initial load.
     expect(h.listUserPasskeys).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('PasskeySection fresh-auth gate', () => {
+  it('will not add a passkey until the password is confirmed', async () => {
+    listResolves([])
+    h.addPasskey.mockResolvedValue({ error: null })
+    render(<PasskeySection />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }))
+
+    // The WebAuthn ceremony must not even start: a hijacked session should
+    // never get as far as the browser prompt.
+    expect(h.addPasskey).not.toHaveBeenCalled()
+    await confirmPassword()
+
+    await waitFor(() => expect(h.addPasskey).toHaveBeenCalledTimes(1))
+    expect(h.apiFetchVoid).toHaveBeenCalledWith('/me/reauth', {
+      method: 'POST',
+      body: { password: 'correct horse battery' },
+    })
+  })
+
+  it('will not remove a passkey until the password is confirmed', async () => {
+    listResolves([{ id: 'pk1', name: 'work laptop', aaguid: null }])
+    h.deletePasskey.mockResolvedValue({ error: null })
+    render(<PasskeySection />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
+
+    expect(h.deletePasskey).not.toHaveBeenCalled()
+    await confirmPassword()
+    await waitFor(() => expect(h.deletePasskey).toHaveBeenCalledWith({ id: 'pk1' }))
+  })
+
+  it('reports a wrong password and does not run the mutation', async () => {
+    const { ApiError } = await import('../lib/api')
+    listResolves([])
+    h.addPasskey.mockResolvedValue({ error: null })
+    h.apiFetchVoid.mockRejectedValue(new ApiError(400, 'Incorrect password.'))
+    render(<PasskeySection />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }))
+    await confirmPassword('wrong')
+
+    expect(await screen.findByText('Password is incorrect.')).toBeInTheDocument()
+    expect(h.addPasskey).not.toHaveBeenCalled()
+    // Still armed: the prompt stays open so the user can retry.
+    expect(screen.getByLabelText('Password')).toBeInTheDocument()
+  })
+
+  it('names the rate limit rather than blaming the password', async () => {
+    const { ApiError } = await import('../lib/api')
+    listResolves([])
+    h.apiFetchVoid.mockRejectedValue(new ApiError(429, 'Too many requests'))
+    render(<PasskeySection />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }))
+    await confirmPassword()
+
+    expect(
+      await screen.findByText('Too many attempts. Try again in a few minutes.'),
+    ).toBeInTheDocument()
+    expect(h.addPasskey).not.toHaveBeenCalled()
+  })
+
+  it('re-prompts when the server says the proof expired mid-flight', async () => {
+    listResolves([{ id: 'pk1', name: 'work laptop', aaguid: null }])
+    // The client thinks its window is open; the server disagrees. The gate is
+    // the authority, so the prompt must come back rather than the action being
+    // silently dropped.
+    h.deletePasskey.mockResolvedValueOnce({
+      error: { status: 403, code: 'REAUTH_REQUIRED', message: 'nope' },
+    })
+    h.deletePasskey.mockResolvedValueOnce({ error: null })
+    render(<PasskeySection />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
+    await confirmPassword()
+
+    await waitFor(() => expect(h.deletePasskey).toHaveBeenCalledTimes(1))
+    // Prompt is back, not an error message.
+    expect(await screen.findByLabelText('Password')).toBeInTheDocument()
+
+    await confirmPassword()
+    await waitFor(() => expect(h.deletePasskey).toHaveBeenCalledTimes(2))
+    expect(h.apiFetchVoid).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not re-prompt inside the window it believes is open', async () => {
+    listResolves([{ id: 'pk1', name: 'work laptop', aaguid: null }])
+    h.deletePasskey.mockResolvedValue({ error: null })
+    h.addPasskey.mockResolvedValue({ error: null })
+    render(<PasskeySection />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
+    await confirmPassword()
+    await waitFor(() => expect(h.deletePasskey).toHaveBeenCalledTimes(1))
+
+    // Second mutation, same window: straight through, no second password.
+    fireEvent.click(screen.getByRole('button', { name: 'Add a passkey' }))
+    await waitFor(() => expect(h.addPasskey).toHaveBeenCalledTimes(1))
+    expect(h.apiFetchVoid).toHaveBeenCalledTimes(1)
   })
 })
