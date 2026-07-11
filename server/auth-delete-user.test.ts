@@ -149,6 +149,15 @@ describe('POST /api/auth/delete-user', () => {
   let otherId: string
 
   beforeEach(async () => {
+    // /api/auth/delete-user now has its own tight 5/10min rate bucket
+    // (server/middleware/rate-limit.ts). apiRequest sends no cf-connecting-ip,
+    // so every delete-user call here shares the 'local' bucket; across this
+    // file's tests that exceeds 5 and a later test would see 429 instead of the
+    // status it asserts. These tests are about deletion semantics, not rate
+    // limiting, so reset the limiter before each so each starts with a full
+    // budget (every test makes at most two delete-user calls).
+    await env.DB.prepare('delete from rate_limits').run()
+
     email = `del-${crypto.randomUUID()}@example.com`
     otherEmail = `keep-${crypto.randomUUID()}@example.com`
     ;({ cookie } = await signUpVerifiedUser(email, 'Doomed'))
