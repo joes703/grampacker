@@ -1,0 +1,69 @@
+# Ships grampacker to Cloudflare Workers whenever something lands on main.
+#
+# The flow: a PR is verified by ci.yml and (with branch protection +
+# auto-merge) can only reach main once those checks pass. The push to main
+# that a merge produces triggers THIS workflow, which applies any pending D1
+# schema migrations and then deploys the Worker. So in practice "merge the
+# PR" == "deploy to production".
+#
+# Auth is a Cloudflare API token stored as a GitHub Actions secret
+# (CLOUDFLARE_API_TOKEN). It lives only here in GitHub - never on a laptop or
+# in an agent sandbox. CLOUDFLARE_ACCOUNT_ID tells wrangler which account to
+# deploy into. Both are configured in repo Settings > Secrets and variables >
+# Actions.
+#
+# No third-party actions are used (only the same first-party checkout/setup
+# actions ci.yml already pins by commit SHA), so there is nothing extra to
+# trust or keep pinned.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+# Read-only: the deploy needs the source and the secrets, nothing more.
+permissions:
+  contents: read
+
+# Never run two production deploys at once. If a second merge lands while a
+# deploy is in flight, it queues behind it rather than racing (we do NOT
+# cancel an in-progress deploy - a half-cancelled deploy is worse than a wait).
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Cloudflare
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Apply schema migrations to the REMOTE (production) D1 before deploying
+      # the new code, so the new Worker never runs against an old table shape.
+      # A no-op when there are no new migration files. Additive-only migrations
+      # make apply-then-deploy safe; a destructive migration would need its own
+      # ordering plan.
+      - name: Apply D1 migrations (production)
+        run: npx wrangler d1 migrations apply grampacker --remote
+
+      # npm run deploy == `npm run build && wrangler deploy`: vite build emits
+      # the SPA + Worker bundle, then wrangler ships it. wrangler authenticates
+      # from the CLOUDFLARE_API_TOKEN env var above - no interactive login.
+      - name: Build and deploy
+        run: npm run deploy
