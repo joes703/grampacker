@@ -19,6 +19,26 @@ const EMAIL_SEND: Rule = { scope: 'email-send', limit: 5, windowMs: DAY }
 const SIGN_IN: Rule = { scope: 'sign-in', limit: 10, windowMs: 10 * MINUTE }
 const AUTH_DEFAULT: Rule = { scope: 'auth', limit: 30, windowMs: 10 * MINUTE }
 
+// Credential-verifying, high-impact endpoints. change-password and delete-user
+// both re-check the current password, so both are password-guessing targets and
+// one is irreversible; better-auth treats change-password as sensitive by
+// default. Left on AUTH_DEFAULT they would get the generic 30/10min bucket.
+// Give each its OWN tighter budget - 5 per 10 minutes shuts down guessing while
+// leaving room for an honest mistyped password. Distinct scopes = independent
+// buckets, so exhausting one does not lock out the other.
+const SENSITIVE_LIMIT = 5
+const SENSITIVE_WINDOW_MS = 10 * MINUTE
+const CHANGE_PASSWORD: Rule = {
+  scope: 'change-password',
+  limit: SENSITIVE_LIMIT,
+  windowMs: SENSITIVE_WINDOW_MS,
+}
+const DELETE_USER: Rule = {
+  scope: 'delete-user',
+  limit: SENSITIVE_LIMIT,
+  windowMs: SENSITIVE_WINDOW_MS,
+}
+
 // Longest window; rows older than this are dead and get swept.
 const MAX_WINDOW_MS = DAY
 
@@ -31,6 +51,8 @@ const EMAIL_SEND_PATHS = new Set([
 ])
 
 function ruleFor(path: string): Rule {
+  if (path === '/api/auth/change-password') return CHANGE_PASSWORD
+  if (path === '/api/auth/delete-user') return DELETE_USER
   if (path.startsWith('/api/auth/sign-up')) return SIGN_UP
   if (EMAIL_SEND_PATHS.has(path)) return EMAIL_SEND
   if (path.startsWith('/api/auth/sign-in')) return SIGN_IN
