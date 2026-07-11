@@ -84,6 +84,14 @@ Four independent layers, tested in `server/routes/me.test.ts`:
   because better-auth treats `Victim@` and `victim@` as one account, and
   HMAC'd so `rate_limits` never becomes a plaintext list of who uses the
   app.
+- The key **must not trim** the address, tempting as that looks.
+  better-auth validates with `z.email()` and does not trim, so
+  `"victim@x.com "` is rejected and no mail is sent - but a trimming key
+  would still have charged the victim's real bucket for it, letting an
+  attacker on rotating IPs burn a victim's 5/hour recovery budget without
+  sending a single email and lock them out of the only way back into a
+  passwordless account. The bucket key must match the identity better-auth
+  actually resolves: lowercase, no trim. (Found in review, 2026-07-11.)
 - **better-auth's own limiter is disabled**, so the rate-limit rule the
   magic-link plugin ships NEVER FIRES. Anyone reading the plugin source
   would reasonably conclude magic links are self-policing. They are not.
@@ -130,6 +138,12 @@ honest rather than adding a second, weaker credential in front of it.
   CLICK. Mail scanners and link-prefetchers follow URLs in email; since
   redemption is single-use and side-effecting, a scanner hitting the
   endpoint directly would burn the user's link before they ever saw it.
+- The page then **scrubs the token out of the URL** (replace-navigation)
+  so a session-minting token does not sit in the address bar, in history,
+  or in the `Referer` of same-origin requests. This narrows exposure
+  rather than erasing it - the initial GET still carried the token, so it
+  can reach edge access logs, which is part of why the token is
+  single-use and 5-minute.
 - Responses to a send request are **uniform** whether or not the address
   has an account. Redeeming a link for an unknown address CREATES the
   account, so there is no existence signal to leak in the first place.

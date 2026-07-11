@@ -82,11 +82,23 @@ function ruleFor(path: string): Rule {
   return AUTH_DEFAULT
 }
 
-// The per-email bucket key. Two things matter here and both are load-bearing:
+// The per-email bucket key. The normalization here must match EXACTLY the
+// identity better-auth resolves - no more, no less. Both halves of that are
+// load-bearing, in opposite directions:
 //
-// - NORMALIZE first. better-auth lowercases emails on create and lookup, so
-//   Victim@x.com and victim@x.com are one account. Keying the raw input would
-//   let an attacker walk around the victim's bucket just by varying case.
+// - LOWERCASE, because better-auth lowercases on create and lookup, so
+//   Victim@x.com and victim@x.com are ONE account. Keying the raw input would
+//   hand an attacker unlimited buckets for one inbox just by varying case.
+//
+// - DO NOT TRIM, even though trimming looks like more careful normalization.
+//   better-auth validates the body with z.email() and does NOT trim, so
+//   "victim@x.com " (trailing space) is REJECTED and no mail is ever sent.
+//   Trimming here would fold that rejected string onto the victim's real bucket,
+//   letting an attacker burn the victim's 5/hour recovery budget from rotating
+//   IPs without sending a single email - a targeted lockout of the passwordless
+//   root of trust. Untrimmed, the junk address gets its own junk bucket, which
+//   is exactly where the cost belongs. (Found by review, not by me.)
+//
 // - HMAC, not a bare hash. Without it, rate_limits.key becomes a list of every
 //   address that ever requested a link, and a plain SHA-256 of an email address
 //   is trivially reversible with a dictionary - it is a lookup key, not a
@@ -102,7 +114,7 @@ async function emailBucketKey(secret: string, email: string): Promise<string> {
   const mac = await crypto.subtle.sign(
     'HMAC',
     key,
-    new TextEncoder().encode(email.trim().toLowerCase()),
+    new TextEncoder().encode(email.toLowerCase()),
   )
   return [...new Uint8Array(mac)]
     .map((b) => b.toString(16).padStart(2, '0'))

@@ -151,6 +151,25 @@ describe('auth rate limiting', () => {
     expect((await sendMagicLink('198.51.101.200', upper)).status).toBe(429)
   })
 
+  it('a whitespace variant cannot burn the victim bucket (no trim)', async () => {
+    // The bucket key lowercases but deliberately does NOT trim. better-auth
+    // validates with z.email() and does not trim either, so "victim@x.com " is
+    // REJECTED and no mail is sent - but a trimming key would still have charged
+    // the victim's real bucket for it. An attacker on rotating IPs could then
+    // spend the victim's 5/hour recovery budget without sending one email, and
+    // lock them out of the only way back into a passwordless account.
+    //
+    // So: the padded address must land in its OWN bucket, and the victim's real
+    // budget must be untouched afterwards.
+    const victim = 'untrimmed-victim@example.com'
+    for (let i = 0; i < MAGIC_SEND_EMAIL_LIMIT + 2; i++) {
+      await sendMagicLink(`198.51.103.${i}`, `${victim} `)
+    }
+    // Real address, fresh IP: still served. If the key trimmed, this would 429.
+    const real = await sendMagicLink('198.51.103.200', victim)
+    expect(real.status).not.toBe(429)
+  })
+
   it('does not store the address in the clear', async () => {
     // rate_limits would otherwise become a list of every address that ever asked
     // for a link. The key is an HMAC of the normalized address (auth secret as

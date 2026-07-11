@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { authClient } from '../lib/auth-client'
 import { authErrorMessage } from './auth-errors'
 import { AuthCard, ErrorText, PRIMARY_BUTTON, TEXT_LINK } from './auth-ui'
+import { MAGIC_LINK_PATH } from '../../shared/auth'
 
 // Where a magic-link email lands (shared/auth.ts MAGIC_LINK_PATH).
 //
@@ -19,10 +20,29 @@ import { AuthCard, ErrorText, PRIMARY_BUTTON, TEXT_LINK } from './auth-ui'
 export default function MagicLinkPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const token = searchParams.get('token')
+
+  // Read the token ONCE into state, then scrub it out of the URL below. Captured
+  // in a lazy initializer so the value survives the very re-render the scrub
+  // causes - reading searchParams on each render would hand back null after it.
+  const [token] = useState(() => searchParams.get('token'))
 
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // A session-minting token has no business sitting in the address bar. Left
+  // there it lands in browser history, in a screen share, and - because
+  // Referrer-Policy still sends a FULL referrer same-origin - in the Referer of
+  // every subsequent same-origin request the page makes. Replace (not push) so
+  // Back does not walk into a URL carrying it either.
+  //
+  // This narrows the exposure; it does not erase it. The initial GET of this
+  // page still carried the token, so it can exist in edge access logs, which is
+  // why the token is also single-use and expires in 5 minutes.
+  useEffect(() => {
+    if (searchParams.has('token')) {
+      void navigate(MAGIC_LINK_PATH, { replace: true })
+    }
+  }, [searchParams, navigate])
 
   async function handleVerify() {
     if (pending || !token) return
