@@ -8,10 +8,12 @@ resources). A route without a row, or a row without tests, fails review.
 | --- | --- | --- | --- | --- | --- | --- |
 | `/api/health` | GET | anon | - | - | `HealthResponse` | dev/deploy smoke |
 | `/api/auth/*` | GET, POST | better-auth | n/a (owns its tables) | better-auth | better-auth | better-auth's own origin validation (verified: forged origin -> 403 INVALID_ORIGIN); flow covered in `server/test/auth-helpers.ts` |
-| `/api/me` | GET | session | self only (`user.id = session.userId`, fixed in repo) | - | `MeResponse` (no `name`: grampacker never stores one; `server/auth.ts` databaseHooks blank it) | `server/routes/me.test.ts` |
-| `/api/me/reauth` | POST | session | self only; mints a fresh-auth proof bound to THIS session id | `ReauthRequest` | 204; 400 `INVALID_PASSWORD` (uniform for wrong password AND malformed body); 401 anon | `server/middleware/reauth.test.ts` |
-| `/api/auth/passkey/{generate-register-options, verify-registration, delete-passkey}` | POST | session **+ fresh-auth proof** | The endpoints that change WHICH CREDENTIALS CAN SIGN IN. An unexpired proof or 403 `REAUTH_REQUIRED` | better-auth | better-auth | `server/middleware/fresh-auth.test.ts` |
+| `/api/me` | GET | session | self only (`user.id = session.userId`, fixed in repo) | - | `MeResponse` (no `name`: grampacker never stores one; `server/auth.ts` databaseHooks blank it. `passkeyCount` is DERIVED, scoped to the caller) | `server/routes/me.test.ts` |
+| `/api/auth/sign-in/magic-link` | POST | **anon** | n/a. The root of trust: redeeming the link CREATES the account if the address is new, so this is sign-up and sign-in at once. Never reveals whether the address exists | better-auth (`{ email }`; an optional `name` is accepted by the plugin and blanked by databaseHooks) | 200 `{ status: true }` regardless | `server/middleware/rate-limit.test.ts` (IP + per-email budgets), `server/test/auth-helpers.ts` (every server test drives this flow) |
+| `/api/auth/magic-link/verify` | **GET** | **anon**, bearing a single-use token | n/a. A side-effecting GET: consumes the token, creates the user (`emailVerified: true`), mints a session. Token is hashed at rest, 5-minute TTL, single-use (atomic consume). NOT in the read-only GET allowlist - it is metered like a mutation | `?token=` | 200 + `Set-Cookie`; 400 `INVALID_TOKEN` (also for expired/reused) | `server/middleware/rate-limit.test.ts`, `server/test/auth-helpers.ts` |
+| `/api/auth/passkey/{generate-register-options, verify-registration, delete-passkey}` | POST | session **+ FRESH session** | The endpoints that change WHICH CREDENTIALS CAN SIGN IN. Session must have been CREATED within `FRESH_AGE_SECONDS` (24h) or 403 `REAUTH_REQUIRED`. Re-auth = a new sign-in ceremony (passkey, or a magic link), which mints a fresh session. There is no proof table: the session row IS the proof | better-auth | better-auth | `server/middleware/fresh-auth.test.ts` |
 | `/api/auth/passkey/*` (the rest) | POST/GET | session, or anonymous for sign-in | NOT gated: `update-passkey` (renames a label; the plugin writes only the `name` column), `generate-authenticate-options` + `verify-authentication` (the anonymous sign-in ceremony - gating them would make passkey sign-in impossible), `list-user-passkeys` (a read) | better-auth | better-auth | `server/middleware/fresh-auth.test.ts` |
+| `/api/auth/delete-user` | POST | session **+ FRESH session** | Irreversible, and every table cascades from `user.id`. The client sends NO password (there is none); better-auth's own route then enforces `session.freshAge` itself and answers 400 `SESSION_EXPIRED` when stale. A `beforeDelete` hook purges the user's `verification` rows - including any PENDING MAGIC LINK for that address, which would otherwise resurrect the account after deletion | `{}` | 200; 400 `SESSION_EXPIRED` | `server/auth-delete-user.test.ts` |
 | `/api/categories` | GET, POST | session | own rows only (repo-scoped) | `CreateCategoryRequest` (POST) | `CategoryResponse[]` / `CategoryResponse` | `server/routes/categories.test.ts` |
 | `/api/categories/order` | PUT | session | every id owned or 404, zero writes | `ReorderRequest` | 204 | `server/routes/categories.test.ts` |
 | `/api/categories/:id` | PATCH, DELETE | session | own row or 404; DELETE uncategorizes its gear in the same transaction | `UpdateCategoryRequest` (PATCH) | `CategoryResponse` / 204 | `server/routes/categories.test.ts` |
@@ -47,14 +49,24 @@ Cross-cutting, tested in `server/middleware/csrf.test.ts`:
 Rate limiting, tested in `server/middleware/rate-limit.test.ts`:
 
 - `/api/auth/*` is limited per client IP (`CF-Connecting-IP`), fixed
-  windows in the `rate_limits` table: sign-up 10/day, email-sending
-  endpoints 5/day (guards the Resend free tier), sign-in 10/10min,
-  change-password and delete-user 5/10min each (own buckets), everything
-  else 30/10min. Over budget -> 429 + `Retry-After`.
-- `POST /api/me/reauth` is limited too, on its own 5/10min bucket. It is
-  the only limited path outside `/api/auth/*`, and it needs the limiter
-  because it verifies the account password: unmetered, it would be the
-  cheapest password-guessing oracle in the app.
+  windows in the `rate_limits` table: sign-in 10/10min (which now means the
+  passkey ceremony - it does NOT live under `/sign-in/*`, so it is matched by
+  path, not by prefix), magic-link send 20/day, magic-link verify 10/10min,
+  delete-user 5/10min, everything else 30/10min. Over budget -> 429 +
+  `Retry-After`.
+- **Magic-link send is charged to TWO buckets**: the caller's IP *and* the
+  target address (20/day and 5/hour respectively). IP alone does not cover it -
+  an attacker rotating IPs looks like a first-time caller on every request and
+  can bomb one victim's inbox at will. The per-address key is an HMAC of the
+  **lowercased** address (auth secret as the pepper): lowercased because
+  better-auth treats `Victim@` and `victim@` as one account, so keying the raw
+  string would hand out unlimited buckets for one inbox; HMAC'd because
+  `rate_limits.key` would otherwise become a plaintext list of every address
+  that ever asked for a link.
+- This limiter is the ONLY one. better-auth's own is disabled (`authOptions`),
+  which means **the rate-limit rule the magic-link plugin ships never fires**.
+  Reading the plugin source would suggest magic links are covered. They are not,
+  except by the rules above.
 - IPv6 clients are bucketed by **/64 prefix**, not exact address
   (`server/middleware/client-ip.ts`): a single allocation holds 2^64
   addresses, so keying the exact address would let any IPv6 client mint
@@ -63,7 +75,8 @@ Rate limiting, tested in `server/middleware/rate-limit.test.ts`:
   neither escape their bucket nor all collapse into one.
 - Fail-closed across ALL methods since PR #10: better-auth GETs are not
   read-only (the passkey challenge endpoint is an unauthenticated GET
-  that writes a verification row). Only the allowlisted pure-read GETs
+  that writes a verification row, and `magic-link/verify` is a GET that
+  CREATES A USER AND MINTS A SESSION). Only the allowlisted pure-read GETs
   (`get-session`, `passkey/list-user-passkeys`) are exempt. Budgets and
   the allowlist live in `server/middleware/rate-limit.ts`.
 

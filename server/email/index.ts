@@ -15,8 +15,9 @@ export interface EmailSender {
   send(msg: AuthEmail): Promise<void>
 }
 
-// Local dev runs without a Resend key and logs emails to the console -
-// verification/reset URLs are copy-pasteable from `npm run dev` output.
+// Local dev runs without a Resend key and logs emails to the console - the
+// magic-link URL is copy-pasteable from `npm run dev` output. The same sender
+// records to an in-memory outbox that the API tests read (server/email/console).
 export function createEmailSender(env: Env): EmailSender {
   if (env.RESEND_API_KEY) {
     return new ResendEmailSender(env.RESEND_API_KEY, env.EMAIL_FROM)

@@ -3,10 +3,9 @@ import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { authClient } from './lib/auth-client'
 import { mutationErrorHandler } from './lib/mutation-error-handler'
+import { MAGIC_LINK_PATH } from '../shared/auth'
 import SignInPage from './auth/SignInPage'
-import SignUpPage from './auth/SignUpPage'
-import ForgotPasswordPage from './auth/ForgotPasswordPage'
-import ResetPasswordPage from './auth/ResetPasswordPage'
+import MagicLinkPage from './auth/MagicLinkPage'
 import RootRedirect from './layout/RootRedirect'
 import SettingsPage from './settings/SettingsPage'
 import AppShell from './layout/AppShell'
@@ -99,25 +98,15 @@ export default function App() {
               </RedirectIfSession>
             }
           />
-          <Route
-            path="/sign-up"
-            element={
-              <RedirectIfSession>
-                <SignUpPage />
-              </RedirectIfSession>
-            }
-          />
-          <Route
-            path="/forgot-password"
-            element={
-              <RedirectIfSession>
-                <ForgotPasswordPage />
-              </RedirectIfSession>
-            }
-          />
-          {/* Not session-gated in either direction: a signed-in user clicking
-              a reset link should still be able to set a new password. */}
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          {/* There is no sign-up page any more: requesting a magic link for an
+              unknown address creates the account when it is redeemed, so one
+              surface serves both. Old bookmarks and any stale link land on it. */}
+          <Route path="/sign-up" element={<Navigate to="/sign-in" replace />} />
+          {/* Where magic-link emails land. NOT wrapped in RedirectIfSession: a
+              user who is already signed in on this device may be redeeming a
+              link to switch accounts, and bouncing them home would silently
+              burn the token they clicked. The page verifies only on a click. */}
+          <Route path={MAGIC_LINK_PATH} element={<MagicLinkPage />} />
           {/* Public share view: anonymous by design (the server gates on
               is_shared), and deliberately outside AppShell - viewers get
               the read-only document, not the app chrome. Signed-in users

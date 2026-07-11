@@ -21,12 +21,62 @@ describe('/api/me authorization matrix', () => {
     expect(res.status).toBe(200)
     const body = meResponseSchema.parse(await res.json())
     expect(body.email).toBe('me-owner@example.com')
+    // Redeeming the magic link IS the proof of the mailbox: better-auth creates
+    // the user with emailVerified already true, so there is no separate verify
+    // step (and no unverified state for a signed-in user to be stuck in).
     expect(body.emailVerified).toBe(true)
     // The allowlist holds: nothing beyond the DTO's keys leaves the server.
     // No `name` - see the data-minimization note above.
     expect(Object.keys(body).sort()).toEqual(
-      ['createdAt', 'email', 'emailVerified', 'id'].sort(),
+      ['createdAt', 'email', 'emailVerified', 'id', 'passkeyCount'].sort(),
     )
+  })
+
+  it('reports passkeyCount 0 for an account that has only ever used email', async () => {
+    // This is the whole "account not fully set up" signal. It is DERIVED, not a
+    // stored flag: a column would drift the moment a passkey was deleted
+    // out-of-band. Zero here is what makes the client nag for enrollment - and a
+    // zero-passkey account is legitimate (email-only), so it is a prompt, never
+    // a gate.
+    const { cookie } = await signUpVerifiedUser('me-nopasskey@example.com', 'NoKey')
+    const res = await app.request('/api/me', { headers: { Cookie: cookie } }, env)
+    const body = meResponseSchema.parse(await res.json())
+    expect(body.passkeyCount).toBe(0)
+  })
+
+  it('counts only the caller OWN passkeys', async () => {
+    // A count that leaked across accounts would silence the enrollment prompt
+    // for exactly the users who most need it - the ones with no passkey.
+    const owner = await signUpVerifiedUser('me-haskey@example.com', 'HasKey')
+    const other = await signUpVerifiedUser('me-otherkey@example.com', 'Other')
+
+    const ownerId = await env.DB.prepare('select id from user where email = ?')
+      .bind('me-haskey@example.com')
+      .first<{ id: string }>()
+    // Passkey rows can only be created by a WebAuthn ceremony, which cannot run
+    // in a test worker, so the credential is seeded directly. What is under test
+    // is the COUNT's scoping, not the ceremony (covered by the passkey tests).
+    await env.DB.prepare(
+      `insert into passkey (id, name, public_key, user_id, credential_id, counter,
+         device_type, backed_up, transports, created_at, aaguid)
+       values (?, ?, ?, ?, ?, 0, 'singleDevice', 0, 'internal', ?, ?)`,
+    )
+      .bind(
+        'pk-me-1',
+        'Test key',
+        'pub',
+        ownerId?.id ?? '',
+        'cred-me-1',
+        Date.now(),
+        '00000000-0000-0000-0000-000000000000',
+      )
+      .run()
+
+    const mine = await app.request('/api/me', { headers: { Cookie: owner.cookie } }, env)
+    expect(meResponseSchema.parse(await mine.json()).passkeyCount).toBe(1)
+
+    const theirs = await app.request('/api/me', { headers: { Cookie: other.cookie } }, env)
+    expect(meResponseSchema.parse(await theirs.json()).passkeyCount).toBe(0)
   })
 
   it('two sessions each see only their own row', async () => {
@@ -63,10 +113,11 @@ describe('/api/me authorization matrix', () => {
 })
 
 describe('user name is never stored', () => {
-  it('sign-up posting a name stores an empty string (databaseHooks blank it server-side)', async () => {
-    // The helper deliberately still POSTS a name - better-auth's sign-up
-    // schema requires the key - so this drives the exact surface the
-    // databaseHooks guard: a client that submits a name anyway.
+  it('a magic-link request carrying a name stores an empty string (databaseHooks blanks it)', async () => {
+    // The magic-link plugin's body schema accepts an optional `name` and writes
+    // it onto the user it creates. grampacker's own client never sends one, but
+    // the endpoint is public, so the server cannot rely on that: the
+    // databaseHooks guard is the actual defense, and this drives it.
     await signUpVerifiedUser('me-noname@example.com', 'Should Be Dropped')
     const row = await env.DB.prepare('select name from user where email = ?')
       .bind('me-noname@example.com')

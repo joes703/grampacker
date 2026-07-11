@@ -1,7 +1,28 @@
-// Minimum password length. The server enforces it via better-auth
-// (emailAndPassword.minPasswordLength in server/auth.ts); every client
-// password form mirrors it so the UX matches the real gate. Single source
-// of truth - bump here and both sides move together. Existing shorter
-// passwords keep working for sign-in; the minimum only applies when a
-// password is set or changed.
-export const MIN_PASSWORD_LENGTH = 12
+// The SPA route a magic-link email points at. Shared because BOTH sides must
+// agree on it and neither owns it: the server builds the emailed URL from it
+// (server/auth.ts sendMagicLink), and the SPA mounts its route on it
+// (src/App.tsx). A drift between the two is a dead link in someone's inbox, and
+// nothing in a type check or a unit test would catch it - so it is one constant.
+//
+// The email deliberately does NOT link at better-auth's own
+// /api/auth/magic-link/verify: that endpoint is a side-effecting GET which
+// consumes the single-use token and mints a session, so a mail scanner
+// following the link would burn it before the human clicked. This page verifies
+// only on a real user gesture.
+export const MAGIC_LINK_PATH = '/auth/magic'
+
+// "Sudo mode" window. A session is FRESH for this long after it was CREATED,
+// and sensitive actions (enroll a passkey, delete a passkey, delete the
+// account) require a fresh one. Re-authenticating means running a sign-in
+// ceremony again, which mints a new session.
+//
+// Single source of truth, and it has to be: better-auth enforces it natively on
+// delete-user and on passkey registration (from session.freshAge, in seconds),
+// while our own gate on delete-passkey enforces it in middleware (in ms). Two
+// numbers here would mean two different definitions of "fresh" in one app, and
+// nothing would catch the drift.
+//
+// 24h is better-auth's default, pinned explicitly so an upstream change cannot
+// move it silently. See docs/passwordless-auth-design.md section 8.2.
+export const FRESH_AGE_SECONDS = 60 * 60 * 24
+export const FRESH_AGE_MS = FRESH_AGE_SECONDS * 1000

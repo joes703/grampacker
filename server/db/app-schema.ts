@@ -31,18 +31,21 @@ export const rateLimits = sqliteTable('rate_limits', {
   windowStart: integer('window_start').notNull(), // epoch ms
 })
 
-// Short-lived proof that the user re-entered their password ("sudo mode").
-// ADDING or REMOVING a passkey requires an unexpired row here; renames, reads
-// and the sign-in ceremony do not. Without this, a hijacked session alone
-// could plant a permanent credential (SECURITY.md).
+// DEAD TABLE. Nothing reads or writes it: sudo mode is now session freshness
+// (better-auth's session.freshAge - see server/middleware/fresh-auth.ts), and
+// the repo, the endpoint and the DTO that fed this are gone.
 //
-// Keyed by SESSION, not user: a proof minted in one session must not
-// silently authorize another. The FK cascades, which is what makes the
-// proof expire early for free - sign-out deletes the session row, and
-// deleting the account deletes the sessions - so a proof can never outlive
-// the session that earned it. user_id is carried (also cascading) so a
-// password change can purge every proof for that user in one statement
-// without joining through session.
+// It is still DECLARED because the table still EXISTS in production. Deleting
+// the declaration without a migration would put the Drizzle schema out of step
+// with the deployed database, and CI applies migrations before it deploys the
+// Worker - so the drop has to be its own change, shipped after this one is live
+// (docs/passwordless-auth-design.md section 9, PR 3). Do not write to it.
+//
+// It could not have survived the passwordless cutover in any case: the old
+// freshness check inner-joined the `credential` account row to compare the proof
+// against the password's updated_at. With no credential row, that join matches
+// nothing and the gate fails closed - locking every user out of passkey
+// management. The mechanism died with the password, not by choice.
 export const freshAuth = sqliteTable(
   'fresh_auth',
   {
@@ -53,10 +56,6 @@ export const freshAuth = sqliteTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     expiresAt: integer('expires_at').notNull(), // epoch ms
-    // When the password was proven. Compared against the credential account's
-    // updated_at at CHECK time, so a proof minted with an old password is
-    // rejected even if the explicit purge-on-password-change never ran. The
-    // gate is fail-closed by construction rather than by cleanup.
     grantedAt: integer('granted_at').notNull(), // epoch ms
   },
   (t) => [index('fresh_auth_user_idx').on(t.userId)],

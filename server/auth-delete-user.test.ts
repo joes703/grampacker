@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { signUpVerifiedUser, TEST_PASSWORD } from './test/auth-helpers'
+import { makeSessionStale, signUpVerifiedUser } from './test/auth-helpers'
 import { apiRequest } from './test/api-helpers'
 
 // Delete-account is destructive and total: better-auth's internalAdapter
@@ -29,13 +29,16 @@ import { apiRequest } from './test/api-helpers'
 // `rate_limits` is keyed by client IP+scope, not the user, so it stays out of
 // scope.
 //
-// A separate concern the endpoint gates on: better-auth's delete-user allows a
-// PASSWORD-LESS delete while a session is younger than freshAge (default 24h).
-// server/index.ts adds a guard that requires the password in the body, so the
-// UI's password prompt is enforced server-side - covered below.
+// The authorization gate is FRESHNESS, not a password: with no password in the
+// body, better-auth's delete-user requires a session created within freshAge and
+// answers 400 SESSION_EXPIRED otherwise. Both arms are covered below.
 
 const APP_TABLES = ['categories', 'gear_items', 'lists', 'list_items', 'passkey'] as const
-const AUTH_CHILD_TABLES = ['session', 'account'] as const
+// `account` is deliberately absent: passwordless users have NO account row.
+// better-auth only writes one for a credential (password) or an OAuth provider,
+// and magic-link sign-in creates neither. Asserting it drops to zero would be
+// asserting nothing.
+const AUTH_CHILD_TABLES = ['session'] as const
 
 async function userIdOf(email: string): Promise<string> {
   const row = await env.DB.prepare('select id from user where email = ?')
@@ -92,23 +95,12 @@ async function seedUserData(userId: string): Promise<void> {
 }
 
 // better-auth's `verification` table has no user_id column, so the FK cascade
-// cannot reach it - only the afterDelete purge does. Two row shapes grampacker
-// writes embed the user id and are seeded here. expires_at is required (no
-// default); created_at/updated_at have SQL defaults, so they are omitted.
-
-// requestPasswordReset write: `value = user.id`, identifier `reset-password:<token>`.
-async function seedResetToken(userId: string): Promise<void> {
-  const token = crypto.randomUUID().replace(/-/g, '')
-  await env.DB.prepare(
-    'insert into verification (id, identifier, value, expires_at) values (?, ?, ?, ?)',
-  )
-    .bind(`${userId}-ver`, `reset-password:${token}`, userId, Date.now() + 3_600_000)
-    .run()
-}
+// cannot reach it - only the beforeDelete purge does. Two row shapes grampacker
+// writes must be cleaned, and they are found by DIFFERENT predicates. expires_at
+// is required (no default); created_at/updated_at have SQL defaults.
 
 // passkey generate-register-options write: `value` is JSON ceremony state whose
-// `$.userData.id` is the user id (see @better-auth/passkey). The bare-id
-// predicate misses this shape; the JSON predicate must catch it.
+// `$.userData.id` is the user id (see @better-auth/passkey).
 async function seedPasskeyChallenge(userId: string): Promise<void> {
   const token = crypto.randomUUID().replace(/-/g, '')
   const value = JSON.stringify({
@@ -124,20 +116,41 @@ async function seedPasskeyChallenge(userId: string): Promise<void> {
     .run()
 }
 
-// Count every verification artifact attributable to a user, matching the
-// purge's own predicate (bare id OR JSON userData.id).
-async function verificationCount(userId: string): Promise<number> {
+// A PENDING MAGIC LINK: `value` is JSON carrying `$.email` and NO user id at
+// all. This is the shape that would survive a user-id-keyed purge - and it is
+// not inert. Redeeming it after the delete would sign the address straight back
+// up (magic-link verify creates the user when none matches), so the account the
+// owner just deleted would reappear on their next stale click.
+async function seedPendingMagicLink(email: string): Promise<void> {
+  const token = crypto.randomUUID().replace(/-/g, '')
+  await env.DB.prepare(
+    'insert into verification (id, identifier, value, expires_at) values (?, ?, ?, ?)',
+  )
+    .bind(
+      `ml-${token}`,
+      token,
+      JSON.stringify({ email, name: '' }),
+      Date.now() + 300_000,
+    )
+    .run()
+}
+
+// Count every verification artifact attributable to a user, matching the purge's
+// own predicate (passkey ceremony by user id, pending magic link by email).
+async function verificationCount(userId: string, email: string): Promise<number> {
   const r = await env.DB.prepare(
     `select count(*) as n from verification
-     where value = ? or (json_valid(value) and json_extract(value, '$.userData.id') = ?)`,
+     where (json_valid(value) and json_extract(value, '$.userData.id') = ?)
+        or (json_valid(value) and json_extract(value, '$.email') = ?)`,
   )
-    .bind(userId, userId)
+    .bind(userId, email)
     .first<{ n: number }>()
   return r?.n ?? -1
 }
 
-async function deleteAccount(cookie: string | null, password: string): Promise<Response> {
-  return apiRequest(cookie, 'POST', '/api/auth/delete-user', { password })
+// No password: its ABSENCE is what selects better-auth's freshness path.
+async function deleteAccount(cookie: string | null): Promise<Response> {
+  return apiRequest(cookie, 'POST', '/api/auth/delete-user', {})
 }
 
 describe('POST /api/auth/delete-user', () => {
@@ -166,15 +179,15 @@ describe('POST /api/auth/delete-user', () => {
     otherId = await userIdOf(otherEmail)
     await seedUserData(userId)
     await seedUserData(otherId)
-    // Both users have both verification artifact shapes outstanding: a
-    // password-reset token (bare id) and a passkey challenge (JSON userData.id).
-    await seedResetToken(userId)
-    await seedResetToken(otherId)
+    // Both users have both verification artifact shapes outstanding: a passkey
+    // challenge (found by user id) and a pending magic link (found by email).
     await seedPasskeyChallenge(userId)
     await seedPasskeyChallenge(otherId)
+    await seedPendingMagicLink(email)
+    await seedPendingMagicLink(otherEmail)
   })
 
-  it('with the correct password wipes the user and cascades away ALL their data', async () => {
+  it('on a FRESH session wipes the user and cascades away ALL their data', async () => {
     // Precondition: everything is actually seeded (a 200 over empty tables
     // would falsely pass).
     const before = await rowCounts(userId)
@@ -183,9 +196,9 @@ describe('POST /api/auth/delete-user', () => {
     }
     expect(before.user).toBe(1)
 
-    expect(await verificationCount(userId), 'seeded verification artifacts').toBe(2)
+    expect(await verificationCount(userId, email), 'seeded verification artifacts').toBe(2)
 
-    const res = await deleteAccount(cookie, TEST_PASSWORD)
+    const res = await deleteAccount(cookie)
     expect(res.status).toBe(200)
 
     const after = await rowCounts(userId)
@@ -194,29 +207,36 @@ describe('POST /api/auth/delete-user', () => {
     }
     expect(after.user, 'user row after delete').toBe(0)
     // The beforeDelete hook purges the account's lingering verification
-    // artifacts (reset-password token AND passkey challenge), which the FK
-    // cascade cannot reach (verification has no user_id).
-    expect(await verificationCount(userId), 'verification artifacts after delete').toBe(0)
+    // artifacts, which the FK cascade cannot reach (verification has no
+    // user_id). The pending magic link is the load-bearing one: left behind, it
+    // would sign the address straight back up on the next click.
+    expect(await verificationCount(userId, email), 'verification artifacts after delete').toBe(0)
   })
 
   it('leaves every other user completely intact (blast radius is one account)', async () => {
     const otherBefore = await rowCounts(otherId)
-    const res = await deleteAccount(cookie, TEST_PASSWORD)
+    const res = await deleteAccount(cookie)
     expect(res.status).toBe(200)
     const otherAfter = await rowCounts(otherId)
     expect(otherAfter).toEqual(otherBefore)
     expect(otherAfter.user).toBe(1)
-    // The verification purge is scoped to the deleted user's id, so the
-    // bystander's outstanding artifacts (reset token + passkey challenge) are
-    // untouched.
-    expect(await verificationCount(otherId), "bystander's verification artifacts").toBe(2)
+    // The purge is scoped to the deleted user's id AND email, so the bystander's
+    // outstanding artifacts (passkey challenge + pending magic link) survive.
+    expect(
+      await verificationCount(otherId, otherEmail),
+      "bystander's verification artifacts",
+    ).toBe(2)
   })
 
-  it('rejects a wrong password and deletes nothing', async () => {
-    const res = await deleteAccount(cookie, 'not-the-password-987')
+  it('rejects a STALE session and deletes nothing', async () => {
+    // The gate that replaces the password prompt. A session older than freshAge
+    // cannot delete the account, so a stolen long-lived cookie is not enough -
+    // the attacker would have to pass a passkey ceremony (or the mailbox).
+    await makeSessionStale(cookie)
+
+    const res = await deleteAccount(cookie)
     expect(res.ok).toBe(false)
-    const body = (await res.json()) as { code?: string }
-    expect(body.code).toBe('INVALID_PASSWORD')
+    expect(((await res.json()) as { code?: string }).code).toBe('SESSION_EXPIRED')
 
     const after = await rowCounts(userId)
     expect(after.user).toBe(1)
@@ -226,30 +246,28 @@ describe('POST /api/auth/delete-user', () => {
   })
 
   it('rejects an anonymous request and deletes nothing', async () => {
-    const res = await deleteAccount(null, TEST_PASSWORD)
+    const res = await deleteAccount(null)
     expect(res.ok).toBe(false)
     expect([400, 401]).toContain(res.status)
     const after = await rowCounts(userId)
     expect(after.user).toBe(1)
   })
 
-  it('rejects a password-less delete even on a fresh session, and deletes nothing', async () => {
-    // signUpVerifiedUser just signed in, so this session is well within
-    // better-auth's freshAge window - the built-in endpoint would honor a
-    // password-less delete here. The server-side guard (server/index.ts) must
-    // reject it so the UI's password prompt is a real control, not theater.
-    const missing = await apiRequest(cookie, 'POST', '/api/auth/delete-user', {})
-    expect(missing.status).toBe(400)
-    expect(((await missing.json()) as { code?: string }).code).toBe('PASSWORD_REQUIRED')
-
-    // An empty-string password is treated the same as absent.
-    const empty = await apiRequest(cookie, 'POST', '/api/auth/delete-user', { password: '' })
-    expect(empty.status).toBe(400)
+  it('refuses to resurrect a password: a supplied password is rejected, not honored', async () => {
+    // There is no credential account any more, so better-auth's password path
+    // 400s with CREDENTIAL_ACCOUNT_NOT_FOUND rather than falling back to the
+    // freshness check. Worth pinning: it means a stale client still sending a
+    // password gets a clean refusal instead of silently deleting the account by
+    // the other route.
+    const res = await apiRequest(cookie, 'POST', '/api/auth/delete-user', {
+      password: 'anything-at-all-123456',
+    })
+    expect(res.ok).toBe(false)
+    expect(((await res.json()) as { code?: string }).code).toBe(
+      'CREDENTIAL_ACCOUNT_NOT_FOUND',
+    )
 
     const after = await rowCounts(userId)
     expect(after.user).toBe(1)
-    for (const table of APP_TABLES) {
-      expect(after[table], `${table} still present`).toBeGreaterThan(0)
-    }
   })
 })

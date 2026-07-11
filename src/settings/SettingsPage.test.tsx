@@ -2,17 +2,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 
-// PasskeySection, DownloadAllData, ChangePasswordForm, and
-// DeleteAccountSection each do their own I/O (authClient.passkey.*, a
-// QueryClient fetch, authClient.changePassword/deleteUser, useNavigate); stub
-// them so this test covers the settings shell, not their plumbing (each has
-// its own test file). authClient.useSession backs the Account subtitle.
-vi.mock('../lib/auth-client', () => ({
-  authClient: { useSession: () => ({ data: { user: { email: 'joe@example.com' } } }) },
-}))
+// PasskeySection, DownloadAllData and DeleteAccountSection each do their own
+// I/O (authClient.passkey.*, a QueryClient fetch, authClient.deleteUser,
+// useNavigate); stub them so this test covers the settings shell, not their
+// plumbing (each has its own test file).
 vi.mock('./PasskeySection', () => ({ default: () => <div>passkey-section</div> }))
 vi.mock('./DownloadAllData', () => ({ default: () => <div>download-all-data</div> }))
-vi.mock('./ChangePasswordForm', () => ({ default: () => <div>change-password-form</div> }))
 vi.mock('./DeleteAccountSection', () => ({ default: () => <div>delete-account-section</div> }))
 
 import SettingsPage from './SettingsPage'
@@ -20,14 +15,9 @@ import SettingsPage from './SettingsPage'
 afterEach(() => cleanup())
 
 describe('SettingsPage', () => {
-  it('renders the Settings shell with Account, Passkeys, Download, and Delete sections', () => {
+  it('renders the Settings shell with Passkeys, Download, and Delete sections', () => {
     render(<SettingsPage />)
     expect(screen.getByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument()
-
-    // Account section: titled, subtitled with the signed-in email, form mounted.
-    expect(screen.getByRole('heading', { name: 'Account', level: 2 })).toBeInTheDocument()
-    expect(screen.getByText('joe@example.com')).toBeInTheDocument()
-    expect(screen.getByText('change-password-form')).toBeInTheDocument()
 
     // Passkeys (self-headed stub) and Download all data.
     expect(screen.getByText('passkey-section')).toBeInTheDocument()
@@ -39,5 +29,14 @@ describe('SettingsPage', () => {
     // Danger zone: delete account.
     expect(screen.getByRole('heading', { name: 'Delete account', level: 2 })).toBeInTheDocument()
     expect(screen.getByText('delete-account-section')).toBeInTheDocument()
+  })
+
+  it('has no password section at all', () => {
+    // grampacker stores no password, so there is nothing to change. This asserts
+    // the removal rather than trusting it: a stray re-import of a password form
+    // would be a live surface for a credential that does not exist.
+    render(<SettingsPage />)
+    expect(screen.queryByRole('heading', { name: 'Account', level: 2 })).not.toBeInTheDocument()
+    expect(screen.queryByText(/password/i)).not.toBeInTheDocument()
   })
 })

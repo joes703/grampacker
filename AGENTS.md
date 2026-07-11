@@ -81,14 +81,26 @@ time. Never delete or recreate the D1 database.
   writes (`server/repos/chunk-ids.ts`). The local D1 enforces this too, so tests
   go red honestly.
 - **better-auth GETs are not read-only.** The passkey challenge endpoint is an
-  unauthenticated GET that writes a row. The rate limiter is fail-closed across
-  all methods with an explicit pure-read GET allowlist
+  unauthenticated GET that writes a row, and `magic-link/verify` is a GET that
+  CREATES A USER AND MINTS A SESSION. The rate limiter is fail-closed across all
+  methods with an explicit pure-read GET allowlist
   (`server/middleware/rate-limit.ts`).
+- **better-auth's own rate limiter is DISABLED** (`authOptions`), so the
+  `rateLimit` rules that plugins ship with never fire. The magic-link plugin
+  declares one; it does nothing. Every budget is hand-written in
+  `server/middleware/rate-limit.ts`. Do not delete a rule there because "the
+  plugin has it covered".
+- **Config alone does not disable a better-auth route.** Removing
+  `emailAndPassword` makes `/sign-in/email` 400, but `/reset-password` is mounted
+  unconditionally and is NOT gated on it: given a still-valid token it will
+  re-create a credential account. Killing an auth method means purging its DATA,
+  not just its config.
 - **Multi-row writes are atomic by default.** `db.batch` is a real transaction on
   D1. Compute the plan, then apply it in one batch. A partial write is a bug.
 - **`noValidate` forms make `minLength` inert.** Client-side length checks must be
-  manual JS. The server is the real gate (`MIN_PASSWORD_LENGTH` in
-  `shared/auth.ts` is the single source of truth).
+  manual JS, and the server is always the real gate. (The password floor this was
+  learned on is gone - the repo is passwordless - but the trap applies to every
+  constrained input.)
 - **Optimistic updates hide server rejections.** A failed write rolls back in
   milliseconds, so the UI flashes correct then snaps back. Hard-refresh after a
   write to confirm the server accepted it. Optimistic UI is a latency tool, not a
