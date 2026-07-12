@@ -369,14 +369,58 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   a generous per-IP bucket (a legitimate viewer makes 1-3 requests; the
   budget must survive a link going around a large NAT). Raised by review,
   2026-07-11.
-- **Web Analytics**: the insights beacon is NOT in the CSP. If
-  Cloudflare Web Analytics is wired to the new Worker, add
-  `https://static.cloudflareinsights.com` to script-src deliberately.
+- **Web Analytics**: `https://static.cloudflareinsights.com/beacon.min.js` (and
+  its `/`-suffixed prefix form) is allowed in **script-src**, and only there.
+  Cloudflare Web Analytics is enabled
+  on the zone and the edge injects its beacon into our HTML *after* the Worker
+  returns, so no code in this repo can see it - this entry previously claimed
+  the beacon "is NOT in the CSP" and was simply wrong. (It hid behind a false
+  negative: the edge only injects when the request sends `Accept: text/html`, so
+  a plain `curl` shows a clean document and a browser does not.) Under
+  `script-src 'self'` the browser blocked it on every page load, so we paid for
+  a third-party request, collected no analytics, and carried a permanent CSP
+  violation in the console that would mask the next real one.
+
+  The grant is **path-restricted**, not host-wide. A bare origin would authorize
+  every executable path on `static.cloudflareinsights.com`, now and in future;
+  the trailing slash confines it to the beacon's own prefix.
+
+  **connect-src is NOT widened.** An edge-injected beacon reports to the
+  same-origin `/cdn-cgi/rum` (only a *manually embedded* beacon talks to
+  `cloudflareinsights.com` directly), already permitted by `connect-src 'self'`.
+  Allowing the static origin as a connection destination would grant a
+  third-party script an exfiltration target for nothing. Pinned by a test.
+
+  **On the SRI, do not overclaim.** The injected tag carries
+  `integrity="sha512-..."` and `crossorigin="anonymous"`, so a browser refuses
+  bytes that do not match the hash the edge advertised. That defends against a
+  tampered or compromised response *from* `static.cloudflareinsights.com`. It is
+  **not** an application-controlled supply-chain pin: Cloudflare chooses both the
+  injected tag and the script it points at, and can rotate the URL and the hash
+  together without our knowledge. It constrains that host; it does not constrain
+  Cloudflare.
+
+  Why we accept it anyway: Cloudflare already terminates our TLS and serves our
+  origin, so this adds no *new* administrative trust principal. What it does add
+  is browser-enforced script authority for more Cloudflare infrastructure - a
+  vulnerability on that host would now reach a page holding a live session
+  cookie. That is a real, bounded increase in attack surface, and the honest
+  reason to take it is that the alternative (leave the block in place) means
+  paying every cost of the beacon and getting none of the data. Turning Web
+  Analytics off at the zone remains the strictly safer option if the RUM data
+  ever stops earning its keep.
 
 ## Not applicable by construction
 
 Recorded so they are not re-litigated (REWRITE_PLAN.md section 6):
 SSRF (the only outbound HTTP is Resend's fixed endpoint; no
-user-controlled URLs), SRI (all assets same-origin and content-hashed
-by Vite), mixed content (HTTPS-only + HSTS), CORS misconfiguration (no
-CORS at all), local network access, user activation.
+user-controlled URLs), mixed content (HTTPS-only + HSTS), CORS
+misconfiguration (no CORS at all), local network access, user
+activation.
+
+SRI used to sit in that list ("all assets same-origin and content-hashed
+by Vite"). It no longer belongs there: the Cloudflare Web Analytics beacon
+is a genuine third-party script (see Web Analytics above). Our own assets
+are still same-origin and content-hashed, so they need no SRI - but the one
+script we do not serve arrives SRI-pinned by Cloudflare, and that is now a
+property we depend on rather than one we can call inapplicable.
