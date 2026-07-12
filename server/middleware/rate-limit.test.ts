@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 import app from '../index'
+import { createAuth } from '../auth'
 import { lastEmailTo } from '../email/console'
 
 const ORIGIN = 'http://localhost:5173'
@@ -204,6 +205,150 @@ describe('auth rate limiting', () => {
     await env.DB.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
     const served = await sendMagicLink('198.51.150.2', 'quota-victim2@example.com')
     expect(served.status).toBe(200)
+  })
+
+  it('an INVALID address does not spend global mail budget', async () => {
+    // REGRESSION (code review, 2026-07-12). The global bucket used to be charged
+    // in the middleware, which runs BEFORE better-auth parses the body - so it
+    // could not tell a deliverable address from junk. better-auth validates with
+    // z.email() and 400s a bad one, but the slot was already gone. ~90 requests
+    // carrying garbage addresses, from rotating IPs, drained a full day of the
+    // ONLY recovery path in a passwordless app while sending zero mail.
+    //
+    // The fix moves the charge into sendMagicLink, which better-auth only calls
+    // once the address is real. So: rejected input must move the counter by zero.
+    const before = await globalCount()
+    const attempts = 12
+    for (let i = 0; i < attempts; i++) {
+      // Fresh IP each time: the IP bucket must not be what refuses these.
+      const res = await sendMagicLink(`198.51.160.${i}`, `not-an-email-${i}`)
+      expect(res.status, `attempt ${i}`).toBe(400)
+    }
+    expect(await globalCount()).toBe(before)
+  })
+
+  it('a malformed body does not spend global mail budget', async () => {
+    // The other half of the same hole: a body the limiter cannot parse used to
+    // land in the 'malformed' email bucket AND still charge the global quota.
+    const before = await globalCount()
+    for (let i = 0; i < 5; i++) {
+      await app.request(
+        '/api/auth/sign-in/magic-link',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: ORIGIN,
+            'cf-connecting-ip': `198.51.161.${i}`,
+          },
+          body: 'this is not json',
+        },
+        env,
+      )
+    }
+    expect(await globalCount()).toBe(before)
+  })
+
+  it('an ACCEPTED send spends exactly one global slot', async () => {
+    // The other direction: the counter must still track real sends, or the quota
+    // guard is decorative. One accepted send, one slot.
+    const before = await globalCount()
+    const res = await sendMagicLink('198.51.162.1', 'accepted-send@example.com')
+    expect(res.status).toBe(200)
+    expect(lastEmailTo('accepted-send@example.com')).toBeDefined()
+    expect(await globalCount()).toBe(before + 1)
+  })
+
+  it('an exhausted quota is refused UP FRONT by the peek, writing no verification row', async () => {
+    // The middleware peek, specifically - not the charge in sendMagicLink (see
+    // the next test for that one). Seeding the bucket to its limit means the peek
+    // refuses before better-auth runs at all, which is the whole point of keeping
+    // it: better-auth creates the `verification` row BEFORE it calls
+    // sendMagicLink, so without an early refusal a drained quota would turn every
+    // further request into a free DB write.
+    const rowsBefore = await env.DB.prepare('select count(*) as n from verification')
+      .first<{ n: number }>()
+
+    await env.DB.prepare(
+      'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
+    )
+      .bind(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT, Date.now())
+      .run()
+
+    const blocked = await sendMagicLink('198.51.163.1', 'quota-429@example.com')
+    expect(blocked.status).toBe(429)
+    const retryAfter = Number(blocked.headers.get('Retry-After'))
+    expect(Number.isInteger(retryAfter)).toBe(true)
+    expect(retryAfter).toBeGreaterThan(0)
+    expect(retryAfter).toBeLessThanOrEqual(24 * 60 * 60)
+    // No mail...
+    expect(lastEmailTo('quota-429@example.com')).toBeUndefined()
+    // ...and, the actual point: better-auth never ran, so no token row was written.
+    const rowsAfter = await env.DB.prepare('select count(*) as n from verification')
+      .first<{ n: number }>()
+    expect(rowsAfter?.n).toBe(rowsBefore?.n)
+
+    await env.DB.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
+  })
+
+  it('the CHARGE in sendMagicLink refuses with a real 429, not a 500', async () => {
+    // The charge inside better-auth's sendMagicLink callback is the authoritative
+    // gate, and it refuses by THROWING an APIError('TOO_MANY_REQUESTS') from
+    // inside the library. That is a different code path from the middleware peek
+    // above, and a fragile one: the status is resolved through better-call's
+    // status table, so a renamed key or a bad import would produce a 500 - the
+    // request would look like a server bug rather than a quota refusal, and the
+    // Retry-After would vanish. Nothing else pins it.
+    //
+    // Reaching it needs the peek to be bypassed, because any request that comes
+    // through Hono with a spent bucket is refused by the peek before better-auth
+    // runs. Calling the endpoint directly does exactly that - and it is also the
+    // path a concurrent burst takes at the quota boundary (peek sees a free slot,
+    // charge finds none).
+    await env.DB.prepare(
+      'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
+    )
+      .bind(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT, Date.now())
+      .run()
+
+    const email = 'callback-429@example.com'
+    const res = await createAuth(env).api.signInMagicLink({
+      body: { email },
+      headers: new Headers({ Origin: ORIGIN }),
+      asResponse: true,
+    })
+
+    expect(res.status).toBe(429)
+    expect(Number(res.headers.get('Retry-After'))).toBeGreaterThan(0)
+    expect(lastEmailTo(email)).toBeUndefined()
+
+    await env.DB.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
+  })
+
+  it('the global quota holds exactly under a concurrent burst', { timeout: 30000 }, async () => {
+    // The charge moved into sendMagicLink and the middleware only PEEKS at the
+    // bucket beforehand. That peek is racy on purpose, so the question this test
+    // settles is whether the authoritative charge still holds the line: with N
+    // slots left and 2N simultaneous sends, EXACTLY N may send. Over-admission
+    // here would mean the peek had become the gate.
+    await env.DB.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
+    const slack = 6
+    await env.DB.prepare(
+      'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
+    )
+      .bind(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT - slack, Date.now())
+      .run()
+
+    // Distinct IPs and addresses so neither of the other two buckets interferes.
+    const results = await Promise.all(
+      Array.from({ length: slack * 2 }, (_, i) =>
+        sendMagicLink(`198.51.164.${i}`, `burst-${i}@example.com`),
+      ),
+    )
+    expect(results.filter((r) => r.status === 200).length).toBe(slack)
+    expect(results.filter((r) => r.status === 429).length).toBe(slack)
+
+    await env.DB.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
   })
 
   it('a refused send does NOT spend global mail budget (charge order)', async () => {

@@ -5,6 +5,7 @@ import { magicLink } from 'better-auth/plugins/magic-link'
 import { passkey } from '@better-auth/passkey'
 import { createDb } from './db'
 import { createEmailSender } from './email'
+import { chargeMagicLinkGlobalQuota } from './middleware/rate-limit'
 import { createUsersRepo } from './repos/users'
 import { FRESH_AGE_SECONDS, MAGIC_LINK_PATH } from '../shared/auth'
 
@@ -159,6 +160,60 @@ export function authOptions(env: Env) {
         // compromise. Hashed, the stored copy is useless to an attacker.
         storeToken: 'hashed',
         sendMagicLink: async ({ email: to, token }) => {
+          // THE GLOBAL MAIL QUOTA IS CHARGED HERE, not in the rate-limit
+          // middleware, and this is the only place it may be charged.
+          //
+          // The middleware runs before better-auth parses the body, so it cannot
+          // tell a deliverable address from junk: it used to charge this bucket
+          // on any string, and better-auth would then 400 the request having
+          // already spent one of the 90 daily slots. Rotating IPs plus garbage
+          // addresses could therefore drain a day of the ONLY account-recovery
+          // path in a passwordless app without sending a single email.
+          //
+          // By the time this callback runs, better-auth has validated and
+          // normalized `to`, so a charge here means mail is genuinely about to be
+          // sent. The IP and per-address buckets are still charged upstream in
+          // the middleware; only the shared quota moved.
+          //
+          // Charged BEFORE email.send, not after: two concurrent sends must not
+          // both see a free slot. The cost of that ordering is that a provider
+          // failure still spends a slot, so the counter means VALIDATED SEND
+          // ATTEMPTS, not mail delivered. Reserve-then-refund would fix that and
+          // introduce a worse bug (an isolate dying mid-send leaks the
+          // reservation until the window rolls), so it is not worth it at 90
+          // slots against a 100/day provider cap.
+          //
+          // Why not earlier, in a better-auth `hooks.before`? Because that would
+          // be the same bug in a new place: dispatch.mjs runs the before-hooks
+          // BEFORE it invokes the endpoint, and the endpoint is where the zod body
+          // schema actually runs - so a before-hook sees an UNVALIDATED body, just
+          // like the middleware does. Re-validating the address ourselves to charge
+          // earlier would couple us to better-auth's exact email semantics, and
+          // drifting the other way (we accept what it rejects) would be a quota
+          // BYPASS, which is worse than what it buys. This callback is genuinely
+          // the first point at which the address is known to be good.
+          //
+          // The cost of being this late: better-auth writes the `verification` row
+          // before calling us, so a charge refused HERE leaves an orphan token row
+          // (hashed, never emailed, expires in 5 minutes). The middleware's peek
+          // keeps that near zero - a spent bucket is refused before better-auth
+          // runs at all - so the orphans are confined to the quota BOUNDARY, where
+          // a concurrent burst can have several requests pass the peek and then
+          // lose the charge. Bounded by burst concurrency, not unbounded; the
+          // per-IP and per-address buckets are what bound the burst.
+          const quota = await chargeMagicLinkGlobalQuota(db, Date.now())
+          if (!quota.ok) {
+            // Must be an APIError, not a Response: we are inside better-auth's
+            // handler, and better-call converts a thrown APIError into the HTTP
+            // response (status + body + headers), so this surfaces as a real 429
+            // with Retry-After rather than a 500.
+            throw new APIError('TOO_MANY_REQUESTS', {
+              code: 'MAGIC_LINK_QUOTA_EXHAUSTED',
+              message:
+                'Too many sign-in emails have been sent recently. Please try again later.',
+            }, { 'Retry-After': String(quota.retryAfterSeconds) })
+          }
+
           // Deliberately NOT the plugin's `url`. That points straight at
           // GET /api/auth/magic-link/verify, which is SIDE-EFFECTING: it
           // consumes the single-use token, creates the user, and sets a session
