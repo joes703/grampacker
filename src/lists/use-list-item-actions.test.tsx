@@ -148,12 +148,33 @@ describe('useListItemActions', () => {
       qc.setQueryData<ListItemWithGear[]>(['list-items', LIST_ID], [item({ id: 'a' })])
       const result = renderWith(qc)
 
+      // Hold the PATCH open so "optimistic" means something. onMutate now awaits
+      // cancelQueries (so an in-flight refetch cannot clobber the write), which
+      // pushes the cache write one microtask out - a plain synchronous read right
+      // after .mutate() would miss it. But simply awaiting the write instead would
+      // be a weaker test: it would also pass if the write only landed AFTER the
+      // server answered, which is the opposite of optimistic. So: keep the request
+      // unresolved, wait for the cache to update, and assert the request is still
+      // in flight at that moment.
+      let settlePatch!: () => void
+      h.updateListItem.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          settlePatch = resolve
+        }),
+      )
+
       result.current.updateItem.mutate({ itemId: 'a', patch: { isPacked: true } })
 
-      // Optimistic write lands before the PATCH resolves.
-      const rows = qc.getQueryData<ListItemWithGear[]>(['list-items', LIST_ID])!
-      expect(rows.find((i) => i.id === 'a')!.isPacked).toBe(true)
-      await waitFor(() => expect(h.updateListItem).toHaveBeenCalledWith(LIST_ID, 'a', { isPacked: true }))
+      await waitFor(() => {
+        const rows = qc.getQueryData<ListItemWithGear[]>(['list-items', LIST_ID])!
+        expect(rows.find((i) => i.id === 'a')!.isPacked).toBe(true)
+      })
+      expect(h.updateListItem).toHaveBeenCalledWith(LIST_ID, 'a', { isPacked: true })
+      expect(result.current.updateItem.isPending).toBe(true)
+
+      await act(async () => {
+        settlePatch()
+      })
     })
 
     it('last-one-out gate: no invalidate while a sibling is pending, exactly one after the final settle', async () => {

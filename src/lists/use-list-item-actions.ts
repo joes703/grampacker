@@ -105,8 +105,13 @@ export function useListItemActions(
     mutationKey: updateMutKey,
     mutationFn: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) =>
       updateListItem(listId, itemId, patch),
-    onMutate: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) => {
-      void qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
+    onMutate: async ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) => {
+      // Awaited, like the shared helpers in lib/queries/optimistic.ts: an
+      // unawaited cancel lets an in-flight refetch resolve after the optimistic
+      // write and clobber it with stale server state. This is a checkbox tap
+      // (Packed / Ready), not a drag, so there is no drop animation that needs the
+      // write to land in the same tick - the reason reorder alone stays sync.
+      await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
       const rows = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
       const row = rows?.find((i) => i.id === itemId)
       if (!row) return undefined

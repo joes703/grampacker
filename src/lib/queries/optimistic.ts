@@ -48,12 +48,22 @@ import { showToast } from '../toast'
 //   same tick. The drop transition then animates against the correct final
 //   order from the start.
 //
-//   The cancel still happens; it's just fire-and-forget. The theoretical
-//   race (an in-flight refetch resolves between our setQueryData and the
-//   cancel taking effect, overwriting the optimistic state with stale
-//   server truth) is rare in practice (the app uses staleTime: 30s, so
-//   most reorders have no in-flight fetch) and self-healing (onSettled
-//   below invalidates the key and triggers a fresh fetch regardless).
+//   The cancel still happens; it's just fire-and-forget, and that is
+//   fine. cancelQueries issues query.cancel() SYNCHRONOUSLY, and cancel()
+//   rejects the retryer's thenable in the same tick, so a still-pending
+//   refetch is cancelled here and its response dropped - awaited or not.
+//
+//   What unawaited gives up is the sliver after a fetch's promise has
+//   resolved but before the query wrote the result, where cancel() no-ops
+//   and the queued write can land on top of the optimistic order. That
+//   sliver is not reachable from a drag: the browser drains the microtask
+//   checkpoint (including the query's write) before dispatching the next
+//   task, and a drop is a task. It is also self-healing - onSettled
+//   invalidates regardless.
+//
+//   The CRUD helpers below DO await, since they have no animation to be in
+//   time for and some callers fire them from a promise chain. See the race
+//   suite in optimistic.test.ts, which pins the mechanism.
 //
 // Corollary — the same-tick rule extends to where the cache is observed,
 // not just where it is written. The component that renders the
@@ -94,11 +104,37 @@ import { showToast } from '../toast'
 //     }),
 //   })
 //
-// All three helpers fire `cancelQueries` without awaiting (same rationale as
-// reorder: keep the cache write in the same tick as the user gesture so any
-// concurrent CSS transition animates against the correct final state). The
-// theoretical clobber race is rare (staleTime: 30s) and self-heals on
-// settled-time invalidation.
+// These helpers AWAIT `cancelQueries` before snapshotting: the canonical TanStack
+// pattern. They used to fire it unawaited, borrowing reorder's same-tick rationale
+// (below) - which was never theirs to borrow, since no CRUD helper is called from a
+// drag and there is no drop animation for the write to be in time for.
+//
+// Be precise about what awaiting buys, because the usual explanation is wrong:
+//
+//   The stock claim is "an in-flight refetch resolves after your write and clobbers
+//   it". That cannot happen the way it sounds. cancelQueries issues query.cancel()
+//   SYNCHRONOUSLY, and cancel() rejects the retryer's thenable in that same tick, so
+//   a still-PENDING fetch is cancelled and its late response is dropped by an
+//   isResolved() guard. Unawaited was already safe for that case.
+//
+//   The genuine hole is narrower: the sliver after the fetch's promise has RESOLVED
+//   but before the query has written the result. cancel() finds a settled thenable,
+//   no-ops, and the queued write lands on top of the optimistic state.
+//
+//   And that sliver is NOT reachable from a user gesture. The browser drains the
+//   whole microtask checkpoint - including the query's write - before dispatching
+//   the next task, and a click is a task. To land in it, a caller must invoke the
+//   mutation from a promise continuation already queued in that same checkpoint.
+//
+// So this is a correctness-hardening change, not a user-facing bug fix: it aligns
+// with the library's documented contract and closes the hole for callers that fire
+// mutations from a promise chain rather than an event handler (ListDetailPage's
+// edit dialog chains mutateAsync -> mutateAsync, which is exactly that shape). It is
+// honest to call it cheap insurance. It would not be honest to claim it fixed a
+// clobber anyone has seen.
+//
+// Cost: onMutate returns a promise, so the optimistic write lands one microtask
+// later. Invisible to a click, and the reason reorder is exempt.
 //
 // Side caches (joined / cascading) take an `invalidateKeys` array. They
 // receive no optimistic write but invalidate on settled. Optimistic
@@ -163,8 +199,8 @@ export function makeOptimisticInsert<TList extends { id: string }, TInput>(opts:
 }) {
   const { qc, queryKey, optimistic, merge } = opts
   return {
-    onMutate: (input: TInput): OptimisticContext<TList> => {
-      void qc.cancelQueries({ queryKey })
+    onMutate: async (input: TInput): Promise<OptimisticContext<TList>> => {
+      await qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<TList[]>(queryKey)
       const next = optimistic(input)
       qc.setQueryData<TList[]>(queryKey, (curr) => {
@@ -187,8 +223,8 @@ export function makeOptimisticUpdate<TList extends { id: string }, TInput>(opts:
 }) {
   const { qc, queryKey, id, apply } = opts
   return {
-    onMutate: (input: TInput): OptimisticContext<TList> => {
-      void qc.cancelQueries({ queryKey })
+    onMutate: async (input: TInput): Promise<OptimisticContext<TList>> => {
+      await qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<TList[]>(queryKey)
       const targetId = id(input)
       qc.setQueryData<TList[]>(queryKey, (curr) => {
@@ -209,8 +245,8 @@ export function makeOptimisticDelete<TList extends { id: string }, TInput>(opts:
 }) {
   const { qc, queryKey, id } = opts
   return {
-    onMutate: (input: TInput): OptimisticContext<TList> => {
-      void qc.cancelQueries({ queryKey })
+    onMutate: async (input: TInput): Promise<OptimisticContext<TList>> => {
+      await qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<TList[]>(queryKey)
       const targetId = id(input)
       qc.setQueryData<TList[]>(queryKey, (curr) => {
@@ -234,8 +270,8 @@ export function makeOptimisticBulkDelete<TList extends { id: string }, TInput>(o
 }) {
   const { qc, queryKey, ids } = opts
   return {
-    onMutate: (input: TInput): OptimisticContext<TList> => {
-      void qc.cancelQueries({ queryKey })
+    onMutate: async (input: TInput): Promise<OptimisticContext<TList>> => {
+      await qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<TList[]>(queryKey)
       const idSet = new Set(ids(input))
       qc.setQueryData<TList[]>(queryKey, (curr) => {
@@ -258,8 +294,8 @@ export function makeOptimisticBulkUpdate<TList extends { id: string }, TInput>(o
 }) {
   const { qc, queryKey, ids, apply } = opts
   return {
-    onMutate: (input: TInput): OptimisticContext<TList> => {
-      void qc.cancelQueries({ queryKey })
+    onMutate: async (input: TInput): Promise<OptimisticContext<TList>> => {
+      await qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<TList[]>(queryKey)
       const idSet = new Set(ids(input))
       qc.setQueryData<TList[]>(queryKey, (curr) => {
@@ -384,6 +420,22 @@ export function makeOptimisticReorder<T extends { id: string; sortOrder: number 
   queryKey: QueryKey,
 ) {
   return {
+    // DELIBERATELY SYNCHRONOUS, and the cancel is DELIBERATELY not awaited.
+    // This is the one helper where the same-tick rule is real: dnd-kit starts its
+    // drop animation in the tick onDragEnd returns, so an awaited cancel would
+    // push the cache write a microtask later, the animation would run against the
+    // old DOM order, and the dropped row would visibly snap back to where it
+    // started. See the long note at the top of this file.
+    //
+    // The CRUD helpers above DO await - they are never called from a drag, so
+    // they were paying the clobber race for an animation that does not exist. Do
+    // not "make these consistent" by awaiting here: the inconsistency is the
+    // point, and the accepted race is documented below.
+    //
+    // Accepted race (unchanged): an in-flight refetch can resolve between this
+    // setQueryData and the cancel taking effect, overwriting the optimistic order
+    // with stale server truth. Rare (staleTime 30s) and self-healing (onSettled
+    // invalidates regardless). Pinned by a test.
     onMutate: (updates: { id: string; sortOrder: number }[]) => {
       void qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<T[]>(queryKey)

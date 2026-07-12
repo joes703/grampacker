@@ -74,12 +74,12 @@ function itemsOf(qc: QueryClient, listId: string): ListItemWithGear[] {
 
 afterEach(() => vi.clearAllMocks())
 
-describe('makeOptimisticGearItemUpdate', () => {
-  it('patches the gear cache and the embedded copy in every affected list', () => {
+describe('makeOptimisticGearItemUpdate', async () => {
+  it('patches the gear cache and the embedded copy in every affected list', async () => {
     const { qc } = seed()
     const { onMutate } = makeOptimisticGearItemUpdate({ qc })
 
-    onMutate({ id: 'g1', patch: { name: 'Mid', weightGrams: 900 } })
+    await onMutate({ id: 'g1', patch: { name: 'Mid', weightGrams: 900 } })
 
     expect(gearCache(qc).find((g) => g.id === 'g1')).toMatchObject({
       name: 'Mid', weightGrams: 900,
@@ -92,23 +92,23 @@ describe('makeOptimisticGearItemUpdate', () => {
       .toBe('Quilt')
   })
 
-  it('never overwrites an embedded field with undefined (PATCH semantics)', () => {
+  it('never overwrites an embedded field with undefined (PATCH semantics)', async () => {
     const { qc } = seed()
     const { onMutate } = makeOptimisticGearItemUpdate({ qc })
 
-    onMutate({ id: 'g1', patch: { weightGrams: 900, name: undefined } })
+    await onMutate({ id: 'g1', patch: { weightGrams: 900, name: undefined } })
 
     expect(itemsOf(qc, 'l2')[0]?.gearItem).toMatchObject({
       name: 'Tent', weightGrams: 900,
     })
   })
 
-  it('leaves unrelated list caches untouched by identity', () => {
+  it('leaves unrelated list caches untouched by identity', async () => {
     const { qc } = seed()
     const before = itemsOf(qc, 'l3')
     const { onMutate } = makeOptimisticGearItemUpdate({ qc })
 
-    const ctx = onMutate({ id: 'g1', patch: { name: 'Mid' } })
+    const ctx = await onMutate({ id: 'g1', patch: { name: 'Mid' } })
 
     expect(itemsOf(qc, 'l3')).toBe(before) // same reference: no snapshot, no write
     expect(ctx.listSnapshots.map((s) => s.key)).toEqual([
@@ -117,14 +117,14 @@ describe('makeOptimisticGearItemUpdate', () => {
     ])
   })
 
-  it('onError restores the gear cache and every touched list cache exactly', () => {
+  it('onError restores the gear cache and every touched list cache exactly', async () => {
     const { qc } = seed()
     const gearBefore = gearCache(qc)
     const l1Before = itemsOf(qc, 'l1')
     const l2Before = itemsOf(qc, 'l2')
     const { onMutate, onError } = makeOptimisticGearItemUpdate({ qc })
 
-    const ctx = onMutate({ id: 'g1', patch: { name: 'Mid' } })
+    const ctx = await onMutate({ id: 'g1', patch: { name: 'Mid' } })
     onError(new Error('nope'), { id: 'g1', patch: { name: 'Mid' } }, ctx)
 
     expect(gearCache(qc)).toEqual(gearBefore)
@@ -134,12 +134,12 @@ describe('makeOptimisticGearItemUpdate', () => {
     expect(showToast).not.toHaveBeenCalled()
   })
 
-  it('onSettled invalidates the gear cache and exactly the touched lists', () => {
+  it('onSettled invalidates the gear cache and exactly the touched lists', async () => {
     const { qc } = seed()
     const invalidate = vi.spyOn(qc, 'invalidateQueries')
     const { onMutate, onSettled } = makeOptimisticGearItemUpdate({ qc })
 
-    const ctx = onMutate({ id: 'g1', patch: { name: 'Mid' } })
+    const ctx = await onMutate({ id: 'g1', patch: { name: 'Mid' } })
     onSettled(undefined, null, { id: 'g1', patch: { name: 'Mid' } }, ctx)
 
     const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey)
@@ -150,12 +150,12 @@ describe('makeOptimisticGearItemUpdate', () => {
   })
 })
 
-describe('makeOptimisticGearItemDelete', () => {
-  it('drops the gear row and its membership rows in every affected list', () => {
+describe('makeOptimisticGearItemDelete', async () => {
+  it('drops the gear row and its membership rows in every affected list', async () => {
     const { qc } = seed()
     const { onMutate } = makeOptimisticGearItemDelete({ qc })
 
-    onMutate('g1')
+    await onMutate('g1')
 
     expect(gearCache(qc).map((g) => g.id)).toEqual(['g2', 'g3'])
     expect(itemsOf(qc, 'l1').map((i) => i.gearItemId)).toEqual(['g2'])
@@ -163,24 +163,24 @@ describe('makeOptimisticGearItemDelete', () => {
     expect(itemsOf(qc, 'l3')).toHaveLength(1)
   })
 
-  it('onError restores dropped membership rows', () => {
+  it('onError restores dropped membership rows', async () => {
     const { qc } = seed()
     const l2Before = itemsOf(qc, 'l2')
     const { onMutate, onError } = makeOptimisticGearItemDelete({ qc })
 
-    const ctx = onMutate('g1')
+    const ctx = await onMutate('g1')
     onError(new Error('nope'), 'g1', ctx)
 
     expect(itemsOf(qc, 'l2')).toEqual(l2Before)
   })
 })
 
-describe('makeOptimisticGearItemsBulkDelete', () => {
-  it('drops every selected id across gear and list caches', () => {
+describe('makeOptimisticGearItemsBulkDelete', async () => {
+  it('drops every selected id across gear and list caches', async () => {
     const { qc } = seed()
     const { onMutate } = makeOptimisticGearItemsBulkDelete({ qc })
 
-    onMutate(['g1', 'g2'])
+    await onMutate(['g1', 'g2'])
 
     expect(gearCache(qc).map((g) => g.id)).toEqual(['g3'])
     expect(itemsOf(qc, 'l1')).toEqual([])
@@ -188,14 +188,14 @@ describe('makeOptimisticGearItemsBulkDelete', () => {
     expect(itemsOf(qc, 'l3')).toHaveLength(1)
   })
 
-  it('shows the configured toast on rollback', () => {
+  it('shows the configured toast on rollback', async () => {
     const { qc } = seed()
     const { onMutate, onError } = makeOptimisticGearItemsBulkDelete({
       qc,
       errorToast: 'Bulk delete failed.',
     })
 
-    const ctx = onMutate(['g1'])
+    const ctx = await onMutate(['g1'])
     onError(new Error('nope'), ['g1'], ctx)
 
     expect(showToast).toHaveBeenCalledWith('Bulk delete failed.', {
@@ -213,7 +213,7 @@ describe('makeOptimisticGearItemsBulkDelete', () => {
 // inside onMutate (after the gear write, before the context returns),
 // the rollback contract would break. These pin that only the exact
 // ['list-items', string] shape with array data is ever touched.
-describe('fan-out cache discovery hardening', () => {
+describe('fan-out cache discovery hardening', async () => {
   function poison(qc: QueryClient) {
     // Bare prefix key holding non-array garbage.
     qc.setQueryData(queryKeys.listItemsAll(), { not: 'an array' })
@@ -226,7 +226,7 @@ describe('fan-out cache discovery hardening', () => {
     qc.setQueryData(['list-items', 42], [listItem({ id: 'li-y', gearItemId: 'g1' })])
   }
 
-  it('skips non-per-list caches without throwing and still fans out', () => {
+  it('skips non-per-list caches without throwing and still fans out', async () => {
     const { qc } = seed()
     poison(qc)
     const bareBefore = qc.getQueryData(queryKeys.listItemsAll())
@@ -234,7 +234,7 @@ describe('fan-out cache discovery hardening', () => {
     const numBefore = qc.getQueryData(['list-items', 42])
     const { onMutate } = makeOptimisticGearItemUpdate({ qc })
 
-    const ctx = onMutate({ id: 'g1', patch: { name: 'Mid' } })
+    const ctx = await onMutate({ id: 'g1', patch: { name: 'Mid' } })
 
     // The malformed caches keep identity: never cancelled, snapshotted,
     // or written.
@@ -251,8 +251,8 @@ describe('fan-out cache discovery hardening', () => {
     expect(itemsOf(qc, 'l2')[0]?.gearItem.name).toBe('Mid')
   })
 
-  it('every helper onMutate returns a rollback context despite garbage caches', () => {
-    const cases: ((qc: QueryClient) => GearFanOutContext)[] = [
+  it('every helper onMutate returns a rollback context despite garbage caches', async () => {
+    const cases: ((qc: QueryClient) => Promise<GearFanOutContext>)[] = [
       (qc) => makeOptimisticGearItemUpdate({ qc })
         .onMutate({ id: 'g1', patch: { name: 'Mid' } }),
       (qc) => makeOptimisticGearItemDelete({ qc }).onMutate('g1'),
@@ -263,19 +263,19 @@ describe('fan-out cache discovery hardening', () => {
     for (const fire of cases) {
       const { qc } = seed()
       poison(qc)
-      const ctx = fire(qc)
+      const ctx = await fire(qc)
       expect(ctx.previousGear).toBeDefined()
       expect(ctx.listSnapshots.length).toBeGreaterThan(0)
     }
   })
 })
 
-describe('makeOptimisticGearItemsBulkCategoryMove', () => {
-  it('recategorizes the gear rows and their embedded copies', () => {
+describe('makeOptimisticGearItemsBulkCategoryMove', async () => {
+  it('recategorizes the gear rows and their embedded copies', async () => {
     const { qc } = seed()
     const { onMutate } = makeOptimisticGearItemsBulkCategoryMove({ qc })
 
-    onMutate({ ids: ['g1', 'g2'], categoryId: 'c9' })
+    await onMutate({ ids: ['g1', 'g2'], categoryId: 'c9' })
 
     expect(gearCache(qc).filter((g) => g.categoryId === 'c9').map((g) => g.id))
       .toEqual(['g1', 'g2'])
@@ -285,15 +285,82 @@ describe('makeOptimisticGearItemsBulkCategoryMove', () => {
     expect(itemsOf(qc, 'l3')[0]?.gearItem.categoryId).toBe('c1')
   })
 
-  it('null recategorization (uncategorize) fans out too', () => {
+  it('null recategorization (uncategorize) fans out too', async () => {
     const { qc } = seed()
     const { onMutate } = makeOptimisticGearItemsBulkCategoryMove({ qc })
 
-    onMutate({ ids: ['g1'], categoryId: null })
+    await onMutate({ ids: ['g1'], categoryId: null })
 
     expect(gearCache(qc).find((g) => g.id === 'g1')?.categoryId).toBeNull()
     expect(itemsOf(qc, 'l2')[0]?.gearItem.categoryId).toBeNull()
     // Membership fields (quantity, flags) are not the mutation's business.
     expect(itemsOf(qc, 'l2')[0]?.quantity).toBe(2)
+  })
+})
+
+// The fan-out counterpart of the mechanism suite in optimistic.test.ts, with the
+// same caveat: it pins the MECHANISM (an awaited cancel keeps the optimistic write
+// on every surface it touched), at a microtask offset that a user gesture cannot
+// reach. Read the note over there before citing this as a user-facing bug.
+//
+// The wider blast radius is what makes it worth pinning at all: a gear edit writes
+// to the gear cache AND to every list cache embedding that gear, so the write can be
+// lost on any one of them independently, and a rollback context assembled across a
+// moving set of caches restores a state that never existed.
+describe('an in-flight refetch cannot clobber the gear fan-out', () => {
+  function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((r) => {
+      resolve = r
+    })
+    return { promise, resolve }
+  }
+
+  it('the optimistic write survives on the gear cache AND every affected list', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const g1 = gear({ id: 'g1', name: 'Tent' })
+    qc.setQueryData(queryKeys.gearItems(), [g1])
+    qc.setQueryData(queryKeys.listItems('l1'), [
+      listItem({ id: 'li-1', listId: 'l1', gearItemId: 'g1', gearItem: g1 }),
+    ])
+    qc.setQueryData(queryKeys.listItems('l2'), [
+      listItem({ id: 'li-3', listId: 'l2', gearItemId: 'g1', gearItem: g1 }),
+    ])
+
+    // A GET is in flight for BOTH the gear library and one of the open lists - the
+    // ordinary consequence of a previous mutation's invalidate, or a tab refocus.
+    const gearServer = deferred<GearItem[]>()
+    const listServer = deferred<ListItemWithGear[]>()
+    const gearInFlight = qc
+      .fetchQuery({ queryKey: queryKeys.gearItems(), queryFn: () => gearServer.promise })
+      .catch(() => undefined)
+    const listInFlight = qc
+      .fetchQuery({
+        queryKey: queryKeys.listItems('l1'),
+        queryFn: () => listServer.promise,
+      })
+      .catch(() => undefined)
+
+    // Both answer with pre-edit truth (the OLD name).
+    gearServer.resolve([gear({ id: 'g1', name: 'Tent' })])
+    listServer.resolve([
+      listItem({ id: 'li-1', listId: 'l1', gearItemId: 'g1', gearItem: gear({ id: 'g1', name: 'Tent' }) }),
+    ])
+
+    // The one microtask that opens the window (see optimistic.test.ts).
+    await Promise.resolve()
+
+    const { onMutate } = makeOptimisticGearItemUpdate({ qc })
+    await onMutate({ id: 'g1', patch: { name: 'Mid' } })
+
+    await gearInFlight
+    await listInFlight
+
+    // The rename must be visible on every surface it was applied to. Without the
+    // awaited cancels, the stale 'Tent' lands on top and the user watches their
+    // edit silently revert.
+    expect(gearCache(qc)[0]?.name).toBe('Mid')
+    expect(itemsOf(qc, 'l1')[0]?.gearItem.name).toBe('Mid')
+    expect(itemsOf(qc, 'l2')[0]?.gearItem.name).toBe('Mid')
   })
 })
