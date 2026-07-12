@@ -1,10 +1,19 @@
 import { createMiddleware } from 'hono/factory'
-import { lt, sql } from 'drizzle-orm'
+import { eq, lt, sql } from 'drizzle-orm'
 import { createDb } from '../db'
 import { rateLimits } from '../db/schema'
 import { rateLimitIpKey } from './client-ip'
 
 type Rule = { scope: string; limit: number; windowMs: number }
+
+type Db = ReturnType<typeof createDb>
+
+// The result of charging (or peeking at) a bucket. `retryAfterSeconds` is only
+// meaningful when the bucket is spent, so it lives on that branch of the union
+// rather than being an optional field callers have to remember to check.
+export type RateVerdict =
+  | { ok: true }
+  | { ok: false; retryAfterSeconds: number }
 
 const MINUTE = 60 * 1000
 const DAY = 24 * 60 * MINUTE
@@ -40,9 +49,29 @@ const AUTH_DEFAULT: Rule = { scope: 'auth', limit: 30, windowMs: 10 * MINUTE }
 // down rather than discovered later: if it is ever drained, NOBODY can recover an
 // account until the window rolls. That is not worse than the mail quota running
 // out - the effect is identical - but it fails earlier and on purpose, and the
-// IP/address caps in front of it are what make draining it expensive. It is also
-// charged LAST (see the middleware), so requests the other two already refused
-// never spend it: it tracks mail actually sent, not attempts.
+// IP/address caps in front of it are what make draining it expensive.
+//
+// WHERE IT IS CHARGED, AND WHY NOT HERE. The global bucket is the ONLY one this
+// middleware does not charge. It is charged inside better-auth's `sendMagicLink`
+// callback (server/auth.ts) instead, immediately before the mail goes out.
+//
+// It used to be charged here, and that was a real hole: this middleware runs
+// BEFORE better-auth parses the body, so it cannot tell a deliverable address
+// from junk. better-auth validates with z.email() and 400s a bad one - but the
+// slot was already spent. ~90 requests carrying garbage addresses, from rotating
+// IPs, therefore drained a day of the ONLY recovery path in a passwordless app
+// while sending zero mail. Charging in the callback means better-auth has already
+// validated and normalized the address, so nothing that cannot become an email
+// can spend the shared quota. (Found by review, 2026-07-12.)
+//
+// What the counter therefore means, precisely: VALIDATED SEND ATTEMPTS. It is
+// charged just before email.send, not after, so a provider failure still spends a
+// slot. That is deliberate - reserve-then-refund would leak a slot forever
+// whenever an isolate dies mid-send, which is a worse failure than losing one of
+// 90 slots to a rare Resend 5xx. Do not write "mail actually sent" here again.
+//
+// The middleware still PEEKS at this bucket (without charging it) so an already
+// spent quota is refused up front - see the middleware for why that matters.
 //
 // Raise MAGIC_LINK_SEND_GLOBAL when the mail provider's quota rises (e.g. SES).
 // It is the one number tied to the provider.
@@ -189,15 +218,20 @@ const READ_ONLY_GET_PATHS = new Set([
   '/api/auth/passkey/list-user-passkeys',
 ])
 
-// Charge one request to one bucket. Returns the 429 response if the bucket is
-// spent, or null to continue. Split out because a magic-link send charges TWO
-// buckets (the caller's IP and the target address) and either can reject.
-async function consume(
-  db: ReturnType<typeof createDb>,
+function retryAfterSeconds(windowStart: number, rule: Rule, now: number): number {
+  return Math.max(1, Math.ceil((windowStart + rule.windowMs - now) / 1000))
+}
+
+// Charge one request to one bucket and report the verdict. The transport-neutral
+// core: the middleware wraps it into a 429 Response, while server/auth.ts needs
+// the verdict itself (it is inside better-auth, where the answer has to be an
+// APIError, not a Response).
+async function charge(
+  db: Db,
   rule: Rule,
   keySuffix: string,
   now: number,
-): Promise<Response | null> {
+): Promise<RateVerdict> {
   const key = `${rule.scope}:${keySuffix}`
   const cutoff = now - rule.windowMs
 
@@ -232,16 +266,67 @@ async function consume(
   }
 
   if (row.count > rule.limit) {
-    const retryAfterSeconds = Math.max(
-      1,
-      Math.ceil((row.windowStart + rule.windowMs - now) / 1000),
-    )
-    return Response.json({ error: 'Too many requests' }, {
-      status: 429,
-      headers: { 'Retry-After': String(retryAfterSeconds) },
-    })
+    return { ok: false, retryAfterSeconds: retryAfterSeconds(row.windowStart, rule, now) }
   }
-  return null
+  return { ok: true }
+}
+
+// Read a bucket WITHOUT charging it. Used only for the global mail quota, whose
+// authoritative charge happens later (in sendMagicLink), and which therefore
+// needs a way to be refused early.
+//
+// Racy by construction, and that is fine: it is an optimization, not the gate.
+// Two callers can both peek "not spent" and both proceed; the atomic charge in
+// the callback is what actually enforces the limit, so no extra mail escapes.
+// A peek must never be the only thing standing between a request and a send.
+async function peek(db: Db, rule: Rule, keySuffix: string, now: number): Promise<RateVerdict> {
+  const [row] = await db
+    .select()
+    .from(rateLimits)
+    .where(eq(rateLimits.key, `${rule.scope}:${keySuffix}`))
+    .limit(1)
+
+  // No row, or a window that has already rolled: the bucket is not spent.
+  if (!row || row.windowStart <= now - rule.windowMs) return { ok: true }
+  // `charge` refuses at count > limit, so a bucket holding `limit` is full: the
+  // next charge would be the one that gets refused.
+  if (row.count >= rule.limit) {
+    return { ok: false, retryAfterSeconds: retryAfterSeconds(row.windowStart, rule, now) }
+  }
+  return { ok: true }
+}
+
+// Charge one validated magic-link send against the shared mail quota. Called
+// from better-auth's sendMagicLink callback (server/auth.ts) - the first point
+// in the request where the address is known to be real. See the block comment on
+// MAGIC_LINK_SEND_GLOBAL for why it is not charged in the middleware.
+export function chargeMagicLinkGlobalQuota(db: Db, now: number): Promise<RateVerdict> {
+  return charge(db, MAGIC_LINK_SEND_GLOBAL, 'all', now)
+}
+
+// Non-charging read of the same bucket, for the middleware's early refusal.
+export function peekMagicLinkGlobalQuota(db: Db, now: number): Promise<RateVerdict> {
+  return peek(db, MAGIC_LINK_SEND_GLOBAL, 'all', now)
+}
+
+function tooManyRequests(verdict: { retryAfterSeconds: number }): Response {
+  return Response.json({ error: 'Too many requests' }, {
+    status: 429,
+    headers: { 'Retry-After': String(verdict.retryAfterSeconds) },
+  })
+}
+
+// Charge one request to one bucket. Returns the 429 response if the bucket is
+// spent, or null to continue. Split out because a magic-link send charges TWO
+// buckets (the caller's IP and the target address) and either can reject.
+async function consume(
+  db: Db,
+  rule: Rule,
+  keySuffix: string,
+  now: number,
+): Promise<Response | null> {
+  const verdict = await charge(db, rule, keySuffix, now)
+  return verdict.ok ? null : tooManyRequests(verdict)
 }
 
 // Limits auth requests per client IP, every method except allowlisted
@@ -271,17 +356,33 @@ export const authRateLimit = createMiddleware<{ Bindings: Env }>(
     const byIp = await consume(db, rule, ip, now)
     if (byIp) return byIp
 
-    // A magic-link send is charged to three buckets, and the ORDER is deliberate:
-    // narrowest and cheapest first, the shared quota last.
+    // A magic-link send is metered against three buckets, and the ORDER is
+    // deliberate: narrowest and cheapest first, the shared quota last.
     //
     //   IP -> ADDRESS -> GLOBAL
     //
-    // Charging GLOBAL last is what stops an attacker draining everyone's recovery
-    // path: a flood is already refused by the IP or address cap, and a refused
-    // request never reaches the global bucket, so it cannot spend mail budget it
-    // was never going to use. The global count therefore tracks mail actually
-    // sent, not attempts made. Reverse this order and a single host could 429 the
-    // whole app's recovery for a day.
+    // Ordering GLOBAL last is what stops one attacker denying recovery to
+    // everyone: a flood the IP or address cap already refused never reaches the
+    // shared quota, so it cannot spend mail budget it was never going to use.
+    // Reverse this and a single host could 429 the whole app's recovery for a day.
+    //
+    // Only the first two are CHARGED here. The global bucket is merely PEEKED at,
+    // and charged later, in sendMagicLink, once better-auth has validated the
+    // address (see MAGIC_LINK_SEND_GLOBAL above for the hole that closes).
+    //
+    // The peek is not redundant with that later charge. better-auth writes the
+    // `verification` row BEFORE it calls sendMagicLink, so without an early
+    // refusal every request arriving at an already-drained quota would write a DB
+    // row and only then be refused - turning an exhausted quota into a free write
+    // amplifier. Peeking keeps the fail-fast behavior the charge used to give us,
+    // without spending a slot on input better-auth has not vetted yet.
+    //
+    // NOTE this ordering only holds for requests that come through Hono. A
+    // server-side `auth.api.signInMagicLink(...)` call would skip this middleware
+    // entirely - no IP charge, no address charge - and still land in
+    // sendMagicLink, charging only the global quota. Nothing calls it that way
+    // today. If something ever does, it is stepping around two of the three
+    // buckets and needs to say why.
     if (c.req.path === MAGIC_LINK_SEND_PATH) {
       const byEmail = await consume(
         db,
@@ -291,8 +392,8 @@ export const authRateLimit = createMiddleware<{ Bindings: Env }>(
       )
       if (byEmail) return byEmail
 
-      const byQuota = await consume(db, MAGIC_LINK_SEND_GLOBAL, 'all', now)
-      if (byQuota) return byQuota
+      const quota = await peekMagicLinkGlobalQuota(db, now)
+      if (!quota.ok) return tooManyRequests(quota)
     }
 
     return next()

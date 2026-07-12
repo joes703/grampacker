@@ -102,9 +102,50 @@ Four independent layers, tested in `server/routes/me.test.ts`:
     of who uses the app.
   - **Charge order is IP -> address -> global, and it is load-bearing.** A
     request the first two already refused never reaches the shared quota,
-    so a flood cannot spend mail budget it was never going to use - the
-    global count tracks mail actually SENT, not attempts made. Reverse the
-    order and one host could 429 the whole app's recovery for a day.
+    so a flood cannot spend mail budget it was never going to use. Reverse
+    the order and one host could 429 the whole app's recovery for a day.
+  - **The global bucket is charged in `sendMagicLink`, NOT in the
+    middleware, and that placement is a security control.** The middleware
+    runs before better-auth parses the body, so it cannot tell a
+    deliverable address from junk. While it charged the global bucket, a
+    request carrying `{"email": "not-an-email"}` spent one of the 90 daily
+    slots and *then* got a 400 from better-auth's `z.email()` validation -
+    so ~90 garbage requests from rotating IPs drained a full day of the
+    only account-recovery path in a passwordless app **without sending a
+    single email**. Charging inside the callback means better-auth has
+    already validated and normalized the address, so nothing that cannot
+    become an email can spend the shared quota. (Found in review,
+    2026-07-12; fixed the same day.)
+  - The middleware still **peeks** at the global bucket (a read, not a
+    charge) and refuses early when it is already spent. This is not
+    redundant: better-auth writes the `verification` row *before* it calls
+    `sendMagicLink`, so without the peek every request arriving at a
+    drained quota would write a DB row and only then be refused, turning an
+    exhausted quota into a free write amplifier. The peek is racy by
+    construction and that is fine - the atomic charge in the callback is
+    the gate, and a test pins that a concurrent burst cannot over-send.
+  - **Residual, accepted:** a charge refused in the callback still leaves an
+    orphan `verification` row (hashed, never emailed, 5-minute expiry),
+    because better-auth writes it first. The peek confines this to the
+    quota BOUNDARY - once the bucket is spent, requests never reach
+    better-auth - so the orphans are bounded by how many requests can be in
+    flight across the boundary at once, which the per-IP and per-address
+    buckets are what limit. Not unbounded, and not a token an attacker can
+    obtain (they never see it). Charging earlier would avoid it only by
+    re-validating the address ourselves, and a validator that drifts looser
+    than better-auth's would be a quota BYPASS - a worse bug than the rows.
+  - **What the global counter means: VALIDATED SEND ATTEMPTS, not mail
+    delivered.** It is charged just before `email.send`, so two concurrent
+    sends cannot both see a free slot - at the cost that a provider failure
+    still spends one. Reserve-then-refund would fix that and introduce a
+    worse bug (an isolate dying mid-send leaks the reservation until the
+    window rolls), which is not a trade worth making at 90 slots against a
+    100/day provider cap.
+  - This ordering holds **only for requests that arrive over HTTP**. A
+    server-side `auth.api.signInMagicLink(...)` call would bypass the Hono
+    middleware entirely - no IP charge, no address charge - while still
+    charging the global quota. Nothing calls it that way today; anything
+    that starts to is stepping around two of the three buckets.
 - **Accepted trade-off:** if the global bucket is drained, nobody can
   recover an account until the window rolls. That is no worse than the
   provider's quota running out - the effect is identical - but it fails
