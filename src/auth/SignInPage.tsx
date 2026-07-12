@@ -107,7 +107,15 @@ export default function SignInPage() {
           >
             {passkeyPending ? 'Waiting for passkey...' : 'Sign in with a passkey'}
           </button>
-          <div className="my-4 flex items-center gap-3 text-xs text-gray-400">
+          {/* gray-500, not gray-400: at 12px this is normal-weight text, so it owes
+              4.5:1 (the relaxed 3:1 floor starts at 24px, or 18.7px bold - not
+              here). Computed from the colors Tailwind 4 actually emits, which are
+              oklch, not the v3 hexes: gray-400 resolves to #99a1af = 2.60:1 against
+              white, exactly the ratio Lighthouse failed it on; gray-500 resolves to
+              #6a7282 = 4.84:1. The divider RULES stay gray-200: they carry no
+              information (the word "or" does), so they are decoration and owe
+              nothing. */}
+          <div className="my-4 flex items-center gap-3 text-xs text-gray-500">
             <div className="h-px flex-1 bg-gray-200" />
             or
             <div className="h-px flex-1 bg-gray-200" />
