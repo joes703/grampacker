@@ -21,7 +21,8 @@ DELETE FROM `account` WHERE `provider_id` = 'credential';
 --
 -- Scoped by better-auth's own identifier format, `reset-password:${token}`
 -- (password.mjs:68). Magic-link rows live in this same table but key off a bare
--- random token with no prefix, so they cannot match this LIKE and survive.
+-- SHA-256 base64url hash (we set storeToken: 'hashed' - server/auth.ts) with no
+-- prefix of any kind, so they cannot match this LIKE and survive untouched.
 DELETE FROM `verification` WHERE `identifier` LIKE 'reset-password:%';
 --> statement-breakpoint
 
