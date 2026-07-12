@@ -82,8 +82,15 @@ Four independent layers, tested in `server/routes/me.test.ts`:
     provider's quota, which is itself global (Resend free tier: 100/day).
     A per-IP cap cannot do that job - at N/day per IP, a handful of IPs
     still drains the provider, and then nobody can recover an account.
-    This is the one number tied to the provider: raise it when the quota
-    rises (e.g. moving to SES).
+    **90/day is a PRODUCT choice, not a security constant.** It is sized
+    to the current provider's quota and nothing else, so it is expected
+    to move. To raise it: change `MAGIC_LINK_SEND_GLOBAL.limit` in
+    `server/middleware/rate-limit.ts` (and `MAGIC_SEND_GLOBAL_LIMIT` in
+    its test, which mirrors it), keeping meaningful headroom under
+    whatever the provider allows per day - on SES that is a much larger
+    number. Raising it weakens nothing: the two buckets below are the
+    anti-abuse controls, and they are what should NOT be relaxed for
+    convenience.
   - The **per-address** bucket is the one that cannot be IP-keyed: an
     attacker rotating IPs is a first-time caller every time, and would
     bomb one victim's inbox - or farm tokens for one account - without
@@ -287,6 +294,19 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   repository + DTO allowlist + private-column ABSENCE tests + uniform
   404 for unknown and inactive slugs. The re-sweep of this file happens
   before it ships.
+- **Public share endpoint is UNMETERED** (`GET /api/shares/:slug`). The
+  rate limiter is mounted on `/api/auth/*` only, so every non-auth route
+  is unmetered - but the rest are session-gated, and this one is
+  anonymous by design. It is therefore the app's one unauthenticated,
+  uncounted database read: the obvious scraping surface, and a cheap way
+  to make the Worker do work for free. Slugs are random, so this is not
+  an enumeration oracle in any practical sense, and the response is a
+  DTO-allowlisted read-only document - which is why it is a gap and not a
+  hole. Trigger: any public-endpoint abuse review, any sign of scraping,
+  or the first time a share link is posted somewhere public. Fix shape:
+  a generous per-IP bucket (a legitimate viewer makes 1-3 requests; the
+  budget must survive a link going around a large NAT). Raised by review,
+  2026-07-11.
 - **Web Analytics**: the insights beacon is NOT in the CSP. If
   Cloudflare Web Analytics is wired to the new Worker, add
   `https://static.cloudflareinsights.com` to script-src deliberately.
