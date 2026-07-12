@@ -112,6 +112,30 @@ time. Never delete or recreate the D1 database.
   milliseconds, so the UI flashes correct then snaps back. Hard-refresh after a
   write to confirm the server accepted it. Optimistic UI is a latency tool, not a
   correctness signal.
+- **`c.res = res` does not REPLACE a response in Hono - it MERGES.** The setter
+  copies the previous response's headers onto the new one with `headers.set(k, v)`,
+  so on any header present in BOTH, the OLD value wins and your new value is
+  silently discarded. No error, no warning. `securityHeaders` gets away with the
+  plain pattern only because CSP/X-Frame-Options/etc. do not exist on the original
+  response, so nothing collides - which makes it a misleading model to copy. Any
+  middleware that CHANGES an existing header (e.g. `Cache-Control` on an asset)
+  must `c.res = undefined` first, then assign. Bit us in `asset-cache.ts`; caught
+  by CI, not by review or types (2026-07-12).
+- **better-auth `hooks.before` sees an UNVALIDATED body.** `api/dispatch.mjs` runs
+  the before-hooks BEFORE it invokes the endpoint, and the endpoint is where the
+  zod body schema actually runs. So a before-hook is NOT a safe place to make a
+  decision that depends on the input being well-formed - it is exactly as blind as
+  our own Hono middleware. The magic-link mail quota is charged in `sendMagicLink`
+  for this reason: it is the first point at which the address is known to be real
+  (`server/auth.ts`, and the DoS it fixes is in SECURITY.md). Do not "move it
+  earlier" without re-reading dispatch.mjs.
+- **A response-header policy change does not reach browsers that already cached
+  the resource.** They revalidate with `If-None-Match` and the server answers
+  `304`, which carries no `Cache-Control` - so the stored entry keeps its OLD
+  policy indefinitely. A caching change can therefore be green in tests, correct on
+  the wire for new visitors, and a total no-op for every existing user. If a change
+  must reach cached entries, force a validated `200` (see
+  `forceValidatedAssetResponse` in `server/middleware/asset-cache.ts`).
 
 ## Async and failure feedback
 
