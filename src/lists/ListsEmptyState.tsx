@@ -98,7 +98,10 @@ export default function ListsEmptyState() {
         </div>
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
-        <div className="mt-6 flex items-center gap-3 text-xs uppercase tracking-wide text-gray-400">
+        {/* Same 12px "or" divider as SignInPage, same 2.60:1 -> 4.84:1 fix.
+            Lighthouse only ever saw the sign-in one (it cannot log in), but this
+            is the same element failing the same floor. */}
+        <div className="mt-6 flex items-center gap-3 text-xs uppercase tracking-wide text-gray-500">
           <span className="flex-1 border-t border-gray-200" />
           or
           <span className="flex-1 border-t border-gray-200" />
