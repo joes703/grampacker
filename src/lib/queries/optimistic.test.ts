@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
+import type { QueryKey } from '@tanstack/react-query'
 
 vi.mock('../toast', () => ({
   showToast: vi.fn(),
@@ -26,21 +27,21 @@ function makeClient(initial: Row[]): { qc: QueryClient; key: readonly ['rows'] }
 }
 
 describe('makeOptimisticInsert', () => {
-  it('appends the optimistic row to the cached array (happy path, default merge)', () => {
+  it('appends the optimistic row to the cached array (happy path, default merge)', async () => {
     const { qc, key } = makeClient([{ id: 'A', name: 'a', categoryId: null }])
     const helper = makeOptimisticInsert<Row, { name: string }>({
       qc,
       queryKey: key,
       optimistic: (input) => ({ id: 'temp-1', name: input.name, categoryId: null }),
     })
-    helper.onMutate({ name: 'b' })
+    await helper.onMutate({ name: 'b' })
     expect(qc.getQueryData<Row[]>(key)).toEqual([
       { id: 'A', name: 'a', categoryId: null },
       { id: 'temp-1', name: 'b', categoryId: null },
     ])
   })
 
-  it('rolls back on error to the pre-apply snapshot', () => {
+  it('rolls back on error to the pre-apply snapshot', async () => {
     const initial: Row[] = [{ id: 'A', name: 'a', categoryId: null }]
     const { qc, key } = makeClient(initial)
     const helper = makeOptimisticInsert<Row, { name: string }>({
@@ -48,12 +49,12 @@ describe('makeOptimisticInsert', () => {
       queryKey: key,
       optimistic: (input) => ({ id: 'temp-1', name: input.name, categoryId: null }),
     })
-    const ctx = helper.onMutate({ name: 'b' })
+    const ctx = await helper.onMutate({ name: 'b' })
     helper.onError(new Error('boom'), { name: 'b' }, ctx)
     expect(qc.getQueryData<Row[]>(key)).toEqual(initial)
   })
 
-  it('uses the caller-supplied merge function rather than appending', () => {
+  it('uses the caller-supplied merge function rather than appending', async () => {
     const { qc, key } = makeClient([{ id: 'A', name: 'a', categoryId: null }])
     const helper = makeOptimisticInsert<Row, { name: string }>({
       qc,
@@ -61,14 +62,14 @@ describe('makeOptimisticInsert', () => {
       optimistic: (input) => ({ id: 'temp-1', name: input.name, categoryId: null }),
       merge: (current, next) => [next, ...current],
     })
-    helper.onMutate({ name: 'b' })
+    await helper.onMutate({ name: 'b' })
     expect(qc.getQueryData<Row[]>(key)).toEqual([
       { id: 'temp-1', name: 'b', categoryId: null },
       { id: 'A', name: 'a', categoryId: null },
     ])
   })
 
-  it('seeds the cache with the optimistic row when no prior data exists', () => {
+  it('seeds the cache with the optimistic row when no prior data exists', async () => {
     const qc = new QueryClient()
     const key = ['rows'] as const
     // No setQueryData ahead of time — onMutate must still produce a usable
@@ -78,7 +79,7 @@ describe('makeOptimisticInsert', () => {
       queryKey: key,
       optimistic: (input) => ({ id: 'temp-1', name: input.name, categoryId: null }),
     })
-    helper.onMutate({ name: 'b' })
+    await helper.onMutate({ name: 'b' })
     expect(qc.getQueryData<Row[]>(key)).toEqual([
       { id: 'temp-1', name: 'b', categoryId: null },
     ])
@@ -86,7 +87,7 @@ describe('makeOptimisticInsert', () => {
 })
 
 describe('makeOptimisticUpdate', () => {
-  it('applies the patch to the row resolved by id (happy path)', () => {
+  it('applies the patch to the row resolved by id (happy path)', async () => {
     const { qc, key } = makeClient([
       { id: 'A', name: 'a', categoryId: null },
       { id: 'B', name: 'b', categoryId: null },
@@ -97,14 +98,14 @@ describe('makeOptimisticUpdate', () => {
       id: (input) => input.id,
       apply: (item, input) => ({ ...item, name: input.name }),
     })
-    helper.onMutate({ id: 'B', name: 'b-renamed' })
+    await helper.onMutate({ id: 'B', name: 'b-renamed' })
     expect(qc.getQueryData<Row[]>(key)).toEqual([
       { id: 'A', name: 'a', categoryId: null },
       { id: 'B', name: 'b-renamed', categoryId: null },
     ])
   })
 
-  it('rolls back on error to the pre-apply snapshot', () => {
+  it('rolls back on error to the pre-apply snapshot', async () => {
     const initial: Row[] = [
       { id: 'A', name: 'a', categoryId: null },
       { id: 'B', name: 'b', categoryId: null },
@@ -116,12 +117,12 @@ describe('makeOptimisticUpdate', () => {
       id: (input) => input.id,
       apply: (item, input) => ({ ...item, name: input.name }),
     })
-    const ctx = helper.onMutate({ id: 'B', name: 'b-renamed' })
+    const ctx = await helper.onMutate({ id: 'B', name: 'b-renamed' })
     helper.onError(new Error('boom'), { id: 'B', name: 'b-renamed' }, ctx)
     expect(qc.getQueryData<Row[]>(key)).toEqual(initial)
   })
 
-  it('preserves caller-supplied fields like updatedAt via apply (M-2 contract)', () => {
+  it('preserves caller-supplied fields like updatedAt via apply (M-2 contract)', async () => {
     type RowWithTimestamp = Row & { updatedAt: string }
     const qc = new QueryClient()
     const key = ['rows'] as const
@@ -134,13 +135,13 @@ describe('makeOptimisticUpdate', () => {
       id: (input) => input.id,
       apply: (item, input) => ({ ...item, name: input.name, updatedAt: '2026-05-06T12:00:00.000Z' }),
     })
-    helper.onMutate({ id: 'A', name: 'a-renamed' })
+    await helper.onMutate({ id: 'A', name: 'a-renamed' })
     expect(qc.getQueryData<RowWithTimestamp[]>(key)).toEqual([
       { id: 'A', name: 'a-renamed', categoryId: null, updatedAt: '2026-05-06T12:00:00.000Z' },
     ])
   })
 
-  it('is a no-op when the cache is undefined (no prior fetch)', () => {
+  it('is a no-op when the cache is undefined (no prior fetch)', async () => {
     const qc = new QueryClient()
     const key = ['rows'] as const
     const helper = makeOptimisticUpdate<Row, { id: string; name: string }>({
@@ -149,13 +150,13 @@ describe('makeOptimisticUpdate', () => {
       id: (input) => input.id,
       apply: (item, input) => ({ ...item, name: input.name }),
     })
-    helper.onMutate({ id: 'A', name: 'a-renamed' })
+    await helper.onMutate({ id: 'A', name: 'a-renamed' })
     expect(qc.getQueryData<Row[]>(key)).toBeUndefined()
   })
 })
 
 describe('makeOptimisticDelete', () => {
-  it('removes the row resolved by id from the cache (happy path)', () => {
+  it('removes the row resolved by id from the cache (happy path)', async () => {
     const { qc, key } = makeClient([
       { id: 'A', name: 'a', categoryId: null },
       { id: 'B', name: 'b', categoryId: null },
@@ -165,13 +166,13 @@ describe('makeOptimisticDelete', () => {
       queryKey: key,
       id: (input) => input,
     })
-    helper.onMutate('A')
+    await helper.onMutate('A')
     expect(qc.getQueryData<Row[]>(key)).toEqual([
       { id: 'B', name: 'b', categoryId: null },
     ])
   })
 
-  it('rolls back on error to the pre-apply snapshot', () => {
+  it('rolls back on error to the pre-apply snapshot', async () => {
     const initial: Row[] = [
       { id: 'A', name: 'a', categoryId: null },
       { id: 'B', name: 'b', categoryId: null },
@@ -182,12 +183,12 @@ describe('makeOptimisticDelete', () => {
       queryKey: key,
       id: (input) => input,
     })
-    const ctx = helper.onMutate('A')
+    const ctx = await helper.onMutate('A')
     helper.onError(new Error('boom'), 'A', ctx)
     expect(qc.getQueryData<Row[]>(key)).toEqual(initial)
   })
 
-  it('is a no-op when the id is not in the cache', () => {
+  it('is a no-op when the id is not in the cache', async () => {
     const initial: Row[] = [{ id: 'A', name: 'a', categoryId: null }]
     const { qc, key } = makeClient(initial)
     const helper = makeOptimisticDelete<Row, string>({
@@ -195,13 +196,13 @@ describe('makeOptimisticDelete', () => {
       queryKey: key,
       id: (input) => input,
     })
-    helper.onMutate('Z')
+    await helper.onMutate('Z')
     expect(qc.getQueryData<Row[]>(key)).toEqual(initial)
   })
 })
 
 describe('makeOptimisticBulkDelete', () => {
-  it('removes every row in the id set in one write (happy path)', () => {
+  it('removes every row in the id set in one write (happy path)', async () => {
     const { qc, key } = makeClient([
       { id: 'A', name: 'a', categoryId: null },
       { id: 'B', name: 'b', categoryId: null },
@@ -212,13 +213,13 @@ describe('makeOptimisticBulkDelete', () => {
       queryKey: key,
       ids: (input) => input,
     })
-    helper.onMutate(['A', 'C'])
+    await helper.onMutate(['A', 'C'])
     expect(qc.getQueryData<Row[]>(key)).toEqual([
       { id: 'B', name: 'b', categoryId: null },
     ])
   })
 
-  it('rolls back on error to the pre-apply snapshot and shows the errorToast', () => {
+  it('rolls back on error to the pre-apply snapshot and shows the errorToast', async () => {
     const initial: Row[] = [
       { id: 'A', name: 'a', categoryId: null },
       { id: 'B', name: 'b', categoryId: null },
@@ -230,13 +231,13 @@ describe('makeOptimisticBulkDelete', () => {
       errorToast: 'Bulk delete failed.',
       ids: (input) => input,
     })
-    const ctx = helper.onMutate(['A', 'B'])
+    const ctx = await helper.onMutate(['A', 'B'])
     helper.onError(new Error('boom'), ['A', 'B'], ctx)
     expect(qc.getQueryData<Row[]>(key)).toEqual(initial)
     expect(showToast).toHaveBeenCalledWith('Bulk delete failed.', { type: 'error' })
   })
 
-  it('is a no-op when the cache is undefined (no prior fetch)', () => {
+  it('is a no-op when the cache is undefined (no prior fetch)', async () => {
     const qc = new QueryClient()
     const key = ['rows'] as const
     const helper = makeOptimisticBulkDelete<Row, string[]>({
@@ -244,7 +245,7 @@ describe('makeOptimisticBulkDelete', () => {
       queryKey: key,
       ids: (input) => input,
     })
-    helper.onMutate(['A'])
+    await helper.onMutate(['A'])
     expect(qc.getQueryData<Row[]>(key)).toBeUndefined()
   })
 })
@@ -252,7 +253,7 @@ describe('makeOptimisticBulkDelete', () => {
 describe('makeOptimisticBulkUpdate', () => {
   type MoveInput = { ids: string[]; categoryId: string | null }
 
-  it('applies the transform to every row in the id set and no others (happy path)', () => {
+  it('applies the transform to every row in the id set and no others (happy path)', async () => {
     const { qc, key } = makeClient([
       { id: 'A', name: 'a', categoryId: 'c1' },
       { id: 'B', name: 'b', categoryId: 'c1' },
@@ -264,7 +265,7 @@ describe('makeOptimisticBulkUpdate', () => {
       ids: (input) => input.ids,
       apply: (item, input) => ({ ...item, categoryId: input.categoryId }),
     })
-    helper.onMutate({ ids: ['A', 'C'], categoryId: null })
+    await helper.onMutate({ ids: ['A', 'C'], categoryId: null })
     expect(qc.getQueryData<Row[]>(key)).toEqual([
       { id: 'A', name: 'a', categoryId: null },
       { id: 'B', name: 'b', categoryId: 'c1' },
@@ -272,7 +273,7 @@ describe('makeOptimisticBulkUpdate', () => {
     ])
   })
 
-  it('rolls back on error to the pre-apply snapshot and shows the errorToast', () => {
+  it('rolls back on error to the pre-apply snapshot and shows the errorToast', async () => {
     const initial: Row[] = [
       { id: 'A', name: 'a', categoryId: 'c1' },
       { id: 'B', name: 'b', categoryId: 'c1' },
@@ -285,13 +286,13 @@ describe('makeOptimisticBulkUpdate', () => {
       ids: (input) => input.ids,
       apply: (item, input) => ({ ...item, categoryId: input.categoryId }),
     })
-    const ctx = helper.onMutate({ ids: ['A', 'B'], categoryId: 'c9' })
+    const ctx = await helper.onMutate({ ids: ['A', 'B'], categoryId: 'c9' })
     helper.onError(new Error('boom'), { ids: ['A', 'B'], categoryId: 'c9' }, ctx)
     expect(qc.getQueryData<Row[]>(key)).toEqual(initial)
     expect(showToast).toHaveBeenCalledWith('Bulk move failed.', { type: 'error' })
   })
 
-  it('is a no-op when the cache is undefined (no prior fetch)', () => {
+  it('is a no-op when the cache is undefined (no prior fetch)', async () => {
     const qc = new QueryClient()
     const key = ['rows'] as const
     const helper = makeOptimisticBulkUpdate<Row, MoveInput>({
@@ -300,9 +301,158 @@ describe('makeOptimisticBulkUpdate', () => {
       ids: (input) => input.ids,
       apply: (item, input) => ({ ...item, categoryId: input.categoryId }),
     })
-    helper.onMutate({ ids: ['A'], categoryId: null })
+    await helper.onMutate({ ids: ['A'], categoryId: null })
     expect(qc.getQueryData<Row[]>(key)).toBeUndefined()
   })
+})
+
+// The mechanism suite for the awaited cancelQueries in every CRUD onMutate.
+//
+// READ THIS BEFORE TRUSTING IT, because what it proves is narrower than its name
+// suggests, and the narrow version is the honest one.
+//
+// cancelQueries issues query.cancel() SYNCHRONOUSLY, and cancel() rejects the
+// retryer's thenable in that same tick; a response arriving afterwards is dropped by
+// an isResolved() guard. So for a fetch that is still genuinely PENDING, an unawaited
+// cancel is already safe and awaiting buys nothing.
+//
+// The only hole is the sliver AFTER the fetch's promise has resolved but BEFORE the
+// query has written the result. There cancel() finds a settled thenable and no-ops,
+// while the write sits queued - and an unawaited cancel lets it land ON TOP of the
+// optimistic state. Measured at a one-microtask offset:
+//
+//   void qc.cancelQueries(...)   ->  [A, STALE]   the row we deleted is BACK
+//   await qc.cancelQueries(...)  ->  [STALE]      deletion survives, stale under it
+//
+// That sliver is NOT reachable from a user gesture: the browser drains the whole
+// microtask checkpoint - including the query's write - before dispatching the next
+// task, and a click is a task. Reaching it requires firing the mutation from a
+// promise continuation already queued in that checkpoint, which is what the
+// `await Promise.resolve()` below simulates. So these tests pin the MECHANISM and
+// protect promise-chained callers (ListDetailPage's dialog chains mutateAsync ->
+// mutateAsync); they are not evidence of a clobber a user has suffered. Do not cite
+// them as one.
+//
+// The `await Promise.resolve()` is load-bearing all the same. An earlier draft let
+// the response land zero microtasks late - the ONE offset where both variants are
+// safe - and so it passed happily against the buggy code. A regression test that
+// cannot fail on the bug is decoration.
+describe('an in-flight refetch cannot clobber an optimistic CRUD write', () => {
+  function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((r) => {
+      resolve = r
+    })
+    return { promise, resolve }
+  }
+
+  const CACHED: Row[] = [
+    { id: 'A', name: 'a', categoryId: null },
+    { id: 'B', name: 'b', categoryId: null },
+  ]
+  // Server truth from BEFORE the user acted. Identifiable by the extra row C.
+  const STALE_FROM_SERVER: Row[] = [
+    { id: 'A', name: 'a', categoryId: null },
+    { id: 'B', name: 'b', categoryId: null },
+    { id: 'C', name: 'c-from-a-stale-read', categoryId: null },
+  ]
+
+  // Each case fires one helper, then names the optimistic effect that must still be
+  // visible. Asserting the EFFECT rather than the whole array is deliberate: the
+  // stale response does land (underneath), so the final array is the optimistic op
+  // applied to STALE_FROM_SERVER. What must never happen is the effect being erased
+  // - which is precisely what the clobber does.
+  const cases: {
+    name: string
+    fire: (qc: QueryClient, key: QueryKey) => Promise<unknown>
+    survives: (rows: Row[]) => void
+  }[] = [
+    {
+      name: 'insert',
+      fire: (qc, queryKey) =>
+        makeOptimisticInsert<Row, { name: string }>({
+          qc,
+          queryKey,
+          optimistic: (input) => ({ id: 'temp-1', name: input.name, categoryId: null }),
+        }).onMutate({ name: 'new' }),
+      survives: (rows) => expect(rows.map((r) => r.id)).toContain('temp-1'),
+    },
+    {
+      name: 'update',
+      fire: (qc, queryKey) =>
+        makeOptimisticUpdate<Row, { id: string; name: string }>({
+          qc,
+          queryKey,
+          id: (input) => input.id,
+          apply: (item, input) => ({ ...item, name: input.name }),
+        }).onMutate({ id: 'B', name: 'renamed' }),
+      survives: (rows) => expect(rows.find((r) => r.id === 'B')?.name).toBe('renamed'),
+    },
+    {
+      name: 'delete',
+      fire: (qc, queryKey) =>
+        makeOptimisticDelete<Row, string>({
+          qc,
+          queryKey,
+          id: (id) => id,
+        }).onMutate('B'),
+      survives: (rows) => expect(rows.map((r) => r.id)).not.toContain('B'),
+    },
+    {
+      name: 'bulk delete',
+      fire: (qc, queryKey) =>
+        makeOptimisticBulkDelete<Row, string[]>({
+          qc,
+          queryKey,
+          ids: (ids) => ids,
+        }).onMutate(['A', 'B']),
+      survives: (rows) => {
+        expect(rows.map((r) => r.id)).not.toContain('A')
+        expect(rows.map((r) => r.id)).not.toContain('B')
+      },
+    },
+    {
+      name: 'bulk update',
+      fire: (qc, queryKey) =>
+        makeOptimisticBulkUpdate<Row, { ids: string[]; categoryId: string | null }>({
+          qc,
+          queryKey,
+          ids: (input) => input.ids,
+          apply: (item, input) => ({ ...item, categoryId: input.categoryId }),
+        }).onMutate({ ids: ['A'], categoryId: 'c9' }),
+      survives: (rows) => expect(rows.find((r) => r.id === 'A')?.categoryId).toBe('c9'),
+    },
+  ]
+
+  for (const { name, fire, survives } of cases) {
+    it(`${name}: the optimistic write survives a refetch landing underneath it`, async () => {
+      // retry: false so a cancelled fetch settles instead of being retried.
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const key = ['rows'] as const
+      qc.setQueryData<Row[]>(key, CACHED)
+
+      const server = deferred<Row[]>()
+      const inFlight = qc
+        .fetchQuery({ queryKey: key, queryFn: () => server.promise })
+        // Cancelling a pending fetch rejects with CancelledError. Expected.
+        .catch(() => undefined)
+      server.resolve(STALE_FROM_SERVER)
+
+      // Advance to the dangerous offset: the response has resolved, and its cache
+      // write is queued but has NOT run. Delete this line and the suite passes
+      // against the very bug it exists to catch.
+      await Promise.resolve()
+
+      await fire(qc, key)
+      await inFlight
+
+      const rows = qc.getQueryData<Row[]>(key)!
+      // The stale response does land, underneath. That is fine and expected.
+      expect(rows.map((r) => r.id)).toContain('C')
+      // What must never be erased:
+      survives(rows)
+    })
+  }
 })
 
 describe('makeOptimisticReorder', () => {
@@ -315,6 +465,36 @@ describe('makeOptimisticReorder', () => {
     qc.setQueryData(key, initial)
     return { qc, key }
   }
+
+  it('onMutate is SYNCHRONOUS - it must not become a promise', () => {
+    // The deliberate asymmetry with the CRUD helpers above, pinned so nobody
+    // "makes them consistent" and reintroduces a visual bug.
+    //
+    // Reorder is fired from dnd-kit's onDragEnd, and dnd-kit starts its drop
+    // animation in the same synchronous tick that onDragEnd returns. If onMutate
+    // returned a promise, the cache write would land one microtask later, the
+    // animation would run against the OLD DOM order, and the dropped row would
+    // visibly snap back to where it started before jumping to its new home.
+    //
+    // The price is the in-flight-refetch race the CRUD suite above proves and
+    // prevents: reorder ACCEPTS it. It is rare (staleTime 30s), it self-heals
+    // (onSettled invalidates regardless), and a wrong-for-a-moment order is a far
+    // cheaper failure than a janky drag on every single drop.
+    const { qc, key } = makeSortableClient([
+      { id: 'A', name: 'a', sortOrder: 10 },
+      { id: 'B', name: 'b', sortOrder: 20 },
+    ])
+    const helper = makeOptimisticReorder<SortableRow>(qc, key)
+
+    const ctx = helper.onMutate([
+      { id: 'A', sortOrder: 20 },
+      { id: 'B', sortOrder: 10 },
+    ])
+
+    expect(ctx).not.toBeInstanceOf(Promise)
+    // And the write is already visible, in this same tick - no await anywhere.
+    expect(qc.getQueryData<SortableRow[]>(key)!.map((r) => r.id)).toEqual(['B', 'A'])
+  })
 
   it('applies sortOrder patches and re-sorts the cache (happy path)', () => {
     const { qc, key } = makeSortableClient([

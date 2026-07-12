@@ -41,26 +41,54 @@ type FanOutOpts = {
   errorToast?: string
 }
 
-// Snapshot-and-apply across every per-list cache that references one of
-// the changed gear ids. Untouched caches are neither cancelled nor
-// snapshotted - their identity must not churn.
-//
-// findAll matches by prefix, so it would also return a bare
-// ['list-items'] query or any longer-keyed one holding an arbitrary
-// shape. onMutate runs AFTER the gear cache write, so throwing here
-// (e.g. .some on non-array data) would skip returning the rollback
-// context and strand the optimistic gear change. Only the exact
-// two-element per-list shape with array data may pass.
+// findAll matches by prefix, so it would also return a bare ['list-items'] query
+// or any longer-keyed one holding an arbitrary shape. Only the exact two-element
+// per-list shape with array data may pass - anything else could blow up the
+// `.some` below or take an optimistic write it cannot represent.
 function isPerListItemsQuery(key: QueryKey, data: unknown): boolean {
   return key.length === 2 && typeof key[1] === 'string' && Array.isArray(data)
 }
 
-function fanOutListItemsCaches(
+// One gear change, two cache surfaces: the gear library (['gear-items']) and every
+// open list view embedding that gear. This runs the optimistic opening move across
+// both, in order:
+//
+//   1. find the affected per-list caches
+//   2. AWAIT every cancel - gear and lists
+//   3. snapshot
+//   4. write
+//
+// Awaiting the cancels is the canonical TanStack pattern, and the same hardening the
+// CRUD helpers in optimistic.ts got. Read the note there for what it does and does
+// NOT buy: cancellation is synchronous, so a still-pending refetch was already
+// handled unawaited; the awaited version additionally covers the sliver where a
+// fetch has resolved but not yet written, which is only reachable when a mutation is
+// fired from a promise continuation rather than an event handler. Cheap insurance,
+// not a bug anyone has hit.
+//
+// Untouched caches are neither cancelled nor snapshotted. Deliberate: do not cancel
+// a list cache this change cannot affect, or you abort a legitimate in-flight fetch
+// for a list the user is looking at right now.
+//
+// KNOWN GAP, and it is a real one rather than a rhetorical "residual": the affected
+// set is computed at step 1, before the await. A list cache that becomes affected
+// during the await gets no optimistic write - and, worse, makeSettled invalidates
+// only the caches in listSnapshots, so it is never invalidated either. It would sit
+// stale until some unrelated refetch, NOT until the settle. (The gap does not bite
+// today: the await spans microtasks only, and a fetch cannot COMPLETE inside a
+// microtask checkpoint, so no cache can newly acquire the gear in that window. It
+// would bite the moment anything awaited here does real async work.) If that ever
+// changes, invalidate the ['list-items'] prefix on settle, or recompute the affected
+// set after the cancels.
+async function beginGearFanOut(
   qc: QueryClient,
   gearItemIds: ReadonlySet<string>,
-  apply: (items: ListItemWithGear[]) => ListItemWithGear[],
-): ListItemsSnapshot[] {
-  const affected = qc
+  applyGear: (curr: GearItem[]) => GearItem[],
+  applyList: (items: ListItemWithGear[]) => ListItemWithGear[],
+): Promise<GearFanOutContext> {
+  const gearKey = queryKeys.gearItems()
+
+  const affectedKeys = qc
     .getQueryCache()
     .findAll({ queryKey: queryKeys.listItemsAll() })
     .filter(
@@ -70,28 +98,27 @@ function fanOutListItemsCaches(
           gearItemIds.has(i.gearItemId),
         ),
     )
-  const snapshots: ListItemsSnapshot[] = []
-  for (const q of affected) {
-    const key = q.queryKey
-    void qc.cancelQueries({ queryKey: key })
-    snapshots.push({ key, data: qc.getQueryData<ListItemWithGear[]>(key) })
+    .map((q) => q.queryKey)
+
+  await Promise.all([
+    qc.cancelQueries({ queryKey: gearKey }),
+    ...affectedKeys.map((key) => qc.cancelQueries({ queryKey: key })),
+  ])
+
+  const previousGear = qc.getQueryData<GearItem[]>(gearKey)
+  const listSnapshots: ListItemsSnapshot[] = affectedKeys.map((key) => ({
+    key,
+    data: qc.getQueryData<ListItemWithGear[]>(key),
+  }))
+
+  qc.setQueryData<GearItem[]>(gearKey, (curr) => (curr ? applyGear(curr) : curr))
+  for (const { key } of listSnapshots) {
     qc.setQueryData<ListItemWithGear[]>(key, (curr) =>
-      curr ? apply(curr) : curr,
+      curr ? applyList(curr) : curr,
     )
   }
-  return snapshots
-}
 
-function beginGearWrite(
-  qc: QueryClient,
-  apply: (curr: GearItem[]) => GearItem[],
-): GearItem[] | undefined {
-  void qc.cancelQueries({ queryKey: queryKeys.gearItems() })
-  const previous = qc.getQueryData<GearItem[]>(queryKeys.gearItems())
-  qc.setQueryData<GearItem[]>(queryKeys.gearItems(), (curr) =>
-    curr ? apply(curr) : curr,
-  )
-  return previous
+  return { previousGear, listSnapshots }
 }
 
 function makeRollback(opts: FanOutOpts) {
@@ -135,22 +162,19 @@ function mergePatch<T extends object>(target: T, patch: object): T {
 export function makeOptimisticGearItemUpdate(opts: FanOutOpts) {
   type Input = { id: string; patch: UpdateGearItemRequest }
   return {
-    onMutate: (input: Input): GearFanOutContext => {
-      const previousGear = beginGearWrite(opts.qc, (curr) =>
-        curr.map((g) => (g.id === input.id ? mergePatch(g, input.patch) : g)),
-      )
-      const listSnapshots = fanOutListItemsCaches(
+    onMutate: (input: Input): Promise<GearFanOutContext> =>
+      beginGearFanOut(
         opts.qc,
         new Set([input.id]),
+        (curr) =>
+          curr.map((g) => (g.id === input.id ? mergePatch(g, input.patch) : g)),
         (items) =>
           items.map((item) =>
             item.gearItemId === input.id
               ? { ...item, gearItem: mergePatch(item.gearItem, input.patch) }
               : item,
           ),
-      )
-      return { previousGear, listSnapshots }
-    },
+      ),
     onError: makeRollback(opts),
     onSettled: makeSettled(opts),
   }
@@ -160,17 +184,13 @@ export function makeOptimisticGearItemUpdate(opts: FanOutOpts) {
 // shape drops the membership rows too, not just the library row.
 export function makeOptimisticGearItemDelete(opts: FanOutOpts) {
   return {
-    onMutate: (id: string): GearFanOutContext => {
-      const previousGear = beginGearWrite(opts.qc, (curr) =>
-        curr.filter((g) => g.id !== id),
-      )
-      const listSnapshots = fanOutListItemsCaches(
+    onMutate: (id: string): Promise<GearFanOutContext> =>
+      beginGearFanOut(
         opts.qc,
         new Set([id]),
+        (curr) => curr.filter((g) => g.id !== id),
         (items) => items.filter((item) => item.gearItemId !== id),
-      )
-      return { previousGear, listSnapshots }
-    },
+      ),
     onError: makeRollback(opts),
     onSettled: makeSettled(opts),
   }
@@ -178,15 +198,14 @@ export function makeOptimisticGearItemDelete(opts: FanOutOpts) {
 
 export function makeOptimisticGearItemsBulkDelete(opts: FanOutOpts) {
   return {
-    onMutate: (ids: string[]): GearFanOutContext => {
+    onMutate: (ids: string[]): Promise<GearFanOutContext> => {
       const idSet = new Set(ids)
-      const previousGear = beginGearWrite(opts.qc, (curr) =>
-        curr.filter((g) => !idSet.has(g.id)),
+      return beginGearFanOut(
+        opts.qc,
+        idSet,
+        (curr) => curr.filter((g) => !idSet.has(g.id)),
+        (items) => items.filter((item) => !idSet.has(item.gearItemId)),
       )
-      const listSnapshots = fanOutListItemsCaches(opts.qc, idSet, (items) =>
-        items.filter((item) => !idSet.has(item.gearItemId)),
-      )
-      return { previousGear, listSnapshots }
     },
     onError: makeRollback(opts),
     onSettled: makeSettled(opts),
@@ -196,24 +215,25 @@ export function makeOptimisticGearItemsBulkDelete(opts: FanOutOpts) {
 export function makeOptimisticGearItemsBulkCategoryMove(opts: FanOutOpts) {
   type Input = { ids: string[]; categoryId: string | null }
   return {
-    onMutate: (input: Input): GearFanOutContext => {
+    onMutate: (input: Input): Promise<GearFanOutContext> => {
       const idSet = new Set(input.ids)
-      const previousGear = beginGearWrite(opts.qc, (curr) =>
-        curr.map((g) =>
-          idSet.has(g.id) ? { ...g, categoryId: input.categoryId } : g,
-        ),
+      return beginGearFanOut(
+        opts.qc,
+        idSet,
+        (curr) =>
+          curr.map((g) =>
+            idSet.has(g.id) ? { ...g, categoryId: input.categoryId } : g,
+          ),
+        (items) =>
+          items.map((item) =>
+            idSet.has(item.gearItemId)
+              ? {
+                  ...item,
+                  gearItem: { ...item.gearItem, categoryId: input.categoryId },
+                }
+              : item,
+          ),
       )
-      const listSnapshots = fanOutListItemsCaches(opts.qc, idSet, (items) =>
-        items.map((item) =>
-          idSet.has(item.gearItemId)
-            ? {
-                ...item,
-                gearItem: { ...item.gearItem, categoryId: input.categoryId },
-              }
-            : item,
-        ),
-      )
-      return { previousGear, listSnapshots }
     },
     onError: makeRollback(opts),
     onSettled: makeSettled(opts),
