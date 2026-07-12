@@ -205,12 +205,32 @@ honest rather than adding a second, weaker credential in front of it.
   CLICK. Mail scanners and link-prefetchers follow URLs in email; since
   redemption is single-use and side-effecting, a scanner hitting the
   endpoint directly would burn the user's link before they ever saw it.
+- The token rides in the **URL fragment** (`/auth/magic#token=...`). A
+  browser does not put the fragment in the request line or the `Referer`
+  header, so clicking the link does not write the live token into our
+  Worker's logs, Cloudflare's request logs, or any proxy's access log on
+  the way. The `Referer` part is load-bearing: `Referrer-Policy:
+  strict-origin-when-cross-origin` sends the FULL url on same-origin
+  requests, so with `?token=` the landing page handed the token to every
+  request it went on to make. A `?token=` link is still honored on read,
+  for links that were in an inbox at the cutover.
+- **What this does not do:** the token is still in the email. Resend and
+  any receiving mail-security gateway (Safe Links and friends) see the
+  whole message, and a gateway that rewrites URLs sees the fragment too.
+  The fragment removes the token from the HTTP request path only. Mailbox
+  compromise remains total compromise - that is inherent to email being
+  the recovery root of trust, and is what single-use + 5-minute expiry
+  bound.
 - The page then **scrubs the token out of the URL** (replace-navigation)
   so a session-minting token does not sit in the address bar, in history,
-  or in the `Referer` of same-origin requests. This narrows exposure
-  rather than erasing it - the initial GET still carried the token, so it
-  can reach edge access logs, which is part of why the token is
-  single-use and 5-minute.
+  or in a screen share. The fragment keeps it off the wire; the scrub
+  keeps it off the screen.
+- Redemption itself (`GET /api/auth/magic-link/verify?token=...`) still
+  carries the token in a query string - that is better-auth's endpoint
+  contract and cannot be moved. It is far lower risk (the token is
+  consumed atomically during that very request) but not zero: an observer
+  who saw it in flight could in principle race redemption. Single-use and
+  5-minute expiry are what bound it.
 - Responses to a send request are **uniform** whether or not the address
   has an account. Redeeming a link for an unknown address CREATES the
   account, so there is no existence signal to leak in the first place.

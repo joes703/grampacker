@@ -34,7 +34,7 @@ a link and is not adopted here.
 
 | Flow | Mechanism |
 | --- | --- |
-| Sign up | `POST /api/auth/sign-in/magic-link` -> email -> SPA page `/auth/magic?token=` -> user gesture -> verify -> user created, `emailVerified: true`, session minted (see 4.1 for why the email does not link straight at the API) |
+| Sign up | `POST /api/auth/sign-in/magic-link` -> email -> SPA page `/auth/magic#token=` -> user gesture -> verify -> user created, `emailVerified: true`, session minted (see 4.1 for why the email does not link straight at the API) |
 | Sign in (primary) | Passkey (`/api/auth/passkey/verify-authentication`) |
 | Sign in (recovery) | Magic link (same endpoint pair as sign up) |
 | Add a device | Sign in by magic link on the new device, then enroll a passkey there |
@@ -186,9 +186,28 @@ definition already locked out, since this is the recovery path - gets "invalid
 link", retries, and eats the send budget until it too is exhausted.
 
 So `sendMagicLink` ignores the supplied `url` and emails
-`${baseURL}/auth/magic?token=<token>` instead: a **frontend** page that does
+`${baseURL}/auth/magic#token=<token>` instead: a **frontend** page that does
 nothing on load and calls `magicLink.verify` only on a real user gesture ("Sign
 in to grampacker"). A scanner fetching that page consumes nothing.
+
+The token rides in the **fragment**, not the query string, because a browser does
+not put the fragment in the request line or the `Referer` header. So clicking the
+link does not write the live, unconsumed, session-minting token into our Worker's
+logs, Cloudflare's request logs, or any proxy's access log en route. The `Referer`
+half matters as much as the log half: `Referrer-Policy:
+strict-origin-when-cross-origin` sends the FULL url on same-origin requests, so
+under `?token=` the landing page handed the token to every request it went on to
+make. The page still scrubs the fragment from the address bar on mount, because a
+fragment is plainly visible in history and in a screen share even though it never
+travels.
+
+This bounds the HTTP path, not the mail path. The token is still in the message
+body, so Resend and any receiving mail-security gateway see it - the fragment does
+nothing about that, and nothing can, while email is the recovery root of trust.
+That is what single-use and 5-minute expiry are for.
+
+`?token=` is still accepted on read, for links that were already in an inbox at
+the cutover; they expire 5 minutes after they were sent.
 
 This is not defense-in-depth garnish. Without it, the recovery path is
 unreliable for exactly the users who most need it (anyone behind a corporate
