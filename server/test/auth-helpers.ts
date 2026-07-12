@@ -12,14 +12,20 @@ const ORIGIN = 'http://localhost:5173'
 // behavior build their own raw requests and are unaffected.)
 let nextClient = 0
 
-// The emailed link points at the SPA (/auth/magic?token=...), not at
+// The emailed link points at the SPA (/auth/magic#token=...), not at
 // better-auth's verify endpoint - see shared/auth.ts for why. So the token has
 // to come back out of the URL the same way the browser would read it.
+//
+// The token is in the FRAGMENT, and this helper is the closest thing we have to a
+// real inbox: if the server ever stops putting it there in a shape the client can
+// read, every test in the repo that needs a session goes red. Pinned to '#' rather
+// than accepting either separator - a permissive regex here would keep the suite
+// green through exactly the regression that would break sign-in for everyone.
 function tokenFromEmail(email: string): string {
   const msg = lastEmailTo(email)
   if (!msg) throw new Error(`no magic-link email was sent to ${email}`)
   const match = msg.text.match(
-    new RegExp(`${MAGIC_LINK_PATH}\\?token=([^\\s]+)`),
+    new RegExp(`${MAGIC_LINK_PATH}#token=([^\\s]+)`),
   )
   const token = match?.[1]
   if (!token) {

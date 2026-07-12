@@ -1,7 +1,26 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { AuthCard, PRIMARY_BUTTON, TEXT_LINK } from './auth-ui'
 import { MAGIC_LINK_PATH } from '../../shared/auth'
+
+// The emailed link carries the token in the FRAGMENT (`/auth/magic#token=...`),
+// because a browser puts the fragment in neither the request line nor the
+// `Referer` header. So the live, unconsumed token stays out of edge/proxy access
+// logs and out of the `Referer` of every same-origin request this page makes. It
+// does NOT keep the token out of the email itself - the mail provider and any
+// receiving gateway still see it. See SECURITY.md.
+//
+// `?token=` is still read as a fallback. Links already sitting in an inbox when
+// this shipped point at the query form, and they stay valid for their 5-minute
+// life - dropping them would have signed those people out of the recovery path
+// for no gain. Reading a query token leaks nothing that was not already leaked by
+// the request that delivered it. Safe to delete once no such link can be live.
+function readToken(search: string, hash: string): string | null {
+  // URLSearchParams handles the percent-decoding, matching encodeURIComponent on
+  // the sending side (server/auth.ts).
+  const fragment = new URLSearchParams(hash.replace(/^#/, ''))
+  return fragment.get('token') ?? new URLSearchParams(search).get('token')
+}
 
 // Where a magic-link email lands (shared/auth.ts MAGIC_LINK_PATH).
 //
@@ -17,32 +36,32 @@ import { MAGIC_LINK_PATH } from '../../shared/auth'
 // consumes nothing.
 export default function MagicLinkPage() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const { search, hash } = useLocation()
 
   // Read the token ONCE into state, then scrub it out of the URL below. Captured
   // in a lazy initializer so the value survives the very re-render the scrub
-  // causes - reading searchParams on each render would hand back null after it.
-  const [token] = useState(() => searchParams.get('token'))
+  // causes - reading the location on each render would hand back null after it.
+  const [token] = useState(() => readToken(search, hash))
 
   // No error state: every failure is a 302 the browser follows to
   // /sign-in?error=..., which SignInPage renders. There is nothing left to show
   // here, and keeping a dead error branch would just imply otherwise.
   const [pending, setPending] = useState(false)
 
-  // A session-minting token has no business sitting in the address bar. Left
-  // there it lands in browser history, in a screen share, and - because
-  // Referrer-Policy still sends a FULL referrer same-origin - in the Referer of
-  // every subsequent same-origin request the page makes. Replace (not push) so
-  // Back does not walk into a URL carrying it either.
+  // A session-minting token has no business sitting in the address bar. The
+  // fragment keeps it off the wire, but it is still right there in the URL - in
+  // browser history, in a screen share, in whatever the user pastes to ask why
+  // sign-in is not working. Replace (not push) so Back cannot walk into a URL
+  // carrying it either.
   //
-  // This narrows the exposure; it does not erase it. The initial GET of this
-  // page still carried the token, so it can exist in edge access logs, which is
-  // why the token is also single-use and expires in 5 minutes.
+  // Scrubs search AND hash: the token can arrive in either (see readToken), and
+  // leaving the other one behind would defeat the point. Navigating to the bare
+  // path empties both, so this cannot re-trigger itself.
   useEffect(() => {
-    if (searchParams.has('token')) {
+    if (search !== '' || hash !== '') {
       void navigate(MAGIC_LINK_PATH, { replace: true })
     }
-  }, [searchParams, navigate])
+  }, [search, hash, navigate])
 
   // A real browser NAVIGATION, not a fetch. That is a correctness requirement,
   // not a style choice.

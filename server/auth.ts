@@ -224,7 +224,23 @@ export function authOptions(env: Env) {
           // Instead we send them to an SPA page that does nothing on load and
           // verifies only on a real click. A scanner fetching it consumes
           // nothing.
-          const url = `${env.BETTER_AUTH_URL}${MAGIC_LINK_PATH}?token=${encodeURIComponent(token)}`
+          //
+          // The token rides in the FRAGMENT, not the query string, because a
+          // browser puts the fragment in neither the request line nor the
+          // `Referer` header. So clicking the link does not write a live,
+          // unconsumed, session-minting token into our logs, Cloudflare's request
+          // logs, or any proxy's access log en route. The Referer half matters as
+          // much as the log half: Referrer-Policy is strict-origin-when-cross-
+          // origin, which sends the FULL url on same-origin requests - so under
+          // `?token=` the landing page handed the token to every request it then
+          // made. Same click, same page, same scanner safety; the token just stops
+          // being something a server can accidentally write down.
+          //
+          // This bounds the HTTP path, NOT the mail path: the token is still in the
+          // message below, so Resend and any receiving mail gateway see it. Nothing
+          // here changes that, and nothing can while email is the recovery root of
+          // trust - that is what single-use and the 5-minute expiry are for.
+          const url = `${env.BETTER_AUTH_URL}${MAGIC_LINK_PATH}#token=${encodeURIComponent(token)}`
           await email.send({
             to,
             subject: 'Sign in to grampacker',
