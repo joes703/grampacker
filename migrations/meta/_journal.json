@@ -43,6 +43,13 @@
       "when": 1783793754136,
       "tag": "0005_cheerful_shadowcat",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1783840464403,
+      "tag": "0006_passwordless-teardown",
+      "breakpoints": true
     }
   ]
 }

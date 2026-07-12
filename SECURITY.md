@@ -274,14 +274,15 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   account either way - so there is no distinction to leak. (The old
   sign-up endpoint necessarily disclosed existing accounts. That endpoint
   is gone.)
-- **Dead credential rows**: the `account` rows with `provider_id =
-  'credential'`, the `reset-password:*` tokens in `verification`, and the
-  `fresh_auth` table still EXIST in production until the teardown
-  migration ships (`docs/passwordless-auth-design.md` section 9, PR 3).
-  Nothing reads them, and `/reset-password` is dead without a
-  `sendResetPassword` config - but a stale password hash sitting in the
-  database is exactly the thing this change is meant to remove, so the
-  migration is not optional cleanup.
+- **Dead credential rows**: CLOSED. Migration `0006_passwordless-teardown`
+  deleted every `account` row with `provider_id = 'credential'`, purged the
+  `reset-password:*` tokens from `verification`, and dropped the `fresh_auth`
+  table. The token purge is the load-bearing half: `/reset-password` is mounted
+  unconditionally and is not gated on `emailAndPassword.enabled`, so a
+  still-valid pre-cutover token would have RE-CREATED a credential account for
+  a user who has none. No password hash remains in the database.
+  The `account.password` COLUMN stays - it is part of better-auth's base model
+  and the CLI keeps emitting it. Only the rows are gone.
 - **Resend is a single point of failure for recovery.** If it is down,
   anyone without a working passkey cannot sign in. Accepted knowingly:
   the data is low-sensitivity, the failure is temporary and read-only
