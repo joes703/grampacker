@@ -92,9 +92,13 @@ function ruleFor(path: string): Rule {
   if (path === '/api/auth/magic-link/verify') return MAGIC_LINK_VERIFY
   if (path === '/api/auth/delete-user') return DELETE_USER
   if (PASSKEY_SIGN_IN_PATHS.has(path)) return SIGN_IN
-  // The dead email endpoints (/sign-in/email, /sign-up/email) land here. They
-  // 400 without an emailAndPassword config, but a 400 should still cost budget -
-  // an unmetered dead endpoint is still a free request.
+  // Fail-closed default for anything SIGN-IN SHAPED. This is not here for the
+  // dead password endpoints - it is here so that a sign-in route added later
+  // lands on the tight bucket automatically rather than silently inheriting the
+  // loosest one in the app. That it also meters /sign-in/email and
+  // /sign-up/email, which now 400 with no emailAndPassword config, is incidental:
+  // a dead endpoint is still a free request if nothing counts it. (The password
+  // era is over; do not read this branch as evidence of it.)
   if (path.startsWith('/api/auth/sign-in') || path.startsWith('/api/auth/sign-up')) {
     return SIGN_IN
   }
@@ -121,7 +125,16 @@ function ruleFor(path: string): Rule {
 // - HMAC, not a bare hash. Without it, rate_limits.key becomes a list of every
 //   address that ever requested a link, and a plain SHA-256 of an email address
 //   is trivially reversible with a dictionary - it is a lookup key, not a
-//   secret. The auth secret is the pepper.
+//   secret. The pepper is BETTER_AUTH_SECRET: real secret material (a Worker
+//   secret), NOT BETTER_AUTH_URL or any other public/low-entropy value, and it
+//   is never logged.
+//
+// - DOMAIN-SEPARATED. BETTER_AUTH_SECRET is also better-auth's own signing key,
+//   so the message is prefixed to make this HMAC unmistakably a different
+//   protocol from anything the library signs with the same key. One key, two
+//   uses, is the shape cross-protocol confusion needs; the prefix removes it.
+const EMAIL_BUCKET_DOMAIN = 'grampacker:magic-send-email:v1:'
+
 async function emailBucketKey(secret: string, email: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw',
@@ -133,7 +146,7 @@ async function emailBucketKey(secret: string, email: string): Promise<string> {
   const mac = await crypto.subtle.sign(
     'HMAC',
     key,
-    new TextEncoder().encode(email.toLowerCase()),
+    new TextEncoder().encode(`${EMAIL_BUCKET_DOMAIN}${email.toLowerCase()}`),
   )
   return [...new Uint8Array(mac)]
     .map((b) => b.toString(16).padStart(2, '0'))
