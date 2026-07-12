@@ -424,6 +424,10 @@ Hence three PRs:
    human-verified checkpoint rather than a CI gate.
 3. **The teardown.** The destructive migration alone: delete credential rows,
    purge reset tokens, drop `fresh_auth`. Plus the doc/grep cleanup sweep.
+   SHIPPED as migration `0006_passwordless-teardown`, after all five auth flows
+   (magic-link sign-in, passkey sign-in, passkey enrollment, passkey deletion
+   through the fresh-auth gate, and recovery in a clean browser) were smoke-
+   tested on production. The checkpoint below was met, not assumed.
 
 A residual window exists inside step 2: reset tokens minted before the cutover
 stay valid for up to an hour, and `/reset-password` would honor one and

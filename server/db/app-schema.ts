@@ -8,7 +8,7 @@ import {
   text,
   unique,
 } from 'drizzle-orm/sqlite-core'
-import { session, user } from './auth-schema'
+import { user } from './auth-schema'
 
 // App-owned tables. Auth tables live in auth-schema.ts (CLI-generated,
 // never hand-edited); everything the app itself owns goes here.
@@ -30,36 +30,6 @@ export const rateLimits = sqliteTable('rate_limits', {
   count: integer('count').notNull(),
   windowStart: integer('window_start').notNull(), // epoch ms
 })
-
-// DEAD TABLE. Nothing reads or writes it: sudo mode is now session freshness
-// (better-auth's session.freshAge - see server/middleware/fresh-auth.ts), and
-// the repo, the endpoint and the DTO that fed this are gone.
-//
-// It is still DECLARED because the table still EXISTS in production. Deleting
-// the declaration without a migration would put the Drizzle schema out of step
-// with the deployed database, and CI applies migrations before it deploys the
-// Worker - so the drop has to be its own change, shipped after this one is live
-// (docs/passwordless-auth-design.md section 9, PR 3). Do not write to it.
-//
-// It could not have survived the passwordless cutover in any case: the old
-// freshness check inner-joined the `credential` account row to compare the proof
-// against the password's updated_at. With no credential row, that join matches
-// nothing and the gate fails closed - locking every user out of passkey
-// management. The mechanism died with the password, not by choice.
-export const freshAuth = sqliteTable(
-  'fresh_auth',
-  {
-    sessionId: text('session_id')
-      .primaryKey()
-      .references(() => session.id, { onDelete: 'cascade' }),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
-    expiresAt: integer('expires_at').notNull(), // epoch ms
-    grantedAt: integer('granted_at').notNull(), // epoch ms
-  },
-  (t) => [index('fresh_auth_user_idx').on(t.userId)],
-)
 
 // Gear categories. No seeding: "Uncategorized" is the UI rendering of a
 // null gear_items.category_id, not a row. The old schema's is_default
