@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { sql } from 'drizzle-orm'
 import { createAuth } from './auth'
 import { createDb } from './db'
+import { assetCache, forceValidatedAssetResponse } from './middleware/asset-cache'
 import { apiBodyLimit } from './middleware/body-limit'
 import { csrfProtection } from './middleware/csrf'
 import { requireFreshAuth } from './middleware/fresh-auth'
@@ -24,6 +25,13 @@ import type { HealthResponse } from '../shared/health'
 const app = new Hono<{ Bindings: Env }>()
 
 app.use('*', securityHeaders)
+
+// Long-lived browser caching for content-hashed assets only. Sits next to the
+// header map rather than inside it: same "own every response" reason (
+// run_worker_first routes even static files through here), different concern.
+// It rebuilds the response itself, so it does not depend on running before or
+// after securityHeaders.
+app.use('*', assetCache)
 
 const api = new Hono<{ Bindings: Env }>()
 
@@ -92,6 +100,11 @@ app.route('/api', api)
 // Everything else is the SPA: the assets binding serves static files and
 // falls back to index.html for client-side routes (single-page-application
 // not_found_handling). ASSETS.fetch only serves GET/HEAD itself.
-app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw))
+//
+// Conditional headers are stripped from hashed-asset requests first, so the
+// binding returns a 200 (which can carry the immutable policy) rather than a 304
+// (which cannot). See forceValidatedAssetResponse - without it the caching win
+// never reaches anyone who already has the app cached.
+app.all('*', (c) => c.env.ASSETS.fetch(forceValidatedAssetResponse(c.req.raw)))
 
 export default app
