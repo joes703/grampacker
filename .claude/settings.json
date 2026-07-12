@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx vitest run *)",
+      "Bash(npx tsc -b *)",
+      "Bash(npx tsc -b)",
+      "Bash(npm run lint)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run test:unit)",
+      "Bash(npm run test:api)",
+      "Bash(npm run build)",
+      "Bash(npm test)",
+      "Bash(npm test *)",
+      "Bash(npx eslint *)",
+      "Bash(codex exec -s read-only *)",
+      "Bash(gh run watch *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git checkout *)",
+      "Bash(git fetch *)",
+      "Bash(gh pr create *)",
+      "mcp__cloudflare__docs"
+    ]
+  }
+}
