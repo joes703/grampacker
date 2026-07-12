@@ -105,5 +105,22 @@ export const assetCache = createMiddleware<{ Bindings: Env }>(async (c, next) =>
   // Only reached for a real hashed asset, so the copy is not on the API path.
   const res = new Response(c.res.body, c.res)
   res.headers.set('Cache-Control', ONE_YEAR_IMMUTABLE)
+
+  // Clear c.res BEFORE assigning the replacement, or the assignment silently
+  // undoes the line above.
+  //
+  // Hono's `set res()` merges when a response is already present: it copies the
+  // OLD response's headers onto the incoming one with `headers.set(k, v)`, so on
+  // any name that exists in both, the OLD value wins. Cache-Control exists on
+  // both - that is the entire point of this middleware - so a plain `c.res = res`
+  // restores the binding's `max-age=0, must-revalidate` and the header we just
+  // set is thrown away. (securityHeaders gets away with the same pattern only
+  // because CSP, X-Frame-Options and friends are not present on the original
+  // response, so nothing collides.)
+  //
+  // Assigning undefined first skips that merge branch, which is how Hono lets a
+  // middleware genuinely REPLACE a response rather than decorate it. Caught by
+  // CI: the header was simply absent, with no error anywhere.
+  c.res = undefined
   c.res = res
 })
