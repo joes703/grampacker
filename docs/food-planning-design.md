@@ -1,7 +1,7 @@
 # Food planning: design
 
 Status: PROPOSED (not yet implemented)
-Date: 2026-07-14 (rev 4; three adversarial review rounds, nothing implemented yet)
+Date: 2026-07-14 (rev 5; APPROVED in direction. Nothing implemented yet.)
 Implements: REWRITE_PLAN.md phase 5, the last unshipped feature
 Supersedes: the old build's food-plan-as-child-of-list model
 
@@ -274,13 +274,27 @@ packages  -> amount * servings_per_package * serving_weight_grams
 weight    -> amount
 ```
 
-**5.2 One batched plan-document read.** The projection needs the plan, its days,
-meals, day_meals, entries and the referenced food items. That is **one batched
-read** producing a plan document - never N+1 per day, per meal, or per entry. The
-D1 100-bound-param limit bites exactly here: an entry list can exceed 100 food ids,
-so the food fetch is an owned-set membership query or a chunked read, never an
-unbounded `inArray`. (AGENTS.md trap; the local D1 enforces it, so a violation goes
-red honestly.)
+**5.2 One batched plan-document read, and the entries come back pre-joined.** The
+projection needs the plan, its days, meals, day_meals, entries and the referenced
+food items. That is **one batched read** producing a plan document - never N+1 per
+day, per meal, or per entry.
+
+Fetch the entries **joined directly to `food_items`** on `(food_plan_id, user_id)`:
+
+```sql
+SELECT e.*, f.serving_weight_grams, f.servings_per_package, f.calories_per_serving, ...
+  FROM food_plan_entries e
+  JOIN food_items f ON f.id = e.food_item_id AND f.user_id = e.user_id
+ WHERE e.food_plan_id = ? AND e.user_id = ?
+```
+
+**Do not** collect the entries' food ids and issue a second membership or chunked
+read. The join sidesteps the D1 100-bound-param limit **entirely** - the query binds
+two parameters no matter how many entries the plan has - and the `f.user_id =
+e.user_id` predicate preserves ownership structurally rather than by filtering a
+list the handler assembled. Chunking would be solving a problem the join does not
+have. (An earlier draft specified owned-set membership / chunked reads here; that
+was unnecessary complexity.)
 
 **5.3 Weight composition.** Unchanged from the old build; already stubbed in
 `src/lib/weight-breakdown.ts` behind a `TRANSPLANT NOTE (food)`:
@@ -344,6 +358,39 @@ lists, so a plan edit invalidates by prefix rather than enumerating them).
 coarse invalidation inadequate. The gear surfaces earned their fine-grained optimistic
 machinery by being typed into character by character; a food plan is not that, and the
 fan-out is where the optimistic-update blind spots live (AGENTS.md).
+
+**5.6 Numeric behavior: full precision through the math, round ONCE at the boundary.**
+
+The inputs are fractional. `serving_weight_grams` and `servings_per_package` are
+`numeric(10,3)` in the old schema, and `amount` is fractional too - "1.5 packages of
+ramen" is an ordinary entry. In JS these are IEEE-754 doubles, so the math accumulates
+artifacts (`0.1 + 0.2 !== 0.3`).
+
+The rule:
+
+- **Carry full precision through the whole projection** - per-entry grams, per-day
+  sums, the plan total. Never round an intermediate.
+- **Round exactly once**, to **integer grams**, at the projection DTO / weight-
+  composition boundary - the point where the number leaves the projection and becomes
+  `projectedConsumableGrams` for `withProjectedFood`.
+- **Public and authenticated totals must be the same rounded integer.** They already
+  share the projection function (5.1); they must also share the *rounding site*, or a
+  share could disagree with the owner's own view by a gram. Rounding is part of the
+  contract, not a display concern.
+
+Rounding per-entry and then summing is the classic way to get a total that disagrees
+with itself, and it is exactly what a naive "format each row" implementation does.
+
+**Required tests** (these are the ones that would expose float artifacts, and a
+formula that looks right will still fail them):
+
+- fractional servings (e.g. `2.5 x 33.3 g`) - the total is the rounded sum, not the
+  sum of rounded rows
+- fractional packages (`1.5 packages x 2.5 servings/package x 33.3 g`)
+- an entry set engineered so per-entry rounding and end rounding **differ**, pinning
+  that we do the latter
+- the same plan projected through the public path and the authenticated path -> **byte-
+  identical integer**
 
 ---
 
@@ -428,10 +475,22 @@ DELETE FROM food_pack_state
 Both directions need the gate. An unconditional unpack has the mirror-image bug: a
 delayed plan-A unpack would delete a checkmark the user made under plan B.
 
-**A failed gate affects zero rows and is not an error.** The handler responds with the
-list's current pack state, and the client's optimistic update is reconciled on settle.
-The user switched plans; their checkbox click simply lost, which is the correct outcome
-and does not deserve a 409.
+**A failed gate affects zero rows and is not an error.** The user switched plans; their
+checkbox click simply lost, which is the correct outcome and does not deserve a 409.
+
+**The response is narrow.** Either `204 No Content` (and let the projection
+invalidation of 5.5 refresh the truth), or a minimal body naming only the food touched
+and whether the compare-and-swap actually applied:
+
+```ts
+{ foodItemId: string; packed: boolean; applied: boolean }   // applied:false = the CAS lost
+```
+
+**Do not return the whole list's pack state on every checkbox click.** Packing is the
+highest-frequency mutation in the app - a user ticks their way down a food list - and
+shipping the entire pack set back on each tick is a payload that grows with the plan
+for no gain. `applied: false` is what the client needs in order to roll its optimistic
+tick back; nothing else about the mutation is news to it.
 
 `ON CONFLICT DO NOTHING` makes packing **idempotent**: two concurrent packs, or a retry,
 must not surface a unique-constraint error for what the user experiences as one click.
@@ -600,6 +659,28 @@ the Food row.
 The pack-mode checklist is load-bearing. It is the reason food is worth modeling at
 all rather than typed in as a lump.
 
+### Shared-plan visibility (a product requirement, not a nicety)
+
+The live reference (section 3) is the right model, but it has a consequence the user
+can be **ambushed** by: edit a plan that backs three trips and you have just changed all
+three. Nothing on the plan editor tells them that. A user who duplicated a trip in
+January and edits its food in June has no reason to suspect the January trip moved.
+
+So, when a plan is attached to **more than one list**, the plan editor must:
+
+1. **Say so, unprompted** - "This plan is used by 3 lists. Changes affect all of them,"
+   naming them (they are one query away: `SELECT id, name FROM lists WHERE food_plan_id = ?`).
+2. **Offer the escape hatch inline** - a **"Duplicate for this trip"** action that clones
+   the plan (3.1), attaches the copy to the list the user arrived from, and leaves the
+   original untouched.
+
+This is deliberately *not* a confirmation dialog on every save. The model stays a live
+reference; we simply stop it being a surprise. Making the blast radius visible at the
+moment of editing, with the fork one click away, is what makes "live reference" a choice
+the user is making rather than one being made for them.
+
+A plan attached to zero or one list shows none of this - the common case stays quiet.
+
 ---
 
 ## 9. Caps
@@ -608,9 +689,14 @@ Ported: **1000** foods/user, **60** days/plan, **20** meals/plan, **2000**
 entries/plan. New, because plans are now standalone and accumulate: a
 **plans-per-user cap**, proposed **100**.
 
-D1 trap applies throughout (AGENTS.md): max 100 bound params per query. No unbounded
-`inArray` over DTO-sized id lists; owned-set membership for prechecks, chunked batch
-writes. Sections 3.1 and 5.2 are where this bites.
+D1 trap applies (AGENTS.md): max 100 bound params per query. No unbounded `inArray`
+over DTO-sized id lists.
+
+Note where it does and does not bite. **The projection read does not** - it joins
+entries to `food_items` (5.2) and binds two params regardless of plan size. **Plan
+duplication does** (3.1): a deep copy of up to 2000 entries is a write, and writes
+cannot be joined away, so it chunks (`server/repos/chunk-ids.ts` already uses 90 for
+headroom).
 
 ---
 
@@ -639,7 +725,7 @@ name, and then do nothing with. That is not a shippable increment.
 |---|---|---|
 | 1 | **Food library** (`food_items`): schema, repo, routes, `/food` Foods tab, CRUD, caps | A usable food library. Mirrors phase 2 (gear library) exactly - the proving slice. |
 | 2 | **Plans, end to end**: `food_plans` + `meals` + `days` + `day_meals` + **`entries`**, the Plans tab, `/food/plans/:id` with the grid and the smallest real entry workflow (add a food to a cell, see the weight) | A plan you can actually build. Foundation and payload land together. Big; may split *internally* (e.g. grid before Extras) but nothing user-visible ships half-built. |
-| 3 | **The link + projection**: `lists.food_plan_id`, the picker, the derived Food row, `withProjectedFood` into the weight summary, the projection contract (section 5) | Pack weight starts including food. The payoff. |
+| 3 | **The link + projection**: `lists.food_plan_id`, the picker, the derived Food row, `withProjectedFood` into the weight summary, the projection contract (section 5), and the shared-plan visibility warning (section 8) | Pack weight starts including food. The payoff. |
 | 4 | **Pack mode**: `food_pack_state`, the checklist, the progress counter, reset, the pack-state lifecycle (section 6) | The packing checklist. |
 | 5 | **Share**: the nullable `food` object, plus the `items.length === 0` fix | Food weight on `/r/:slug`. |
 | 6 | **CSV + takeout**: food CSV import/export, food in the takeout bundle | Data portability. |
@@ -701,6 +787,17 @@ distinction.
 
 ### 12.8 Targets are deferred to last
 They are the least load-bearing part of the feature. (Section 11.)
+
+### 12.9 A live reference must not be a surprise
+When a plan backs more than one list, the editor says so, names them, and offers
+"Duplicate for this trip" inline. The model does not change; its blast radius simply
+stops being invisible. Ships with slice 3 (the link), because a plan cannot back two
+lists before then. (Section 8.)
+
+### 12.10 Round once, at the projection boundary
+Full precision through the math; a single rounding to integer grams where the number
+leaves the projection. Public and authenticated totals round at the **same site** and
+must be identical. (Section 5.6.)
 
 ---
 
