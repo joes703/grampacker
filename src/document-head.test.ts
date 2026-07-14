@@ -50,14 +50,34 @@ describe('index.html', () => {
     expect(publicFiles.has('/public/favicon.ico')).toBe(true)
   })
 
+  it('ships a real /apple-touch-icon.png, the other path probed by convention', () => {
+    // Same hole as the favicon, different prober: iOS Safari asks for
+    // /apple-touch-icon.png at the site root when saving to the Home Screen.
+    // With no file there, the SPA fallback hands back index.html at 200, iOS
+    // gets HTML where it asked for a PNG, and the Home Screen falls back to
+    // generating something of its own instead of the mark. (Exactly WHAT it
+    // generates has changed across iOS versions, so this does not assert a
+    // specific fallback - only that we never take it.)
+    //
+    // The file is deliberately full-bleed and opaque (rendered with
+    // `rsvg-convert -w 180 -h 180 -b '#2563eb' public/favicon.svg`, which fills
+    // favicon.svg's rounded corners with the same blue). iOS applies its OWN
+    // rounded mask, so shipping the pre-rounded art would leave the corners
+    // outside our radius transparent, and iOS composites those onto black.
+    expect(publicFiles.has('/public/apple-touch-icon.png')).toBe(true)
+  })
+
   it('declares both icon formats, and every icon link resolves to a file', () => {
-    const links = [...head().querySelectorAll('link[rel="icon"]')]
+    const links = [
+      ...head().querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]'),
+    ]
     const hrefs = links.map((l) => l.getAttribute('href'))
 
     // SVG is what modern browsers use: one file, every size, sharp on HiDPI.
     // ICO is the fallback and the conventional probe target.
     expect(hrefs).toContain('/favicon.svg')
     expect(hrefs).toContain('/favicon.ico')
+    expect(hrefs).toContain('/apple-touch-icon.png')
 
     // A link to a file that does not exist is worse than no link: the browser
     // requests it, the SPA fallback answers 200 text/html, and the tab shows a
