@@ -1,0 +1,716 @@
+# Food planning: design
+
+Status: PROPOSED (not yet implemented)
+Date: 2026-07-14 (rev 4; three adversarial review rounds, nothing implemented yet)
+Implements: REWRITE_PLAN.md phase 5, the last unshipped feature
+Supersedes: the old build's food-plan-as-child-of-list model
+
+A food plan becomes a **standalone, named, reusable** object that a gear list may
+*point at*, rather than a child record that a gear list *owns*. Everything else
+about food planning ports from the old repo largely intact.
+
+Claims about the old build were read out of `/home/joe/code/grampacker` (schema,
+migrations, components). Claims about SQLite semantics were **executed against
+sqlite3 3.53.3**, not reasoned about - see section 2.3, which killed the first
+draft of this design. Claims about how the backpacking community shares food were
+researched against real Reddit threads, the LighterPack issue tracker, and
+competitor source; the evidence is in section 7 because it decides a schema column.
+
+---
+
+## 1. Why, and what changes
+
+The old build:
+
+```sql
+create table public.food_plans (
+  list_id  uuid not null,                                -- cannot exist alone
+  constraint food_plans_list_id_key unique (list_id),    -- zero-or-one per list
+  foreign key (list_id, user_id) references public.lists(id, user_id) on delete cascade
+);
+```
+
+A food plan could not exist without a gear list, there was at most one per list,
+and deleting the list destroyed it. It had **no `name` column** - it did not need
+one, because it was identified by its list. That absence is the tell: the plan was
+never modeled as a thing, only as an attribute of a trip.
+
+Structurally a food plan is not the food-domain analogue of a gear *item*; it is
+the analogue of a gear *list* - a named, structured arrangement of library atoms
+(days x meals x entries, the way a list is categories x items). `food_items` is
+**already** an account-wide library with no list coupling, exactly like
+`gear_items`. The plan was the only thing in the food domain chained to a list, and
+`copy_food_plan_to_list` existed solely as a workaround for a plan that could not
+stand on its own.
+
+| # | Change |
+|---|---|
+| D1 | `food_plans` becomes standalone: gains `name`, loses `list_id`. |
+| D2 | `lists` gains `food_plan_id` (nullable). One list has 0..1 plans; **one plan may back many lists.** |
+| D3 | The link is a **live reference**. Edit the plan, every list using it re-projects. |
+| D4 | `food_pack_state` re-keys from `(plan, food)` to `(list, food)`, and **row presence means packed** - no `is_packed` column. |
+| D5 | `packed_signature`, the plan-level advisory lock, the `PT409` stale-signature error and the cleanup trigger are **deleted, not ported**. |
+| D6 | The public share exposes **one nullable object**: `food: { weightGrams, incomplete } \| null`. `is_food_shared` and the three public food views are **deleted, not ported**. |
+| D7 | `/lists/:id/food` dies. Plans live at `/food` (tabs: Foods \| Plans) and `/food/plans/:id`. |
+| D8 | `copy_food_plan_to_list` dissolves into an ordinary "duplicate plan" in the library. |
+
+What does **not** change: the projection math, the `basis` enum, the nutrition
+model on `food_items`, caps, CSV, and the fact that food weight lands in
+`consumableGrams` and `totalPackGrams` and nowhere else.
+
+---
+
+## 2. Target model
+
+### 2.1 The flip
+
+```
+-- was:  food_plans.list_id -> lists          (plan is a child of a list)
+-- now:  lists.food_plan_id -> food_plans     (list points at a plan)
+```
+
+`lists` gains one nullable column and a composite same-owner FK:
+
+```ts
+foodPlanId: text('food_plan_id'),            // nullable: most lists have no plan
+
+foreignKey({
+  name: 'lists_food_plan_same_owner_fk',
+  columns: [t.foodPlanId, t.userId],
+  foreignColumns: [foodPlans.id, foodPlans.userId],
+}),                                          // NO ACTION. *Not* SET NULL - see 2.3.
+```
+
+The composite `(food_plan_id, user_id)` reference is the same structural
+anti-stitching guard every other child table already uses (AGENTS.md; ADR 12
+continuity): a cross-owner link is impossible at the schema level, not merely
+prevented in the repository.
+
+### 2.2 Tables
+
+**Ten** tables, all owner-scoped (`user_id NOT NULL` -> `user.id ON DELETE
+CASCADE`), all with composite FKs inside the subtree so the food graph is
+structurally self-sealing.
+
+| Table | Purpose | Change from old build |
+|---|---|---|
+| `food_items` | Account-wide food library: name, brand, serving description, serving weight, calories, macros, sodium, potassium, notes, sort order. | **None.** Already standalone. |
+| `food_plans` | A **named** plan. The day count is the count of `food_plan_days` rows - there is no second source of truth. | **+`name`; -`list_id`; -`is_food_shared`; no `num_nights`** (see 2.4) |
+| `meals` | Plan-scoped meal definitions (Breakfast / On-trail food / Dinner seeded). | None |
+| `food_plan_days` | Explicit day rows. Authoritative for "how many days". | None |
+| `day_meals` | The day x meal grid. **Stays a table.** A row means "this meal is enabled on this day", which an empty cell must still be able to express - collapsing it to JSON would lose that. | None |
+| `food_plan_entries` | One food x quantity in a (day, meal) cell or in Extras. `basis` in `servings` \| `packages` \| `weight`. | None |
+| `food_plan_daily_targets` | Per-plan daily nutrition targets. | None (**deferred**, slice 7) |
+| `meal_targets` | Per-meal targets. | None (**deferred**, slice 7) |
+| `food_plan_target_defaults` | Account-level default targets (Settings). | None (**deferred**, slice 7) |
+| `food_pack_state` | `(list_id, food_item_id)` - **presence means packed.** | **Re-keyed; `packed_signature` AND `is_packed` both dropped.** |
+
+`food_pack_state` gets composite FKs to `lists(id, user_id) ON DELETE CASCADE` and
+`food_items(id, user_id) ON DELETE CASCADE`.
+
+### 2.3 Why NOT `ON DELETE SET NULL` - and the precedent already in this repo
+
+Rev 1 specified `ON DELETE SET NULL` on the composite FK. **That would have made
+deleting a food plan impossible at runtime.** SQLite has no *column-list* SET NULL:
+it sets **every** column of the child key to NULL, including `user_id`, which is
+`NOT NULL` on `lists`. The DDL is legal; the `DELETE` blows up. Executed against
+sqlite3 3.53.3:
+
+```
+-- composite FK (food_plan_id, user_id) ... ON DELETE SET NULL
+sqlite> delete from food_plans where id='p1';
+Error: NOT NULL constraint failed: lists.user_id
+```
+
+**This repo already hit this exact wall and solved it.** `gear_items.category_id`
+is the same shape - nullable child column, composite same-owner FK, NOT NULL
+`user_id` - and `server/db/app-schema.ts:59` says so:
+
+> "SQLite has no column-list ON DELETE SET NULL (setting user_id null would violate
+> NOT NULL), so the FK is NO ACTION and category deletion is a repo-owned atomic
+> batch: [uncategorize gear, delete category]."
+
+**The plan link is the category pattern, verbatim.** Nothing novel is being invented
+here, and the design should not pretend otherwise. FK is **NO ACTION**; deleting a
+plan is a repo-owned atomic batch.
+
+### 2.3.1 The plan-delete batch, in order
+
+Three statements, and **the order is load-bearing**:
+
+```
+1. DELETE FROM food_pack_state
+     WHERE user_id = ?
+       AND list_id IN (SELECT id FROM lists WHERE food_plan_id = ? AND user_id = ?)
+2. UPDATE lists SET food_plan_id = NULL WHERE food_plan_id = ? AND user_id = ?
+3. DELETE FROM food_plans        WHERE id = ? AND user_id = ?
+```
+
+Step 1 **must** precede step 2. `food_pack_state` is keyed `(list_id, food_item_id)`
+and holds no plan reference, so deleting the plan cascades nothing - and once step 2
+has nulled `food_plan_id`, the affected lists can no longer be found. Rev 1 omitted
+step 1 entirely and would have orphaned every attached list's pack state, silently
+contradicting its own stated lifecycle (section 6).
+
+NO ACTION makes the FK a **hard backstop**, not merely a convention the repo must
+remember: skip step 2 and step 3 fails loudly rather than corrupting anything.
+Verified:
+
+```
+sqlite> delete from food_plans where id='p2' and user_id='u1';   -- still attached
+Error: FOREIGN KEY constraint failed
+```
+
+**Atomicity is real.** D1's `batch()` is a transaction - a failing statement rolls
+back the whole sequence, and no other request interleaves between statements. There
+is no detach-commits/delete-fails partial outcome. Drizzle wraps the D1 binding
+directly (`server/db/index.ts:15`).
+
+**Account deletion still works.** With `lists` holding a NO ACTION reference to
+`food_plans` and both cascading from `user`, deleting a user removes both cleanly
+(verified: 0 lists, 0 plans, no FK error). This is load-bearing - account deletion is
+already shipped - so it gets a real D1 test rather than trust.
+
+**Required D1 tests (not optional):**
+
+- delete an attached plan -> the list survives, detached; the plan is gone; **its pack
+  state is gone**
+- delete a plan attached to **several** lists -> all detach, all pack state cleared
+- the raw `DELETE` without the detach -> **fails** with a FK error (proves the backstop)
+- delete the **user** while a list is attached to a plan -> full cascade, no error
+- a cross-owner link is rejected (user A's list cannot point at user B's plan)
+
+### 2.4 No `num_nights`
+
+Rev 1 carried `num_nights` over from the old `food_plans` CREATE migration. That
+was wrong: the old repo **itself deleted it** in
+`20260613204612_remove_food_plan_nights.sql`, and its later tests assert that
+create omits it. Reintroducing it would restore a second source of truth about how
+long a trip is, competing with the authoritative `food_plan_days` rows.
+
+(Root cause of the error, recorded so it is not repeated: rev 1's survey read the
+migration that *created* the table and never asked whether a later migration
+altered it. Read the final schema, not the first one.)
+
+---
+
+## 3. The link: live reference
+
+Attaching a plan to a list is a pointer, not a copy.
+
+- **Edit the plan -> every list using it re-projects on next read.** Nothing is
+  denormalized, so nothing can go stale.
+- **A plan may back many lists.** Your "standard 2-night" plan serves every weekend
+  trip. This falls out of the FK direction for free.
+- **Detach** sets `lists.food_plan_id = null` **and clears that list's pack state**
+  in the same batch (section 6).
+- **Delete a plan** = the atomic detach-then-delete batch of 2.3. A trip is never
+  destroyed by a library operation.
+- **To fork**, duplicate the plan (below) and attach the copy.
+
+This matches how gear already behaves: re-weigh your tent and every list's total
+moves. Snapshot-on-attach was considered and rejected: it produces two kinds of
+plan, breaks "edit the template and it propagates", and buys only historical
+fidelity a single-user trip planner does not need.
+
+### 3.1 Duplicate semantics (both already-shipped and new)
+
+**Duplicating a list** (`POST /api/lists/:id/duplicate`, **already shipped** -
+`server/routes/lists.ts:208`) must be updated:
+
+- **carry `food_plan_id` over.** It is a pointer; the copy references the same
+  plan. Cheap, and it matches "duplicate this trip".
+- **do NOT copy `food_pack_state`.** The new list starts fully unpacked. Packing is
+  a property of a trip, and the duplicate is a different trip.
+
+**Duplicating a plan** (new) is a deep copy of the plan graph - `meals`,
+`food_plan_days`, `day_meals`, `food_plan_entries` and (when they land) targets -
+with fresh ids throughout, referencing the same account-wide `food_items`. It
+copies **no** pack state, because pack state is no longer keyed by plan at all.
+Both must respect the D1 100-bound-param limit: chunked batch writes, not one
+giant insert.
+
+---
+
+## 4. Food is NEVER a `list_items` row
+
+The list shows a single `Food (Summer 3-day)` line, marked consumable. That line is
+**derived at read time**, not stored.
+
+It cannot be a `list_items` row, and should not be:
+
+```ts
+gearItemId: text('gear_item_id').notNull(),   // composite FK -> gear_items
+```
+
+Every list item **is a piece of gear**. Food is not. Storing Food as a row would
+need a synthetic "Food" gear item carrying a **denormalized weight** - and because
+the link is a live reference, every edit to a plan would have to rewrite that
+number on every list using the plan. That is a cache-invalidation bug, voluntarily
+imported. The FK is the link; the row is a rendering.
+
+This costs nothing. The row still *looks* like a line item, still reports as
+consumable, still expands in pack mode. "Consumable" is not even a user choice
+here: food is consumable by definition, and `list_items_worn_xor_consumable`
+already makes worn/consumable mutually exclusive.
+
+---
+
+## 5. The projection contract
+
+This is the core of the feature and the easiest place to make a mess. It is
+specified here so that it stays boring.
+
+**5.1 One canonical projection function.** A single pure function, living in
+`shared/`, imported unchanged by the SPA, the authenticated API and the public
+share endpoint. **Public and authenticated totals use the same math.** There is no
+second implementation, and specifically no SQL re-derivation of the grams formula
+(the old repo had exactly that, duplicated inside `get_food_pack_signatures`, and
+the two could drift). It is unit-tested server-side.
+
+```
+servings  -> amount * serving_weight_grams
+packages  -> amount * servings_per_package * serving_weight_grams
+weight    -> amount
+```
+
+**5.2 One batched plan-document read.** The projection needs the plan, its days,
+meals, day_meals, entries and the referenced food items. That is **one batched
+read** producing a plan document - never N+1 per day, per meal, or per entry. The
+D1 100-bound-param limit bites exactly here: an entry list can exceed 100 food ids,
+so the food fetch is an owned-set membership query or a chunked read, never an
+unbounded `inArray`. (AGENTS.md trap; the local D1 enforces it, so a violation goes
+red honestly.)
+
+**5.3 Weight composition.** Unchanged from the old build; already stubbed in
+`src/lib/weight-breakdown.ts` behind a `TRANSPLANT NOTE (food)`:
+
+```ts
+export function withProjectedFood(breakdown: WeightBreakdown, projectedConsumableGrams: number): WeightBreakdown {
+  return {
+    ...breakdown,
+    consumableGrams: breakdown.consumableGrams + projectedConsumableGrams,
+    totalPackGrams:  breakdown.totalPackGrams  + projectedConsumableGrams,
+  }
+}
+```
+
+Food is **always** consumable: only `consumableGrams` and `totalPackGrams` move.
+`baseGrams`, `wornGrams` and the per-category rows are untouched.
+
+**5.4 Incomplete projections are first-class.** Some entries **cannot be projected**,
+so the total is an undercount, and that fact must travel with the number everywhere
+it goes - including the public share (section 7).
+
+**The incomplete condition is a `packages`-basis entry whose food has a NULL
+`servings_per_package`.** It is *not* a missing serving weight:
+`serving_weight_grams` is `NOT NULL CHECK (> 0)` in the old schema
+(`20260611120000_food_items.sql:16`) and stays that way, so `servings` and `weight`
+basis entries can always be projected. `servings_per_package` is the nullable one
+(line 18). Rev 1 asserted the wrong condition and invented a failure mode that
+cannot occur.
+
+The old build's `MISSING_FOOD_LABEL` / `incompleteFoodWeight` note is already stubbed
+in `WeightSummary`, and `src/lib/food/projection.test.ts:64` in the old repo pins
+exactly this case.
+
+**5.5 Invalidation is coarse, on settle - and these are the actual keys.** Rev 1 said
+"affected list query prefixes", which does not exist. The real cache topology
+(`src/lib/queries/keys.ts`) is:
+
+| Key | Scope |
+|---|---|
+| `['lists']` | **all** list metadata, one global cache - there is no per-list metadata key |
+| `['list-items', listId]` | per-list items |
+| `['shared-list', slug]` | the public read cache |
+
+So, concretely:
+
+- **Attach / detach / change of `food_plan_id`** -> invalidate `queryKeys.lists()`
+  (global; the attached plan id lives on the list row) **and** the food-projection
+  prefix **and** the `['shared-list']` prefix.
+- **Food and entry mutations** -> invalidate the food-plan and food-projection
+  prefixes **and** `['shared-list']`. The share cache matters: `staleTime` is 30s
+  (`src/App.tsx:63`), so a previously-visited share would otherwise serve a stale
+  total from the same QueryClient.
+- **`['list-items', listId]` does NOT need invalidating** by food mutations. Food is
+  not a list item (section 4) and lives in its own projection cache.
+
+New keys this slice adds to `keys.ts`: `foods()`, `foodPlans()`, `foodPlan(planId)`,
+`foodProjection(listId)` + a `foodProjectionAll()` prefix (one plan can back many
+lists, so a plan edit invalidates by prefix rather than enumerating them).
+
+**Do not build a gear-style multi-cache optimistic fan-out** unless profiling proves
+coarse invalidation inadequate. The gear surfaces earned their fine-grained optimistic
+machinery by being typed into character by character; a food plan is not that, and the
+fan-out is where the optimistic-update blind spots live (AGENTS.md).
+
+---
+
+## 6. Pack state
+
+`food_pack_state` is keyed `(list_id, food_item_id)`. **Row presence means packed.**
+Absence means unpacked. There is no `is_packed` boolean - it would be a column that
+is `true` in every row that exists. Toggling is an insert or a delete. Never public.
+
+The lifecycle has **three** rules. All of them are correctness, not tidiness.
+
+**Rule 1 - clear on relink.** Whenever a list's `food_plan_id` changes or is
+detached, clear that list's `food_pack_state` in the same atomic batch. Plan A and
+Plan B may both contain ramen; without this, switching a list from A to B shows ramen
+**pre-checked** under a plan you have never packed for.
+
+**Rule 2 - reconcile after any plan-structure mutation.** Append **one** statement to
+the same batch as any mutation that can remove entries from plan P:
+
+```sql
+DELETE FROM food_pack_state
+ WHERE user_id = ?
+   AND list_id IN (SELECT id FROM lists WHERE food_plan_id = ?P AND user_id = ?)
+   AND food_item_id NOT IN (
+     SELECT e.food_item_id FROM food_plan_entries e
+      WHERE e.food_plan_id = ?P AND e.user_id = ?
+   )
+```
+
+It deletes any pack row, on any list attached to P, whose food no longer appears
+**anywhere** in P.
+
+Reconciling against *what remains* rather than tracking *what left* is what makes this
+correct and cheap:
+
+- **Last-occurrence is automatic.** The same food may sit in several cells. Deleting one
+  of ramen's two cells leaves ramen in the `NOT IN` set, so its checkmarks survive;
+  deleting the last one clears them on every attached list. Verified.
+- **Every removal path is covered by construction** - entry delete, an entry's
+  `food_item_id` updated away, and the cascade deletes of a day, a meal, or a `day_meal`
+  cell. A per-food cleanup would have had to enumerate each of those paths and would
+  have missed the cascades.
+- **No id list, so no D1 param blowup** (section 9).
+- `NOT IN` is NULL-safe here only because `food_plan_entries.food_item_id` is `NOT NULL`.
+  Stated because a nullable column would silently turn this into a no-op.
+
+This restores an invariant the old build enforced with a trigger
+(`20260614185632_food_pack_state.sql:64`) and rev 1 wrongly dismissed as a "harmless
+quirk". It is not harmless: remove ramen and re-add it and the packed **count silently
+increases** with no user action, across **every** list the plan backs.
+
+**Rule 3 - the toggle is a compare-and-swap on the plan link.** Packing is a
+read-then-write, so it races a plan switch. Rev 2 tried to fix this by proving the food
+is in the list's *current* plan. **That does not work, and it was verified not to work:**
+if plan A and plan B both contain ramen, a stale plan-A toggle satisfies the check
+against plan B and inserts a phantom checkmark.
+
+The request must therefore carry **the plan id it observed**, and the write must gate on
+it:
+
+```sql
+-- PACK
+INSERT INTO food_pack_state (list_id, food_item_id, user_id, created_at)
+SELECT ?, ?, ?, ?
+ WHERE EXISTS (
+   SELECT 1 FROM lists l
+     JOIN food_plan_entries e ON e.food_plan_id = l.food_plan_id AND e.user_id = l.user_id
+    WHERE l.id = ? AND l.user_id = ? AND e.food_item_id = ?
+      AND l.food_plan_id = ?expectedPlanId      -- the compare-and-swap
+ )
+ON CONFLICT (list_id, food_item_id) DO NOTHING;  -- idempotent: a retry is not an error
+
+-- UNPACK: the same gate, or the inverse race deletes a row packed under the new plan
+DELETE FROM food_pack_state
+ WHERE list_id = ? AND food_item_id = ? AND user_id = ?
+   AND EXISTS (
+     SELECT 1 FROM lists l
+      WHERE l.id = ? AND l.user_id = ? AND l.food_plan_id = ?expectedPlanId
+   );
+```
+
+Both directions need the gate. An unconditional unpack has the mirror-image bug: a
+delayed plan-A unpack would delete a checkmark the user made under plan B.
+
+**A failed gate affects zero rows and is not an error.** The handler responds with the
+list's current pack state, and the client's optimistic update is reconciled on settle.
+The user switched plans; their checkbox click simply lost, which is the correct outcome
+and does not deserve a 409.
+
+`ON CONFLICT DO NOTHING` makes packing **idempotent**: two concurrent packs, or a retry,
+must not surface a unique-constraint error for what the user experiences as one click.
+(The `WHERE EXISTS` on the outer `SELECT` also resolves SQLite's UPSERT parsing
+ambiguity, so this form parses; verified on 3.53.3.)
+
+**What this does NOT close: the ABA cycle.** The gate compares a plan *id*, so a request
+that observed plan A still succeeds after `A -> B -> A` (or `A -> detached -> A`). A
+stale pack can re-check a food after reattachment; a stale unpack can clear one.
+
+**This is accepted, deliberately.** ABA leaves a **stale** state, not a **wrong** one:
+the checkmark lands on a food that really is in the plan the list really is attached to -
+it is the box the user actually clicked. That is on the right side of the line drawn
+below (may lie about *quantity*, never about *which plan*). Closing it would need a
+link-generation token on `lists`, bumped on every relink and threaded through every
+toggle - which is the same species of machinery `packed_signature` was deleted for, in
+service of a race that requires relinking plans twice while a checkbox request is in
+flight, in a single-user app. If it ever matters, the fix is one monotonic integer column
+and one more binding; it is not a design change.
+
+**What we deliberately do not port:** the old build stored a `packed_signature` (the
+grams you packed) so an edit mid-pack could invalidate a now-lying checkbox. Keeping it
+honest needed a plan-level `pg_advisory_xact_lock` and a `PT409` error path. **Neither
+is ported.** D1 has no advisory locks and the feature is not worth reinventing them for.
+
+**Accepted consequence - the only one.** Check off "ramen: 3 servings", then edit *the
+attached plan* to 5, and it still reads packed. The checkbox may lie about **quantity**.
+It may never lie about **which plan**, or about a food that is not in the plan at all.
+That line is where rev 1 was wrong, and it is worth stating precisely: you are standing
+over the food while you pack, so a wrong *amount* is self-correcting; a checkbox that
+appears from nowhere is not.
+
+**Required D1 tests (not optional):**
+
+- **Rule 1:** pack a food, switch the list to another plan that also contains it -> it
+  is **unpacked**.
+- **Rule 2, multi-cell:** the same food in two cells; delete one entry -> the checkmark
+  **survives**. Delete the last -> it clears, **on every attached list**.
+- **Rule 2, cascade:** delete a whole day (or meal, or `day_meal`) that held the last
+  occurrence -> the checkmark clears.
+- **Rule 2, redirect:** update an entry's `food_item_id` away from its last occurrence
+  -> the checkmark clears.
+- **Rule 3, pack race:** two plans both containing ramen; a toggle carrying the *old*
+  plan id, applied after a switch -> **zero rows**. (This is the exact case rev 2's SQL
+  failed.)
+- **Rule 3, unpack race:** a stale unpack carrying the old plan id must not delete a row
+  packed under the new plan.
+- **Rule 3, idempotency:** packing twice is not an error.
+- **Rule 3, ownership:** a toggle naming another user's list or food affects zero rows.
+
+---
+
+## 7. Sharing: weight only
+
+The public `/r/:slug` view shows the derived Food row with a **weight**, and nothing
+else. No food names, no meals, no days, no calories.
+
+The share DTO gains exactly **one nullable object**:
+
+```ts
+food: { weightGrams: number; incomplete: boolean } | null   // null = no plan attached
+```
+
+**Nullable, not two bare scalars.** Rev 1 proposed `foodWeightGrams: number` +
+`foodWeightIncomplete: boolean`, which cannot tell "no plan attached" apart from "an
+attached plan that currently weighs zero" - both serialize as `{ 0, false }`. The
+share must render no Food row at all in the first case and a zero-weight Food row in
+the second, so **presence has to be encoded**. The existing public DTO is a strict
+field allowlist (`shared/lists.ts:162`, re-mapped field-by-field in
+`server/routes/shares.ts:26`), so there is no `food_plan_id` on the wire for the
+client to infer it from.
+
+`incomplete` is not optional either. Without it, a share whose plan contains a
+`packages` entry with no `servings_per_package` (section 5.4) would publish a
+**silently undercounted pack weight**, and the viewer would have no way to know the
+number is wrong. A public total that lies is worse than one that admits it is partial.
+
+There is **no `is_food_shared` flag.** If a plan is attached, its weight is in the
+total; to share a list without food, do not attach a plan. A toggle that hid food
+from the total would make the headline pack weight a lie.
+
+The old build did the opposite: a Gear/Food tab strip on the share page and three
+migrations of public views (`public_food_plan_detail_views`,
+`public_food_projection_view`, `public_food_summary`) that could publish the entire
+plan. All deleted, not ported.
+
+**A bug this surfaces in already-shipped code:** `SharePage` gates its weight summary
+behind `items.length > 0` (`src/lists/SharePage.tsx:161,173,190`) and renders an empty
+state at `items.length === 0`. A **food-only shared list** - zero gear rows, a plan
+attached - would therefore show "empty" while carrying 6 kg of food. Must be fixed and
+tested in **slice 5**.
+
+**Required tests:** a shared list with an unprojectable `packages` entry (flag set,
+total honest); a **food-only** shared list with zero gear rows; a shared list with **no
+plan attached** (`food: null`, no Food row); an attached plan that projects to **zero**
+grams (`food: { weightGrams: 0 }`, Food row present) - the last two being the pair rev
+1's DTO could not distinguish.
+
+### Why weight only - the evidence
+
+- **Shakedown culture consumes food as one number.** Ten r/Ultralight shakedown
+  threads, ~150 comments read in full: **seven** had no food discussion at all, one
+  had substantive food critique, and every word of it was aggregate ("dial your food
+  down to 1.4 lbs per day"). **Zero comments critiqued an individual food item** -
+  though nothing stopped those posters from itemizing food in their LighterPack. Real
+  public lists contain rows literally named `Food Per Day Weight approx 2 lb`.
+- **LighterPack has declined this for eleven years.** Issue #12 ("food value field")
+  opened 2015, still open, 6 reactions. A working implementation was handed to them in
+  2018 and never merged. Issue #45 requests a meal planner - and the *requester* wants
+  it collapsed to one line on the shared list: "add that to the gear, just as 'Beans
+  and Rice for 1' so you can still have a consumable weight included."
+- **Every tool with real food detail keeps it private.** Backcountry Foodie and Trail
+  Recipes have full planners and no share URL at all.
+- **Packstack** (`github.com/Packstack-Tech/app`) never faced the question: no meal
+  planner, only a `calories` field on an item plus a Pandolf calorie-*burn* estimator.
+  Its own `useToggleTripPublic` mutation is commented out and `/pack/$id` sits behind
+  the auth guard.
+- **The "show a beginner" case is real but differently shaped.** A 207-upvote "I need
+  food advice" thread drew 320 comments and not one link to anyone's plan; it was
+  answered with brands and strategy. That demand is served by a narrated blog post,
+  not a data view.
+
+Honest caveat: absence in existing tools is weak evidence of absent demand, since
+LighterPack has no calorie field at all and the food-lumping habit is partly
+tool-shaped. But the *behavioral* evidence is not tool-shaped - people do itemize food
+publicly, at length, to large audiences, just never on their gear-list link.
+
+And this is **additive**: a richer food share is a flag plus a DTO field later, on a
+design that does not change.
+
+---
+
+## 8. UI surface
+
+### Routes
+
+| Route | Content |
+|---|---|
+| `/food` | Tab strip: **Foods** (the item library) \| **Plans** (index of your plans) |
+| `/food/plans/:id` | Plan editor: days x meals grid, entries |
+| `/lists/:id` | Gains the derived Food row + the plan picker |
+
+`/lists/:id/food` is gone: a plan no longer lives under a list.
+
+**Every new route goes into `docs/authz-matrix.md` before implementation**, with
+owner / non-owner / anonymous tests, per SECURITY.md. Food routes are
+session-only; the sole anon-reachable food data in the entire system is the two
+scalars of section 7, reached through the existing share projection.
+
+### The picker
+
+`LibraryPanel` gains a Gear \| Food toggle. Gear is "add many items"; Food is **"pick
+the one plan for this trip"** - a different verb, same panel. Selecting a plan sets
+`lists.food_plan_id` (and clears pack state, section 6). Detach is a menu action on
+the Food row.
+
+### The Food row
+
+- **Normal mode:** one derived row, `Food (Summer 3-day)`, consumable, weight from the
+  projection. Its own section - not sortable, not categorized, not draggable.
+- **Pack mode:** expands into the real per-food checklist (the old build's
+  `FoodProjectionSection`), folded into the packing progress counter
+  (`total = listItems.length + packableTotal`). "Reset packed" spans both.
+- **Public share:** collapses to weight only (section 7).
+
+The pack-mode checklist is load-bearing. It is the reason food is worth modeling at
+all rather than typed in as a lump.
+
+---
+
+## 9. Caps
+
+Ported: **1000** foods/user, **60** days/plan, **20** meals/plan, **2000**
+entries/plan. New, because plans are now standalone and accumulate: a
+**plans-per-user cap**, proposed **100**.
+
+D1 trap applies throughout (AGENTS.md): max 100 bound params per query. No unbounded
+`inArray` over DTO-sized id lists; owned-set membership for prechecks, chunked batch
+writes. Sections 3.1 and 5.2 are where this bites.
+
+---
+
+## 10. The sockets are already cut
+
+`TRANSPLANT NOTE (food)` markers are waiting in: `lib/weight-breakdown.ts`,
+`lib/caps.ts`, `lib/csv/index.ts`, `lib/export/takeout-files.ts`,
+`lists/WeightSummary.tsx`, `lists/SharePage.tsx`, `lists/PrivacyPanel.tsx`,
+`lists/ListDetailPage.tsx`, `lists/use-list-reset-actions.ts` (+ its test), and
+`settings/SettingsPage.tsx`.
+
+Note that `PrivacyPanel`'s note promises an "Include food plan" toggle. Per D6 that
+toggle is **not** coming; **delete the note, do not honor it.**
+
+---
+
+## 11. Slicing
+
+~5.4k lines of food UI in the old repo (~9.6k with tests). Far too big for one PR.
+
+The governing rule: **no slice ships a shell the user can open and cannot use.** Rev 1
+proposed plan-CRUD as its own slice, which would have exposed a plan you could create,
+name, and then do nothing with. That is not a shippable increment.
+
+| # | Slice | Ships what |
+|---|---|---|
+| 1 | **Food library** (`food_items`): schema, repo, routes, `/food` Foods tab, CRUD, caps | A usable food library. Mirrors phase 2 (gear library) exactly - the proving slice. |
+| 2 | **Plans, end to end**: `food_plans` + `meals` + `days` + `day_meals` + **`entries`**, the Plans tab, `/food/plans/:id` with the grid and the smallest real entry workflow (add a food to a cell, see the weight) | A plan you can actually build. Foundation and payload land together. Big; may split *internally* (e.g. grid before Extras) but nothing user-visible ships half-built. |
+| 3 | **The link + projection**: `lists.food_plan_id`, the picker, the derived Food row, `withProjectedFood` into the weight summary, the projection contract (section 5) | Pack weight starts including food. The payoff. |
+| 4 | **Pack mode**: `food_pack_state`, the checklist, the progress counter, reset, the pack-state lifecycle (section 6) | The packing checklist. |
+| 5 | **Share**: the nullable `food` object, plus the `items.length === 0` fix | Food weight on `/r/:slug`. |
+| 6 | **CSV + takeout**: food CSV import/export, food in the takeout bundle | Data portability. |
+| 7 | **Targets**: daily/meal targets + `DefaultTargetsSection` in Settings | **Deferred.** Nutrition targets are the least load-bearing part of the feature and must not block the core path. |
+
+Slices 1-4 are ordered. 5 follows 3. 6 and 7 can land any time after 2, and **7 is
+explicitly last**.
+
+---
+
+## 12. Decisions (settled 2026-07-13, revised 2026-07-14)
+
+### 12.1 Live reference, not snapshot
+Edit the plan and every list using it updates. Consistent with gear. Duplicate to
+fork. (Section 3.)
+
+### 12.2 NO ACTION, not SET NULL; delete via an atomic 3-statement batch
+Forced by SQLite semantics, verified by execution - and **this is the existing
+`gear_items.category_id` pattern, not a new one** (`server/db/app-schema.ts:59`). The
+FK doubles as a hard backstop. Pack state is cleared *before* the detach, because the
+detach destroys the ability to find the lists. (Section 2.3.)
+
+### 12.3 The checkbox may lie about *quantity*, never about *which plan*
+No `packed_signature`, no advisory lock, no `PT409`. But three lifecycle rules are
+mandatory, and all three are correctness rather than hygiene:
+
+1. clear pack state on relink;
+2. **reconcile** pack state against the plan's remaining entries after any structural
+   mutation (one statement; last-occurrence and cascade-safe by construction);
+3. make the toggle a **compare-and-swap on the observed plan id**, in *both* directions,
+   and idempotent.
+
+Rule 3 is the subtle one. Checking "is this food in the list's current plan" is **not
+sufficient** - two plans can contain the same food, and an earlier draft of this document
+contained exactly that hole (caught in review; nothing was ever implemented). Cross-plan
+bleed-through is a **wrong answer**, not a stale one.
+
+The residual **ABA cycle** (`A -> B -> A`) is knowingly left open: it yields a stale
+state, not a wrong one, and closing it costs a link-generation token. (Section 6.)
+
+### 12.4 Public share: one nullable `food` object, no gating toggle
+`{ weightGrams, incomplete } | null`. Nullable so that "no plan" and "empty plan" are
+distinguishable; `incomplete` mandatory so a partial total cannot masquerade as a
+complete one. Also considered and rejected: publishing kcal/day + kcal/oz + lb/day
+aggregates - the metrics shakedown culture actually speaks in, but stats for an
+audience of one, and cut as scope. (Section 7.)
+
+### 12.5 Food is never a `list_items` row
+Derived at read time. (Section 4.)
+
+### 12.6 Plans get their own home
+`/food` with a Foods \| Plans tab strip - not a fourth top-level nav entry, and not
+"discoverable only from the picker" (which would strand an unattached plan).
+
+### 12.7 `day_meals` stays a table
+It encodes "this meal is enabled on this day", which an *empty* cell must still be
+able to express. Collapsing it into JSON to reduce the table count would lose that
+distinction.
+
+### 12.8 Targets are deferred to last
+They are the least load-bearing part of the feature. (Section 11.)
+
+---
+
+## 13. Deferred
+
+- **Nutrition targets** (slice 7).
+- **Derived kcal/day targets.** Packstack estimates calories *burned* from pack weight,
+  terrain, pace and temperature (Pandolf equation) instead of making you type a target
+  in. A natural later upgrade once targets exist at all.
+- **Richer public food share.** Additive if the audience ever materializes (section 7).
+
+(Rev 1 also deferred "clearing pack rows on entry delete". That is **no longer
+deferred** - it is rule 2 of section 6, and it is correctness.)
