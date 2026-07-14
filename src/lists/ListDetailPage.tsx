@@ -62,6 +62,7 @@ import { useListFlagToggle } from './use-list-flag-toggle'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
 import CategoryGroup from './CategoryGroup'
+import { sortableRows } from './SortableCategoryRows'
 import PanelCard from './PanelCard'
 import ItemRow from './ItemRow'
 import GearItemDialog from '../components/gear/GearItemDialog'
@@ -528,7 +529,10 @@ function ListDetailInner({
       readyChecksEnabled: list?.readyChecksEnabled ?? false,
       weightUnit,
       isBelowLg,
-      sortable: true,
+      // Injects the drag rendering. CategoryGroup itself has no @dnd-kit import
+      // (it is on the public share view's path); this is the seam that keeps the
+      // library in the authenticated chunk. See SortableCategoryRows.tsx.
+      renderRows: sortableRows,
       showUnpackedOnly,
       onUpdate: (itemId: string, patch: ListItemPatch) => updateItem.mutate({ itemId, patch }),
       onDelete: (itemId: string) => {
@@ -806,7 +810,7 @@ function ListDetailInner({
                     {/* Worn section — visible in both normal and pack mode when
                         list.groupWorn is on and at least one worn item exists.
                         Sits outside the DndContext: it isn't a reorder target
-                        (sortable=false), and worn items don't render inside
+                        (no renderRows), and worn items don't render inside
                         their original category sections while grouping is on
                         (CategoryGroup's hideWorn handles that). Spreads the
                         same sharedGroupProps every in-category section uses so
@@ -815,15 +819,15 @@ function ListDetailInner({
                         edit/delete handlers, weight unit, and breakpoint.
                         Worn-specific overrides come after the spread
                         so they win: section name "Worn", the stable wornItems
-                        list, and sortable={false}. The items array walks
-                        categories in display order so in-section order is
-                        stable and predictable. */}
+                        list, and renderRows={undefined} (no drag). The items
+                        array walks categories in display order so in-section
+                        order is stable and predictable. */}
                     {showWornGroup && wornItems.length > 0 && (
                       <CategoryGroup
                         {...sharedGroupProps}
                         name="Worn"
                         items={wornItems}
-                        sortable={false}
+                        renderRows={undefined}
                       />
                     )}
                   </div>

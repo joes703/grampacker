@@ -1,19 +1,64 @@
-import type { ReactNode } from 'react'
+import { lazy, Suspense, useEffect, type ReactNode } from 'react'
 import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { authClient } from './lib/auth-client'
 import { mutationErrorHandler } from './lib/mutation-error-handler'
+import { hasSeenSession, rememberSession } from './lib/session-hint'
 import { MAGIC_LINK_PATH } from '../shared/auth'
 import SignInPage from './auth/SignInPage'
 import MagicLinkPage from './auth/MagicLinkPage'
-import RootRedirect from './layout/RootRedirect'
-import SettingsPage from './settings/SettingsPage'
-import AppShell from './layout/AppShell'
-import GearLibraryPage from './gear/GearLibraryPage'
-import ListsPage from './lists/ListsPage'
-import ListDetailPage from './lists/ListDetailPage'
-import SharePage from './lists/SharePage'
 import ToastViewport from './components/Toast'
+import ChunkErrorBoundary from './components/ChunkErrorBoundary'
+
+// The two anonymous surfaces are split out of the main bundle, because until
+// now both of them shipped the whole authenticated app to people who could not
+// use a byte of it:
+//
+//   AuthenticatedApp - the signed-in area. It renders INSIDE RequireSession,
+//     which is the point: a signed-out visitor with no hint (see below) never
+//     requests it at all.
+//
+//   SharePage - /r/:slug, the public read-only list view. Anonymous by design
+//     and the busiest anonymous surface there is (it is what a share link
+//     opens), so it has no business carrying the app it is not part of.
+//
+// "One chunk" is the intent, not quite the emitted graph: the authenticated
+// area resolves to the AuthenticatedApp chunk PLUS the shared chunk it has in
+// common with SharePage (CategoryGroup and the list-rendering subtree). Both are
+// fetched in the same wave - Vite emits the static deps of a dynamic import as
+// preloads alongside it - so it costs bytes, not a round-trip. What it is NOT is
+// one chunk per page: see AuthenticatedApp.tsx for that trade.
+const importAuthenticatedApp = () => import('./AuthenticatedApp')
+const AuthenticatedApp = lazy(importAuthenticatedApp)
+const SharePage = lazy(() => import('./lists/SharePage'))
+
+// Loading AuthenticatedApp inside the session gate is what keeps it away from
+// anonymous visitors, but taken alone it would make every signed-in visitor pay
+// for that: entry bundle -> ask the server who you are -> only THEN start
+// downloading the app. Three serial steps where there used to be two, so the
+// split would have been a straight trade of their latency for someone else's
+// bytes.
+//
+// So: if this browser has ever held a session, start the download NOW, in
+// parallel with the session check, and let RequireSession catch up. It is fired
+// at module scope deliberately - an effect would run a paint too late, which is
+// the whole thing we are trying to buy back.
+//
+// This is not a prefetch-on-idle (that would hand the bytes right back to the
+// visitor the split is for). A browser with no hint - a genuinely new visitor,
+// the one PERF-02 is about - never asks for this chunk. A browser that HAS the
+// hint but is signed out (someone who signed out, or whose session expired)
+// fetches a chunk RequireSession then declines to render: a wasted download, and
+// the deliberate price of the hint.
+//
+// The catch is not decoration. A warm-up whose promise rejects is an
+// unhandledrejection, and this one CAN reject - a tab open across a deploy asks
+// for a chunk hash that no longer exists. Swallow it here: if the chunk is
+// actually needed, React.lazy imports it again and ChunkErrorBoundary is what
+// handles the failure, in one place, with a reload.
+if (hasSeenSession()) {
+  void importAuthenticatedApp().catch(() => {})
+}
 
 // Query defaults ported from the old app: 30s staleTime keeps rapid
 // navigation off the network, a single retry smooths transient blips
@@ -41,6 +86,15 @@ const queryClient = new QueryClient({
 // load, where there is no data yet.
 function RequireSession({ children }: { children: ReactNode }) {
   const { data: session, isPending } = authClient.useSession()
+
+  // The only place a real session is ever confirmed, so it is the only honest
+  // place to record the hint that warms the chunk on the NEXT load. Every way
+  // in lands here: passkey and magic link both navigate into the gated area
+  // once they have a session.
+  useEffect(() => {
+    if (session) rememberSession()
+  }, [session])
+
   if (isPending && !session) return null
   if (!session) return <Navigate to="/sign-in" replace />
   return children
@@ -58,64 +112,79 @@ function RedirectIfSession({ children }: { children: ReactNode }) {
   return children
 }
 
+// Exported so the route table can be tested against a real router (see
+// app-routes.test.tsx). App itself pins BrowserRouter, which reads the real
+// URL bar and cannot be pointed at a path; splitting the table out is what lets
+// a test drive it through MemoryRouter with the ACTUAL react-router matching
+// rather than a mock of it. That matters more than usual here: this table
+// carries the lazy boundary, and it moved every authenticated path from a flat
+// route list to relative paths under a splat.
+export function AppRoutes() {
+  return (
+    <Routes>
+      <Route
+        path="/sign-in"
+        element={
+          <RedirectIfSession>
+            <SignInPage />
+          </RedirectIfSession>
+        }
+      />
+      {/* There is no sign-up page any more: requesting a magic link for an
+          unknown address creates the account when it is redeemed, so one
+          surface serves both. Old bookmarks and any stale link land on it. */}
+      <Route path="/sign-up" element={<Navigate to="/sign-in" replace />} />
+      {/* Where magic-link emails land. NOT wrapped in RedirectIfSession: a
+          user who is already signed in on this device may be redeeming a
+          link to switch accounts, and bouncing them home would silently
+          burn the token they clicked. The page verifies only on a click. */}
+      <Route path={MAGIC_LINK_PATH} element={<MagicLinkPage />} />
+      {/* Public share view: anonymous by design (the server gates on
+          is_shared), and deliberately outside AppShell - viewers get
+          the read-only document, not the app chrome. Signed-in users
+          opening someone's link see the same public view. */}
+      <Route
+        path="/r/:slug"
+        element={
+          <Suspense fallback={null}>
+            <SharePage />
+          </Suspense>
+        }
+      />
+      {/* Everything else is behind the session gate, including the old "*"
+          catch-all (it lives in AuthenticatedApp now). The static paths above
+          still win: react-router ranks by specificity, not by source order, so
+          a splat never shadows them.
+
+          fallback={null} rather than a spinner: RequireSession ALREADY rendered
+          null here while the session was pending, so this paints exactly what
+          the previous code painted, and a spinner that appeared and vanished
+          would be new layout movement on a page currently scoring CLS 0. That
+          is a reason to prefer null, not a proof the score holds - CLS is
+          measured in a browser, and this was not. */}
+      <Route
+        path="/*"
+        element={
+          <RequireSession>
+            <Suspense fallback={null}>
+              <AuthenticatedApp />
+            </Suspense>
+          </RequireSession>
+        }
+      />
+    </Routes>
+  )
+}
+
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          {/* Session-gated area: AppShell is a layout route (header +
-              mobile primary nav); signed-in pages render through its
-              Outlet. */}
-          <Route
-            element={
-              <RequireSession>
-                <AppShell />
-              </RequireSession>
-            }
-          >
-            {/* No home page: `/` redirects to the most-recent list (or the
-                lists empty state for a brand-new account). See RootRedirect. */}
-            <Route path="/" element={<RootRedirect />} />
-            <Route path="/gear" element={<GearLibraryPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            {/* Lists pages stay eager (no React.lazy): they are post-login
-                primary destinations, so a lazy chunk hop on every nav would
-                cost more than it saves. Code splitting happens at the leaf
-                instead — ListSidebarDrawer (Radix Dialog chunk) and
-                NotesEditor's markdown renderer are lazy inside the pages.
-                Pack mode is a URL segment of the same detail page (see
-                ListDetailPage's mode derivation + legacy ?mode=pack
-                redirect). */}
-            <Route path="/lists" element={<ListsPage />} />
-            <Route path="/lists/:id" element={<ListDetailPage />} />
-            <Route path="/lists/:id/pack" element={<ListDetailPage />} />
-          </Route>
-          <Route
-            path="/sign-in"
-            element={
-              <RedirectIfSession>
-                <SignInPage />
-              </RedirectIfSession>
-            }
-          />
-          {/* There is no sign-up page any more: requesting a magic link for an
-              unknown address creates the account when it is redeemed, so one
-              surface serves both. Old bookmarks and any stale link land on it. */}
-          <Route path="/sign-up" element={<Navigate to="/sign-in" replace />} />
-          {/* Where magic-link emails land. NOT wrapped in RedirectIfSession: a
-              user who is already signed in on this device may be redeeming a
-              link to switch accounts, and bouncing them home would silently
-              burn the token they clicked. The page verifies only on a click. */}
-          <Route path={MAGIC_LINK_PATH} element={<MagicLinkPage />} />
-          {/* Public share view: anonymous by design (the server gates on
-              is_shared), and deliberately outside AppShell - viewers get
-              the read-only document, not the app chrome. Signed-in users
-              opening someone's link see the same public view. */}
-          <Route path="/r/:slug" element={<SharePage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-        <ToastViewport />
-      </BrowserRouter>
-    </QueryClientProvider>
+    <ChunkErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <AppRoutes />
+          <ToastViewport />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ChunkErrorBoundary>
   )
 }

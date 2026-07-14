@@ -1,14 +1,16 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { useSortable } from '@dnd-kit/sortable'
+// TYPE-only, and it has to stay that way. This module is on the public share
+// view's critical path (SharePage -> CategoryGroup -> ItemRow), and a share view
+// is read-only: it can never drag anything. `import type` is erased at build, so
+// this costs nothing; a VALUE import from @dnd-kit here would pull the whole
+// drag-and-drop library into the anonymous bundle. That is exactly what
+// SortableItemRow living in this file used to do - hence SortableItemRow.tsx.
 import type { DraggableSyntheticListeners } from '@dnd-kit/core'
-import { CSS } from '@dnd-kit/utilities'
-import { CircleMinus, GripVertical, MoreVertical, Pencil, Shirt, Trash2, UtensilsCrossed } from 'lucide-react'
+import { CircleMinus, MoreVertical, Pencil, Shirt, Trash2, UtensilsCrossed } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
-import { asButtonRef } from '../lib/dnd'
-import { makeDnDId } from '../lib/dnd-ids'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
 import RowIconButton from '../components/RowIconButton'
@@ -64,7 +66,7 @@ import PackModeCheckbox from './PackModeCheckbox'
 // Pack-mode rendering branches early and only renders the checklist-style
 // row (checkbox + name + status icons + qty). Pack mode is authed-only;
 // share view never passes packMode.
-type Props = {
+export type ItemRowProps = {
   item: ListItemWithGear
   weightUnit: WeightUnit
   // Page-level breakpoint: true at <1024 px (Tailwind `lg:` boundary). Drilled
@@ -121,7 +123,7 @@ export default function ItemRow({
   rowDragListeners,
   outerRef,
   outerStyle,
-}: Props) {
+}: ItemRowProps) {
   const itemWeight = item.gearItem.weightGrams
   const [editingWeight, setEditingWeight] = useState(false)
   const [weightDraftGrams, setWeightDraftGrams] = useState(itemWeight)
@@ -551,62 +553,6 @@ function MobileRowBody({
     )
   }
   return <div className="flex flex-1 min-w-0 items-center gap-2">{cells}</div>
-}
-
-// Sortable wrapper for the authenticated list view. Calls useSortable, wires
-// the row's outer ref + transform style + drag-handle button, and forwards
-// everything else to ItemRow. Must be rendered inside a SortableContext.
-// Drag is disabled in pack mode (structural changes inert while checking
-// off items) and while a previous reorder mutation is in flight (prevents
-// the rollback-clobber race when two reorders overlap).
-export function SortableItemRow(props: Omit<Props, 'dragHandle' | 'outerRef' | 'outerStyle'>) {
-  const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: makeDnDId('item', props.item.id),
-    disabled: props.packMode || props.reorderPending,
-  })
-
-  const sortableStyle: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  }
-
-  // Desktop drives reorder from a compact in-row grip. This used to sit in
-  // the outside-left gutter, but flat table surfaces intentionally use
-  // overflow-hidden for rounded corners, which clips out-of-surface handles.
-  // Mobile has no hover affordance, so the row itself remains the long-press
-  // activator via rowDragListeners. Pack mode disables drag entirely.
-  const handle =
-    props.isBelowLg || props.packMode ? undefined : (
-      <RowIconButton
-        ref={asButtonRef(setActivatorNodeRef)}
-        {...listeners}
-        {...attributes}
-        tabIndex={-1}
-        variant="dragHandle"
-        ariaLabel="Drag to reorder"
-        icon={<GripVertical size={14} />}
-        className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-      />
-    )
-
-  return (
-    <ItemRow
-      {...props}
-      dragHandle={handle}
-      rowDragListeners={props.isBelowLg && !props.packMode ? listeners : undefined}
-      outerRef={setNodeRef}
-      outerStyle={sortableStyle}
-    />
-  )
 }
 
 // Kebab popover — three-dot button + portal-rendered menu. Items: Remove
