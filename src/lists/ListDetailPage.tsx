@@ -716,7 +716,7 @@ function ListDetailInner({
                           onClick={() => setNotesEditing(true)}
                           aria-label="Edit notes"
                           title="Edit notes"
-                          className="inline-flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-gray-700"
                         >
                           <Pencil size={13} />
                         </button>

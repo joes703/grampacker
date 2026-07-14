@@ -190,7 +190,7 @@ export default function ItemRow({
         // a single cluster on touch.
         className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${FLAT_TABLE_ROW_PADDING} gap-2 lg:gap-2.5 transition-colors ${
           // Calmer "done" treatment than a green tint — the gray background
-          // pairs with the text-gray-400 line-through inside the label to
+          // pairs with the text-gray-500 line-through inside the label to
           // read as completed without celebrating. print:bg-transparent
           // keeps the paper checklist visually neutral.
           item.isPacked ? 'bg-gray-50 print:bg-transparent' : 'bg-white'
@@ -248,7 +248,7 @@ export default function ItemRow({
             <div className="flex-[2] min-w-0">
               <span
                 className={`block w-full truncate font-normal ${
-                  item.isPacked ? 'text-gray-400 line-through print:text-gray-900 print:no-underline' : 'text-gray-900'
+                  item.isPacked ? 'text-gray-500 line-through print:text-gray-900 print:no-underline' : 'text-gray-900'
                 }`}
               >
                 {name}
@@ -257,7 +257,16 @@ export default function ItemRow({
             <div className="hidden lg:block lg:flex-[3] min-w-0">
               <span
                 className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT} font-normal ${
-                  item.isPacked ? 'text-gray-300 line-through print:text-gray-600 print:no-underline' : 'text-gray-500'
+                  // gray-500, not gray-300: gray-300 is #d1d5dc, which is
+                  // 1.41:1 against the bg-gray-50 a packed row sits on - not
+                  // "faint", effectively invisible. A packed row is still
+                  // operable (this is inside the label that unpacks it), so
+                  // none of it is exempt as an inactive control. gray-500 is
+                  // the lightest token that clears 4.5:1 there (4.63:1), which
+                  // means the description can no longer fade a step further
+                  // than the name; the line-through and the gray row carry
+                  // "done" instead, and they carry it without relying on color.
+                  item.isPacked ? 'text-gray-500 line-through print:text-gray-600 print:no-underline' : 'text-gray-500'
                 }`}
               >
                 {description}

@@ -52,7 +52,7 @@ export default function SharePage() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <p className="text-sm text-gray-400">Loading…</p>
+        <p className="text-sm text-gray-500">Loading…</p>
       </div>
     )
   }
@@ -65,7 +65,7 @@ export default function SharePage() {
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
           <p className="text-base font-medium text-gray-700">Couldn't load list</p>
-          <p className="mt-1 text-sm text-gray-400">Check your connection and try again.</p>
+          <p className="mt-1 text-sm text-gray-500">Check your connection and try again.</p>
         </div>
       </div>
     )
@@ -76,7 +76,7 @@ export default function SharePage() {
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
           <p className="text-base font-medium text-gray-700">List not found</p>
-          <p className="mt-1 text-sm text-gray-400">This link may be invalid or sharing has been turned off.</p>
+          <p className="mt-1 text-sm text-gray-500">This link may be invalid or sharing has been turned off.</p>
         </div>
       </div>
     )
@@ -215,7 +215,7 @@ export default function SharePage() {
         {/* The old repo linked to /about here; that page doesn't exist on
             this stack (yet), so the footer credit points home instead. */}
         <div className="mt-8 text-center">
-          <Link to="/" className="text-xs text-gray-400 hover:text-gray-600">
+          <Link to="/" className="text-xs text-gray-500 hover:text-gray-600">
             Made with grampacker
           </Link>
         </div>

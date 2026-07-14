@@ -32,7 +32,7 @@ export default function ListSidebarDrawer({ open, onOpenChange, children }: Prop
             </Dialog.Title>
             <Dialog.Close
               aria-label="Close picker"
-              className="ml-auto rounded p-1 text-gray-400 hover:text-gray-600"
+              className="ml-auto rounded p-1 text-gray-500 hover:text-gray-600"
             >
               <X size={18} />
             </Dialog.Close>

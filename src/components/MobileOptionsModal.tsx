@@ -28,7 +28,7 @@ export default function MobileOptionsModal({ open, onClose, title, children }: P
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded p-1 text-gray-400 hover:text-gray-600"
+            className="rounded p-1 text-gray-500 hover:text-gray-600"
           >
             <X size={18} />
           </button>

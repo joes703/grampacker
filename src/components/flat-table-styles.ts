@@ -105,7 +105,7 @@ export const FLAT_TABLE_HEADER =
 // COUNT is the subdued tabular metadata count beside a title. Keep it dark
 // enough for 12px text on gray-50 table headers.
 export const FLAT_TABLE_HEADER_TITLE = 'text-sm font-medium text-gray-700'
-export const FLAT_TABLE_HEADER_TITLE_MUTED = 'text-sm font-medium text-gray-400'
+export const FLAT_TABLE_HEADER_TITLE_MUTED = 'text-sm font-medium text-gray-500'
 export const FLAT_TABLE_HEADER_COUNT = 'text-xs font-normal tabular-nums text-gray-600'
 export const FLAT_TABLE_EYEBROW =
   'text-xs font-semibold uppercase tracking-wider text-gray-500'
@@ -247,7 +247,7 @@ export const PANEL_TOGGLE_LABEL = 'text-sm lg:text-[13px] font-medium text-gray-
 // ("No items" in a category) which use FLAT_TABLE_BODY_TEXT + the row
 // surface's italic + color: the row pattern is one site (CategorySection)
 // and stays composed inline.
-export const PANEL_EMPTY_TEXT = 'text-sm lg:text-[13px] italic text-gray-400'
+export const PANEL_EMPTY_TEXT = 'text-sm lg:text-[13px] italic text-gray-500'
 
 // ---------------------------------------------------------------------------
 // Popover surface

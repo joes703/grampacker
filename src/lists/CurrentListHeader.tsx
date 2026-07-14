@@ -58,7 +58,7 @@ export default function CurrentListHeader({ list }: Props) {
           // <md so touch users can always see it; md:opacity-0 +
           // md:group-hover:opacity-100 hides it on desktop until the
           // user hovers the header.
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-gray-400 opacity-100 transition-opacity hover:text-gray-600 md:opacity-0 md:group-hover:opacity-100"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-gray-500 opacity-100 transition-opacity hover:text-gray-600 md:opacity-0 md:group-hover:opacity-100"
         >
           <Pencil size={14} />
         </button>

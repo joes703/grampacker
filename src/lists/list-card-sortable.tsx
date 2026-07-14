@@ -70,7 +70,7 @@ export function useListCardSortable({
       {...attributes}
       tabIndex={-1}
       aria-label="Drag to reorder list"
-      className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-400 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing`}
+      className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing`}
     >
       <GripVertical size={gripIconSize} />
     </button>

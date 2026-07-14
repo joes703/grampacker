@@ -67,7 +67,11 @@ export default function InlineText({
       title={title}
       className={`cursor-text rounded bg-transparent px-1 py-0.5 text-left font-[inherit] text-[length:inherit] text-[color:inherit] hover:bg-gray-100 ${className}`}
     >
-      {value || <span className="text-gray-400 italic">{placeholder}</span>}
+      {/* gray-600, not the usual gray-500 muted token: this button sets
+          hover:bg-gray-100, and gray-500 on gray-100 is 4.39:1 - just under the
+          4.5:1 floor, in the exact state a user puts it in on the way to
+          clicking. gray-600 is 6.87:1 there. */}
+      {value || <span className="text-gray-600 italic">{placeholder}</span>}
     </button>
   )
 }

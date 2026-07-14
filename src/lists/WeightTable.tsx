@@ -68,7 +68,7 @@ export default function WeightTable({ items, categories, breakdown: providedBrea
             </tr>
           )}
           {wornGrams > 0 && (
-            <tr className="text-gray-400">
+            <tr className="text-gray-500">
               <td className={labelCell}>Worn (not added)</td>
               <td className={valueCell}>{fmtG(wornGrams)}</td>
               <td className={valueCell}><TotalWeightValue grams={wornGrams} unit="oz" /></td>

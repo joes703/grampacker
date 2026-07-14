@@ -192,7 +192,7 @@ export default function ListsPage() {
           row body is owned by ListRow; the sortable wrapper threads the
           drag handle ref/listeners through. */}
       {listsLoading ? (
-        <p className="text-sm text-gray-400">Loading…</p>
+        <p className="text-sm text-gray-500">Loading…</p>
       ) : (() => {
         const rowHandlers = (list: List) => ({
           renaming: dialog?.type === 'renaming' && dialog.list.id === list.id,
@@ -286,7 +286,7 @@ export default function ListsPage() {
                   type="button"
                   onClick={() => setDialog(null)}
                   aria-label="Close"
-                  className="rounded p-1 text-gray-400 hover:text-gray-600"
+                  className="rounded p-1 text-gray-500 hover:text-gray-600"
                 >
                   <X size={16} />
                 </button>
@@ -410,7 +410,7 @@ function NewListInline({
       <button
         onClick={onCancel}
         aria-label="Cancel"
-        className="rounded p-1.5 text-gray-400 hover:text-gray-600"
+        className="rounded p-1.5 text-gray-500 hover:text-gray-600"
       >
         <X size={16} />
       </button>
@@ -570,7 +570,7 @@ function ListRow({
         aria-label="List options"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-400 hover:bg-gray-100 hover:text-gray-600`}
+        className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:bg-gray-100 hover:text-gray-600`}
       >
         <MoreVertical size={16} />
       </button>
@@ -618,7 +618,7 @@ function RowMeta({ list, now }: { list: List; now: number }) {
   // narrow phone; comes back at sm+. tabular-nums keeps the column
   // visually steady as the relative time ticks.
   return (
-    <span className="hidden sm:inline shrink-0 text-xs tabular-nums text-gray-400">
+    <span className="hidden sm:inline shrink-0 text-xs tabular-nums text-gray-500">
       Updated {updated}
     </span>
   )
