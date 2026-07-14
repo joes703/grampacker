@@ -1,11 +1,9 @@
-import { memo, useState } from 'react'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { memo, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import type { ListItemPatch } from '../lib/queries'
 import type { WeightUnit } from '../lib/weight'
-import { makeDnDId } from '../lib/dnd-ids'
 import {
   DESKTOP_ROW_HEIGHT,
   FLAT_TABLE_BODY_TEXT,
@@ -20,7 +18,7 @@ import {
   MOBILE_ROW_HEIGHT,
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
-import ItemRow, { SortableItemRow } from './ItemRow'
+import ItemRow, { type ItemRowProps } from './ItemRow'
 import AddItemRow from './AddItemRow'
 import { type AddItemData } from './use-quick-add-form'
 import TotalWeightValue from '../components/TotalWeightValue'
@@ -31,18 +29,22 @@ import TotalWeightValue from '../components/TotalWeightValue'
 // Column widths (header / footer / row Qty stubs) are defined here so the
 // header labels, item rows, and footer totals always line up.
 //
+// This module must NOT import @dnd-kit, by value, ever. It renders on the
+// public share view, and a read-only page has no business downloading a
+// drag-and-drop library. That is why drag arrives as the `renderRows` prop
+// instead of a `sortable` boolean: see SortableCategoryRows.tsx.
+//
 // Drag context: the authed list view uses ONE page-level <DndContext>.
 // Categories themselves are NOT reorderable on /lists/:id — that's
 // /gear-only — so this component never registers a category-level drop
-// target. Items DO reorder within their category: we render a per-category
-// <SortableContext> around the rows below, so each row's useSortable
-// resolves against its category's items list. The share view passes
-// neither `sortable` nor `categoryId`, so no drag plumbing engages.
+// target. Items DO reorder within their category, via the per-category
+// <SortableContext> that renderRows supplies. The share view passes neither
+// `renderRows` nor `categoryId`, so no drag plumbing engages.
 //
 // Editing affordances are gated on which handlers are passed:
-//   - sortable           ⇒ rows render as SortableItemRow inside a per-category
-//                          <SortableContext> wired up here. Without it, rows
-//                          are plain ItemRow (no drag).
+//   - renderRows         ⇒ rows render as SortableItemRow inside a per-category
+//                          <SortableContext>. Without it, rows are plain
+//                          ItemRow (no drag) - which is the share view.
 //   - categoryId         ⇒ used for stable region ids (aria-controls) and
 //                          surfacing the category context to add-item flows.
 //                          null ⇒ uncategorized. undefined ⇒ share view.
@@ -53,6 +55,16 @@ import TotalWeightValue from '../components/TotalWeightValue'
 //                          Default true (authed); share view passes false.
 //   - packMode           ⇒ pack-mode header (qty-only, no weight column) +
 //                          pack-mode row layout. Authed-only.
+// The props a row needs, minus the three the sortable wrapper supplies itself.
+// Exported so SortableCategoryRows can spread rowPropsFor's output into
+// SortableItemRow without either side re-deriving the shape.
+export type RowProps = Omit<ItemRowProps, 'dragHandle' | 'outerRef' | 'outerStyle'>
+
+export type RenderRows = (
+  items: ListItemWithGear[],
+  rowPropsFor: (item: ListItemWithGear) => RowProps,
+) => ReactNode
+
 export type GroupProps = {
   name: string
   items: ListItemWithGear[]
@@ -71,8 +83,16 @@ export type GroupProps = {
   /** Stable region id derivation + add-item context. null = uncategorized.
    *  undefined disables the chevron/region-id behavior (share view). */
   categoryId?: string | null
-  /** Render rows as SortableItemRow (must be inside a page-level SortableContext). */
-  sortable?: boolean
+  /** Supply the DRAG rendering for this category's rows. Absent (the share
+   *  view) means plain, non-draggable rows.
+   *
+   *  This is injected rather than switched on a `sortable` boolean because a
+   *  boolean cannot hide an import: branching on one still requires this module
+   *  to import @dnd-kit, and this module renders on the public share view. A
+   *  prop is a seam the BUNDLER can see through - pass sortableRows from
+   *  SortableCategoryRows.tsx (the authenticated list view does) and the drag
+   *  machinery lands in the authenticated chunk instead of the anonymous one. */
+  renderRows?: RenderRows
   /** When true, the page-level reorder mutation is in flight; passed through
    *  to each SortableItemRow as `disabled` to prevent overlapping reorders
    *  from racing. Sortable-only; share view doesn't set this. */
@@ -127,7 +147,7 @@ function CategoryGroup({
   readyChecksEnabled = false,
   collapsible = true,
   categoryId,
-  sortable = false,
+  renderRows,
   reorderPending = false,
   showUnpackedOnly = false,
   hideWorn = false,
@@ -316,16 +336,9 @@ function CategoryGroup({
       {/* Items + footer (footer is the row's "total" line, lined up under Weight) */}
       {!collapsed && (
         <div id={regionId}>
-          {sortable ? (
-            // Per-category SortableContext — items reorder within their own
-            // category only. Item ids registered here so each row's useSortable
-            // resolves to the right items list and the strategy auto-shift works.
-            <SortableContext items={visibleItems.map((i) => makeDnDId('item', i.id))} strategy={verticalListSortingStrategy}>
-              {visibleItems.map((item) => <SortableItemRow key={item.id} {...rowPropsFor(item)} />)}
-            </SortableContext>
-          ) : (
-            visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)
-          )}
+          {renderRows
+            ? renderRows(visibleItems, rowPropsFor)
+            : visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}
 
           {/* Draft row when adding — full editable item row */}
           {!packMode && onAddItem && adding && (
