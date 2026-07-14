@@ -32,3 +32,10 @@ outward gates.
 - Branch protection will merge even while checks are still running, so for
   anything risky confirm CI is green yourself rather than trusting the gate.
 - Codex reviews; it does not merge or deploy.
+
+## Shell
+- Never write polling loops (`while true; do ... sleep`). Use `gh run watch` to wait on CI.
+- Keep commands simple and single-purpose - compound scripts trip the sandbox analyzer and stall on approval.
+
+## Merge
+- Always merge with `gh pr merge --auto --squash`. Never merge while checks are pending.
