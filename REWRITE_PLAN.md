@@ -141,7 +141,7 @@ planning (5) because the app needed to be usable for a real trip first.
 | 2 Gear library | done, incl. CSV import/export |
 | 3 Lists + pack mode | done |
 | 4 Public sharing | done (`/r/:slug`, read-only) |
-| **5 Food planning** | **NOT STARTED - the last feature** |
+| **5 Food planning** | **NOT STARTED - the last feature.** Designed: [docs/food-planning-design.md](docs/food-planning-design.md). NOT a verbatim port - the plan becomes standalone and a list points AT it. Start at slice 1 (section 11). |
 | 6 Settings/account | done (passkeys, takeout, change password, delete account) |
 | 7 Teardown | Pages site deleted 2026-07-11; Supabase project deletion is the last step |
 
