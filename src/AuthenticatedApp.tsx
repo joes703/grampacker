@@ -6,18 +6,22 @@ import SettingsPage from './settings/SettingsPage'
 import ListsPage from './lists/ListsPage'
 import ListDetailPage from './lists/ListDetailPage'
 
-// Everything behind the session gate, in ONE lazy chunk (App.tsx imports this
-// module and nothing else from here).
+// Everything behind the session gate (App.tsx imports this module and nothing
+// else from here), as one lazy boundary rather than one per page.
 //
-// One chunk, not one per page, on purpose. The pages in here are all
-// post-login primary destinations, so splitting them individually would buy a
-// smaller first authenticated payload at the cost of a chunk hop on every
-// nav - and it would ALSO serialize: React renders AppShell (the layout route)
-// before it renders the Outlet, so a lazy AppShell would have to resolve before
-// the lazy page underneath it even started downloading. A single chunk fetches
-// once, hits the immutable asset cache on every later visit, and navigates
-// instantly. Leaf-level splitting still happens inside the pages, where it pays
-// (ListSidebarDrawer's Radix Dialog, NotesEditor's markdown renderer).
+// Per-page splitting is possible - it would want AppShell kept eager, since a
+// LAZY layout route does serialize: React renders AppShell before it renders the
+// Outlet, so the page chunk underneath could not start downloading until the
+// shell chunk resolved. But paying that price means putting AppShell back in the
+// anonymous bundle, and the reward is a chunk hop the first time a signed-in
+// user opens each page - pages they are going to open anyway. The pages in here
+// are all post-login primary destinations; there is no page a typical session
+// does not touch. One boundary fetches the set once, hits the immutable asset
+// cache from then on, and navigates without a network hop at all.
+//
+// Leaf-level splitting still happens inside the pages, where it does pay:
+// ListSidebarDrawer's Radix Dialog, NotesEditor's markdown renderer. Those are
+// genuinely optional - most sessions never open them.
 //
 // Routes are relative because App.tsx mounts this at path="/*": the splat is
 // the remainder of the URL, and this nested <Routes> matches against it.

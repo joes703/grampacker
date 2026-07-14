@@ -8,22 +8,26 @@ import { MAGIC_LINK_PATH } from '../shared/auth'
 import SignInPage from './auth/SignInPage'
 import MagicLinkPage from './auth/MagicLinkPage'
 import ToastViewport from './components/Toast'
+import ChunkErrorBoundary from './components/ChunkErrorBoundary'
 
 // The two anonymous surfaces are split out of the main bundle, because until
 // now both of them shipped the whole authenticated app to people who could not
 // use a byte of it:
 //
-//   AuthenticatedApp - every signed-in page, in one chunk. It renders INSIDE
-//     RequireSession, which is the point: a signed-out visitor never requests
-//     it at all.
+//   AuthenticatedApp - the signed-in area. It renders INSIDE RequireSession,
+//     which is the point: a signed-out visitor with no hint (see below) never
+//     requests it at all.
 //
 //   SharePage - /r/:slug, the public read-only list view. Anonymous by design
 //     and the busiest anonymous surface there is (it is what a share link
 //     opens), so it has no business carrying the app it is not part of.
 //
-// One chunk for the whole authenticated area, not one per page: see the note in
-// AuthenticatedApp.tsx for why per-page splitting would both cost a hop on
-// every nav and serialize behind the layout route.
+// "One chunk" is the intent, not quite the emitted graph: the authenticated
+// area resolves to the AuthenticatedApp chunk PLUS the shared chunk it has in
+// common with SharePage (CategoryGroup and the list-rendering subtree). Both are
+// fetched in the same wave - Vite emits the static deps of a dynamic import as
+// preloads alongside it - so it costs bytes, not a round-trip. What it is NOT is
+// one chunk per page: see AuthenticatedApp.tsx for that trade.
 const importAuthenticatedApp = () => import('./AuthenticatedApp')
 const AuthenticatedApp = lazy(importAuthenticatedApp)
 const SharePage = lazy(() => import('./lists/SharePage'))
@@ -42,11 +46,19 @@ const SharePage = lazy(() => import('./lists/SharePage'))
 //
 // This is not a prefetch-on-idle (that would hand the bytes right back to the
 // visitor the split is for). A browser with no hint - a genuinely new visitor,
-// the one PERF-02 is about - never asks for this chunk. And the failure mode is
-// nothing worse than a wasted download: a stale hint on a signed-out browser
-// fetches a chunk that RequireSession then declines to render, and a missing
-// hint just falls back to the serial path.
-if (hasSeenSession()) void importAuthenticatedApp()
+// the one PERF-02 is about - never asks for this chunk. A browser that HAS the
+// hint but is signed out (someone who signed out, or whose session expired)
+// fetches a chunk RequireSession then declines to render: a wasted download, and
+// the deliberate price of the hint.
+//
+// The catch is not decoration. A warm-up whose promise rejects is an
+// unhandledrejection, and this one CAN reject - a tab open across a deploy asks
+// for a chunk hash that no longer exists. Swallow it here: if the chunk is
+// actually needed, React.lazy imports it again and ChunkErrorBoundary is what
+// handles the failure, in one place, with a reload.
+if (hasSeenSession()) {
+  void importAuthenticatedApp().catch(() => {})
+}
 
 // Query defaults ported from the old app: 30s staleTime keeps rapid
 // navigation off the network, a single retry smooths transient blips
@@ -144,10 +156,12 @@ export function AppRoutes() {
           still win: react-router ranks by specificity, not by source order, so
           a splat never shadows them.
 
-          fallback={null} matches what RequireSession already renders while the
-          session is pending, and keeps CLS at 0 - a spinner that appears and
-          vanishes would push layout around on the one metric this app
-          currently scores perfectly. */}
+          fallback={null} rather than a spinner: RequireSession ALREADY rendered
+          null here while the session was pending, so this paints exactly what
+          the previous code painted, and a spinner that appeared and vanished
+          would be new layout movement on a page currently scoring CLS 0. That
+          is a reason to prefer null, not a proof the score holds - CLS is
+          measured in a browser, and this was not. */}
       <Route
         path="/*"
         element={
@@ -164,11 +178,13 @@ export function AppRoutes() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AppRoutes />
-        <ToastViewport />
-      </BrowserRouter>
-    </QueryClientProvider>
+    <ChunkErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <AppRoutes />
+          <ToastViewport />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ChunkErrorBoundary>
   )
 }
