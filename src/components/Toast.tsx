@@ -59,7 +59,7 @@ function ToastCard({ toast }: { toast: ToastModel }) {
         type="button"
         onClick={() => dismissToast(toast.id)}
         aria-label="Dismiss notification"
-        className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+        className="shrink-0 rounded p-0.5 text-gray-500 hover:bg-gray-200 hover:text-gray-700"
       >
         <X size={14} />
       </button>

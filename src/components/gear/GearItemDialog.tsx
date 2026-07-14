@@ -177,7 +177,7 @@ export default function GearItemDialog({
             never disappears as the user scrolls the form. */}
         <div className="flex items-center justify-between px-6 pt-6 pb-3 shrink-0">
           <h2 className="text-base font-semibold text-gray-900">{heading}</h2>
-          <button type="button" onClick={onClose} aria-label="Close" className={`${ROW_CONTROL_TARGET} text-gray-400 hover:text-gray-600`}>
+          <button type="button" onClick={onClose} aria-label="Close" className={`${ROW_CONTROL_TARGET} text-gray-500 hover:text-gray-600`}>
             <X size={18} />
           </button>
         </div>
@@ -294,7 +294,7 @@ export default function GearItemDialog({
                       setCategoryError(null)
                     }}
                     aria-label="Cancel new category"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:text-gray-600"
                   >
                     <X size={16} />
                   </button>
@@ -312,7 +312,7 @@ export default function GearItemDialog({
                 Cost (USD)
               </FormLabel>
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
                   $
                 </span>
                 <input

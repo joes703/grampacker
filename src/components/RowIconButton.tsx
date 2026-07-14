@@ -36,14 +36,14 @@ type Props = {
 const BASE = 'shrink-0 w-7 h-6 inline-flex items-center justify-center rounded'
 
 const VARIANT_CLASSES: Record<Variant, string> = {
-  default: 'text-gray-400 hover:text-gray-700 hover:bg-gray-100',
-  danger: 'text-gray-400 hover:text-red-600 hover:bg-red-50',
+  default: 'text-gray-500 hover:text-gray-700 hover:bg-gray-100',
+  danger: 'text-gray-500 hover:text-red-600 hover:bg-red-50',
   success: 'text-green-600 hover:text-green-700 hover:bg-green-50',
   purpleToggle:
-    'text-gray-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-purple-600 hover:bg-gray-100',
+    'text-gray-500 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-purple-600 hover:bg-gray-100',
   orangeToggle:
-    'text-gray-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-orange-600 hover:bg-gray-100',
-  dragHandle: 'cursor-grab touch-none text-gray-400 hover:text-gray-600 active:cursor-grabbing',
+    'text-gray-500 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-orange-600 hover:bg-gray-100',
+  dragHandle: 'cursor-grab touch-none text-gray-500 hover:text-gray-600 active:cursor-grabbing',
 }
 
 // Active worn/consumable buttons render as icon-only color, matching the

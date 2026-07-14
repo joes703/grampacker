@@ -261,7 +261,7 @@ function CategorySectionInner(
       {!collapsed && (
         <div id={regionId}>
           {items.length === 0 ? (
-            <p className={`py-2 px-3 ${FLAT_TABLE_BODY_TEXT} text-gray-400 italic`}>No items</p>
+            <p className={`py-2 px-3 ${FLAT_TABLE_BODY_TEXT} text-gray-500 italic`}>No items</p>
           ) : (
             // Per-category SortableContext — items reorder within their own
             // category only. Each row's useSortable resolves to this list.

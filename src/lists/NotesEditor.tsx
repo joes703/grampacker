@@ -107,7 +107,7 @@ function NotesEdit({
         maxLength={MAX_DESC_LENGTH}
         placeholder="Add notes about this packing list. Markdown supported."
         onChange={(e) => setDraft(e.target.value)}
-        className={`flex-1 min-h-[8rem] w-full resize-none px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 ${INLINE_EDIT_FOCUS_RING}`}
+        className={`flex-1 min-h-[8rem] w-full resize-none px-3 py-2 text-sm text-gray-700 placeholder:text-gray-500 ${INLINE_EDIT_FOCUS_RING}`}
       />
       <div className="flex justify-end gap-2 border-t border-gray-100 px-3 py-2">
         <button
