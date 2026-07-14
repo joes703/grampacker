@@ -368,7 +368,7 @@ function CategoryGroup({
               {onAddItem ? (
                 <button
                   onClick={() => setAdding(true)}
-                  className="hidden lg:flex flex-1 min-w-0 items-center gap-1 text-left text-gray-400 hover:text-blue-600"
+                  className="hidden lg:flex flex-1 min-w-0 items-center gap-1 text-left text-gray-500 hover:text-blue-600"
                 >
                   <Plus size={12} /> Add new item
                 </button>

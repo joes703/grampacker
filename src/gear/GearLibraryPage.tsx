@@ -444,7 +444,7 @@ export default function GearLibraryPage() {
               min-w-0) so it isn't squeezed; locks to a comfortable
               fixed width at md+ so the right-side cluster has room. */}
           <div className="relative flex-1 min-w-0 md:flex-none md:w-56">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
             <input
               type="search"
               placeholder="Search…"
@@ -489,7 +489,7 @@ export default function GearLibraryPage() {
               </PrimaryButton>
               <button
                 onClick={() => { setNewCategoryName(''); setDialog(null) }}
-                className="rounded p-1.5 text-gray-400 hover:text-gray-600"
+                className="rounded p-1.5 text-gray-500 hover:text-gray-600"
                 aria-label="Cancel new category"
               >
                 <X size={16} />
@@ -564,7 +564,7 @@ export default function GearLibraryPage() {
 
       {/* Category list */}
       {isLoading || categoriesLoading ? (
-        <p className="text-sm text-gray-400">Loading…</p>
+        <p className="text-sm text-gray-500">Loading…</p>
       ) : (gearItemsError && allItems.length === 0) || (categoriesError && categories.length === 0) ? (
         <p className="text-sm text-red-600">Couldn&apos;t load gear library. Refresh the page and try again.</p>
       ) : allItems.length === 0 && categories.length === 0 ? (

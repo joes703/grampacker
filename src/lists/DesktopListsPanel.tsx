@@ -582,7 +582,7 @@ function ListPanelRow({
         aria-label="List options"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-400 hover:bg-gray-100 hover:text-gray-600`}
+        className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:bg-gray-100 hover:text-gray-600`}
       >
         <MoreVertical size={14} />
       </button>

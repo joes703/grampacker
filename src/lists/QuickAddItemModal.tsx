@@ -68,7 +68,7 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className={`${ROW_CONTROL_TARGET} text-gray-400 hover:text-gray-600`}
+            className={`${ROW_CONTROL_TARGET} text-gray-500 hover:text-gray-600`}
             aria-label="Close"
           >
             <X size={18} />

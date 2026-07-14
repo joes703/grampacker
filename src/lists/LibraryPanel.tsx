@@ -88,7 +88,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
           have the per-category section collapse / item tap to navigate. */}
       <div className="p-3 border-b border-gray-200">
         <div className="relative">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
           <input
             type="search"
             placeholder="Search gear…"
@@ -258,18 +258,27 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                     whitespace on the common case; non-active rows pick
                     up a subtle icon next to the name. */}
                 <GearStatusBadge status={item.status} compact className="shrink-0" />
+                {/* gray-600 for both muted states, where gray-500 is the muted
+                    token everywhere else in the app. The row sets
+                    focus:bg-gray-100, and gray-500 on gray-100 is 4.39:1 -
+                    under the 4.5:1 floor by a hair, and a hair still fails.
+                    gray-600 is 6.87:1 there. (The old gray-300 weight was
+                    1.41:1: a picker row is operable in every state, so nothing
+                    here is exempt as an inactive control.)
+
+                    The cost is that the weight no longer dims when an item is
+                    already in the list - gray-600 is the floor, so there is no
+                    room below it. The dimming now rides entirely on the name
+                    (gray-900 -> gray-600) and the status badge, which is enough
+                    to read the row as already-added. */}
                 <span
                   className={`flex-1 min-w-0 truncate ${FLAT_TABLE_BODY_TEXT} font-normal ${
-                    inList ? 'text-gray-400' : 'text-gray-900'
+                    inList ? 'text-gray-600' : 'text-gray-900'
                   }`}
                 >
                   {item.name}
                 </span>
-                <span
-                  className={`shrink-0 ${FLAT_TABLE_NUMERIC_TEXT} ${
-                    inList ? 'text-gray-300' : 'text-gray-500'
-                  }`}
-                >
+                <span className={`shrink-0 ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
                   <ItemWeightValue grams={item.weightGrams} unit={weightUnit} />
                 </span>
               </button>

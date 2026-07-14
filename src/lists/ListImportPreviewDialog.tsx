@@ -42,7 +42,7 @@ export default function ListImportPreviewDialog({ rows, saving, onConfirm, onClo
             </p>
           )}
         </div>
-        <button type="button" onClick={onClose} aria-label="Close" className={`${ROW_CONTROL_TARGET} ml-4 text-gray-400 hover:text-gray-600`}>
+        <button type="button" onClick={onClose} aria-label="Close" className={`${ROW_CONTROL_TARGET} ml-4 text-gray-500 hover:text-gray-600`}>
           <X size={18} />
         </button>
       </div>
