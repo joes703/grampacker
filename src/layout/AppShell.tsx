@@ -42,6 +42,16 @@ export default function AppShell() {
                 >
                   Gear
                 </Link>
+                <Link
+                  to="/food"
+                  className={`text-sm font-medium ${
+                    pathname === '/food' || pathname.startsWith('/food/')
+                      ? 'text-blue-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Food
+                </Link>
                 {/* Return-to-workspace shortcut: clicking Lists lands on
                     the last opened list path (so workflows resume where
                     the user left off), or /lists when no cached path

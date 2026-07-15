@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router'
 import RootRedirect from './layout/RootRedirect'
 import AppShell from './layout/AppShell'
 import GearLibraryPage from './gear/GearLibraryPage'
+import FoodLibraryPage from './food/FoodLibraryPage'
 import SettingsPage from './settings/SettingsPage'
 import ListsPage from './lists/ListsPage'
 import ListDetailPage from './lists/ListDetailPage'
@@ -35,6 +36,7 @@ export default function AuthenticatedApp() {
             empty state for a brand-new account). See RootRedirect. */}
         <Route index element={<RootRedirect />} />
         <Route path="gear" element={<GearLibraryPage />} />
+        <Route path="food" element={<FoodLibraryPage />} />
         <Route path="settings" element={<SettingsPage />} />
         {/* Pack mode is a URL segment of the same detail page (see
             ListDetailPage's mode derivation + legacy ?mode=pack redirect). */}

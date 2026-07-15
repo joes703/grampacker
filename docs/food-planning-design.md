@@ -350,9 +350,12 @@ So, concretely:
 - **`['list-items', listId]` does NOT need invalidating** by food mutations. Food is
   not a list item (section 4) and lives in its own projection cache.
 
-New keys this slice adds to `keys.ts`: `foods()`, `foodPlans()`, `foodPlan(planId)`,
+New keys this slice adds to `keys.ts`: `foodPlans()`, `foodPlan(planId)`,
 `foodProjection(listId)` + a `foodProjectionAll()` prefix (one plan can back many
-lists, so a plan edit invalidates by prefix rather than enumerating them).
+lists, so a plan edit invalidates by prefix rather than enumerating them). The food
+library key, `foodItems()` -> `['food-items']`, already shipped with slice 1 (it
+mirrors `gearItems()` -> `['gear-items']`; this doc's earlier `foods()` shorthand was
+never the built name).
 
 **Do not build a gear-style multi-cache optimistic fan-out** unless profiling proves
 coarse invalidation inadequate. The gear surfaces earned their fine-grained optimistic

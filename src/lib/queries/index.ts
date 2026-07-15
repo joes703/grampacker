@@ -3,6 +3,7 @@
 // import-path-free. Grows one module per slice.
 export * from './keys'
 export * from './categories'
+export * from './food'
 export * from './gear'
 export * from './lists'
 export * from './list-items'

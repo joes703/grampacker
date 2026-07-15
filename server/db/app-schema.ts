@@ -4,6 +4,7 @@ import {
   foreignKey,
   index,
   integer,
+  real,
   sqliteTable,
   text,
   unique,
@@ -214,6 +215,129 @@ export const listItems = sqliteTable(
     check(
       'list_items_worn_xor_consumable',
       sql`not (${t.isWorn} and ${t.isConsumable})`,
+    ),
+  ],
+)
+
+// The food library: account-wide food definitions, exactly analogous to
+// gear_items (account-wide, no list coupling). Ported column-for-column
+// from the old Postgres table (20260611120000_food_items.sql).
+//
+// Fractional columns are REAL, not integer-scaled. The old schema typed
+// them numeric(10,3)/(10,2)/(10,1); SQLite has no numeric type. The
+// projection contract (food-planning-design.md 5.6/12.10) is "carry full
+// precision through the math, round ONCE to integer grams at the boundary"
+// on IEEE-754 doubles - the operands are JS doubles the moment they parse
+// from JSON, so integer-scaled columns would not change the arithmetic,
+// only add a scale/unscale layer. (REAL-is-wrong applies to MONEY, which
+// must be exact to the cent; grams and kcal have no such requirement.)
+//
+// The NOT NULL / nullable asymmetry between serving_weight_grams and
+// servings_per_package is LOAD-BEARING and preserved verbatim: a non-null
+// positive serving weight is what makes `servings` and `weight` basis
+// entries always projectable, and a NULL servings_per_package is the ONLY
+// thing that can make a projection incomplete (design 5.4). Do not tidy it.
+//
+// The 1000-per-user cap trigger lives in migration 0007 (drizzle has no
+// trigger DSL) and is the SINGLE enforcement point; the repo maps its
+// RAISE(ABORT) message to a friendly 422. CAUTION: the drizzle snapshot
+// does not track the trigger - any future migration that rebuilds
+// food_items (SQLite ALTERs via table recreate) must recreate it by hand.
+export const foodItems = sqliteTable(
+  'food_items',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    brand: text('brand'),
+    servingDescription: text('serving_description'),
+    // NOT NULL, > 0: always projectable. See the asymmetry note above.
+    servingWeightGrams: real('serving_weight_grams').notNull(),
+    caloriesPerServing: real('calories_per_serving').notNull(),
+    // Nullable: a by-weight food has no package count. A NULL here is the
+    // incomplete-projection signal (design 5.4).
+    servingsPerPackage: real('servings_per_package'),
+    fatGrams: real('fat_grams'),
+    saturatedFatGrams: real('saturated_fat_grams'),
+    carbsGrams: real('carbs_grams'),
+    fiberGrams: real('fiber_grams'),
+    sugarGrams: real('sugar_grams'),
+    proteinGrams: real('protein_grams'),
+    sodiumMg: real('sodium_mg'),
+    potassiumMg: real('potassium_mg'),
+    notes: text('notes'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at').notNull(), // epoch ms
+    updatedAt: integer('updated_at').notNull(), // epoch ms, repo-maintained
+  },
+  (t) => [
+    // Composite-FK target for same-owner references from food_plan_entries
+    // (slice 2) and food_pack_state (slice 4). Adding this later would
+    // force a table rebuild, which silently drops the cap trigger - so it
+    // lands now even though nothing references it yet.
+    unique('food_items_id_user_unique').on(t.id, t.userId),
+    index('food_items_user_sort_idx').on(t.userId, t.sortOrder, t.name),
+    check('food_items_name_length', sql`length(${t.name}) between 1 and 256`),
+    check(
+      'food_items_brand_length',
+      sql`${t.brand} is null or length(${t.brand}) <= 256`,
+    ),
+    check(
+      'food_items_serving_description_length',
+      sql`${t.servingDescription} is null or length(${t.servingDescription}) <= 256`,
+    ),
+    check(
+      'food_items_notes_length',
+      sql`${t.notes} is null or length(${t.notes}) <= 2000`,
+    ),
+    // Bounds mirror the old numeric(10,x) maxima. serving_weight_grams and
+    // servings_per_package are numeric(10,3) and strictly > 0; the rest are
+    // >= 0. sodium/potassium are numeric(10,1); the others numeric(10,2).
+    check(
+      'food_items_serving_weight_range',
+      sql`${t.servingWeightGrams} > 0 and ${t.servingWeightGrams} <= 9999999.999`,
+    ),
+    check(
+      'food_items_calories_range',
+      sql`${t.caloriesPerServing} >= 0 and ${t.caloriesPerServing} <= 99999999.99`,
+    ),
+    check(
+      'food_items_servings_per_package_range',
+      sql`${t.servingsPerPackage} is null or (${t.servingsPerPackage} > 0 and ${t.servingsPerPackage} <= 9999999.999)`,
+    ),
+    check(
+      'food_items_fat_range',
+      sql`${t.fatGrams} is null or (${t.fatGrams} >= 0 and ${t.fatGrams} <= 99999999.99)`,
+    ),
+    check(
+      'food_items_saturated_fat_range',
+      sql`${t.saturatedFatGrams} is null or (${t.saturatedFatGrams} >= 0 and ${t.saturatedFatGrams} <= 99999999.99)`,
+    ),
+    check(
+      'food_items_carbs_range',
+      sql`${t.carbsGrams} is null or (${t.carbsGrams} >= 0 and ${t.carbsGrams} <= 99999999.99)`,
+    ),
+    check(
+      'food_items_fiber_range',
+      sql`${t.fiberGrams} is null or (${t.fiberGrams} >= 0 and ${t.fiberGrams} <= 99999999.99)`,
+    ),
+    check(
+      'food_items_sugar_range',
+      sql`${t.sugarGrams} is null or (${t.sugarGrams} >= 0 and ${t.sugarGrams} <= 99999999.99)`,
+    ),
+    check(
+      'food_items_protein_range',
+      sql`${t.proteinGrams} is null or (${t.proteinGrams} >= 0 and ${t.proteinGrams} <= 99999999.99)`,
+    ),
+    check(
+      'food_items_sodium_range',
+      sql`${t.sodiumMg} is null or (${t.sodiumMg} >= 0 and ${t.sodiumMg} <= 999999999.9)`,
+    ),
+    check(
+      'food_items_potassium_range',
+      sql`${t.potassiumMg} is null or (${t.potassiumMg} >= 0 and ${t.potassiumMg} <= 999999999.9)`,
     ),
   ],
 )

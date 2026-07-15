@@ -5,6 +5,7 @@
 // shapes inline. Grows one entry per transplanted slice.
 export const queryKeys = {
   categories: () => ['categories'] as const,
+  foodItems: () => ['food-items'] as const,
   gearItems: () => ['gear-items'] as const,
   lists: () => ['lists'] as const,
   listItems: (listId: string) => ['list-items', listId] as const,
