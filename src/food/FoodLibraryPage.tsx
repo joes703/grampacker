@@ -151,10 +151,12 @@ export default function FoodLibraryPage() {
           Show macros
         </label>
 
-        {/* Visible on every viewport: the mobile bar also has an Add slot,
-            but an in-content control keeps New food reachable without the bar
-            (and matches gear/lists). */}
-        <div className="ml-auto">
+        {/* Desktop-only (>=lg): below lg the bottom bar's Add slot owns the
+            New food action, so the header button would duplicate it. lg (not
+            md) is deliberate - the bar is lg:hidden, so lg:block hands off at
+            exactly the width the bar disappears, leaving one add affordance at
+            every width. */}
+        <div className="ml-auto hidden lg:block">
           <PrimaryButton onClick={() => setDialog({ type: 'create' })} size="sm">
             <span className="inline-flex items-center gap-1.5">
               <Plus size={14} />
