@@ -1,9 +1,16 @@
 <!-- Geometry only, no <text>: an SVG favicon renders in the browser's own
      process, so a font-family here would resolve against whatever the OS has
      and the mark would differ per platform. Paths render identically everywhere.
-     Blue is blue-600 (#2563eb), the same token the primary buttons use. -->
+     The mark is a backpack (grampacker plans what you carry). Blue is blue-600
+     (#2563eb), the same token the primary buttons use. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <rect width="32" height="32" rx="7" fill="#2563eb"/>
-  <path d="M16 6.5 27 25.5H5z" fill="#fff"/>
-  <path d="M11.9 13.5 14 16l2-2.4 2 2.4 2.1-2.5" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- top grab handle -->
+  <path d="M13.3 10 v-1.2 a2.7 2.7 0 0 1 5.4 0 V10" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- body -->
+  <rect x="8.5" y="9.5" width="15" height="16.5" rx="4.5" fill="#fff"/>
+  <!-- lid seam -->
+  <path d="M9.5 15.5 H22.5" fill="none" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+  <!-- front pocket -->
+  <rect x="12" y="18" width="8" height="6.2" rx="2" fill="none" stroke="#2563eb" stroke-width="1.6"/>
 </svg>
