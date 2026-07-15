@@ -154,7 +154,13 @@ export default function ListsPage() {
               saving={createListMut.isPending}
             />
           ) : (
-            <>
+            // Shown only at >=lg; below lg the MobileListsActionBar's Add
+            // slot (New list) and Options modal (Import CSV) own these, so
+            // the header buttons would duplicate the bottom bar at
+            // 768-1023px. The creating branch above stays md+ so a New list
+            // triggered from the bottom bar still shows its inline input on
+            // tablet.
+            <div className="hidden lg:flex items-center gap-2">
               {/* List-management actions stay neutral here. A bright blue
                   primary button overpowered the otherwise flat gray/white
                   list manager. */}
@@ -173,7 +179,7 @@ export default function ListsPage() {
               >
                 <Plus size={14} /> New list
               </button>
-            </>
+            </div>
           )}
         </div>
       </div>
