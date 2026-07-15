@@ -29,6 +29,7 @@ import ListImportPreviewDialog from './ListImportPreviewDialog'
 import Modal from '../components/Modal'
 import { useCurrentListActions } from './use-current-list-actions'
 import { useReorderable } from '../lib/use-reorderable'
+import { useIsMobile } from '../lib/use-breakpoint'
 import { makeDnDId } from '../lib/dnd-ids'
 import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
 import type { List } from '../lib/types'
@@ -92,6 +93,12 @@ export default function ListsPage() {
 
   const [dialog, setDialog] = useState<DialogState | null>(null)
 
+  // Below md the desktop header (and its inline NewListInline) is hidden, so
+  // the create input renders in a phone-only surface instead. isMobile
+  // (max-width 767px) matches the header's md boundary, and gating both sites
+  // on it keeps exactly one NewListInline mounted at a time.
+  const isMobile = useIsMobile()
+
   const {
     inputRef: importInputRef,
     onChange: handleImportFile,
@@ -141,7 +148,7 @@ export default function ListsPage() {
         </h1>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {dialog?.type === 'creating' ? (
+          {dialog?.type === 'creating' && !isMobile ? (
             <NewListInline
               draft={dialog.draft}
               onChange={(v) => setDialog({ type: 'creating', draft: v })}
@@ -183,6 +190,28 @@ export default function ListsPage() {
           )}
         </div>
       </div>
+
+      {/* Phone create surface. Below md the desktop header above is hidden, so
+          a "New list" tapped from the bottom bar's Add slot would set the
+          creating state with no visible input. Render NewListInline here on
+          phones. isMobile gates it (and !isMobile gates the header copy) so
+          only one input is ever mounted; md:hidden is belt-and-suspenders for
+          the resize edge. */}
+      {isMobile && dialog?.type === 'creating' && (
+        <div className="md:hidden">
+          <NewListInline
+            draft={dialog.draft}
+            onChange={(v) => setDialog({ type: 'creating', draft: v })}
+            onSubmit={() => {
+              const trimmed = dialog.draft.trim()
+              if (trimmed) submitCreateList(trimmed, { onSuccess: () => setDialog(null) })
+              else setDialog(null)
+            }}
+            onCancel={() => setDialog(null)}
+            saving={createListMut.isPending}
+          />
+        </div>
+      )}
 
       {/* Hidden input for Import CSV */}
       <input
