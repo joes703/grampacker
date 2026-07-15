@@ -520,11 +520,14 @@ export default function GearLibraryPage() {
             </button>
           )}
 
-          {/* Right cluster — New item + Options. Desktop-only; mobile
-              reaches the same actions from MobileGearActionBar's Add slot
-              and Options modal. Select is lifted out so it stays
-              discoverable on every viewport. */}
-          <div className="hidden md:flex items-center gap-2">
+          {/* Right cluster — New item + Options. Shown only at >=lg; below
+              lg the MobileGearActionBar's Add slot and Options modal own
+              these actions. lg (not md) matches the bar's lg:hidden, so the
+              two never coexist (md:flex left New item + bar Add both visible
+              at 768-1023px). Select is lifted out so it stays discoverable
+              on every viewport. Create is a page-level modal, unaffected by
+              this breakpoint. */}
+          <div className="hidden lg:flex items-center gap-2">
             <button
               onClick={() => setDialog({ type: 'create-item' })}
               className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
