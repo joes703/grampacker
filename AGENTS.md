@@ -184,8 +184,16 @@ time. Never delete or recreate the D1 database.
   `lists`, parent of `list_items`), back the children up into a scratch table
   before the DROP and restore them after - and recreate the parent's UNIQUE
   indexes BEFORE the restore, or the child FK fails "foreign key mismatch". Also
-  recreate any hand-added triggers (previous bullet). ALWAYS test a rebuild
-  migration against a LOCAL D1 seeded with child rows, not just a fresh db.
+  recreate any hand-added triggers (previous bullet). This is ENFORCED, not left
+  to discipline: `npm run test:migrations` (CI, and worth running locally) seeds
+  a populated D1 at `origin/main`'s schema, applies the branch's new migrations
+  the way deploy.yml does, and fails if any row was lost or changed or if a
+  trigger/index disappeared. It rejects any table it has no fixture for, so a NEW
+  TABLE means adding a fixture row to `scripts/check-migration-safety.mjs` - that
+  is the check refusing to go quiet, not an obstacle to route around. It proves
+  only that existing data SURVIVED: whether a backfill wrote the RIGHT value is
+  yours to test. It also fails closed if you edit an existing migration file -
+  production applied it by name and will never re-run it, so always add a new one.
 
 ## Git and supply chain
 
