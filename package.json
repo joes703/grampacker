@@ -11,6 +11,7 @@
     "test": "npm run test:unit && npm run test:api",
     "test:unit": "vitest run",
     "test:api": "vitest run --config vitest.workers.config.ts",
+    "test:migrations": "node scripts/check-migration-safety.mjs",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",
     "cf-typegen": "wrangler types"

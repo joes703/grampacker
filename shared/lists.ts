@@ -30,6 +30,10 @@ export const listResponseSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   slug: z.string(), // server-minted, 6-char base62; share URLs later
+  // The attached food plan (a live reference), or null. The client resolves
+  // the plan's NAME from its own ['food-plans'] cache - the list row carries
+  // only the pointer, not a denormalized name that could drift.
+  foodPlanId: z.string().nullable(),
   isShared: z.boolean(),
   groupWorn: z.boolean(),
   readyChecksEnabled: z.boolean(),
@@ -63,6 +67,14 @@ export const updateListRequestSchema = z
     message: 'empty patch',
   })
 export type UpdateListRequest = z.infer<typeof updateListRequestSchema>
+
+// Attach a food plan to a list (PUT /api/lists/:id/food-plan). Detach is a
+// bodyless DELETE, so it needs no schema. The plan id is validated for
+// ownership server-side; a non-owned/unknown id is a 400 invalid_plan.
+export const attachFoodPlanRequestSchema = z
+  .object({ foodPlanId: idSchema })
+  .strict()
+export type AttachFoodPlanRequest = z.infer<typeof attachFoodPlanRequestSchema>
 
 export const createListFromSelectionRequestSchema = z
   .object({

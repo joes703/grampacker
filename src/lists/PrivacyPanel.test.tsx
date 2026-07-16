@@ -29,6 +29,7 @@ const list: List = {
   name: 'Trip',
   description: null,
   slug: 'abc123',
+  foodPlanId: null,
   isShared: false,
   groupWorn: false,
   readyChecksEnabled: false,

@@ -171,6 +171,29 @@ time. Never delete or recreate the D1 database.
   `wrangler types` Env definitions are all generated. One exception worth
   knowing: the `gear_items` 500-row cap is a hand-added SQL trigger that is NOT
   in the Drizzle snapshot, so any future rebuild of that table must recreate it.
+- **A SQLite table rebuild on D1 will silently delete cascading child rows -
+  `PRAGMA foreign_keys=OFF` does NOT save you.** drizzle-kit emits table rebuilds
+  (`CREATE __new_x; copy; DROP x; RENAME`) wrapped in `PRAGMA foreign_keys=OFF`.
+  On D1 that pragma is a NO-OP: migrations run with FK enforcement ON and the
+  pragma cannot be toggled inside the implicit transaction. So `DROP TABLE x`
+  performs an implicit DELETE that fires every `ON DELETE CASCADE` child - wiping
+  that data in production (verified against D1; the API tests miss it because
+  migrations run on an EMPTY db before any test rows exist). `defer_foreign_keys`
+  does not help either - it defers the CHECK, not the cascade ACTION. When you
+  rebuild a table that has cascading children (see migration 0009 rebuilding
+  `lists`, parent of `list_items`), back the children up into a scratch table
+  before the DROP and restore them after - and recreate the parent's UNIQUE
+  indexes BEFORE the restore, or the child FK fails "foreign key mismatch". Also
+  recreate any hand-added triggers (previous bullet). This is ENFORCED, not left
+  to discipline: `npm run test:migrations` (CI, and worth running locally) seeds
+  a populated D1 at `origin/main`'s schema, applies the branch's new migrations
+  the way deploy.yml does, and fails if any row was lost or changed or if a
+  trigger/index disappeared. It rejects any table it has no fixture for, so a NEW
+  TABLE means adding a fixture row to `scripts/check-migration-safety.mjs` - that
+  is the check refusing to go quiet, not an obstacle to route around. It proves
+  only that existing data SURVIVED: whether a backfill wrote the RIGHT value is
+  yours to test. It also fails closed if you edit an existing migration file -
+  production applied it by name and will never re-run it, so always add a new one.
 
 ## Git and supply chain
 

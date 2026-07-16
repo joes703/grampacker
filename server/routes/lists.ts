@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { gearStatusSchema } from '../../shared/gear'
 import {
   addListItemRequestSchema,
+  attachFoodPlanRequestSchema,
   createListFromSelectionRequestSchema,
   createListRequestSchema,
   importListRequestSchema,
@@ -32,7 +33,13 @@ import type { ListRow } from '../repos/lists'
 //                                                categories + gear + items
 //                                                atomically, zero writes on
 //                                                any failure; 422 at caps
-//   POST   /api/lists/:id/duplicate            - session - own list or 404
+//   POST   /api/lists/:id/duplicate            - session - own list or 404;
+//                                                carries food_plan_id over
+//   PUT    /api/lists/:id/food-plan            - session - own list or 404;
+//                                                attaches an OWNED plan (400 if
+//                                                the plan is not the caller's)
+//   DELETE /api/lists/:id/food-plan            - session - own list or 404;
+//                                                detaches (nulls food_plan_id)
 //   PATCH  /api/lists/:id                      - session - own list or 404;
 //                                                isShared patchable (the
 //                                                share/unshare toggle)
@@ -64,6 +71,7 @@ function toListResponse(row: ListRow): ListResponse {
     name: row.name,
     description: row.description,
     slug: row.slug,
+    foodPlanId: row.foodPlanId,
     isShared: row.isShared,
     groupWorn: row.groupWorn,
     readyChecksEnabled: row.readyChecksEnabled,
@@ -214,6 +222,32 @@ listRoutes.post('/:id/duplicate', async (c) => {
     return c.json({ error: 'List limit reached (100 per user)' }, 422)
   }
   return c.json(toListResponse(result.row), 201)
+})
+
+// Attach a food plan (a live reference on lists.food_plan_id). Returns the
+// updated list so the client refreshes its ['lists'] cache; the plan's name is
+// resolved client-side from ['food-plans']. invalid_plan (a non-owned/unknown
+// plan) is a 400, distinct from the 404 for a non-owned list.
+listRoutes.put('/:id/food-plan', async (c) => {
+  const raw = await c.req.json().catch(() => null)
+  const parsed = attachFoodPlanRequestSchema.safeParse(raw)
+  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const result = await c
+    .get('repos')
+    .lists.attachFoodPlan(c.req.param('id'), parsed.data.foodPlanId)
+  if (!result.ok) {
+    if (result.reason === 'invalid_plan') {
+      return c.json({ error: 'Invalid food plan' }, 400)
+    }
+    return c.json({ error: 'Not found' }, 404)
+  }
+  return c.json(toListResponse(result.row))
+})
+
+listRoutes.delete('/:id/food-plan', async (c) => {
+  const result = await c.get('repos').lists.detachFoodPlan(c.req.param('id'))
+  if (!result.ok) return c.json({ error: 'Not found' }, 404)
+  return c.json(toListResponse(result.row))
 })
 
 listRoutes.patch('/:id', async (c) => {

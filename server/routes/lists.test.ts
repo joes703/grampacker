@@ -18,6 +18,7 @@ type ListBody = {
   name: string
   description: string | null
   slug: string
+  foodPlanId: string | null
   isShared: boolean
   groupWorn: boolean
   readyChecksEnabled: boolean
@@ -88,6 +89,8 @@ describe('/api/lists authorization matrix', () => {
       ['POST', '/api/lists/from-selection', { name: 'X', gearItemIds: ['x'] }],
       ['POST', '/api/lists/import', { name: 'X', categories: [], gear: [], items: [{ gear: { kind: 'existing', id: 'x' }, sortOrder: 0 }] }],
       ['POST', '/api/lists/some-id/duplicate', undefined],
+      ['PUT', '/api/lists/some-id/food-plan', { foodPlanId: 'x' }],
+      ['DELETE', '/api/lists/some-id/food-plan', undefined],
       ['PATCH', '/api/lists/some-id', { name: 'X' }],
       ['DELETE', '/api/lists/some-id', undefined],
       ['GET', '/api/lists/some-id/items', undefined],
@@ -1031,5 +1034,178 @@ describe('caps and slug integrity', () => {
         `insert into lists (id, user_id, name, slug, is_shared, group_worn, ready_checks_enabled, is_draft, sort_order, created_at, updated_at) values ('slug-2', '${userId}', 'Two', 'AAAAAA', 0, 0, 0, 1, 1, 0, 0)`,
       ).run(),
     ).rejects.toThrow(/UNIQUE constraint failed: lists.slug/)
+  })
+})
+
+// The list <-> food-plan link (food-planning-design.md slice 3). A list points
+// AT a standalone plan via lists.food_plan_id - a live reference, not a copy.
+// Pack-state clearing on relink is slice 4 and not exercised here.
+describe('food plan link', () => {
+  async function createPlan(cookie: string, name: string): Promise<string> {
+    const res = await apiRequest(cookie, 'POST', '/api/food-plans', { name })
+    expect(res.status).toBe(201)
+    return ((await res.json()) as { id: string }).id
+  }
+
+  async function listById(cookie: string, id: string): Promise<ListBody> {
+    const row = (await getLists(cookie)).find((r) => r.id === id)
+    if (!row) throw new Error('list not found')
+    return row
+  }
+
+  it('attaches and detaches, reflected on the ["lists"] source', async () => {
+    const { cookie } = await signUpVerifiedUser('link-attach@example.com', 'L')
+    const list = await createList(cookie, 'Trip')
+    const planId = await createPlan(cookie, 'Standard 2-night')
+    expect(list.foodPlanId).toBeNull()
+
+    const attach = await apiRequest(
+      cookie,
+      'PUT',
+      `/api/lists/${list.id}/food-plan`,
+      { foodPlanId: planId },
+    )
+    expect(attach.status).toBe(200)
+    expect(((await attach.json()) as ListBody).foodPlanId).toBe(planId)
+    expect((await listById(cookie, list.id)).foodPlanId).toBe(planId)
+
+    const detach = await apiRequest(
+      cookie,
+      'DELETE',
+      `/api/lists/${list.id}/food-plan`,
+    )
+    expect(detach.status).toBe(200)
+    expect(((await detach.json()) as ListBody).foodPlanId).toBeNull()
+    expect((await listById(cookie, list.id)).foodPlanId).toBeNull()
+  })
+
+  it('lets one plan back many lists, and detaches them all on plan delete', async () => {
+    const { cookie } = await signUpVerifiedUser('link-many@example.com', 'M')
+    const planId = await createPlan(cookie, 'Weekend')
+    const a = await createList(cookie, 'Trip A')
+    const b = await createList(cookie, 'Trip B')
+    for (const l of [a, b]) {
+      const r = await apiRequest(cookie, 'PUT', `/api/lists/${l.id}/food-plan`, {
+        foodPlanId: planId,
+      })
+      expect(r.status).toBe(200)
+    }
+
+    // Deleting the plan runs the atomic detach-then-delete batch: both lists
+    // survive, detached; the plan is gone.
+    const del = await apiRequest(cookie, 'DELETE', `/api/food-plans/${planId}`)
+    expect(del.status).toBe(204)
+    const rows = await getLists(cookie)
+    expect(rows).toHaveLength(2)
+    expect(rows.find((r) => r.id === a.id)?.foodPlanId).toBeNull()
+    expect(rows.find((r) => r.id === b.id)?.foodPlanId).toBeNull()
+    const gone = await apiRequest(cookie, 'GET', `/api/food-plans/${planId}`)
+    expect(gone.status).toBe(404)
+  })
+
+  it('carries the plan pointer over when a list is duplicated', async () => {
+    const { cookie } = await signUpVerifiedUser('link-dup@example.com', 'D')
+    const list = await createList(cookie, 'Original')
+    const planId = await createPlan(cookie, 'Plan')
+    await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/food-plan`, {
+      foodPlanId: planId,
+    })
+
+    const dupRes = await apiRequest(
+      cookie,
+      'POST',
+      `/api/lists/${list.id}/duplicate`,
+    )
+    expect(dupRes.status).toBe(201)
+    const dup = (await dupRes.json()) as ListBody
+    expect(dup.id).not.toBe(list.id)
+    expect(dup.foodPlanId).toBe(planId) // same plan - a pointer, not a deep copy
+  })
+
+  it('rejects a cross-owner link and foreign-list access', async () => {
+    const a = await signUpVerifiedUser('link-a@example.com', 'A')
+    const b = await signUpVerifiedUser('link-b@example.com', 'B')
+    const aList = await createList(a.cookie, "A's list")
+    const bPlan = await createPlan(b.cookie, "B's plan")
+
+    // A attaches B's plan -> 400 invalid_plan, and A's list stays unlinked.
+    const cross = await apiRequest(
+      a.cookie,
+      'PUT',
+      `/api/lists/${aList.id}/food-plan`,
+      { foodPlanId: bPlan },
+    )
+    expect(cross.status).toBe(400)
+    expect((await listById(a.cookie, aList.id)).foodPlanId).toBeNull()
+
+    // B cannot attach to / detach A's list - it does not exist for B (404).
+    // B supplies a plan B OWNS, so the plan precheck passes and it is the
+    // list-ownership check that produces the 404 (not invalid_plan).
+    const foreignAttach = await apiRequest(
+      b.cookie,
+      'PUT',
+      `/api/lists/${aList.id}/food-plan`,
+      { foodPlanId: bPlan },
+    )
+    expect(foreignAttach.status).toBe(404)
+    const foreignDetach = await apiRequest(
+      b.cookie,
+      'DELETE',
+      `/api/lists/${aList.id}/food-plan`,
+    )
+    expect(foreignDetach.status).toBe(404)
+  })
+
+  it('makes the NO ACTION FK a hard backstop against a skipped detach', async () => {
+    const { cookie } = await signUpVerifiedUser('link-backstop@example.com', 'B')
+    const list = await createList(cookie, 'Trip')
+    const planId = await createPlan(cookie, 'Plan')
+    await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/food-plan`, {
+      foodPlanId: planId,
+    })
+
+    // Bypass the repo's detach-then-delete batch and delete the plan directly
+    // while a list still references it. The composite FK must reject it - the
+    // proof that a forgotten detach fails loud rather than orphaning the list.
+    await expect(
+      env.DB.prepare('delete from food_plans where id = ?').bind(planId).run(),
+    ).rejects.toThrow(/FOREIGN KEY constraint failed/)
+  })
+
+  it('cascades cleanly when the user is deleted with a list attached', async () => {
+    const { cookie } = await signUpVerifiedUser('link-cascade@example.com', 'C')
+    const userId = await userIdFor(cookie)
+    const list = await createList(cookie, 'Trip')
+    const planId = await createPlan(cookie, 'Plan')
+    await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/food-plan`, {
+      foodPlanId: planId,
+    })
+
+    // Both lists and food_plans cascade from user; lists.food_plan_id is NO
+    // ACTION, whose check is deferred to statement end - by then the
+    // referencing list is also gone, so the delete does NOT trip the FK.
+    // (Account deletion is already shipped, so this must not regress.)
+    await env.DB.prepare('delete from user where id = ?').bind(userId).run()
+    const listCount = (await env.DB.prepare(
+      'select count(*) as count from lists where user_id = ?',
+    )
+      .bind(userId)
+      .first()) as { count: number }
+    const planCount = (await env.DB.prepare(
+      'select count(*) as count from food_plans where user_id = ?',
+    )
+      .bind(userId)
+      .first()) as { count: number }
+    expect(listCount.count).toBe(0)
+    expect(planCount.count).toBe(0)
+  })
+
+  it('kept the lists cap trigger after the 0009 table rebuild', async () => {
+    // Adding food_plan_id + its composite FK forced a SQLite table rebuild,
+    // which drops triggers; migration 0009 recreates lists_user_cap by hand.
+    const row = (await env.DB.prepare(
+      "select name from sqlite_master where type = 'trigger' and name = 'lists_user_cap'",
+    ).first()) as { name: string } | null
+    expect(row?.name).toBe('lists_user_cap')
   })
 })

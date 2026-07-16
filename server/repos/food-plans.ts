@@ -6,6 +6,7 @@ import {
   foodPlanDays,
   foodPlanEntries,
   foodPlans,
+  lists,
   meals,
 } from '../db/schema'
 import {
@@ -324,14 +325,30 @@ export function createFoodPlansRepo(db: Db, userId: string) {
       return okDoc(planId)
     },
 
-    // The whole graph cascades from the plan row. The atomic detach-then-delete
-    // batch (design 2.3.1) is a slice-3 concern - no list points at a plan yet.
+    // Delete a plan via the atomic detach-then-delete batch (design 2.3.1). The
+    // plan graph (meals / days / day_meals / entries) cascades from the plan
+    // row, but lists.food_plan_id is a NO ACTION reference - SQLite has no
+    // column-list SET NULL, so it cannot null just food_plan_id (it would null
+    // user_id too, a NOT NULL violation). Any attached list must therefore be
+    // detached FIRST; skip that and the plan delete fails the FK, which is the
+    // intended hard backstop, not a bug.
+    //
+    // Both statements run in one db.batch - a D1 transaction - so there is no
+    // detach-commits-but-delete-fails partial outcome, and no other request
+    // interleaves. (Slice 4 prepends a third statement BEFORE the detach:
+    // clear food_pack_state for the affected lists, because once food_plan_id
+    // is nulled those lists can no longer be found - design 2.3.1 step order.)
     async remove(planId: string): Promise<boolean> {
-      const rows = await db
+      const detach = db
+        .update(lists)
+        .set({ foodPlanId: null, updatedAt: Date.now() })
+        .where(and(eq(lists.foodPlanId, planId), eq(lists.userId, userId)))
+      const del = db
         .delete(foodPlans)
         .where(and(eq(foodPlans.id, planId), eq(foodPlans.userId, userId)))
         .returning({ id: foodPlans.id })
-      return rows.length > 0
+      const [, deleted] = await db.batch([detach, del])
+      return deleted.length > 0
     },
 
     // Append a day and schedule every existing meal on it (a full grid row), so

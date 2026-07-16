@@ -130,7 +130,15 @@ export const gearItems = sqliteTable(
 // stays false until the share slice ships its routes. is_draft defaults
 // true (the old app's final behavior): a label only, never a lock.
 // The 100-per-user cap trigger lives in migration 0004; same caveats as
-// the gear cap trigger.
+// the gear cap trigger - and food_plan_id (slice 3) forces exactly such a
+// rebuild, so migration 0009 recreates lists_user_cap by hand.
+//
+// food_plan_id is a LIVE REFERENCE to a standalone food plan
+// (food-planning-design.md 2.1): nullable (most lists have no plan), and one
+// plan may back many lists. The FK is composite same-owner and NO ACTION, not
+// SET NULL - SQLite has no column-list SET NULL (it would null user_id too, a
+// NOT NULL violation), so deleting a plan is a repo-owned detach-then-delete
+// batch (2.3), and the FK is the hard backstop that fails a skipped detach loud.
 export const lists = sqliteTable(
   'lists',
   {
@@ -141,6 +149,7 @@ export const lists = sqliteTable(
     name: text('name').notNull(),
     description: text('description'),
     slug: text('slug').notNull(),
+    foodPlanId: text('food_plan_id'), // nullable; -> food_plans (see FK below)
     isShared: integer('is_shared', { mode: 'boolean' }).notNull().default(false),
     groupWorn: integer('group_worn', { mode: 'boolean' }).notNull().default(false),
     readyChecksEnabled: integer('ready_checks_enabled', { mode: 'boolean' })
@@ -155,6 +164,16 @@ export const lists = sqliteTable(
     // Composite-FK target for same-owner references from list_items.
     unique('lists_id_user_unique').on(t.id, t.userId),
     unique('lists_slug_unique').on(t.slug),
+    // Live-reference to a food plan, composite same-owner (design 2.1). No
+    // .onDelete() => NO ACTION: the plan-delete batch (2.3) detaches first, and
+    // this FK is the backstop if it ever doesn't. foodPlans is declared LATER in
+    // this file (it references nothing here, so no cycle); the callback form of
+    // foreignKey defers resolution past that forward reference.
+    foreignKey(() => ({
+      name: 'lists_food_plan_same_owner_fk',
+      columns: [t.foodPlanId, t.userId],
+      foreignColumns: [foodPlans.id, foodPlans.userId],
+    })),
     index('lists_user_sort_idx').on(t.userId, t.sortOrder, t.name),
     check('lists_name_length', sql`length(${t.name}) between 1 and 256`),
     check(

@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db'
-import { categories, gearItems, listItems, lists } from '../db/schema'
-import { isTriggerAbort, isUniqueViolation } from './db-errors'
+import { categories, foodPlans, gearItems, listItems, lists } from '../db/schema'
+import { isForeignKeyViolation, isTriggerAbort, isUniqueViolation } from './db-errors'
 import { isCapError as isGearCapError } from './gear-items'
 import { isListItemCapError } from './list-items'
 
@@ -10,6 +10,7 @@ const cols = {
   name: lists.name,
   description: lists.description,
   slug: lists.slug,
+  foodPlanId: lists.foodPlanId,
   isShared: lists.isShared,
   groupWorn: lists.groupWorn,
   readyChecksEnabled: lists.readyChecksEnabled,
@@ -24,6 +25,7 @@ export type ListRow = {
   name: string
   description: string | null
   slug: string
+  foodPlanId: string | null
   isShared: boolean
   groupWorn: boolean
   readyChecksEnabled: boolean
@@ -46,6 +48,13 @@ export type UpdateListPatch = {
 export type ListWriteResult =
   | { ok: true; row: ListRow }
   | { ok: false; reason: 'cap_exceeded' | 'not_found' }
+
+// Attaching a food plan can fail two ways: the list is not the caller's
+// (not_found), or the referenced plan is not the caller's / no longer exists
+// (invalid_plan -> 400). Detaching only ever fails not_found.
+export type AttachFoodPlanResult =
+  | { ok: true; row: ListRow }
+  | { ok: false; reason: 'not_found' | 'invalid_plan' }
 
 export type FromSelectionResult =
   | { ok: true; row: ListRow }
@@ -186,6 +195,53 @@ export function createListsRepo(db: Db, userId: string) {
       return row ? { ok: true, row } : { ok: false, reason: 'not_found' }
     },
 
+    // Attach a food plan to a list - a LIVE REFERENCE (design 2.1/3), not a
+    // copy: one plan may back many lists, and editing the plan re-projects
+    // every list on next read. Setting food_plan_id is the whole operation.
+    // The plan must be the caller's; we precheck for a friendly invalid_plan
+    // (400) rather than leaning on FK error text, with the composite
+    // (food_plan_id, user_id) FK as the structural backstop against a plan
+    // deleted between the precheck and the write.
+    //
+    // Slice 4 additionally clears this list's food_pack_state in the same batch
+    // (design rule 1, "clear on relink") - there is no pack state yet.
+    async attachFoodPlan(
+      id: string,
+      foodPlanId: string,
+    ): Promise<AttachFoodPlanResult> {
+      const [plan] = await db
+        .select({ id: foodPlans.id })
+        .from(foodPlans)
+        .where(and(eq(foodPlans.id, foodPlanId), eq(foodPlans.userId, userId)))
+        .limit(1)
+      if (!plan) return { ok: false, reason: 'invalid_plan' }
+      try {
+        const [row] = await db
+          .update(lists)
+          .set({ foodPlanId, updatedAt: Date.now() })
+          .where(and(eq(lists.id, id), eq(lists.userId, userId)))
+          .returning(cols)
+        return row ? { ok: true, row } : { ok: false, reason: 'not_found' }
+      } catch (err) {
+        // The plan was deleted between the precheck and the update.
+        if (isForeignKeyViolation(err)) {
+          return { ok: false, reason: 'invalid_plan' }
+        }
+        throw err
+      }
+    },
+
+    // Detach: null the pointer. The trip is untouched; only the food link goes.
+    // Slice 4 also clears this list's food_pack_state here (design rule 1).
+    async detachFoodPlan(id: string): Promise<ListWriteResult> {
+      const [row] = await db
+        .update(lists)
+        .set({ foodPlanId: null, updatedAt: Date.now() })
+        .where(and(eq(lists.id, id), eq(lists.userId, userId)))
+        .returning(cols)
+      return row ? { ok: true, row } : { ok: false, reason: 'not_found' }
+    },
+
     // The composite FK cascades membership rows; gear itself is untouched.
     async remove(id: string): Promise<boolean> {
       const rows = await db
@@ -215,7 +271,10 @@ export function createListsRepo(db: Db, userId: string) {
     // Deep copy: name gets "(copy)", every membership row is copied
     // (including packed/ready state - old duplicate_list behavior), and
     // isShared/isDraft deliberately reset to false/true so a copy is
-    // never silently public.
+    // never silently public. food_plan_id is carried over (design 3.1): it is
+    // a POINTER, so the copy references the SAME plan - "duplicate this trip"
+    // reuses the same food. Food pack state is NOT copied (it is not keyed by
+    // plan, and a duplicate is a different, fully-unpacked trip).
     async duplicate(id: string): Promise<ListWriteResult> {
       const [source] = await db
         .select(cols)
@@ -247,6 +306,7 @@ export function createListsRepo(db: Db, userId: string) {
             name: copyName(source.name),
             description: source.description,
             slug: generateSlug(),
+            foodPlanId: source.foodPlanId,
             isShared: false,
             groupWorn: source.groupWorn,
             readyChecksEnabled: source.readyChecksEnabled,
