@@ -67,6 +67,7 @@ vi.mock('./use-food-plan-editor-actions', () => ({
       addEntry: make('addEntry'),
       updateEntry: make('updateEntry'),
       removeEntry: make('removeEntry'),
+      duplicate: make('duplicate'),
     }
   },
 }))
@@ -103,7 +104,7 @@ function food(id: string, over: Partial<FoodItem> = {}): FoodItem {
   }
 }
 
-function planDoc(): FoodPlanDocument {
+function planDoc(over: Partial<FoodPlanDocument> = {}): FoodPlanDocument {
   return {
     id: 'plan1',
     name: 'JMT resupply',
@@ -123,14 +124,16 @@ function planDoc(): FoodPlanDocument {
       // 2 servings of a 50 g food = 100 g in Day 1 breakfast.
       { id: 'e1', dayMealId: 'c-bfast', isExtra: false, foodItemId: 'f1', basis: 'servings', amount: 2, sortOrder: 0 },
     ],
+    usedByLists: [],
+    ...over,
   }
 }
 
-function renderEditor() {
+function renderEditor(initialEntry = '/food/plans/plan1') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/food/plans/plan1']}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <MobilePrimaryNavProvider>{children}</MobilePrimaryNavProvider>
       </MemoryRouter>
     </QueryClientProvider>
@@ -222,5 +225,57 @@ describe('FoodPlanEditor', () => {
     expect(
       await screen.findByText(/this plan doesn't exist/i),
     ).toBeTruthy()
+  })
+
+  // design 12.9: a live reference must not be a surprise. The warning names
+  // every list; the fork appears only when the arrival trip (?from) is one of
+  // them.
+  describe('shared-plan warning', () => {
+    const usedByTwo = [
+      { id: 'list-a', name: 'JMT 2026' },
+      { id: 'list-b', name: 'Winter shakedown' },
+    ]
+
+    it('stays quiet for a plan backing zero or one list', async () => {
+      h.fetchFoodPlan.mockResolvedValue(
+        planDoc({ usedByLists: [{ id: 'list-a', name: 'JMT 2026' }] }),
+      )
+      h.fetchFoodItems.mockResolvedValue([food('f1')])
+      renderEditor()
+
+      await screen.findByText('JMT resupply')
+      expect(screen.queryByText(/used by/i)).toBeNull()
+    })
+
+    it('names every list when the plan backs more than one', async () => {
+      h.fetchFoodPlan.mockResolvedValue(planDoc({ usedByLists: usedByTwo }))
+      h.fetchFoodItems.mockResolvedValue([food('f1')])
+      renderEditor()
+
+      expect(await screen.findByText(/used by 2 lists/i)).toBeTruthy()
+      expect(screen.getByRole('link', { name: 'JMT 2026' })).toBeTruthy()
+      expect(screen.getByRole('link', { name: 'Winter shakedown' })).toBeTruthy()
+      // No ?from: the editor cannot know which trip to fork for.
+      expect(screen.queryByRole('button', { name: /duplicate for this trip/i })).toBeNull()
+    })
+
+    it('offers the fork when the arrival list is one of the users', async () => {
+      h.fetchFoodPlan.mockResolvedValue(planDoc({ usedByLists: usedByTwo }))
+      h.fetchFoodItems.mockResolvedValue([food('f1')])
+      renderEditor('/food/plans/plan1?from=list-a')
+
+      expect(
+        await screen.findByRole('button', { name: /duplicate for this trip/i }),
+      ).toBeTruthy()
+    })
+
+    it('hides the fork when ?from is not actually a user of this plan', async () => {
+      h.fetchFoodPlan.mockResolvedValue(planDoc({ usedByLists: usedByTwo }))
+      h.fetchFoodItems.mockResolvedValue([food('f1')])
+      renderEditor('/food/plans/plan1?from=list-elsewhere')
+
+      expect(await screen.findByText(/used by 2 lists/i)).toBeTruthy()
+      expect(screen.queryByRole('button', { name: /duplicate for this trip/i })).toBeNull()
+    })
   })
 })

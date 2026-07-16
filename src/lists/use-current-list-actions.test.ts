@@ -71,6 +71,7 @@ vi.mock('../lib/queries', async () => {
       lists: () => ['lists'],
       listItems: (id: string) => ['list-items', id],
       categories: () => ['categories'],
+      foodPlanAll: () => ['food-plan'],
     },
     updateList: q.updateList,
     duplicateList: q.duplicateList,

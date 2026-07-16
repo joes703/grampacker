@@ -119,8 +119,9 @@ export function generateSlug(): string {
 
 // "(copy)" suffix must not push the name past the 256 CHECK; the old
 // Postgres RPC had the same latent overflow, fixed here rather than
-// ported.
-function copyName(name: string): string {
+// ported. Shared with the food-plans repo's duplicate() - both tables
+// carry the same 256 CHECK, and two truncation rules would drift.
+export function copyName(name: string): string {
   return `${name.slice(0, 249)} (copy)`
 }
 
