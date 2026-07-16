@@ -30,6 +30,12 @@ const noNulMsg = { message: 'must not contain a null byte' }
 const planNameSchema = z.string().trim().min(1).max(256).refine(noNulByte, noNulMsg)
 const mealNameSchema = z.string().trim().min(1).max(128).refine(noNulByte, noNulMsg)
 
+// Opaque row ids (UUIDs are 36 chars; DB-minted ones are shorter). Bounding the
+// length keeps a junk id a clean 400 instead of a wasted ownership query - and
+// backstops against a future body-limit change letting an oversized bound value
+// reach D1's 2 MB string ceiling as a 500. 100 is generous headroom.
+const idSchema = z.string().min(1).max(100)
+
 // The projection formula picker (design 5.1). Not a DB enum - a text column with
 // a CHECK - but the wire contract is exactly these three.
 export const foodPlanBasisSchema = z.enum(['servings', 'packages', 'weight'])
@@ -145,8 +151,8 @@ export type AddMealRequest = z.infer<typeof addMealRequestSchema>
 // checks ownership and the composite FKs pin them to the plan structurally.
 export const addDayMealRequestSchema = z
   .object({
-    dayId: z.string().min(1),
-    mealId: z.string().min(1),
+    dayId: idSchema,
+    mealId: idSchema,
   })
   .strict()
 export type AddDayMealRequest = z.infer<typeof addDayMealRequestSchema>
@@ -155,9 +161,9 @@ export type AddDayMealRequest = z.infer<typeof addDayMealRequestSchema>
 // entry_location_xor CHECK so a malformed target is a clean 400, not a 500.
 export const addEntryRequestSchema = z
   .object({
-    dayMealId: z.string().min(1).nullable().default(null),
+    dayMealId: idSchema.nullable().default(null),
     isExtra: z.boolean().default(false),
-    foodItemId: z.string().min(1),
+    foodItemId: idSchema,
     basis: foodPlanBasisSchema,
     amount: amountSchema,
   })

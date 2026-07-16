@@ -8,7 +8,11 @@ import {
   foodPlans,
   meals,
 } from '../db/schema'
-import { isTriggerAbort } from './db-errors'
+import {
+  isAnyUniqueViolation,
+  isForeignKeyViolation,
+  isTriggerAbort,
+} from './db-errors'
 
 // The food-plan graph (food-planning-design.md slice 2). One repo owns the plan,
 // its meals, days, the day x meal grid and the entries. Every method is
@@ -333,6 +337,14 @@ export function createFoodPlansRepo(db: Db, userId: string) {
     // Append a day and schedule every existing meal on it (a full grid row), so
     // the new day has cells to add food to immediately. The day-cap trigger
     // aborts the batch at 60.
+    //
+    // ACCEPTED race (design 6 / 12.3 philosophy - a single-user planner does not
+    // build machinery to close concurrent-edit races): the meal read happens
+    // before the write batch, so a concurrent addMeal can create a meal this
+    // addDay never sees, leaving that (new day, new meal) cell unscheduled. That
+    // is indistinguishable from an intentionally omitted cell and is recoverable
+    // from the UI's "add back" pill; slice 2b also serializes structural
+    // mutations behind pending state, so it does not arise in normal use.
     async addDay(planId: string): Promise<PlanDocResult> {
       if (!(await requirePlan(planId))) return { ok: false, reason: 'not_found' }
       const mealRows = await db
@@ -366,6 +378,8 @@ export function createFoodPlansRepo(db: Db, userId: string) {
         if (isFoodPlanDayCapError(err)) {
           return { ok: false, reason: 'cap_exceeded' }
         }
+        // The plan was deleted between requirePlan and the batch.
+        if (isForeignKeyViolation(err)) return { ok: false, reason: 'not_found' }
         throw err
       }
       return okDoc(planId)
@@ -373,8 +387,9 @@ export function createFoodPlansRepo(db: Db, userId: string) {
 
     async removeDay(planId: string, dayId: string): Promise<PlanDocResult> {
       if (!(await requirePlan(planId))) return { ok: false, reason: 'not_found' }
-      // Cascade clears this day's day_meals and their entries.
-      await db
+      // Cascade clears this day's day_meals and their entries. A 0-row delete
+      // means the day is not in this plan -> 404 rather than a false success.
+      const rows = await db
         .delete(foodPlanDays)
         .where(
           and(
@@ -383,6 +398,8 @@ export function createFoodPlansRepo(db: Db, userId: string) {
             eq(foodPlanDays.userId, userId),
           ),
         )
+        .returning({ id: foodPlanDays.id })
+      if (rows.length === 0) return { ok: false, reason: 'not_found' }
       return okDoc(planId)
     },
 
@@ -427,6 +444,8 @@ export function createFoodPlansRepo(db: Db, userId: string) {
         await db.batch([insertMeal, ...insertCells])
       } catch (err) {
         if (isMealCapError(err)) return { ok: false, reason: 'cap_exceeded' }
+        // The plan was deleted between requirePlan and the batch.
+        if (isForeignKeyViolation(err)) return { ok: false, reason: 'not_found' }
         throw err
       }
       return okDoc(planId)
@@ -434,8 +453,9 @@ export function createFoodPlansRepo(db: Db, userId: string) {
 
     async removeMeal(planId: string, mealId: string): Promise<PlanDocResult> {
       if (!(await requirePlan(planId))) return { ok: false, reason: 'not_found' }
-      // Cascade clears this meal's day_meals and their entries on every day.
-      await db
+      // Cascade clears this meal's day_meals and their entries on every day. A
+      // 0-row delete means the meal is not in this plan -> 404.
+      const rows = await db
         .delete(meals)
         .where(
           and(
@@ -444,6 +464,8 @@ export function createFoodPlansRepo(db: Db, userId: string) {
             eq(meals.userId, userId),
           ),
         )
+        .returning({ id: meals.id })
+      if (rows.length === 0) return { ok: false, reason: 'not_found' }
       return okDoc(planId)
     },
 
@@ -487,15 +509,27 @@ export function createFoodPlansRepo(db: Db, userId: string) {
         .limit(1)
       if (!existing) {
         const now = Date.now()
-        await db.insert(dayMeals).values({
-          id: crypto.randomUUID(),
-          userId,
-          foodPlanId: planId,
-          dayId,
-          mealId,
-          createdAt: now,
-          updatedAt: now,
-        })
+        try {
+          await db.insert(dayMeals).values({
+            id: crypto.randomUUID(),
+            userId,
+            foodPlanId: planId,
+            dayId,
+            mealId,
+            createdAt: now,
+            updatedAt: now,
+          })
+        } catch (err) {
+          // A concurrent restore already created the cell -> idempotent success
+          // (fall through to okDoc). Any other constraint (the day or meal
+          // deleted between the precheck and the insert) is invalid_ref.
+          if (!isAnyUniqueViolation(err)) {
+            if (isForeignKeyViolation(err)) {
+              return { ok: false, reason: 'invalid_ref' }
+            }
+            throw err
+          }
+        }
       }
       return okDoc(planId)
     },
@@ -505,8 +539,9 @@ export function createFoodPlansRepo(db: Db, userId: string) {
       dayMealId: string,
     ): Promise<PlanDocResult> {
       if (!(await requirePlan(planId))) return { ok: false, reason: 'not_found' }
-      // Cascade clears this cell's entries.
-      await db
+      // Cascade clears this cell's entries. A 0-row delete means the cell is not
+      // in this plan -> 404.
+      const rows = await db
         .delete(dayMeals)
         .where(
           and(
@@ -515,6 +550,8 @@ export function createFoodPlansRepo(db: Db, userId: string) {
             eq(dayMeals.userId, userId),
           ),
         )
+        .returning({ id: dayMeals.id })
+      if (rows.length === 0) return { ok: false, reason: 'not_found' }
       return okDoc(planId)
     },
 
@@ -601,6 +638,13 @@ export function createFoodPlansRepo(db: Db, userId: string) {
       } catch (err) {
         if (isFoodPlanEntryCapError(err)) {
           return { ok: false, reason: 'cap_exceeded' }
+        }
+        // Race backstops behind the prechecks above: a concurrent identical add
+        // trips a partial UNIQUE index; the food or cell being deleted mid-flight
+        // trips an FK. Both map to the same friendly results the prechecks give.
+        if (isAnyUniqueViolation(err)) return { ok: false, reason: 'duplicate' }
+        if (isForeignKeyViolation(err)) {
+          return { ok: false, reason: 'invalid_ref' }
         }
         throw err
       }

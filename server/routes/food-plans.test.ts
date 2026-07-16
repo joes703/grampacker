@@ -5,6 +5,7 @@ import {
   foodPlanSummarySchema,
   type FoodPlanDocument,
 } from '../../shared/food-plans'
+import { isAnyUniqueViolation, isForeignKeyViolation } from '../repos/db-errors'
 import {
   isFoodPlanCapError,
   isFoodPlanDayCapError,
@@ -658,5 +659,66 @@ describe('/api/food-plans caps', () => {
       cause: new Error(`D1_ERROR: ${dayRoot.message}`, { cause: dayRoot }),
     })
     expect(isFoodPlanCapError(dayWrapper)).toBe(false)
+  })
+})
+
+describe('/api/food-plans robustness (Codex review fixes)', () => {
+  it('nested deletes of a missing or foreign child are 404, not a false success', async () => {
+    const { cookie } = await signUpVerifiedUser('plan-del404@example.com', 'D')
+    const plan = await createPlan(cookie, { name: 'Trip', days: 1 })
+    const other = await createPlan(cookie, { name: 'Other', days: 1 })
+
+    for (const path of [
+      `/api/food-plans/${plan.id}/days/nope`,
+      `/api/food-plans/${plan.id}/meals/nope`,
+      `/api/food-plans/${plan.id}/day-meals/nope`,
+    ]) {
+      const res = await apiRequest(cookie, 'DELETE', path)
+      expect(res.status, path).toBe(404)
+    }
+
+    // A child that belongs to a DIFFERENT plan of the same user -> 404 (the
+    // delete touches no row in THIS plan).
+    const foreignDay = await apiRequest(
+      cookie,
+      'DELETE',
+      `/api/food-plans/${plan.id}/days/${other.days[0]!.id}`,
+    )
+    expect(foreignDay.status).toBe(404)
+  })
+
+  it('rejects an over-long id in the body with a clean 400', async () => {
+    const { cookie } = await signUpVerifiedUser('plan-longid@example.com', 'L')
+    const plan = await createPlan(cookie, { name: 'Trip', days: 1 })
+    const huge = 'x'.repeat(200)
+    const res = await apiRequest(
+      cookie,
+      'POST',
+      `/api/food-plans/${plan.id}/entries`,
+      { dayMealId: huge, foodItemId: huge, basis: 'servings', amount: 1 },
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('the unique/FK race-backstop matchers pin their SQLite constraint classes', () => {
+    // The exact message shapes were observed live against SQLite (a duplicate
+    // cell entry and a cross-owner meal insert).
+    const uniqRoot = new Error(
+      'UNIQUE constraint failed: food_plan_entries.day_meal_id, food_plan_entries.food_item_id: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)',
+    )
+    const uniqWrapper = new Error('Failed query: insert ...', {
+      cause: new Error(`D1_ERROR: ${uniqRoot.message}`, { cause: uniqRoot }),
+    })
+    expect(isAnyUniqueViolation(uniqWrapper)).toBe(true)
+    expect(isForeignKeyViolation(uniqWrapper)).toBe(false)
+
+    const fkRoot = new Error(
+      'FOREIGN KEY constraint failed: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_FOREIGNKEY)',
+    )
+    const fkWrapper = new Error('Failed query: insert ...', {
+      cause: new Error('D1_ERROR: FOREIGN KEY constraint failed', { cause: fkRoot }),
+    })
+    expect(isForeignKeyViolation(fkWrapper)).toBe(true)
+    expect(isAnyUniqueViolation(fkWrapper)).toBe(false)
   })
 })
