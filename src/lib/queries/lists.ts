@@ -41,6 +41,26 @@ export async function deleteList(id: string): Promise<void> {
   await apiFetchVoid(`/lists/${id}`, { method: 'DELETE' })
 }
 
+// Points this list at a food plan (food-planning-design.md 3): a LIVE
+// REFERENCE, not a copy, and one plan may back many lists. Both return the
+// updated list, so the caller writes the response straight into ['lists'].
+// The server rejects a plan the caller does not own with 400 invalid_plan.
+export async function attachFoodPlan(
+  id: string,
+  foodPlanId: string,
+): Promise<List> {
+  return apiFetch(`/lists/${id}/food-plan`, listResponseSchema, {
+    method: 'PUT',
+    body: { foodPlanId },
+  })
+}
+
+export async function detachFoodPlan(id: string): Promise<List> {
+  return apiFetch(`/lists/${id}/food-plan`, listResponseSchema, {
+    method: 'DELETE',
+  })
+}
+
 export async function reorderLists(
   updates: ReorderListsRequest,
 ): Promise<void> {

@@ -47,8 +47,18 @@ export function useFoodPlanActions() {
     // 404 refetch leaves TanStack's previous data in place). Evict it so the
     // editor shows the not-found state instead. onSuccess (not onSettled) so a
     // failed delete keeps the document.
+    //
+    // Deleting a plan also DETACHES every list pointing at it: lists.food_plan_id
+    // is a NO ACTION reference, so the repo nulls it server-side first
+    // (server/repos/food-plans.ts). That makes ['lists'] and any share cache stale
+    // in a way the user sees - a cached list would keep its dead foodPlanId,
+    // request the deleted plan, and show a load-error banner where its food row
+    // used to be. Invalidate both; we cannot know which lists moved without
+    // re-reading them, and refetchOnWindowFocus is off, so nothing else would.
     onSuccess: (_data, id) => {
       qc.removeQueries({ queryKey: queryKeys.foodPlan(id) })
+      void qc.invalidateQueries({ queryKey: queryKeys.lists() })
+      void qc.invalidateQueries({ queryKey: queryKeys.sharedListAll() })
     },
   })
 

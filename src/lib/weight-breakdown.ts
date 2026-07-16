@@ -15,10 +15,6 @@ export type WeightBreakdown = {
 // WeightSummary strip. Single source of truth for what counts as
 // Base / Consumable / Worn / Total so the strip and table can never
 // disagree on the headline number.
-//
-// TRANSPLANT NOTE (food): the old repo also exported withProjectedFood
-// (compose projected food weight into consumable + pack total). That
-// returns with the food-plans slice.
 export function computeWeightBreakdown(
   items: ListItemWithGear[],
   categories: Category[],
@@ -73,4 +69,28 @@ export function computeWeightBreakdown(
   const totalPackGrams = baseGrams + consumableGrams
 
   return { catRows, baseGrams, consumableGrams, wornGrams, totalPackGrams }
+}
+
+// Composes a gear list's attached food plan into its weight
+// (food-planning-design.md 5.3). Food is ALWAYS consumable - it is consumable
+// by definition, not by user choice - so only consumableGrams and
+// totalPackGrams move. baseGrams, wornGrams and the per-category rows are
+// untouched: food is not gear, has no category, and is never a list_items row
+// (section 4), so it cannot appear in catRows.
+//
+// projectedFoodGrams MUST already be the rounded integer from
+// roundProjectedGrams (design 5.6/12.10). The projection carries full double
+// precision and rounds exactly ONCE, here at the boundary where it becomes a
+// pack weight - so the owner's view and the public share cannot disagree by a
+// gram. Do not round per row downstream, and do not hand this raw grams.
+export function withProjectedFood(
+  breakdown: WeightBreakdown,
+  projectedFoodGrams: number,
+): WeightBreakdown {
+  if (projectedFoodGrams === 0) return breakdown
+  return {
+    ...breakdown,
+    consumableGrams: breakdown.consumableGrams + projectedFoodGrams,
+    totalPackGrams: breakdown.totalPackGrams + projectedFoodGrams,
+  }
 }

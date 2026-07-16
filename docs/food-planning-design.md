@@ -350,12 +350,25 @@ So, concretely:
 - **`['list-items', listId]` does NOT need invalidating** by food mutations. Food is
   not a list item (section 4) and lives in its own projection cache.
 
-New keys this slice adds to `keys.ts`: `foodPlans()`, `foodPlan(planId)`,
-`foodProjection(listId)` + a `foodProjectionAll()` prefix (one plan can back many
-lists, so a plan edit invalidates by prefix rather than enumerating them). The food
+New keys: `foodPlans()` and `foodPlan(planId)`, both shipped with slice 2b. The food
 library key, `foodItems()` -> `['food-items']`, already shipped with slice 1 (it
 mirrors `gearItems()` -> `['gear-items']`; this doc's earlier `foods()` shorthand was
-never the built name).
+never the built name). Slice 3b adds only `sharedListAll()`, the `['shared-list']`
+prefix the bullets above invalidate against.
+
+**REVISED 2026-07-16 (slice 3b): there is no `foodProjection(listId)` key, and no
+`foodProjectionAll()` prefix.** Rev 2 specified both, assuming the projection would be
+a per-list cache entry. It should not be: the projection is a pure function of two
+caches the app already holds - the plan document (`['food-plan', id]`) and the food
+library (`['food-items']`) - so `src/lists/use-food-projection.ts` derives it with
+`selectFoodPlanView`, the same selector the editor renders from. A projection key
+would be a cache OF a derivation: redundant state that can go stale against the
+editor, and it is what *created* the fan-out problem `foodProjectionAll()` was
+invented to solve. Deriving deletes the problem instead: every plan mutation already
+writes the fresh document to `['food-plan', id]` (5.5's own rule), so every list
+pointing at that plan re-derives with no invalidation at all, however many there are.
+This also honors 5.1 (one function, no second implementation) more literally than a
+second cached copy of its output would.
 
 **Do not build a gear-style multi-cache optimistic fan-out** unless profiling proves
 coarse invalidation inadequate. The gear surfaces earned their fine-grained optimistic
