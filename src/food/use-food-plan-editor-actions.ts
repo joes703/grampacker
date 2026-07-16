@@ -29,6 +29,13 @@ import type {
 // cells) is far too fiddly to reconstruct correctly on the client, and the whole
 // point of returning the document is to avoid it. The round-trip is one small
 // request; a brief pending state on the specific control is the honest UX.
+//
+// Because each success blindly overwrites the cache with its response document,
+// two mutations in flight at once could land out of order and clobber the newer
+// document with an older snapshot. FoodPlanEditor prevents that by disabling
+// every write trigger while any of these mutations is pending (its `busy` gate),
+// so at most one is ever in flight - the single-user serialization the design
+// calls for (6/12.3).
 export function useFoodPlanEditorActions(planId: string) {
   const qc = useQueryClient()
 

@@ -47,26 +47,36 @@ vi.mock('../lib/queries', async (importOriginal) => {
     fetchFoodItems: h.fetchFoodItems,
   }
 })
-// Inert action hook - this test exercises rendering + projection, not writes.
+// Action hook is mocked: this test exercises rendering + projection + the
+// busy-gate, not real writes. `pending` lets a test mark one mutation in flight.
+const state = vi.hoisted(() => ({ pending: null as string | null }))
 vi.mock('./use-food-plan-editor-actions', () => ({
   useFoodPlanEditorActions: () => {
-    const inert = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false, error: null }
+    const make = (key: string) => ({
+      mutate: vi.fn(),
+      mutateAsync: vi.fn().mockResolvedValue(undefined),
+      isPending: state.pending === key,
+      error: null,
+    })
     return {
-      rename: inert,
-      addDay: inert,
-      removeDay: inert,
-      addMeal: inert,
-      removeMeal: inert,
-      addEntry: inert,
-      updateEntry: inert,
-      removeEntry: inert,
+      rename: make('rename'),
+      addDay: make('addDay'),
+      removeDay: make('removeDay'),
+      addMeal: make('addMeal'),
+      removeMeal: make('removeMeal'),
+      addEntry: make('addEntry'),
+      updateEntry: make('updateEntry'),
+      removeEntry: make('removeEntry'),
     }
   },
 }))
 
 import FoodPlanEditor from './FoodPlanEditor'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  state.pending = null
+})
 
 function food(id: string, over: Partial<FoodItem> = {}): FoodItem {
   return {
@@ -179,6 +189,28 @@ describe('FoodPlanEditor', () => {
       name: 'Add food to Day 1 · Breakfast',
     })
     expect(within(dialog).getByPlaceholderText('Search your food library')).toBeTruthy()
+  })
+
+  it('disables every write trigger while a mutation is pending (serialization)', async () => {
+    state.pending = 'addDay'
+    h.fetchFoodPlan.mockResolvedValue(planDoc())
+    h.fetchFoodItems.mockResolvedValue([food('f1')])
+    renderEditor()
+
+    await screen.findByText('JMT resupply')
+    // The always-visible background triggers must all be disabled so a second
+    // mutation can't start and clobber the in-flight one's returned document.
+    expect(
+      (screen.getByRole('button', { name: 'Adding day…' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
+    for (const btn of screen.getAllByRole('button', { name: 'Add food' })) {
+      expect((btn as HTMLButtonElement).disabled).toBe(true)
+    }
+    expect(
+      (screen.getByRole('button', { name: 'Rename plan' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
   })
 
   it('shows a not-found message when the plan is missing', async () => {

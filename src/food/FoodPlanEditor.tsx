@@ -99,6 +99,25 @@ export default function FoodPlanEditor() {
 
   const atDayCap = view.days.length >= FOOD_PLAN_DAY_CAP
 
+  // Serialize plan writes (food-planning-design.md 6/12.3, and the 2a note that
+  // 2b serializes structural mutations). Every mutation returns the whole plan
+  // document and blindly writes it into the cache; two in flight at once can land
+  // out of order and clobber the newer document with an older snapshot. So while
+  // ANY mutation is pending, every write TRIGGER is disabled - a single user does
+  // one edit at a time. (Dialog-hosted mutations are already exclusive: a native
+  // modal blocks the background. The one live gap is that a background button -
+  // e.g. Add day - stays clickable while another mutation runs; `busy` closes
+  // it.)
+  const busy =
+    actions.rename.isPending ||
+    actions.addDay.isPending ||
+    actions.removeDay.isPending ||
+    actions.addMeal.isPending ||
+    actions.removeMeal.isPending ||
+    actions.addEntry.isPending ||
+    actions.updateEntry.isPending ||
+    actions.removeEntry.isPending
+
   // Structural mutations have no dialog to host their error, so they toast.
   function runStructural(promise: Promise<unknown>, fallback: string) {
     void promise.catch((err) => showToast(apiMessage(err) ?? fallback, { type: 'error' }))
@@ -116,8 +135,9 @@ export default function FoodPlanEditor() {
           <button
             type="button"
             onClick={() => setDialog({ type: 'rename' })}
+            disabled={busy}
             aria-label="Rename plan"
-            className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40"
           >
             <Pencil size={15} />
           </button>
@@ -138,7 +158,7 @@ export default function FoodPlanEditor() {
         meals={view.meals}
         onAddMeal={() => setDialog({ type: 'addMeal' })}
         onRemoveMeal={(meal) => setDialog({ type: 'deleteMeal', meal })}
-        addPending={actions.addMeal.isPending}
+        busy={busy}
       />
 
       <div className="mt-4 flex flex-col gap-3">
@@ -147,6 +167,7 @@ export default function FoodPlanEditor() {
             key={day.id}
             day={day}
             unit={weightUnit}
+            busy={busy}
             onAddFood={(cell) =>
               setDialog({
                 type: 'addEntry',
@@ -166,6 +187,7 @@ export default function FoodPlanEditor() {
         <ExtrasSection
           extras={view.extras}
           unit={weightUnit}
+          busy={busy}
           onAddFood={() =>
             setDialog({
               type: 'addEntry',
@@ -180,7 +202,7 @@ export default function FoodPlanEditor() {
       <div className="mt-4">
         <button
           type="button"
-          disabled={atDayCap || actions.addDay.isPending}
+          disabled={atDayCap || busy}
           onClick={() =>
             runStructural(actions.addDay.mutateAsync(), "Couldn't add a day.")
           }
@@ -346,12 +368,12 @@ function MealBar({
   meals,
   onAddMeal,
   onRemoveMeal,
-  addPending,
+  busy,
 }: {
   meals: Meal[]
   onAddMeal: () => void
   onRemoveMeal: (meal: Meal) => void
-  addPending: boolean
+  busy: boolean
 }) {
   return (
     <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -367,8 +389,9 @@ function MealBar({
           <button
             type="button"
             onClick={() => onRemoveMeal(meal)}
+            disabled={busy}
             aria-label={`Delete ${meal.name}`}
-            className="rounded-full p-0.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+            className="rounded-full p-0.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
           >
             <X size={13} />
           </button>
@@ -377,7 +400,7 @@ function MealBar({
       <button
         type="button"
         onClick={onAddMeal}
-        disabled={addPending}
+        disabled={busy}
         className="inline-flex items-center gap-1 rounded-full border border-dashed border-gray-300 px-3 py-1 text-sm text-gray-600 hover:border-gray-400 hover:text-gray-800 disabled:opacity-50"
       >
         <Plus size={13} />
@@ -390,6 +413,7 @@ function MealBar({
 function DaySection({
   day,
   unit,
+  busy,
   onAddFood,
   onEditEntry,
   onDeleteEntry,
@@ -397,6 +421,7 @@ function DaySection({
 }: {
   day: PlanDayView
   unit: 'g' | 'oz'
+  busy: boolean
   onAddFood: (cell: PlanCellView) => void
   onEditEntry: (entry: PlanEntryView) => void
   onDeleteEntry: (entry: PlanEntryView) => void
@@ -413,8 +438,9 @@ function DaySection({
           <button
             type="button"
             onClick={onRemoveDay}
+            disabled={busy}
             aria-label={`Delete Day ${day.index}`}
-            className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+            className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
           >
             <Trash2 size={14} />
           </button>
@@ -426,6 +452,7 @@ function DaySection({
             key={cell.dayMealId}
             cell={cell}
             unit={unit}
+            busy={busy}
             onAddFood={() => onAddFood(cell)}
             onEditEntry={onEditEntry}
             onDeleteEntry={onDeleteEntry}
@@ -444,12 +471,14 @@ function DaySection({
 function MealCell({
   cell,
   unit,
+  busy,
   onAddFood,
   onEditEntry,
   onDeleteEntry,
 }: {
   cell: PlanCellView
   unit: 'g' | 'oz'
+  busy: boolean
   onAddFood: () => void
   onEditEntry: (entry: PlanEntryView) => void
   onDeleteEntry: (entry: PlanEntryView) => void
@@ -471,6 +500,7 @@ function MealCell({
               key={entry.id}
               entry={entry}
               unit={unit}
+              busy={busy}
               onEdit={() => onEditEntry(entry)}
               onDelete={() => onDeleteEntry(entry)}
             />
@@ -480,7 +510,8 @@ function MealCell({
       <button
         type="button"
         onClick={onAddFood}
-        className="mt-1.5 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700"
+        disabled={busy}
+        className="mt-1.5 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700 disabled:opacity-40"
       >
         <Plus size={14} />
         Add food
@@ -492,12 +523,14 @@ function MealCell({
 function ExtrasSection({
   extras,
   unit,
+  busy,
   onAddFood,
   onEditEntry,
   onDeleteEntry,
 }: {
   extras: PlanExtrasView
   unit: 'g' | 'oz'
+  busy: boolean
   onAddFood: () => void
   onEditEntry: (entry: PlanEntryView) => void
   onDeleteEntry: (entry: PlanEntryView) => void
@@ -523,6 +556,7 @@ function ExtrasSection({
                 key={entry.id}
                 entry={entry}
                 unit={unit}
+                busy={busy}
                 onEdit={() => onEditEntry(entry)}
                 onDelete={() => onDeleteEntry(entry)}
               />
@@ -532,7 +566,8 @@ function ExtrasSection({
         <button
           type="button"
           onClick={onAddFood}
-          className="mt-1.5 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700"
+          disabled={busy}
+          className="mt-1.5 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700 disabled:opacity-40"
         >
           <Plus size={14} />
           Add food
@@ -545,11 +580,13 @@ function ExtrasSection({
 function EntryRow({
   entry,
   unit,
+  busy,
   onEdit,
   onDelete,
 }: {
   entry: PlanEntryView
   unit: 'g' | 'oz'
+  busy: boolean
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -559,7 +596,8 @@ function EntryRow({
       <button
         type="button"
         onClick={onEdit}
-        className="flex min-w-0 flex-1 items-baseline gap-2 text-left"
+        disabled={busy}
+        className="flex min-w-0 flex-1 items-baseline gap-2 text-left disabled:opacity-60"
       >
         <span className="min-w-0 truncate text-sm text-gray-900">{name}</span>
         <span className="shrink-0 text-xs text-gray-500">
@@ -580,8 +618,9 @@ function EntryRow({
       <button
         type="button"
         onClick={onDelete}
+        disabled={busy}
         aria-label={`Remove ${name}`}
-        className="shrink-0 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+        className="shrink-0 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
       >
         <Trash2 size={14} />
       </button>

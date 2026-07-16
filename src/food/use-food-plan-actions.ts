@@ -40,6 +40,16 @@ export function useFoodPlanActions() {
       id: (id) => id,
       errorToast: "Couldn't delete the plan. Please try again.",
     }),
+    // The optimistic helper only touches the ['food-plans'] summary list. The
+    // deleted plan's DOCUMENT cache (['food-plan', id]) would otherwise survive,
+    // so a back-navigation to /food/plans/:id could render the just-deleted plan
+    // straight from cache (inside the 30s staleTime, with no refetch; and even a
+    // 404 refetch leaves TanStack's previous data in place). Evict it so the
+    // editor shows the not-found state instead. onSuccess (not onSettled) so a
+    // failed delete keeps the document.
+    onSuccess: (_data, id) => {
+      qc.removeQueries({ queryKey: queryKeys.foodPlan(id) })
+    },
   })
 
   return { createPlan, removePlan }
