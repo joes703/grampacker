@@ -8,6 +8,7 @@ import {
   sqliteTable,
   text,
   unique,
+  uniqueIndex,
 } from 'drizzle-orm/sqlite-core'
 import { user } from './auth-schema'
 
@@ -338,6 +339,240 @@ export const foodItems = sqliteTable(
     check(
       'food_items_potassium_range',
       sql`${t.potassiumMg} is null or (${t.potassiumMg} >= 0 and ${t.potassiumMg} <= 999999999.9)`,
+    ),
+  ],
+)
+
+// ---------------------------------------------------------- food plans (slice 2)
+//
+// A food plan is standalone and REUSABLE (food-planning-design.md D1/section 2):
+// the analogue of a gear LIST, not a gear item. It gains a `name` and drops the
+// old build's `list_id` (the link inverts in slice 3: lists.food_plan_id points
+// AT a plan), `num_nights` (the day count is the count of food_plan_days rows -
+// no second source of truth) and `is_food_shared` (D6: a share exposes weight
+// only, gated by attachment, not a flag).
+//
+// The whole food-plan subtree is structurally self-sealing: every table carries
+// user_id + food_plan_id and anchors its owner guard on the composite FK
+// (food_plan_id, user_id) -> food_plans(id, user_id), so a cross-owner link is
+// impossible at the schema level (ADR 12 continuity, same as list_items). The
+// intra-plan FKs ((day_id, food_plan_id), (meal_id, food_plan_id),
+// (day_meal_id, food_plan_id)) additionally forbid stitching a cell to a day or
+// meal in a DIFFERENT plan.
+//
+// The 100-per-user cap trigger lives in migration 0008 (drizzle has no trigger
+// DSL) and is the SINGLE enforcement point; the repo maps its RAISE(ABORT) to a
+// friendly 422. Same snapshot caveat as food_items: a future rebuild must
+// recreate the trigger by hand.
+export const foodPlans = sqliteTable(
+  'food_plans',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at').notNull(), // epoch ms
+    updatedAt: integer('updated_at').notNull(), // epoch ms, repo-maintained
+  },
+  (t) => [
+    // Composite-FK target for the whole subtree's owner guard, AND for
+    // lists.food_plan_id in slice 3 - it lands now so slice 3 adds no column
+    // to this table (a rebuild would drop the cap trigger).
+    unique('food_plans_id_user_unique').on(t.id, t.userId),
+    index('food_plans_user_sort_idx').on(t.userId, t.sortOrder, t.name),
+    check('food_plans_name_length', sql`length(${t.name}) between 1 and 256`),
+  ],
+)
+
+// Plan-scoped meal definitions (Breakfast / On-trail food / Dinner seeded on
+// create). anchor_role marks the two anchors used to derive a day's full/partial
+// type (a targets concern, slice 7 - the column is ported and seeded now but has
+// no dedicated UI in slice 2). is_default flags the seeded three. The 20-per-plan
+// cap trigger lives in migration 0008.
+export const meals = sqliteTable(
+  'meals',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    foodPlanId: text('food_plan_id').notNull(),
+    name: text('name').notNull(),
+    // TS-only enum (drizzle emits plain text); the CHECK below is the DB
+    // backstop, mirroring the old build's inline check.
+    anchorRole: text('anchor_role', { enum: ['breakfast', 'dinner'] }),
+    isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    // Composite-FK target for (meal_id, food_plan_id) from day_meals.
+    unique('meals_id_plan_unique').on(t.id, t.foodPlanId),
+    foreignKey({
+      name: 'meals_plan_same_owner_fk',
+      columns: [t.foodPlanId, t.userId],
+      foreignColumns: [foodPlans.id, foodPlans.userId],
+    }).onDelete('cascade'),
+    // At most one anchor per role per plan (one Breakfast, one Dinner).
+    uniqueIndex('meals_one_anchor_per_role_idx')
+      .on(t.foodPlanId, t.anchorRole)
+      .where(sql`${t.anchorRole} is not null`),
+    index('meals_plan_sort_idx').on(t.foodPlanId, t.sortOrder),
+    index('meals_user_idx').on(t.userId),
+    check('meals_name_length', sql`length(${t.name}) between 1 and 128`),
+    check(
+      'meals_anchor_role_enum',
+      sql`${t.anchorRole} is null or ${t.anchorRole} in ('breakfast', 'dinner')`,
+    ),
+  ],
+)
+
+// Explicit day rows. The COUNT of these is authoritative for "how many days"
+// (there is no num_nights). day_type_override forces a day full/partial; null
+// means "auto" (derived from whether both anchor meals are scheduled) - a
+// slice-7 targets concern, ported now. The 60-per-plan cap trigger lives in 0008.
+export const foodPlanDays = sqliteTable(
+  'food_plan_days',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    foodPlanId: text('food_plan_id').notNull(),
+    dayTypeOverride: text('day_type_override', { enum: ['full', 'partial'] }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    // Composite-FK target for (day_id, food_plan_id) from day_meals.
+    unique('food_plan_days_id_plan_unique').on(t.id, t.foodPlanId),
+    foreignKey({
+      name: 'food_plan_days_plan_same_owner_fk',
+      columns: [t.foodPlanId, t.userId],
+      foreignColumns: [foodPlans.id, foodPlans.userId],
+    }).onDelete('cascade'),
+    index('food_plan_days_plan_sort_idx').on(t.foodPlanId, t.sortOrder),
+    index('food_plan_days_user_idx').on(t.userId),
+    check(
+      'food_plan_days_day_type_enum',
+      sql`${t.dayTypeOverride} is null or ${t.dayTypeOverride} in ('full', 'partial')`,
+    ),
+  ],
+)
+
+// The day x meal grid. ONE row means "this meal is enabled on this day" (design
+// 12.7): an empty cell is the ABSENCE of a row, which JSON could not express, so
+// this stays a table. The two intra-plan FKs pin day_id and meal_id to the SAME
+// plan; the (day_id, meal_id) unique makes each cell singular. No explicit cap -
+// it is naturally bounded at 60 x 20 = 1200.
+export const dayMeals = sqliteTable(
+  'day_meals',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    foodPlanId: text('food_plan_id').notNull(),
+    dayId: text('day_id').notNull(),
+    mealId: text('meal_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    unique('day_meals_day_meal_unique').on(t.dayId, t.mealId),
+    // Composite-FK target for (day_meal_id, food_plan_id) from entries.
+    unique('day_meals_id_plan_unique').on(t.id, t.foodPlanId),
+    foreignKey({
+      name: 'day_meals_plan_same_owner_fk',
+      columns: [t.foodPlanId, t.userId],
+      foreignColumns: [foodPlans.id, foodPlans.userId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'day_meals_day_same_plan_fk',
+      columns: [t.dayId, t.foodPlanId],
+      foreignColumns: [foodPlanDays.id, foodPlanDays.foodPlanId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'day_meals_meal_same_plan_fk',
+      columns: [t.mealId, t.foodPlanId],
+      foreignColumns: [meals.id, meals.foodPlanId],
+    }).onDelete('cascade'),
+    index('day_meals_plan_idx').on(t.foodPlanId),
+    index('day_meals_meal_idx').on(t.mealId, t.foodPlanId),
+    index('day_meals_user_idx').on(t.userId),
+  ],
+)
+
+// One food x amount, either in a (day, meal) cell (day_meal_id set, is_extra 0)
+// or in Extras (day_meal_id null, is_extra 1) - the XOR check keeps those two
+// facts in agreement. A cell entry is unique per (day_meal_id, food_item_id); an
+// Extras entry is unique per (food_plan_id, food_item_id). basis picks the
+// projection formula (design 5.1); amount is fractional (REAL) and > 0.
+//
+// Deliberate deviation from the old build: it had a BEFORE-INSERT trigger
+// REJECTING a `packages` entry whose food has a null servings_per_package. We do
+// NOT port that. Per design 5.4 such an entry is accepted and the projection
+// flags itself incomplete - an incomplete projection is first-class, not an
+// error. serving_weight_grams is NOT NULL > 0, so `servings`/`weight` bases are
+// always projectable and need no cross-row guard.
+//
+// The composite FK on (day_meal_id, food_plan_id) is not enforced when
+// day_meal_id is null (SQLite MATCH SIMPLE), which is exactly right for Extras.
+// The 2000-per-plan cap trigger lives in migration 0008.
+export const foodPlanEntries = sqliteTable(
+  'food_plan_entries',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    foodPlanId: text('food_plan_id').notNull(),
+    dayMealId: text('day_meal_id'), // null => Extras
+    isExtra: integer('is_extra', { mode: 'boolean' }).notNull().default(false),
+    foodItemId: text('food_item_id').notNull(),
+    basis: text('basis', { enum: ['servings', 'packages', 'weight'] }).notNull(),
+    amount: real('amount').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'food_plan_entries_plan_same_owner_fk',
+      columns: [t.foodPlanId, t.userId],
+      foreignColumns: [foodPlans.id, foodPlans.userId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'food_plan_entries_cell_same_plan_fk',
+      columns: [t.dayMealId, t.foodPlanId],
+      foreignColumns: [dayMeals.id, dayMeals.foodPlanId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'food_plan_entries_food_same_owner_fk',
+      columns: [t.foodItemId, t.userId],
+      foreignColumns: [foodItems.id, foodItems.userId],
+    }).onDelete('cascade'),
+    uniqueIndex('food_plan_entries_one_per_cell_idx')
+      .on(t.dayMealId, t.foodItemId)
+      .where(sql`${t.dayMealId} is not null`),
+    uniqueIndex('food_plan_entries_one_per_extras_idx')
+      .on(t.foodPlanId, t.foodItemId)
+      .where(sql`${t.isExtra}`),
+    index('food_plan_entries_plan_sort_idx').on(t.foodPlanId, t.sortOrder),
+    index('food_plan_entries_food_idx').on(t.foodItemId, t.userId),
+    index('food_plan_entries_user_idx').on(t.userId),
+    check(
+      'food_plan_entries_basis_enum',
+      sql`${t.basis} in ('servings', 'packages', 'weight')`,
+    ),
+    check('food_plan_entries_amount_positive', sql`${t.amount} > 0`),
+    check(
+      'food_plan_entries_location_xor',
+      sql`(${t.isExtra} and ${t.dayMealId} is null) or (not ${t.isExtra} and ${t.dayMealId} is not null)`,
     ),
   ],
 )

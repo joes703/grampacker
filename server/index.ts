@@ -10,6 +10,7 @@ import { authRateLimit } from './middleware/rate-limit'
 import { securityHeaders } from './middleware/security-headers'
 import { categoryRoutes } from './routes/categories'
 import { foodItemRoutes } from './routes/food-items'
+import { foodPlanRoutes } from './routes/food-plans'
 import { gearItemRoutes } from './routes/gear-items'
 import { listRoutes } from './routes/lists'
 import { meRoutes } from './routes/me'
@@ -77,6 +78,7 @@ api.on(['GET', 'POST'], '/auth/*', (c) => createAuth(c.env).handler(c.req.raw))
 api.route('/me', meRoutes)
 api.route('/categories', categoryRoutes)
 api.route('/food-items', foodItemRoutes)
+api.route('/food-plans', foodPlanRoutes)
 api.route('/gear-items', gearItemRoutes)
 api.route('/lists', listRoutes)
 // Anonymous by design: the public share read (see routes/shares.ts for
