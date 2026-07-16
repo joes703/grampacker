@@ -16,6 +16,11 @@ export const queryKeys = {
   // reads the slug from the URL (useParams types it string | undefined);
   // the query is disabled until it exists.
   sharedList: (slug: string | undefined) => ['shared-list', slug] as const,
+  // Partial-match prefix. Attaching/detaching a food plan changes what a share
+  // reports without touching the slug, and the share cache has a 30s staleTime,
+  // so the writer invalidates every share it might hold rather than resolving
+  // which slug moved (design 5.5).
+  sharedListAll: () => ['shared-list'] as const,
   // Food plans. The index caches the summary list; each editor caches ONE plan
   // document under its id (every plan mutation returns the fresh document, which
   // is written straight back here - design 5.5). planId accepts undefined for

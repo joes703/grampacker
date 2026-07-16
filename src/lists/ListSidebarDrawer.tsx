@@ -7,17 +7,20 @@ import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 // imports only Radix Dialog + the chrome icons. Together with M11's
 // useIsBelowLg gate at the caller, this never loads on desktop.
 //
-// Header: title + close. The title labels the drawer as the picker for
-// pulling existing gear into this list; the Gear destination itself is
-// reached via the mobile bottom bar, which exposes it on every authed
-// route.
+// Header: title + close. The title names whichever half of the panel is
+// showing, so it has to come from the caller: the panel now has a Gear | Food
+// toggle, and a fixed "Add from gear" would tell a screen-reader user they were
+// in a gear picker while the food-plan picker was on screen. The Gear and Food
+// destinations themselves are reached via the mobile bottom bar, which exposes
+// them on every authed route.
 type Props = {
   open: boolean
   onOpenChange: (next: boolean) => void
+  title: string
   children: React.ReactNode
 }
 
-export default function ListSidebarDrawer({ open, onOpenChange, children }: Props) {
+export default function ListSidebarDrawer({ open, onOpenChange, title, children }: Props) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -28,7 +31,7 @@ export default function ListSidebarDrawer({ open, onOpenChange, children }: Prop
         >
           <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-3">
             <Dialog.Title className="text-sm font-semibold text-gray-900">
-              Add from gear
+              {title}
             </Dialog.Title>
             <Dialog.Close
               aria-label="Close picker"

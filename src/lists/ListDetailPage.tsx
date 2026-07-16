@@ -25,6 +25,7 @@ import {
   fetchListItems,
   fetchGearItems,
   fetchCategories,
+  fetchFoodPlans,
   updateList,
   reorderListItems,
   makeOptimisticReorder,
@@ -45,7 +46,63 @@ import { parseDnDId } from '../lib/dnd-ids'
 import { assignSortOrderSlots } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
-import { computeWeightBreakdown } from '../lib/weight-breakdown'
+import { computeWeightBreakdown, withProjectedFood } from '../lib/weight-breakdown'
+import { useFoodProjection } from './use-food-projection'
+import { useFoodPlanLink } from './use-food-plan-link'
+import FoodRow from './FoodRow'
+import FoodPlanPicker from './FoodPlanPicker'
+
+type LibraryTab = 'gear' | 'food'
+
+// One label per half of the panel. Shared so the toggle's button text and the
+// mobile drawer's accessible title cannot drift apart.
+const LIBRARY_TAB_LABELS: Record<LibraryTab, string> = {
+  gear: 'Add from gear',
+  food: 'Food plan',
+}
+
+// Gear | Food switch for the library panel: two views of one panel, exactly one
+// of which is active.
+//
+// Styled as tabs but deliberately NOT role="tablist"/"tab". That contract
+// promises arrow-key navigation between tabs, a roving tabIndex, and an
+// aria-controls'd tabpanel; claiming it without those makes keyboard behavior
+// worse than plain buttons, because a screen reader announces a widget that is
+// not there. Two aria-pressed toggles say exactly what these are and get Tab
+// navigation for free. (The pane is also mounted twice below lg - CSS-hidden
+// aside plus the drawer - so an aria-controls id would need to be unique per
+// mount, which a real tablist here would have to solve too.)
+function LibraryTabs({
+  tab,
+  onChange,
+}: {
+  tab: LibraryTab
+  onChange: (tab: LibraryTab) => void
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Add to this list"
+      className="flex border-b border-gray-200 bg-gray-50"
+    >
+      {(['gear', 'food'] as const).map((value) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={tab === value}
+          onClick={() => onChange(value)}
+          className={`px-3 py-2 ${FLAT_TABLE_EYEBROW} border-b-2 -mb-px ${
+            tab === value
+              ? 'border-blue-600 text-blue-700'
+              : 'border-transparent hover:text-gray-900'
+          }`}
+        >
+          {LIBRARY_TAB_LABELS[value]}
+        </button>
+      ))}
+    </div>
+  )
+}
 import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
@@ -194,6 +251,43 @@ function ListDetailInner({
   // it resolves; falls back to "Lists" while the lists query is pending so
   // the title doesn't briefly drop to the bare app name.
   useDocumentTitle(list?.name ?? 'Lists')
+
+  // The attached food plan's weight, derived from the plan document + the food
+  // library. null when nothing is attached (the common case), which is also what
+  // the list resolving to undefined means - the hook stays disabled either way.
+  const { projection: foodProjection, isError: foodProjectionError } =
+    useFoodProjection(list?.foodPlanId ?? null)
+  // The list ROW is the authority on whether food is part of this trip. The
+  // projection is only its weight, and it is absent while the plan loads or if
+  // the fetch fails - moments when the food has not gone anywhere.
+  const hasFoodPlan = list?.foodPlanId != null
+  const incompleteFood = foodProjection?.incomplete ?? false
+
+  // Which half of the library panel is showing. Gear is the default: adding gear
+  // is the everyday act, picking a plan happens once per trip.
+  const [libraryTab, setLibraryTab] = useState<LibraryTab>('gear')
+  // Only fetched once the user actually opens the Food side - most sessions
+  // never touch it, and the Food row gets its name from the plan document
+  // rather than from this summary list.
+  const {
+    data: foodPlans = [],
+    isPending: foodPlansPending,
+    isError: foodPlansError,
+  } = useQuery({
+    queryKey: queryKeys.foodPlans(),
+    queryFn: fetchFoodPlans,
+    enabled: libraryTab === 'food',
+  })
+  const { attachMut, detachMut, busy: foodLinkBusy } = useFoodPlanLink()
+  const onAttachFoodPlan = useCallback(
+    (foodPlanId: string) => attachMut.mutate({ id: listId, foodPlanId }),
+    [attachMut, listId],
+  )
+  const onDetachFoodPlan = useCallback(
+    () => detachMut.mutate(listId),
+    [detachMut, listId],
+  )
+
 
   useEffect(() => {
     if (legacyPackMode) {
@@ -442,10 +536,23 @@ function ListDetailInner({
   )
 
   const grouped = useGroupedListItems(listItems, categories)
+  // Food composes into the gear breakdown here, at the page level, so the
+  // mobile strip and the desktop table are handed ONE number and cannot
+  // disagree about what the pack weighs. Food moves consumable + total only
+  // (design 5.3); grams is already rounded once by the projection (5.6).
   const weightBreakdown = useMemo(
-    () => computeWeightBreakdown(listItems, categories),
-    [categories, listItems],
+    () =>
+      withProjectedFood(
+        computeWeightBreakdown(listItems, categories),
+        foodProjection?.grams ?? 0,
+      ),
+    [categories, listItems, foodProjection],
   )
+  // Mirrors WeightSummary's own render guard. A plan that projects to nothing
+  // still earns the panel when it is an undercount, because the "estimate" note
+  // is the only thing explaining why the total looks wrong.
+  const showWeightSummary =
+    listItems.length > 0 || weightBreakdown.totalPackGrams > 0 || incompleteFood
 
   // Group Worn: hide isWorn items inside each category and render them in
   // a trailing Worn section. Worn-hiding is done at the leaf via
@@ -493,6 +600,43 @@ function ListDetailInner({
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- listItemsRef is a ref (always-stable); setDialog is stable
     [],
+  )
+
+  // Defined ONCE and mounted by both the desktop aside and the mobile drawer.
+  // They rendered the same panel independently before; letting the Food half
+  // exist in only one of them would leave phone users able to see a plan's
+  // weight and remove it, but never attach one.
+  const libraryPane = (
+    <>
+      {/* The panel's Gear | Food toggle (design 8). Two different verbs sharing
+          one panel: Gear adds many items, Food picks the ONE plan for this trip.
+          The toggle lives out here rather than inside LibraryPanel because that
+          component is memoized on reference-stable props and knows only about
+          gear. */}
+      <LibraryTabs tab={libraryTab} onChange={setLibraryTab} />
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {libraryTab === 'gear' ? (
+          <LibraryPanel
+            gearItems={gearItems}
+            categories={categories}
+            listItemGearIds={listItemGearIds}
+            weightUnit={weightUnit}
+            onAdd={onLibraryAdd}
+            onRemove={onLibraryRemove}
+          />
+        ) : (
+          <FoodPlanPicker
+            plans={foodPlans}
+            isPending={foodPlansPending}
+            isError={foodPlansError}
+            attachedPlanId={list?.foodPlanId ?? null}
+            busy={foodLinkBusy}
+            onAttach={onAttachFoodPlan}
+            onDetach={onDetachFoodPlan}
+          />
+        )}
+      </div>
+    </>
   )
 
   // Stable callback for CategoryGroup's "+ Add new item" affordance.
@@ -635,24 +779,7 @@ function ListDetailInner({
             />
 
             <div className={`flex flex-col min-h-0 flex-1 ${FLAT_TABLE_SURFACE}`}>
-              {/* Quiet section header — labels the panel as the picker for
-                  pulling existing gear into this list. The Gear destination
-                  is reached via the primary nav (top bar + mobile bottom bar). */}
-              <div className="border-b border-gray-200 bg-gray-50 px-3 py-2">
-                <span className={FLAT_TABLE_EYEBROW}>
-                  Add from gear
-                </span>
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <LibraryPanel
-                  gearItems={gearItems}
-                  categories={categories}
-                  listItemGearIds={listItemGearIds}
-                  weightUnit={weightUnit}
-                  onAdd={onLibraryAdd}
-                  onRemove={onLibraryRemove}
-                />
-              </div>
+              {libraryPane}
             </div>
           </aside>
         )}
@@ -710,7 +837,12 @@ function ListDetailInner({
                   "Weight breakdown" disclosure, at lg+ it's the existing
                   PanelCard table. */}
               {mode !== 'pack' && (
-                <div className={`print:hidden grid gap-4 ${listItems.length > 0 ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
+                // Two columns exactly when WeightSummary renders something -
+                // the same condition it guards itself with. Keying this on
+                // listItems alone hid the weight of a food-only list; keying it
+                // on "a plan is attached" would reserve an empty column for a
+                // plan that projects to nothing.
+                <div className={`print:hidden grid gap-4 ${showWeightSummary ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
                   <PanelCard
                     title="Notes"
                     headerAction={
@@ -739,13 +871,36 @@ function ListDetailInner({
                     items={listItems}
                     categories={categories}
                     breakdown={weightBreakdown}
+                    incompleteFood={incompleteFood}
                   />
                 </div>
               )}
 
+              {/* The derived Food row, between the summary and the gear groups.
+                  Normal mode only - pack mode expands it into the per-food
+                  checklist in slice 4. */}
+              {mode !== 'pack' && foodProjectionError && (
+                <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  Couldn&apos;t load this list&apos;s food plan, so the weight below leaves
+                  food out.
+                </p>
+              )}
+              {mode !== 'pack' && foodProjection && (
+                <FoodRow
+                  projection={foodProjection}
+                  weightUnit={weightUnit}
+                  busy={foodLinkBusy}
+                  onDetach={onDetachFoodPlan}
+                />
+              )}
+
               {/* Items grouped by category */}
               {listItems.length === 0 ? (
-                <EmptyListCell onMobileAdd={() => setDrawerOpen(true)} />
+                // A list with a plan but no gear is not empty - it has food. This
+                // asks the LIST ROW, not the projection: the projection is absent
+                // while the plan is still loading and after a failed fetch, and
+                // neither of those means the list became empty.
+                hasFoodPlan ? null : <EmptyListCell onMobileAdd={() => setDrawerOpen(true)} />
               ) : (() => {
                 const activeParsed = activeId ? parseDnDId(activeId) : null
                 const activeItem =
@@ -852,15 +1007,9 @@ function ListDetailInner({
             <ListSidebarDrawer
               open={drawerOpen}
               onOpenChange={setDrawerOpen}
+              title={LIBRARY_TAB_LABELS[libraryTab]}
             >
-              <LibraryPanel
-                gearItems={gearItems}
-                categories={categories}
-                listItemGearIds={listItemGearIds}
-                weightUnit={weightUnit}
-                onAdd={onLibraryAdd}
-                onRemove={onLibraryRemove}
-              />
+              <div className="flex h-full flex-col">{libraryPane}</div>
             </ListSidebarDrawer>
           </Suspense>
         </div>

@@ -9,13 +9,13 @@ import {
   FLAT_TABLE_HEADER_COUNT,
   FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
-  FLAT_TABLE_META_TEXT,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_ROW,
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
 import GearStatusBadge from '../components/gear/GearStatusBadge'
+import PickerEmptyState from './PickerEmptyState'
 
 type Props = {
   gearItems: GearItem[]
@@ -108,7 +108,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
           // Gear page, then come back here to add it. The mobile bottom
           // bar has a Gear destination so we don't restate that
           // navigation path here.
-          <EmptyState
+          <PickerEmptyState
             heading={searchFiltered.length === 0 && !q
               ? 'No gear yet.'
               : 'No matching gear.'}
@@ -146,24 +146,6 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
   )
 }
 
-// Empty-state cell shown when search produces zero matches or when the
-// user has no gear at all. Wording explains where gear lives instead
-// of offering to create it here. No nav link — the mobile bottom bar
-// and desktop primary nav both already surface the Gear destination.
-function EmptyState({
-  heading,
-  body,
-}: {
-  heading: string
-  body: string
-}) {
-  return (
-    <div className={`p-4 text-center ${FLAT_TABLE_BODY_TEXT} text-gray-500`}>
-      <p className="font-medium text-gray-700">{heading}</p>
-      <p className={`mt-1 ${FLAT_TABLE_META_TEXT} text-gray-500`}>{body}</p>
-    </div>
-  )
-}
 
 // Wrapped in React.memo so re-renders of LibraryPanel (driven by parent
 // churn — drag ticks, NotesEditor keystrokes, list-items mutations) don't

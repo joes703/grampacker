@@ -20,6 +20,11 @@ type Props = {
   items: ListItemWithGear[]
   categories: Category[]
   breakdown?: WeightBreakdown
+  // The attached food plan could not be fully projected, so every number here
+  // that includes food is an UNDERCOUNT (design 5.4). The fact has to travel
+  // with the number, not sit only on the Food row: this strip is what people
+  // read the pack weight off.
+  incompleteFood?: boolean
 }
 
 // Weight summary rendered below Notes on the list detail page (normal
@@ -41,10 +46,12 @@ type Props = {
 // Math is shared with the desktop table via computeWeightBreakdown in
 // lib/weight-breakdown.ts; this component owns presentation only.
 //
-// TRANSPLANT NOTE (food): the old component took an incompleteFoodWeight
-// prop and rendered IncompleteFoodWeightNote under the strip/table. That
-// returns with the food-plans slice.
-export default function WeightSummary({ items, categories, breakdown: providedBreakdown }: Props) {
+export default function WeightSummary({
+  items,
+  categories,
+  breakdown: providedBreakdown,
+  incompleteFood = false,
+}: Props) {
   const computedBreakdown = useMemo(
     () => computeWeightBreakdown(items, categories),
     [items, categories],
@@ -52,13 +59,17 @@ export default function WeightSummary({ items, categories, breakdown: providedBr
   const breakdown = providedBreakdown ?? computedBreakdown
   const [breakdownOpen, setBreakdownOpen] = useState(false)
 
-  if (items.length === 0 && breakdown.totalPackGrams === 0) return null
+  // An all-unprojectable food plan weighs 0 with no gear, but it is NOT nothing
+  // to report: the note is the only thing telling the user the total is an
+  // undercount rather than an accurate zero.
+  if (items.length === 0 && breakdown.totalPackGrams === 0 && !incompleteFood) return null
 
   return (
     <>
       {/* Mobile / tablet portrait — compact strip + collapsible table. */}
       <div className="lg:hidden flex flex-col gap-2">
         <SummaryStrip breakdown={breakdown} />
+        {incompleteFood && <IncompleteFoodWeightNote />}
         <BreakdownDisclosure
           open={breakdownOpen}
           onToggle={() => setBreakdownOpen((v) => !v)}
@@ -71,9 +82,29 @@ export default function WeightSummary({ items, categories, breakdown: providedBr
       <div className="hidden lg:block">
         <PanelCard title="Weight summary">
           <WeightTable items={items} categories={categories} breakdown={breakdown} />
+          {incompleteFood && <IncompleteFoodWeightNote />}
         </PanelCard>
       </div>
     </>
+  )
+}
+
+// Says the pack weight is an undercount. A total that quietly lies is worse
+// than one that admits it is partial.
+//
+// The wording deliberately does not name a cause. design 5.4 says the only
+// cause is a `packages` entry whose food has no package size - but
+// selectFoodPlanView ALSO flags incomplete for an entry whose food is missing
+// from the ['food-items'] cache (src/food/plan-view.ts:110), which is a stale
+// client cache rather than missing data. Naming the package-size cause would be
+// a confident lie in that case. The editor's badge is generic for the same
+// reason; the two should be pulled apart in plan-view, not papered over here.
+function IncompleteFoodWeightNote() {
+  return (
+    <p className="px-3 py-2 text-xs text-amber-800">
+      Estimate: some foods in this plan could not be weighed, so they add nothing
+      to this total.
+    </p>
   )
 }
 
