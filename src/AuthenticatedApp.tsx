@@ -3,6 +3,8 @@ import RootRedirect from './layout/RootRedirect'
 import AppShell from './layout/AppShell'
 import GearLibraryPage from './gear/GearLibraryPage'
 import FoodLibraryPage from './food/FoodLibraryPage'
+import FoodPlansPage from './food/FoodPlansPage'
+import FoodPlanEditor from './food/FoodPlanEditor'
 import SettingsPage from './settings/SettingsPage'
 import ListsPage from './lists/ListsPage'
 import ListDetailPage from './lists/ListDetailPage'
@@ -37,6 +39,10 @@ export default function AuthenticatedApp() {
         <Route index element={<RootRedirect />} />
         <Route path="gear" element={<GearLibraryPage />} />
         <Route path="food" element={<FoodLibraryPage />} />
+        {/* Plans live under the /food home beside the library (FoodTabs). The
+            index lists plans; :id opens the editor for one plan graph. */}
+        <Route path="food/plans" element={<FoodPlansPage />} />
+        <Route path="food/plans/:id" element={<FoodPlanEditor />} />
         <Route path="settings" element={<SettingsPage />} />
         {/* Pack mode is a URL segment of the same detail page (see
             ListDetailPage's mode derivation + legacy ?mode=pack redirect). */}

@@ -10,10 +10,10 @@
 // specific, friendly message BEFORE a write hits the server. They do NOT
 // replace the authoritative enforcement; keep them in sync with it.
 //
-// TRANSPLANT NOTE: the old repo's file also carried the plan caps
-// (FOOD_PLAN_DAY_CAP / MEAL_DEFINITION_CAP / FOOD_PLAN_ENTRY_CAP /
-// FOOD_PLAN_CAP); those return with the food-plans slice. FOOD_ITEM_CAP
-// landed with the food library (slice 1) - re-exported below.
+// TRANSPLANT NOTE: the plan caps (FOOD_PLAN_CAP / FOOD_PLAN_DAY_CAP /
+// MEAL_DEFINITION_CAP / FOOD_PLAN_ENTRY_CAP) are back with the food-plans
+// slice, defined in shared/food-plans.ts (the 0008 triggers mirror them) and
+// re-exported below. FOOD_ITEM_CAP landed with the food library (slice 1).
 
 // The list caps are defined once in shared/lists.ts (the server's
 // enforcement lives next to its request schemas; the 0004 triggers
@@ -22,6 +22,12 @@
 // convention (defined in shared/food.ts, the 0007 trigger mirrors it).
 export { LIST_CAP, LIST_ITEM_CAP } from '../../shared/lists'
 export { FOOD_ITEM_CAP } from '../../shared/food'
+export {
+  FOOD_PLAN_CAP,
+  FOOD_PLAN_DAY_CAP,
+  MEAL_DEFINITION_CAP,
+  FOOD_PLAN_ENTRY_CAP,
+} from '../../shared/food-plans'
 
 // Max gear items in a user's inventory.
 export const GEAR_ITEM_CAP = 500
