@@ -594,36 +594,48 @@ describe('/api/food-plans caps', () => {
     const { cookie } = await signUpVerifiedUser('plan-entrycap@example.com', 'E')
     const userId = await userIdFor(cookie)
     const plan = await createPlan(cookie, { name: 'Trip', days: 1 })
+    const day0 = plan.days[0]!.id
+    const cellBreakfast = cellId(plan, day0, mealByRole(plan, 'breakfast').id)
+    const cellDinner = cellId(plan, day0, mealByRole(plan, 'dinner').id)
+    const cellOnTrail = cellId(
+      plan,
+      day0,
+      plan.meals.find((m) => m.name === 'On-trail food')!.id,
+    )
 
-    // Seed 2000 foods + 2000 Extras entries directly (each Extras entry is unique
-    // per (food_plan_id, food_item_id), so each needs a distinct food). The rows
-    // go in in chunks: one 2000-tuple VALUES statement exceeds D1's statement
-    // length limit (SQLITE_TOOBIG).
+    // 2000 entries needs 2000 distinct (cell, food) pairs. Foods are capped at
+    // 1000/user, and an Extras entry needs a distinct food - so instead spread
+    // 1000 foods across TWO cells (a food may repeat across cells; the unique
+    // index is per (day_meal_id, food_item_id)). Rows go in in 250-row chunks:
+    // one 2000-tuple VALUES statement exceeds D1's length limit (SQLITE_TOOBIG).
     const CHUNK = 250
-    for (let i = 0; i < 2001; i += CHUNK) {
+    for (let i = 0; i < 1000; i += CHUNK) {
       const rows = Array.from(
-        { length: Math.min(CHUNK, 2001 - i) },
+        { length: Math.min(CHUNK, 1000 - i) },
         (_, j) => `('cf-${i + j}', '${userId}', 'Cap food ${i + j}', 1, 0, ${i + j}, 0, 0)`,
       ).join(',')
       await env.DB.prepare(
         `insert into food_items (id, user_id, name, serving_weight_grams, calories_per_serving, sort_order, created_at, updated_at) values ${rows}`,
       ).run()
     }
-    for (let i = 0; i < 2000; i += CHUNK) {
-      const rows = Array.from(
-        { length: Math.min(CHUNK, 2000 - i) },
-        (_, j) =>
-          `('ce-${i + j}', '${userId}', '${plan.id}', null, 1, 'cf-${i + j}', 'servings', 1, ${i + j}, 0, 0)`,
-      ).join(',')
-      await env.DB.prepare(
-        `insert into food_plan_entries (id, user_id, food_plan_id, day_meal_id, is_extra, food_item_id, basis, amount, sort_order, created_at, updated_at) values ${rows}`,
-      ).run()
+    for (const cell of [cellBreakfast, cellDinner]) {
+      for (let i = 0; i < 1000; i += CHUNK) {
+        const rows = Array.from(
+          { length: Math.min(CHUNK, 1000 - i) },
+          (_, j) =>
+            `('ce-${cell}-${i + j}', '${userId}', '${plan.id}', '${cell}', 0, 'cf-${i + j}', 'servings', 1, ${i + j}, 0, 0)`,
+        ).join(',')
+        await env.DB.prepare(
+          `insert into food_plan_entries (id, user_id, food_plan_id, day_meal_id, is_extra, food_item_id, basis, amount, sort_order, created_at, updated_at) values ${rows}`,
+        ).run()
+      }
     }
 
-    // The 2001st entry (a fresh food, so not a duplicate) hits the cap.
+    // A 2001st entry - an existing food in a THIRD cell, so a fresh (cell, food)
+    // pair, not a duplicate - hits the cap.
     const over = await apiRequest(cookie, 'POST', `/api/food-plans/${plan.id}/entries`, {
-      isExtra: true,
-      foodItemId: 'cf-2000',
+      dayMealId: cellOnTrail,
+      foodItemId: 'cf-0',
       basis: 'servings',
       amount: 1,
     })
