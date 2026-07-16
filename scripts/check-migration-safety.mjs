@@ -53,6 +53,11 @@
 // not exist yet on the base ref are dropped automatically, so a fixture may be
 // written against the schema as it looks AFTER your migration.
 //
+// Writing a migration that DELIBERATELY rewrites data? Declare each rewrite in
+// EXPECTED_CHANGES (and, if it also needs a constraint proven, a POST_CHECKS
+// probe) - the row-changed failure flips into an assertion that the rewrite
+// happened exactly as declared.
+//
 // Usage: node scripts/check-migration-safety.mjs [--base=<git-ref>]
 
 import { execFileSync } from 'node:child_process'
@@ -235,6 +240,27 @@ const FIXTURES = [
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
   }],
+  // A second list on the SAME plan as list-seed, updated earlier. Migration
+  // 0010's dedupe must detach exactly this one (the most recently updated list
+  // wins) - declared in EXPECTED_CHANGES below, which both exempts the rewrite
+  // and ASSERTS it happened. Once 0010 is in the base ref this row seeds with
+  // its after-value (null) instead, because the unique index would reject the
+  // shared link at insert time.
+  ['lists', {
+    id: 'list-seed-3',
+    user_id: 'u-seed',
+    name: 'Third Seed List',
+    description: null,
+    slug: 'seed03',
+    food_plan_id: 'plan-seed',
+    is_shared: 0,
+    group_worn: 0,
+    ready_checks_enabled: 0,
+    is_draft: 1,
+    sort_order: 2,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS - 1000,
+  }],
   // The row 0009 would have destroyed: it cascades from BOTH lists and
   // gear_items, so it is the canary for any rebuild of either parent.
   ['list_items', {
@@ -374,6 +400,41 @@ const FIXTURES = [
   }],
 ]
 
+// Intentional data rewrites. The row-changed check exists to catch ACCIDENTAL
+// rewrites, which by design forbids a migration that deliberately rewrites
+// data - so a deliberate one is declared here instead, and the check flips
+// from "this row must not change" to "this row MUST change exactly like this".
+// Each entry names the migration that performs it:
+//   - while that migration is NEW on this branch, the fixture seeds `before`
+//     and the post-migration snapshot must show `after`;
+//   - once it is part of the base ref, the fixture seeds `after` directly
+//     (the pre-0010 shared-link state is not even insertable any more).
+const EXPECTED_CHANGES = [
+  {
+    migration: '0010_one-plan-per-list.sql',
+    table: 'lists',
+    key: { column: 'id', value: 'list-seed-3' },
+    column: 'food_plan_id',
+    before: 'plan-seed',
+    after: null,
+  },
+]
+
+// One-shot probes that run right after the new migrations apply, while the
+// migration that motivates them is still on this branch. Later regressions are
+// covered elsewhere (listSchemaObjects fails if the index ever vanishes).
+const POST_CHECKS = [
+  {
+    migration: '0010_one-plan-per-list.sql',
+    description:
+      'lists_food_plan_id_unique rejects a second list on one plan',
+    // list-seed still holds plan-seed; re-pointing the (now detached)
+    // list-seed-3 at it must hit the partial unique index.
+    sql: "update lists set food_plan_id = 'plan-seed' where id = 'list-seed-3'",
+    expectErrorMatch: /unique/i,
+  },
+]
+
 const quoteIdent = (name) => `"${name.replaceAll('"', '""')}"`
 
 const quoteValue = (value) => {
@@ -427,6 +488,60 @@ const execSql = (statements) => {
 
 const query = (sql) => execSql([sql])[0]
 
+// Runs a statement that MUST fail, returning null on the expected rejection
+// and a failure description otherwise. wrangler reports D1's SQL errors on
+// stdout and run() folds both streams into the thrown message, so the pattern
+// can match either.
+const expectSqlError = (statement, pattern) => {
+  try {
+    execSql([statement])
+  } catch (error) {
+    if (pattern.test(error.message)) return null
+    return `failed with the wrong error:\n${error.message}`
+  }
+  return 'succeeded, but should have been rejected'
+}
+
+// The before-snapshot, rewritten to what it SHOULD look like after the new
+// migrations: every EXPECTED_CHANGES entry whose migration is in this branch's
+// new set is applied to its row. Comparing this against the real
+// after-snapshot both exempts the declared rewrite and asserts it happened.
+const applyExpectedChanges = (before, newMigrations) => {
+  const active = EXPECTED_CHANGES.filter((c) => newMigrations.has(c.migration))
+  if (active.length === 0) return before
+
+  const expected = new Map()
+  for (const [table, rows] of before) {
+    const changes = active.filter((c) => c.table === table)
+    if (changes.length === 0) {
+      expected.set(table, rows)
+      continue
+    }
+    const rewritten = rows.map((json) => {
+      const row = JSON.parse(json)
+      let modified = false
+      for (const change of changes) {
+        if (row[change.key.column] === change.key.value) {
+          if (!(change.column in row)) {
+            throw new Error(
+              `EXPECTED_CHANGES names ${table}.${change.column}, which the ` +
+                'snapshot does not contain.',
+            )
+          }
+          row[change.column] = change.after
+          modified = true
+        }
+      }
+      // Untouched rows keep SQLite's own JSON rendering, so a JS-vs-SQLite
+      // formatting difference can never masquerade as a data change.
+      return modified ? JSON.stringify(row) : json
+    })
+    // Re-sort: the rewrite can change the rows' relative string order.
+    expected.set(table, [...rewritten].sort())
+  }
+  return expected
+}
+
 const applyMigrations = () => wrangler(['d1', 'migrations', 'apply', DB, '--local'])
 
 const listTables = () =>
@@ -462,14 +577,24 @@ const describeColumns = () => {
 }
 
 // Drops fixture columns the base ref does not have yet, so a fixture can be
-// written against the post-migration schema.
-const seed = (columnsByTable) => {
+// written against the post-migration schema. `newMigrations` decides which
+// side of each EXPECTED_CHANGES entry to seed (see that constant).
+const seed = (columnsByTable, newMigrations) => {
   const seededColumns = new Map()
   const inserts = []
 
-  for (const [table, row] of FIXTURES) {
+  for (const [table, fixtureRow] of FIXTURES) {
     const existing = columnsByTable.get(table)
     if (!existing) continue // table arrives in one of the new migrations
+
+    const row = { ...fixtureRow }
+    for (const change of EXPECTED_CHANGES) {
+      if (change.table !== table) continue
+      if (row[change.key.column] !== change.key.value) continue
+      row[change.column] = newMigrations.has(change.migration)
+        ? change.before
+        : change.after
+    }
 
     const columns = Object.keys(row).filter((col) => existing.has(col))
     if (columns.length === 0) continue
@@ -553,6 +678,7 @@ const main = () => {
   }
 
   const added = changed.map((file) => file.path)
+  const addedNames = new Set(added.map((file) => basename(file)))
 
   if (added.length === 0) {
     console.log(`No migrations added since ${base}. Nothing to check.`)
@@ -604,7 +730,7 @@ const main = () => {
       return
     }
 
-    const seededColumns = seed(columnsByTable)
+    const seededColumns = seed(columnsByTable, addedNames)
 
     const unseeded = listTables().filter((table) => !seededColumns.has(table))
     if (unseeded.length > 0) {
@@ -626,11 +752,13 @@ const main = () => {
     console.log('\nApplying the new migrations...')
     applyMigrations()
 
-    // 4. Nothing may have been lost or corrupted.
+    // 4. Nothing may have been lost or corrupted - except the rewrites the
+    // new migrations DECLARED, which must have happened exactly as declared.
     const after = snapshot(seededColumns)
     const failures = []
+    const expected = applyExpectedChanges(before, addedNames)
 
-    for (const [table, beforeRows] of before) {
+    for (const [table, beforeRows] of expected) {
       const afterRows = after.get(table) ?? []
       if (afterRows.length !== beforeRows.length) {
         failures.push(
@@ -656,6 +784,17 @@ const main = () => {
           'ones are not in the drizzle snapshot, so the migration must recreate ' +
           'them explicitly.',
       )
+    }
+
+    // One-shot probes for the migrations this branch introduces. Run AFTER the
+    // snapshots so a probe that unexpectedly succeeds cannot contaminate the
+    // row comparison above.
+    for (const check of POST_CHECKS) {
+      if (!addedNames.has(check.migration)) continue
+      const problem = expectSqlError(check.sql, check.expectErrorMatch)
+      if (problem) {
+        failures.push(`Post-check "${check.description}" ${problem}`)
+      }
     }
 
     const tablesAfter = listTables()
