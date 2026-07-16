@@ -595,20 +595,30 @@ describe('/api/food-plans caps', () => {
     const userId = await userIdFor(cookie)
     const plan = await createPlan(cookie, { name: 'Trip', days: 1 })
 
-    // Seed 2000 foods + 2000 Extras entries directly. Extras entries are unique
-    // per (food_plan_id, food_item_id), so each needs a distinct food.
-    const foodValues = Array.from({ length: 2001 }, (_, i) => {
-      return `('cf-${i}', '${userId}', 'Cap food ${i}', 1, 0, ${i}, 0, 0)`
-    }).join(',')
-    await env.DB.prepare(
-      `insert into food_items (id, user_id, name, serving_weight_grams, calories_per_serving, sort_order, created_at, updated_at) values ${foodValues}`,
-    ).run()
-    const entryValues = Array.from({ length: 2000 }, (_, i) => {
-      return `('ce-${i}', '${userId}', '${plan.id}', null, 1, 'cf-${i}', 'servings', 1, ${i}, 0, 0)`
-    }).join(',')
-    await env.DB.prepare(
-      `insert into food_plan_entries (id, user_id, food_plan_id, day_meal_id, is_extra, food_item_id, basis, amount, sort_order, created_at, updated_at) values ${entryValues}`,
-    ).run()
+    // Seed 2000 foods + 2000 Extras entries directly (each Extras entry is unique
+    // per (food_plan_id, food_item_id), so each needs a distinct food). The rows
+    // go in in chunks: one 2000-tuple VALUES statement exceeds D1's statement
+    // length limit (SQLITE_TOOBIG).
+    const CHUNK = 250
+    for (let i = 0; i < 2001; i += CHUNK) {
+      const rows = Array.from(
+        { length: Math.min(CHUNK, 2001 - i) },
+        (_, j) => `('cf-${i + j}', '${userId}', 'Cap food ${i + j}', 1, 0, ${i + j}, 0, 0)`,
+      ).join(',')
+      await env.DB.prepare(
+        `insert into food_items (id, user_id, name, serving_weight_grams, calories_per_serving, sort_order, created_at, updated_at) values ${rows}`,
+      ).run()
+    }
+    for (let i = 0; i < 2000; i += CHUNK) {
+      const rows = Array.from(
+        { length: Math.min(CHUNK, 2000 - i) },
+        (_, j) =>
+          `('ce-${i + j}', '${userId}', '${plan.id}', null, 1, 'cf-${i + j}', 'servings', 1, ${i + j}, 0, 0)`,
+      ).join(',')
+      await env.DB.prepare(
+        `insert into food_plan_entries (id, user_id, food_plan_id, day_meal_id, is_extra, food_item_id, basis, amount, sort_order, created_at, updated_at) values ${rows}`,
+      ).run()
+    }
 
     // The 2001st entry (a fresh food, so not a duplicate) hits the cap.
     const over = await apiRequest(cookie, 'POST', `/api/food-plans/${plan.id}/entries`, {
