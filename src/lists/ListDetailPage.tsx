@@ -888,6 +888,7 @@ function ListDetailInner({
               {mode !== 'pack' && foodProjection && (
                 <FoodRow
                   projection={foodProjection}
+                  listId={listId}
                   weightUnit={weightUnit}
                   busy={foodLinkBusy}
                   onDetach={onDetachFoodPlan}

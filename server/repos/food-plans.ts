@@ -14,6 +14,7 @@ import {
   isForeignKeyViolation,
   isTriggerAbort,
 } from './db-errors'
+import { copyName } from './lists'
 
 // The food-plan graph (food-planning-design.md slice 2). One repo owns the plan,
 // its meals, days, the day x meal grid and the entries. Every method is
@@ -62,6 +63,8 @@ export type EntryRow = {
   sortOrder: number
 }
 
+export type UsedByListRow = { id: string; name: string }
+
 export type FoodPlanDocumentRow = {
   id: string
   name: string
@@ -72,6 +75,7 @@ export type FoodPlanDocumentRow = {
   days: DayRow[]
   dayMeals: DayMealRow[]
   entries: EntryRow[]
+  usedByLists: UsedByListRow[]
 }
 
 // A mutation either produces the fresh document or explains why it could not.
@@ -131,15 +135,21 @@ export function createFoodPlansRepo(db: Db, userId: string) {
   }
 
   // The single batched plan read (design 5.2): the plan row plus its four child
-  // collections in ONE db.batch (a D1 transaction, so all five see a consistent
-  // snapshot - no interleaving with a concurrent write). Each child is filtered
-  // by (food_plan_id, user_id) so ownership is structural, not a post-filter.
-  // Returns null when the plan is not owned (the children come back empty too).
+  // collections and the lists it backs, in ONE db.batch (a D1 transaction, so
+  // all six see a consistent snapshot - no interleaving with a concurrent
+  // write). Each child is filtered by (food_plan_id, user_id) so ownership is
+  // structural, not a post-filter. Returns null when the plan is not owned (the
+  // children come back empty too).
+  //
+  // usedByLists rides on the document rather than its own endpoint so the
+  // editor's shared-plan warning (design 12.9) reads the same cache entry as
+  // everything else it shows - a mutation that returns the fresh document
+  // refreshes the warning with it.
   async function getDocument(
     planId: string,
   ): Promise<FoodPlanDocumentRow | null> {
-    const [planRows, mealRows, dayRows, dayMealRows, entryRows] = await db.batch(
-      [
+    const [planRows, mealRows, dayRows, dayMealRows, entryRows, usedByRows] =
+      await db.batch([
         db
           .select(planCols)
           .from(foodPlans)
@@ -201,8 +211,12 @@ export function createFoodPlansRepo(db: Db, userId: string) {
             asc(foodPlanEntries.sortOrder),
             asc(foodPlanEntries.createdAt),
           ),
-      ],
-    )
+        db
+          .select({ id: lists.id, name: lists.name })
+          .from(lists)
+          .where(and(eq(lists.foodPlanId, planId), eq(lists.userId, userId)))
+          .orderBy(asc(lists.sortOrder), asc(lists.name)),
+      ])
 
     const plan = planRows[0]
     if (!plan) return null
@@ -212,6 +226,7 @@ export function createFoodPlansRepo(db: Db, userId: string) {
       days: dayRows,
       dayMeals: dayMealRows,
       entries: entryRows,
+      usedByLists: usedByRows,
     }
   }
 
@@ -349,6 +364,205 @@ export function createFoodPlansRepo(db: Db, userId: string) {
         .returning({ id: foodPlans.id })
       const [, deleted] = await db.batch([detach, del])
       return deleted.length > 0
+    },
+
+    // Deep-copy the plan graph with fresh ids throughout (design 3.1): meals,
+    // days, the grid and the entries, referencing the same account-wide
+    // food_items. No pack state is copied - pack state is not keyed by plan.
+    //
+    // listId is the "Duplicate for this trip" fork (design 12.9): when present,
+    // the arriving list is re-pointed at the copy IN THE SAME BATCH as the copy
+    // itself, so there is no window where the fork exists but the trip still
+    // follows the shared original. The list must be the caller's AND currently
+    // using THIS plan (invalid_ref otherwise) - the fork's premise is "this
+    // trip follows the shared original", so a list on another plan (or on
+    // none) is not forkable-to, and the same condition in the UPDATE's WHERE
+    // makes the attach a compare-and-swap on the observed source plan: a
+    // concurrent detach/re-point in another tab makes it match zero rows
+    // instead of being silently overwritten. When that happens the copy has
+    // already committed, so it is deleted (cascade takes the children) and the
+    // caller gets invalid_ref - not a 201 whose promised attach never
+    // happened.
+    //
+    // Every child insert is a MULTI-ROW statement chunked by bound-parameter
+    // count, not row count: D1 caps params at 100 per statement (AGENTS.md), so
+    // each statement takes floor(90 / columns) rows - 90 for the same headroom
+    // as chunk-ids.ts. A worst-case plan (20 meals, 60 days, 1200 cells, 2000
+    // entries) lands in ~360 statements in ONE db.batch; per-row statements
+    // would be ~3300. Batch order is plan -> meals -> days -> day_meals ->
+    // entries -> attach, so every FK target precedes its referrers.
+    //
+    // Only the plan-cap trigger can fire (children are copied 1:1 from a plan
+    // already under its caps). An entry's food deleted mid-request surfaces as
+    // an FK violation -> invalid_ref, same backstop as addEntry.
+    async duplicate(
+      planId: string,
+      listId: string | null,
+    ): Promise<PlanDocResult> {
+      const source = await getDocument(planId)
+      if (!source) return { ok: false, reason: 'not_found' }
+
+      if (listId !== null) {
+        const [list] = await db
+          .select({ id: lists.id })
+          .from(lists)
+          .where(
+            and(
+              eq(lists.id, listId),
+              eq(lists.userId, userId),
+              eq(lists.foodPlanId, planId),
+            ),
+          )
+          .limit(1)
+        if (!list) return { ok: false, reason: 'invalid_ref' }
+      }
+
+      const now = Date.now()
+      const newPlanId = crypto.randomUUID()
+      const mealIdMap = new Map(source.meals.map((m) => [m.id, crypto.randomUUID()]))
+      const dayIdMap = new Map(source.days.map((d) => [d.id, crypto.randomUUID()]))
+      const dayMealIdMap = new Map(
+        source.dayMeals.map((dm) => [dm.id, crypto.randomUUID()]),
+      )
+
+      // dayMealId non-null assertions are structurally safe: every child row
+      // came from the same consistent snapshot as the rows its FKs point at.
+      const mealRows = source.meals.map((m) => ({
+        id: mealIdMap.get(m.id) as string,
+        userId,
+        foodPlanId: newPlanId,
+        name: m.name,
+        anchorRole: m.anchorRole,
+        isDefault: m.isDefault,
+        sortOrder: m.sortOrder,
+        createdAt: now,
+        updatedAt: now,
+      }))
+      const dayRows = source.days.map((d) => ({
+        id: dayIdMap.get(d.id) as string,
+        userId,
+        foodPlanId: newPlanId,
+        dayTypeOverride: d.dayTypeOverride,
+        sortOrder: d.sortOrder,
+        createdAt: now,
+        updatedAt: now,
+      }))
+      const dayMealRows = source.dayMeals.map((dm) => ({
+        id: dayMealIdMap.get(dm.id) as string,
+        userId,
+        foodPlanId: newPlanId,
+        dayId: dayIdMap.get(dm.dayId) as string,
+        mealId: mealIdMap.get(dm.mealId) as string,
+        createdAt: now,
+        updatedAt: now,
+      }))
+      const entryRows = source.entries.map((e) => ({
+        id: crypto.randomUUID(),
+        userId,
+        foodPlanId: newPlanId,
+        dayMealId:
+          e.dayMealId === null
+            ? null
+            : (dayMealIdMap.get(e.dayMealId) as string),
+        isExtra: e.isExtra,
+        foodItemId: e.foodItemId,
+        basis: e.basis,
+        amount: e.amount,
+        sortOrder: e.sortOrder,
+        createdAt: now,
+        updatedAt: now,
+      }))
+
+      // floor(90 / columns) rows per statement. Column count is read off the
+      // first row so a schema change reflows the chunking instead of silently
+      // blowing the param cap. Empty input -> no statements.
+      function chunkForParamCap<T extends Record<string, unknown>>(
+        rows: T[],
+      ): T[][] {
+        const first = rows[0]
+        if (!first) return []
+        const perStatement = Math.max(
+          1,
+          Math.floor(90 / Object.keys(first).length),
+        )
+        const out: T[][] = []
+        for (let i = 0; i < rows.length; i += perStatement) {
+          out.push(rows.slice(i, i + perStatement))
+        }
+        return out
+      }
+
+      const insertPlan = db.insert(foodPlans).values({
+        id: newPlanId,
+        userId,
+        name: copyName(source.name),
+        sortOrder: nextPlanSortOrder(),
+        createdAt: now,
+        updatedAt: now,
+      })
+      const insertMeals = chunkForParamCap(mealRows).map((rows) =>
+        db.insert(meals).values(rows),
+      )
+      const insertDays = chunkForParamCap(dayRows).map((rows) =>
+        db.insert(foodPlanDays).values(rows),
+      )
+      const insertDayMeals = chunkForParamCap(dayMealRows).map((rows) =>
+        db.insert(dayMeals).values(rows),
+      )
+      const insertEntries = chunkForParamCap(entryRows).map((rows) =>
+        db.insert(foodPlanEntries).values(rows),
+      )
+      const attach =
+        listId !== null
+          ? [
+              db
+                .update(lists)
+                .set({ foodPlanId: newPlanId, updatedAt: now })
+                .where(
+                  and(
+                    eq(lists.id, listId),
+                    eq(lists.userId, userId),
+                    // CAS on the observed source plan (see the method comment).
+                    eq(lists.foodPlanId, planId),
+                  ),
+                )
+                .returning({ id: lists.id }),
+            ]
+          : []
+
+      let results: unknown[]
+      try {
+        results = await db.batch([
+          insertPlan,
+          ...insertMeals,
+          ...insertDays,
+          ...insertDayMeals,
+          ...insertEntries,
+          ...attach,
+        ])
+      } catch (err) {
+        if (isFoodPlanCapError(err)) return { ok: false, reason: 'cap_exceeded' }
+        if (isForeignKeyViolation(err)) return { ok: false, reason: 'invalid_ref' }
+        throw err
+      }
+
+      // The attach is the batch's LAST statement; its returning() array is
+      // empty when the CAS matched nothing (list deleted / detached / moved
+      // between the precheck and the batch). The copy committed with it, so
+      // undo it - a compensating delete rather than a rollback, because D1
+      // gives no way to abort a batch on an empty UPDATE. The window where
+      // the orphan copy exists is this one request's tail, and its id has
+      // never left the server.
+      if (attach.length > 0) {
+        const attached = results[results.length - 1] as { id: string }[]
+        if (attached.length === 0) {
+          await db
+            .delete(foodPlans)
+            .where(and(eq(foodPlans.id, newPlanId), eq(foodPlans.userId, userId)))
+          return { ok: false, reason: 'invalid_ref' }
+        }
+      }
+      return okDoc(newPlanId)
     },
 
     // Append a day and schedule every existing meal on it (a full grid row), so

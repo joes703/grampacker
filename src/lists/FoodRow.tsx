@@ -19,6 +19,9 @@ import type { FoodProjection } from './use-food-projection'
 
 type Props = {
   projection: FoodProjection
+  // The list this row lives on. Travels to the editor as ?from so "Duplicate
+  // for this trip" (design 12.9) knows which trip to attach the fork to.
+  listId: string
   weightUnit: WeightUnit
   busy: boolean
   onDetach: () => void
@@ -41,7 +44,13 @@ type Props = {
 // already carries.
 //
 // Pack mode expands this into the real per-food checklist - that is slice 4.
-export default function FoodRow({ projection, weightUnit, busy, onDetach }: Props) {
+export default function FoodRow({
+  projection,
+  listId,
+  weightUnit,
+  busy,
+  onDetach,
+}: Props) {
   const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
     useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
 
@@ -56,7 +65,7 @@ export default function FoodRow({ projection, weightUnit, busy, onDetach }: Prop
       <div className={`${FLAT_TABLE_ROW} flex items-center gap-2`}>
         <span className="flex-1 min-w-0">
           <Link
-            to={`/food/plans/${projection.planId}`}
+            to={`/food/plans/${projection.planId}?from=${listId}`}
             className={`block truncate ${FLAT_TABLE_BODY_TEXT} text-blue-700 hover:underline`}
           >
             Food ({projection.name})

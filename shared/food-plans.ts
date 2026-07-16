@@ -107,6 +107,16 @@ export const foodPlanEntrySchema = z.object({
 })
 export type FoodPlanEntry = z.infer<typeof foodPlanEntrySchema>
 
+// A list this plan currently backs. Rides on the document (not a separate
+// endpoint) so the editor's shared-plan warning (design 12.9) can never be
+// stale relative to the plan it is warning about: every mutation returns the
+// fresh document, and this comes with it.
+export const foodPlanUsedBySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+})
+export type FoodPlanUsedBy = z.infer<typeof foodPlanUsedBySchema>
+
 // The whole plan graph in one batched read (design 5.2). Every structural
 // mutation returns the fresh document so the editor stays a pure projection of
 // this single cache entry (no fine-grained optimistic fan-out; design 5.5).
@@ -120,6 +130,7 @@ export const foodPlanDocumentSchema = z.object({
   days: foodPlanDaySchema.array(),
   dayMeals: dayMealSchema.array(),
   entries: foodPlanEntrySchema.array(),
+  usedByLists: foodPlanUsedBySchema.array(),
 })
 export type FoodPlanDocument = z.infer<typeof foodPlanDocumentSchema>
 
@@ -176,6 +187,19 @@ export const addEntryRequestSchema = z
   )
 export type AddEntryRequest = z.infer<typeof addEntryRequestSchema>
 export type AddEntryRequestInput = z.input<typeof addEntryRequestSchema>
+
+// Fork a plan (design 3.1/12.9). listId is the trip the user arrived from:
+// when present, the copy is attached to that list in the same transaction as
+// the copy itself - "Duplicate for this trip" must never half-happen. Absent
+// (null), it is a plain library duplicate and no list moves.
+export const duplicateFoodPlanRequestSchema = z
+  .object({
+    listId: idSchema.nullable().default(null),
+  })
+  .strict()
+export type DuplicateFoodPlanRequest = z.infer<
+  typeof duplicateFoodPlanRequestSchema
+>
 
 export const updateEntryRequestSchema = z
   .object({

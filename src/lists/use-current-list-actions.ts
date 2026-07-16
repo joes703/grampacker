@@ -109,20 +109,27 @@ export function useCurrentListActions() {
 
   // Non-optimistic: the server performs the deep copy (fresh slug,
   // isShared/isDraft reset) and returns the new row; invalidate + navigate.
+  // The copy carries food_plan_id (design 3.1), so a plan document's
+  // usedByLists just gained a list - invalidate the prefix so the editor's
+  // 12.9 warning sees it.
   const duplicateMut = useMutation({
     mutationFn: (target: List) => duplicateList(target.id),
     meta: { errorToast: "Couldn't duplicate that list. Please try again." },
     onSuccess: (created) => {
       void qc.invalidateQueries({ queryKey: queryKeys.lists() })
+      void qc.invalidateQueries({ queryKey: queryKeys.foodPlanAll() })
       void navigate(`/lists/${created.id}`)
     },
   })
 
+  // ['food-plan'] prefix: deleting a list that pointed at a plan shrinks that
+  // plan's usedByLists, so any cached plan document is stale about who uses it.
   const deleteListMut = useMutation({
     mutationFn: deleteList,
     ...makeOptimisticDelete<List, string>({
       qc,
       queryKey: queryKeys.lists(),
+      invalidateKeys: [queryKeys.foodPlanAll()],
       id: (id) => id,
     }),
   })

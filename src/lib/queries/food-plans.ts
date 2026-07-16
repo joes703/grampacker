@@ -50,6 +50,19 @@ export async function deleteFoodPlan(id: string): Promise<void> {
   await apiFetchVoid(`/food-plans/${id}`, { method: 'DELETE' })
 }
 
+// Fork (design 3.1/12.9). listId = "Duplicate for this trip": the server
+// attaches the copy to that list in the same transaction as the copy. Returns
+// the NEW plan's document.
+export async function duplicateFoodPlan(
+  id: string,
+  listId: string | null,
+): Promise<FoodPlanDocument> {
+  return apiFetch(`/food-plans/${id}/duplicate`, foodPlanDocumentSchema, {
+    method: 'POST',
+    body: { listId },
+  })
+}
+
 export async function addFoodPlanDay(id: string): Promise<FoodPlanDocument> {
   return apiFetch(`/food-plans/${id}/days`, foodPlanDocumentSchema, {
     method: 'POST',

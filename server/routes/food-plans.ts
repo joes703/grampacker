@@ -6,6 +6,7 @@ import {
   addEntryRequestSchema,
   addMealRequestSchema,
   createFoodPlanRequestSchema,
+  duplicateFoodPlanRequestSchema,
   renameFoodPlanRequestSchema,
   updateEntryRequestSchema,
   type FoodPlanDocument,
@@ -55,6 +56,7 @@ function toDocument(doc: FoodPlanDocumentRow): FoodPlanDocument {
     days: doc.days,
     dayMeals: doc.dayMeals,
     entries: doc.entries,
+    usedByLists: doc.usedByLists,
   }
 }
 
@@ -117,6 +119,29 @@ foodPlanRoutes.delete('/:id', async (c) => {
   const ok = await c.get('repos').foodPlans.remove(c.req.param('id'))
   if (!ok) return c.json({ error: 'Not found' }, 404)
   return c.body(null, 204)
+})
+
+// Fork (design 3.1/12.9). The body is OPTIONAL: no body / an empty body is a
+// plain library duplicate, listId is "Duplicate for this trip" (copy + attach
+// in one transaction). Only a genuinely ABSENT body falls through to the
+// schema's default - malformed JSON stays a 400, because a request that
+// garbled its listId must not silently become the other, list-less mutation.
+foodPlanRoutes.post('/:id/duplicate', async (c) => {
+  const text = await c.req.text()
+  let raw: unknown = {}
+  if (text.trim() !== '') {
+    try {
+      raw = JSON.parse(text)
+    } catch {
+      return c.json({ error: 'Invalid request body' }, 400)
+    }
+  }
+  const parsed = duplicateFoodPlanRequestSchema.safeParse(raw)
+  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const result = await c
+    .get('repos')
+    .foodPlans.duplicate(c.req.param('id'), parsed.data.listId)
+  return respond(c, result, 'Food plan limit reached (100 per user)', 201)
 })
 
 // --------------------------------------------------------------------- days

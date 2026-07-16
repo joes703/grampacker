@@ -29,6 +29,11 @@ import type { List } from '../lib/types'
 // slice where a share's headline weight starts including food, and the share
 // cache has a 30s staleTime, so a previously-visited share in this same
 // QueryClient would otherwise serve a total from before the plan changed.
+//
+// The ['food-plan'] prefix is invalidated too: each cached plan document
+// carries usedByLists (the editor's 12.9 shared-plan warning), and attach is
+// exactly the mutation that turns a one-list plan into an ambush. A stale
+// cached document would suppress the warning the attach just made necessary.
 export function useFoodPlanLink() {
   const qc = useQueryClient()
 
@@ -39,7 +44,7 @@ export function useFoodPlanLink() {
     ...makeOptimisticUpdate<List, { id: string; foodPlanId: string }>({
       qc,
       queryKey: queryKeys.lists(),
-      invalidateKeys: [queryKeys.sharedListAll()],
+      invalidateKeys: [queryKeys.sharedListAll(), queryKeys.foodPlanAll()],
       id: ({ id }) => id,
       apply: (item, { foodPlanId }) => ({
         ...item,
@@ -55,7 +60,7 @@ export function useFoodPlanLink() {
     ...makeOptimisticUpdate<List, string>({
       qc,
       queryKey: queryKeys.lists(),
-      invalidateKeys: [queryKeys.sharedListAll()],
+      invalidateKeys: [queryKeys.sharedListAll(), queryKeys.foodPlanAll()],
       id: (id) => id,
       apply: (item) => ({
         ...item,

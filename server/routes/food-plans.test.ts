@@ -14,6 +14,8 @@ import {
 } from '../repos/food-plans'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
+import { CSRF_HEADER } from '../middleware/csrf'
+import app from '../index'
 
 async function userIdFor(cookie: string): Promise<string> {
   const res = await apiRequest(cookie, 'GET', '/api/me')
@@ -64,6 +66,7 @@ const DOC_KEYS = [
   'days',
   'dayMeals',
   'entries',
+  'usedByLists',
 ].sort()
 
 describe('/api/food-plans authorization matrix', () => {
@@ -87,6 +90,7 @@ describe('/api/food-plans authorization matrix', () => {
       ],
       ['PATCH', '/api/food-plans/some-id/entries/e', { amount: 2 }],
       ['DELETE', '/api/food-plans/some-id/entries/e', undefined],
+      ['POST', '/api/food-plans/some-id/duplicate', undefined],
     ] as const) {
       const res = await apiRequest(null, method, path, body)
       expect(res.status, `${method} ${path}`).toBe(401)
@@ -524,6 +528,323 @@ describe('/api/food-plans delete cascades', () => {
       .bind(userId)
       .first()) as { count: number }
     expect(foods).toBe(1)
+  })
+})
+
+// The fork (design 3.1/12.9): a deep copy with fresh ids referencing the same
+// account-wide foods; listId re-points the arriving trip at the copy in the
+// same transaction.
+describe('/api/food-plans duplicate', () => {
+  async function createList(
+    cookie: string,
+    name: string,
+  ): Promise<{ id: string; foodPlanId: string | null }> {
+    const res = await apiRequest(cookie, 'POST', '/api/lists', { name })
+    if (res.status !== 201) throw new Error(`create list failed: ${res.status}`)
+    return (await res.json()) as { id: string; foodPlanId: string | null }
+  }
+
+  async function attach(cookie: string, listId: string, planId: string) {
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${listId}/food-plan`, {
+      foodPlanId: planId,
+    })
+    if (res.status !== 200) throw new Error(`attach failed: ${res.status}`)
+  }
+
+  it('deep-copies the graph with fresh ids, same foods, and a "(copy)" name', async () => {
+    const { cookie } = await signUpVerifiedUser('plan-dup@example.com', 'D')
+    const food = await createFood(cookie, {
+      name: 'Ramen',
+      servingWeightGrams: 80,
+      caloriesPerServing: 350,
+    })
+    const source = await createPlan(cookie, { name: 'Sierra loop', days: 2 })
+    const cell = cellId(source, source.days[0]!.id, mealByRole(source, 'dinner').id)
+    await apiRequest(cookie, 'POST', `/api/food-plans/${source.id}/entries`, {
+      dayMealId: cell,
+      foodItemId: food.id,
+      basis: 'servings',
+      amount: 2,
+    })
+    await apiRequest(cookie, 'POST', `/api/food-plans/${source.id}/entries`, {
+      isExtra: true,
+      foodItemId: food.id,
+      basis: 'weight',
+      amount: 150,
+    })
+
+    const res = await apiRequest(
+      cookie,
+      'POST',
+      `/api/food-plans/${source.id}/duplicate`,
+    )
+    expect(res.status).toBe(201)
+    const copy = foodPlanDocumentSchema.parse(await res.json())
+
+    expect(copy.id).not.toBe(source.id)
+    expect(copy.name).toBe('Sierra loop (copy)')
+    expect(copy.meals).toHaveLength(3)
+    expect(copy.days).toHaveLength(2)
+    expect(copy.dayMeals).toHaveLength(6)
+    expect(copy.entries).toHaveLength(2)
+    expect(copy.usedByLists).toEqual([])
+
+    // Fresh ids THROUGHOUT - no copied row keeps a source id.
+    const sourceIds = new Set([
+      ...source.meals.map((m) => m.id),
+      ...source.days.map((d) => d.id),
+      ...source.dayMeals.map((dm) => dm.id),
+    ])
+    const copyIds = [
+      ...copy.meals.map((m) => m.id),
+      ...copy.days.map((d) => d.id),
+      ...copy.dayMeals.map((dm) => dm.id),
+      ...copy.entries.map((e) => e.id),
+    ]
+    expect(copyIds.some((id) => sourceIds.has(id))).toBe(false)
+
+    // The remap preserved structure: the cell entry landed in the copy's
+    // (day sortOrder 0, dinner) cell, and the Extras entry stayed in Extras.
+    const cellEntry = copy.entries.find((e) => !e.isExtra)!
+    const copyCell = copy.dayMeals.find((dm) => dm.id === cellEntry.dayMealId)!
+    expect(copy.days.find((d) => d.id === copyCell.dayId)!.sortOrder).toBe(0)
+    expect(copy.meals.find((m) => m.id === copyCell.mealId)!.anchorRole).toBe('dinner')
+    const extrasEntry = copy.entries.find((e) => e.isExtra)!
+    expect(extrasEntry.dayMealId).toBeNull()
+    // Foods are referenced, not copied (account-wide library).
+    expect(cellEntry.foodItemId).toBe(food.id)
+    expect(extrasEntry.foodItemId).toBe(food.id)
+    expect(extrasEntry.basis).toBe('weight')
+    expect(extrasEntry.amount).toBe(150)
+
+    // The source is untouched.
+    const sourceAfterRes = await apiRequest(
+      cookie,
+      'GET',
+      `/api/food-plans/${source.id}`,
+    )
+    const sourceAfter = foodPlanDocumentSchema.parse(await sourceAfterRes.json())
+    expect(sourceAfter.name).toBe('Sierra loop')
+    expect(sourceAfter.entries).toHaveLength(2)
+  })
+
+  it('with listId, re-points the arriving list at the copy in the same call', async () => {
+    const { cookie } = await signUpVerifiedUser('plan-dup-fork@example.com', 'F')
+    const source = await createPlan(cookie, { name: 'Shared', days: 1 })
+    const staying = await createList(cookie, 'Winter trip')
+    const forking = await createList(cookie, 'Summer trip')
+    await attach(cookie, staying.id, source.id)
+    await attach(cookie, forking.id, source.id)
+
+    const res = await apiRequest(
+      cookie,
+      'POST',
+      `/api/food-plans/${source.id}/duplicate`,
+      { listId: forking.id },
+    )
+    expect(res.status).toBe(201)
+    const copy = foodPlanDocumentSchema.parse(await res.json())
+
+    // The returned document already knows its one user - the fork and the
+    // attach were one transaction, so there is no window where this is [].
+    expect(copy.usedByLists).toEqual([{ id: forking.id, name: 'Summer trip' }])
+
+    // The source keeps only the list that did not fork.
+    const sourceAfterRes = await apiRequest(
+      cookie,
+      'GET',
+      `/api/food-plans/${source.id}`,
+    )
+    const sourceAfter = foodPlanDocumentSchema.parse(await sourceAfterRes.json())
+    expect(sourceAfter.usedByLists).toEqual([
+      { id: staying.id, name: 'Winter trip' },
+    ])
+
+    // And the list row itself points at the copy.
+    const listsRes = await apiRequest(cookie, 'GET', '/api/lists')
+    const rows = (await listsRes.json()) as { id: string; foodPlanId: string | null }[]
+    expect(rows.find((l) => l.id === forking.id)!.foodPlanId).toBe(copy.id)
+    expect(rows.find((l) => l.id === staying.id)!.foodPlanId).toBe(source.id)
+  })
+
+  it("rejects another user's list (422) and another user's plan (404)", async () => {
+    const a = await signUpVerifiedUser('plan-dup-a@example.com', 'A')
+    const b = await signUpVerifiedUser('plan-dup-b@example.com', 'B')
+    const plan = await createPlan(a.cookie, { name: 'Mine' })
+    const theirs = await createList(b.cookie, 'Their trip')
+
+    const crossList = await apiRequest(
+      a.cookie,
+      'POST',
+      `/api/food-plans/${plan.id}/duplicate`,
+      { listId: theirs.id },
+    )
+    expect(crossList.status).toBe(422)
+    const crossPlan = await apiRequest(
+      b.cookie,
+      'POST',
+      `/api/food-plans/${plan.id}/duplicate`,
+    )
+    expect(crossPlan.status).toBe(404)
+  })
+
+  it('rejects an owned list that does not currently use the source plan (422)', async () => {
+    const { cookie } = await signUpVerifiedUser('plan-dup-cas@example.com', 'C')
+    const planA = await createPlan(cookie, { name: 'Plan A' })
+    const planB = await createPlan(cookie, { name: 'Plan B' })
+    const unattached = await createList(cookie, 'No plan yet')
+    const onB = await createList(cookie, 'Follows B')
+    await attach(cookie, onB.id, planB.id)
+
+    // "Duplicate for this trip" presumes the trip follows THIS plan. A list on
+    // another plan must not be silently stolen, and a plan-less list has no
+    // shared original to fork from.
+    for (const listId of [unattached.id, onB.id]) {
+      const res = await apiRequest(
+        cookie,
+        'POST',
+        `/api/food-plans/${planA.id}/duplicate`,
+        { listId },
+      )
+      expect(res.status, listId).toBe(422)
+    }
+    // The rejected forks left no copies behind.
+    const listRes = await apiRequest(cookie, 'GET', '/api/food-plans')
+    const summaries = foodPlanSummarySchema.array().parse(await listRes.json())
+    expect(summaries).toHaveLength(2)
+    // And the B-following list still follows B.
+    const listsRes = await apiRequest(cookie, 'GET', '/api/lists')
+    const rows = (await listsRes.json()) as { id: string; foodPlanId: string | null }[]
+    expect(rows.find((l) => l.id === onB.id)!.foodPlanId).toBe(planB.id)
+  })
+
+  it('malformed JSON is a 400, not a silent list-less duplicate', async () => {
+    const { cookie } = await signUpVerifiedUser('plan-dup-json@example.com', 'J')
+    const plan = await createPlan(cookie, { name: 'Fragile' })
+
+    // apiRequest would JSON.stringify (making the body valid again), so this
+    // one goes through app.request raw: a truncated object that json() rejects.
+    const res = await app.request(
+      `/api/food-plans/${plan.id}/duplicate`,
+      {
+        method: 'POST',
+        headers: {
+          Origin: 'http://localhost:5173',
+          [CSRF_HEADER]: '1',
+          Cookie: cookie,
+          'Content-Type': 'application/json',
+        },
+        body: '{"listId":',
+      },
+      env,
+    )
+    expect(res.status).toBe(400)
+    const after = await apiRequest(cookie, 'GET', '/api/food-plans')
+    const summaries = foodPlanSummarySchema.array().parse(await after.json())
+    expect(summaries).toHaveLength(1)
+  })
+
+  it('422 at the 100-plan cap, and the whole copy rolls back', async () => {
+    const { cookie } = await signUpVerifiedUser('plan-dup-cap@example.com', 'C')
+    const userId = await userIdFor(cookie)
+    const values = Array.from({ length: 99 }, (_, i) => {
+      return `('dup-cap-${i}', '${userId}', 'Seed ${i}', ${i}, 0, 0)`
+    }).join(',')
+    await env.DB.prepare(
+      `insert into food_plans (id, user_id, name, sort_order, created_at, updated_at) values ${values}`,
+    ).run()
+    const plan = await createPlan(cookie, { name: 'The 100th', days: 1 })
+
+    const over = await apiRequest(
+      cookie,
+      'POST',
+      `/api/food-plans/${plan.id}/duplicate`,
+    )
+    expect(over.status).toBe(422)
+
+    // The batch is a transaction: the aborted copy left no orphaned children -
+    // only the source plan's own rows remain.
+    const expected = {
+      meals: plan.meals.length,
+      food_plan_days: plan.days.length,
+      day_meals: plan.dayMeals.length,
+    }
+    for (const [table, want] of Object.entries(expected)) {
+      const { count } = (await env.DB.prepare(
+        `select count(*) as count from ${table} where user_id = ?`,
+      )
+        .bind(userId)
+        .first()) as { count: number }
+      expect(count, table).toBe(want)
+    }
+  })
+
+  it('duplicates a maxed-out plan (60 days, 20 meals, 1200 cells, 2000 entries) through the chunked batch', async () => {
+    const { cookie } = await signUpVerifiedUser('plan-dup-max@example.com', 'M')
+    const userId = await userIdFor(cookie)
+    // Every cap at its ceiling: 60 days at create, then 17 more meals on top
+    // of the seeded 3 = 20, giving the full 1200-cell grid.
+    let plan = await createPlan(cookie, { name: 'Max', days: 60 })
+    for (let i = 0; i < 17; i++) {
+      const res = await apiRequest(cookie, 'POST', `/api/food-plans/${plan.id}/meals`, {
+        name: `Meal ${i}`,
+      })
+      expect(res.status).toBe(201)
+      plan = foodPlanDocumentSchema.parse(await res.json())
+    }
+    expect(plan.dayMeals).toHaveLength(1200)
+    const day0 = plan.days[0]!.id
+    const cellBreakfast = cellId(plan, day0, mealByRole(plan, 'breakfast').id)
+    const cellDinner = cellId(plan, day0, mealByRole(plan, 'dinner').id)
+
+    // Same seeding shape as the entry-cap test: 1000 foods spread across two
+    // cells = 2000 entries, inserted in 250-row chunks (SQLITE_TOOBIG guard).
+    const CHUNK = 250
+    for (let i = 0; i < 1000; i += CHUNK) {
+      const rows = Array.from(
+        { length: Math.min(CHUNK, 1000 - i) },
+        (_, j) => `('df-${i + j}', '${userId}', 'Dup food ${i + j}', 1, 0, ${i + j}, 0, 0)`,
+      ).join(',')
+      await env.DB.prepare(
+        `insert into food_items (id, user_id, name, serving_weight_grams, calories_per_serving, sort_order, created_at, updated_at) values ${rows}`,
+      ).run()
+    }
+    for (const cell of [cellBreakfast, cellDinner]) {
+      for (let i = 0; i < 1000; i += CHUNK) {
+        const rows = Array.from(
+          { length: Math.min(CHUNK, 1000 - i) },
+          (_, j) =>
+            `('de-${cell}-${i + j}', '${userId}', '${plan.id}', '${cell}', 0, 'df-${i + j}', 'servings', 1, ${i + j}, 0, 0)`,
+        ).join(',')
+        await env.DB.prepare(
+          `insert into food_plan_entries (id, user_id, food_plan_id, day_meal_id, is_extra, food_item_id, basis, amount, sort_order, created_at, updated_at) values ${rows}`,
+        ).run()
+      }
+    }
+
+    // The wire proof of the param-cap chunking (design 9): ~370 chunked
+    // statements in one batch, none over 100 bound params - and local D1
+    // enforces the cap, so a chunking bug fails HERE, not in prod. (Statement
+    // count also stays under the Workers Free internal-subrequest budget of
+    // 1000/invocation even if each batched statement were counted singly.)
+    const res = await apiRequest(
+      cookie,
+      'POST',
+      `/api/food-plans/${plan.id}/duplicate`,
+    )
+    expect(res.status).toBe(201)
+    const copy = foodPlanDocumentSchema.parse(await res.json())
+    expect(copy.meals).toHaveLength(20)
+    expect(copy.days).toHaveLength(60)
+    expect(copy.dayMeals).toHaveLength(1200)
+    expect(copy.entries).toHaveLength(2000)
+    // Every copied entry resolves a food (referenced, not duplicated).
+    const { count: foodCount } = (await env.DB.prepare(
+      'select count(*) as count from food_items where user_id = ?',
+    )
+      .bind(userId)
+      .first()) as { count: number }
+    expect(foodCount).toBe(1000)
   })
 })
 
