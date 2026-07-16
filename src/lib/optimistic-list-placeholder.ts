@@ -31,6 +31,7 @@ export function optimisticListPlaceholder(args: {
     name: args.name,
     description: args.description ?? null,
     slug: '',
+    foodPlanId: null, // a freshly created list has no plan attached
     sortOrder: args.sortOrder,
     isShared: false,
     groupWorn: false,

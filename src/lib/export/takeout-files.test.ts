@@ -53,6 +53,7 @@ function makeList(over: Partial<List> & { id: string; name: string }): List {
     name: over.name,
     description: over.description ?? null,
     slug: over.slug ?? `slug-${over.id}`,
+    foodPlanId: over.foodPlanId ?? null,
     isShared: over.isShared ?? false,
     groupWorn: over.groupWorn ?? false,
     readyChecksEnabled: over.readyChecksEnabled ?? false,

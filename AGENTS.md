@@ -171,6 +171,21 @@ time. Never delete or recreate the D1 database.
   `wrangler types` Env definitions are all generated. One exception worth
   knowing: the `gear_items` 500-row cap is a hand-added SQL trigger that is NOT
   in the Drizzle snapshot, so any future rebuild of that table must recreate it.
+- **A SQLite table rebuild on D1 will silently delete cascading child rows -
+  `PRAGMA foreign_keys=OFF` does NOT save you.** drizzle-kit emits table rebuilds
+  (`CREATE __new_x; copy; DROP x; RENAME`) wrapped in `PRAGMA foreign_keys=OFF`.
+  On D1 that pragma is a NO-OP: migrations run with FK enforcement ON and the
+  pragma cannot be toggled inside the implicit transaction. So `DROP TABLE x`
+  performs an implicit DELETE that fires every `ON DELETE CASCADE` child - wiping
+  that data in production (verified against D1; the API tests miss it because
+  migrations run on an EMPTY db before any test rows exist). `defer_foreign_keys`
+  does not help either - it defers the CHECK, not the cascade ACTION. When you
+  rebuild a table that has cascading children (see migration 0009 rebuilding
+  `lists`, parent of `list_items`), back the children up into a scratch table
+  before the DROP and restore them after - and recreate the parent's UNIQUE
+  indexes BEFORE the restore, or the child FK fails "foreign key mismatch". Also
+  recreate any hand-added triggers (previous bullet). ALWAYS test a rebuild
+  migration against a LOCAL D1 seeded with child rows, not just a fresh db.
 
 ## Git and supply chain
 
