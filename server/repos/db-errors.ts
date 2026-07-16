@@ -36,3 +36,29 @@ export function isUniqueViolation(err: unknown, column: string): boolean {
     msg.includes('SQLITE_CONSTRAINT')
   )
 }
+
+// A UNIQUE violation on ANY column - used where a repo prechecks a duplicate but
+// wants the DB's own unique index as the race backstop, and a composite/partial
+// index names several columns so a single-column match is impractical (e.g.
+// "UNIQUE constraint failed: food_plan_entries.day_meal_id,
+// food_plan_entries.food_item_id"). SQLITE_CONSTRAINT_UNIQUE pins the class.
+export function isAnyUniqueViolation(err: unknown): boolean {
+  const msg = rootMessage(err)
+  return (
+    msg !== null &&
+    msg.includes('UNIQUE constraint failed') &&
+    msg.includes('SQLITE_CONSTRAINT')
+  )
+}
+
+// A FOREIGN KEY violation. Used as the race backstop where a repo prechecks a
+// referenced row's ownership/existence but that row can be deleted between the
+// precheck and the insert - the FK then fires instead of a clean result.
+export function isForeignKeyViolation(err: unknown): boolean {
+  const msg = rootMessage(err)
+  return (
+    msg !== null &&
+    msg.includes('FOREIGN KEY constraint failed') &&
+    msg.includes('SQLITE_CONSTRAINT')
+  )
+}
