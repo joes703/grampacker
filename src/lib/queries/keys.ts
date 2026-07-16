@@ -16,4 +16,11 @@ export const queryKeys = {
   // reads the slug from the URL (useParams types it string | undefined);
   // the query is disabled until it exists.
   sharedList: (slug: string | undefined) => ['shared-list', slug] as const,
+  // Food plans. The index caches the summary list; each editor caches ONE plan
+  // document under its id (every plan mutation returns the fresh document, which
+  // is written straight back here - design 5.5). planId accepts undefined for
+  // the same reason as sharedList: FoodPlanEditor reads :id from the URL and the
+  // query is disabled until it exists.
+  foodPlans: () => ['food-plans'] as const,
+  foodPlan: (planId: string | undefined) => ['food-plan', planId] as const,
 }
