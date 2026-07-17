@@ -100,9 +100,12 @@ describe('useFoodPlanLink - attach', () => {
     expect(invalidated(['food-plans'])).toBe(true)
     // ['food-plan'] is a prefix key: the cached document must be caught.
     expect(invalidated(['food-plan', 'p1'])).toBe(true)
-    // Rule 1 cleared this list's pack state server-side; the checklist
-    // cache must follow (prefix key - the hook doesn't know the list).
-    expect(invalidated(['food-pack', 'l1', 'p1'])).toBe(true)
+    // Rule 1 cleared this list's pack state server-side. Invalidation is
+    // not enough: invalidated data is still RENDERED while refetching, so
+    // detach-then-reattach of the same plan could paint the old checkmarks
+    // as phantom pre-checks. The entry must be REMOVED (prefix key - the
+    // hook doesn't know which list's checklist is cached).
+    expect(lastQc.getQueryState(['food-pack', 'l1', 'p1'])).toBeUndefined()
   })
 
   it('a 409 rolls back, toasts ONCE with the in-use message, and refetches summaries', async () => {
@@ -145,7 +148,8 @@ describe('useFoodPlanLink - detach', () => {
     await waitFor(() => expect(result.current.detachMut.isSuccess).toBe(true))
     expect(invalidated(['food-plans'])).toBe(true)
     expect(invalidated(['food-plan', 'p1'])).toBe(true)
-    expect(invalidated(['food-pack', 'l1', 'p1'])).toBe(true)
+    // Removed, not invalidated - see the attach test.
+    expect(lastQc.getQueryState(['food-pack', 'l1', 'p1'])).toBeUndefined()
   })
 })
 
@@ -169,7 +173,8 @@ describe('useFoodPlanLink - duplicate & attach', () => {
     expect(invalidated(['food-plan', 'p1'])).toBe(true)
     expect(invalidated(['food-plans'])).toBe(true)
     expect(invalidated(['lists'])).toBe(true)
-    expect(invalidated(['food-pack', 'l1', 'p1'])).toBe(true)
+    // Removed, not invalidated - see the attach test.
+    expect(lastQc.getQueryState(['food-pack', 'l1', 'p1'])).toBeUndefined()
   })
 
   it('a failed CAS refetches summaries and lists so the picker resyncs', async () => {

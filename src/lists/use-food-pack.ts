@@ -113,10 +113,17 @@ export function useFoodPack(
   }
   const packKey = (vars: ToggleVars) =>
     queryKeys.foodPackState(listId, vars.expectedFoodPlanId)
+  // The gate key carries the plan generation, like the cache key: a
+  // list-wide gate would let one slow old-plan mutation suppress every
+  // new-plan settle's invalidation, while its own settle reconciles only
+  // the old key - the new plan's cache could stay divergent indefinitely.
+  // Each mutation is keyed at creation with the same plan id its vars
+  // carry, so the vars-derived filter in onSettled counts true siblings.
+  const toggleKeyFor = (planId: string) =>
+    ['food-pack-toggle', listId, planId] as const
 
-  const toggleMutKey = ['food-pack-toggle', listId] as const
   const toggleMut = useMutation({
-    mutationKey: toggleMutKey,
+    mutationKey: toggleKeyFor(foodPlanId ?? ''),
     mutationFn: ({ foodItemId, packed, expectedFoodPlanId }: ToggleVars) =>
       toggleFoodPack(listId, foodItemId, packed, expectedFoodPlanId),
     onMutate: async (vars) => {
@@ -147,9 +154,10 @@ export function useFoodPack(
       showToast("Couldn't update packing. Please try again.", { type: 'error' })
     },
     onSettled: (_data, _err, vars) => {
-      // `> 1` = true siblings still pending (the settling mutation counts
-      // itself); the last one out invalidates once for the whole burst.
-      if (qc.isMutating({ mutationKey: toggleMutKey }) > 1) return
+      // `> 1` = true siblings still pending in THIS plan generation (the
+      // settling mutation counts itself); the last one out invalidates once
+      // for the whole burst.
+      if (qc.isMutating({ mutationKey: toggleKeyFor(vars.expectedFoodPlanId) }) > 1) return
       void qc.invalidateQueries({ queryKey: packKey(vars) })
     },
   })

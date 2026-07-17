@@ -40,9 +40,14 @@ import type { List } from '../lib/types'
 // carries usedByList (the editor's "Used by <list>" breadcrumb), and every
 // mutation here moves some plan's link.
 //
-// The ['food-pack'] prefix as well: moving or clearing the link clears the
-// list's pack state server-side (design 6, rule 1), and these hooks don't
-// know which list's checklist cache is populated.
+// The ['food-pack'] prefix is REMOVED, not invalidated, on every
+// successful link move: rule 1 cleared the rows server-side, and
+// invalidated data is still rendered while its refetch is in flight, so
+// detach-then-reattach of the SAME plan would paint the cleared checkmarks
+// as phantom pre-checks from the retained cache entry (the plan-id-keyed
+// cache only protects across DIFFERENT plans). Removal drops the data
+// outright; the checklist (disabled outside pack mode, so never actively
+// observed here) refetches from scratch on next entry.
 export function useFoodPlanLink() {
   const qc = useQueryClient()
 
@@ -63,7 +68,6 @@ export function useFoodPlanLink() {
       // The summaries' usedByListId/Name just moved - a stale Plans index
       // (or another list's picker) would offer the wrong action for this plan.
       queryKeys.foodPlans(),
-      queryKeys.foodPackStateAll(),
     ],
     id: ({ id }) => id,
     apply: (item, { foodPlanId }) => ({
@@ -76,6 +80,9 @@ export function useFoodPlanLink() {
     mutationFn: ({ id, foodPlanId }: { id: string; foodPlanId: string }) =>
       attachFoodPlan(id, foodPlanId),
     ...attachOptimistic,
+    onSuccess: () => {
+      qc.removeQueries({ queryKey: queryKeys.foodPackStateAll() })
+    },
     onError: (error, vars, ctx) => {
       attachOptimistic.onError(error, vars, ctx)
       if (error instanceof ApiError && error.status === 409) {
@@ -101,7 +108,6 @@ export function useFoodPlanLink() {
         queryKeys.sharedListAll(),
         queryKeys.foodPlanAll(),
         queryKeys.foodPlans(), // same as attach: usedByList* just changed
-        queryKeys.foodPackStateAll(),
       ],
       id: (id) => id,
       apply: (item) => ({
@@ -110,6 +116,9 @@ export function useFoodPlanLink() {
         updatedAt: new Date().toISOString(),
       }),
     }),
+    onSuccess: () => {
+      qc.removeQueries({ queryKey: queryKeys.foodPackStateAll() })
+    },
   })
 
   // "Duplicate & attach": the picker's action for a plan already backing
@@ -148,7 +157,7 @@ export function useFoodPlanLink() {
       void qc.invalidateQueries({ queryKey: queryKeys.foodPlans() })
       void qc.invalidateQueries({ queryKey: queryKeys.lists() })
       void qc.invalidateQueries({ queryKey: queryKeys.sharedListAll() })
-      void qc.invalidateQueries({ queryKey: queryKeys.foodPackStateAll() })
+      qc.removeQueries({ queryKey: queryKeys.foodPackStateAll() })
     },
     onError: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.foodPlans() })

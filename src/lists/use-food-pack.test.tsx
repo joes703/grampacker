@@ -96,10 +96,11 @@ function setup(packedIds: string[] = []) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   )
-  const { result } = renderHook(() => useFoodPack(LIST_ID, PLAN_ID, true), {
-    wrapper,
-  })
-  return { qc, result }
+  const { result, rerender } = renderHook(
+    ({ planId }: { planId: string }) => useFoodPack(LIST_ID, planId, true),
+    { wrapper, initialProps: { planId: PLAN_ID } },
+  )
+  return { qc, result, rerender }
 }
 
 const readIds = (qc: QueryClient) => qc.getQueryData<string[]>(PACK_KEY) ?? []
@@ -231,6 +232,35 @@ describe('useFoodPack', () => {
     // The last one out reconciles for the whole burst.
     await waitFor(() => expect(packInvalidations()).toBeGreaterThan(0))
     expect(readIds(qc)).toEqual(['f2'])
+  })
+
+  it("a pending old-plan toggle does not suppress the new plan's reconciliation", async () => {
+    // The last-one-out gate must count siblings PER PLAN GENERATION. With a
+    // list-wide gate, a slow old-plan mutation makes every new-plan settle
+    // skip its invalidation, and the old mutation's own settle reconciles
+    // only the old key - the new plan's cache could stay divergent from
+    // server truth indefinitely.
+    const { qc, result, rerender } = setup()
+    let resolveOld!: (v: { foodItemId: string; packed: boolean; applied: boolean }) => void
+    h.toggleFoodPack.mockImplementation((_id, foodItemId, packed) => {
+      if (foodItemId === 'f1') {
+        return new Promise((res) => { resolveOld = res })
+      }
+      return Promise.resolve({ foodItemId, packed, applied: true })
+    })
+
+    await act(async () => { result.current.toggle('f1', true) }) // old plan, deferred
+    rerender({ planId: 'plan-b' })
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+
+    await act(async () => { result.current.toggle('f2', true) }) // new plan, settles
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ['food-pack', LIST_ID, 'plan-b'],
+      }),
+    )
+
+    await act(async () => { resolveOld({ foodItemId: 'f1', packed: true, applied: true }) })
   })
 
   it("never renders another plan's cached pack state, and counts packables before the id set loads", async () => {
