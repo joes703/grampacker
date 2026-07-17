@@ -38,8 +38,9 @@ type Result = {
 // the app already holds - the plan document (['food-plan', id]) and the food
 // library (['food-items']) - so it needs no key of its own. A
 // foodProjection(listId) cache would be a cache OF a derivation: it could go
-// stale against the editor, and because one plan can back many lists it would
-// need a prefix-invalidation fan-out on every plan edit. Deriving costs one
+// stale against the editor, and it would need invalidating on every plan edit
+// (a whole prefix fan-out, back when one plan could back many lists - a plan
+// backs at most one list since 2026-07-16). Deriving costs one
 // pure call and cannot disagree with the editor, which reads the same document
 // through the same selector (design 5.1: no second implementation).
 export function useFoodProjection(foodPlanId: string | null): Result {

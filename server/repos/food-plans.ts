@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import type { Db } from '../db'
 import {
   dayMeals,
@@ -14,6 +14,10 @@ import {
   isForeignKeyViolation,
   isTriggerAbort,
 } from './db-errors'
+import {
+  buildPlanCopyStatements,
+  isFoodPlanCapError,
+} from './food-plan-copy'
 import { copyName } from './lists'
 
 // The food-plan graph (food-planning-design.md slice 2). One repo owns the plan,
@@ -33,6 +37,11 @@ export type PlanSummaryRow = {
   sortOrder: number
   dayCount: number
   entryCount: number
+  // The list this plan backs, if any. At most one exists
+  // (lists_food_plan_id_unique) - this is what lets the picker say
+  // "In use by <list>" and offer Duplicate & attach without a second query.
+  usedByListId: string | null
+  usedByListName: string | null
   createdAt: number // epoch ms
   updatedAt: number
 }
@@ -91,9 +100,10 @@ export type PlanDocResult =
 // Root-cause-only matching (see db-errors.ts). Keep each marker in lockstep with
 // the RAISE(ABORT) text of its trigger in migration 0008. The four markers are
 // mutually non-substring so includes() cannot cross-match.
-export function isFoodPlanCapError(err: unknown): boolean {
-  return isTriggerAbort(err, 'food plan cap exceeded')
-}
+// isFoodPlanCapError lives in food-plan-copy.ts (lists.duplicate needs it and
+// cannot import this file - see the note there); re-exported so its home for
+// routes and tests is unchanged.
+export { isFoodPlanCapError }
 export function isFoodPlanDayCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'food plan day cap exceeded')
 }
@@ -241,6 +251,23 @@ export function createFoodPlansRepo(db: Db, userId: string) {
 
     // Plans index. dayCount / entryCount are correlated counts; the plan cap
     // (100) bounds the scan.
+    //
+    // The holder ("used by") comes from a LEFT JOIN, not a correlated
+    // subselect, and the join is load-bearing beyond style: in a SINGLE-TABLE
+    // select, drizzle renders every column inside a sql`` fragment
+    // UNQUALIFIED, so a correlated subselect like
+    //   (select ${lists.id} from ${lists} where ${lists.foodPlanId} = ${foodPlans.id})
+    // becomes (select "id" from "lists" where "food_plan_id" = "id") - BOTH
+    // sides resolve against the inner table and the predicate is
+    // vacuously false/true. That bug shipped in the original count subselects
+    // (every plan reported 0 days / 0 items on the wire; the page tests
+    // mocked the fetcher and never saw it - caught by the summaries API test
+    // 2026-07-16). With a join present drizzle qualifies everything,
+    // including these count subselects. See AGENTS.md.
+    //
+    // The join matches at most one row per plan: the partial unique index
+    // caps holders at one, and the same-owner condition mirrors the
+    // composite FK.
     async listSummaries(): Promise<PlanSummaryRow[]> {
       return db
         .select({
@@ -251,8 +278,18 @@ export function createFoodPlansRepo(db: Db, userId: string) {
           updatedAt: foodPlans.updatedAt,
           dayCount: sql<number>`(select count(*) from ${foodPlanDays} where ${foodPlanDays.foodPlanId} = ${foodPlans.id})`,
           entryCount: sql<number>`(select count(*) from ${foodPlanEntries} where ${foodPlanEntries.foodPlanId} = ${foodPlans.id})`,
+          // Left-joined, so null on the wire when no list holds the plan.
+          usedByListId: lists.id,
+          usedByListName: lists.name,
         })
         .from(foodPlans)
+        .leftJoin(
+          lists,
+          and(
+            eq(lists.foodPlanId, foodPlans.id),
+            eq(lists.userId, foodPlans.userId),
+          ),
+        )
         .where(eq(foodPlans.userId, userId))
         .orderBy(asc(foodPlans.sortOrder), asc(foodPlans.name))
     },
@@ -368,36 +405,41 @@ export function createFoodPlansRepo(db: Db, userId: string) {
 
     // Deep-copy the plan graph with fresh ids throughout (design 3.1): meals,
     // days, the grid and the entries, referencing the same account-wide
-    // food_items. No pack state is copied - pack state is not keyed by plan.
+    // food_items. The copy machinery is shared with lists.duplicate()
+    // (food-plan-copy.ts): a plan backs at most one list, so duplicating a
+    // LIST must copy its plan too, and two graph-copy implementations would
+    // drift. No pack state is copied - pack state is not keyed by plan.
     //
-    // listId is the "Duplicate for this trip" fork (design 12.9): when present,
-    // the arriving list is re-pointed at the copy IN THE SAME BATCH as the copy
-    // itself, so there is no window where the fork exists but the trip still
-    // follows the shared original. The list must be the caller's AND currently
-    // using THIS plan (invalid_ref otherwise) - the fork's premise is "this
-    // trip follows the shared original", so a list on another plan (or on
-    // none) is not forkable-to, and the same condition in the UPDATE's WHERE
-    // makes the attach a compare-and-swap on the observed source plan: a
-    // concurrent detach/re-point in another tab makes it match zero rows
-    // instead of being silently overwritten. When that happens the copy has
-    // already committed, so it is deleted (cascade takes the children) and the
-    // caller gets invalid_ref - not a 201 whose promised attach never
-    // happened.
+    // listId is "Duplicate & attach" (design 3.1 under one-plan-per-trip):
+    // when present, that list is re-pointed at the copy IN THE SAME BATCH as
+    // the copy itself, so there is no window where the copy exists but the
+    // trip still follows the original. The list must be the caller's
+    // (invalid_ref otherwise), and the attach UPDATE is a compare-and-swap on
+    // expectedFoodPlanId - the link the CLIENT OBSERVED when it offered the
+    // action (null = it saw none). A concurrent attach/detach/duplicate in
+    // another tab moves the link and the CAS matches zero rows instead of
+    // silently overwriting it; without the CAS, two concurrent duplicates
+    // would both 201 and the loser's copy would survive as an orphan plan.
+    // When the CAS loses, the copy has already committed, so it is deleted
+    // (cascade takes the children) and the caller gets invalid_ref - not a
+    // 201 whose promised attach never happened.
     //
-    // Every child insert is a MULTI-ROW statement chunked by bound-parameter
-    // count, not row count: D1 caps params at 100 per statement (AGENTS.md), so
-    // each statement takes floor(90 / columns) rows - 90 for the same headroom
-    // as chunk-ids.ts. A worst-case plan (20 meals, 60 days, 1200 cells, 2000
-    // entries) lands in ~360 statements in ONE db.batch; per-row statements
-    // would be ~3300. Batch order is plan -> meals -> days -> day_meals ->
-    // entries -> attach, so every FK target precedes its referrers.
+    // Statement budget: each child insert is a MULTI-ROW statement chunked by
+    // bound-parameter count (chunkForParamCap in food-plan-copy.ts). A
+    // worst-case plan (20 meals, 60 days, 1200 cells, 2000 entries) lands in
+    // ~360 statements in ONE db.batch = one D1 call; per-row statements would
+    // be ~3300. Batch order is plan -> meals -> days -> day_meals -> entries
+    // -> attach, so every FK target precedes its referrers.
     //
     // Only the plan-cap trigger can fire (children are copied 1:1 from a plan
     // already under its caps). An entry's food deleted mid-request surfaces as
-    // an FK violation -> invalid_ref, same backstop as addEntry.
+    // an FK violation -> invalid_ref, same backstop as addEntry. The new
+    // lists_food_plan_id_unique index cannot fire here: the copy's id is
+    // freshly generated, so no other list can already reference it.
     async duplicate(
       planId: string,
       listId: string | null,
+      expectedFoodPlanId: string | null,
     ): Promise<PlanDocResult> {
       const source = await getDocument(planId)
       if (!source) return { ok: false, reason: 'not_found' }
@@ -406,111 +448,18 @@ export function createFoodPlansRepo(db: Db, userId: string) {
         const [list] = await db
           .select({ id: lists.id })
           .from(lists)
-          .where(
-            and(
-              eq(lists.id, listId),
-              eq(lists.userId, userId),
-              eq(lists.foodPlanId, planId),
-            ),
-          )
+          .where(and(eq(lists.id, listId), eq(lists.userId, userId)))
           .limit(1)
         if (!list) return { ok: false, reason: 'invalid_ref' }
       }
 
       const now = Date.now()
       const newPlanId = crypto.randomUUID()
-      const mealIdMap = new Map(source.meals.map((m) => [m.id, crypto.randomUUID()]))
-      const dayIdMap = new Map(source.days.map((d) => [d.id, crypto.randomUUID()]))
-      const dayMealIdMap = new Map(
-        source.dayMeals.map((dm) => [dm.id, crypto.randomUUID()]),
-      )
-
-      // dayMealId non-null assertions are structurally safe: every child row
-      // came from the same consistent snapshot as the rows its FKs point at.
-      const mealRows = source.meals.map((m) => ({
-        id: mealIdMap.get(m.id) as string,
+      const [copyFirst, ...copyRest] = buildPlanCopyStatements(
+        db,
         userId,
-        foodPlanId: newPlanId,
-        name: m.name,
-        anchorRole: m.anchorRole,
-        isDefault: m.isDefault,
-        sortOrder: m.sortOrder,
-        createdAt: now,
-        updatedAt: now,
-      }))
-      const dayRows = source.days.map((d) => ({
-        id: dayIdMap.get(d.id) as string,
-        userId,
-        foodPlanId: newPlanId,
-        dayTypeOverride: d.dayTypeOverride,
-        sortOrder: d.sortOrder,
-        createdAt: now,
-        updatedAt: now,
-      }))
-      const dayMealRows = source.dayMeals.map((dm) => ({
-        id: dayMealIdMap.get(dm.id) as string,
-        userId,
-        foodPlanId: newPlanId,
-        dayId: dayIdMap.get(dm.dayId) as string,
-        mealId: mealIdMap.get(dm.mealId) as string,
-        createdAt: now,
-        updatedAt: now,
-      }))
-      const entryRows = source.entries.map((e) => ({
-        id: crypto.randomUUID(),
-        userId,
-        foodPlanId: newPlanId,
-        dayMealId:
-          e.dayMealId === null
-            ? null
-            : (dayMealIdMap.get(e.dayMealId) as string),
-        isExtra: e.isExtra,
-        foodItemId: e.foodItemId,
-        basis: e.basis,
-        amount: e.amount,
-        sortOrder: e.sortOrder,
-        createdAt: now,
-        updatedAt: now,
-      }))
-
-      // floor(90 / columns) rows per statement. Column count is read off the
-      // first row so a schema change reflows the chunking instead of silently
-      // blowing the param cap. Empty input -> no statements.
-      function chunkForParamCap<T extends Record<string, unknown>>(
-        rows: T[],
-      ): T[][] {
-        const first = rows[0]
-        if (!first) return []
-        const perStatement = Math.max(
-          1,
-          Math.floor(90 / Object.keys(first).length),
-        )
-        const out: T[][] = []
-        for (let i = 0; i < rows.length; i += perStatement) {
-          out.push(rows.slice(i, i + perStatement))
-        }
-        return out
-      }
-
-      const insertPlan = db.insert(foodPlans).values({
-        id: newPlanId,
-        userId,
-        name: copyName(source.name),
-        sortOrder: nextPlanSortOrder(),
-        createdAt: now,
-        updatedAt: now,
-      })
-      const insertMeals = chunkForParamCap(mealRows).map((rows) =>
-        db.insert(meals).values(rows),
-      )
-      const insertDays = chunkForParamCap(dayRows).map((rows) =>
-        db.insert(foodPlanDays).values(rows),
-      )
-      const insertDayMeals = chunkForParamCap(dayMealRows).map((rows) =>
-        db.insert(dayMeals).values(rows),
-      )
-      const insertEntries = chunkForParamCap(entryRows).map((rows) =>
-        db.insert(foodPlanEntries).values(rows),
+        source,
+        { newPlanId, name: copyName(source.name), now },
       )
       const attach =
         listId !== null
@@ -522,8 +471,10 @@ export function createFoodPlansRepo(db: Db, userId: string) {
                   and(
                     eq(lists.id, listId),
                     eq(lists.userId, userId),
-                    // CAS on the observed source plan (see the method comment).
-                    eq(lists.foodPlanId, planId),
+                    // CAS on the client's observed link (see method comment).
+                    expectedFoodPlanId === null
+                      ? isNull(lists.foodPlanId)
+                      : eq(lists.foodPlanId, expectedFoodPlanId),
                   ),
                 )
                 .returning({ id: lists.id }),
@@ -532,14 +483,7 @@ export function createFoodPlansRepo(db: Db, userId: string) {
 
       let results: unknown[]
       try {
-        results = await db.batch([
-          insertPlan,
-          ...insertMeals,
-          ...insertDays,
-          ...insertDayMeals,
-          ...insertEntries,
-          ...attach,
-        ])
+        results = await db.batch([copyFirst, ...copyRest, ...attach])
       } catch (err) {
         if (isFoodPlanCapError(err)) return { ok: false, reason: 'cap_exceeded' }
         if (isForeignKeyViolation(err)) return { ok: false, reason: 'invalid_ref' }

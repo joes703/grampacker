@@ -9,7 +9,6 @@ import {
   addFoodPlanEntry,
   updateFoodPlanEntry,
   removeFoodPlanEntry,
-  duplicateFoodPlan,
   type FoodPlanDocument,
 } from '../lib/queries'
 import type {
@@ -92,27 +91,6 @@ export function useFoodPlanEditorActions(planId: string) {
     onSuccess: onDoc,
   })
 
-  // "Duplicate for this trip" (design 12.9): the server deep-copies the plan
-  // and re-points listId at the copy in one transaction. The response is the
-  // NEW plan's document, so it does NOT go through onDoc (which would write it
-  // over the CURRENT plan's cache entry) - it seeds the copy's own entry, and
-  // the caller navigates there. The SOURCE document is invalidated because the
-  // fork just shrank its usedByLists: navigating back within staleTime would
-  // otherwise re-show the shared-plan warning for a list that already left.
-  // ['lists'] because the fork moved the arriving list's foodPlanId;
-  // ['shared-list'] for the same reason attach invalidates it; the summary
-  // list gains a card.
-  const duplicate = useMutation({
-    mutationFn: (listId: string | null) => duplicateFoodPlan(planId, listId),
-    onSuccess: (doc: FoodPlanDocument) => {
-      qc.setQueryData(queryKeys.foodPlan(doc.id), doc)
-      void qc.invalidateQueries({ queryKey: queryKeys.foodPlan(planId) })
-      void qc.invalidateQueries({ queryKey: queryKeys.foodPlans() })
-      void qc.invalidateQueries({ queryKey: queryKeys.lists() })
-      void qc.invalidateQueries({ queryKey: queryKeys.sharedListAll() })
-    },
-  })
-
   return {
     rename,
     addDay,
@@ -122,6 +100,5 @@ export function useFoodPlanEditorActions(planId: string) {
     addEntry,
     updateEntry,
     removeEntry,
-    duplicate,
   }
 }

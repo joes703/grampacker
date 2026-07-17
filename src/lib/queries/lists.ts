@@ -42,9 +42,10 @@ export async function deleteList(id: string): Promise<void> {
 }
 
 // Points this list at a food plan (food-planning-design.md 3): a LIVE
-// REFERENCE, not a copy, and one plan may back many lists. Both return the
+// REFERENCE, not a copy, and a plan backs at most ONE list. Both return the
 // updated list, so the caller writes the response straight into ['lists'].
-// The server rejects a plan the caller does not own with 400 invalid_plan.
+// The server rejects a plan the caller does not own with 400 invalid_plan,
+// and a plan another list already holds with 409 (one plan per trip).
 export async function attachFoodPlan(
   id: string,
   foodPlanId: string,

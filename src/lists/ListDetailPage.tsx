@@ -278,7 +278,8 @@ function ListDetailInner({
     queryFn: fetchFoodPlans,
     enabled: libraryTab === 'food',
   })
-  const { attachMut, detachMut, busy: foodLinkBusy } = useFoodPlanLink()
+  const { attachMut, detachMut, duplicateMut, busy: foodLinkBusy } =
+    useFoodPlanLink()
   const onAttachFoodPlan = useCallback(
     (foodPlanId: string) => attachMut.mutate({ id: listId, foodPlanId }),
     [attachMut, listId],
@@ -286,6 +287,18 @@ function ListDetailInner({
   const onDetachFoodPlan = useCallback(
     () => detachMut.mutate(listId),
     [detachMut, listId],
+  )
+  // Duplicate & attach (a plan already backing another list). The CAS
+  // expectation is THIS list's current link as this render observed it.
+  const listFoodPlanId = list?.foodPlanId ?? null
+  const onDuplicateAttachFoodPlan = useCallback(
+    (planId: string) =>
+      duplicateMut.mutate({
+        planId,
+        listId,
+        expectedFoodPlanId: listFoodPlanId,
+      }),
+    [duplicateMut, listId, listFoodPlanId],
   )
 
 
@@ -633,6 +646,7 @@ function ListDetailInner({
             busy={foodLinkBusy}
             onAttach={onAttachFoodPlan}
             onDetach={onDetachFoodPlan}
+            onDuplicateAttach={onDuplicateAttachFoodPlan}
           />
         )}
       </div>
@@ -888,7 +902,6 @@ function ListDetailInner({
               {mode !== 'pack' && foodProjection && (
                 <FoodRow
                   projection={foodProjection}
-                  listId={listId}
                   weightUnit={weightUnit}
                   busy={foodLinkBusy}
                   onDetach={onDetachFoodPlan}

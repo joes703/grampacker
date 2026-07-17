@@ -19,9 +19,6 @@ import type { FoodProjection } from './use-food-projection'
 
 type Props = {
   projection: FoodProjection
-  // The list this row lives on. Travels to the editor as ?from so "Duplicate
-  // for this trip" (design 12.9) knows which trip to attach the fork to.
-  listId: string
   weightUnit: WeightUnit
   busy: boolean
   onDetach: () => void
@@ -38,15 +35,13 @@ type Props = {
 // It reports as consumable, which is not a user choice: food is consumable by
 // definition (and worn/consumable are mutually exclusive anyway).
 //
-// Detaching is a menu action, not a bare X (design 8). The link is live and one
-// plan can back several trips, so an accidental tap on a row-edge icon is worth
-// one deliberate step - and it matches the kebab every other row on this page
-// already carries.
+// Detaching is a menu action, not a bare X (design 8). The link is live, so an
+// accidental tap on a row-edge icon is worth one deliberate step - and it
+// matches the kebab every other row on this page already carries.
 //
 // Pack mode expands this into the real per-food checklist - that is slice 4.
 export default function FoodRow({
   projection,
-  listId,
   weightUnit,
   busy,
   onDetach,
@@ -65,7 +60,7 @@ export default function FoodRow({
       <div className={`${FLAT_TABLE_ROW} flex items-center gap-2`}>
         <span className="flex-1 min-w-0">
           <Link
-            to={`/food/plans/${projection.planId}?from=${listId}`}
+            to={`/food/plans/${projection.planId}`}
             className={`block truncate ${FLAT_TABLE_BODY_TEXT} text-blue-700 hover:underline`}
           >
             Food ({projection.name})

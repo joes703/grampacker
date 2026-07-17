@@ -69,6 +69,18 @@ const DOC_KEYS = [
   'usedByLists',
 ].sort()
 
+const SUMMARY_KEYS = [
+  'id',
+  'name',
+  'sortOrder',
+  'dayCount',
+  'entryCount',
+  'usedByListId',
+  'usedByListName',
+  'createdAt',
+  'updatedAt',
+].sort()
+
 describe('/api/food-plans authorization matrix', () => {
   it('anon requests are 401 on every route', async () => {
     for (const [method, path, body] of [
@@ -124,6 +136,51 @@ describe('/api/food-plans authorization matrix', () => {
       `/api/food-plans/${mine.id}`,
     )
     expect(crossDelete.status).toBe(404)
+  })
+})
+
+describe('/api/food-plans summaries', () => {
+  it('is a strict allowlist and names the list using each plan', async () => {
+    const { cookie } = await signUpVerifiedUser('plan-summary@example.com', 'S')
+    const used = await createPlan(cookie, { name: 'Used', days: 2 })
+    await createPlan(cookie, { name: 'Free', days: 1 })
+    const listRes = await apiRequest(cookie, 'POST', '/api/lists', {
+      name: 'Yosemite',
+    })
+    expect(listRes.status).toBe(201)
+    const list = (await listRes.json()) as { id: string }
+    const attachRes = await apiRequest(
+      cookie,
+      'PUT',
+      `/api/lists/${list.id}/food-plan`,
+      { foodPlanId: used.id },
+    )
+    expect(attachRes.status).toBe(200)
+
+    const res = await apiRequest(cookie, 'GET', '/api/food-plans')
+    const raw = (await res.json()) as Record<string, unknown>[]
+    // Strict key set on the RAW json (no userId leak, and the usedBy pair is
+    // actually on the wire, not just tolerated by a lenient parser).
+    for (const row of raw) {
+      expect(Object.keys(row).sort()).toEqual(SUMMARY_KEYS)
+    }
+    const summaries = foodPlanSummarySchema.array().parse(raw)
+    const usedRow = summaries.find((s) => s.id === used.id)!
+    expect(usedRow.usedByListId).toBe(list.id)
+    expect(usedRow.usedByListName).toBe('Yosemite')
+    // One plan per trip: a plan nobody holds reports null, not [].
+    const freeRow = summaries.find((s) => s.name === 'Free')!
+    expect(freeRow.usedByListId).toBeNull()
+    expect(freeRow.usedByListName).toBeNull()
+
+    // The counts must be REAL values, per plan, on the wire. The original
+    // correlated-subselect form rendered its columns unqualified (drizzle
+    // renders sql`` fragments unqualified in single-table selects), which
+    // made every plan report 0 days / 0 items; the page tests mock the
+    // fetcher, so only this assertion can catch that class of bug.
+    expect(usedRow.dayCount).toBe(2)
+    expect(freeRow.dayCount).toBe(1)
+    expect(usedRow.entryCount).toBe(0)
   })
 })
 
@@ -628,28 +685,31 @@ describe('/api/food-plans duplicate', () => {
     expect(sourceAfter.entries).toHaveLength(2)
   })
 
-  it('with listId, re-points the arriving list at the copy in the same call', async () => {
+  it('with listId, attaches the copy to that list in the same call (Duplicate & attach)', async () => {
+    // The picker flow under one plan per trip: the taker's picker showed the
+    // source as "In use by Winter trip", so selecting it duplicates and
+    // attaches the copy. The taker currently has no plan, so the client's
+    // observed link - the CAS expectation - is null.
     const { cookie } = await signUpVerifiedUser('plan-dup-fork@example.com', 'F')
     const source = await createPlan(cookie, { name: 'Shared', days: 1 })
-    const staying = await createList(cookie, 'Winter trip')
-    const forking = await createList(cookie, 'Summer trip')
-    await attach(cookie, staying.id, source.id)
-    await attach(cookie, forking.id, source.id)
+    const holder = await createList(cookie, 'Winter trip')
+    const taker = await createList(cookie, 'Summer trip')
+    await attach(cookie, holder.id, source.id)
 
     const res = await apiRequest(
       cookie,
       'POST',
       `/api/food-plans/${source.id}/duplicate`,
-      { listId: forking.id },
+      { listId: taker.id, expectedFoodPlanId: null },
     )
     expect(res.status).toBe(201)
     const copy = foodPlanDocumentSchema.parse(await res.json())
 
-    // The returned document already knows its one user - the fork and the
+    // The returned document already knows its one user - the copy and the
     // attach were one transaction, so there is no window where this is [].
-    expect(copy.usedByLists).toEqual([{ id: forking.id, name: 'Summer trip' }])
+    expect(copy.usedByLists).toEqual([{ id: taker.id, name: 'Summer trip' }])
 
-    // The source keeps only the list that did not fork.
+    // The source keeps its holder.
     const sourceAfterRes = await apiRequest(
       cookie,
       'GET',
@@ -657,14 +717,43 @@ describe('/api/food-plans duplicate', () => {
     )
     const sourceAfter = foodPlanDocumentSchema.parse(await sourceAfterRes.json())
     expect(sourceAfter.usedByLists).toEqual([
-      { id: staying.id, name: 'Winter trip' },
+      { id: holder.id, name: 'Winter trip' },
     ])
 
-    // And the list row itself points at the copy.
+    // And the list rows point where they should.
     const listsRes = await apiRequest(cookie, 'GET', '/api/lists')
     const rows = (await listsRes.json()) as { id: string; foodPlanId: string | null }[]
-    expect(rows.find((l) => l.id === forking.id)!.foodPlanId).toBe(copy.id)
-    expect(rows.find((l) => l.id === staying.id)!.foodPlanId).toBe(source.id)
+    expect(rows.find((l) => l.id === taker.id)!.foodPlanId).toBe(copy.id)
+    expect(rows.find((l) => l.id === holder.id)!.foodPlanId).toBe(source.id)
+  })
+
+  it('with listId, replaces the plan the list holds when the expectation matches', async () => {
+    const { cookie } = await signUpVerifiedUser('plan-dup-swap@example.com', 'S')
+    const source = await createPlan(cookie, { name: 'Wanted', days: 1 })
+    const outgoing = await createPlan(cookie, { name: 'Outgoing', days: 1 })
+    const trip = await createList(cookie, 'Trip')
+    await attach(cookie, trip.id, outgoing.id)
+
+    const res = await apiRequest(
+      cookie,
+      'POST',
+      `/api/food-plans/${source.id}/duplicate`,
+      { listId: trip.id, expectedFoodPlanId: outgoing.id },
+    )
+    expect(res.status).toBe(201)
+    const copy = foodPlanDocumentSchema.parse(await res.json())
+
+    // The trip follows the copy; the outgoing plan survives, now free.
+    const listsRes = await apiRequest(cookie, 'GET', '/api/lists')
+    const rows = (await listsRes.json()) as { id: string; foodPlanId: string | null }[]
+    expect(rows.find((l) => l.id === trip.id)!.foodPlanId).toBe(copy.id)
+    const outAfterRes = await apiRequest(
+      cookie,
+      'GET',
+      `/api/food-plans/${outgoing.id}`,
+    )
+    const outAfter = foodPlanDocumentSchema.parse(await outAfterRes.json())
+    expect(outAfter.usedByLists).toEqual([])
   })
 
   it("rejects another user's list (422) and another user's plan (404)", async () => {
@@ -688,34 +777,40 @@ describe('/api/food-plans duplicate', () => {
     expect(crossPlan.status).toBe(404)
   })
 
-  it('rejects an owned list that does not currently use the source plan (422)', async () => {
+  it('a stale expectedFoodPlanId is a 422 that leaves NO orphan copy', async () => {
+    // The attach is a compare-and-swap on the link the CLIENT observed. Here
+    // the trip moved to plan B after the client last looked (a second tab,
+    // say) - clobbering that newer link would silently discard B, and 201-ing
+    // without attaching would leave an orphan copy. Both stale expectations
+    // are refused: an explicit wrong plan id, and the DTO's fail-safe default
+    // (a body that omits expectedFoodPlanId means "I observed no plan").
     const { cookie } = await signUpVerifiedUser('plan-dup-cas@example.com', 'C')
-    const planA = await createPlan(cookie, { name: 'Plan A' })
+    const source = await createPlan(cookie, { name: 'Plan A' })
     const planB = await createPlan(cookie, { name: 'Plan B' })
-    const unattached = await createList(cookie, 'No plan yet')
-    const onB = await createList(cookie, 'Follows B')
-    await attach(cookie, onB.id, planB.id)
+    const trip = await createList(cookie, 'Follows B')
+    await attach(cookie, trip.id, planB.id)
 
-    // "Duplicate for this trip" presumes the trip follows THIS plan. A list on
-    // another plan must not be silently stolen, and a plan-less list has no
-    // shared original to fork from.
-    for (const listId of [unattached.id, onB.id]) {
+    for (const body of [
+      { listId: trip.id, expectedFoodPlanId: source.id }, // wrong plan
+      { listId: trip.id, expectedFoodPlanId: null }, // observed none
+      { listId: trip.id }, // omitted -> defaults to null
+    ]) {
       const res = await apiRequest(
         cookie,
         'POST',
-        `/api/food-plans/${planA.id}/duplicate`,
-        { listId },
+        `/api/food-plans/${source.id}/duplicate`,
+        body,
       )
-      expect(res.status, listId).toBe(422)
+      expect(res.status, JSON.stringify(body)).toBe(422)
     }
-    // The rejected forks left no copies behind.
+    // Every failed CAS compensating-deleted its committed copy: still exactly
+    // the two original plans, and the trip still follows B.
     const listRes = await apiRequest(cookie, 'GET', '/api/food-plans')
     const summaries = foodPlanSummarySchema.array().parse(await listRes.json())
     expect(summaries).toHaveLength(2)
-    // And the B-following list still follows B.
     const listsRes = await apiRequest(cookie, 'GET', '/api/lists')
     const rows = (await listsRes.json()) as { id: string; foodPlanId: string | null }[]
-    expect(rows.find((l) => l.id === onB.id)!.foodPlanId).toBe(planB.id)
+    expect(rows.find((l) => l.id === trip.id)!.foodPlanId).toBe(planB.id)
   })
 
   it('malformed JSON is a 400, not a silent list-less duplicate', async () => {

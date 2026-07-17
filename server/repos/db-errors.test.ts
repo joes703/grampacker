@@ -71,4 +71,15 @@ describe('isUniqueViolation', () => {
     )
     expect(isUniqueViolation(err, 'lists.slug')).toBe(false)
   })
+
+  it('classifies the one-plan-per-trip index by its column', () => {
+    // attachFoodPlan's race backstop keys on this exact column name; a partial
+    // unique index reports the column, not the index name.
+    const err = wrapped(
+      'UNIQUE constraint failed: lists.food_plan_id: SQLITE_CONSTRAINT',
+      'Failed query: update "lists" ...',
+    )
+    expect(isUniqueViolation(err, 'lists.food_plan_id')).toBe(true)
+    expect(isUniqueViolation(err, 'lists.slug')).toBe(false)
+  })
 })

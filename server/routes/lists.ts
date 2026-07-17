@@ -213,11 +213,17 @@ listRoutes.post('/import', async (c) => {
   return c.json(toListResponse(result.row), 201)
 })
 
+// Duplicating a list whose trip has a food plan also deep-copies that plan
+// (one plan per trip - the pointer cannot be shared), so BOTH caps can fire
+// and each gets its own truthful message.
 listRoutes.post('/:id/duplicate', async (c) => {
   const result = await c.get('repos').lists.duplicate(c.req.param('id'))
   if (!result.ok) {
     if (result.reason === 'not_found') {
       return c.json({ error: 'Not found' }, 404)
+    }
+    if (result.reason === 'plan_cap_exceeded') {
+      return c.json({ error: 'Food plan limit reached (100 per user)' }, 422)
     }
     return c.json({ error: 'List limit reached (100 per user)' }, 422)
   }
@@ -227,7 +233,10 @@ listRoutes.post('/:id/duplicate', async (c) => {
 // Attach a food plan (a live reference on lists.food_plan_id). Returns the
 // updated list so the client refreshes its ['lists'] cache; the plan's name is
 // resolved client-side from ['food-plans']. invalid_plan (a non-owned/unknown
-// plan) is a 400, distinct from the 404 for a non-owned list.
+// plan) is a 400, distinct from the 404 for a non-owned list. plan_in_use is
+// a 409: the plan already backs another list (one plan per trip), and the
+// client keys on the STATUS alone - the picker's answer is "Duplicate &
+// attach" via POST /api/food-plans/:id/duplicate.
 listRoutes.put('/:id/food-plan', async (c) => {
   const raw = await c.req.json().catch(() => null)
   const parsed = attachFoodPlanRequestSchema.safeParse(raw)
@@ -238,6 +247,12 @@ listRoutes.put('/:id/food-plan', async (c) => {
   if (!result.ok) {
     if (result.reason === 'invalid_plan') {
       return c.json({ error: 'Invalid food plan' }, 400)
+    }
+    if (result.reason === 'plan_in_use') {
+      return c.json(
+        { error: 'That food plan is already used by another list' },
+        409,
+      )
     }
     return c.json({ error: 'Not found' }, 404)
   }

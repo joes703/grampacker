@@ -71,6 +71,13 @@
       "when": 1784217155424,
       "tag": "0009_food-plan-link",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1784243394119,
+      "tag": "0010_one-plan-per-list",
+      "breakpoints": true
     }
   ]
 }

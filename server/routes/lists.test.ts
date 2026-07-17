@@ -1038,7 +1038,9 @@ describe('caps and slug integrity', () => {
 })
 
 // The list <-> food-plan link (food-planning-design.md slice 3). A list points
-// AT a standalone plan via lists.food_plan_id - a live reference, not a copy.
+// AT a standalone plan via lists.food_plan_id - a live reference, not a copy -
+// and a plan backs AT MOST ONE list (one plan per trip, enforced by the
+// partial unique index lists_food_plan_id_unique; reuse is duplication).
 // Pack-state clearing on relink is slice 4 and not exercised here.
 describe('food plan link', () => {
   async function createPlan(cookie: string, name: string): Promise<string> {
@@ -1079,34 +1081,83 @@ describe('food plan link', () => {
     expect((await listById(cookie, list.id)).foodPlanId).toBeNull()
   })
 
-  it('lets one plan back many lists, and detaches them all on plan delete', async () => {
+  it('refuses to attach a plan already backing another list (409)', async () => {
     const { cookie } = await signUpVerifiedUser('link-many@example.com', 'M')
     const planId = await createPlan(cookie, 'Weekend')
     const a = await createList(cookie, 'Trip A')
     const b = await createList(cookie, 'Trip B')
-    for (const l of [a, b]) {
-      const r = await apiRequest(cookie, 'PUT', `/api/lists/${l.id}/food-plan`, {
-        foodPlanId: planId,
-      })
-      expect(r.status).toBe(200)
-    }
+    const first = await apiRequest(cookie, 'PUT', `/api/lists/${a.id}/food-plan`, {
+      foodPlanId: planId,
+    })
+    expect(first.status).toBe(200)
 
-    // Deleting the plan runs the atomic detach-then-delete batch: both lists
-    // survive, detached; the plan is gone.
+    // The plan is A's now; B cannot take it...
+    const second = await apiRequest(cookie, 'PUT', `/api/lists/${b.id}/food-plan`, {
+      foodPlanId: planId,
+    })
+    expect(second.status).toBe(409)
+    expect(((await second.json()) as { error: string }).error).toBe(
+      'That food plan is already used by another list',
+    )
+    expect((await listById(cookie, b.id)).foodPlanId).toBeNull()
+    expect((await listById(cookie, a.id)).foodPlanId).toBe(planId)
+
+    // ...but A re-attaching its own plan is a no-op success, not a self-
+    // collision (the picker re-sends the current selection freely).
+    const reattach = await apiRequest(cookie, 'PUT', `/api/lists/${a.id}/food-plan`, {
+      foodPlanId: planId,
+    })
+    expect(reattach.status).toBe(200)
+
+    // Once A lets go, the plan is free for B.
+    const detach = await apiRequest(cookie, 'DELETE', `/api/lists/${a.id}/food-plan`)
+    expect(detach.status).toBe(200)
+    const third = await apiRequest(cookie, 'PUT', `/api/lists/${b.id}/food-plan`, {
+      foodPlanId: planId,
+    })
+    expect(third.status).toBe(200)
+  })
+
+  it('detaches the holding list on plan delete', async () => {
+    const { cookie } = await signUpVerifiedUser('link-del@example.com', 'M')
+    const planId = await createPlan(cookie, 'Weekend')
+    const a = await createList(cookie, 'Trip A')
+    const r = await apiRequest(cookie, 'PUT', `/api/lists/${a.id}/food-plan`, {
+      foodPlanId: planId,
+    })
+    expect(r.status).toBe(200)
+
+    // Deleting the plan runs the atomic detach-then-delete batch: the list
+    // survives, detached; the plan is gone.
     const del = await apiRequest(cookie, 'DELETE', `/api/food-plans/${planId}`)
     expect(del.status).toBe(204)
-    const rows = await getLists(cookie)
-    expect(rows).toHaveLength(2)
-    expect(rows.find((r) => r.id === a.id)?.foodPlanId).toBeNull()
-    expect(rows.find((r) => r.id === b.id)?.foodPlanId).toBeNull()
+    expect((await listById(cookie, a.id)).foodPlanId).toBeNull()
     const gone = await apiRequest(cookie, 'GET', `/api/food-plans/${planId}`)
     expect(gone.status).toBe(404)
   })
 
-  it('carries the plan pointer over when a list is duplicated', async () => {
+  it('deep-copies the plan when a list is duplicated', async () => {
+    // A plan backs at most one list, so the duplicate CANNOT share the
+    // source's plan pointer (pre-2026-07-16 behavior) - it gets a full copy
+    // of the plan graph, attached in the same batch.
     const { cookie } = await signUpVerifiedUser('link-dup@example.com', 'D')
     const list = await createList(cookie, 'Original')
     const planId = await createPlan(cookie, 'Plan')
+    const foodRes = await apiRequest(cookie, 'POST', '/api/food-items', {
+      name: 'Ramen',
+      servingWeightGrams: 80,
+      caloriesPerServing: 350,
+    })
+    expect(foodRes.status).toBe(201)
+    const foodId = ((await foodRes.json()) as { id: string }).id
+    // An Extras entry needs no cell lookup and still exercises the entry copy.
+    const entryRes = await apiRequest(
+      cookie,
+      'POST',
+      `/api/food-plans/${planId}/entries`,
+      { isExtra: true, foodItemId: foodId, basis: 'weight', amount: 150 },
+    )
+    expect(entryRes.status).toBe(201)
     await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/food-plan`, {
       foodPlanId: planId,
     })
@@ -1119,7 +1170,79 @@ describe('food plan link', () => {
     expect(dupRes.status).toBe(201)
     const dup = (await dupRes.json()) as ListBody
     expect(dup.id).not.toBe(list.id)
-    expect(dup.foodPlanId).toBe(planId) // same plan - a pointer, not a deep copy
+    expect(dup.foodPlanId).not.toBeNull()
+    expect(dup.foodPlanId).not.toBe(planId)
+
+    type PlanDoc = {
+      name: string
+      meals: unknown[]
+      days: unknown[]
+      dayMeals: unknown[]
+      entries: { foodItemId: string; isExtra: boolean; amount: number }[]
+      usedByLists: { id: string; name: string }[]
+    }
+    const copyRes = await apiRequest(
+      cookie,
+      'GET',
+      `/api/food-plans/${dup.foodPlanId}`,
+    )
+    expect(copyRes.status).toBe(200)
+    const copy = (await copyRes.json()) as PlanDoc
+    const sourceRes = await apiRequest(cookie, 'GET', `/api/food-plans/${planId}`)
+    const source = (await sourceRes.json()) as PlanDoc
+
+    // The copy mirrors the source graph (3 default meals x 3 default days),
+    // references the SAME account-wide food, and belongs to the new list.
+    expect(copy.name).toBe('Plan (copy)')
+    expect(copy.meals).toHaveLength(source.meals.length)
+    expect(copy.days).toHaveLength(source.days.length)
+    expect(copy.dayMeals).toHaveLength(source.dayMeals.length)
+    expect(copy.entries).toHaveLength(1)
+    expect(copy.entries[0]!.foodItemId).toBe(foodId)
+    expect(copy.entries[0]!.amount).toBe(150)
+    expect(copy.usedByLists).toEqual([{ id: dup.id, name: dup.name }])
+
+    // The source plan is untouched and still the original list's.
+    expect(source.name).toBe('Plan')
+    expect(source.entries).toHaveLength(1)
+    expect(source.usedByLists).toEqual([{ id: list.id, name: 'Original' }])
+  })
+
+  it('rolls back the WHOLE list duplicate at the food-plan cap', async () => {
+    // The plan copy rides in the same batch as the list insert, so the plan
+    // cap (100/user) can now fail a LIST duplicate - with its own message,
+    // and with nothing committed: no new list, no partial plan graph.
+    const { cookie } = await signUpVerifiedUser('link-dup-cap@example.com', 'C')
+    const userId = await userIdFor(cookie)
+    const list = await createList(cookie, 'Original')
+    const planId = await createPlan(cookie, 'The 100th')
+    await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/food-plan`, {
+      foodPlanId: planId,
+    })
+    const values = Array.from({ length: 99 }, (_, i) => {
+      return `('link-dup-cap-${i}', '${userId}', 'Seed ${i}', ${i}, 0, 0)`
+    }).join(',')
+    await env.DB.prepare(
+      `insert into food_plans (id, user_id, name, sort_order, created_at, updated_at) values ${values}`,
+    ).run()
+
+    const dupRes = await apiRequest(
+      cookie,
+      'POST',
+      `/api/lists/${list.id}/duplicate`,
+    )
+    expect(dupRes.status).toBe(422)
+    expect(((await dupRes.json()) as { error: string }).error).toBe(
+      'Food plan limit reached (100 per user)',
+    )
+    // Nothing landed: still one list, still 100 plans.
+    expect(await getLists(cookie)).toHaveLength(1)
+    const planCount = (await env.DB.prepare(
+      'select count(*) as count from food_plans where user_id = ?',
+    )
+      .bind(userId)
+      .first()) as { count: number }
+    expect(planCount.count).toBe(100)
   })
 
   it('rejects a cross-owner link and foreign-list access', async () => {
@@ -1154,6 +1277,30 @@ describe('food plan link', () => {
       `/api/lists/${aList.id}/food-plan`,
     )
     expect(foreignDetach.status).toBe(404)
+  })
+
+  it('the unique index itself fires with the column text the backstop matches', async () => {
+    // The 409 above came from the friendly PRECHECK; a concurrent attach that
+    // slips past it is caught by isUniqueViolation(err, 'lists.food_plan_id')
+    // in attachFoodPlan's catch. That matcher keys on the exact column text in
+    // the REAL error, so pin it here with a raw write that bypasses the
+    // precheck entirely - if the index were dropped or renamed, or D1 changed
+    // the message shape, this goes red while the sequential API tests stay
+    // green.
+    const { cookie } = await signUpVerifiedUser('link-index@example.com', 'U')
+    const planId = await createPlan(cookie, 'Contested')
+    const a = await createList(cookie, 'Holder')
+    const b = await createList(cookie, 'Challenger')
+    const r = await apiRequest(cookie, 'PUT', `/api/lists/${a.id}/food-plan`, {
+      foodPlanId: planId,
+    })
+    expect(r.status).toBe(200)
+
+    await expect(
+      env.DB.prepare('update lists set food_plan_id = ? where id = ?')
+        .bind(planId, b.id)
+        .run(),
+    ).rejects.toThrow(/UNIQUE constraint failed: lists\.food_plan_id/)
   })
 
   it('makes the NO ACTION FK a hard backstop against a skipped detach', async () => {

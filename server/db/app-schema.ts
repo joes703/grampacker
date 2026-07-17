@@ -134,8 +134,12 @@ export const gearItems = sqliteTable(
 // rebuild, so migration 0009 recreates lists_user_cap by hand.
 //
 // food_plan_id is a LIVE REFERENCE to a standalone food plan
-// (food-planning-design.md 2.1): nullable (most lists have no plan), and one
-// plan may back many lists. The FK is composite same-owner and NO ACTION, not
+// (food-planning-design.md 2.1): nullable (most lists have no plan), and a
+// plan backs AT MOST ONE list - a menu is a per-trip decision, so reuse is
+// duplication, never sharing (design revision 2026-07-16, superseding 12.1's
+// many-lists model). The partial unique index below is the structural
+// backstop for that; repo prechecks only exist to give friendly errors.
+// The FK is composite same-owner and NO ACTION, not
 // SET NULL - SQLite has no column-list SET NULL (it would null user_id too, a
 // NOT NULL violation), so deleting a plan is a repo-owned detach-then-delete
 // batch (2.3), and the FK is the hard backstop that fails a skipped detach loud.
@@ -174,6 +178,11 @@ export const lists = sqliteTable(
       columns: [t.foodPlanId, t.userId],
       foreignColumns: [foodPlans.id, foodPlans.userId],
     })),
+    // One plan per trip: at most one list may reference a given plan. Partial
+    // (WHERE NOT NULL) so the many plan-less lists don't collide on NULL.
+    uniqueIndex('lists_food_plan_id_unique')
+      .on(t.foodPlanId)
+      .where(sql`${t.foodPlanId} is not null`),
     index('lists_user_sort_idx').on(t.userId, t.sortOrder, t.name),
     check('lists_name_length', sql`length(${t.name}) between 1 and 256`),
     check(

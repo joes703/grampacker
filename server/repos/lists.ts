@@ -1,7 +1,13 @@
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, ne, sql } from 'drizzle-orm'
 import type { Db } from '../db'
 import { categories, foodPlans, gearItems, listItems, lists } from '../db/schema'
 import { isForeignKeyViolation, isTriggerAbort, isUniqueViolation } from './db-errors'
+import {
+  buildPlanCopyStatements,
+  chunkForParamCap,
+  isFoodPlanCapError,
+  readPlanGraph,
+} from './food-plan-copy'
 import { isCapError as isGearCapError } from './gear-items'
 import { isListItemCapError } from './list-items'
 
@@ -49,12 +55,22 @@ export type ListWriteResult =
   | { ok: true; row: ListRow }
   | { ok: false; reason: 'cap_exceeded' | 'not_found' }
 
-// Attaching a food plan can fail two ways: the list is not the caller's
-// (not_found), or the referenced plan is not the caller's / no longer exists
-// (invalid_plan -> 400). Detaching only ever fails not_found.
+// Attaching a food plan can fail three ways: the list is not the caller's
+// (not_found), the referenced plan is not the caller's / no longer exists
+// (invalid_plan -> 400), or the plan already backs another list
+// (plan_in_use -> 409; a plan is per-trip, reuse is duplication). Detaching
+// only ever fails not_found.
 export type AttachFoodPlanResult =
   | { ok: true; row: ListRow }
-  | { ok: false; reason: 'not_found' | 'invalid_plan' }
+  | { ok: false; reason: 'not_found' | 'invalid_plan' | 'plan_in_use' }
+
+// Duplicating a list can trip TWO caps: its own (100 lists/user), and - when
+// the source has a food plan, whose graph the duplicate must copy - the food
+// plan cap (100 plans/user). One reason cannot truthfully name both, so the
+// plan trigger gets its own.
+export type DuplicateListResult =
+  | { ok: true; row: ListRow }
+  | { ok: false; reason: 'cap_exceeded' | 'plan_cap_exceeded' | 'not_found' }
 
 export type FromSelectionResult =
   | { ok: true; row: ListRow }
@@ -197,12 +213,16 @@ export function createListsRepo(db: Db, userId: string) {
     },
 
     // Attach a food plan to a list - a LIVE REFERENCE (design 2.1/3), not a
-    // copy: one plan may back many lists, and editing the plan re-projects
-    // every list on next read. Setting food_plan_id is the whole operation.
-    // The plan must be the caller's; we precheck for a friendly invalid_plan
-    // (400) rather than leaning on FK error text, with the composite
-    // (food_plan_id, user_id) FK as the structural backstop against a plan
-    // deleted between the precheck and the write.
+    // copy: editing the plan re-projects this list on next read. Setting
+    // food_plan_id is the whole operation, and it replaces whatever plan the
+    // list had (last write wins on the LIST side). The plan must be the
+    // caller's AND not already backing a DIFFERENT list (one plan per trip -
+    // reuse is duplication): both are prechecked for friendly errors, with
+    // the composite (food_plan_id, user_id) FK and the partial unique index
+    // lists_food_plan_id_unique as the structural backstops against a plan
+    // deleted / grabbed between the precheck and the write. Re-attaching the
+    // plan a list already holds is a no-op success (updating a row to its own
+    // value cannot collide with itself).
     //
     // Slice 4 additionally clears this list's food_pack_state in the same batch
     // (design rule 1, "clear on relink") - there is no pack state yet.
@@ -216,6 +236,18 @@ export function createListsRepo(db: Db, userId: string) {
         .where(and(eq(foodPlans.id, foodPlanId), eq(foodPlans.userId, userId)))
         .limit(1)
       if (!plan) return { ok: false, reason: 'invalid_plan' }
+      const [holder] = await db
+        .select({ id: lists.id })
+        .from(lists)
+        .where(
+          and(
+            eq(lists.foodPlanId, foodPlanId),
+            eq(lists.userId, userId),
+            ne(lists.id, id),
+          ),
+        )
+        .limit(1)
+      if (holder) return { ok: false, reason: 'plan_in_use' }
       try {
         const [row] = await db
           .update(lists)
@@ -224,7 +256,12 @@ export function createListsRepo(db: Db, userId: string) {
           .returning(cols)
         return row ? { ok: true, row } : { ok: false, reason: 'not_found' }
       } catch (err) {
-        // The plan was deleted between the precheck and the update.
+        // Race backstops behind the prechecks above: another list grabbed the
+        // plan between precheck and write (the unique index fires), or the
+        // plan was deleted (the FK fires).
+        if (isUniqueViolation(err, 'lists.food_plan_id')) {
+          return { ok: false, reason: 'plan_in_use' }
+        }
         if (isForeignKeyViolation(err)) {
           return { ok: false, reason: 'invalid_plan' }
         }
@@ -272,11 +309,17 @@ export function createListsRepo(db: Db, userId: string) {
     // Deep copy: name gets "(copy)", every membership row is copied
     // (including packed/ready state - old duplicate_list behavior), and
     // isShared/isDraft deliberately reset to false/true so a copy is
-    // never silently public. food_plan_id is carried over (design 3.1): it is
-    // a POINTER, so the copy references the SAME plan - "duplicate this trip"
-    // reuses the same food. Food pack state is NOT copied (it is not keyed by
-    // plan, and a duplicate is a different, fully-unpacked trip).
-    async duplicate(id: string): Promise<ListWriteResult> {
+    // never silently public.
+    //
+    // A plan backs at most one list (lists_food_plan_id_unique), so the plan
+    // POINTER cannot be carried over - when the source has a plan, its whole
+    // graph is deep-copied (food-plan-copy.ts) and the new list points at the
+    // copy. Everything lands in ONE db.batch in FK order (plan graph -> list
+    // -> items): a late failure - either cap trigger included - leaves no
+    // orphan plan and no half-copied list. Food pack state is NOT copied (it
+    // is not keyed by plan, and a duplicate is a different, fully-unpacked
+    // trip).
+    async duplicate(id: string): Promise<DuplicateListResult> {
       const [source] = await db
         .select(cols)
         .from(lists)
@@ -296,9 +339,41 @@ export function createListsRepo(db: Db, userId: string) {
         .from(listItems)
         .where(and(eq(listItems.listId, id), eq(listItems.userId, userId)))
 
+      // The plan graph is read once, outside the slug-retry loop: a retry
+      // re-runs the same copy (nothing committed on a failed batch). Null
+      // when the source has no plan - or when the plan vanished between
+      // reading the source row and here (plan delete detaches first, so the
+      // just-read foodPlanId was already stale); the copy then simply starts
+      // detached, the same last-write-wins outcome as losing the race by a
+      // moment.
+      //
+      // ACCEPTED staleness (flagged in review 2026-07-16): if a concurrent
+      // request RE-LINKS the source to a different plan between these reads
+      // and the batch, the duplicate still copies the plan observed at read
+      // time. That is the read-then-write contract this method has always
+      // had - the name and the item rows are snapshotted the same way and an
+      // item edit in the window is equally invisible - and the result is a
+      // coherent copy of a state the source really was in, attached to a
+      // fresh plan no other list can hold. Closing it would need a CAS on
+      // source.foodPlanId plus a compensating delete for the committed graph;
+      // not worth it for "duplicate raced an edit by milliseconds".
+      const planGraph =
+        source.foodPlanId === null
+          ? null
+          : await readPlanGraph(db, userId, source.foodPlanId)
+
       for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt++) {
         const newId = crypto.randomUUID()
+        const newPlanId = crypto.randomUUID()
         const now = Date.now()
+        const planStatements =
+          planGraph === null
+            ? null
+            : buildPlanCopyStatements(db, userId, planGraph, {
+                newPlanId,
+                name: copyName(planGraph.name),
+                now,
+              })
         const insertList = db
           .insert(lists)
           .values({
@@ -307,7 +382,7 @@ export function createListsRepo(db: Db, userId: string) {
             name: copyName(source.name),
             description: source.description,
             slug: generateSlug(),
-            foodPlanId: source.foodPlanId,
+            foodPlanId: planGraph === null ? null : newPlanId,
             isShared: false,
             groupWorn: source.groupWorn,
             readyChecksEnabled: source.readyChecksEnabled,
@@ -317,30 +392,54 @@ export function createListsRepo(db: Db, userId: string) {
             updatedAt: now,
           })
           .returning(cols)
-        const insertItems = items.map((it) =>
-          db.insert(listItems).values({
-            id: crypto.randomUUID(),
-            userId,
-            listId: newId,
-            gearItemId: it.gearItemId,
-            quantity: it.quantity,
-            isWorn: it.isWorn,
-            isConsumable: it.isConsumable,
-            isPacked: it.isPacked,
-            isReady: it.isReady,
-            sortOrder: it.sortOrder,
-            createdAt: now,
-            updatedAt: now,
-          }),
+        const itemRows = items.map((it) => ({
+          id: crypto.randomUUID(),
+          userId,
+          listId: newId,
+          gearItemId: it.gearItemId,
+          quantity: it.quantity,
+          isWorn: it.isWorn,
+          isConsumable: it.isConsumable,
+          isPacked: it.isPacked,
+          isReady: it.isReady,
+          sortOrder: it.sortOrder,
+          createdAt: now,
+          updatedAt: now,
+        }))
+        // Multi-row inserts (floor(90/columns) rows each) rather than one
+        // statement per item: 300 items is ~43 statements instead of 300,
+        // which matters because the whole batch already carries up to ~360
+        // plan-copy statements ahead of it.
+        const insertItems = chunkForParamCap(itemRows).map((rows) =>
+          db.insert(listItems).values(rows),
         )
         try {
-          const [inserted] = await db.batch([insertList, ...insertItems])
+          let results: unknown[]
+          if (planStatements === null) {
+            results = await db.batch([insertList, ...insertItems])
+          } else {
+            const [planFirst, ...planRest] = planStatements
+            results = await db.batch([
+              planFirst,
+              ...planRest,
+              insertList,
+              ...insertItems,
+            ])
+          }
+          // The list row's returning() sits right after the plan-copy
+          // statements (or first, when there are none).
+          const inserted = results[
+            planStatements === null ? 0 : planStatements.length
+          ] as ListRow[]
           const row = inserted[0]
           if (!row) throw new Error('list duplicate returned no row')
           return { ok: true, row }
         } catch (err) {
           if (isUniqueViolation(err, 'lists.slug')) continue
           if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
+          if (isFoodPlanCapError(err)) {
+            return { ok: false, reason: 'plan_cap_exceeded' }
+          }
           throw err
         }
       }

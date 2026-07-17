@@ -53,13 +53,17 @@ export async function deleteFoodPlan(id: string): Promise<void> {
 // Fork (design 3.1/12.9). listId = "Duplicate for this trip": the server
 // attaches the copy to that list in the same transaction as the copy. Returns
 // the NEW plan's document.
+// expectedFoodPlanId: the link the caller OBSERVED on listId (null = none) -
+// the server's attach is a compare-and-swap on it (shared/food-plans.ts).
+// Meaningful only when listId is set.
 export async function duplicateFoodPlan(
   id: string,
   listId: string | null,
+  expectedFoodPlanId: string | null,
 ): Promise<FoodPlanDocument> {
   return apiFetch(`/food-plans/${id}/duplicate`, foodPlanDocumentSchema, {
     method: 'POST',
-    body: { listId },
+    body: { listId, expectedFoodPlanId },
   })
 }
 
