@@ -49,6 +49,8 @@ import { useStableWornItems } from '../lib/use-stable-worn-items'
 import { computeWeightBreakdown, withProjectedFood } from '../lib/weight-breakdown'
 import { useFoodProjection } from './use-food-projection'
 import { useFoodPlanLink } from './use-food-plan-link'
+import { useFoodPack } from './use-food-pack'
+import FoodPackSection from './FoodPackSection'
 import FoodRow from './FoodRow'
 import FoodPlanPicker from './FoodPlanPicker'
 
@@ -286,6 +288,16 @@ function ListDetailInner({
   // Duplicate & attach (a plan already backing another list). The CAS
   // expectation is THIS list's current link as this render observed it.
   const listFoodPlanId = list?.foodPlanId ?? null
+
+  // Pack-mode food checklist (design 8, slice 4): rows + totals + the CAS
+  // toggle, with its own query subscriptions (colocation - see the hook).
+  // Enabled only where it renders; packableTotal/packedTotal are 0 while
+  // disabled, so edit mode and plan-less lists keep gear-only totals.
+  const foodPack = useFoodPack(
+    listId,
+    listFoodPlanId,
+    hasFoodPlan && mode === 'pack',
+  )
   const onDuplicateAttachFoodPlan = useCallback(
     (planId: string) =>
       duplicateMut.mutate({
@@ -819,12 +831,14 @@ function ListDetailInner({
             <ListDetailStatus title="Loading list details..." busy />
           ) : (
             <>
-              {/* Pack-mode progress bar */}
-              {mode === 'pack' && listItems.length > 0 && (
+              {/* Pack-mode progress bar. Renders for a food-only list too:
+                  a list with no gear but an attached plan still has packing
+                  to track. */}
+              {mode === 'pack' && (listItems.length > 0 || foodPack.packableTotal > 0) && (
                 <div className="print:hidden">
                   <PackingProgress
-                    total={listItems.length}
-                    packed={listItems.filter((i) => i.isPacked).length}
+                    total={listItems.length + foodPack.packableTotal}
+                    packed={listItems.filter((i) => i.isPacked).length + foodPack.packedTotal}
                     onReset={resetPacked}
                     showUnpackedOnly={showUnpackedOnly}
                     onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
@@ -888,9 +902,23 @@ function ListDetailInner({
                 </div>
               )}
 
-              {/* The derived Food row, between the summary and the gear groups.
-                  Normal mode only - pack mode expands it into the per-food
-                  checklist in slice 4. */}
+              {/* Food, between the summary and the gear groups. Edit mode
+                  renders the derived Food row; pack mode expands it into the
+                  per-food checklist (FoodPackSection). */}
+              {mode === 'pack' && foodPack.isError && (
+                <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  Couldn&apos;t load this list&apos;s food checklist. Gear packing
+                  still works.
+                </p>
+              )}
+              {mode === 'pack' && (
+                <FoodPackSection
+                  rows={foodPack.rows}
+                  weightUnit={weightUnit}
+                  showUnpackedOnly={showUnpackedOnly}
+                  onToggle={foodPack.toggle}
+                />
+              )}
               {mode !== 'pack' && foodProjectionError && (
                 <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                   Couldn&apos;t load this list&apos;s food plan, so the weight below leaves

@@ -39,6 +39,10 @@ import type { List } from '../lib/types'
 // The ['food-plan'] prefix is invalidated too: each cached plan document
 // carries usedByList (the editor's "Used by <list>" breadcrumb), and every
 // mutation here moves some plan's link.
+//
+// The ['food-pack'] prefix as well: moving or clearing the link clears the
+// list's pack state server-side (design 6, rule 1), and these hooks don't
+// know which list's checklist cache is populated.
 export function useFoodPlanLink() {
   const qc = useQueryClient()
 
@@ -59,6 +63,7 @@ export function useFoodPlanLink() {
       // The summaries' usedByListId/Name just moved - a stale Plans index
       // (or another list's picker) would offer the wrong action for this plan.
       queryKeys.foodPlans(),
+      queryKeys.foodPackStateAll(),
     ],
     id: ({ id }) => id,
     apply: (item, { foodPlanId }) => ({
@@ -96,6 +101,7 @@ export function useFoodPlanLink() {
         queryKeys.sharedListAll(),
         queryKeys.foodPlanAll(),
         queryKeys.foodPlans(), // same as attach: usedByList* just changed
+        queryKeys.foodPackStateAll(),
       ],
       id: (id) => id,
       apply: (item) => ({
@@ -142,6 +148,7 @@ export function useFoodPlanLink() {
       void qc.invalidateQueries({ queryKey: queryKeys.foodPlans() })
       void qc.invalidateQueries({ queryKey: queryKeys.lists() })
       void qc.invalidateQueries({ queryKey: queryKeys.sharedListAll() })
+      void qc.invalidateQueries({ queryKey: queryKeys.foodPackStateAll() })
     },
     onError: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.foodPlans() })
