@@ -132,11 +132,6 @@ import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
 // tuned around it. The header returns with the CSV/print slice; the
 // print:hidden classes on transient chrome are kept since they're inert
 // without a print stylesheet consumer.
-// TRANSPLANT NOTE (food): the old page wired useFoodProjection into the
-// weight breakdown (withProjectedFood), PackingProgress totals, a
-// FoodProjectionSection between the summary grid and the item groups, an
-// isError banner, and useListResetActions' second argument
-// (resetPackedFoods). All of that returns with the food-plans slice.
 // TRANSPLANT NOTE (tabs): the old page rendered ListWorkspaceTabs (a
 // Gear/Pack two-tab remnant) above ListDocumentToolbar. The toolbar's own
 // PackToggle covers mode switching in the rewrite; the tab strip returns
@@ -517,7 +512,9 @@ function ListDetailInner({
   // their own field on failure, so they compose) and the failure toasts. The
   // page keeps the PackingProgress wiring, the per-item toggles, and the
   // ready-checks-enabled toggle.
-  const { resetPacked, resetReady } = useListResetActions(listId)
+  // hasFoodPlan routes "Reset packed" through the food side too (design 8:
+  // reset spans both).
+  const { resetPacked, resetReady } = useListResetActions(listId, hasFoodPlan)
 
 
   // ── Derived data ───────────────────────────────────────────────────────────

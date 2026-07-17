@@ -1,5 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { queryKeys, resetPackedForList, resetReadyForList } from '../lib/queries'
+import {
+  queryKeys,
+  resetFoodPackForList,
+  resetPackedForList,
+  resetReadyForList,
+} from '../lib/queries'
 import { showToast } from '../lib/toast'
 import type { ListItemWithGear } from '../lib/types'
 
@@ -19,15 +24,18 @@ import type { ListItemWithGear } from '../lib/types'
 // moment of clear, and on failure flips ONLY that field back. The other reset's
 // writes pass through untouched. No mutex needed; the operations compose.
 //
-// TRANSPLANT NOTE (food): the old repo's resetPacked also awaited a
-// resetPackedFoods handle (from useFoodProjection) after the gear reset
-// settled. That parameter returns with the food-plans slice.
-export function useListResetActions(listId: string) {
+// Since slice 4b, resetPacked spans the FOOD checklist too (design 8:
+// "Reset packed spans both") when a plan is attached: two independent
+// endpoints, two independent per-side rollbacks, one toast at most. The
+// same field-scoping argument applies between the two sides - a failed
+// gear reset must not resurrect cleared food checkmarks or vice versa.
+export function useListResetActions(listId: string, hasFoodPlan: boolean) {
   const qc = useQueryClient()
 
   async function resetPacked() {
-    // Optimistic clear - flip isPacked=false on every cached item so the UI
-    // updates immediately, then issue a single call and invalidate to settle.
+    // Optimistic clear - flip isPacked=false on every cached item (and empty
+    // the food id set) so the UI updates immediately, then issue the calls
+    // and invalidate to settle.
     await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
     const snapshot = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
     const wasPackedIds = snapshot
@@ -36,21 +44,48 @@ export function useListResetActions(listId: string) {
     qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
       curr ? curr.map((i) => (i.isPacked ? { ...i, isPacked: false } : i)) : curr,
     )
-    try {
-      await resetPackedForList(listId)
-    } catch {
+
+    // Food side, only under an attached plan. hasFoodPlan comes from the
+    // list ROW (the authority on the link); a stale ['food-pack'] cache from
+    // an earlier attachment is not this reset's to touch.
+    let wasPackedFoodIds: string[] = []
+    if (hasFoodPlan) {
+      await qc.cancelQueries({ queryKey: queryKeys.foodPackState(listId) })
+      wasPackedFoodIds =
+        qc.getQueryData<string[]>(queryKeys.foodPackState(listId)) ?? []
+      qc.setQueryData<string[]>(queryKeys.foodPackState(listId), [])
+    }
+
+    // allSettled, not all: the sides are independent, so one failing must
+    // not abandon (or roll back) the other's committed clear.
+    const [gearResult, foodResult] = await Promise.allSettled([
+      resetPackedForList(listId),
+      hasFoodPlan ? resetFoodPackForList(listId) : Promise.resolve(),
+    ])
+    if (gearResult.status === 'rejected') {
       // Restore only isPacked=true on the ids we cleared. Any concurrent
       // resetReady write on those same rows survives because we never
       // touch isReady here.
       qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
         curr ? curr.map((i) => (wasPackedIds.has(i.id) ? { ...i, isPacked: true } : i)) : curr,
       )
+    }
+    if (foodResult.status === 'rejected') {
+      // Union rather than overwrite: a toggle's optimistic tick landing
+      // mid-reset passes through, mirroring the gear side's field scoping.
+      qc.setQueryData<string[]>(queryKeys.foodPackState(listId), (curr = []) => [
+        ...new Set([...curr, ...wasPackedFoodIds]),
+      ])
+    }
+    if (gearResult.status === 'rejected' || foodResult.status === 'rejected') {
       // Non-optimistic action: surface the failure and CONSUME it. onReset() is
       // called fire-and-forget from PackingProgress (() => void), so rethrowing
-      // would be an unhandled rejection.
+      // would be an unhandled rejection. One toast no matter which side failed.
       showToast("Couldn't reset packed items. Please try again.", { type: 'error' })
-    } finally {
-      void qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+    }
+    void qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+    if (hasFoodPlan) {
+      void qc.invalidateQueries({ queryKey: queryKeys.foodPackState(listId) })
     }
   }
 
