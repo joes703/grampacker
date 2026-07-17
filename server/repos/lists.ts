@@ -243,6 +243,15 @@ export function createListsRepo(db: Db, userId: string) {
       id: string,
       foodPlanId: string,
     ): Promise<AttachFoodPlanResult> {
+      // List ownership first: a list the caller cannot see is 404 no matter
+      // what shape the plan side is in (authz-matrix "own list or 404" - the
+      // plan prechecks must not outrank it).
+      const [target] = await db
+        .select({ id: lists.id })
+        .from(lists)
+        .where(and(eq(lists.id, id), eq(lists.userId, userId)))
+        .limit(1)
+      if (!target) return { ok: false, reason: 'not_found' }
       const [plan] = await db
         .select({ id: foodPlans.id })
         .from(foodPlans)

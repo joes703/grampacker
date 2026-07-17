@@ -1279,6 +1279,34 @@ describe('food plan link', () => {
     expect(foreignDetach.status).toBe(404)
   })
 
+  it('list 404 outranks plan_in_use when the target list is foreign or missing', async () => {
+    // The plan-side prechecks must not run ahead of list ownership: a caller
+    // whose own plan is busy still gets the matrix's "own list or 404" answer
+    // for a list that does not exist for them, not a 409 about the plan.
+    const a = await signUpVerifiedUser('link-prec-a@example.com', 'A')
+    const b = await signUpVerifiedUser('link-prec-b@example.com', 'B')
+    const aList = await createList(a.cookie, "A's list")
+    const bList = await createList(b.cookie, "B's list")
+    const bPlan = await createPlan(b.cookie, 'Busy plan')
+    const hold = await apiRequest(
+      b.cookie,
+      'PUT',
+      `/api/lists/${bList.id}/food-plan`,
+      { foodPlanId: bPlan },
+    )
+    expect(hold.status).toBe(200)
+
+    for (const target of [aList.id, 'no-such-list']) {
+      const res = await apiRequest(
+        b.cookie,
+        'PUT',
+        `/api/lists/${target}/food-plan`,
+        { foodPlanId: bPlan },
+      )
+      expect(res.status, target).toBe(404)
+    }
+  })
+
   it('the unique index itself fires with the column text the backstop matches', async () => {
     // The 409 above came from the friendly PRECHECK; a concurrent attach that
     // slips past it is caught by isUniqueViolation(err, 'lists.food_plan_id')
