@@ -18,13 +18,15 @@ import type { ListItemWithGear } from '../lib/types'
 // ['food-pack', listId] id cache with its own per-side rollback.
 
 const LIST_ID = 'list-1'
+const PLAN_ID = 'plan-1'
 const KEY = ['list-items', LIST_ID] as const
-const FOOD_KEY = ['food-pack', LIST_ID] as const
+const FOOD_KEY = ['food-pack', LIST_ID, PLAN_ID] as const
 
 const h = vi.hoisted(() => ({
   queryKeys: {
     listItems: (id: string) => ['list-items', id] as const,
-    foodPackState: (id: string) => ['food-pack', id] as const,
+    foodPackState: (id: string, foodPlanId: string) =>
+      ['food-pack', id, foodPlanId] as const,
   },
   resetPackedForList: vi.fn<(listId: string) => Promise<void>>(),
   resetReadyForList: vi.fn<(listId: string) => Promise<void>>(),
@@ -64,7 +66,10 @@ function setup(
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   )
-  const { result } = renderHook(() => useListResetActions(LIST_ID, hasFoodPlan), { wrapper })
+  const { result } = renderHook(
+    () => useListResetActions(LIST_ID, hasFoodPlan ? PLAN_ID : null),
+    { wrapper },
+  )
   return { qc, result }
 }
 

@@ -524,9 +524,9 @@ function ListDetailInner({
   // their own field on failure, so they compose) and the failure toasts. The
   // page keeps the PackingProgress wiring, the per-item toggles, and the
   // ready-checks-enabled toggle.
-  // hasFoodPlan routes "Reset packed" through the food side too (design 8:
-  // reset spans both).
-  const { resetPacked, resetReady } = useListResetActions(listId, hasFoodPlan)
+  // The plan link routes "Reset packed" through the food side too (design
+  // 8: reset spans both) and keys the pack-state cache it clears.
+  const { resetPacked, resetReady } = useListResetActions(listId, listFoodPlanId)
 
 
   // ── Derived data ───────────────────────────────────────────────────────────

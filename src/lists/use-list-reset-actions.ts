@@ -29,8 +29,14 @@ import type { ListItemWithGear } from '../lib/types'
 // endpoints, two independent per-side rollbacks, one toast at most. The
 // same field-scoping argument applies between the two sides - a failed
 // gear reset must not resurrect cleared food checkmarks or vice versa.
-export function useListResetActions(listId: string, hasFoodPlan: boolean) {
+//
+// foodPlanId is the list row's link (null = no plan): both the "does the
+// food side exist" switch and part of the pack-state cache key (see
+// keys.ts - the id set is cached per observed link).
+export function useListResetActions(listId: string, foodPlanId: string | null) {
   const qc = useQueryClient()
+  const hasFoodPlan = foodPlanId !== null
+  const foodKey = () => queryKeys.foodPackState(listId, foodPlanId as string)
 
   async function resetPacked() {
     // Optimistic clear - flip isPacked=false on every cached item (and empty
@@ -50,10 +56,10 @@ export function useListResetActions(listId: string, hasFoodPlan: boolean) {
     // an earlier attachment is not this reset's to touch.
     let wasPackedFoodIds: string[] = []
     if (hasFoodPlan) {
-      await qc.cancelQueries({ queryKey: queryKeys.foodPackState(listId) })
+      await qc.cancelQueries({ queryKey: foodKey() })
       wasPackedFoodIds =
-        qc.getQueryData<string[]>(queryKeys.foodPackState(listId)) ?? []
-      qc.setQueryData<string[]>(queryKeys.foodPackState(listId), [])
+        qc.getQueryData<string[]>(foodKey()) ?? []
+      qc.setQueryData<string[]>(foodKey(), [])
     }
 
     // allSettled, not all: the sides are independent, so one failing must
@@ -73,7 +79,7 @@ export function useListResetActions(listId: string, hasFoodPlan: boolean) {
     if (foodResult.status === 'rejected') {
       // Union rather than overwrite: a toggle's optimistic tick landing
       // mid-reset passes through, mirroring the gear side's field scoping.
-      qc.setQueryData<string[]>(queryKeys.foodPackState(listId), (curr = []) => [
+      qc.setQueryData<string[]>(foodKey(), (curr = []) => [
         ...new Set([...curr, ...wasPackedFoodIds]),
       ])
     }
@@ -85,7 +91,7 @@ export function useListResetActions(listId: string, hasFoodPlan: boolean) {
     }
     void qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
     if (hasFoodPlan) {
-      void qc.invalidateQueries({ queryKey: queryKeys.foodPackState(listId) })
+      void qc.invalidateQueries({ queryKey: foodKey() })
     }
   }
 

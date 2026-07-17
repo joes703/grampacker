@@ -30,7 +30,14 @@ export const queryKeys = {
   // The pack checklist's id set (design 6: row presence means packed). Only
   // read in pack mode with a plan attached; the toggle and the resets write
   // through it optimistically.
-  foodPackState: (listId: string) => ['food-pack', listId] as const,
+  //
+  // The OBSERVED plan link is part of the key, for the same reason the
+  // toggle carries it as a CAS expectation: a checkmark only means anything
+  // under the plan it was made for. Relinking (which clears pack state
+  // server-side, rule 1) then structurally cannot render the old plan's
+  // cached ids as phantom pre-checks - the new link reads a fresh entry.
+  foodPackState: (listId: string, foodPlanId: string) =>
+    ['food-pack', listId, foodPlanId] as const,
   // Partial-match prefix: attach/detach/duplicate clear pack state
   // server-side (rule 1) from hooks that don't know which list's cache is
   // populated, so they invalidate the prefix (design 5.5 precedent).

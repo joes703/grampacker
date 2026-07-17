@@ -14,14 +14,15 @@ import type { FoodPlanDocument } from '../../shared/food-plans'
 
 const LIST_ID = 'list-1'
 const PLAN_ID = 'plan-1'
-const PACK_KEY = ['food-pack', LIST_ID] as const
+const PACK_KEY = ['food-pack', LIST_ID, PLAN_ID] as const
 
 const h = vi.hoisted(() => ({
   queryKeys: {
     lists: () => ['lists'] as const,
     foodItems: () => ['food-items'] as const,
     foodPlan: (planId: string | undefined) => ['food-plan', planId] as const,
-    foodPackState: (listId: string) => ['food-pack', listId] as const,
+    foodPackState: (listId: string, foodPlanId: string) =>
+      ['food-pack', listId, foodPlanId] as const,
   },
   fetchFoodPlan: vi.fn<(id: string) => Promise<FoodPlanDocument>>(),
   fetchFoodItems: vi.fn<() => Promise<FoodItem[]>>(),
@@ -198,6 +199,79 @@ describe('useFoodPack', () => {
     expect(toast.showToast).toHaveBeenCalledWith(
       "This list's food plan changed, so that checkmark didn't stick.",
       { type: 'error' },
+    )
+  })
+
+  it("applied:false does not invalidate pack state over a pending sibling's tick", async () => {
+    // The lost-CAS resync must flow through the SAME last-one-out gate as
+    // every other settle: an eager pack-state invalidate here can refetch
+    // pre-toggle server state over a still-pending sibling's checkmark.
+    const { qc, result } = setup()
+    let resolveF2!: (v: { foodItemId: string; packed: boolean; applied: boolean }) => void
+    h.toggleFoodPack.mockImplementation((_id, foodItemId) => {
+      if (foodItemId === 'f1') {
+        return Promise.resolve({ foodItemId: 'f1', packed: true, applied: false })
+      }
+      return new Promise((res) => { resolveF2 = res })
+    })
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+
+    await act(async () => { result.current.toggle('f2', true) }) // sibling, deferred
+    await act(async () => { result.current.toggle('f1', true) }) // lost CAS
+
+    await waitFor(() => expect(readIds(qc)).toEqual(['f2'])) // f1 rolled back
+    const packInvalidations = () =>
+      invalidate.mock.calls.filter(
+        ([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(PACK_KEY),
+      ).length
+    expect(packInvalidations()).toBe(0)
+
+    serverIds = ['f2']
+    await act(async () => { resolveF2({ foodItemId: 'f2', packed: true, applied: true }) })
+    // The last one out reconciles for the whole burst.
+    await waitFor(() => expect(packInvalidations()).toBeGreaterThan(0))
+    expect(readIds(qc)).toEqual(['f2'])
+  })
+
+  it("never renders another plan's cached pack state, and counts packables before the id set loads", async () => {
+    // The phantom pre-check rule 1 exists to prevent: ramen packed under
+    // plan A must not appear checked after relinking to plan B. The plan id
+    // is part of the cache key, so plan B's render CANNOT read A's entry -
+    // it starts with no id set at all. While that set is in flight the
+    // checklist stays empty (no all-unchecked flash), but packableTotal is
+    // already derived from the plan document + library so the progress
+    // denominator does not jump when the ids land.
+    serverIds = []
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    qc.setQueryData(['food-plan', PLAN_ID], planDoc())
+    qc.setQueryData(['food-items'], [food('f1', 50), food('f2', 60)])
+    // A stale entry from the PREVIOUS plan, still holding a checkmark.
+    qc.setQueryData(['food-pack', LIST_ID, 'plan-old'], ['f1'])
+    // Defer the id-set fetch so the in-flight window is observable.
+    let resolveFetch!: (v: { packedFoodItemIds: string[] }) => void
+    h.fetchFoodPackState.mockImplementation(
+      () => new Promise((res) => { resolveFetch = res }),
+    )
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useFoodPack(LIST_ID, PLAN_ID, true), {
+      wrapper,
+    })
+
+    expect(result.current.rows).toEqual([])
+    expect(result.current.packedTotal).toBe(0)
+    expect(result.current.packableTotal).toBe(3)
+
+    await act(async () => { resolveFetch({ packedFoodItemIds: [] }) })
+    await waitFor(() =>
+      expect(result.current.rows.map((r) => [r.foodItemId, r.packed])).toEqual([
+        ['f1', false],
+        ['f2', false],
+        ['f-gone', false],
+      ]),
     )
   })
 })
