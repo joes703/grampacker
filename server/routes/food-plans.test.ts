@@ -172,6 +172,15 @@ describe('/api/food-plans summaries', () => {
     const freeRow = summaries.find((s) => s.name === 'Free')!
     expect(freeRow.usedByListId).toBeNull()
     expect(freeRow.usedByListName).toBeNull()
+
+    // The counts must be REAL values, per plan, on the wire. The original
+    // correlated-subselect form rendered its columns unqualified (drizzle
+    // renders sql`` fragments unqualified in single-table selects), which
+    // made every plan report 0 days / 0 items; the page tests mock the
+    // fetcher, so only this assertion can catch that class of bug.
+    expect(usedRow.dayCount).toBe(2)
+    expect(freeRow.dayCount).toBe(1)
+    expect(usedRow.entryCount).toBe(0)
   })
 })
 

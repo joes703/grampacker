@@ -251,6 +251,23 @@ export function createFoodPlansRepo(db: Db, userId: string) {
 
     // Plans index. dayCount / entryCount are correlated counts; the plan cap
     // (100) bounds the scan.
+    //
+    // The holder ("used by") comes from a LEFT JOIN, not a correlated
+    // subselect, and the join is load-bearing beyond style: in a SINGLE-TABLE
+    // select, drizzle renders every column inside a sql`` fragment
+    // UNQUALIFIED, so a correlated subselect like
+    //   (select ${lists.id} from ${lists} where ${lists.foodPlanId} = ${foodPlans.id})
+    // becomes (select "id" from "lists" where "food_plan_id" = "id") - BOTH
+    // sides resolve against the inner table and the predicate is
+    // vacuously false/true. That bug shipped in the original count subselects
+    // (every plan reported 0 days / 0 items on the wire; the page tests
+    // mocked the fetcher and never saw it - caught by the summaries API test
+    // 2026-07-16). With a join present drizzle qualifies everything,
+    // including these count subselects. See AGENTS.md.
+    //
+    // The join matches at most one row per plan: the partial unique index
+    // caps holders at one, and the same-owner condition mirrors the
+    // composite FK.
     async listSummaries(): Promise<PlanSummaryRow[]> {
       return db
         .select({
@@ -261,16 +278,18 @@ export function createFoodPlansRepo(db: Db, userId: string) {
           updatedAt: foodPlans.updatedAt,
           dayCount: sql<number>`(select count(*) from ${foodPlanDays} where ${foodPlanDays.foodPlanId} = ${foodPlans.id})`,
           entryCount: sql<number>`(select count(*) from ${foodPlanEntries} where ${foodPlanEntries.foodPlanId} = ${foodPlans.id})`,
-          // limit 1 is belt-and-braces: the partial unique index caps this at
-          // one row. Same-owner filter matches the composite FK's guarantee.
-          usedByListId: sql<
-            string | null
-          >`(select ${lists.id} from ${lists} where ${lists.foodPlanId} = ${foodPlans.id} and ${lists.userId} = ${foodPlans.userId} limit 1)`,
-          usedByListName: sql<
-            string | null
-          >`(select ${lists.name} from ${lists} where ${lists.foodPlanId} = ${foodPlans.id} and ${lists.userId} = ${foodPlans.userId} limit 1)`,
+          // Left-joined, so null on the wire when no list holds the plan.
+          usedByListId: lists.id,
+          usedByListName: lists.name,
         })
         .from(foodPlans)
+        .leftJoin(
+          lists,
+          and(
+            eq(lists.foodPlanId, foodPlans.id),
+            eq(lists.userId, foodPlans.userId),
+          ),
+        )
         .where(eq(foodPlans.userId, userId))
         .orderBy(asc(foodPlans.sortOrder), asc(foodPlans.name))
     },

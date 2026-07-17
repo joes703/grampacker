@@ -81,6 +81,17 @@ time. Never delete or recreate the D1 database.
   writes (`server/repos/chunk-ids.ts` for reads, `chunkForParamCap` in
   `server/repos/food-plan-copy.ts` for multi-row inserts). The local D1 enforces
   this too, so tests go red honestly.
+- **Drizzle renders columns inside sql`` fragments UNQUALIFIED when the outer
+  select has a single table.** A correlated subselect like
+  `sql`(select ${lists.id} from ${lists} where ${lists.foodPlanId} = ${foodPlans.id})``
+  silently becomes `(select "id" from "lists" where "food_plan_id" = "id")` -
+  BOTH sides resolve against the inner table and the predicate is vacuous. It
+  typechecks, parses, and returns wrong data (the Plans-index day/entry counts
+  shipped broken this way; caught 2026-07-16 by a wire-level API assertion -
+  page tests mock the fetcher and can never see it). Comparing an inner column
+  to a BOUND PARAM (`${userId}`) is safe - params render as `?`. For outer-column
+  correlation, use a real join (qualification turns on for the whole query) and
+  assert the VALUES on the wire in an API test, not just the shape.
 - **D1's "queries per Worker invocation" limit is ambiguously documented** (as of
   2026-07-16): the limits table says 1000 (Paid) / 50 (Free), but links that row
   to the Workers SUBREQUEST limits (one `db.batch` = one call), and its
