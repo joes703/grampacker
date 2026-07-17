@@ -1,11 +1,10 @@
 import { useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
+import { Link, useParams } from 'react-router'
 import {
   AlertTriangle,
   ArrowLeft,
   CalendarPlus,
-  Copy,
   Pencil,
   Plus,
   Trash2,
@@ -61,12 +60,6 @@ function apiMessage(err: unknown): string | null {
 
 export default function FoodPlanEditor() {
   const { id } = useParams()
-  // The trip the user arrived from (the Food row links here with ?from=listId).
-  // It is what "Duplicate for this trip" attaches the fork to; without it the
-  // warning still shows but the fork has no trip to point at, so it hides.
-  const [searchParams] = useSearchParams()
-  const fromListId = searchParams.get('from')
-  const navigate = useNavigate()
 
   const planQuery = useQuery({
     queryKey: queryKeys.foodPlan(id),
@@ -123,28 +116,11 @@ export default function FoodPlanEditor() {
     actions.removeMeal.isPending ||
     actions.addEntry.isPending ||
     actions.updateEntry.isPending ||
-    actions.removeEntry.isPending ||
-    actions.duplicate.isPending
+    actions.removeEntry.isPending
 
   // Structural mutations have no dialog to host their error, so they toast.
   function runStructural(promise: Promise<unknown>, fallback: string) {
     void promise.catch((err) => showToast(apiMessage(err) ?? fallback, { type: 'error' }))
-  }
-
-  // Fork this plan for the trip the user arrived from, then move the editor to
-  // the copy - the copy is now "this trip's plan", and it backs one list, so
-  // the warning that prompted the fork disappears with the navigation. ?from
-  // is carried over so the new editor keeps its trip context.
-  function duplicateForTrip() {
-    if (!fromListId) return
-    void actions.duplicate
-      .mutateAsync(fromListId)
-      .then((newDoc) => navigate(`/food/plans/${newDoc.id}?from=${fromListId}`))
-      .catch((err) =>
-        showToast(apiMessage(err) ?? "Couldn't duplicate this plan.", {
-          type: 'error',
-        }),
-      )
   }
 
   return (
@@ -178,16 +154,8 @@ export default function FoodPlanEditor() {
         </div>
       </div>
 
-      {doc && doc.usedByLists.length > 1 && (
-        <SharedPlanWarning
-          usedBy={doc.usedByLists}
-          canFork={
-            fromListId !== null &&
-            doc.usedByLists.some((l) => l.id === fromListId)
-          }
-          busy={busy}
-          onDuplicate={duplicateForTrip}
-        />
+      {doc && doc.usedByLists[0] && (
+        <UsedByBreadcrumb list={doc.usedByLists[0]} />
       )}
 
       <MealBar
@@ -388,56 +356,21 @@ function BackLink() {
   )
 }
 
-// design 12.9: a live reference must not be a surprise. When this plan backs
-// more than one list, editing it changes ALL of them - so the editor says so
-// unprompted and names the lists. This is deliberately NOT a confirmation
-// dialog on every save; the model stays a live reference, it just stops being
-// invisible. Plans backing zero or one list never render this.
-//
-// The fork ("Duplicate for this trip") only appears when the editor knows
-// which trip the user came from (?from) AND that trip is actually one of the
-// users - a crafted ?from pointing elsewhere gets the warning, not the button.
-function SharedPlanWarning({
-  usedBy,
-  canFork,
-  busy,
-  onDuplicate,
-}: {
-  usedBy: FoodPlanUsedBy[]
-  canFork: boolean
-  busy: boolean
-  onDuplicate: () => void
-}) {
+// One plan per trip: at most one list references this plan, and editing here
+// changes exactly that trip - which is worth a quiet breadcrumb, not a
+// warning (the pre-2026-07-16 shared-plan warning is gone with the model
+// that made it necessary). Plans backing no list render nothing.
+function UsedByBreadcrumb({ list }: { list: FoodPlanUsedBy }) {
   return (
-    <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-      <p>
-        <AlertTriangle size={14} className="mr-1.5 inline-block align-[-2px]" aria-hidden />
-        This plan is used by {usedBy.length} lists. Changes affect all of them:{' '}
-        {usedBy.map((l, i) => (
-          <span key={l.id}>
-            {i > 0 && ', '}
-            <Link
-              to={`/lists/${l.id}`}
-              className="font-medium underline hover:text-amber-950"
-            >
-              {l.name}
-            </Link>
-          </span>
-        ))}
-        .
-      </p>
-      {canFork && (
-        <button
-          type="button"
-          onClick={onDuplicate}
-          disabled={busy}
-          className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-amber-400 bg-white px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-        >
-          <Copy size={13} aria-hidden />
-          Duplicate for this trip
-        </button>
-      )}
-    </div>
+    <p className="mt-2 text-xs text-gray-500">
+      Used by{' '}
+      <Link
+        to={`/lists/${list.id}`}
+        className="font-medium text-gray-600 underline hover:text-gray-800"
+      >
+        {list.name}
+      </Link>
+    </p>
   )
 }
 

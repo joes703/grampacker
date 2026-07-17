@@ -13,6 +13,8 @@ function plan(overrides: Partial<FoodPlanSummary> & { id: string; name: string }
     sortOrder: 0,
     dayCount: 3,
     entryCount: 12,
+    usedByListId: null,
+    usedByListName: null,
     createdAt: '2026-01-01',
     updatedAt: '2026-01-01',
     ...overrides,
@@ -35,6 +37,7 @@ function renderPicker(
 ) {
   const onAttach = vi.fn()
   const onDetach = vi.fn()
+  const onDuplicateAttach = vi.fn()
   render(
     <FoodPlanPicker
       plans={overrides.plans ?? plans}
@@ -44,9 +47,10 @@ function renderPicker(
       busy={overrides.busy ?? false}
       onAttach={onAttach}
       onDetach={onDetach}
+      onDuplicateAttach={onDuplicateAttach}
     />,
   )
-  return { onAttach, onDetach }
+  return { onAttach, onDetach, onDuplicateAttach }
 }
 
 describe('FoodPlanPicker', () => {
@@ -93,6 +97,46 @@ describe('FoodPlanPicker', () => {
     const { onAttach } = renderPicker({ busy: true })
     fireEvent.click(screen.getByRole('button', { name: /Summer 3-day/ }))
     expect(onAttach).not.toHaveBeenCalled()
+  })
+
+  // One plan per trip: a plan already backing ANOTHER list cannot be attached
+  // directly - selecting it duplicates the plan and attaches the copy.
+  it('duplicates instead of attaching a plan in use by another list', () => {
+    const { onAttach, onDuplicateAttach } = renderPicker({
+      plans: [
+        plan({ id: 'p-1', name: 'Summer 3-day' }),
+        plan({
+          id: 'p-2',
+          name: 'Winter traverse',
+          usedByListId: 'l-other',
+          usedByListName: 'JMT trip',
+        }),
+      ],
+    })
+    const row = screen.getByRole('button', { name: /Winter traverse/ })
+    expect(row).toHaveTextContent('In use by JMT trip')
+    fireEvent.click(row)
+    expect(onDuplicateAttach).toHaveBeenCalledWith('p-2')
+    expect(onAttach).not.toHaveBeenCalled()
+  })
+
+  // The attached plan's usedByList is THIS list - it must render as attached
+  // (toggle to detach), never as "in use elsewhere".
+  it('treats the plan attached to this list as attached, not in use elsewhere', () => {
+    const { onDetach, onDuplicateAttach } = renderPicker({
+      plans: [
+        plan({
+          id: 'p-1',
+          name: 'Summer 3-day',
+          usedByListId: 'l-this',
+          usedByListName: 'This trip',
+        }),
+      ],
+      attachedPlanId: 'p-1',
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Summer 3-day/ }))
+    expect(onDetach).toHaveBeenCalledTimes(1)
+    expect(onDuplicateAttach).not.toHaveBeenCalled()
   })
 
   it('points at the Food page when there are no plans yet', () => {

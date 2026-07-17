@@ -3,20 +3,27 @@ import {
   queryKeys,
   createFoodPlan,
   deleteFoodPlan,
+  duplicateFoodPlan,
   makeOptimisticDelete,
   type FoodPlanDocument,
   type FoodPlanSummary,
 } from '../lib/queries'
 import type { CreateFoodPlanRequestInput } from '../../shared/food-plans'
 
-// Index-page write actions for FoodPlansPage: create and delete, operating on
-// the ['food-plans'] summary-list cache.
+// Index-page write actions for FoodPlansPage: create, duplicate and delete,
+// operating on the ['food-plans'] summary-list cache.
 //
-// create returns the FRESH plan document. We seed the ['food-plan', id] cache
-// with it so the editor the page navigates to renders immediately (no loading
-// flash on a plan we just built), then invalidate the summary list so the new
-// card appears. Errors surface inline in the create dialog (the cap 422), like
-// food - so no errorToast here.
+// create and duplicate return the FRESH plan document. We seed the
+// ['food-plan', id] cache with it so the editor the page navigates to renders
+// immediately (no loading flash on a plan we just built), then invalidate the
+// summary list so the new card appears. create's errors surface inline in the
+// create dialog (the cap 422) - so no errorToast there; duplicate has no
+// dialog, so it toasts.
+//
+// duplicate is the reuse primitive under one-plan-per-trip ("want another
+// plan? create new or duplicate"): a plain library copy, attached to nothing
+// (the listId-carrying variant lives in use-food-plan-link, where the picker
+// needs its CAS semantics). No list moved, so ['lists'] and shares stay put.
 //
 // delete uses the generic single-cache optimistic helper (design 5.5 rules out a
 // gear-style fan-out): a plan lives only in these two caches and the row vanishes
@@ -26,6 +33,15 @@ export function useFoodPlanActions() {
 
   const createPlan = useMutation({
     mutationFn: (input: CreateFoodPlanRequestInput) => createFoodPlan(input),
+    onSuccess: (doc: FoodPlanDocument) => {
+      qc.setQueryData(queryKeys.foodPlan(doc.id), doc)
+      void qc.invalidateQueries({ queryKey: queryKeys.foodPlans() })
+    },
+  })
+
+  const duplicatePlan = useMutation({
+    mutationFn: (id: string) => duplicateFoodPlan(id, null, null),
+    meta: { errorToast: "Couldn't duplicate the plan. Please try again." },
     onSuccess: (doc: FoodPlanDocument) => {
       qc.setQueryData(queryKeys.foodPlan(doc.id), doc)
       void qc.invalidateQueries({ queryKey: queryKeys.foodPlans() })
@@ -62,5 +78,5 @@ export function useFoodPlanActions() {
     },
   })
 
-  return { createPlan, removePlan }
+  return { createPlan, duplicatePlan, removePlan }
 }

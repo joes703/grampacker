@@ -71,6 +71,7 @@ vi.mock('../lib/queries', async () => {
       lists: () => ['lists'],
       listItems: (id: string) => ['list-items', id],
       categories: () => ['categories'],
+      foodPlans: () => ['food-plans'],
       foodPlanAll: () => ['food-plan'],
     },
     updateList: q.updateList,
@@ -128,9 +129,14 @@ describe('useCurrentListActions - duplicate', () => {
   it('duplicates by id, invalidates, and navigates to the server row', async () => {
     q.duplicateList.mockResolvedValueOnce({ ...LIST, id: 'copy-id' })
     const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+    // Seed the plan summaries so their invalidation is observable: the server
+    // deep-copies the source list's plan (one plan per trip), so the Plans
+    // index gained a card this cache doesn't know about.
+    lastQc.setQueryData(['food-plans'], [])
     act(() => { result.current.duplicateMut.mutate(LIST) })
     await waitFor(() => expect(q.duplicateList).toHaveBeenCalledWith('l1'))
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/lists/copy-id'))
+    expect(lastQc.getQueryState(['food-plans'])?.isInvalidated).toBe(true)
   })
 
   it('toasts when duplicateList rejects', async () => {

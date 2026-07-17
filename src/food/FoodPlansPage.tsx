@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
-import { ChevronRight, Plus, Trash2 } from 'lucide-react'
+import { ChevronRight, Copy, Plus, Trash2 } from 'lucide-react'
 import { queryKeys, fetchFoodPlans, type FoodPlanSummary } from '../lib/queries'
 import { ApiError } from '../lib/api'
 import { useDocumentTitle } from '../lib/use-document-title'
@@ -29,7 +29,7 @@ export default function FoodPlansPage() {
     queryFn: fetchFoodPlans,
   })
 
-  const { createPlan, removePlan } = useFoodPlanActions()
+  const { createPlan, duplicatePlan, removePlan } = useFoodPlanActions()
   const [dialog, setDialog] = useState<Dialog | null>(null)
 
   function handleCreate(input: { name: string; days: number }) {
@@ -86,10 +86,12 @@ export default function FoodPlansPage() {
                   <div className="truncate font-medium text-gray-900 group-hover:text-blue-600">
                     {plan.name}
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="truncate text-xs text-gray-500">
                     {plan.dayCount} {plan.dayCount === 1 ? 'day' : 'days'} ·{' '}
                     {plan.entryCount}{' '}
                     {plan.entryCount === 1 ? 'item' : 'items'}
+                    {plan.usedByListName !== null &&
+                      ` · In use by ${plan.usedByListName}`}
                   </div>
                 </div>
                 <ChevronRight
@@ -97,6 +99,15 @@ export default function FoodPlansPage() {
                   className="shrink-0 text-gray-400 group-hover:text-blue-600"
                 />
               </Link>
+              <button
+                type="button"
+                onClick={() => duplicatePlan.mutate(plan.id)}
+                disabled={duplicatePlan.isPending}
+                aria-label={`Duplicate ${plan.name}`}
+                className="shrink-0 rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40"
+              >
+                <Copy size={15} />
+              </button>
               <button
                 type="button"
                 onClick={() => setDialog({ type: 'delete', plan })}

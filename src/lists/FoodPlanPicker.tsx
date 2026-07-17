@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Check, Search } from 'lucide-react'
+import { Check, Copy, Search } from 'lucide-react'
 import type { FoodPlanSummary } from '../../shared/food-plans'
 import {
   FLAT_TABLE_BODY_TEXT,
@@ -20,6 +20,9 @@ type Props = {
   busy: boolean
   onAttach: (planId: string) => void
   onDetach: () => void
+  // A plan already backing ANOTHER list cannot be attached (one plan per
+  // trip); selecting it duplicates the plan and attaches the COPY here.
+  onDuplicateAttach: (planId: string) => void
 }
 
 // The Food half of the library panel's Gear | Food toggle.
@@ -30,11 +33,12 @@ type Props = {
 // the attached plan detaches it. There is no multi-add, because a list has one
 // food_plan_id.
 //
-// Picking a plan does NOT copy it. The list points AT the plan (design 3), so
-// editing that plan later changes every list pointing at it. The editor warning
-// that makes that blast radius visible, and the "Duplicate for this trip" fork
-// beside it, are slice 3b-ii (design 12.9) - until they land, a plan reused
-// across trips can be edited without the other trips saying so.
+// One plan per trip (design 3): a plan already in use by another list renders
+// with "In use by <name>" and selecting it runs Duplicate & attach instead of
+// stealing the link - the other trip keeps its plan, this one gets its own
+// copy. usedByList* ride on the summaries, so a plan attached from another tab
+// flips state on the next summaries refetch (and an attach that loses that
+// race gets a 409 + refetch from useFoodPlanLink).
 export default function FoodPlanPicker({
   plans,
   isPending,
@@ -43,6 +47,7 @@ export default function FoodPlanPicker({
   busy,
   onAttach,
   onDetach,
+  onDuplicateAttach,
 }: Props) {
   const [search, setSearch] = useState('')
   const q = search.trim().toLowerCase()
@@ -87,12 +92,21 @@ export default function FoodPlanPicker({
           <ul>
             {filtered.map((plan) => {
               const attached = plan.id === attachedPlanId
+              // The attached plan's usedByList is THIS list, so "in use
+              // elsewhere" is exactly used-and-not-attached-here.
+              const inUseElsewhere = !attached && plan.usedByListId !== null
               return (
                 <li key={plan.id}>
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => (attached ? onDetach() : onAttach(plan.id))}
+                    onClick={() =>
+                      attached
+                        ? onDetach()
+                        : inUseElsewhere
+                          ? onDuplicateAttach(plan.id)
+                          : onAttach(plan.id)
+                    }
                     aria-pressed={attached}
                     className={`${FLAT_TABLE_ROW} w-full text-left flex items-center gap-2 disabled:opacity-50 ${
                       attached ? 'bg-blue-50' : ''
@@ -100,16 +114,30 @@ export default function FoodPlanPicker({
                   >
                     <span className="flex-1 min-w-0">
                       <span className={`block truncate ${FLAT_TABLE_BODY_TEXT}`}>{plan.name}</span>
-                      <span className={`block ${FLAT_TABLE_META_TEXT}`}>
+                      <span className={`block truncate ${FLAT_TABLE_META_TEXT}`}>
                         {plan.dayCount} {plan.dayCount === 1 ? 'day' : 'days'} ·{' '}
                         {plan.entryCount} {plan.entryCount === 1 ? 'food' : 'foods'}
+                        {inUseElsewhere && ` · In use by ${plan.usedByListName}`}
                       </span>
                     </span>
                     {attached && (
                       <Check size={16} className="shrink-0 text-blue-700" aria-hidden />
                     )}
+                    {inUseElsewhere && (
+                      <span
+                        className={`shrink-0 flex items-center gap-1 ${FLAT_TABLE_META_TEXT}`}
+                        aria-hidden
+                      >
+                        <Copy size={14} />
+                        Duplicate &amp; attach
+                      </span>
+                    )}
                     <span className="sr-only">
-                      {attached ? 'Attached. Select to remove from this list.' : 'Use for this list'}
+                      {attached
+                        ? 'Attached. Select to remove from this list.'
+                        : inUseElsewhere
+                          ? 'In use by another list. Select to duplicate this plan and attach the copy here.'
+                          : 'Use for this list'}
                     </span>
                   </button>
                 </li>
