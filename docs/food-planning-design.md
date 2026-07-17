@@ -46,8 +46,8 @@ stand on its own.
 | # | Change |
 |---|---|
 | D1 | `food_plans` becomes standalone: gains `name`, loses `list_id`. |
-| D2 | `lists` gains `food_plan_id` (nullable). One list has 0..1 plans; **one plan may back many lists.** |
-| D3 | The link is a **live reference**. Edit the plan, every list using it re-projects. |
+| D2 | `lists` gains `food_plan_id` (nullable). One list has 0..1 plans; **one plan backs at most one list** (revised 2026-07-16, see 12.1 - reuse is duplication, enforced by the partial unique index `lists_food_plan_id_unique`). |
+| D3 | The link is a **live reference**. Edit the plan, its list re-projects. |
 | D4 | `food_pack_state` re-keys from `(plan, food)` to `(list, food)`, and **row presence means packed** - no `is_packed` column. |
 | D5 | `packed_signature`, the plan-level advisory lock, the `PT409` stale-signature error and the cleanup trigger are **deleted, not ported**. |
 | D6 | The public share exposes **one nullable object**: `food: { weightGrams, incomplete } \| null`. `is_food_shared` and the three public food views are **deleted, not ported**. |
@@ -194,41 +194,57 @@ altered it. Read the final schema, not the first one.)
 
 ---
 
-## 3. The link: live reference
+## 3. The link: live reference, one plan per trip
 
-Attaching a plan to a list is a pointer, not a copy.
+Attaching a plan to a list is a pointer, not a copy - and a plan backs **at
+most one** list (revised 2026-07-16, see 12.1).
 
-- **Edit the plan -> every list using it re-projects on next read.** Nothing is
+- **Edit the plan -> its list re-projects on next read.** Nothing is
   denormalized, so nothing can go stale.
-- **A plan may back many lists.** Your "standard 2-night" plan serves every weekend
-  trip. This falls out of the FK direction for free.
+- **A plan backs at most one list**, enforced by the partial unique index
+  `lists_food_plan_id_unique` on `lists(food_plan_id) WHERE food_plan_id IS NOT
+  NULL`. Attaching a plan another list holds is a 409 `plan_in_use`;
+  re-attaching a list's own plan is a no-op success. **Reuse is duplication**:
+  want your "standard 2-night" menu on another trip, duplicate it (the picker's
+  "Duplicate & attach" does copy + attach in one transaction).
 - **Detach** sets `lists.food_plan_id = null` **and clears that list's pack state**
   in the same batch (section 6).
 - **Delete a plan** = the atomic detach-then-delete batch of 2.3. A trip is never
   destroyed by a library operation.
-- **To fork**, duplicate the plan (below) and attach the copy.
 
-This matches how gear already behaves: re-weigh your tent and every list's total
-moves. Snapshot-on-attach was considered and rejected: it produces two kinds of
-plan, breaks "edit the template and it propagates", and buys only historical
-fidelity a single-user trip planner does not need.
+The live reference matches how gear behaves: re-weigh your tent and the list's
+total moves. The exclusivity does NOT match gear, deliberately: gear weight is a
+fact about an object, so propagation is correct; a menu is a per-trip decision,
+so propagation across trips was an ambush (the original many-lists model made
+editing "the JMT plan" silently rewrite last month's Yosemite trip). Snapshot-
+on-attach was considered and rejected: it produces two kinds of plan and breaks
+"edit the plan for THIS trip and it re-projects".
 
-### 3.1 Duplicate semantics (both already-shipped and new)
+### 3.1 Duplicate semantics
 
-**Duplicating a list** (`POST /api/lists/:id/duplicate`, **already shipped** -
-`server/routes/lists.ts:208`) must be updated:
-
-- **carry `food_plan_id` over.** It is a pointer; the copy references the same
-  plan. Cheap, and it matches "duplicate this trip".
-- **do NOT copy `food_pack_state`.** The new list starts fully unpacked. Packing is
-  a property of a trip, and the duplicate is a different trip.
-
-**Duplicating a plan** (new) is a deep copy of the plan graph - `meals`,
+**Duplicating a plan** is a deep copy of the plan graph - `meals`,
 `food_plan_days`, `day_meals`, `food_plan_entries` and (when they land) targets -
 with fresh ids throughout, referencing the same account-wide `food_items`. It
-copies **no** pack state, because pack state is no longer keyed by plan at all.
-Both must respect the D1 100-bound-param limit: chunked batch writes, not one
-giant insert.
+copies **no** pack state, because pack state is not keyed by plan at all. The
+copy machinery lives in `server/repos/food-plan-copy.ts`, shared by both call
+sites below. All writes respect the D1 100-bound-param limit: chunked multi-row
+inserts, one `db.batch`.
+
+`POST /api/food-plans/:id/duplicate` takes an optional `listId` ("Duplicate &
+attach"): the copy is created AND that list re-pointed at it in the same batch.
+The attach UPDATE is a compare-and-swap on `expectedFoodPlanId` - the link the
+client observed when it offered the action (null = none; an omitted field
+defaults to null, the fail-safe reading) - so a concurrent attach/detach in
+another tab fails the CAS instead of being silently overwritten; the committed
+copy is then compensating-deleted and the caller gets a 422.
+
+**Duplicating a list** (`POST /api/lists/:id/duplicate`) cannot carry the plan
+pointer over (the unique index forbids two holders), so when the source has a
+plan the whole graph is deep-copied in the same batch and the new list points at
+the copy. Either cap trigger (100 lists, 100 plans) aborts the whole batch -
+no orphan plan, no half-copied list. It still copies **no** `food_pack_state`:
+the new list starts fully unpacked; packing is a property of a trip, and the
+duplicate is a different trip.
 
 ---
 
@@ -436,8 +452,9 @@ DELETE FROM food_pack_state
    )
 ```
 
-It deletes any pack row, on any list attached to P, whose food no longer appears
-**anywhere** in P.
+It deletes any pack row, on the list attached to P (at most one, since
+2026-07-16 - the subselect form is kept because it is already correct and
+self-limiting), whose food no longer appears **anywhere** in P.
 
 Reconciling against *what remains* rather than tracking *what left* is what makes this
 correct and cheap:
@@ -456,7 +473,8 @@ correct and cheap:
 This restores an invariant the old build enforced with a trigger
 (`20260614185632_food_pack_state.sql:64`) and rev 1 wrongly dismissed as a "harmless
 quirk". It is not harmless: remove ramen and re-add it and the packed **count silently
-increases** with no user action, across **every** list the plan backs.
+increases** with no user action. (Under one plan per trip the blast radius is
+bounded to the single attached list, but the bug itself is unchanged.)
 
 **Rule 3 - the toggle is a compare-and-swap on the plan link.** Packing is a
 read-then-write, so it races a plan switch. Rev 2 tried to fix this by proving the food
@@ -523,9 +541,11 @@ it is the box the user actually clicked. That is on the right side of the line d
 below (may lie about *quantity*, never about *which plan*). Closing it would need a
 link-generation token on `lists`, bumped on every relink and threaded through every
 toggle - which is the same species of machinery `packed_signature` was deleted for, in
-service of a race that requires relinking plans twice while a checkbox request is in
-flight, in a single-user app. If it ever matters, the fix is one monotonic integer column
-and one more binding; it is not a design change.
+service of a race that requires two full relinks completing while one checkbox request
+is in flight - a window that stays sub-second even with concurrent sessions. If it ever
+matters, the fix is one monotonic integer column and one more binding; it is not a
+design change. (One plan per trip also shrinks the surface: rule 1 clears pack state on
+every relink, so the `A -> B -> A` cycle starts each leg from a cleared set.)
 
 **What we deliberately do not port:** the old build stored a `packed_signature` (the
 grams you packed) so an edit mid-pack could invalidate a now-lying checkbox. Keeping it
@@ -544,7 +564,7 @@ appears from nowhere is not.
 - **Rule 1:** pack a food, switch the list to another plan that also contains it -> it
   is **unpacked**.
 - **Rule 2, multi-cell:** the same food in two cells; delete one entry -> the checkmark
-  **survives**. Delete the last -> it clears, **on every attached list**.
+  **survives**. Delete the last -> it clears on the attached list.
 - **Rule 2, cascade:** delete a whole day (or meal, or `day_meal`) that held the last
   occurrence -> the checkmark clears.
 - **Rule 2, redirect:** update an entry's `food_item_id` away from its last occurrence
@@ -675,27 +695,24 @@ the Food row.
 The pack-mode checklist is load-bearing. It is the reason food is worth modeling at
 all rather than typed in as a lump.
 
-### Shared-plan visibility (a product requirement, not a nicety)
+### Plan-usage visibility (revised 2026-07-16)
 
-The live reference (section 3) is the right model, but it has a consequence the user
-can be **ambushed** by: edit a plan that backs three trips and you have just changed all
-three. Nothing on the plan editor tells them that. A user who duplicated a trip in
-January and edits its food in June has no reason to suspect the January trip moved.
+Under one plan per trip (12.1) the ambush this section originally existed for -
+editing a plan silently rewriting OTHER trips - is structurally impossible: a
+plan backs at most one list. The shared-plan warning banner and its inline
+"Duplicate for this trip" escape hatch (shipped in slice 3b-ii) were therefore
+**removed** in the same change that added the constraint.
 
-So, when a plan is attached to **more than one list**, the plan editor must:
+What remains is orientation, not warning:
 
-1. **Say so, unprompted** - "This plan is used by 3 lists. Changes affect all of them,"
-   naming them (they are one query away: `SELECT id, name FROM lists WHERE food_plan_id = ?`).
-2. **Offer the escape hatch inline** - a **"Duplicate for this trip"** action that clones
-   the plan (3.1), attaches the copy to the list the user arrived from, and leaves the
-   original untouched.
-
-This is deliberately *not* a confirmation dialog on every save. The model stays a live
-reference; we simply stop it being a surprise. Making the blast radius visible at the
-moment of editing, with the fork one click away, is what makes "live reference" a choice
-the user is making rather than one being made for them.
-
-A plan attached to zero or one list shows none of this - the common case stays quiet.
+1. **The plan editor** shows a quiet "Used by <list>" breadcrumb linking to the
+   one trip that follows the plan (from the document's `usedByLists`, now length
+   <= 1). A plan backing no list shows nothing.
+2. **The Plans index and the picker** show "In use by <list>" on each held
+   plan's card/row (`usedByListId` / `usedByListName` on the summary DTO).
+3. **The picker's escape hatch**: selecting a plan another list holds offers
+   **"Duplicate & attach"** (3.1) instead of a dead click - the reuse path under
+   exclusivity.
 
 ---
 
@@ -711,8 +728,19 @@ over DTO-sized id lists.
 Note where it does and does not bite. **The projection read does not** - it joins
 entries to `food_items` (5.2) and binds two params regardless of plan size. **Plan
 duplication does** (3.1): a deep copy of up to 2000 entries is a write, and writes
-cannot be joined away, so it chunks (`server/repos/chunk-ids.ts` already uses 90 for
-headroom).
+cannot be joined away, so it chunks (`chunkForParamCap` in
+`server/repos/food-plan-copy.ts`, floor(90/columns) rows per statement for
+headroom; `server/repos/chunk-ids.ts` uses the same 90 for reads).
+
+**Statement-count budget (unresolved doc ambiguity, noted 2026-07-16):** the D1
+limits page lists "Queries per Worker invocation: 1000 (Paid) / 50 (Free)", but
+that row links to the Workers *subrequest* limits (one `db.batch` is one call),
+and the batch-limits paragraph applies only per-QUERY limits (100 bound params,
+100KB statement) to each batched statement. A worst-case list duplicate (maxed
+plan + 300 items) is ~400 statements in one batch. Correctness is safe either
+way - a failed batch commits nothing - but until a maxed-plan duplicate is
+wire-verified on the Free tier (follow-up), treat statement count as a budget to
+keep low, not an unlimited resource. See AGENTS.md D1 traps.
 
 ---
 
@@ -741,7 +769,7 @@ name, and then do nothing with. That is not a shippable increment.
 |---|---|---|
 | 1 | **Food library** (`food_items`): schema, repo, routes, `/food` Foods tab, CRUD, caps | A usable food library. Mirrors phase 2 (gear library) exactly - the proving slice. |
 | 2 | **Plans, end to end**: `food_plans` + `meals` + `days` + `day_meals` + **`entries`**, the Plans tab, `/food/plans/:id` with the grid and the smallest real entry workflow (add a food to a cell, see the weight) | A plan you can actually build. Foundation and payload land together. Big; may split *internally* (e.g. grid before Extras) but nothing user-visible ships half-built. |
-| 3 | **The link + projection**: `lists.food_plan_id`, the picker, the derived Food row, `withProjectedFood` into the weight summary, the projection contract (section 5), and the shared-plan visibility warning (section 8) | Pack weight starts including food. The payoff. |
+| 3 | **The link + projection**: `lists.food_plan_id`, the picker, the derived Food row, `withProjectedFood` into the weight summary, the projection contract (section 5), and the shared-plan visibility warning (section 8) | Pack weight starts including food. The payoff. *(Shipped as designed; the shared-plan warning was then superseded 2026-07-16 by one-plan-per-trip - see 8 and 12.1/12.9.)* |
 | 4 | **Pack mode**: `food_pack_state`, the checklist, the progress counter, reset, the pack-state lifecycle (section 6) | The packing checklist. |
 | 5 | **Share**: the nullable `food` object, plus the `items.length === 0` fix | Food weight on `/r/:slug`. |
 | 6 | **CSV + takeout**: food CSV import/export, food in the takeout bundle | Data portability. |
@@ -752,11 +780,21 @@ explicitly last**.
 
 ---
 
-## 12. Decisions (settled 2026-07-13, revised 2026-07-14)
+## 12. Decisions (settled 2026-07-13, revised 2026-07-14 and 2026-07-16)
 
-### 12.1 Live reference, not snapshot
-Edit the plan and every list using it updates. Consistent with gear. Duplicate to
-fork. (Section 3.)
+### 12.1 Live reference, not snapshot - and one plan per trip (revised 2026-07-16)
+The link stays a live reference: edit the plan and its list re-projects. But a
+plan now backs **at most one** list, enforced by the partial unique index
+`lists_food_plan_id_unique` (migration 0010, which also detaches all but the
+most-recently-updated holder of any plan shared before the change). Reuse is
+duplication: create new, or duplicate an existing plan ("Duplicate & attach"
+from the picker, Duplicate from the Plans index).
+
+Why the revision: gear weight is a fact about an object, so cross-list
+propagation is correct; a menu is a per-trip decision, so cross-trip propagation
+was an ambush the shared-plan warning (old 12.9) could only mitigate, not
+remove. Exclusivity deletes the ambush, the warning UI, and slice 4's
+fork-vs-pack-state design fork in one move. (Section 3.)
 
 ### 12.2 NO ACTION, not SET NULL; delete via an atomic 3-statement batch
 Forced by SQLite semantics, verified by execution - and **this is the existing
@@ -804,11 +842,13 @@ distinction.
 ### 12.8 Targets are deferred to last
 They are the least load-bearing part of the feature. (Section 11.)
 
-### 12.9 A live reference must not be a surprise
-When a plan backs more than one list, the editor says so, names them, and offers
-"Duplicate for this trip" inline. The model does not change; its blast radius simply
-stops being invisible. Ships with slice 3 (the link), because a plan cannot back two
-lists before then. (Section 8.)
+### 12.9 A live reference must not be a surprise (superseded 2026-07-16)
+As designed: when a plan backed more than one list, the editor said so and
+offered "Duplicate for this trip" inline. Shipped with slice 3b-ii, then
+**superseded by 12.1's one-plan-per-trip revision** - a plan can no longer back
+two lists, so the warning has nothing to warn about and was removed. Its
+replacement is the quiet "Used by" breadcrumb + the picker's "Duplicate &
+attach". (Section 8.)
 
 ### 12.10 Round once, at the projection boundary
 Full precision through the math; a single rounding to integer grams where the number

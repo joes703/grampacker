@@ -78,8 +78,19 @@ time. Never delete or recreate the D1 database.
   `npm run build` specifically.
 - **D1 allows at most 100 bound parameters per query.** No unbounded `inArray`
   over id lists. Use owned-set membership in JS for prechecks, and chunk batch
-  writes (`server/repos/chunk-ids.ts`). The local D1 enforces this too, so tests
-  go red honestly.
+  writes (`server/repos/chunk-ids.ts` for reads, `chunkForParamCap` in
+  `server/repos/food-plan-copy.ts` for multi-row inserts). The local D1 enforces
+  this too, so tests go red honestly.
+- **D1's "queries per Worker invocation" limit is ambiguously documented** (as of
+  2026-07-16): the limits table says 1000 (Paid) / 50 (Free), but links that row
+  to the Workers SUBREQUEST limits (one `db.batch` = one call), and its
+  batch-limits paragraph applies only per-QUERY limits (100 params, 100KB) to
+  each batched statement. The account is on the Free tier. Prefer multi-row
+  inserts over per-row statements to keep batch statement counts low (the
+  worst-case list duplicate is ~400 statements in one batch), and treat any
+  failure of a large batch in prod as possibly THIS before debugging SQL. A
+  maxed-plan duplicate has not yet been wire-verified in prod (follow-up in
+  `.tmp/ONE_PLAN_PER_TRIP_PLAN.md`).
 - **better-auth GETs are not read-only.** The passkey challenge endpoint is an
   unauthenticated GET that writes a row, and `magic-link/verify` is a GET that
   CREATES A USER AND MINTS A SESSION. The rate limiter is fail-closed across all
