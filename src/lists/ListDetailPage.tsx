@@ -833,6 +833,7 @@ function ListDetailInner({
                     onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
                     readyChecks={{
                       ready: listItems.filter((i) => i.isReady).length,
+                      total: listItems.length,
                       enabled: list.readyChecksEnabled,
                       onResetReady: resetReady,
                       onToggleEnabled: () => readyChecksToggle.toggle(list),
