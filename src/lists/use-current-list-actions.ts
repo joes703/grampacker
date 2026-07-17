@@ -46,6 +46,10 @@ export function useCurrentListActions() {
     ...makeOptimisticUpdate<List, { id: string; name: string }>({
       qc,
       queryKey: queryKeys.lists(),
+      // The list's name is denormalized into the food-plan caches when this
+      // list holds a plan: the summaries' usedByListName and a document's
+      // usedByLists[].name (the editor breadcrumb) both say it.
+      invalidateKeys: [queryKeys.foodPlans(), queryKeys.foodPlanAll()],
       id: ({ id }) => id,
       apply: (item, { name }) => ({
         ...item,
@@ -124,14 +128,16 @@ export function useCurrentListActions() {
     },
   })
 
-  // ['food-plan'] prefix: deleting a list that pointed at a plan shrinks that
-  // plan's usedByLists, so any cached plan document is stale about who uses it.
+  // Deleting a list that pointed at a plan frees that plan: its document's
+  // usedByLists shrinks and the summaries' usedByList* go null, so both
+  // food-plan caches are stale about who uses it (a stale "In use by" row
+  // would offer Duplicate & attach where a plain attach is now possible).
   const deleteListMut = useMutation({
     mutationFn: deleteList,
     ...makeOptimisticDelete<List, string>({
       qc,
       queryKey: queryKeys.lists(),
-      invalidateKeys: [queryKeys.foodPlanAll()],
+      invalidateKeys: [queryKeys.foodPlanAll(), queryKeys.foodPlans()],
       id: (id) => id,
     }),
   })

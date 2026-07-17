@@ -346,6 +346,17 @@ export function createListsRepo(db: Db, userId: string) {
       // just-read foodPlanId was already stale); the copy then simply starts
       // detached, the same last-write-wins outcome as losing the race by a
       // moment.
+      //
+      // ACCEPTED staleness (flagged in review 2026-07-16): if a concurrent
+      // request RE-LINKS the source to a different plan between these reads
+      // and the batch, the duplicate still copies the plan observed at read
+      // time. That is the read-then-write contract this method has always
+      // had - the name and the item rows are snapshotted the same way and an
+      // item edit in the window is equally invisible - and the result is a
+      // coherent copy of a state the source really was in, attached to a
+      // fresh plan no other list can hold. Closing it would need a CAS on
+      // source.foodPlanId plus a compensating delete for the committed graph;
+      // not worth it for "duplicate raced an edit by milliseconds".
       const planGraph =
         source.foodPlanId === null
           ? null

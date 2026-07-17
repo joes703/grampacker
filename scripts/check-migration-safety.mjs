@@ -203,6 +203,15 @@ const FIXTURES = [
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
   }],
+  // Second plan, shared by the TIE pair below (list-seed-4/5).
+  ['food_plans', {
+    id: 'plan-seed-2',
+    user_id: 'u-seed',
+    name: 'Seed Plan Two',
+    sort_order: 1,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
   ['lists', {
     id: 'list-seed',
     user_id: 'u-seed',
@@ -260,6 +269,42 @@ const FIXTURES = [
     sort_order: 2,
     created_at: FIXED_TS,
     updated_at: FIXED_TS - 1000,
+  }],
+  // The TIE pair: both hold plan-seed-2 with IDENTICAL updated_at, so 0010's
+  // dedupe must fall through to its id DESC tie-break - 'list-seed-5' wins,
+  // 'list-seed-4' is detached (declared in EXPECTED_CHANGES). Identical
+  // timestamps are realistic pre-0010 data (two rows written in one db.batch
+  // share a Date.now()), and without this pair the tie-break clause could be
+  // dropped or reversed with every check still green.
+  ['lists', {
+    id: 'list-seed-4',
+    user_id: 'u-seed',
+    name: 'Fourth Seed List',
+    description: null,
+    slug: 'seed04',
+    food_plan_id: 'plan-seed-2',
+    is_shared: 0,
+    group_worn: 0,
+    ready_checks_enabled: 0,
+    is_draft: 1,
+    sort_order: 3,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  ['lists', {
+    id: 'list-seed-5',
+    user_id: 'u-seed',
+    name: 'Fifth Seed List',
+    description: null,
+    slug: 'seed05',
+    food_plan_id: 'plan-seed-2',
+    is_shared: 0,
+    group_worn: 0,
+    ready_checks_enabled: 0,
+    is_draft: 1,
+    sort_order: 4,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
   }],
   // The row 0009 would have destroyed: it cascades from BOTH lists and
   // gear_items, so it is the canary for any rebuild of either parent.
@@ -416,6 +461,18 @@ const EXPECTED_CHANGES = [
     key: { column: 'id', value: 'list-seed-3' },
     column: 'food_plan_id',
     before: 'plan-seed',
+    after: null,
+  },
+  // The tie-break: list-seed-4 and list-seed-5 share plan-seed-2 with equal
+  // updated_at, so the dedupe's `id DESC` clause decides - the smaller id
+  // loses. (list-seed-5 keeping its link is asserted by the ordinary
+  // row-unchanged comparison; only the loser needs declaring.)
+  {
+    migration: '0010_one-plan-per-list.sql',
+    table: 'lists',
+    key: { column: 'id', value: 'list-seed-4' },
+    column: 'food_plan_id',
+    before: 'plan-seed-2',
     after: null,
   },
 ]

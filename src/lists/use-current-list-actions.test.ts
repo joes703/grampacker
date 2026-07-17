@@ -149,6 +149,44 @@ describe('useCurrentListActions - duplicate', () => {
   })
 })
 
+// The list's name and existence are denormalized into the food-plan caches
+// (usedByListName on summaries, usedByLists on documents), so rename and
+// delete must invalidate both or a stale Plans index keeps saying "In use by"
+// a renamed/deleted list.
+describe('useCurrentListActions - food-plan cache invalidation', () => {
+  beforeEach(() => {
+    q.updateList.mockReset()
+    q.deleteList.mockReset()
+  })
+  afterEach(() => cleanup())
+
+  function seedPlanCaches() {
+    lastQc.setQueryData(['lists'], [LIST])
+    lastQc.setQueryData(['food-plans'], [])
+    lastQc.setQueryData(['food-plan', 'p1'], { id: 'p1' })
+  }
+
+  it('rename invalidates plan summaries and documents', async () => {
+    q.updateList.mockResolvedValueOnce({ ...LIST, name: 'Renamed' })
+    const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+    seedPlanCaches()
+    act(() => { result.current.renameMut.mutate({ id: 'l1', name: 'Renamed' }) })
+    await waitFor(() => expect(result.current.renameMut.isSuccess).toBe(true))
+    expect(lastQc.getQueryState(['food-plans'])?.isInvalidated).toBe(true)
+    expect(lastQc.getQueryState(['food-plan', 'p1'])?.isInvalidated).toBe(true)
+  })
+
+  it('delete invalidates plan summaries and documents', async () => {
+    q.deleteList.mockResolvedValueOnce(undefined)
+    const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+    seedPlanCaches()
+    act(() => { result.current.deleteListMut.mutate('l1') })
+    await waitFor(() => expect(result.current.deleteListMut.isSuccess).toBe(true))
+    expect(lastQc.getQueryState(['food-plans'])?.isInvalidated).toBe(true)
+    expect(lastQc.getQueryState(['food-plan', 'p1'])?.isInvalidated).toBe(true)
+  })
+})
+
 describe('useCurrentListActions - createListMut', () => {
   beforeEach(() => {
     q.createList.mockReset()

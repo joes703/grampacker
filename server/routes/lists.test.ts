@@ -1279,6 +1279,30 @@ describe('food plan link', () => {
     expect(foreignDetach.status).toBe(404)
   })
 
+  it('the unique index itself fires with the column text the backstop matches', async () => {
+    // The 409 above came from the friendly PRECHECK; a concurrent attach that
+    // slips past it is caught by isUniqueViolation(err, 'lists.food_plan_id')
+    // in attachFoodPlan's catch. That matcher keys on the exact column text in
+    // the REAL error, so pin it here with a raw write that bypasses the
+    // precheck entirely - if the index were dropped or renamed, or D1 changed
+    // the message shape, this goes red while the sequential API tests stay
+    // green.
+    const { cookie } = await signUpVerifiedUser('link-index@example.com', 'U')
+    const planId = await createPlan(cookie, 'Contested')
+    const a = await createList(cookie, 'Holder')
+    const b = await createList(cookie, 'Challenger')
+    const r = await apiRequest(cookie, 'PUT', `/api/lists/${a.id}/food-plan`, {
+      foodPlanId: planId,
+    })
+    expect(r.status).toBe(200)
+
+    await expect(
+      env.DB.prepare('update lists set food_plan_id = ? where id = ?')
+        .bind(planId, b.id)
+        .run(),
+    ).rejects.toThrow(/UNIQUE constraint failed: lists\.food_plan_id/)
+  })
+
   it('makes the NO ACTION FK a hard backstop against a skipped detach', async () => {
     const { cookie } = await signUpVerifiedUser('link-backstop@example.com', 'B')
     const list = await createList(cookie, 'Trip')

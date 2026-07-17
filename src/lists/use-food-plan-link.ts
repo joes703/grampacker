@@ -53,7 +53,13 @@ export function useFoodPlanLink() {
   >({
     qc,
     queryKey: queryKeys.lists(),
-    invalidateKeys: [queryKeys.sharedListAll(), queryKeys.foodPlanAll()],
+    invalidateKeys: [
+      queryKeys.sharedListAll(),
+      queryKeys.foodPlanAll(),
+      // The summaries' usedByListId/Name just moved - a stale Plans index
+      // (or another list's picker) would offer the wrong action for this plan.
+      queryKeys.foodPlans(),
+    ],
     id: ({ id }) => id,
     apply: (item, { foodPlanId }) => ({
       ...item,
@@ -86,7 +92,11 @@ export function useFoodPlanLink() {
     ...makeOptimisticUpdate<List, string>({
       qc,
       queryKey: queryKeys.lists(),
-      invalidateKeys: [queryKeys.sharedListAll(), queryKeys.foodPlanAll()],
+      invalidateKeys: [
+        queryKeys.sharedListAll(),
+        queryKeys.foodPlanAll(),
+        queryKeys.foodPlans(), // same as attach: usedByList* just changed
+      ],
       id: (id) => id,
       apply: (item) => ({
         ...item,

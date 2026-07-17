@@ -262,7 +262,7 @@ gearItemId: text('gear_item_id').notNull(),   // composite FK -> gear_items
 Every list item **is a piece of gear**. Food is not. Storing Food as a row would
 need a synthetic "Food" gear item carrying a **denormalized weight** - and because
 the link is a live reference, every edit to a plan would have to rewrite that
-number on every list using the plan. That is a cache-invalidation bug, voluntarily
+number on the list using the plan. That is a cache-invalidation bug, voluntarily
 imported. The FK is the link; the row is a rendering.
 
 This costs nothing. The row still *looks* like a line item, still reports as
