@@ -92,6 +92,16 @@ time. Never delete or recreate the D1 database.
   to a BOUND PARAM (`${userId}`) is safe - params render as `?`. For outer-column
   correlation, use a real join (qualification turns on for the whole query) and
   assert the VALUES on the wire in an API test, not just the shape.
+- **`db.run(sql)` / `db.all(sql)` / `db.get(sql)` typecheck as `db.batch()` items
+  but CRASH the D1 driver at runtime** ("Cannot read properties of undefined
+  (reading 'bind')"): `SQLiteRaw._prepare()` returns itself with no `.stmt`, which
+  `d1/session.js` batch() dereferences (drizzle-orm 0.45.2; found at the wire
+  2026-07-16 building the pack toggle). To get raw SQL into a batch, ride a
+  builder: `db.insert(t).select(sql\`select ...\`)` (renders the select verbatim
+  after the table's column list, in DEFINITION order - match it) or
+  `db.delete(t).where(sql\`...\`)` / `.update()`. Hand-write identifiers inside
+  such fragments (aliases like `l.id`, not `${lists.id}`) so the unqualified-
+  rendering trap above cannot reach them.
 - **D1's "queries per Worker invocation" limit is ambiguously documented** (as of
   2026-07-16): the limits table says 1000 (Paid) / 50 (Free), but links that row
   to the Workers SUBREQUEST limits (one `db.batch` = one call), and its
