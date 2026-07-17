@@ -57,12 +57,18 @@ const amountSchema = z
 
 // The Plans index card. dayCount is the headline ("3-day plan"); entryCount
 // distinguishes an empty plan from a populated one. Both are cheap aggregates.
+// usedByList*: the list this plan backs, if any - at most one exists (a plan
+// is per-trip; lists_food_plan_id_unique enforces it), and naming it here is
+// what lets the picker show "In use by <list>" and offer Duplicate & attach
+// without a second query.
 export const foodPlanSummarySchema = z.object({
   id: z.string(),
   name: z.string(),
   sortOrder: z.number().int(),
   dayCount: z.number().int(),
   entryCount: z.number().int(),
+  usedByListId: z.string().nullable(),
+  usedByListName: z.string().nullable(),
   createdAt: z.string(), // ISO
   updatedAt: z.string(),
 })
@@ -107,10 +113,12 @@ export const foodPlanEntrySchema = z.object({
 })
 export type FoodPlanEntry = z.infer<typeof foodPlanEntrySchema>
 
-// A list this plan currently backs. Rides on the document (not a separate
-// endpoint) so the editor's shared-plan warning (design 12.9) can never be
-// stale relative to the plan it is warning about: every mutation returns the
-// fresh document, and this comes with it.
+// The list this plan currently backs (at most one - a plan is per-trip).
+// Rides on the document (not a separate endpoint) so the editor's "Used by
+// <list>" breadcrumb can never be stale relative to the plan it describes:
+// every mutation returns the fresh document, and this comes with it. Kept as
+// an array on the wire (the pre-2026-07-16 shape, when a plan could back
+// several lists); the invariant now caps its length at 1.
 export const foodPlanUsedBySchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -188,13 +196,20 @@ export const addEntryRequestSchema = z
 export type AddEntryRequest = z.infer<typeof addEntryRequestSchema>
 export type AddEntryRequestInput = z.input<typeof addEntryRequestSchema>
 
-// Fork a plan (design 3.1/12.9). listId is the trip the user arrived from:
-// when present, the copy is attached to that list in the same transaction as
-// the copy itself - "Duplicate for this trip" must never half-happen. Absent
-// (null), it is a plain library duplicate and no list moves.
+// Duplicate a plan (design 3.1). listId, when present, is a trip to attach
+// the COPY to in the same transaction as the copy itself - "Duplicate &
+// attach" must never half-happen; null is a plain library duplicate and no
+// list moves. A caller sending listId MUST also send expectedFoodPlanId: the
+// plan id it OBSERVED on that list (null = it saw none). The server's attach
+// is a compare-and-swap on that value, so a concurrent attach/detach/
+// duplicate that moved the link makes this fork lose cleanly (422, copy
+// rolled back) instead of silently overwriting the newer link. The zod
+// default null therefore fails safe: an omitted expectation only matches a
+// list with no plan.
 export const duplicateFoodPlanRequestSchema = z
   .object({
     listId: idSchema.nullable().default(null),
+    expectedFoodPlanId: idSchema.nullable().default(null),
   })
   .strict()
 export type DuplicateFoodPlanRequest = z.infer<

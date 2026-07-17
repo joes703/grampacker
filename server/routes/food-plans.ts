@@ -38,6 +38,8 @@ function toSummary(row: PlanSummaryRow): FoodPlanSummary {
     sortOrder: row.sortOrder,
     dayCount: row.dayCount,
     entryCount: row.entryCount,
+    usedByListId: row.usedByListId,
+    usedByListName: row.usedByListName,
     createdAt: new Date(row.createdAt).toISOString(),
     updatedAt: new Date(row.updatedAt).toISOString(),
   }
@@ -121,11 +123,12 @@ foodPlanRoutes.delete('/:id', async (c) => {
   return c.body(null, 204)
 })
 
-// Fork (design 3.1/12.9). The body is OPTIONAL: no body / an empty body is a
-// plain library duplicate, listId is "Duplicate for this trip" (copy + attach
-// in one transaction). Only a genuinely ABSENT body falls through to the
-// schema's default - malformed JSON stays a 400, because a request that
-// garbled its listId must not silently become the other, list-less mutation.
+// Duplicate (design 3.1). The body is OPTIONAL: no body / an empty body is a
+// plain library duplicate; listId is "Duplicate & attach" (copy + attach in
+// one transaction, the attach a CAS on expectedFoodPlanId - see the DTO).
+// Only a genuinely ABSENT body falls through to the schema's defaults -
+// malformed JSON stays a 400, because a request that garbled its listId must
+// not silently become the other, list-less mutation.
 foodPlanRoutes.post('/:id/duplicate', async (c) => {
   const text = await c.req.text()
   let raw: unknown = {}
@@ -140,7 +143,11 @@ foodPlanRoutes.post('/:id/duplicate', async (c) => {
   if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
   const result = await c
     .get('repos')
-    .foodPlans.duplicate(c.req.param('id'), parsed.data.listId)
+    .foodPlans.duplicate(
+      c.req.param('id'),
+      parsed.data.listId,
+      parsed.data.expectedFoodPlanId,
+    )
   return respond(c, result, 'Food plan limit reached (100 per user)', 201)
 })
 
