@@ -154,9 +154,7 @@ export default function FoodPlanEditor() {
         </div>
       </div>
 
-      {doc && doc.usedByLists[0] && (
-        <UsedByBreadcrumb list={doc.usedByLists[0]} />
-      )}
+      {doc?.usedByList && <UsedByBreadcrumb list={doc.usedByList} />}
 
       <MealBar
         meals={view.meals}

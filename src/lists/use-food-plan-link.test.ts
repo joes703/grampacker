@@ -10,7 +10,7 @@ import { showToast } from '../lib/toast'
 import type { List } from '../lib/types'
 
 // Cache-contract tests: every link mutation moves some plan's usedByList*
-// (summaries) and usedByLists (documents), so the ['food-plans'] and
+// (summaries) and usedByList (documents), so the ['food-plans'] and
 // ['food-plan'] caches must be invalidated or a stale Plans index / picker
 // offers the wrong action for a plan (e.g. "Duplicate & attach" for a plan
 // that is actually free). These went untested when one-plan-per-trip landed
@@ -143,7 +143,7 @@ describe('useFoodPlanLink - detach', () => {
 
 describe('useFoodPlanLink - duplicate & attach', () => {
   it('seeds the copy document and invalidates the replaced plan, summaries, and lists', async () => {
-    const copyDoc = { id: 'copy', usedByLists: [{ id: 'l1', name: 'Trip' }] }
+    const copyDoc = { id: 'copy', usedByList: { id: 'l1', name: 'Trip' } }
     q.duplicateFoodPlan.mockResolvedValueOnce(copyDoc)
     const { result } = renderHook(() => useFoodPlanLink(), { wrapper })
     seedCaches()
@@ -157,7 +157,7 @@ describe('useFoodPlanLink - duplicate & attach', () => {
     await waitFor(() => expect(result.current.duplicateMut.isSuccess).toBe(true))
     expect(q.duplicateFoodPlan).toHaveBeenCalledWith('p-src', 'l1', 'p1')
     expect(lastQc.getQueryData(['food-plan', 'copy'])).toEqual(copyDoc)
-    // The replaced plan's document lost this list from usedByLists.
+    // The replaced plan's document lost this list from usedByList.
     expect(invalidated(['food-plan', 'p1'])).toBe(true)
     expect(invalidated(['food-plans'])).toBe(true)
     expect(invalidated(['lists'])).toBe(true)

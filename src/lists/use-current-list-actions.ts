@@ -48,7 +48,7 @@ export function useCurrentListActions() {
       queryKey: queryKeys.lists(),
       // The list's name is denormalized into the food-plan caches when this
       // list holds a plan: the summaries' usedByListName and a document's
-      // usedByLists[].name (the editor breadcrumb) both say it.
+      // usedByList.name (the editor breadcrumb) both say it.
       invalidateKeys: [queryKeys.foodPlans(), queryKeys.foodPlanAll()],
       id: ({ id }) => id,
       apply: (item, { name }) => ({
@@ -116,7 +116,7 @@ export function useCurrentListActions() {
   // When the source has a food plan, the server also deep-copies the PLAN
   // (one plan per trip - a shared pointer would violate the unique index), so
   // the ['food-plans'] summaries gained a card and a plan document's
-  // usedByLists gained a list - invalidate both alongside ['lists'].
+  // usedByList gained a holder - invalidate both alongside ['lists'].
   const duplicateMut = useMutation({
     mutationFn: (target: List) => duplicateList(target.id),
     meta: { errorToast: "Couldn't duplicate that list. Please try again." },
@@ -129,7 +129,7 @@ export function useCurrentListActions() {
   })
 
   // Deleting a list that pointed at a plan frees that plan: its document's
-  // usedByLists shrinks and the summaries' usedByList* go null, so both
+  // usedByList goes null and the summaries' usedByList* go null, so both
   // food-plan caches are stale about who uses it (a stale "In use by" row
   // would offer Duplicate & attach where a plain attach is now possible).
   const deleteListMut = useMutation({

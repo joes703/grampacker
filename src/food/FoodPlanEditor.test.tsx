@@ -123,7 +123,7 @@ function planDoc(over: Partial<FoodPlanDocument> = {}): FoodPlanDocument {
       // 2 servings of a 50 g food = 100 g in Day 1 breakfast.
       { id: 'e1', dayMealId: 'c-bfast', isExtra: false, foodItemId: 'f1', basis: 'servings', amount: 2, sortOrder: 0 },
     ],
-    usedByLists: [],
+    usedByList: null,
     ...over,
   }
 }
@@ -231,7 +231,7 @@ describe('FoodPlanEditor', () => {
   // warning is gone with the many-lists model that made it necessary).
   describe('used-by breadcrumb', () => {
     it('stays quiet for a plan backing no list', async () => {
-      h.fetchFoodPlan.mockResolvedValue(planDoc({ usedByLists: [] }))
+      h.fetchFoodPlan.mockResolvedValue(planDoc({ usedByList: null }))
       h.fetchFoodItems.mockResolvedValue([food('f1')])
       renderEditor()
 
@@ -241,7 +241,7 @@ describe('FoodPlanEditor', () => {
 
     it('links the trip that uses this plan', async () => {
       h.fetchFoodPlan.mockResolvedValue(
-        planDoc({ usedByLists: [{ id: 'list-a', name: 'JMT 2026' }] }),
+        planDoc({ usedByList: { id: 'list-a', name: 'JMT 2026' } }),
       )
       h.fetchFoodItems.mockResolvedValue([food('f1')])
       renderEditor()

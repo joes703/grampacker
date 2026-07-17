@@ -29,9 +29,10 @@ export const queryKeys = {
   foodPlans: () => ['food-plans'] as const,
   foodPlan: (planId: string | undefined) => ['food-plan', planId] as const,
   // Partial-match prefix over every cached plan document. The document carries
-  // usedByLists (the 12.9 warning's data), which changes when a LIST mutation
-  // moves a pointer - attach, detach, list delete, list duplicate. Those
-  // writers cannot know which plan documents are cached, so they invalidate
-  // the prefix (design 5.5: coarse invalidation over bookkeeping).
+  // usedByList (the editor breadcrumb's data), which changes when a LIST
+  // mutation moves a pointer - attach, detach, list delete/rename, list
+  // duplicate. Those writers cannot know which plan documents are cached, so
+  // they invalidate the prefix (design 5.5: coarse invalidation over
+  // bookkeeping).
   foodPlanAll: () => ['food-plan'] as const,
 }

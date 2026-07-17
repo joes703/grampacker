@@ -57,7 +57,7 @@ function doc(overrides: Partial<FoodPlanDocument> = {}): FoodPlanDocument {
       { id: 'c-d2-dinner', dayId: 'd2', mealId: 'm-dinner' },
     ],
     entries: [],
-    usedByLists: [],
+    usedByList: null,
     ...overrides,
   }
 }

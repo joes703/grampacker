@@ -37,7 +37,7 @@ import type { List } from '../lib/types'
 // QueryClient would otherwise serve a total from before the plan changed.
 //
 // The ['food-plan'] prefix is invalidated too: each cached plan document
-// carries usedByLists (the editor's "Used by <list>" breadcrumb), and every
+// carries usedByList (the editor's "Used by <list>" breadcrumb), and every
 // mutation here moves some plan's link.
 export function useFoodPlanLink() {
   const qc = useQueryClient()
@@ -114,7 +114,7 @@ export function useFoodPlanLink() {
   //
   // Success seeds the copy's document (opening it renders without a loading
   // flash) and invalidates: the replaced plan's document if there was one
-  // (its usedByLists just lost this list), the summaries (a new card, and
+  // (its usedByList just lost this list), the summaries (a new card, and
   // usedByList* moved), ['lists'] (this list's foodPlanId moved), and
   // ['shared-list'] for the same slice-5 reason as attach. Failure - the CAS
   // lost, or anything else - refetches summaries + lists so a stale picker

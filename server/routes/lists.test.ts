@@ -1179,7 +1179,7 @@ describe('food plan link', () => {
       days: unknown[]
       dayMeals: unknown[]
       entries: { foodItemId: string; isExtra: boolean; amount: number }[]
-      usedByLists: { id: string; name: string }[]
+      usedByList: { id: string; name: string } | null
     }
     const copyRes = await apiRequest(
       cookie,
@@ -1200,12 +1200,12 @@ describe('food plan link', () => {
     expect(copy.entries).toHaveLength(1)
     expect(copy.entries[0]!.foodItemId).toBe(foodId)
     expect(copy.entries[0]!.amount).toBe(150)
-    expect(copy.usedByLists).toEqual([{ id: dup.id, name: dup.name }])
+    expect(copy.usedByList).toEqual({ id: dup.id, name: dup.name })
 
     // The source plan is untouched and still the original list's.
     expect(source.name).toBe('Plan')
     expect(source.entries).toHaveLength(1)
-    expect(source.usedByLists).toEqual([{ id: list.id, name: 'Original' }])
+    expect(source.usedByList).toEqual({ id: list.id, name: 'Original' })
   })
 
   it('rolls back the WHOLE list duplicate at the food-plan cap', async () => {
