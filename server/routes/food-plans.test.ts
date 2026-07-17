@@ -66,7 +66,7 @@ const DOC_KEYS = [
   'days',
   'dayMeals',
   'entries',
-  'usedByLists',
+  'usedByList',
 ].sort()
 
 const SUMMARY_KEYS = [
@@ -644,7 +644,7 @@ describe('/api/food-plans duplicate', () => {
     expect(copy.days).toHaveLength(2)
     expect(copy.dayMeals).toHaveLength(6)
     expect(copy.entries).toHaveLength(2)
-    expect(copy.usedByLists).toEqual([])
+    expect(copy.usedByList).toBeNull()
 
     // Fresh ids THROUGHOUT - no copied row keeps a source id.
     const sourceIds = new Set([
@@ -706,8 +706,8 @@ describe('/api/food-plans duplicate', () => {
     const copy = foodPlanDocumentSchema.parse(await res.json())
 
     // The returned document already knows its one user - the copy and the
-    // attach were one transaction, so there is no window where this is [].
-    expect(copy.usedByLists).toEqual([{ id: taker.id, name: 'Summer trip' }])
+    // attach were one transaction, so there is no window where this is null.
+    expect(copy.usedByList).toEqual({ id: taker.id, name: 'Summer trip' })
 
     // The source keeps its holder.
     const sourceAfterRes = await apiRequest(
@@ -716,9 +716,10 @@ describe('/api/food-plans duplicate', () => {
       `/api/food-plans/${source.id}`,
     )
     const sourceAfter = foodPlanDocumentSchema.parse(await sourceAfterRes.json())
-    expect(sourceAfter.usedByLists).toEqual([
-      { id: holder.id, name: 'Winter trip' },
-    ])
+    expect(sourceAfter.usedByList).toEqual({
+      id: holder.id,
+      name: 'Winter trip',
+    })
 
     // And the list rows point where they should.
     const listsRes = await apiRequest(cookie, 'GET', '/api/lists')
@@ -753,7 +754,7 @@ describe('/api/food-plans duplicate', () => {
       `/api/food-plans/${outgoing.id}`,
     )
     const outAfter = foodPlanDocumentSchema.parse(await outAfterRes.json())
-    expect(outAfter.usedByLists).toEqual([])
+    expect(outAfter.usedByList).toBeNull()
   })
 
   it("rejects another user's list (422) and another user's plan (404)", async () => {

@@ -84,7 +84,7 @@ export type FoodPlanDocumentRow = {
   days: DayRow[]
   dayMeals: DayMealRow[]
   entries: EntryRow[]
-  usedByLists: UsedByListRow[]
+  usedByList: UsedByListRow | null
 }
 
 // A mutation either produces the fresh document or explains why it could not.
@@ -145,16 +145,16 @@ export function createFoodPlansRepo(db: Db, userId: string) {
   }
 
   // The single batched plan read (design 5.2): the plan row plus its four child
-  // collections and the lists it backs, in ONE db.batch (a D1 transaction, so
+  // collections and the list it backs, in ONE db.batch (a D1 transaction, so
   // all six see a consistent snapshot - no interleaving with a concurrent
   // write). Each child is filtered by (food_plan_id, user_id) so ownership is
   // structural, not a post-filter. Returns null when the plan is not owned (the
   // children come back empty too).
   //
-  // usedByLists rides on the document rather than its own endpoint so the
-  // editor's shared-plan warning (design 12.9) reads the same cache entry as
-  // everything else it shows - a mutation that returns the fresh document
-  // refreshes the warning with it.
+  // usedByList (at most one holder - the partial unique index) rides on the
+  // document rather than its own endpoint so the editor's "Used by" breadcrumb
+  // reads the same cache entry as everything else it shows - a mutation that
+  // returns the fresh document refreshes the breadcrumb with it.
   async function getDocument(
     planId: string,
   ): Promise<FoodPlanDocumentRow | null> {
@@ -225,7 +225,7 @@ export function createFoodPlansRepo(db: Db, userId: string) {
           .select({ id: lists.id, name: lists.name })
           .from(lists)
           .where(and(eq(lists.foodPlanId, planId), eq(lists.userId, userId)))
-          .orderBy(asc(lists.sortOrder), asc(lists.name)),
+          .limit(1),
       ])
 
     const plan = planRows[0]
@@ -236,7 +236,7 @@ export function createFoodPlansRepo(db: Db, userId: string) {
       days: dayRows,
       dayMeals: dayMealRows,
       entries: entryRows,
-      usedByLists: usedByRows,
+      usedByList: usedByRows[0] ?? null,
     }
   }
 

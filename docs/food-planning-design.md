@@ -706,8 +706,8 @@ plan backs at most one list. The shared-plan warning banner and its inline
 What remains is orientation, not warning:
 
 1. **The plan editor** shows a quiet "Used by <list>" breadcrumb linking to the
-   one trip that follows the plan (from the document's `usedByLists`, now length
-   <= 1). A plan backing no list shows nothing.
+   one trip that follows the plan (from the document's `usedByList`, null when
+   free). A plan backing no list shows nothing.
 2. **The Plans index and the picker** show "In use by <list>" on each held
    plan's card/row (`usedByListId` / `usedByListName` on the summary DTO).
 3. **The picker's escape hatch**: selecting a plan another list holds offers

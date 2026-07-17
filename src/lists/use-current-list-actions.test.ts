@@ -150,7 +150,7 @@ describe('useCurrentListActions - duplicate', () => {
 })
 
 // The list's name and existence are denormalized into the food-plan caches
-// (usedByListName on summaries, usedByLists on documents), so rename and
+// (usedByListName on summaries, usedByList on documents), so rename and
 // delete must invalidate both or a stale Plans index keeps saying "In use by"
 // a renamed/deleted list.
 describe('useCurrentListActions - food-plan cache invalidation', () => {

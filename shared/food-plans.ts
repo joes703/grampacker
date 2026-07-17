@@ -113,12 +113,10 @@ export const foodPlanEntrySchema = z.object({
 })
 export type FoodPlanEntry = z.infer<typeof foodPlanEntrySchema>
 
-// The list this plan currently backs (at most one - a plan is per-trip).
-// Rides on the document (not a separate endpoint) so the editor's "Used by
-// <list>" breadcrumb can never be stale relative to the plan it describes:
-// every mutation returns the fresh document, and this comes with it. Kept as
-// an array on the wire (the pre-2026-07-16 shape, when a plan could back
-// several lists); the invariant now caps its length at 1.
+// The list this plan currently backs (at most one - a plan is per-trip; null
+// when free). Rides on the document (not a separate endpoint) so the editor's
+// "Used by <list>" breadcrumb can never be stale relative to the plan it
+// describes: every mutation returns the fresh document, and this comes with it.
 export const foodPlanUsedBySchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -138,7 +136,7 @@ export const foodPlanDocumentSchema = z.object({
   days: foodPlanDaySchema.array(),
   dayMeals: dayMealSchema.array(),
   entries: foodPlanEntrySchema.array(),
-  usedByLists: foodPlanUsedBySchema.array(),
+  usedByList: foodPlanUsedBySchema.nullable(),
 })
 export type FoodPlanDocument = z.infer<typeof foodPlanDocumentSchema>
 

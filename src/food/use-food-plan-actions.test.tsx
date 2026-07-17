@@ -55,7 +55,7 @@ function doc(id: string): FoodPlanDocument {
     days: [],
     dayMeals: [],
     entries: [],
-    usedByLists: [],
+    usedByList: null,
   }
 }
 
