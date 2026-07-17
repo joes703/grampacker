@@ -27,6 +27,14 @@ export const queryKeys = {
   // the same reason as sharedList: FoodPlanEditor reads :id from the URL and the
   // query is disabled until it exists.
   foodPlans: () => ['food-plans'] as const,
+  // The pack checklist's id set (design 6: row presence means packed). Only
+  // read in pack mode with a plan attached; the toggle and the resets write
+  // through it optimistically.
+  foodPackState: (listId: string) => ['food-pack', listId] as const,
+  // Partial-match prefix: attach/detach/duplicate clear pack state
+  // server-side (rule 1) from hooks that don't know which list's cache is
+  // populated, so they invalidate the prefix (design 5.5 precedent).
+  foodPackStateAll: () => ['food-pack'] as const,
   foodPlan: (planId: string | undefined) => ['food-plan', planId] as const,
   // Partial-match prefix over every cached plan document. The document carries
   // usedByList (the editor breadcrumb's data), which changes when a LIST
