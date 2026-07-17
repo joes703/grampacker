@@ -1041,7 +1041,7 @@ describe('caps and slug integrity', () => {
 // AT a standalone plan via lists.food_plan_id - a live reference, not a copy -
 // and a plan backs AT MOST ONE list (one plan per trip, enforced by the
 // partial unique index lists_food_plan_id_unique; reuse is duplication).
-// Pack-state clearing on relink is slice 4 and not exercised here.
+// Pack-state clearing on relink is exercised in food-pack.test.ts, not here.
 describe('food plan link', () => {
   async function createPlan(cookie: string, name: string): Promise<string> {
     const res = await apiRequest(cookie, 'POST', '/api/food-plans', { name })
@@ -1277,6 +1277,34 @@ describe('food plan link', () => {
       `/api/lists/${aList.id}/food-plan`,
     )
     expect(foreignDetach.status).toBe(404)
+  })
+
+  it('list 404 outranks plan_in_use when the target list is foreign or missing', async () => {
+    // The plan-side prechecks must not run ahead of list ownership: a caller
+    // whose own plan is busy still gets the matrix's "own list or 404" answer
+    // for a list that does not exist for them, not a 409 about the plan.
+    const a = await signUpVerifiedUser('link-prec-a@example.com', 'A')
+    const b = await signUpVerifiedUser('link-prec-b@example.com', 'B')
+    const aList = await createList(a.cookie, "A's list")
+    const bList = await createList(b.cookie, "B's list")
+    const bPlan = await createPlan(b.cookie, 'Busy plan')
+    const hold = await apiRequest(
+      b.cookie,
+      'PUT',
+      `/api/lists/${bList.id}/food-plan`,
+      { foodPlanId: bPlan },
+    )
+    expect(hold.status).toBe(200)
+
+    for (const target of [aList.id, 'no-such-list']) {
+      const res = await apiRequest(
+        b.cookie,
+        'PUT',
+        `/api/lists/${target}/food-plan`,
+        { foodPlanId: bPlan },
+      )
+      expect(res.status, target).toBe(404)
+    }
   })
 
   it('the unique index itself fires with the column text the backstop matches', async () => {

@@ -443,6 +443,17 @@ const FIXTURES = [
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
   }],
+  // A packed checkmark (migration 0011): list-seed holds plan-seed, and
+  // entry-seed puts food-seed in that plan, so this row satisfies the state
+  // rule 2 (reconcile) preserves - a future migration that rebuilds
+  // food_pack_state must carry it across unchanged. No id column: the PK is
+  // (list_id, food_item_id).
+  ['food_pack_state', {
+    list_id: 'list-seed',
+    food_item_id: 'food-seed',
+    user_id: 'u-seed',
+    created_at: FIXED_TS,
+  }],
 ]
 
 // Intentional data rewrites. The row-changed check exists to catch ACCIDENTAL

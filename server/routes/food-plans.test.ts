@@ -787,9 +787,39 @@ describe('/api/food-plans duplicate', () => {
     // (a body that omits expectedFoodPlanId means "I observed no plan").
     const { cookie } = await signUpVerifiedUser('plan-dup-cas@example.com', 'C')
     const source = await createPlan(cookie, { name: 'Plan A' })
-    const planB = await createPlan(cookie, { name: 'Plan B' })
+    const planB = await createPlan(cookie, { name: 'Plan B', days: 1 })
     const trip = await createList(cookie, 'Follows B')
     await attach(cookie, trip.id, planB.id)
+
+    // Pack a food under B first: a rejected CAS must also leave the CURRENT
+    // plan's checkmarks alone (the compensating clear is gated on the swap
+    // actually happening).
+    const food = await createFood(cookie, {
+      name: 'Ramen',
+      servingWeightGrams: 85,
+      caloriesPerServing: 380,
+      servingsPerPackage: 2,
+    })
+    const day = planB.days[0]!
+    const meal = planB.meals[0]!
+    const cell = planB.dayMeals.find(
+      (dm) => dm.dayId === day.id && dm.mealId === meal.id,
+    )!
+    const entry = await apiRequest(
+      cookie,
+      'POST',
+      `/api/food-plans/${planB.id}/entries`,
+      { dayMealId: cell.id, foodItemId: food.id, basis: 'servings', amount: 1 },
+    )
+    expect(entry.status).toBe(201)
+    const packRes = await apiRequest(
+      cookie,
+      'PUT',
+      `/api/lists/${trip.id}/food-pack/${food.id}`,
+      { packed: true, expectedFoodPlanId: planB.id },
+    )
+    expect(packRes.status).toBe(200)
+    expect(await packRes.json()).toMatchObject({ applied: true })
 
     for (const body of [
       { listId: trip.id, expectedFoodPlanId: source.id }, // wrong plan
@@ -812,6 +842,10 @@ describe('/api/food-plans duplicate', () => {
     const listsRes = await apiRequest(cookie, 'GET', '/api/lists')
     const rows = (await listsRes.json()) as { id: string; foodPlanId: string | null }[]
     expect(rows.find((l) => l.id === trip.id)!.foodPlanId).toBe(planB.id)
+    // ...and the checkmarks packed under the surviving plan are untouched.
+    const packAfter = await apiRequest(cookie, 'GET', `/api/lists/${trip.id}/food-pack`)
+    expect(packAfter.status).toBe(200)
+    expect(await packAfter.json()).toEqual({ packedFoodItemIds: [food.id] })
   })
 
   it('malformed JSON is a 400, not a silent list-less duplicate', async () => {

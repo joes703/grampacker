@@ -4,6 +4,7 @@ import {
   foreignKey,
   index,
   integer,
+  primaryKey,
   real,
   sqliteTable,
   text,
@@ -303,9 +304,9 @@ export const foodItems = sqliteTable(
   },
   (t) => [
     // Composite-FK target for same-owner references from food_plan_entries
-    // (slice 2) and food_pack_state (slice 4). Adding this later would
-    // force a table rebuild, which silently drops the cap trigger - so it
-    // lands now even though nothing references it yet.
+    // (slice 2) and food_pack_state (slice 4). Landed with the table itself:
+    // adding it later would force a table rebuild, which silently drops the
+    // cap trigger.
     unique('food_items_id_user_unique').on(t.id, t.userId),
     index('food_items_user_sort_idx').on(t.userId, t.sortOrder, t.name),
     check('food_items_name_length', sql`length(${t.name}) between 1 and 256`),
@@ -602,5 +603,54 @@ export const foodPlanEntries = sqliteTable(
       'food_plan_entries_location_xor',
       sql`(${t.isExtra} and ${t.dayMealId} is null) or (not ${t.isExtra} and ${t.dayMealId} is not null)`,
     ),
+  ],
+)
+
+// Packing checkmarks for the food checklist (food-planning-design.md 6).
+// Keyed (list_id, food_item_id): ROW PRESENCE MEANS PACKED. There is no
+// is_packed boolean - it would be true in every row that exists. Toggling
+// is an insert or a delete, and the toggle is a compare-and-swap on the
+// plan link the client observed (rule 3); the row's lifecycle is otherwise
+// owned by the lists it hangs off: cleared when the list relinks (rule 1)
+// and reconciled against the plan's remaining entries after structural
+// mutations (rule 2). Never public - the share projection exposes only the
+// derived weight, never checkmarks.
+//
+// No food_plan_id column, deliberately: packing is a property of the TRIP
+// (the list), not the plan. Keying by plan was the old build's shape and
+// is what made its pack state leak across trips.
+export const foodPackState = sqliteTable(
+  'food_pack_state',
+  {
+    listId: text('list_id').notNull(),
+    foodItemId: text('food_item_id').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: integer('created_at').notNull(), // epoch ms
+  },
+  (t) => [
+    primaryKey({
+      name: 'food_pack_state_pk',
+      columns: [t.listId, t.foodItemId],
+    }),
+    // Composite same-owner FKs, both cascading (the list_items pattern):
+    // deleting a list drops its checkmarks; deleting a food item drops its
+    // checkmark from every list. Cross-owner stitching is structurally
+    // impossible - a row can only cite a list and a food with its own
+    // user_id.
+    foreignKey({
+      name: 'food_pack_state_list_same_owner_fk',
+      columns: [t.listId, t.userId],
+      foreignColumns: [lists.id, lists.userId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'food_pack_state_food_same_owner_fk',
+      columns: [t.foodItemId, t.userId],
+      foreignColumns: [foodItems.id, foodItems.userId],
+    }).onDelete('cascade'),
+    // The food-side cascade and rule 2's NOT IN scan both look up by food;
+    // the PK already covers list-side lookups.
+    index('food_pack_state_food_user_idx').on(t.foodItemId, t.userId),
   ],
 )

@@ -76,6 +76,41 @@ export const attachFoodPlanRequestSchema = z
   .strict()
 export type AttachFoodPlanRequest = z.infer<typeof attachFoodPlanRequestSchema>
 
+// The food pack toggle (PUT /api/lists/:id/food-pack/:foodItemId), design 6
+// rule 3. expectedFoodPlanId is the plan link the client OBSERVED when it
+// rendered the checklist - the compare-and-swap value, and it is REQUIRED and
+// non-null: a checklist only exists under an attached plan, so there is no
+// legitimate null observation (unlike duplicate's expectedFoodPlanId, where
+// "I saw no plan" is a real state). Both directions carry it; an unpack
+// gated only on row existence would delete a checkmark made under a newer
+// plan.
+export const toggleFoodPackRequestSchema = z
+  .object({
+    packed: z.boolean(),
+    expectedFoodPlanId: idSchema,
+  })
+  .strict()
+export type ToggleFoodPackRequest = z.infer<typeof toggleFoodPackRequestSchema>
+
+// applied:false = the compare-and-swap lost (the plan link moved after the
+// client observed it). NOT an error: the click simply lost the race, and the
+// client rolls its optimistic tick back and refetches. Deliberately narrow -
+// never the whole pack set - because packing is the highest-frequency
+// mutation in the app (design 6).
+export const toggleFoodPackResponseSchema = z.object({
+  foodItemId: z.string(),
+  packed: z.boolean(),
+  applied: z.boolean(),
+})
+export type ToggleFoodPackResponse = z.infer<typeof toggleFoodPackResponseSchema>
+
+// GET /api/lists/:id/food-pack - the checklist's read. Ids only: row
+// presence in food_pack_state means packed, so the set IS the state.
+export const foodPackStateResponseSchema = z.object({
+  packedFoodItemIds: z.array(z.string()),
+})
+export type FoodPackStateResponse = z.infer<typeof foodPackStateResponseSchema>
+
 export const createListFromSelectionRequestSchema = z
   .object({
     name: listNameSchema,
