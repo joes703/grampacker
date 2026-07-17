@@ -262,6 +262,31 @@ time. Never delete or recreate the D1 database.
   tightening implies cleanup at five other sites, those five sites are in scope.
 - Don't add features inside a refactor PR. New behavior is a new commit.
 
+## If this ever moves off D1 (self-hosted SQLite)
+
+D1 pre-applies the SQLite settings this app's correctness depends on, so
+nothing in the repo sets them. A future port to vanilla SQLite (Pi, Hetzner)
+must apply these pragmas on EVERY connection at startup, in whatever driver
+setup replaces the D1 binding:
+
+- `PRAGMA foreign_keys = ON;` - correctness-critical. Stock SQLite defaults
+  this OFF per connection. Without it every cascade delete and same-owner
+  composite FK in the schema silently stops enforcing - no errors, just
+  orphaned rows. D1 enforces it on every query and cannot be turned off.
+- `PRAGMA busy_timeout = 5000;` - without it a second writer gets an instant
+  SQLITE_BUSY error instead of waiting. D1 serializes writes at the platform
+  layer, so the codebase has never needed retry handling; self-hosted it will.
+- `PRAGMA journal_mode = WAL;` - concurrent readers alongside a writer, and a
+  large write-throughput win. (Persistent per database file, but set it anyway.)
+- `PRAGMA synchronous = NORMAL;` - safe under WAL, cuts fsync cost. Do not use
+  with the default rollback journal.
+
+Related, noted 2026-07-17: the schema is STRICT-compatible (every column is
+`text`/`integer`/`real`) but tables are not declared STRICT because
+drizzle-kit cannot emit it and drizzle's snapshots would not track it.
+Revisit if drizzle-kit gains STRICT support; not worth hand-editing every
+generated migration until then.
+
 ## Do not reintroduce (Supabase-era patterns)
 
 This is a rewrite. These do not exist here and must not be assumed:
