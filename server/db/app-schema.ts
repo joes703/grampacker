@@ -304,9 +304,9 @@ export const foodItems = sqliteTable(
   },
   (t) => [
     // Composite-FK target for same-owner references from food_plan_entries
-    // (slice 2) and food_pack_state (slice 4). Adding this later would
-    // force a table rebuild, which silently drops the cap trigger - so it
-    // lands now even though nothing references it yet.
+    // (slice 2) and food_pack_state (slice 4). Landed with the table itself:
+    // adding it later would force a table rebuild, which silently drops the
+    // cap trigger.
     unique('food_items_id_user_unique').on(t.id, t.userId),
     index('food_items_user_sort_idx').on(t.userId, t.sortOrder, t.name),
     check('food_items_name_length', sql`length(${t.name}) between 1 and 256`),

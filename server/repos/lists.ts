@@ -1,6 +1,13 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm'
 import type { Db } from '../db'
-import { categories, foodPlans, gearItems, listItems, lists } from '../db/schema'
+import {
+  categories,
+  foodPackState,
+  foodPlans,
+  gearItems,
+  listItems,
+  lists,
+} from '../db/schema'
 import { isForeignKeyViolation, isTriggerAbort, isUniqueViolation } from './db-errors'
 import {
   buildPlanCopyStatements,
@@ -224,8 +231,14 @@ export function createListsRepo(db: Db, userId: string) {
     // plan a list already holds is a no-op success (updating a row to its own
     // value cannot collide with itself).
     //
-    // Slice 4 additionally clears this list's food_pack_state in the same batch
-    // (design rule 1, "clear on relink") - there is no pack state yet.
+    // The same batch clears this list's food_pack_state when the link
+    // CHANGES (design 6, rule 1 - "clear on relink"): plan B may contain the
+    // same food as plan A, and a surviving checkmark would render pre-checked
+    // under a plan the user never packed for. Gated on the link actually
+    // moving, because a no-op re-attach of the SAME plan (picker
+    // double-click, retry) must not wipe a half-finished packing session.
+    // The clear runs BEFORE the update - afterwards the old link is gone and
+    // the gate could no longer tell a change from a no-op.
     async attachFoodPlan(
       id: string,
       foodPlanId: string,
@@ -249,11 +262,28 @@ export function createListsRepo(db: Db, userId: string) {
         .limit(1)
       if (holder) return { ok: false, reason: 'plan_in_use' }
       try {
-        const [row] = await db
-          .update(lists)
-          .set({ foodPlanId, updatedAt: Date.now() })
-          .where(and(eq(lists.id, id), eq(lists.userId, userId)))
-          .returning(cols)
+        // `is not` is SQLite's null-safe inequality: a null current link
+        // (first attach after a detach) counts as a change too - clearing an
+        // already-empty set is harmless, and rule 1 stays "any move clears".
+        // (Builder + raw where, not db.run: raw queries cannot batch on D1 -
+        // see toggleFoodPack. Unqualified columns here are food_pack_state's
+        // own; the subquery's are hand-aliased.)
+        const clearOnRelink = db.delete(foodPackState).where(
+          sql`list_id = ${id} and user_id = ${userId}
+             and exists (
+               select 1 from lists l
+                where l.id = ${id} and l.user_id = ${userId}
+                  and l.food_plan_id is not ${foodPlanId}
+             )`,
+        )
+        const [, [row]] = await db.batch([
+          clearOnRelink,
+          db
+            .update(lists)
+            .set({ foodPlanId, updatedAt: Date.now() })
+            .where(and(eq(lists.id, id), eq(lists.userId, userId)))
+            .returning(cols),
+        ])
         return row ? { ok: true, row } : { ok: false, reason: 'not_found' }
       } catch (err) {
         // Race backstops behind the prechecks above: another list grabbed the
@@ -269,15 +299,149 @@ export function createListsRepo(db: Db, userId: string) {
       }
     },
 
-    // Detach: null the pointer. The trip is untouched; only the food link goes.
-    // Slice 4 also clears this list's food_pack_state here (design rule 1).
+    // Detach: null the pointer. The trip is untouched; only the food link
+    // goes - and the checkmarks go with it (design 6, rule 1): pack state is
+    // meaningless without a plan, and clearing here is what lets a later
+    // re-attach start honestly unpacked. Unconditional, unlike attach's
+    // gated clear: a detach always moves the link (nulling an already-null
+    // link touches no pack rows because rule 1 already cleared them). The
+    // delete is scoped by user_id, so a foreign list id can never clear
+    // anything (own pack rows only ever cite own lists via the composite FK).
     async detachFoodPlan(id: string): Promise<ListWriteResult> {
-      const [row] = await db
-        .update(lists)
-        .set({ foodPlanId: null, updatedAt: Date.now() })
-        .where(and(eq(lists.id, id), eq(lists.userId, userId)))
-        .returning(cols)
+      const [, [row]] = await db.batch([
+        db
+          .delete(foodPackState)
+          .where(
+            and(eq(foodPackState.listId, id), eq(foodPackState.userId, userId)),
+          ),
+        db
+          .update(lists)
+          .set({ foodPlanId: null, updatedAt: Date.now() })
+          .where(and(eq(lists.id, id), eq(lists.userId, userId)))
+          .returning(cols),
+      ])
       return row ? { ok: true, row } : { ok: false, reason: 'not_found' }
+    },
+
+    // The food packing checklist's state (design 6): rows in food_pack_state
+    // keyed (list_id, food_item_id), presence meaning packed.
+    async getFoodPackState(id: string): Promise<string[] | null> {
+      const [owned] = await db
+        .select({ id: lists.id })
+        .from(lists)
+        .where(and(eq(lists.id, id), eq(lists.userId, userId)))
+        .limit(1)
+      if (!owned) return null
+      const rows = await db
+        .select({ foodItemId: foodPackState.foodItemId })
+        .from(foodPackState)
+        .where(
+          and(eq(foodPackState.listId, id), eq(foodPackState.userId, userId)),
+        )
+      return rows.map((r) => r.foodItemId)
+    },
+
+    // The pack toggle, a compare-and-swap on the plan link the client
+    // observed (design 6, rule 3). "Is the food in the list's CURRENT plan"
+    // is not sufficient - two plans can contain the same food, so a stale
+    // toggle from before a plan switch would pass that check and write a
+    // phantom checkmark. The gate therefore requires food_plan_id to equal
+    // the expectation, in BOTH directions: an ungated unpack has the mirror
+    // bug (a delayed old-plan request deletes a checkmark made under the new
+    // plan). A failed gate matches zero rows and reports applied:false - the
+    // click lost to a plan switch, which is an outcome, not an error.
+    //
+    // The write and the gate are hand-written SQL: the pack gate correlates
+    // lists with food_plan_entries inside one subquery, which is exactly
+    // where drizzle renders sql`` column refs unqualified (AGENTS.md trap) -
+    // hand-qualified aliases + the wire assertions in food-pack.test.ts
+    // remove the question. ON CONFLICT DO NOTHING makes a pack retry
+    // idempotent, and `applied` reads the GATE, not rows-written, so that
+    // retry reports applied:true (rows-written would tell the client to roll
+    // back a truthful tick). Both statements share one db.batch (a D1
+    // transaction), so the gate the response reports is the gate the write
+    // saw.
+    async toggleFoodPack(
+      id: string,
+      foodItemId: string,
+      packed: boolean,
+      expectedFoodPlanId: string,
+    ): Promise<{ ok: false } | { ok: true; applied: boolean }> {
+      const [owned] = await db
+        .select({ id: lists.id })
+        .from(lists)
+        .where(and(eq(lists.id, id), eq(lists.userId, userId)))
+        .limit(1)
+      if (!owned) return { ok: false }
+      // Packing additionally requires the food to be IN the expected plan
+      // (also what keeps a foreign food id out: same-owner FKs mean another
+      // user's food can never appear in this user's plan, so the gate is
+      // false and the insert never attempts the row). Unpacking needs only
+      // the link to match - rule 2 already removed the row if the food left
+      // the plan.
+      const gate = packed
+        ? sql<number>`exists (
+            select 1 from lists l
+              join food_plan_entries e
+                on e.food_plan_id = l.food_plan_id and e.user_id = l.user_id
+             where l.id = ${id} and l.user_id = ${userId}
+               and e.food_item_id = ${foodItemId}
+               and l.food_plan_id = ${expectedFoodPlanId}
+          )`
+        : sql<number>`exists (
+            select 1 from lists l
+             where l.id = ${id} and l.user_id = ${userId}
+               and l.food_plan_id = ${expectedFoodPlanId}
+          )`
+      // Builders, not db.run(sql): SQLiteRaw type-checks as batchable but its
+      // _prepare() returns itself with no .stmt, so the D1 driver's batch()
+      // crashes on it at runtime (drizzle-orm 0.45.2, d1/session.js) - found
+      // at the wire, the types lie. insert().select(SQL) renders the select
+      // verbatim after the table's column list (definition order: list_id,
+      // food_item_id, user_id, created_at), so the WHERE-gated insert-select
+      // stays one atomic statement; the WHERE also resolves SQLite's UPSERT
+      // parsing ambiguity so ON CONFLICT parses after a SELECT source.
+      const write = packed
+        ? db
+            .insert(foodPackState)
+            .select(
+              sql`select ${id}, ${foodItemId}, ${userId}, ${Date.now()} where ${gate}`,
+            )
+            .onConflictDoNothing()
+        : db
+            .delete(foodPackState)
+            .where(
+              sql`list_id = ${id} and food_item_id = ${foodItemId} and user_id = ${userId} and ${gate}`,
+            )
+      const [, gateRows] = await db.batch([
+        write,
+        // Reads the gate through a one-row select on the list row itself; if
+        // the list vanished between the precheck and the batch this returns
+        // zero rows and applied degrades to false, which is the truth.
+        db
+          .select({ gate })
+          .from(lists)
+          .where(and(eq(lists.id, id), eq(lists.userId, userId))),
+      ])
+      return { ok: true, applied: (gateRows[0]?.gate ?? 0) === 1 }
+    },
+
+    // Reset packed (food side): clear every checkmark on the list. No CAS -
+    // an unconditional clear is the same end state rule 1 produces on
+    // relink, so there is no wrong plan to protect against.
+    async resetFoodPack(id: string): Promise<boolean> {
+      const [owned] = await db
+        .select({ id: lists.id })
+        .from(lists)
+        .where(and(eq(lists.id, id), eq(lists.userId, userId)))
+        .limit(1)
+      if (!owned) return false
+      await db
+        .delete(foodPackState)
+        .where(
+          and(eq(foodPackState.listId, id), eq(foodPackState.userId, userId)),
+        )
+      return true
     },
 
     // The composite FK cascades membership rows; gear itself is untouched.

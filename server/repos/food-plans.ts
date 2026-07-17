@@ -3,6 +3,7 @@ import type { Db } from '../db'
 import {
   dayMeals,
   foodItems,
+  foodPackState,
   foodPlanDays,
   foodPlanEntries,
   foodPlans,
@@ -142,6 +143,42 @@ export function createFoodPlansRepo(db: Db, userId: string) {
       .where(and(eq(foodPlans.id, planId), eq(foodPlans.userId, userId)))
       .limit(1)
     return row !== undefined
+  }
+
+  // Rule 2 of the pack-state lifecycle (design 6): appended to the SAME batch
+  // as any mutation that can remove entries from this plan, it deletes any
+  // checkmark on the list the plan backs (at most one; the IN-subselect form
+  // is kept because it is already correct and self-limiting) whose food no
+  // longer appears ANYWHERE in the plan. Reconciling against what REMAINS is
+  // what covers every removal path by construction - the direct entry delete
+  // AND the cascades from a day, meal, or cell delete, which no per-entry
+  // cleanup would see - and keeps last-occurrence semantics automatic (a food
+  // in two cells keeps its checkmark until the last one goes). NOT IN is
+  // NULL-safe here only because food_plan_entries.food_item_id is NOT NULL.
+  // Hand-written SQL, but note both subselects compare inner columns to bound
+  // params only - the safe side of the drizzle unqualified-column trap
+  // (AGENTS.md). Ordering: run AFTER the structural delete in the batch, so
+  // "remains" means remains.
+  //
+  // The one removal path that does NOT exist: updateEntry cannot change
+  // food_item_id (shared/food-plans.ts allows only basis/amount), so entry
+  // updates never need this. If that patch surface ever widens, updateEntry
+  // needs the reconcile too.
+  // (Builder + raw where, not db.run(sql): raw queries type-check as batch
+  // items but crash the D1 driver's batch() at runtime - see toggleFoodPack
+  // in repos/lists.ts.)
+  function reconcilePackState(planId: string) {
+    return db.delete(foodPackState).where(
+      sql`user_id = ${userId}
+         and list_id in (
+           select id from lists
+            where food_plan_id = ${planId} and user_id = ${userId}
+         )
+         and food_item_id not in (
+           select e.food_item_id from food_plan_entries e
+            where e.food_plan_id = ${planId} and e.user_id = ${userId}
+         )`,
+    )
   }
 
   // The single batched plan read (design 5.2): the plan row plus its four child
@@ -385,12 +422,20 @@ export function createFoodPlansRepo(db: Db, userId: string) {
     // detached FIRST; skip that and the plan delete fails the FK, which is the
     // intended hard backstop, not a bug.
     //
-    // Both statements run in one db.batch - a D1 transaction - so there is no
-    // detach-commits-but-delete-fails partial outcome, and no other request
-    // interleaves. (Slice 4 prepends a third statement BEFORE the detach:
-    // clear food_pack_state for the affected lists, because once food_plan_id
-    // is nulled those lists can no longer be found - design 2.3.1 step order.)
+    // All three statements run in one db.batch - a D1 transaction - so there
+    // is no partial outcome. The pack-state clear (design 6, rule 1: the
+    // delete detaches the holding list, which is a relink) comes FIRST,
+    // because it finds the affected list through lists.food_plan_id and the
+    // detach destroys exactly that link - after it, the checkmarks would be
+    // unreachable (design 2.3.1 step order).
     async remove(planId: string): Promise<boolean> {
+      const clearPack = db.delete(foodPackState).where(
+        sql`user_id = ${userId}
+           and list_id in (
+             select id from lists
+              where food_plan_id = ${planId} and user_id = ${userId}
+           )`,
+      )
       const detach = db
         .update(lists)
         .set({ foodPlanId: null, updatedAt: Date.now() })
@@ -399,7 +444,7 @@ export function createFoodPlansRepo(db: Db, userId: string) {
         .delete(foodPlans)
         .where(and(eq(foodPlans.id, planId), eq(foodPlans.userId, userId)))
         .returning({ id: foodPlans.id })
-      const [, deleted] = await db.batch([detach, del])
+      const [, , deleted] = await db.batch([clearPack, detach, del])
       return deleted.length > 0
     },
 
@@ -464,6 +509,23 @@ export function createFoodPlansRepo(db: Db, userId: string) {
       const attach =
         listId !== null
           ? [
+              // Rule 1 (design 6): the attach below re-points the list, so its
+              // checkmarks clear - the copy contains the same foods, and they
+              // must not render pre-checked on a plan nobody packed for. Gated
+              // by the SAME compare-and-swap as the attach (`is` = SQLite's
+              // null-safe equality, since the expectation may be null) and
+              // ordered BEFORE it, because after the update the link no longer
+              // matches the expectation. When the CAS loses, both statements
+              // match zero rows: a duplicate that did not attach must not have
+              // wiped anything.
+              db.delete(foodPackState).where(
+                sql`list_id = ${listId} and user_id = ${userId}
+                   and exists (
+                     select 1 from lists l
+                      where l.id = ${listId} and l.user_id = ${userId}
+                        and l.food_plan_id is ${expectedFoodPlanId}
+                   )`,
+              ),
               db
                 .update(lists)
                 .set({ foodPlanId: newPlanId, updatedAt: now })
@@ -564,16 +626,22 @@ export function createFoodPlansRepo(db: Db, userId: string) {
       if (!(await requirePlan(planId))) return { ok: false, reason: 'not_found' }
       // Cascade clears this day's day_meals and their entries. A 0-row delete
       // means the day is not in this plan -> 404 rather than a false success.
-      const rows = await db
-        .delete(foodPlanDays)
-        .where(
-          and(
-            eq(foodPlanDays.id, dayId),
-            eq(foodPlanDays.foodPlanId, planId),
-            eq(foodPlanDays.userId, userId),
-          ),
-        )
-        .returning({ id: foodPlanDays.id })
+      // The cascade can take a food's LAST occurrence with it, so the
+      // pack-state reconcile rides the same batch (rule 2; a no-op when the
+      // delete matched nothing).
+      const [rows] = await db.batch([
+        db
+          .delete(foodPlanDays)
+          .where(
+            and(
+              eq(foodPlanDays.id, dayId),
+              eq(foodPlanDays.foodPlanId, planId),
+              eq(foodPlanDays.userId, userId),
+            ),
+          )
+          .returning({ id: foodPlanDays.id }),
+        reconcilePackState(planId),
+      ])
       if (rows.length === 0) return { ok: false, reason: 'not_found' }
       return okDoc(planId)
     },
@@ -629,17 +697,21 @@ export function createFoodPlansRepo(db: Db, userId: string) {
     async removeMeal(planId: string, mealId: string): Promise<PlanDocResult> {
       if (!(await requirePlan(planId))) return { ok: false, reason: 'not_found' }
       // Cascade clears this meal's day_meals and their entries on every day. A
-      // 0-row delete means the meal is not in this plan -> 404.
-      const rows = await db
-        .delete(meals)
-        .where(
-          and(
-            eq(meals.id, mealId),
-            eq(meals.foodPlanId, planId),
-            eq(meals.userId, userId),
-          ),
-        )
-        .returning({ id: meals.id })
+      // 0-row delete means the meal is not in this plan -> 404. Reconcile
+      // rides the batch for the same reason as removeDay (rule 2).
+      const [rows] = await db.batch([
+        db
+          .delete(meals)
+          .where(
+            and(
+              eq(meals.id, mealId),
+              eq(meals.foodPlanId, planId),
+              eq(meals.userId, userId),
+            ),
+          )
+          .returning({ id: meals.id }),
+        reconcilePackState(planId),
+      ])
       if (rows.length === 0) return { ok: false, reason: 'not_found' }
       return okDoc(planId)
     },
@@ -715,17 +787,20 @@ export function createFoodPlansRepo(db: Db, userId: string) {
     ): Promise<PlanDocResult> {
       if (!(await requirePlan(planId))) return { ok: false, reason: 'not_found' }
       // Cascade clears this cell's entries. A 0-row delete means the cell is not
-      // in this plan -> 404.
-      const rows = await db
-        .delete(dayMeals)
-        .where(
-          and(
-            eq(dayMeals.id, dayMealId),
-            eq(dayMeals.foodPlanId, planId),
-            eq(dayMeals.userId, userId),
-          ),
-        )
-        .returning({ id: dayMeals.id })
+      // in this plan -> 404. Reconcile rides the batch (rule 2).
+      const [rows] = await db.batch([
+        db
+          .delete(dayMeals)
+          .where(
+            and(
+              eq(dayMeals.id, dayMealId),
+              eq(dayMeals.foodPlanId, planId),
+              eq(dayMeals.userId, userId),
+            ),
+          )
+          .returning({ id: dayMeals.id }),
+        reconcilePackState(planId),
+      ])
       if (rows.length === 0) return { ok: false, reason: 'not_found' }
       return okDoc(planId)
     },
@@ -856,16 +931,21 @@ export function createFoodPlansRepo(db: Db, userId: string) {
       planId: string,
       entryId: string,
     ): Promise<PlanDocResult> {
-      const rows = await db
-        .delete(foodPlanEntries)
-        .where(
-          and(
-            eq(foodPlanEntries.id, entryId),
-            eq(foodPlanEntries.foodPlanId, planId),
-            eq(foodPlanEntries.userId, userId),
-          ),
-        )
-        .returning({ id: foodPlanEntries.id })
+      // The direct removal path: if this was the food's last occurrence in
+      // the plan, its checkmark clears with it (rule 2, same batch).
+      const [rows] = await db.batch([
+        db
+          .delete(foodPlanEntries)
+          .where(
+            and(
+              eq(foodPlanEntries.id, entryId),
+              eq(foodPlanEntries.foodPlanId, planId),
+              eq(foodPlanEntries.userId, userId),
+            ),
+          )
+          .returning({ id: foodPlanEntries.id }),
+        reconcilePackState(planId),
+      ])
       if (rows.length === 0) return { ok: false, reason: 'not_found' }
       return okDoc(planId)
     },

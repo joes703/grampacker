@@ -1041,7 +1041,7 @@ describe('caps and slug integrity', () => {
 // AT a standalone plan via lists.food_plan_id - a live reference, not a copy -
 // and a plan backs AT MOST ONE list (one plan per trip, enforced by the
 // partial unique index lists_food_plan_id_unique; reuse is duplication).
-// Pack-state clearing on relink is slice 4 and not exercised here.
+// Pack-state clearing on relink is exercised in food-pack.test.ts, not here.
 describe('food plan link', () => {
   async function createPlan(cookie: string, name: string): Promise<string> {
     const res = await apiRequest(cookie, 'POST', '/api/food-plans', { name })
