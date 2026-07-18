@@ -1,11 +1,15 @@
 import {
+  foodPackStateResponseSchema,
   listResponseSchema,
   sharedListResponseSchema,
+  toggleFoodPackResponseSchema,
   type CreateListFromSelectionRequest,
+  type FoodPackStateResponse,
   type ImportListRequestInput,
   type ListResponse,
   type ReorderListsRequest,
   type SharedListResponse,
+  type ToggleFoodPackResponse,
   type UpdateListRequest,
 } from '../../../shared/lists'
 import { ApiError, apiFetch, apiFetchVoid } from '../api'
@@ -60,6 +64,37 @@ export async function detachFoodPlan(id: string): Promise<List> {
   return apiFetch(`/lists/${id}/food-plan`, listResponseSchema, {
     method: 'DELETE',
   })
+}
+
+// The pack checklist's read (design 6): ids only, because row presence in
+// food_pack_state means packed - the set IS the state.
+export async function fetchFoodPackState(
+  id: string,
+): Promise<FoodPackStateResponse> {
+  return apiFetch(`/lists/${id}/food-pack`, foodPackStateResponseSchema)
+}
+
+// The pack toggle - a CAS on the plan link the client observed (design 6,
+// rule 3). applied:false in the response = the link moved and the click
+// lost; the caller rolls its optimistic tick back. Never returns the whole
+// pack set: this is the highest-frequency mutation in the app.
+export async function toggleFoodPack(
+  id: string,
+  foodItemId: string,
+  packed: boolean,
+  expectedFoodPlanId: string,
+): Promise<ToggleFoodPackResponse> {
+  return apiFetch(
+    `/lists/${id}/food-pack/${foodItemId}`,
+    toggleFoodPackResponseSchema,
+    { method: 'PUT', body: { packed, expectedFoodPlanId } },
+  )
+}
+
+// Reset packed, food side. Unconditional (no CAS): clearing is the same end
+// state rule 1 produces on relink, so there is no stale-plan hazard.
+export async function resetFoodPackForList(id: string): Promise<void> {
+  await apiFetchVoid(`/lists/${id}/food-pack`, { method: 'DELETE' })
 }
 
 export async function reorderLists(

@@ -13,17 +13,24 @@ import type { ListItemWithGear } from '../lib/types'
 // toast, because the cache cancel/snapshot/clear/rollback/invalidate lifecycle
 // IS the contract here, not an implementation detail to stub out.
 //
-// TRANSPLANT NOTE (food): the old repo's suite also pinned "resets projected
-// packed foods after the list reset succeeds"; that case returns with the
-// food-plans slice.
+// Since slice 4b, resetPacked also spans the food checklist ("Reset packed
+// spans both", design 8): an independent optimistic clear of the
+// ['food-pack', listId] id cache with its own per-side rollback.
 
 const LIST_ID = 'list-1'
+const PLAN_ID = 'plan-1'
 const KEY = ['list-items', LIST_ID] as const
+const FOOD_KEY = ['food-pack', LIST_ID, PLAN_ID] as const
 
 const h = vi.hoisted(() => ({
-  queryKeys: { listItems: (id: string) => ['list-items', id] as const },
+  queryKeys: {
+    listItems: (id: string) => ['list-items', id] as const,
+    foodPackState: (id: string, foodPlanId: string) =>
+      ['food-pack', id, foodPlanId] as const,
+  },
   resetPackedForList: vi.fn<(listId: string) => Promise<void>>(),
   resetReadyForList: vi.fn<(listId: string) => Promise<void>>(),
+  resetFoodPackForList: vi.fn<(listId: string) => Promise<void>>(),
 }))
 const toast = vi.hoisted(() => ({ showToast: vi.fn<(message: string, options?: unknown) => number>() }))
 
@@ -46,24 +53,34 @@ function item(over: Partial<ListItemWithGear> = {}): ListItemWithGear {
   }
 }
 
-function setup(items: ListItemWithGear[]) {
+function setup(
+  items: ListItemWithGear[],
+  opts: { hasFoodPlan?: boolean; packedFoodIds?: string[] } = {},
+) {
+  const { hasFoodPlan = false, packedFoodIds = [] } = opts
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   qc.setQueryData<ListItemWithGear[]>(KEY, items)
+  qc.setQueryData<string[]>(FOOD_KEY, packedFoodIds)
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   )
-  const { result } = renderHook(() => useListResetActions(LIST_ID), { wrapper })
+  const { result } = renderHook(
+    () => useListResetActions(LIST_ID, hasFoodPlan ? PLAN_ID : null),
+    { wrapper },
+  )
   return { qc, result }
 }
 
 const read = (qc: QueryClient) => qc.getQueryData<ListItemWithGear[]>(KEY) ?? []
 const find = (qc: QueryClient, id: string) => read(qc).find((i) => i.id === id)!
+const readFoodIds = (qc: QueryClient) => qc.getQueryData<string[]>(FOOD_KEY) ?? []
 
 beforeEach(() => {
   h.resetPackedForList.mockResolvedValue(undefined)
   h.resetReadyForList.mockResolvedValue(undefined)
+  h.resetFoodPackForList.mockResolvedValue(undefined)
 })
 
 afterEach(() => vi.clearAllMocks())
@@ -152,6 +169,79 @@ describe('useListResetActions', () => {
         "Couldn't reset ready checks. Please try again.",
         { type: 'error' },
       )
+    })
+  })
+
+  describe('resetPacked food side', () => {
+    it('with a plan attached, clears the food id cache and calls the food endpoint', async () => {
+      const { qc, result } = setup([item({ id: 'a', isPacked: true })], {
+        hasFoodPlan: true,
+        packedFoodIds: ['f1', 'f2'],
+      })
+
+      await act(async () => { await result.current.resetPacked() })
+
+      expect(readFoodIds(qc)).toEqual([])
+      expect(h.resetFoodPackForList).toHaveBeenCalledWith(LIST_ID)
+      expect(read(qc).every((i) => !i.isPacked)).toBe(true)
+    })
+
+    it('without a plan, never touches the food cache or endpoint', async () => {
+      const { qc, result } = setup([item({ id: 'a', isPacked: true })], {
+        hasFoodPlan: false,
+        // A stale cache from a plan attached earlier in the session: the
+        // reset must not assume it owns this key when no plan is linked.
+        packedFoodIds: ['stale'],
+      })
+
+      await act(async () => { await result.current.resetPacked() })
+
+      expect(h.resetFoodPackForList).not.toHaveBeenCalled()
+      expect(readFoodIds(qc)).toEqual(['stale'])
+    })
+
+    it('food failure rolls back only the food ids; the gear clear survives; one toast', async () => {
+      h.resetFoodPackForList.mockRejectedValueOnce(new Error('boom'))
+      const { qc, result } = setup([item({ id: 'a', isPacked: true })], {
+        hasFoodPlan: true,
+        packedFoodIds: ['f1'],
+      })
+
+      await act(async () => {
+        await expect(result.current.resetPacked()).resolves.toBeUndefined()
+      })
+
+      expect(readFoodIds(qc)).toEqual(['f1']) // cleared then rolled back
+      expect(find(qc, 'a').isPacked).toBe(false) // gear side committed
+      expect(toast.showToast).toHaveBeenCalledTimes(1)
+    })
+
+    it('gear failure rolls back only the gear flags; the food clear survives; one toast', async () => {
+      h.resetPackedForList.mockRejectedValueOnce(new Error('boom'))
+      const { qc, result } = setup([item({ id: 'a', isPacked: true })], {
+        hasFoodPlan: true,
+        packedFoodIds: ['f1'],
+      })
+
+      await act(async () => {
+        await expect(result.current.resetPacked()).resolves.toBeUndefined()
+      })
+
+      expect(find(qc, 'a').isPacked).toBe(true) // cleared then rolled back
+      expect(readFoodIds(qc)).toEqual([]) // food side committed
+      expect(toast.showToast).toHaveBeenCalledTimes(1)
+    })
+
+    it('invalidates the food-pack cache in finally', async () => {
+      const { qc, result } = setup([item({ id: 'a', isPacked: true })], {
+        hasFoodPlan: true,
+        packedFoodIds: ['f1'],
+      })
+      const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+
+      await act(async () => { await result.current.resetPacked() })
+
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: FOOD_KEY })
     })
   })
 

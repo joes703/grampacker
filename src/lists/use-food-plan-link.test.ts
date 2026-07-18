@@ -31,6 +31,7 @@ vi.mock('../lib/queries', async () => {
       foodPlan: (id: string) => ['food-plan', id],
       foodPlanAll: () => ['food-plan'],
       sharedListAll: () => ['shared-list'],
+      foodPackStateAll: () => ['food-pack'],
     },
     attachFoodPlan: q.attachFoodPlan,
     detachFoodPlan: q.detachFoodPlan,
@@ -72,6 +73,9 @@ function seedCaches() {
   lastQc.setQueryData(['lists'], [LIST])
   lastQc.setQueryData(['food-plans'], [])
   lastQc.setQueryData(['food-plan', 'p1'], { id: 'p1' })
+  // A populated checklist cache: every link mutation must invalidate it
+  // (rule 1 cleared the rows server-side), through the ['food-pack'] prefix.
+  lastQc.setQueryData(['food-pack', 'l1', 'p1'], ['f1'])
 }
 
 function invalidated(key: unknown[]): boolean {
@@ -96,6 +100,12 @@ describe('useFoodPlanLink - attach', () => {
     expect(invalidated(['food-plans'])).toBe(true)
     // ['food-plan'] is a prefix key: the cached document must be caught.
     expect(invalidated(['food-plan', 'p1'])).toBe(true)
+    // Rule 1 cleared this list's pack state server-side. Invalidation is
+    // not enough: invalidated data is still RENDERED while refetching, so
+    // detach-then-reattach of the same plan could paint the old checkmarks
+    // as phantom pre-checks. The entry must be REMOVED (prefix key - the
+    // hook doesn't know which list's checklist is cached).
+    expect(lastQc.getQueryState(['food-pack', 'l1', 'p1'])).toBeUndefined()
   })
 
   it('a 409 rolls back, toasts ONCE with the in-use message, and refetches summaries', async () => {
@@ -138,6 +148,8 @@ describe('useFoodPlanLink - detach', () => {
     await waitFor(() => expect(result.current.detachMut.isSuccess).toBe(true))
     expect(invalidated(['food-plans'])).toBe(true)
     expect(invalidated(['food-plan', 'p1'])).toBe(true)
+    // Removed, not invalidated - see the attach test.
+    expect(lastQc.getQueryState(['food-pack', 'l1', 'p1'])).toBeUndefined()
   })
 })
 
@@ -161,6 +173,8 @@ describe('useFoodPlanLink - duplicate & attach', () => {
     expect(invalidated(['food-plan', 'p1'])).toBe(true)
     expect(invalidated(['food-plans'])).toBe(true)
     expect(invalidated(['lists'])).toBe(true)
+    // Removed, not invalidated - see the attach test.
+    expect(lastQc.getQueryState(['food-pack', 'l1', 'p1'])).toBeUndefined()
   })
 
   it('a failed CAS refetches summaries and lists so the picker resyncs', async () => {

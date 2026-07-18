@@ -10,6 +10,8 @@ import {
 } from '../components/flat-table-styles'
 
 type Props = {
+  // COMBINED totals (design 8): gear items + packable foods. The food side
+  // is 0 until a plan is attached, so gear-only lists are unchanged.
   total: number
   packed: number
   onReset: () => void
@@ -25,6 +27,10 @@ type Props = {
   // not render this component.
   readyChecks: {
     ready: number
+    // Gear-only denominator. Ready checks never cover food, so dividing by
+    // the combined `total` above would make the ready bar uncompletable on
+    // any list with a food plan.
+    total: number
     enabled: boolean
     onResetReady: () => void
     onToggleEnabled: () => void
@@ -44,8 +50,9 @@ export default function PackingProgress({
   const [confirmingReset, setConfirmingReset] = useState(false)
   const [confirmingResetReady, setConfirmingResetReady] = useState(false)
   const readyCount = readyChecks.ready
-  const readyPct = total === 0 ? 0 : Math.round((readyCount / total) * 100)
-  const readyDone = readyChecks.enabled && readyCount === total && total > 0
+  const readyTotal = readyChecks.total
+  const readyPct = readyTotal === 0 ? 0 : Math.round((readyCount / readyTotal) * 100)
+  const readyDone = readyChecks.enabled && readyCount === readyTotal && readyTotal > 0
 
   return (
     <div className={`${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} p-4`}>
@@ -116,7 +123,7 @@ export default function PackingProgress({
         <div className="mt-3">
           <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
             <span className="text-sm font-medium tabular-nums text-gray-700">
-              {readyCount} / {total} ready
+              {readyCount} / {readyTotal} ready
             </span>
             <div className="flex items-center gap-2 flex-wrap">
               {readyDone && (

@@ -39,6 +39,15 @@ import type { List } from '../lib/types'
 // The ['food-plan'] prefix is invalidated too: each cached plan document
 // carries usedByList (the editor's "Used by <list>" breadcrumb), and every
 // mutation here moves some plan's link.
+//
+// The ['food-pack'] prefix is REMOVED, not invalidated, on every
+// successful link move: rule 1 cleared the rows server-side, and
+// invalidated data is still rendered while its refetch is in flight, so
+// detach-then-reattach of the SAME plan would paint the cleared checkmarks
+// as phantom pre-checks from the retained cache entry (the plan-id-keyed
+// cache only protects across DIFFERENT plans). Removal drops the data
+// outright; the checklist (disabled outside pack mode, so never actively
+// observed here) refetches from scratch on next entry.
 export function useFoodPlanLink() {
   const qc = useQueryClient()
 
@@ -71,6 +80,9 @@ export function useFoodPlanLink() {
     mutationFn: ({ id, foodPlanId }: { id: string; foodPlanId: string }) =>
       attachFoodPlan(id, foodPlanId),
     ...attachOptimistic,
+    onSuccess: () => {
+      qc.removeQueries({ queryKey: queryKeys.foodPackStateAll() })
+    },
     onError: (error, vars, ctx) => {
       attachOptimistic.onError(error, vars, ctx)
       if (error instanceof ApiError && error.status === 409) {
@@ -104,6 +116,9 @@ export function useFoodPlanLink() {
         updatedAt: new Date().toISOString(),
       }),
     }),
+    onSuccess: () => {
+      qc.removeQueries({ queryKey: queryKeys.foodPackStateAll() })
+    },
   })
 
   // "Duplicate & attach": the picker's action for a plan already backing
@@ -142,6 +157,7 @@ export function useFoodPlanLink() {
       void qc.invalidateQueries({ queryKey: queryKeys.foodPlans() })
       void qc.invalidateQueries({ queryKey: queryKeys.lists() })
       void qc.invalidateQueries({ queryKey: queryKeys.sharedListAll() })
+      qc.removeQueries({ queryKey: queryKeys.foodPackStateAll() })
     },
     onError: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.foodPlans() })

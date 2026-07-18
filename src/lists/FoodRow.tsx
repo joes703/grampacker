@@ -39,7 +39,8 @@ type Props = {
 // accidental tap on a row-edge icon is worth one deliberate step - and it
 // matches the kebab every other row on this page already carries.
 //
-// Pack mode expands this into the real per-food checklist - that is slice 4.
+// Pack mode expands this into the real per-food checklist - FoodPackSection,
+// which ListDetailPage renders in this row's place.
 export default function FoodRow({
   projection,
   weightUnit,
