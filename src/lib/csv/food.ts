@@ -60,6 +60,28 @@ export type FoodCsvItem = Pick<
 // rename/reorder is a compile error here. Null renders as '' (never 0) so
 // unknown stays unknown, and import reads those empty cells back as null;
 // a real 0 stays 0.
+// The shapes that are ambiguous with the spreadsheet text-marker escape:
+// zero or more apostrophes followed by a formula character. escapeCell in
+// core.ts prefixes ONE apostrophe to bare formula-char cells; for the food
+// round-trip contract that transformation must be reversible, so export
+// prefixes an apostrophe to EVERY value of this shape (escaping the escape:
+// '=x exports as ''=x) and import strips exactly one apostrophe from the
+// shape. decode(encode(s)) === s for every storable value - stored text is
+// schema-trimmed, so it can never begin with the tab/CR members of the
+// class, which exist here only to stay aligned with escapeCell's set.
+// Once encoded, these cells start with an apostrophe, so escapeCell itself
+// no-ops on them and spreadsheet formula-injection safety is preserved.
+const FORMULA_ESCAPE_SHAPE = /^'*[=+\-@\t\r]/
+
+function escapeFoodText(s: string): string {
+  return FORMULA_ESCAPE_SHAPE.test(s) ? `'${s}` : s
+}
+
+function unescapeFormulaPrefix(s: string): string {
+  if (s.startsWith("'") && FORMULA_ESCAPE_SHAPE.test(s.slice(1))) return s.slice(1)
+  return s
+}
+
 export function foodItemsToCsv(items: FoodCsvItem[]): string {
   // toCsv derives headers from the first row, so zero items would yield a
   // zero-byte file; the takeout bundle promises a stable header-only CSV
@@ -67,9 +89,9 @@ export function foodItemsToCsv(items: FoodCsvItem[]): string {
   if (items.length === 0) return FOOD_CSV_HEADER
   const rows = items.map(
     (f): Record<(typeof FOOD_CSV_HEADERS)[number], string | number> => ({
-      name: f.name,
-      brand: f.brand ?? '',
-      serving_description: f.servingDescription ?? '',
+      name: escapeFoodText(f.name),
+      brand: escapeFoodText(f.brand ?? ''),
+      serving_description: escapeFoodText(f.servingDescription ?? ''),
       serving_weight_grams: f.servingWeightGrams,
       calories_per_serving: f.caloriesPerServing,
       servings_per_package: f.servingsPerPackage ?? '',
@@ -81,7 +103,7 @@ export function foodItemsToCsv(items: FoodCsvItem[]): string {
       protein_grams: f.proteinGrams ?? '',
       sodium_mg: f.sodiumMg ?? '',
       potassium_mg: f.potassiumMg ?? '',
-      notes: f.notes ?? '',
+      notes: escapeFoodText(f.notes ?? ''),
     }),
   )
   return toCsv(rows)
@@ -174,21 +196,6 @@ type NumericBounds = { max: number; decimals: number }
 const THREE_DP: NumericBounds = { max: 9_999_999.999, decimals: 3 } // numeric(10,3)
 const TWO_DP: NumericBounds = { max: 99_999_999.99, decimals: 2 } // numeric(10,2)
 const ONE_DP: NumericBounds = { max: 999_999_999.9, decimals: 1 } // numeric(10,1)
-
-// Inverse of core.ts escapeCell's formula-injection escape: exports prefix
-// an apostrophe to text starting with =, +, -, @, tab, or CR so spreadsheets
-// treat the cell as text. Without decoding, real text like "- add water"
-// re-imports as "'- add water" - a round-trip corruption (Codex finding).
-// Strip EXACTLY that escape: one leading apostrophe, only when the next
-// character is a formula character. A genuine leading apostrophe followed by
-// anything else passes through untouched. Residual documented edge: content
-// that genuinely starts with '= '+ '- '@ loses its apostrophe on re-import
-// (escapeCell does not escape the escape); that shape is exotic enough that
-// core.ts accepts the same tradeoff for third-party imports.
-function unescapeFormulaPrefix(s: string): string {
-  if (s.startsWith("'") && /^[=+\-@\t\r]/.test(s.slice(1))) return s.slice(1)
-  return s
-}
 
 // Strict decimal: no thousands separators, no trailing units, no hex/Infinity.
 const DECIMAL_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/

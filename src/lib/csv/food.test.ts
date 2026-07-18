@@ -94,6 +94,26 @@ describe('food CSV round-trip', () => {
     expect(rows[0]?.item?.name).toBe("'til dawn bar")
   })
 
+  it('round-trips a genuine apostrophe-before-formula-char value (escape of the escape)', () => {
+    // A stored value may itself look like the exporter's escape. Export must
+    // add one more apostrophe so import (which strips exactly one) restores
+    // the original - for any stack depth (Codex round-2 blocker).
+    const items = [
+      makeFood({
+        id: 'f-1', name: "'=SUM(A1)", brand: "'+plus", servingDescription: "'@handle",
+        notes: "''-double stack",
+      }),
+    ]
+    const rows = parsedRows(foodItemsToCsv(items))
+    expect(rows[0]?.errors).toEqual([])
+    expect(rows[0]?.item).toMatchObject({
+      name: "'=SUM(A1)",
+      brand: "'+plus",
+      servingDescription: "'@handle",
+      notes: "''-double stack",
+    })
+  })
+
   it('decodes the escape BEFORE slicing so a max-length field is not clipped', () => {
     const longName = `-${'x'.repeat(255)}` // exactly 256 chars, formula-prefixed
     const items = [makeFood({ id: 'f-1', name: longName })]
