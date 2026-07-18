@@ -293,10 +293,19 @@ function ListDetailInner({
   // toggle, with its own query subscriptions (colocation - see the hook).
   // Enabled only where it renders; packableTotal/packedTotal are 0 while
   // disabled, so edit mode and plan-less lists keep gear-only totals.
+  //
+  // !foodLinkBusy: never fetch pack state under a link the server hasn't
+  // confirmed. During an optimistic attach the lists cache already shows
+  // the NEW plan, but GET /food-pack is keyed by list alone and would
+  // return the OLD plan's rows - entering pack mode in that window would
+  // cache them under the new plan's key as phantom pre-checks (and retain
+  // them if the attach then failed). Once the link settles, success has
+  // removed the ['food-pack'] caches and failure has rolled the link back,
+  // so the fetch that then fires is correct either way.
   const foodPack = useFoodPack(
     listId,
     listFoodPlanId,
-    hasFoodPlan && mode === 'pack',
+    hasFoodPlan && mode === 'pack' && !foodLinkBusy,
   )
   const onDuplicateAttachFoodPlan = useCallback(
     (planId: string) =>
