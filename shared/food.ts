@@ -149,6 +149,22 @@ export type CreateFoodItemRequestInput = z.input<
   typeof createFoodItemRequestSchema
 >
 
+// Bulk CSV import: every row is exactly a create request. max(2000) mirrors
+// the client-side MAX_CSV_ROWS parse cap (src/lib/csv/core.ts) - the DTO cap
+// exists so the bound can't be bypassed by hand-crafting a request.
+export const importFoodRequestSchema = z
+  .object({
+    items: z.array(createFoodItemRequestSchema).min(1).max(2000),
+  })
+  .strict()
+export type ImportFoodRequest = z.infer<typeof importFoodRequestSchema>
+export type ImportFoodRequestInput = z.input<typeof importFoodRequestSchema>
+
+export const importFoodResponseSchema = z.object({
+  createdItems: z.number().int(),
+})
+export type ImportFoodResponse = z.infer<typeof importFoodResponseSchema>
+
 // PATCH semantics: absent = unchanged, null = clear (nullable fields only).
 // servingWeightGrams and caloriesPerServing are NOT NULL columns, so they
 // are optional-but-not-nullable here.

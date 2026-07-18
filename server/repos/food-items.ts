@@ -89,6 +89,10 @@ export type FoodWriteResult =
   | { ok: true; row: FoodItemRow }
   | { ok: false; reason: 'cap_exceeded' | 'not_found' }
 
+export type ImportFoodResult =
+  | { ok: true; createdItems: number }
+  | { ok: false; reason: 'cap_exceeded' }
+
 // The DB trigger in migration 0007 is the SINGLE enforcement point for the
 // cap - no read-then-insert race to lose (mirrors gear, PR #13). The repo
 // maps the trigger's RAISE(ABORT) message to a friendly result; keep this
@@ -145,6 +149,56 @@ export function createFoodItemsRepo(db: Db, userId: string) {
         if (isFoodCapError(err)) return { ok: false, reason: 'cap_exceeded' }
         throw err
       }
+    },
+
+    // Bulk CSV import: one insert statement per row, all in ONE db.batch (a
+    // single D1 transaction) - either every row lands or none do. Mirrors
+    // gear's importBatch: per-statement inserts rather than chunked
+    // multi-row VALUES because each statement's max(sortOrder)+1 subquery
+    // sees the rows inserted by the statements before it, which is what
+    // makes sortOrder come out sequential in CSV order past the existing
+    // max (a subquery inside one multi-row VALUES has no such guarantee).
+    // Params per statement (~20) sit far under D1's 100 cap. The cap
+    // trigger aborts the whole batch -> friendly cap result, same taxonomy
+    // as single create.
+    async importBatch(items: CreateFoodItemInput[]): Promise<ImportFoodResult> {
+      const now = Date.now()
+      const statements = items.map((input) =>
+        db.insert(foodItems).values({
+          id: crypto.randomUUID(),
+          userId,
+          name: input.name,
+          brand: input.brand,
+          servingDescription: input.servingDescription,
+          servingWeightGrams: input.servingWeightGrams,
+          caloriesPerServing: input.caloriesPerServing,
+          servingsPerPackage: input.servingsPerPackage,
+          fatGrams: input.fatGrams,
+          saturatedFatGrams: input.saturatedFatGrams,
+          carbsGrams: input.carbsGrams,
+          fiberGrams: input.fiberGrams,
+          sugarGrams: input.sugarGrams,
+          proteinGrams: input.proteinGrams,
+          sodiumMg: input.sodiumMg,
+          potassiumMg: input.potassiumMg,
+          notes: input.notes,
+          sortOrder: sql`coalesce((select max(${foodItems.sortOrder}) + 1 from ${foodItems} where ${foodItems.userId} = ${userId}), 0)`,
+          createdAt: now,
+          updatedAt: now,
+        }),
+      )
+      const [first, ...rest] = statements
+      if (!first) {
+        // Unreachable: the DTO enforces min(1) items.
+        return { ok: true, createdItems: 0 }
+      }
+      try {
+        await db.batch([first, ...rest])
+      } catch (err) {
+        if (isFoodCapError(err)) return { ok: false, reason: 'cap_exceeded' }
+        throw err
+      }
+      return { ok: true, createdItems: items.length }
     },
 
     async update(
