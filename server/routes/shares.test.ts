@@ -346,8 +346,10 @@ describe('GET /api/shares/:slug food weight', () => {
     const raw: unknown = await (await getShare(list.slug)).json()
     const body = sharedListResponseSchema.parse(raw)
     expect(body.food).toBeNull()
-    // The DTO is exactly the three existing collections plus food.
-    expect(Object.keys(body).toSorted()).toEqual([
+    // Exact top-level shape asserted on the RAW wire body, not the parsed
+    // one: zod objects are non-strict, so parse() strips unknown keys and a
+    // widened mapper would vanish before a parsed-body assertion ran.
+    expect(Object.keys(raw as object).toSorted()).toEqual([
       'categories',
       'food',
       'items',
@@ -385,12 +387,18 @@ describe('GET /api/shares/:slug food weight', () => {
     expect(body.food).toEqual({ weightGrams: 610, incomplete: false })
 
     // The leak guard, with a plan attached: the weight is the ONLY food data
-    // on the wire - no plan name, no entries, no per-food nutrition.
+    // on the wire - no plan name, no entries, no per-food nutrition. The
+    // forbidden-keys sweep catches known-private names; the exact-key
+    // assertion catches everything else, and it MUST inspect the RAW body:
+    // zod objects are non-strict, so parse() strips unknown keys and a
+    // widened mapper (say, a spread adding planName) would cross the real
+    // wire yet vanish before a parsed-body assertion ran.
     const keys = collectKeys(raw, new Set())
     for (const forbidden of FORBIDDEN_KEYS) {
       expect(keys.has(forbidden), `forbidden key on the wire: ${forbidden}`).toBe(false)
     }
-    expect(Object.keys(body.food!).toSorted()).toEqual([
+    const rawFood = (raw as { food: Record<string, unknown> }).food
+    expect(Object.keys(rawFood).toSorted()).toEqual([
       'incomplete',
       'weightGrams',
     ])
