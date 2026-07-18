@@ -357,3 +357,148 @@ describe('/api/food-items authorization matrix', () => {
     expect(ok.status).toBe(201)
   })
 })
+
+// Minimal valid import rows, distinctly named so order is assertable.
+function importRows(names: string[]): Record<string, unknown>[] {
+  return names.map((name) => ({
+    name,
+    servingWeightGrams: 10,
+    caloriesPerServing: 100,
+  }))
+}
+
+async function countFoodRows(userId: string): Promise<number> {
+  const row = await env.DB.prepare(
+    'select count(*) as n from food_items where user_id = ?',
+  )
+    .bind(userId)
+    .first<{ n: number }>()
+  return row?.n ?? 0
+}
+
+describe('POST /api/food-items/import', () => {
+  it('anon request is 401', async () => {
+    const res = await apiRequest(null, 'POST', '/api/food-items/import', {
+      items: importRows(['X']),
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('imports rows in CSV order with sequential sortOrder after the existing max', async () => {
+    const { cookie } = await signUpVerifiedUser('food-import@example.com', 'I')
+    await createFood(cookie, {
+      name: 'Existing',
+      servingWeightGrams: 10,
+      caloriesPerServing: 100,
+    })
+
+    const res = await apiRequest(cookie, 'POST', '/api/food-items/import', {
+      items: [
+        {
+          name: 'Alpha',
+          brand: 'BrandA',
+          servingDescription: '1 bar',
+          servingWeightGrams: 43.125,
+          caloriesPerServing: 150,
+          servingsPerPackage: 2,
+          fatGrams: 3,
+          saturatedFatGrams: 0.5,
+          carbsGrams: 27,
+          fiberGrams: 3,
+          sugarGrams: 12,
+          proteinGrams: 4,
+          sodiumMg: 0,
+          potassiumMg: 130.5,
+          notes: 'imported',
+        },
+        ...importRows(['Beta', 'Gamma']),
+      ],
+    })
+    expect(res.status).toBe(201)
+    // Raw-body allowlist: exactly { createdItems } and nothing else.
+    const body = (await res.json()) as Record<string, unknown>
+    expect(Object.keys(body)).toEqual(['createdItems'])
+    expect(body.createdItems).toBe(3)
+
+    const after = await listFood(cookie)
+    expect(after.map((f) => [f.name, f.sortOrder])).toEqual([
+      ['Existing', 0],
+      ['Alpha', 1],
+      ['Beta', 2],
+      ['Gamma', 3],
+    ])
+    // Full-field round-trip incl. null-vs-0 (sodiumMg 0 is a REAL zero).
+    expect(after[1]).toMatchObject({
+      brand: 'BrandA',
+      servingDescription: '1 bar',
+      servingWeightGrams: 43.125,
+      servingsPerPackage: 2,
+      saturatedFatGrams: 0.5,
+      sodiumMg: 0,
+      potassiumMg: 130.5,
+      notes: 'imported',
+    })
+    expect(after[2]).toMatchObject({ brand: null, fatGrams: null, sodiumMg: null })
+  })
+
+  it('one schema-invalid row is a 400 and nothing is written', async () => {
+    const { cookie } = await signUpVerifiedUser('food-import-400@example.com', 'I')
+    const res = await apiRequest(cookie, 'POST', '/api/food-items/import', {
+      items: [
+        ...importRows(['Valid']),
+        { name: 'Bad', servingWeightGrams: 0, caloriesPerServing: 100 },
+      ],
+    })
+    expect(res.status).toBe(400)
+    expect(await listFood(cookie)).toHaveLength(0)
+
+    // Empty and missing items arrays are also 400s (min(1) / required).
+    for (const body of [{ items: [] }, {}, null]) {
+      const r = await apiRequest(cookie, 'POST', '/api/food-items/import', body)
+      expect(r.status, JSON.stringify(body)).toBe(400)
+    }
+  })
+
+  it('an import that would cross the 1000 cap is a 422 and writes NOTHING (atomicity)', async () => {
+    const { cookie } = await signUpVerifiedUser('food-import-cap@example.com', 'C')
+    const userId = await userIdFor(cookie)
+
+    // Seed to 995 directly (the API path would be 995 round trips). Ids are
+    // prefixed distinctly from the single-create cap test's seeds: the PK is
+    // global, and both tests run against the same database.
+    const values = Array.from({ length: 995 }, (_, i) => {
+      return `('imp-seed-${i}', '${userId}', 'Seed food ${i}', 1, 0, ${i}, 0, 0)`
+    }).join(',')
+    await env.DB.prepare(
+      `insert into food_items (id, user_id, name, serving_weight_grams, calories_per_serving, sort_order, created_at, updated_at) values ${values}`,
+    ).run()
+
+    // 10 more would make 1005: the trigger aborts the batch mid-way, and
+    // because a D1 batch is one transaction, the rows before the crossing
+    // point must roll back too - count stays exactly 995.
+    const res = await apiRequest(cookie, 'POST', '/api/food-items/import', {
+      items: importRows(Array.from({ length: 10 }, (_, i) => `Over ${i}`)),
+    })
+    expect(res.status).toBe(422)
+    expect(await countFoodRows(userId)).toBe(995)
+
+    // Landing exactly AT the cap is fine.
+    const fit = await apiRequest(cookie, 'POST', '/api/food-items/import', {
+      items: importRows(Array.from({ length: 5 }, (_, i) => `Fit ${i}`)),
+    })
+    expect(fit.status).toBe(201)
+    expect(await countFoodRows(userId)).toBe(1000)
+  })
+
+  it('a 30-row import lands atomically (multi-statement batch proof)', async () => {
+    const { cookie } = await signUpVerifiedUser('food-import-30@example.com', 'B')
+    const names = Array.from({ length: 30 }, (_, i) => `Bulk ${String(i).padStart(2, '0')}`)
+    const res = await apiRequest(cookie, 'POST', '/api/food-items/import', {
+      items: importRows(names),
+    })
+    expect(res.status).toBe(201)
+    const after = await listFood(cookie)
+    expect(after.map((f) => f.name)).toEqual(names)
+    expect(after.map((f) => f.sortOrder)).toEqual(names.map((_, i) => i))
+  })
+})

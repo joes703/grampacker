@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, cleanup, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
@@ -24,16 +24,36 @@ function stubViewport(mobile: boolean) {
 }
 beforeEach(() => stubViewport(false))
 
+// jsdom has no native <dialog> support; Modal opens via showModal().
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function showModal() { this.open = true }
+  HTMLDialogElement.prototype.close = function close() { this.open = false }
+})
+
 // Mock the data layer: the page reads fetchFoodItems and the action hook's
 // mutations. We only exercise rendering / search / sort / macros / empty here,
 // so the mutations can be inert.
 const h = vi.hoisted(() => ({
   fetchFoodItems: vi.fn<() => Promise<FoodItem[]>>(),
+  importFoodItems: vi.fn(),
+  downloadCsv: vi.fn(),
 }))
 vi.mock('../lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/queries')>()
-  return { ...actual, fetchFoodItems: h.fetchFoodItems }
+  return {
+    ...actual,
+    fetchFoodItems: h.fetchFoodItems,
+    importFoodItems: h.importFoodItems,
+  }
 })
+// Stub only downloadCsv (it drives a real anchor-click download);
+// foodItemsToCsv/parseFoodCsv stay real so the tests exercise the actual
+// format round-trip.
+vi.mock('../lib/csv', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/csv')>()
+  return { ...actual, downloadCsv: h.downloadCsv }
+})
+import { foodItemsToCsv } from '../lib/csv'
 vi.mock('./use-food-item-actions', () => ({
   useFoodItemActions: () => ({
     addItem: { mutate: vi.fn(), isPending: false, error: null },
@@ -175,5 +195,55 @@ describe('FoodLibraryPage', () => {
     // New food is reachable on mobile: the in-content button plus the bottom
     // bar's Add slot both carry that accessible name.
     expect(screen.getAllByRole('button', { name: /New food/ }).length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('FoodLibraryPage CSV import/export', () => {
+  it('exports the library as the canonical CSV via the Options menu', async () => {
+    const items = [
+      food({ name: 'Ramen', brand: 'Maruchan', sodiumMg: 0 }),
+      food({ name: 'Oats' }),
+    ]
+    h.fetchFoodItems.mockResolvedValue(items)
+    renderPage()
+    await screen.findByRole('table', { name: 'Food library' })
+
+    // getByTitle: the mobile bar's Options slot shares the accessible name
+    // (jsdom doesn't apply the lg:hidden split); only the desktop popover
+    // trigger carries the title attribute.
+    fireEvent.click(screen.getByTitle('Food options'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Export to CSV' }))
+    // Sorted rows are a VIEW concern; the export writes library order.
+    expect(h.downloadCsv).toHaveBeenCalledWith('food-library.csv', foodItemsToCsv(items))
+  })
+
+  it('imports a picked CSV: parse -> preview -> confirm -> POST -> refetch', async () => {
+    h.fetchFoodItems.mockResolvedValue([])
+    h.importFoodItems.mockResolvedValue({ createdItems: 1 })
+    const { container } = renderPage()
+    await screen.findByText('No foods yet')
+
+    const input = container.querySelector('input[type="file"]')
+    expect(input).not.toBeNull()
+    const file = new File(
+      ['name,serving_weight_grams,calories_per_serving\r\nOats,50,100'],
+      'foods.csv',
+      { type: 'text/csv' },
+    )
+    fireEvent.change(input!, { target: { files: [file] } })
+
+    // The preview dialog opens once FileReader + parseFoodCsv settle.
+    const importBtn = await screen.findByRole('button', { name: /import 1 food/i })
+    fireEvent.click(importBtn)
+
+    await waitFor(() => expect(h.importFoodItems).toHaveBeenCalledTimes(1))
+    expect(h.importFoodItems.mock.calls[0]?.[0]).toMatchObject([
+      { name: 'Oats', servingWeightGrams: 50, caloriesPerServing: 100 },
+    ])
+    // Create-only import invalidates ['food-items'] (and nothing else - no
+    // plan references brand-new foods), so the page refetches.
+    await waitFor(() =>
+      expect(h.fetchFoodItems.mock.calls.length).toBeGreaterThanOrEqual(2),
+    )
   })
 })

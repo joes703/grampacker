@@ -24,8 +24,9 @@ type Props = { list: List }
 // while the UI says private. disabled while pending is the visual layer
 // on top of the hook's guard.
 //
-// TRANSPLANT NOTE (food): the old panel had an "Include food plan" toggle
-// below the URL row (is_food_shared). That returns with the food slice.
+// There is deliberately NO "Include food plan" toggle here (the old app's
+// is_food_shared): sharing a list shares its food weight as part of the
+// total, full stop (food-planning-design.md D6/12.4).
 export default function PrivacyPanel({ list }: Props) {
   const [copied, setCopied] = useState(false)
 

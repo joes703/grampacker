@@ -1,9 +1,11 @@
 import { Hono } from 'hono'
 import {
   createFoodItemRequestSchema,
+  importFoodRequestSchema,
   updateFoodItemRequestSchema,
   type CreateFoodItemRequest,
   type FoodItemResponse,
+  type ImportFoodResponse,
   type UpdateFoodItemRequest,
 } from '../../shared/food'
 import { requireSession, type SessionVars } from '../middleware/session'
@@ -14,10 +16,11 @@ import type {
 } from '../repos/food-items'
 
 // Authz matrix rows (docs/authz-matrix.md):
-//   GET    /api/food-items     - session - own rows only
-//   POST   /api/food-items     - session - creates own row; 422 at the cap
-//   PATCH  /api/food-items/:id - session - own row or 404
-//   DELETE /api/food-items/:id - session - own row or 404
+//   GET    /api/food-items        - session - own rows only
+//   POST   /api/food-items        - session - creates own row; 422 at the cap
+//   POST   /api/food-items/import - session - bulk create, atomic; 422 at the cap
+//   PATCH  /api/food-items/:id    - session - own row or 404
+//   DELETE /api/food-items/:id    - session - own row or 404
 //
 // Food is session-only and NEVER anon-reachable. The sole anon-reachable
 // food data in the whole system is the share's { weightGrams, incomplete }
@@ -116,6 +119,24 @@ foodItemRoutes.post('/', async (c) => {
     return c.json({ error: 'Food item limit reached (1000 per user)' }, 422)
   }
   return c.json(toFoodItemResponse(result.row), 201)
+})
+
+// Bulk CSV import. Create-only (no upsert/dedup, mirroring gear import);
+// atomicity and the cap live in the repo's importBatch.
+foodItemRoutes.post('/import', async (c) => {
+  const raw = await c.req.json().catch(() => null)
+  const parsed = importFoodRequestSchema.safeParse(raw)
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request body' }, 400)
+  }
+  const result = await c
+    .get('repos')
+    .foodItems.importBatch(parsed.data.items.map(toCreateInput))
+  if (!result.ok) {
+    return c.json({ error: 'Food item limit reached (1000 per user)' }, 422)
+  }
+  const body: ImportFoodResponse = { createdItems: result.createdItems }
+  return c.json(body, 201)
 })
 
 foodItemRoutes.patch('/:id', async (c) => {

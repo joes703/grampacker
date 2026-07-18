@@ -17,6 +17,11 @@ export { gearItemsToCsv, parseGearCsv } from './gear'
 export type { GearCsvRow } from './gear'
 export { listItemsToCsv, parseListCsv, nameFromCsvFilename } from './list'
 export type { ListCsvRow } from './list'
-
-// food CSV exports (foodItemsToCsv/parseFoodCsv and their row type)
-// return with the food-planning slice.
+export {
+  foodItemsToCsv,
+  parseFoodCsv,
+  FOOD_CSV_HEADERS,
+  FOOD_CSV_HEADER,
+  FOOD_SAMPLE_CSV,
+} from './food'
+export type { FoodCsvItem, FoodImportRow } from './food'

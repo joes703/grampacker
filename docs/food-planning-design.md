@@ -747,13 +747,14 @@ keep low, not an unlimited resource. See AGENTS.md D1 traps.
 ## 10. The sockets are already cut
 
 `TRANSPLANT NOTE (food)` markers are waiting in: `lib/weight-breakdown.ts`,
-`lib/caps.ts`, `lib/csv/index.ts`, `lib/export/takeout-files.ts`,
-`lists/WeightSummary.tsx`, `lists/SharePage.tsx`, `lists/PrivacyPanel.tsx`,
+`lib/caps.ts`, `lists/WeightSummary.tsx`, `lists/SharePage.tsx`,
 `lists/ListDetailPage.tsx`, `lists/use-list-reset-actions.ts` (+ its test), and
-`settings/SettingsPage.tsx`.
+`settings/SettingsPage.tsx`. Filled by slice 6: `lib/csv/index.ts` and
+`lib/export/takeout-files.ts`.
 
-Note that `PrivacyPanel`'s note promises an "Include food plan" toggle. Per D6 that
-toggle is **not** coming; **delete the note, do not honor it.**
+`PrivacyPanel`'s note promised an "Include food plan" toggle. Per D6 that
+toggle was **not** coming; slice 6 deleted the note and replaced it with a
+statement of the decision.
 
 ---
 
