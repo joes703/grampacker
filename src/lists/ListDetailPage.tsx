@@ -846,8 +846,13 @@ function ListDetailInner({
                   (unless the food side errored - then gear-only totals plus
                   the banner below are the honest state): gear-only totals
                   during the food fetch would show wrong denominators and
-                  could claim "All packed!" when unpacked food remains. */}
-              {mode === 'pack' &&
+                  could claim "All packed!" when unpacked food remains.
+                  !foodLinkBusy for the same reason: while a link mutation is
+                  settling, hasFoodPlan reflects an OPTIMISTIC link (a
+                  mid-detach render says "no plan" even though the detach may
+                  fail), so either generation's totals would be a guess -
+                  hold the bar for the sub-second settle instead. */}
+              {mode === 'pack' && !foodLinkBusy &&
                 (!hasFoodPlan || foodPack.isReady || foodPack.isError) &&
                 (listItems.length > 0 || foodPack.packableTotal > 0) && (
                 <div className="print:hidden">
