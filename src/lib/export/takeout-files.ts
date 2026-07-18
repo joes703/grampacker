@@ -1,5 +1,7 @@
-import { gearItemsToCsv, listItemsToCsv } from '../csv'
-import type { Category, GearItem, List, ListItemWithGear } from '../types'
+import { foodItemsToCsv, gearItemsToCsv, listItemsToCsv } from '../csv'
+import type { Category, FoodItem, GearItem, List, ListItemWithGear } from '../types'
+import type { FoodPlanDocument } from '../queries'
+import { buildFoodDataJson } from './food-data-json'
 
 export type TakeoutInput = {
   categories: Category[]
@@ -9,22 +11,25 @@ export type TakeoutInput = {
   // The download handler fetches these per list (each list's items may be
   // warm in the cache) and concatenates them.
   allItems: ListItemWithGear[]
+  foodItems: FoodItem[]
+  // Full per-plan graphs, fetched one document per plan (plan cap 100).
+  foodPlans: FoodPlanDocument[]
 }
 
 // Builds the takeout zip's file map as { path -> text content }. Pure and
 // component-free so the file set is unit-testable without rendering the
 // settings page or mocking fflate. The handler strToU8-encodes each value
 // and zips the result.
-//
-// TRANSPLANT NOTE (food): the old app's takeout also wrote food-library.csv
-// and a version-2 food-data.json (the full food-plan snapshot). Those
-// return with the food slice - the food CSV builder and the food-plan
-// graph fetch don't exist here yet. Until then the export is the gear
-// library plus one CSV per list, which is the whole app today.
 export function buildTakeoutFiles(input: TakeoutInput): Record<string, string> {
-  const { categories, gearItems, lists, allItems } = input
+  const { categories, gearItems, lists, allItems, foodItems, foodPlans } = input
   const files: Record<string, string> = {}
   files['gear-library.csv'] = gearItemsToCsv(gearItems, categories)
+  // Food: the re-importable CSV plus the version-3 json snapshot (the CSV
+  // is the human/portable format; the json carries the plan graphs, which
+  // are not flat rows - see food-data-json.ts for the shape and what's
+  // deliberately excluded).
+  files['food-library.csv'] = foodItemsToCsv(foodItems)
+  files['food-data.json'] = JSON.stringify(buildFoodDataJson({ foodItems, foodPlans }), null, 2)
 
   // Group items by their list once, then emit one CSV per list. A manual
   // group keeps this off Map.groupBy (avoids leaning on the lib target).
