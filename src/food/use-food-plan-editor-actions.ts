@@ -42,6 +42,13 @@ export function useFoodPlanEditorActions(planId: string) {
   function onDoc(doc: FoodPlanDocument) {
     qc.setQueryData(queryKeys.foodPlan(planId), doc)
     void qc.invalidateQueries({ queryKey: queryKeys.foodPlans() })
+    // The public share of the list this plan backs carries a SERVER-computed
+    // weight (slice 5), so no client-side derivation heals it after an edit.
+    // Design 5.5: entry mutations invalidate the ['shared-list'] prefix -
+    // the share cache's 30s staleTime would otherwise serve the old total to
+    // an owner revisiting their own share. Coarse on purpose (5.5): rename
+    // and day/meal edits ride along rather than earning a per-mutation split.
+    void qc.invalidateQueries({ queryKey: queryKeys.sharedListAll() })
   }
 
   const rename = useMutation({

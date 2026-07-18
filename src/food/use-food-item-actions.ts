@@ -16,10 +16,17 @@ import type { FoodPatch } from './FoodItemDialog'
 // their optimistic wiring.
 //
 // Unlike gear, food uses the GENERIC single-cache optimistic helpers, not a
-// fan-out: food is never a list_items row (design 4) and no plan can
-// reference it in slice 1, so the ['food-items'] cache is the only surface a
-// food mutation touches. Design 5.5 is explicit: do not build a gear-style
-// multi-cache fan-out here.
+// fan-out: food is never a list_items row (design 4), so ['food-items'] is
+// the only cache that gets an OPTIMISTIC write - owner-side projections
+// derive from it and self-heal for free. Design 5.5 is explicit: do not
+// build a gear-style multi-cache fan-out here.
+//
+// One side cache is invalidated on settle since slice 5: the public share
+// (['shared-list']) carries a SERVER-computed food weight, which an edited
+// serving weight or a delete (its plan entries cascade away) makes stale in
+// a way no client derivation can heal (design 5.5). Edit and delete only -
+// a freshly created food is referenced by no plan, so it cannot move any
+// share's number.
 //
 // Error surfacing: create and edit roll back SILENTLY (no errorToast) - the
 // page reads the mutation error and renders it inline in the open dialog
@@ -70,6 +77,7 @@ export function useFoodItemActions(allItems: FoodItem[]) {
     ...makeOptimisticUpdate<FoodItem, { id: string; patch: FoodPatch }>({
       qc,
       queryKey: queryKeys.foodItems(),
+      invalidateKeys: [queryKeys.sharedListAll()],
       id: ({ id }) => id,
       apply: (item, { patch }) => ({ ...item, ...patch }),
     }),
@@ -80,6 +88,7 @@ export function useFoodItemActions(allItems: FoodItem[]) {
     ...makeOptimisticDelete<FoodItem, string>({
       qc,
       queryKey: queryKeys.foodItems(),
+      invalidateKeys: [queryKeys.sharedListAll()],
       id: (id) => id,
       errorToast: "Couldn't delete the food. Please try again.",
     }),
