@@ -1,7 +1,9 @@
 import {
   foodItemResponseSchema,
+  importFoodResponseSchema,
   type CreateFoodItemRequestInput,
   type FoodItemResponse,
+  type ImportFoodResponse,
   type UpdateFoodItemRequest,
 } from '../../../shared/food'
 import { apiFetch, apiFetchVoid } from '../api'
@@ -36,6 +38,17 @@ export async function updateFoodItem(
 
 export async function deleteFoodItem(id: string): Promise<void> {
   await apiFetchVoid(`/food-items/${id}`, { method: 'DELETE' })
+}
+
+// Bulk CSV import: one POST, the server inserts all rows in one transaction
+// (all-or-nothing; 422 past the 1000-food cap). Create-only - no upsert.
+export async function importFoodItems(
+  items: CreateFoodItemRequestInput[],
+): Promise<ImportFoodResponse> {
+  return apiFetch('/food-items/import', importFoodResponseSchema, {
+    method: 'POST',
+    body: { items },
+  })
 }
 
 // The server assigns the real sortOrder on create (max+1); the optimistic
