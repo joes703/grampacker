@@ -99,7 +99,10 @@ export default function WeightSummary({
 // client cache rather than missing data. Naming the package-size cause would be
 // a confident lie in that case. The editor's badge is generic for the same
 // reason; the two should be pulled apart in plan-view, not papered over here.
-function IncompleteFoodWeightNote() {
+//
+// Exported for SharePage (slice 5): the public view shows the same fact with
+// the same copy, so the owner and a viewer read the same admission.
+export function IncompleteFoodWeightNote() {
   return (
     <p className="px-3 py-2 text-xs text-amber-800">
       Estimate: some foods in this plan could not be weighed, so they add nothing

@@ -8,13 +8,24 @@ import type { Category, ListItemWithGear, SharedListResponse } from '../lib/type
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useDocumentTitle } from '../lib/use-document-title'
-import { computeWeightBreakdown } from '../lib/weight-breakdown'
+import { computeWeightBreakdown, withProjectedFood } from '../lib/weight-breakdown'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
 import DraftBanner from './DraftBanner'
+import { IncompleteFoodWeightNote } from './WeightSummary'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
-import { FLAT_TABLE_SURFACE, PANEL_EMPTY_TEXT } from '../components/flat-table-styles'
+import ItemWeightValue from '../components/ItemWeightValue'
+import {
+  FLAT_TABLE_BODY_TEXT,
+  FLAT_TABLE_HEADER,
+  FLAT_TABLE_HEADER_PADDING,
+  FLAT_TABLE_HEADER_TITLE,
+  FLAT_TABLE_META_TEXT,
+  FLAT_TABLE_ROW,
+  FLAT_TABLE_SURFACE,
+  PANEL_EMPTY_TEXT,
+} from '../components/flat-table-styles'
 
 // Notes are rendered as Markdown on the public share view (typing markdown
 // in the authed NotesEditor textarea is the only authoring path). Lazy so
@@ -30,10 +41,13 @@ const MarkdownContent = lazy(() => import('../components/MarkdownContent'))
 // downstream components see valid wide types, and the corresponding UI
 // (pack mode, owner-only affordances) doesn't render here.
 //
-// TRANSPLANT NOTE (food): the old SharePage also had a Gear/Food tab strip
-// (is_food_shared-gated), the projected-food weight row, and food weight
-// composed into the breakdown via withProjectedFood. All of it returns
-// with the food slice.
+// Food (slice 5, design 7): the attached plan arrives as ONE nullable object
+// - a server-projected weight + the incomplete flag - and renders as a
+// derived, read-only Food row plus a bump to consumable/total. Weight only:
+// no names, no meals, no days. The old build's Gear/Food tab strip and
+// is_food_shared gate are deliberately NOT ported: if a plan is attached its
+// weight is in the total, because a headline pack weight that quietly
+// excluded food would be a lie.
 export default function SharePage() {
   const { slug } = useParams<{ slug: string }>()
   const { weightUnit } = useWeightUnit()
@@ -82,7 +96,12 @@ export default function SharePage() {
     )
   }
 
-  const { list, items, categories } = share
+  const { list, items, categories, food } = share
+
+  // Presence of the food OBJECT - never its weight - drives every food
+  // affordance below: a zero-gram attached plan still gets its row, and a
+  // food-only list is not empty (design 7's shipped-bug callout).
+  const hasFood = food !== null
 
   // The narrow -> wide boundary. gear status is filled with 'active' so
   // ItemRow renders no status badge - equivalent to "not shown" (status
@@ -122,7 +141,18 @@ export default function SharePage() {
     createdAt: '',
   }))
 
-  const weightBreakdown = computeWeightBreakdown(itemsForRender, categoriesForRender)
+  // Same composition as the owner's page: food moves consumable + total only
+  // (design 5.3), and weightGrams is already rounded once server-side (5.6) -
+  // hand it straight through, never re-round.
+  const weightBreakdown = withProjectedFood(
+    computeWeightBreakdown(itemsForRender, categoriesForRender),
+    food?.weightGrams ?? 0,
+  )
+
+  // The summary earns its panel whenever there is anything to report: gear
+  // rows, or an attached plan (even one projecting to zero - the zero, and
+  // the Estimate note when incomplete, are the report).
+  const showWeightSummary = items.length > 0 || hasFood
 
   // Group items by category, ordered by category.sortOrder; uncategorized
   // last. Read-only view - no `prior` stability arg (renders once per
@@ -158,7 +188,7 @@ export default function SharePage() {
 
         {/* Notes + Weight summary - side by side on desktop, with Notes
             getting the wider read-only column. */}
-        <div className={`mb-6 grid gap-4 ${items.length > 0 ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
+        <div className={`mb-6 grid gap-4 ${showWeightSummary ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
           <PanelCard title="Notes">
             {list.description ? (
               <div className="px-3 py-2 min-h-[8rem]">
@@ -170,14 +200,17 @@ export default function SharePage() {
               <p className={`px-3 py-2 min-h-[8rem] ${PANEL_EMPTY_TEXT}`}>No notes</p>
             )}
           </PanelCard>
-          {items.length > 0 && (
+          {showWeightSummary && (
             <PanelCard title="Weight summary">
               <WeightTable items={itemsForRender} categories={categoriesForRender} breakdown={weightBreakdown} />
+              {food?.incomplete && <IncompleteFoodWeightNote />}
             </PanelCard>
           )}
         </div>
 
-        {items.length === 0 && (
+        {/* Empty only when there is truly nothing: no gear rows AND no
+            attached plan. A food-only list carries real weight. */}
+        {items.length === 0 && !hasFood && (
           <div className={`px-3 py-4 ${FLAT_TABLE_SURFACE}`}>
             <p className={PANEL_EMPTY_TEXT}>No gear items have been added to this shared list yet.</p>
           </div>
@@ -210,6 +243,33 @@ export default function SharePage() {
               />
             )}
           </div>
+        )}
+
+        {/* The derived Food row (design 7): the owner-page FoodRow's
+            read-only sibling. A weight and the Consumable/Estimate meta -
+            no plan name (not on the wire), no link, no menu. Its own
+            surface card so it stacks with the category groups above. */}
+        {food && (
+          <section
+            aria-labelledby="share-food-heading"
+            className={`mt-3 ${FLAT_TABLE_SURFACE}`}
+          >
+            <div className={`${FLAT_TABLE_HEADER} ${FLAT_TABLE_HEADER_PADDING}`}>
+              <h3 id="share-food-heading" className={FLAT_TABLE_HEADER_TITLE}>
+                Food
+              </h3>
+            </div>
+            <div className={`${FLAT_TABLE_ROW} flex items-center gap-2`}>
+              <span className="flex-1 min-w-0">
+                <span className={`block truncate ${FLAT_TABLE_BODY_TEXT}`}>Food</span>
+                <span className={`block ${FLAT_TABLE_META_TEXT}`}>
+                  Consumable
+                  {food.incomplete && ' · Estimate'}
+                </span>
+              </span>
+              <ItemWeightValue grams={food.weightGrams} unit={weightUnit} />
+            </div>
+          </section>
         )}
 
         {/* The old repo linked to /about here; that page doesn't exist on
