@@ -41,6 +41,7 @@ function share(over: {
   list?: Partial<SharedListResponse['list']>
   categories?: SharedListResponse['categories']
   items?: SharedListResponse['items']
+  food?: SharedListResponse['food']
 } = {}): SharedListResponse {
   return {
     list: {
@@ -52,6 +53,8 @@ function share(over: {
     },
     categories: over.categories ?? [],
     items: over.items ?? [],
+    // No plan attached is the common case; food-weight tests opt in.
+    food: over.food ?? null,
   }
 }
 

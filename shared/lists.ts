@@ -224,6 +224,10 @@ export type UpdateListItemRequest = z.infer<typeof updateListItemRequestSchema>
 //            (private inventory metadata; gearItemId on the item row is
 //            the row identity)
 //   - categories: userId, timestamps
+//   - food:  everything except the projected weight + incomplete flag
+//            (design 7: no plan id/name, no meals or days, no entries, no
+//            per-food nutrition; the two scalars below are the ONLY food
+//            data an anonymous reader can reach anywhere in the system)
 // groupWorn and isDraft are deliberately public: the share view honors the
 // owner's worn-grouping preference and shows the work-in-progress banner.
 export const publicListSchema = z.object({
@@ -257,10 +261,24 @@ export const publicListItemSchema = z.object({
 })
 export type PublicListItem = z.infer<typeof publicListItemSchema>
 
+// The attached food plan, collapsed to its projected pack weight (design 7).
+// A nullable OBJECT, not two bare scalars: null means "no plan attached",
+// which `{ weightGrams: 0, incomplete: false }` - a real attached plan that
+// currently weighs nothing - must stay distinguishable from. weightGrams is
+// already rounded ONCE server-side (roundProjectedGrams); incomplete travels
+// with it so an unprojectable entry can never publish a silently
+// undercounted total.
+export const publicFoodSchema = z.object({
+  weightGrams: z.number().int(),
+  incomplete: z.boolean(),
+})
+export type PublicFood = z.infer<typeof publicFoodSchema>
+
 export const sharedListResponseSchema = z.object({
   list: publicListSchema,
   categories: z.array(publicCategorySchema),
   items: z.array(publicListItemSchema),
+  food: publicFoodSchema.nullable(),
 })
 export type SharedListResponse = z.infer<typeof sharedListResponseSchema>
 
