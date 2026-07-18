@@ -108,7 +108,7 @@ function LibraryTabs({
 import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
-import { FLAT_TABLE_EYEBROW, FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
+import { FLAT_TABLE_EYEBROW, FLAT_TABLE_META_TEXT, FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import MobilePackToggle from './MobilePackToggle'
 import ListDocumentToolbar from './ListDocumentToolbar'
@@ -842,8 +842,14 @@ function ListDetailInner({
             <>
               {/* Pack-mode progress bar. Renders for a food-only list too:
                   a list with no gear but an attached plan still has packing
-                  to track. */}
-              {mode === 'pack' && (listItems.length > 0 || foodPack.packableTotal > 0) && (
+                  to track. With a plan attached it waits for foodPack.isReady
+                  (unless the food side errored - then gear-only totals plus
+                  the banner below are the honest state): gear-only totals
+                  during the food fetch would show wrong denominators and
+                  could claim "All packed!" when unpacked food remains. */}
+              {mode === 'pack' &&
+                (!hasFoodPlan || foodPack.isReady || foodPack.isError) &&
+                (listItems.length > 0 || foodPack.packableTotal > 0) && (
                 <div className="print:hidden">
                   <PackingProgress
                     total={listItems.length + foodPack.packableTotal}
@@ -920,6 +926,16 @@ function ListDetailInner({
                   still works.
                 </p>
               )}
+              {/* A food-only list has NOTHING else on the page while the
+                  checklist data loads (the progress bar above also waits),
+                  so say what's happening instead of rendering blank. Gear
+                  lists skip this: their item groups render regardless. */}
+              {mode === 'pack' && hasFoodPlan && listItems.length === 0 &&
+                !foodPack.isReady && !foodPack.isError && (
+                  <p className={`mt-4 ${FLAT_TABLE_META_TEXT}`}>
+                    Loading food checklist...
+                  </p>
+                )}
               {mode === 'pack' && (
                 <FoodPackSection
                   rows={foodPack.rows}

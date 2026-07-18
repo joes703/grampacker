@@ -294,8 +294,12 @@ describe('useFoodPack', () => {
     expect(result.current.rows).toEqual([])
     expect(result.current.packedTotal).toBe(0)
     expect(result.current.packableTotal).toBe(3)
+    // Not ready until the id set lands: the page holds the progress bar
+    // back on this flag so it can't claim "All packed!" from gear alone.
+    expect(result.current.isReady).toBe(false)
 
     await act(async () => { resolveFetch({ packedFoodItemIds: [] }) })
+    await waitFor(() => expect(result.current.isReady).toBe(true))
     await waitFor(() =>
       expect(result.current.rows.map((r) => [r.foodItemId, r.packed])).toEqual([
         ['f1', false],

@@ -58,6 +58,12 @@ export function useFoodPack(
   rows: FoodPackRow[]
   packableTotal: number
   packedTotal: number
+  // True once ALL the checklist's data is in hand (plan document, food
+  // library, pack id set) under an enabled, settled link. The page holds
+  // totals-dependent UI (the progress bar's counts and its "All packed!"
+  // verdict) on this flag: rendering gear-only totals while food data is
+  // pending would claim a completion the food could contradict.
+  isReady: boolean
   isError: boolean
   toggle: (foodItemId: string, packed: boolean) => void
 } {
@@ -180,6 +186,7 @@ export function useFoodPack(
     // server will accept a checkmark for.
     packableTotal: planRows.length,
     packedTotal: rows.filter((r) => r.packed).length,
+    isReady: planView !== null && packedIds !== undefined,
     isError:
       on && (planQuery.isError || foodsQuery.isError || packQuery.isError),
     toggle: (foodItemId: string, packed: boolean) => {
