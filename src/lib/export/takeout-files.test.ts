@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { foodItemsToCsv, gearItemsToCsv, listItemsToCsv } from '../csv'
+import { FOOD_CSV_HEADER, foodItemsToCsv, gearItemsToCsv, listItemsToCsv } from '../csv'
 import type { Category, FoodItem, GearItem, List, ListItemWithGear } from '../types'
 import type { FoodPlanDocument } from '../queries'
 import { buildTakeoutFiles, exportTimestamp } from './takeout-files'
@@ -90,7 +90,8 @@ describe('buildTakeoutFiles', () => {
       'gear-library.csv',
     ])
     expect(files['gear-library.csv']).toBe(gearItemsToCsv(gearItems, categories))
-    expect(files['food-library.csv']).toBe(foodItemsToCsv([]))
+    // Header-only, never a zero-byte file, so the bundle shape is stable.
+    expect(files['food-library.csv']).toBe(FOOD_CSV_HEADER)
     expect(JSON.parse(files['food-data.json'] ?? '')).toEqual({
       version: 3,
       foodItems: [],

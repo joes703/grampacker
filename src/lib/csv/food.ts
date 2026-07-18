@@ -61,6 +61,10 @@ export type FoodCsvItem = Pick<
 // unknown stays unknown, and import reads those empty cells back as null;
 // a real 0 stays 0.
 export function foodItemsToCsv(items: FoodCsvItem[]): string {
+  // toCsv derives headers from the first row, so zero items would yield a
+  // zero-byte file; the takeout bundle promises a stable header-only CSV
+  // instead (Codex finding).
+  if (items.length === 0) return FOOD_CSV_HEADER
   const rows = items.map(
     (f): Record<(typeof FOOD_CSV_HEADERS)[number], string | number> => ({
       name: f.name,
@@ -171,6 +175,21 @@ const THREE_DP: NumericBounds = { max: 9_999_999.999, decimals: 3 } // numeric(1
 const TWO_DP: NumericBounds = { max: 99_999_999.99, decimals: 2 } // numeric(10,2)
 const ONE_DP: NumericBounds = { max: 999_999_999.9, decimals: 1 } // numeric(10,1)
 
+// Inverse of core.ts escapeCell's formula-injection escape: exports prefix
+// an apostrophe to text starting with =, +, -, @, tab, or CR so spreadsheets
+// treat the cell as text. Without decoding, real text like "- add water"
+// re-imports as "'- add water" - a round-trip corruption (Codex finding).
+// Strip EXACTLY that escape: one leading apostrophe, only when the next
+// character is a formula character. A genuine leading apostrophe followed by
+// anything else passes through untouched. Residual documented edge: content
+// that genuinely starts with '= '+ '- '@ loses its apostrophe on re-import
+// (escapeCell does not escape the escape); that shape is exotic enough that
+// core.ts accepts the same tradeoff for third-party imports.
+function unescapeFormulaPrefix(s: string): string {
+  if (s.startsWith("'") && /^[=+\-@\t\r]/.test(s.slice(1))) return s.slice(1)
+  return s
+}
+
 // Strict decimal: no thousands separators, no trailing units, no hex/Infinity.
 const DECIMAL_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
 
@@ -246,14 +265,16 @@ export function parseFoodCsv(text: string): FoodImportRow[] | string {
   return rows.map((row, i) => {
     const errors: string[] = []
 
-    // Trimmed text cell, sliced to its schema max; blank -> null.
+    // Trimmed text cell, sliced to its schema max; blank -> null. The
+    // formula-prefix escape decodes FIRST so a max-length escaped field
+    // (257 chars on the wire) is not clipped by the slice.
     const textCell = (key: string | undefined, max: number): string | null => {
       if (!key) return null
-      const s = (row[key] ?? '').trim().slice(0, max)
+      const s = unescapeFormulaPrefix(row[key] ?? '').trim().slice(0, max)
       return s === '' ? null : s
     }
 
-    const name = (row[nameKey] ?? '').trim().slice(0, NAME_MAX)
+    const name = unescapeFormulaPrefix(row[nameKey] ?? '').trim().slice(0, NAME_MAX)
     if (!name) errors.push('Name is required')
 
     // Required: serving_weight_grams (finite, > 0, numeric(10,3)).

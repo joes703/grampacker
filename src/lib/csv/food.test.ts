@@ -53,6 +53,10 @@ describe('foodItemsToCsv export format', () => {
     expect(lines[0]).toBe(FOOD_CSV_HEADER)
   })
 
+  it('exports an empty library as the header-only CSV (stable takeout shape)', () => {
+    expect(foodItemsToCsv([])).toBe(FOOD_CSV_HEADER)
+  })
+
   it('renders nulls as blank cells (never 0) and keeps real zeros', () => {
     const lines = foodItemsToCsv([
       makeFood({
@@ -65,6 +69,39 @@ describe('foodItemsToCsv export format', () => {
 })
 
 describe('food CSV round-trip', () => {
+  it('round-trips text that begins with a formula character (escape is decoded)', () => {
+    // escapeCell prefixes an apostrophe to =, +, -, @ so spreadsheets treat
+    // the cell as text; parseFoodCsv must strip exactly that escape or the
+    // round-trip corrupts real text like "- add water" (Codex finding).
+    const items = [
+      makeFood({
+        id: 'f-1', name: '=SUM(A1)', brand: '+plus brand',
+        servingDescription: '@handle', notes: '- add water, stir',
+      }),
+    ]
+    const rows = parsedRows(foodItemsToCsv(items))
+    expect(rows[0]?.item).toMatchObject({
+      name: '=SUM(A1)',
+      brand: '+plus brand',
+      servingDescription: '@handle',
+      notes: '- add water, stir',
+    })
+  })
+
+  it('leaves a genuine leading apostrophe alone (only the escape is stripped)', () => {
+    const items = [makeFood({ id: 'f-1', name: "'til dawn bar" })]
+    const rows = parsedRows(foodItemsToCsv(items))
+    expect(rows[0]?.item?.name).toBe("'til dawn bar")
+  })
+
+  it('decodes the escape BEFORE slicing so a max-length field is not clipped', () => {
+    const longName = `-${'x'.repeat(255)}` // exactly 256 chars, formula-prefixed
+    const items = [makeFood({ id: 'f-1', name: longName })]
+    const rows = parsedRows(foodItemsToCsv(items))
+    expect(rows[0]?.errors).toEqual([])
+    expect(rows[0]?.item?.name).toBe(longName)
+  })
+
   it('export -> import preserves every field, including null-vs-0', () => {
     const items = [
       makeFood({
