@@ -3,9 +3,10 @@ import { toCsv, parseCsv, MAX_CSV_ROWS } from './core'
 import { toGrams } from './units'
 import { MAX_NAME_LENGTH } from '../caps'
 
-// Parse output. The CSV column HEADERS stay snake_case (Lighterpack-
-// compatible, byte-identical to the old repo's export), but the parsed
-// TS row is camelCase because every new-repo consumer speaks camelCase.
+// Parse output. The CSV column HEADERS stay snake_case (Lighterpack-shaped;
+// no longer byte-identical to the old repo's export, which carried a second
+// money column), but the parsed TS row is camelCase because every new-repo
+// consumer speaks camelCase.
 // categoryName is the category's display name; the import planner resolves
 // it to an existing id or a new category.
 export type GearCsvRow = {
@@ -19,16 +20,28 @@ export type GearCsvRow = {
 
 export function gearItemsToCsv(items: GearItem[], categories: Category[]): string {
   const catMap = new Map(categories.map((c) => [c.id, c.name]))
-  // Lighterpack-compatible base 10 columns so users can re-import a
-  // grampacker gear-library export into Lighterpack without manual header
-  // massaging (Lighterpack ignores unknown columns). The gear library has
-  // no list-item context (no quantity / worn / consumable), so those get
-  // Lighterpack defaults: qty=1, worn/consumable empty. url is empty
-  // since grampacker doesn't store it; price stays at the Lighterpack
-  // default 0 (its own field, not aliased to cost). cost and
-  // purchase_date are grampacker-specific extension columns appended
-  // after the Lighterpack 10; Lighterpack ignores them on its import.
-  // Both blank for null, never 0 or epoch.
+  // Lighterpack-shaped so a grampacker export re-imports there without
+  // manual header massaging. The gear library has no list-item context (no
+  // quantity / worn / consumable), so those take Lighterpack defaults:
+  // qty=1, worn/consumable empty. url is empty since grampacker doesn't
+  // store it. cost and purchase_date are grampacker extension columns;
+  // Lighterpack ignores columns it doesn't know. Both blank for null,
+  // never 0 or epoch - "unknown" must not render as "free".
+  //
+  // COLUMN ORDER 0-5 IS A COMPATIBILITY CONTRACT, not cosmetic. Lighterpack's
+  // importer is POSITIONAL and reads exactly row[0..5]:
+  //   name: row[0], category: row[1], description: row[2],
+  //   qty: row[3], weight: row[4], unit: row[5]
+  // (client/components/import-csv.vue upstream). Reordering these six breaks
+  // Lighterpack import silently - the file still loads, with wrong fields.
+  // gear.test.ts pins them by position.
+  //
+  // There is deliberately ONE money column. This used to emit a second,
+  // `price`, hardcoded to 0 as a "Lighterpack default" - but Lighterpack
+  // never reads a price column at all (see the positional list above), so
+  // that column carried no interoperability and only misled humans and
+  // spreadsheets reading the file. Prices cannot be carried INTO Lighterpack
+  // by any column choice; that is a limitation of its importer, not ours.
   const rows = items.map((item) => ({
     'Item Name': item.name,
     Category: item.categoryId ? (catMap.get(item.categoryId) ?? '') : '',
@@ -37,7 +50,6 @@ export function gearItemsToCsv(items: GearItem[], categories: Category[]): strin
     weight: item.weightGrams,
     unit: 'gram',
     url: '',
-    price: 0,
     worn: '',
     consumable: '',
     cost: item.cost ?? '',
@@ -68,8 +80,13 @@ export function parseGearCsv(text: string): GearCsvRow[] | string {
   // cost: prefer our column name; fall back to Lighterpack's "price" so a
   // Lighterpack export imports its prices directly. Two-pass lookup (not
   // a single find with OR) so column order in the source CSV doesn't
-  // matter. Our own export has price=0 and cost=N side by side, and the
-  // user-set cost must always win over the Lighterpack-default price.
+  // matter.
+  //
+  // The precedence is load-bearing for BACKWARD COMPATIBILITY: exports
+  // downloaded before the columns were collapsed carry price=0 alongside
+  // the real cost=N, so cost must win or re-importing one of those older
+  // files would read the fake 0 and wipe every price. Current exports emit
+  // cost alone.
   const costKey   = keys.find((k) => k === 'cost') ?? keys.find((k) => k === 'price')
   const dateKey   = keys.find((k) => k === 'purchase_date' || k === 'purchase date')
 
