@@ -454,6 +454,43 @@ const FIXTURES = [
     user_id: 'u-seed',
     created_at: FIXED_TS,
   }],
+  // Nutrition targets (migration 0012). One row per table; the daily row is a
+  // range (both bounds live), the meal row a max-mode pct metric (exercises
+  // the pct ceiling's happy side), the default a min - so a rebuild that
+  // mangles any bounds branch trips at least one row.
+  ['food_plan_daily_targets', {
+    id: 'daily-target-seed',
+    user_id: 'u-seed',
+    food_plan_id: 'plan-seed',
+    metric: 'calories',
+    mode: 'range',
+    target_min: 2500,
+    target_max: 3500,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  ['meal_targets', {
+    id: 'meal-target-seed',
+    user_id: 'u-seed',
+    food_plan_id: 'plan-seed',
+    meal_id: 'meal-seed',
+    metric: 'fat_pct',
+    mode: 'max',
+    target_min: null,
+    target_max: 35,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  ['food_plan_target_defaults', {
+    id: 'default-target-seed',
+    user_id: 'u-seed',
+    metric: 'protein',
+    mode: 'min',
+    target_min: 120,
+    target_max: null,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
 ]
 
 // Intentional data rewrites. The row-changed check exists to catch ACCIDENTAL

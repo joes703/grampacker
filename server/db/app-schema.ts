@@ -10,6 +10,7 @@ import {
   text,
   unique,
   uniqueIndex,
+  type AnySQLiteColumn,
 } from 'drizzle-orm/sqlite-core'
 import { user } from './auth-schema'
 
@@ -652,5 +653,160 @@ export const foodPackState = sqliteTable(
     // The food-side cascade and rule 2's NOT IN scan both look up by food;
     // the PK already covers list-side lookups.
     index('food_pack_state_food_user_idx').on(t.foodItemId, t.userId),
+  ],
+)
+
+// ------------------------------------------------- nutrition targets (slice 7)
+//
+// Three tables ported from the old build's 20260613200619/20260614050331
+// migrations, with one deliberate tightening: `mode` has NO 'off' value
+// ANYWHERE. The old plan tables permitted a stored mode='off' row (both bounds
+// null) that the client never wrote; here "off" is simply the ABSENCE of the
+// row, uniformly, and the bounds CHECK makes any other mode value
+// unrepresentable. Bound magnitude mirrors the old numeric(12,4) (< 1e8); the
+// 4-decimal-place scale rule is zod-only, like every other REAL column.
+//
+// No cap triggers: one-per-metric uniqueness bounds every table (6 rows/plan,
+// 5 x meal-cap rows/plan, 6 rows/user).
+
+const DAILY_TARGET_METRICS = [
+  'calories',
+  'protein',
+  'carbs',
+  'fiber',
+  'sodium',
+  'calorie_density',
+] as const
+const MEAL_TARGET_METRICS = [
+  'calories',
+  'protein',
+  'fat_pct',
+  'sugar_pct',
+  'carb_protein_ratio',
+] as const
+const TARGET_MODES = ['range', 'min', 'max'] as const
+
+// The mode/bounds consistency rule (old daily_target_bounds), shared by all
+// three tables. Also the DB-level "no stored off": a mode outside
+// range/min/max satisfies none of the branches.
+const targetBoundsSql = (t: {
+  mode: AnySQLiteColumn
+  targetMin: AnySQLiteColumn
+  targetMax: AnySQLiteColumn
+}) => sql`
+  (${t.targetMin} is null or (${t.targetMin} >= 0 and ${t.targetMin} < 100000000))
+  and (${t.targetMax} is null or (${t.targetMax} >= 0 and ${t.targetMax} < 100000000))
+  and ((${t.mode} = 'min' and ${t.targetMin} is not null and ${t.targetMax} is null)
+    or (${t.mode} = 'max' and ${t.targetMax} is not null and ${t.targetMin} is null)
+    or (${t.mode} = 'range' and ${t.targetMin} is not null and ${t.targetMax} is not null
+      and ${t.targetMin} <= ${t.targetMax}))`
+
+// Per-plan daily targets: at most one row per (plan, metric).
+export const foodPlanDailyTargets = sqliteTable(
+  'food_plan_daily_targets',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    foodPlanId: text('food_plan_id').notNull(),
+    metric: text('metric', { enum: DAILY_TARGET_METRICS }).notNull(),
+    mode: text('mode', { enum: TARGET_MODES }).notNull(),
+    targetMin: real('target_min'),
+    targetMax: real('target_max'),
+    createdAt: integer('created_at').notNull(), // epoch ms
+    updatedAt: integer('updated_at').notNull(), // epoch ms
+  },
+  (t) => [
+    unique('daily_target_one_per_metric').on(t.foodPlanId, t.metric),
+    foreignKey({
+      name: 'food_plan_daily_targets_plan_same_owner_fk',
+      columns: [t.foodPlanId, t.userId],
+      foreignColumns: [foodPlans.id, foodPlans.userId],
+    }).onDelete('cascade'),
+    index('food_plan_daily_targets_user_idx').on(t.userId),
+    check(
+      'food_plan_daily_targets_metric_enum',
+      sql`${t.metric} in ('calories', 'protein', 'carbs', 'fiber', 'sodium', 'calorie_density')`,
+    ),
+    check('daily_target_bounds', targetBoundsSql(t)),
+  ],
+)
+
+// Per-meal targets: at most one row per (meal, metric). Doubly pinned - the
+// same-owner FK ties the row to the plan's owner, the (meal_id, food_plan_id)
+// FK forbids citing another plan's meal (the day_meals stitching pattern).
+export const mealTargets = sqliteTable(
+  'meal_targets',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    foodPlanId: text('food_plan_id').notNull(),
+    mealId: text('meal_id').notNull(),
+    metric: text('metric', { enum: MEAL_TARGET_METRICS }).notNull(),
+    mode: text('mode', { enum: TARGET_MODES }).notNull(),
+    targetMin: real('target_min'),
+    targetMax: real('target_max'),
+    createdAt: integer('created_at').notNull(), // epoch ms
+    updatedAt: integer('updated_at').notNull(), // epoch ms
+  },
+  (t) => [
+    unique('meal_target_one_per_metric').on(t.mealId, t.metric),
+    foreignKey({
+      name: 'meal_targets_plan_same_owner_fk',
+      columns: [t.foodPlanId, t.userId],
+      foreignColumns: [foodPlans.id, foodPlans.userId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'meal_targets_meal_same_plan_fk',
+      columns: [t.mealId, t.foodPlanId],
+      foreignColumns: [meals.id, meals.foodPlanId],
+    }).onDelete('cascade'),
+    // The save path deletes by plan; the one-per-metric unique leads with
+    // meal_id and cannot serve that scan.
+    index('meal_targets_plan_idx').on(t.foodPlanId),
+    index('meal_targets_user_idx').on(t.userId),
+    check(
+      'meal_targets_metric_enum',
+      sql`${t.metric} in ('calories', 'protein', 'fat_pct', 'sugar_pct', 'carb_protein_ratio')`,
+    ),
+    check('meal_target_bounds', targetBoundsSql(t)),
+    // Percent metrics cap at 100 (old meal_target_pct_ceiling).
+    check(
+      'meal_target_pct_ceiling',
+      sql`${t.metric} not in ('fat_pct', 'sugar_pct')
+        or ((${t.targetMin} is null or ${t.targetMin} <= 100)
+          and (${t.targetMax} is null or ${t.targetMax} <= 100))`,
+    ),
+  ],
+)
+
+// Account-level default daily targets (Settings). Copied BY VALUE into
+// food_plan_daily_targets when a plan is created - no linkage, so later
+// default edits never rewrite existing plans (the old build's invariant I1).
+// Daily metric set only; meal defaults were never a thing.
+export const foodPlanTargetDefaults = sqliteTable(
+  'food_plan_target_defaults',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    metric: text('metric', { enum: DAILY_TARGET_METRICS }).notNull(),
+    mode: text('mode', { enum: TARGET_MODES }).notNull(),
+    targetMin: real('target_min'),
+    targetMax: real('target_max'),
+    createdAt: integer('created_at').notNull(), // epoch ms
+    updatedAt: integer('updated_at').notNull(), // epoch ms
+  },
+  (t) => [
+    unique('default_target_one_per_metric').on(t.userId, t.metric),
+    check(
+      'food_plan_target_defaults_metric_enum',
+      sql`${t.metric} in ('calories', 'protein', 'carbs', 'fiber', 'sodium', 'calorie_density')`,
+    ),
+    check('default_target_bounds', targetBoundsSql(t)),
   ],
 )
