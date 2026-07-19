@@ -164,6 +164,75 @@ describe('selectFoodPlanView', () => {
     expect(view.totalGrams).toBe(1)
   })
 
+  describe('dayType', () => {
+    it('derives full when every anchor-role meal is scheduled', () => {
+      const view = selectFoodPlanView(doc(), [])
+      expect(view.days[0]!.dayType).toBe('full')
+      expect(view.days[1]!.dayType).toBe('full')
+    })
+
+    it('derives partial when an anchor meal is missing from the day', () => {
+      const base = doc()
+      const view = selectFoodPlanView(
+        {
+          ...base,
+          // Day 1 loses its Dinner cell; Day 2 keeps the full grid.
+          dayMeals: base.dayMeals.filter((dm) => dm.id !== 'c-d1-dinner'),
+        },
+        [],
+      )
+      expect(view.days[0]!.dayType).toBe('partial')
+      expect(view.days[1]!.dayType).toBe('full')
+    })
+
+    it('override wins over the derivation in both directions', () => {
+      const base = doc()
+      const view = selectFoodPlanView(
+        {
+          ...base,
+          days: [
+            { id: 'd2', dayTypeOverride: 'full', sortOrder: 1 },
+            { id: 'd1', dayTypeOverride: 'partial', sortOrder: 0 },
+          ],
+          // Day 2 is missing an anchor (would derive partial) but is forced
+          // full; Day 1 has the full grid (would derive full) but is forced
+          // partial.
+          dayMeals: base.dayMeals.filter((dm) => dm.id !== 'c-d2-dinner'),
+        },
+        [],
+      )
+      expect(view.days[0]!.dayType).toBe('partial')
+      expect(view.days[1]!.dayType).toBe('full')
+    })
+
+    it('a plan with no anchor meals derives full (vacuous every)', () => {
+      const base = doc()
+      const view = selectFoodPlanView(
+        {
+          ...base,
+          meals: base.meals.map((m) => ({ ...m, anchorRole: null })),
+        },
+        [],
+      )
+      expect(view.days[0]!.dayType).toBe('full')
+    })
+
+    it('a deleted anchor meal no longer counts against the day', () => {
+      const base = doc()
+      const view = selectFoodPlanView(
+        {
+          ...base,
+          // Dinner (an anchor) is deleted from the plan entirely: its cells
+          // drop and the remaining anchor set is just Breakfast, which is
+          // scheduled -> full, not partial.
+          meals: base.meals.filter((m) => m.id !== 'm-dinner'),
+        },
+        [],
+      )
+      expect(view.days[0]!.dayType).toBe('full')
+    })
+  })
+
   it('skips a cell whose meal has been removed', () => {
     const base = doc()
     const view = selectFoodPlanView(

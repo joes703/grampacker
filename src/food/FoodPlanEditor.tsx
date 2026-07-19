@@ -116,7 +116,8 @@ export default function FoodPlanEditor() {
     actions.removeMeal.isPending ||
     actions.addEntry.isPending ||
     actions.updateEntry.isPending ||
-    actions.removeEntry.isPending
+    actions.removeEntry.isPending ||
+    actions.setDayType.isPending
 
   // Structural mutations have no dialog to host their error, so they toast.
   function runStructural(promise: Promise<unknown>, fallback: string) {
@@ -183,6 +184,15 @@ export default function FoodPlanEditor() {
             onEditEntry={(entry) => setDialog({ type: 'editEntry', entry })}
             onDeleteEntry={(entry) => setDialog({ type: 'deleteEntry', entry })}
             onRemoveDay={() => setDialog({ type: 'deleteDay', day })}
+            onSetDayType={(override) =>
+              runStructural(
+                actions.setDayType.mutateAsync({
+                  dayId: day.id,
+                  dayTypeOverride: override,
+                }),
+                "Couldn't change the day type.",
+              )
+            }
           />
         ))}
 
@@ -438,6 +448,7 @@ function DaySection({
   onEditEntry,
   onDeleteEntry,
   onRemoveDay,
+  onSetDayType,
 }: {
   day: PlanDayView
   unit: 'g' | 'oz'
@@ -446,12 +457,39 @@ function DaySection({
   onEditEntry: (entry: PlanEntryView) => void
   onDeleteEntry: (entry: PlanEntryView) => void
   onRemoveDay: () => void
+  onSetDayType: (override: 'full' | 'partial' | null) => void
 }) {
   return (
     <section className="rounded-lg border border-gray-200 bg-white">
       <header className="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5">
-        <h2 className="text-sm font-semibold text-gray-900">Day {day.index}</h2>
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="text-sm font-semibold text-gray-900">Day {day.index}</h2>
+          {day.dayType === 'partial' && (
+            <span
+              className="inline-flex shrink-0 items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
+              title="Daily targets are shown as neutral reference on a partial day. Meal targets are still checked."
+            >
+              Partial day
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
+          {/* Auto derives full/partial from whether every anchor meal is
+              scheduled; Full/Partial pin it for target grading (design 14.5). */}
+          <select
+            aria-label={`Day ${day.index} type`}
+            value={day.dayTypeOverride ?? 'auto'}
+            disabled={busy}
+            onChange={(e) => {
+              const v = e.target.value
+              onSetDayType(v === 'full' || v === 'partial' ? v : null)
+            }}
+            className="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 disabled:opacity-40"
+          >
+            <option value="auto">Auto</option>
+            <option value="full">Full</option>
+            <option value="partial">Partial</option>
+          </select>
           <span className="text-sm tabular-nums text-gray-600">
             {formatItemWeight(day.grams, unit)}
           </span>

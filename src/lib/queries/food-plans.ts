@@ -123,6 +123,19 @@ export async function removeFoodPlanDayMeal(
   )
 }
 
+// Force a day full/partial for target grading; null returns it to auto
+// (derived from whether every anchor meal is scheduled - design 14.5).
+export async function setFoodPlanDayType(
+  id: string,
+  dayId: string,
+  dayTypeOverride: 'full' | 'partial' | null,
+): Promise<FoodPlanDocument> {
+  return apiFetch(`/food-plans/${id}/days/${dayId}`, foodPlanDocumentSchema, {
+    method: 'PATCH',
+    body: { dayTypeOverride },
+  })
+}
+
 export async function addFoodPlanEntry(
   id: string,
   input: AddEntryRequestInput,

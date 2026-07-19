@@ -9,6 +9,7 @@ import {
   addFoodPlanEntry,
   updateFoodPlanEntry,
   removeFoodPlanEntry,
+  setFoodPlanDayType,
   type FoodPlanDocument,
 } from '../lib/queries'
 import type {
@@ -98,6 +99,17 @@ export function useFoodPlanEditorActions(planId: string) {
     onSuccess: onDoc,
   })
 
+  const setDayType = useMutation({
+    mutationFn: ({
+      dayId,
+      dayTypeOverride,
+    }: {
+      dayId: string
+      dayTypeOverride: 'full' | 'partial' | null
+    }) => setFoodPlanDayType(planId, dayId, dayTypeOverride),
+    onSuccess: onDoc,
+  })
+
   return {
     rename,
     addDay,
@@ -107,5 +119,6 @@ export function useFoodPlanEditorActions(planId: string) {
     addEntry,
     updateEntry,
     removeEntry,
+    setDayType,
   }
 }

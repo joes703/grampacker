@@ -67,6 +67,7 @@ vi.mock('./use-food-plan-editor-actions', () => ({
       addEntry: make('addEntry'),
       updateEntry: make('updateEntry'),
       removeEntry: make('removeEntry'),
+      setDayType: make('setDayType'),
     }
   },
 }))
@@ -215,6 +216,53 @@ describe('FoodPlanEditor', () => {
       (screen.getByRole('button', { name: 'Rename plan' }) as HTMLButtonElement)
         .disabled,
     ).toBe(true)
+  })
+
+  describe('day type', () => {
+    it('a full-grid day shows no Partial tag and an Auto day-type control', async () => {
+      h.fetchFoodPlan.mockResolvedValue(planDoc())
+      h.fetchFoodItems.mockResolvedValue([food('f1')])
+      renderEditor()
+
+      await screen.findByText('JMT resupply')
+      expect(screen.queryByText('Partial day')).toBeNull()
+      const select = screen.getByLabelText('Day 1 type') as HTMLSelectElement
+      expect(select.value).toBe('auto')
+    })
+
+    it('derives partial (tag shown) when an anchor meal is unscheduled', async () => {
+      const doc = planDoc()
+      doc.dayMeals = doc.dayMeals.filter((dm) => dm.id !== 'c-dinner')
+      h.fetchFoodPlan.mockResolvedValue(doc)
+      h.fetchFoodItems.mockResolvedValue([food('f1')])
+      renderEditor()
+
+      await screen.findByText('JMT resupply')
+      expect(screen.getByText('Partial day')).toBeTruthy()
+      expect((screen.getByLabelText('Day 1 type') as HTMLSelectElement).value).toBe('auto')
+    })
+
+    it('reflects a stored override in the control and the tag', async () => {
+      h.fetchFoodPlan.mockResolvedValue(
+        planDoc({ days: [{ id: 'd1', dayTypeOverride: 'partial', sortOrder: 0 }] }),
+      )
+      h.fetchFoodItems.mockResolvedValue([food('f1')])
+      renderEditor()
+
+      await screen.findByText('JMT resupply')
+      expect(screen.getByText('Partial day')).toBeTruthy()
+      expect((screen.getByLabelText('Day 1 type') as HTMLSelectElement).value).toBe('partial')
+    })
+
+    it('is disabled while another mutation is pending', async () => {
+      state.pending = 'addDay'
+      h.fetchFoodPlan.mockResolvedValue(planDoc())
+      h.fetchFoodItems.mockResolvedValue([food('f1')])
+      renderEditor()
+
+      await screen.findByText('JMT resupply')
+      expect((screen.getByLabelText('Day 1 type') as HTMLSelectElement).disabled).toBe(true)
+    })
   })
 
   it('shows a not-found message when the plan is missing', async () => {
