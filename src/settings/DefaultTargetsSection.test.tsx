@@ -145,6 +145,14 @@ describe('DefaultTargetsSection', () => {
     expect(cancel.disabled).toBe(true)
     fireEvent.click(cancel)
     expect(screen.getByRole('button', { name: 'Saving…' })).toBeInTheDocument()
+    // Escape's cancelable `cancel` event must be prevented BEFORE the native
+    // dialog closes, and a force-close must reopen instead of desyncing.
+    const dialog = document.querySelector('dialog')!
+    expect(fireEvent(dialog, new Event('cancel', { cancelable: true }))).toBe(false)
+    dialog.close()
+    fireEvent(dialog, new Event('close'))
+    expect(dialog.open).toBe(true)
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeInTheDocument()
     expect(
       (screen.getByRole('button', { name: /edit defaults/i }) as HTMLButtonElement).disabled,
     ).toBe(true)

@@ -157,11 +157,10 @@ export default function TargetsDialog({
   return (
     <Modal
       open
+      onClose={onClose}
       // A full-replace save must not race a second one: block Escape/backdrop
       // dismissal while the PUT is in flight (Cancel below is disabled too).
-      onClose={() => {
-        if (!saving) onClose()
-      }}
+      preventDismiss={saving}
       title="Targets"
       className="w-[calc(100vw-2rem)] max-w-lg"
       closeOnBackdropClick={false}

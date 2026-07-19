@@ -203,6 +203,40 @@ describe('TargetsDialog', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  it('prevents the native Escape cancel while saving and recovers from a force-close', () => {
+    const onClose = vi.fn()
+    render(
+      <TargetsDialog meals={noMeals} dailyTargets={[]} mealTargets={[]} saving saveError={null} onSave={() => {}} onClose={onClose} />,
+    )
+    const dialog = document.querySelector('dialog')!
+    // Escape fires a CANCELABLE `cancel` event BEFORE the dialog closes; the
+    // guard must preventDefault it there - a guard on the close side runs
+    // after the native dialog is already gone, leaving the parent's open
+    // state pointing at a hidden dialog. fireEvent returns false when the
+    // event was defaultPrevented.
+    expect(fireEvent(dialog, new Event('cancel', { cancelable: true }))).toBe(false)
+    expect(dialog.open).toBe(true)
+    // A force-dismiss (e.g. a close watcher skipping the second Escape's
+    // cancel) can close the native dialog anyway: the modal must reopen and
+    // swallow the close instead of desyncing from the parent state.
+    dialog.close()
+    fireEvent(dialog, new Event('close'))
+    expect(dialog.open).toBe(true)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('Escape still dismisses when no save is in flight', () => {
+    const onClose = vi.fn()
+    render(
+      <TargetsDialog meals={noMeals} dailyTargets={[]} mealTargets={[]} saveError={null} onSave={() => {}} onClose={onClose} />,
+    )
+    const dialog = document.querySelector('dialog')!
+    expect(fireEvent(dialog, new Event('cancel', { cancelable: true }))).toBe(true)
+    dialog.close()
+    fireEvent(dialog, new Event('close'))
+    expect(onClose).toHaveBeenCalled()
+  })
+
   it('every submitted payload passes the server schema (scale included)', () => {
     unitRef.current = 'oz'
     const onSave = vi.fn()
@@ -222,17 +256,21 @@ describe('TargetsDialog', () => {
 
   it('freezes the opening unit: a unit change while open does not corrupt untouched rows', () => {
     const onSave = vi.fn()
-    render(
-      <TargetsDialog
-        meals={noMeals}
-        dailyTargets={[dailyTarget({ metric: 'calorie_density', mode: 'min', targetMin: 4.5 })]}
-        mealTargets={[]}
-        saveError={null}
-        onSave={onSave}
-        onClose={() => {}}
-      />,
-    )
+    const props = {
+      meals: noMeals,
+      dailyTargets: [dailyTarget({ metric: 'calorie_density', mode: 'min', targetMin: 4.5 })],
+      mealTargets: [],
+      saveError: null,
+      onSave,
+      onClose: () => {},
+    }
+    const view = render(<TargetsDialog {...props} />)
     unitRef.current = 'oz' // unit toggle WHILE the modal is open
+    // Explicit rerender so the component demonstrably sees the new live unit
+    // and must IGNORE it: the frozen density label proves the render path
+    // reads the snapshot, not useWeightUnit's current value.
+    view.rerender(<TargetsDialog {...props} />)
+    expect(screen.getByLabelText('Calorie density (kcal/g) mode')).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Protein (g) mode'), { target: { value: 'min' } })
     fireEvent.change(screen.getByLabelText('Protein (g) minimum'), { target: { value: '100' } })
     save()
