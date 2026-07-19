@@ -273,6 +273,40 @@ export const saveTargetsRequestSchema = z
   })
 export type SaveTargetsRequest = z.infer<typeof saveTargetsRequestSchema>
 
+// Account-level default daily targets (Settings). Same row shape as a plan's
+// daily target - the copy at plan create is field-for-field - and the same
+// full-replace save contract. Off = absent, here enforced by the DB too
+// (the defaults table never allowed a stored off row, even in the old build).
+export const targetDefaultSchema = foodPlanDailyTargetSchema
+export type TargetDefault = z.infer<typeof targetDefaultSchema>
+
+export const targetDefaultsResponseSchema = z.object({
+  defaults: targetDefaultSchema.array(),
+})
+export type TargetDefaultsResponse = z.infer<typeof targetDefaultsResponseSchema>
+
+export const saveTargetDefaultsRequestSchema = z
+  .object({
+    defaults: z.array(dailyTargetInputSchema).max(DAILY_TARGET_METRICS.length),
+  })
+  .strict()
+  .superRefine((val, ctx) => {
+    const metrics = new Set<string>()
+    for (const t of val.defaults) {
+      if (metrics.has(t.metric)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['defaults'],
+          message: `duplicate metric: ${t.metric}`,
+        })
+      }
+      metrics.add(t.metric)
+    }
+  })
+export type SaveTargetDefaultsRequest = z.infer<
+  typeof saveTargetDefaultsRequestSchema
+>
+
 // The whole plan graph in one batched read (design 5.2). Every structural
 // mutation returns the fresh document so the editor stays a pure projection of
 // this single cache entry (no fine-grained optimistic fan-out; design 5.5).
