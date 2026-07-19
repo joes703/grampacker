@@ -169,6 +169,215 @@ describe('gear csv with cost and purchaseDate', () => {
     expect(parsed[1]).toMatchObject({ cost: null, purchaseDate: null })
   })
 
+  it('imports a plain US-dollar price column (the reported bug)', () => {
+    // The whole reported failure: a Lighterpack-shaped export whose price
+    // cells are written as "$27.29". parseFloat returns NaN on the leading
+    // "$", so every priced row imported with a blank cost - and a blank
+    // cost is indistinguishable from "the user never entered one", which
+    // is why it looked like the column simply did not import.
+    const csv = [
+      'Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable',
+      'Tent,Shelter,,1,1200,gram,,$27.29,,',
+      'Stove,Kitchen,,1,340,gram,,$8.50,,',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBe(27.29)
+    expect(parsed[1]?.cost).toBe(8.5)
+  })
+
+  it('parses costs carrying currency symbols and thousands separators', () => {
+    // Real-world exports (and hand-edited sheets) write money as money.
+    // parseFloat('$12.99') is NaN, so without normalization every priced
+    // row imported with a blank cost - silently, since a null cost is
+    // indistinguishable from "user left it empty".
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'A,Shelter,100,$12.99',
+      'B,Shelter,100,"$1,299.00"',
+      'C,Shelter,100,USD 42.50',
+      'D,Shelter,100,89.99 EUR',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBe(12.99)
+    expect(parsed[1]?.cost).toBe(1299)
+    expect(parsed[2]?.cost).toBe(42.5)
+    expect(parsed[3]?.cost).toBe(89.99)
+  })
+
+  it('drops ambiguous comma-decimal costs to null rather than truncating', () => {
+    // parseFloat('12,99') returns 12 - a silently WRONG price, not a
+    // rejection. A bare comma group that is not thousands-shaped is
+    // ambiguous (is 12,99 twelve-ninety-nine or one-two-nine-nine?), so
+    // it drops to null the way an unparseable date does.
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'A,Shelter,100,"12,99"',
+      'B,Shelter,100,"1,29"',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBeNull()
+    expect(parsed[1]?.cost).toBeNull()
+  })
+
+  it('never turns an accounting-negative into a positive cost', () => {
+    // "($5)" is a negative in accounting notation. Stripping the parens
+    // as decoration would flip the sign silently, which is worse than
+    // the plain "-5" case (already null) because nothing looks wrong.
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'A,Shelter,100,($5)',
+      'B,Shelter,100,-$5',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBeNull()
+    expect(parsed[1]?.cost).toBeNull()
+  })
+
+  it('never joins digits separated by interior junk', () => {
+    // Decoration is stripped from the ENDS only. Stripping it anywhere
+    // would collapse "1e3" to 13 and "12abc34" to 1234 - plausible-
+    // looking numbers that were never in the file.
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'A,Shelter,100,1e3',
+      'B,Shelter,100,12abc34',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBeNull()
+    expect(parsed[1]?.cost).toBeNull()
+  })
+
+  it('rejects non-ASCII digits and minus lookalikes instead of stripping them', () => {
+    // JS \d is ASCII-only, so a naive keep-set treats U+2212 MINUS and
+    // Arabic-Indic digits as currency decoration and strips them: the
+    // sign falls off "-$5" and "١٢.99" collapses to ".99".
+    // Both yield a confident, wrong, positive price (Codex MAJOR).
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'A,Shelter,100,−$5',
+      'B,Shelter,100,5−',
+      'C,Shelter,100,١٢.99',
+      'D,Shelter,100,１２',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBeNull()
+    expect(parsed[1]?.cost).toBeNull()
+    expect(parsed[2]?.cost).toBeNull()
+    expect(parsed[3]?.cost).toBeNull()
+  })
+
+  it('rejects every minus-sign lookalike, not just U+2212', () => {
+    // Enumerating minus characters is whack-a-mole: U+207B, U+208B and
+    // U+2796 are all recognizable minus signs, and "minus" is a word. The
+    // parser strips only RECOGNIZED currency decoration, so each of these
+    // survives to fail the strict gate instead of having its sign quietly
+    // removed (Codex round-2 MAJOR).
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'A,Shelter,100,⁻$5',
+      'B,Shelter,100,₋$5',
+      'C,Shelter,100,➖$5',
+      'D,Shelter,100,minus $5',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBeNull()
+    expect(parsed[1]?.cost).toBeNull()
+    expect(parsed[2]?.cost).toBeNull()
+    expect(parsed[3]?.cost).toBeNull()
+  })
+
+  it('rejects a value just over the cap that would round down onto it', () => {
+    // The cap has to be checked BEFORE rounding: 99999999.9901 rounds to
+    // exactly the cap and would import as it - the same invented-price
+    // saturation, just at a smaller scale (Codex round-2 MAJOR).
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'A,Shelter,100,99999999.9901',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBeNull()
+  })
+
+  it('rejects over-cap costs rather than saturating them to the cap', () => {
+    // Saturating invents a price the file never contained, and it looks
+    // legitimate in the UI. Null keeps the row importable (the cap exists
+    // so one bad cell cannot 400 the whole atomic import) without
+    // asserting a number nobody wrote (Codex MAJOR).
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'A,Shelter,100,"$900,000,000"',
+      'B,Shelter,100,99999999999.99',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBeNull()
+    expect(parsed[1]?.cost).toBeNull()
+    // The row itself still imports; only the unusable cost drops.
+    expect(parsed[0]?.name).toBe('A')
+  })
+
+  it('rejects other locale groupings rather than guessing their meaning', () => {
+    // European 1.299,00 and Indian 1,00,000 are unambiguous only if you
+    // already know the locale, which a bare CSV does not tell us.
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'A,Shelter,100,"1.299,00"',
+      'B,Shelter,100,"1,00,000"',
+      'C,Shelter,100,"1,2345"',
+      'D,Shelter,100,","',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBeNull()
+    expect(parsed[1]?.cost).toBeNull()
+    expect(parsed[2]?.cost).toBeNull()
+    expect(parsed[3]?.cost).toBeNull()
+  })
+
+  it('accepts a trailing-decimal cost like "5."', () => {
+    // parseFloat took this before the strict gate; rejecting it now would
+    // be a fresh regression, same reasoning as ".5".
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'A,Shelter,100,5.',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBe(5)
+  })
+
+  it('accepts a bare-decimal cost like ".5"', () => {
+    // parseFloat took this before the strict gate went in; keep it, so
+    // the hardening does not reject prices that used to import fine.
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'A,Shelter,100,.5',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBe(0.5)
+  })
+
+  it('rejects trailing-garbage costs instead of silently truncating', () => {
+    // parseFloat('12.99.5') returns 12.99. Strict validation after
+    // normalization means a malformed cell is dropped, not guessed at.
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'A,Shelter,100,12.99.5',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBeNull()
+  })
+
   it('drops regex-valid but impossible calendar dates to null (2026-02-30)', () => {
     // The import DTO's isoDateSchema rejects impossible dates, and one bad
     // date would 400 the entire atomic import - so the parser must drop
@@ -186,10 +395,28 @@ describe('gear csv with cost and purchaseDate', () => {
     expect(parsed[2]?.purchaseDate).toBe('2024-02-29')
   })
 
-  it('caps cost at 99,999,999.99 to keep the row under the server cost cap', () => {
+  it('keeps an over-cap row importable, with the cost dropped', () => {
+    // Superseded the old "saturate to 99,999,999.99" behavior: clamping
+    // satisfied the server cap but invented a price, indistinguishable in
+    // the UI from one the user actually typed. The requirement it was
+    // serving - one unusable cell must not 400 the whole atomic import -
+    // is met by null just as well. See the over-cap test above.
     const csv = [
       'Item Name,Category,weight,cost',
       'Way too expensive widget,Shelter,100,99999999999.99',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBeNull()
+    expect(parsed[0]?.name).toBe('Way too expensive widget')
+  })
+
+  it('accepts a cost sitting exactly on the cap', () => {
+    // Boundary: the cap itself is valid (costSchema's max is inclusive),
+    // so the over-cap rejection must be > and not >=.
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'A,Shelter,100,99999999.99',
     ].join('\r\n')
     const parsed = parseGearCsv(csv)
     if (typeof parsed === 'string') throw new Error(parsed)
