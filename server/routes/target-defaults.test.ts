@@ -39,7 +39,17 @@ describe('/api/target-defaults', () => {
       ],
     })
     expect(res.status).toBe(200)
-    let body = targetDefaultsResponseSchema.parse(await res.json())
+    const raw = (await res.json()) as { defaults: Record<string, unknown>[] }
+    // Exact keys asserted on the RAW wire body: zod objects are non-strict,
+    // so parse() strips unknown keys and a widened select (userId...) would
+    // cross the wire yet vanish before a parsed-row assertion ran.
+    expect(Object.keys(raw).toSorted()).toEqual(['defaults'])
+    for (const row of raw.defaults) {
+      expect(Object.keys(row).toSorted()).toEqual([
+        'id', 'metric', 'mode', 'targetMax', 'targetMin',
+      ])
+    }
+    let body = targetDefaultsResponseSchema.parse(raw)
     // Sorted by metric; server-minted ids.
     expect(body.defaults.map((d) => d.metric)).toEqual(['calories', 'protein'])
     expect(body.defaults[0]).toMatchObject({

@@ -260,7 +260,7 @@ export const saveTargetsRequestSchema = z
     }
     const pairs = new Set<string>()
     for (const t of val.meals) {
-      const key = `${t.mealId} ${t.metric}`
+      const key = `${t.mealId}\u0000${t.metric}`
       if (pairs.has(key)) {
         ctx.addIssue({
           code: 'custom',

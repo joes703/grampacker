@@ -1237,7 +1237,25 @@ describe('PUT /api/food-plans/:id/targets', () => {
       ],
     })
     expect(res.status).toBe(200)
-    const doc = foodPlanDocumentSchema.parse(await res.json())
+    const raw = (await res.json()) as {
+      dailyTargets: Record<string, unknown>[]
+      mealTargets: Record<string, unknown>[]
+    }
+    // Exact row keys asserted on the RAW wire body: zod objects are
+    // non-strict, so parse() strips unknown keys and a widened target select
+    // (userId, foodPlanId...) would cross the wire yet vanish before any
+    // parsed-row assertion ran (the slice-5 share-test discipline).
+    for (const row of raw.dailyTargets) {
+      expect(Object.keys(row).toSorted()).toEqual([
+        'id', 'metric', 'mode', 'targetMax', 'targetMin',
+      ])
+    }
+    for (const row of raw.mealTargets) {
+      expect(Object.keys(row).toSorted()).toEqual([
+        'id', 'mealId', 'metric', 'mode', 'targetMax', 'targetMin',
+      ])
+    }
+    const doc = foodPlanDocumentSchema.parse(raw)
     // Sorted by metric; server-minted ids present.
     expect(doc.dailyTargets.map((t) => t.metric)).toEqual(['calories', 'protein'])
     expect(doc.dailyTargets[0]).toMatchObject({

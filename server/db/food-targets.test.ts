@@ -278,7 +278,24 @@ describe('plan document carries targets', () => {
 
     const res = await apiRequest(cookie, 'GET', `/api/food-plans/${doc.id}`)
     expect(res.status).toBe(200)
-    const body = foodPlanDocumentSchema.parse(await res.json())
+    const raw = (await res.json()) as {
+      dailyTargets: Record<string, unknown>[]
+      mealTargets: Record<string, unknown>[]
+    }
+    // Row keys asserted on the RAW wire body first: zod parse() strips
+    // unknown keys, so a widened select (userId, foodPlanId...) would leak
+    // on the real wire yet vanish before the toEqual below ran.
+    for (const row of raw.dailyTargets) {
+      expect(Object.keys(row).toSorted()).toEqual([
+        'id', 'metric', 'mode', 'targetMax', 'targetMin',
+      ])
+    }
+    for (const row of raw.mealTargets) {
+      expect(Object.keys(row).toSorted()).toEqual([
+        'id', 'mealId', 'metric', 'mode', 'targetMax', 'targetMin',
+      ])
+    }
+    const body = foodPlanDocumentSchema.parse(raw)
     expect(body.dailyTargets).toEqual([
       { id: 'dt-doc-1', metric: 'calories', mode: 'min', targetMin: 2500, targetMax: null },
       { id: 'dt-doc-2', metric: 'protein', mode: 'range', targetMin: 100, targetMax: 150 },

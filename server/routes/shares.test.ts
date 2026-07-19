@@ -118,6 +118,22 @@ async function attachPlan(
   expect(res.status).toBe(200)
 }
 
+// Saves one daily and one meal target on the plan (the meal id comes from the
+// plan's seeded meals), so the share leak-guard runs against a plan that has
+// target rows to leak.
+async function saveTargets(cookie: string, planId: string): Promise<void> {
+  const docRes = await apiRequest(cookie, 'GET', `/api/food-plans/${planId}`)
+  expect(docRes.status).toBe(200)
+  const doc = (await docRes.json()) as { meals: { id: string }[] }
+  const mealId = doc.meals[0]?.id
+  expect(mealId).toBeDefined()
+  const res = await apiRequest(cookie, 'PUT', `/api/food-plans/${planId}/targets`, {
+    daily: [{ metric: 'calories', mode: 'range', targetMin: 2500, targetMax: 3500 }],
+    meals: [{ mealId, metric: 'fat_pct', mode: 'max', targetMin: null, targetMax: 35 }],
+  })
+  expect(res.status).toBe(200)
+}
+
 // Every key that must never appear ANYWHERE in the public response, at
 // any nesting depth. The runtime mirror of the allowlist comment in
 // shared/lists.ts; a widened repo select or a spread slipping into the
@@ -149,6 +165,18 @@ const FORBIDDEN_KEYS = new Set([
   'servingWeightGrams',
   'servingsPerPackage',
   'caloriesPerServing',
+  // Targets (slice 7): design section 14.6 - no target data crosses the
+  // share boundary. The plan in the wire test below has saved daily AND meal
+  // targets, so a conditional leak (one that only shows for targeted plans)
+  // cannot hide behind a target-free fixture.
+  'dailyTargets',
+  'mealTargets',
+  'targetMin',
+  'targetMax',
+  'metric',
+  'mode',
+  'mealId',
+  'dayTypeOverride',
 ])
 
 function collectKeys(value: unknown, into: Set<string>): Set<string> {
@@ -379,6 +407,7 @@ describe('GET /api/shares/:slug food weight', () => {
     await addExtraEntry(cookie, planId, oats, 'servings', 2)
     await addExtraEntry(cookie, planId, gorp, 'weight', 140)
     await addExtraEntry(cookie, planId, ramen, 'packages', 2)
+    await saveTargets(cookie, planId)
     await attachPlan(cookie, list.id, planId)
     await setShared(cookie, list.id, true)
 
