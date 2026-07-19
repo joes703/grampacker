@@ -7,6 +7,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 // useNavigate); stub them so this test covers the settings shell, not their
 // plumbing (each has its own test file).
 vi.mock('./PasskeySection', () => ({ default: () => <div>passkey-section</div> }))
+vi.mock('./DefaultTargetsSection', () => ({ default: () => <div>default-targets-section</div> }))
 vi.mock('./DownloadAllData', () => ({ default: () => <div>download-all-data</div> }))
 vi.mock('./DeleteAccountSection', () => ({ default: () => <div>delete-account-section</div> }))
 
@@ -21,6 +22,10 @@ describe('SettingsPage', () => {
 
     // Passkeys (self-headed stub) and Download all data.
     expect(screen.getByText('passkey-section')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Default nutrition targets', level: 2 }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('default-targets-section')).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: 'Download all data', level: 2 }),
     ).toBeInTheDocument()
