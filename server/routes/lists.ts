@@ -16,6 +16,7 @@ import {
   type ListResponse,
 } from '../../shared/lists'
 import { requireSession, type SessionVars } from '../middleware/session'
+import { dollarsToCents } from './money'
 import type { GearItemRow } from '../repos/gear-items'
 import type { ListItemWithGear, ListItemWriteResult } from '../repos/list-items'
 import type { ListRow } from '../repos/lists'
@@ -195,7 +196,15 @@ listRoutes.post('/import', async (c) => {
   const raw = await c.req.json().catch(() => null)
   const parsed = importListRequestSchema.safeParse(raw)
   if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
-  const result = await c.get('repos').lists.importFromCsv(parsed.data)
+  // cost arrives in dollars on the wire and is stored as integer cents.
+  // Converted here, at the route boundary, exactly as the gear import does.
+  const result = await c.get('repos').lists.importFromCsv({
+    ...parsed.data,
+    gear: parsed.data.gear.map(({ cost, ...g }) => ({
+      ...g,
+      costCents: dollarsToCents(cost),
+    })),
+  })
   if (!result.ok) {
     if (result.reason === 'invalid_category') {
       return c.json({ error: 'Invalid category' }, 400)

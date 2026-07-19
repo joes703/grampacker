@@ -1,5 +1,6 @@
 import type { Category, ListItemWithGear } from '../types'
 import { toCsv, parseCsv, MAX_CSV_ROWS } from './core'
+import { parseCostFromColumn } from './money'
 import { toGrams } from './units'
 import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH } from '../caps'
 
@@ -16,6 +17,10 @@ export type ListCsvRow = {
   quantity: number
   isWorn: boolean
   isConsumable: boolean
+  // Cost of the gear item this row will create. Only ever applied to NEWLY
+  // created gear - a row matching an item already in the library leaves that
+  // item's stored cost untouched (see planListImport).
+  cost: number | null
 }
 
 function toBool(v: string | undefined): boolean {
@@ -50,6 +55,15 @@ export function parseListCsv(text: string): ListCsvRow[] | string {
   const qtyKey    = keys.find((k) => k === 'quantity' || k === 'qty')
   const wornKey   = keys.find((k) => k === 'worn' || k === 'is_worn')
   const consumKey = keys.find((k) => k === 'consumable' || k === 'is_consumable')
+  // Same two-pass precedence as the gear importer: our own `cost` wins over
+  // Lighterpack's `price`, and column order in the source file is irrelevant.
+  // WHICH column won also decides how a 0 reads - 0 in `cost` is genuinely
+  // free, 0 in `price` is unset (see parseCostFromColumn). That matters most
+  // here: list exports downloaded before this change hardcoded price=0 on
+  // EVERY row, so reading those as real would import a whole list as free.
+  const ownCostKey = keys.find((k) => k === 'cost')
+  const costKey   = ownCostKey ?? keys.find((k) => k === 'price')
+  const costKind  = ownCostKey ? 'cost' as const : 'price' as const
 
   if (!nameKey)   return 'Missing required column: "name" or "Item Name"'
   if (!weightKey) return 'Missing required column: "weight_grams" or "weight"'
@@ -73,6 +87,7 @@ export function parseListCsv(text: string): ListCsvRow[] | string {
         quantity:     isNaN(rawQty) || rawQty < 1 ? 1 : Math.min(rawQty, MAX_LIST_ITEM_QUANTITY),
         isWorn:       bothSet ? false : isWorn,
         isConsumable: bothSet ? false : isConsumable,
+        cost:         costKey ? parseCostFromColumn(row[costKey], costKind) : null,
       }
     })
     .filter((r) => r.name.length > 0)
@@ -86,16 +101,29 @@ export function nameFromCsvFilename(filename: string): string {
   return base || 'Imported list'
 }
 
-// Lighterpack-compatible 10-column header (Item Name, Category, desc, qty,
-// weight, unit, url, price, worn, consumable) so users can re-import a
+// Lighterpack-shaped 10-column header (Item Name, Category, desc, qty,
+// weight, unit, url, cost, worn, consumable) so users can re-import a
 // grampacker list export into Lighterpack and so users coming from
 // Lighterpack see a familiar shape. is_packed/is_ready are excluded
 // because Lighterpack has no equivalent and they are per-user runtime
-// checklist state. url and price are emitted as Lighterpack defaults
-// ('' and 0) since grampacker doesn't store them. Boolean values use
-// Lighterpack's "Worn" / "Consumable" literals (capitalized when true,
-// empty when false). The import-side toBool recognizes both literals
-// (case-insensitive) for round-trip parity.
+// checklist state. url stays empty since grampacker doesn't store it.
+// Boolean values use Lighterpack's "Worn" / "Consumable" literals
+// (capitalized when true, empty when false). The import-side toBool
+// recognizes both literals (case-insensitive) for round-trip parity.
+//
+// COLUMN ORDER 0-5 IS A COMPATIBILITY CONTRACT, not cosmetic. Lighterpack's
+// importer is POSITIONAL and reads exactly row[0..5]:
+//   name: row[0], category: row[1], description: row[2],
+//   qty: row[3], weight: row[4], unit: row[5]
+// (client/components/import-csv.vue upstream). Reordering these six does not
+// fail an import - it succeeds with the wrong fields. list.test.ts pins them
+// by position.
+//
+// Column 7 carries the REAL cost of the underlying gear item. It used to be
+// `price` hardcoded to 0 - a fabricated value that made every exported list
+// look like it cost nothing. A list item has no price of its own; the gear
+// item it points at does, which is the value emitted here. Blank for null,
+// never 0: "unknown" must not render as "free".
 export function listItemsToCsv(items: ListItemWithGear[], categories: Category[]): string {
   const catMap = new Map(categories.map((c) => [c.id, c.name]))
   const rows = items.map((item) => ({
@@ -106,7 +134,7 @@ export function listItemsToCsv(items: ListItemWithGear[], categories: Category[]
     weight: item.gearItem.weightGrams,
     unit: 'gram',
     url: '',
-    price: 0,
+    cost: item.gearItem.cost ?? '',
     worn: item.isWorn ? 'Worn' : '',
     consumable: item.isConsumable ? 'Consumable' : '',
   }))

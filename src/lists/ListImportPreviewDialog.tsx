@@ -17,6 +17,9 @@ export default function ListImportPreviewDialog({ rows, saving, onConfirm, onClo
   const wornCount = rows.filter((r) => r.isWorn).length
   const consumCount = rows.filter((r) => r.isConsumable).length
   const longDescriptionCount = rows.filter((r) => (r.description?.length ?? 0) > MAX_DESC_LENGTH).length
+  // Only surfaced when the file actually carries prices - a Lighterpack
+  // export without them should not raise a question the user doesn't have.
+  const pricedCount = rows.filter((r) => r.cost !== null).length
 
   return (
     <Modal
@@ -39,6 +42,11 @@ export default function ListImportPreviewDialog({ rows, saving, onConfirm, onClo
           {longDescriptionCount > 0 && (
             <p className="mt-1 text-xs text-amber-700">
               {longDescriptionCount} description{longDescriptionCount === 1 ? '' : 's'} longer than {MAX_DESC_LENGTH.toLocaleString()} characters will be shortened on import.
+            </p>
+          )}
+          {pricedCount > 0 && (
+            <p className="mt-1 text-xs text-gray-500">
+              Prices apply only to newly added gear. Items already in your library keep the price you already set.
             </p>
           )}
         </div>

@@ -13,6 +13,7 @@ import {
   type UpdateGearItemRequest,
 } from '../../shared/gear'
 import { requireSession, type SessionVars } from '../middleware/session'
+import { dollarsToCents } from './money'
 import type {
   CreateGearItemInput,
   GearItemRow,
@@ -41,9 +42,6 @@ gearItemRoutes.use('*', requireSession)
 
 // Dollars <-> integer cents at the DTO edge; the epsilon guard in the
 // schema guarantees the rounding is exact.
-function dollarsToCents(cost: number | null): number | null {
-  return cost === null ? null : Math.round(cost * 100)
-}
 
 function toGearItemResponse(row: GearItemRow): GearItemResponse {
   return {

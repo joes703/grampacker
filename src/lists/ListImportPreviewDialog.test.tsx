@@ -19,6 +19,7 @@ function row(over: Partial<ListCsvRow> = {}): ListCsvRow {
     weightGrams: 1200,
     quantity: 1,
     categoryName: 'Shelter',
+    cost: null,
     isWorn: false,
     isConsumable: false,
     ...over,
@@ -39,6 +40,50 @@ describe('ListImportPreviewDialog', () => {
     expect(
       screen.getByText('1 description longer than 2,000 characters will be shortened on import.'),
     ).toBeInTheDocument()
+  })
+
+  const PRICE_NOTICE =
+    'Prices apply only to newly added gear. Items already in your library keep the price you already set.'
+
+  it('explains that prices only apply to newly added gear', () => {
+    // The rule is invisible otherwise: a matched row silently keeps its
+    // stored price and ignores the file's.
+    render(
+      <ListImportPreviewDialog
+        rows={[row({ name: 'Tent', cost: 27.29 })]}
+        saving={false}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(PRICE_NOTICE)).toBeInTheDocument()
+  })
+
+  it('shows the price notice for a genuinely free item too', () => {
+    // cost 0 is a real price, so the notice applies. A truthiness check
+    // instead of a null check would drop it here.
+    render(
+      <ListImportPreviewDialog
+        rows={[row({ name: 'Gifted mug', cost: 0 })]}
+        saving={false}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(PRICE_NOTICE)).toBeInTheDocument()
+  })
+
+  it('omits the price notice when the file carries no prices', () => {
+    // Don't raise a question the user doesn't have.
+    render(
+      <ListImportPreviewDialog
+        rows={[row({ name: 'Tent', cost: null })]}
+        saving={false}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.queryByText(PRICE_NOTICE)).not.toBeInTheDocument()
   })
 
   it('summarizes worn/consumable counts and flags the rows', () => {

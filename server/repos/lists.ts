@@ -94,6 +94,10 @@ export type ImportListGearInput = {
     | { kind: 'existing'; id: string }
     | { kind: 'new'; tempId: string }
     | null
+  // Integer cents, converted at the route boundary (the wire DTO speaks
+  // dollars). Only NEW gear appears in this array, so this can never
+  // overwrite the cost of gear already in the library.
+  costCents: number | null
 }
 
 export type ImportListItemInput = {
@@ -727,8 +731,9 @@ export function createListsRepo(db: Db, userId: string) {
             name: g.name,
             description: g.description,
             weightGrams: g.weightGrams,
-            // The list CSV format carries no cost/purchaseDate; status is
-            // app-internal only (same contract as the gear import).
+            costCents: g.costCents,
+            // The list CSV format carries no purchaseDate (no column for it);
+            // status is app-internal only (same contract as the gear import).
             status: 'active',
             sortOrder: sql`coalesce((select max(${gearItems.sortOrder}) + 1 from ${gearItems} where ${gearItems.userId} = ${userId}), 0)`,
             createdAt: now,

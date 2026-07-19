@@ -36,6 +36,8 @@ async function createGear(
     description?: string
     weightGrams?: number
     categoryId?: string
+    cost?: number
+    purchaseDate?: string
   },
 ): Promise<string> {
   const res = await apiRequest(cookie, 'POST', '/api/gear-items', gear)
@@ -204,10 +206,16 @@ describe('GET /api/shares/:slug', () => {
     await createCategory(cookie, 'Unreferenced')
 
     const tarpId = await createGear(cookie, {
+      // cost + purchaseDate are POPULATED on purpose: they are private
+      // inventory metadata, and a fixture that leaves them null cannot tell
+      // "the share correctly omits them" apart from "there was nothing to
+      // omit". FORBIDDEN_KEYS below asserts neither key reaches the wire.
       name: 'Tarp',
       description: 'DCF 8x10',
       weightGrams: 250,
       categoryId: zetaId,
+      cost: 289.99,
+      purchaseDate: '2024-04-15',
     })
     const potId = await createGear(cookie, {
       name: 'Pot',

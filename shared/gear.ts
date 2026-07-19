@@ -25,7 +25,7 @@ const idSchema = z.string().min(1).max(64)
 
 // Dollars with at most 2 decimal places (stored as integer cents; REAL is
 // the wrong tool for money and numeric(10,2) does not exist in SQLite).
-const costSchema = z
+export const costSchema = z
   .number()
   .min(0)
   .max(99_999_999.99)
