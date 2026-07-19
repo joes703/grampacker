@@ -891,6 +891,61 @@ describe('caps and slug integrity', () => {
     expect(gear.find((g) => g.name === 'Stakes')?.categoryId).toBe(shelter.id)
   })
 
+  it('import: gear cost lands as cents, keeping zero distinct from unknown', async () => {
+    // The zero/null distinction has to survive the whole DTO -> route ->
+    // D1 path, not just the parser. A free item is 0 cents; an unpriced one
+    // is NULL. Collapsing either direction is invisible in the UI.
+    const { cookie } = await signUpVerifiedUser('lists-import-cost@example.com', 'C')
+    const res = await apiRequest(cookie, 'POST', '/api/lists/import', {
+      name: 'Priced',
+      categories: [],
+      gear: [
+        { tempId: 'g-priced', name: 'Tent', cost: 27.29 },
+        { tempId: 'g-free', name: 'Gifted mug', cost: 0 },
+        { tempId: 'g-null', name: 'Explicit null', cost: null },
+        { tempId: 'g-omitted', name: 'Omitted entirely' },
+      ],
+      items: [
+        { gear: { kind: 'new', tempId: 'g-priced' }, sortOrder: 0 },
+        { gear: { kind: 'new', tempId: 'g-free' }, sortOrder: 1 },
+        { gear: { kind: 'new', tempId: 'g-null' }, sortOrder: 2 },
+        { gear: { kind: 'new', tempId: 'g-omitted' }, sortOrder: 3 },
+      ],
+    })
+    expect(res.status).toBe(201)
+
+    const gear = (await (await apiRequest(cookie, 'GET', '/api/gear-items')).json()) as {
+      name: string
+      cost: number | null
+    }[]
+    const costOf = (name: string) => gear.find((g) => g.name === name)?.cost
+    expect(costOf('Tent')).toBe(27.29)
+    // Free, NOT unknown.
+    expect(costOf('Gifted mug')).toBe(0)
+    // Unknown, NOT free - both the explicit null and the omitted field.
+    expect(costOf('Explicit null')).toBeNull()
+    expect(costOf('Omitted entirely')).toBeNull()
+  })
+
+  it('import: invalid gear costs are rejected 400 rather than coerced', async () => {
+    // costSchema is shared with the gear import; a list import must not be
+    // a side door around it.
+    const { cookie } = await signUpVerifiedUser('lists-import-badcost@example.com', 'B')
+    const bad = [-1, 100_000_000, 12.345]
+    for (const cost of bad) {
+      const res = await apiRequest(cookie, 'POST', '/api/lists/import', {
+        name: 'Bad',
+        categories: [],
+        gear: [{ tempId: 'g0', name: 'X', cost }],
+        items: [{ gear: { kind: 'new', tempId: 'g0' }, sortOrder: 0 }],
+      })
+      expect(res.status, `cost=${cost}`).toBe(400)
+    }
+    // ...and nothing was written by any of them.
+    const lists = (await (await apiRequest(cookie, 'GET', '/api/lists')).json()) as unknown[]
+    expect(lists).toHaveLength(0)
+  })
+
   it('import: foreign category or gear refs are 400 with zero writes', async () => {
     const a = await signUpVerifiedUser('lists-import-a@example.com', 'A')
     const b = await signUpVerifiedUser('lists-import-b@example.com', 'B')

@@ -228,8 +228,50 @@ function makeListRow(over: Partial<ListCsvRow> & { name: string }): ListCsvRow {
     quantity: over.quantity ?? 1,
     isWorn: over.isWorn ?? false,
     isConsumable: over.isConsumable ?? false,
+    cost: over.cost ?? null,
   }
 }
+
+describe('planListImport cost', () => {
+  it('carries cost onto NEW gear, against an empty inventory', () => {
+    // Against an empty library every row is new, so this proves the CSV
+    // cost actually propagates. Planning against a matching inventory
+    // could pass for the wrong reason - the match preserves the stored
+    // cost and never exercises the new-gear path at all.
+    const rows = [
+      makeListRow({ name: 'Tent', weightGrams: 1200, cost: 27.29 }),
+      makeListRow({ name: 'Gifted mug', weightGrams: 50, cost: 0 }),
+      makeListRow({ name: 'Old rope', weightGrams: 60, cost: null }),
+    ]
+    const plan = planListImport(rows, [], [], makeGenId())
+    expect(plan.newGear.map((g) => g.cost)).toEqual([27.29, 0, null])
+  })
+
+  it('never applies a CSV cost to gear already in the library', () => {
+    // The safety boundary. A list import that rewrote stored prices would
+    // silently damage inventory the user curated by hand - and a matched
+    // row is exactly where that would happen. The matched row must resolve
+    // to an existing-id ref carrying no cost at all.
+    const existingGear = [
+      makeGearItem({ id: 'g-tarp', name: 'Tarp', weightGrams: 240, categoryId: null, cost: 89.99 }),
+    ]
+    const rows = [
+      // Same identity as the stored item, but a DIFFERENT price in the file.
+      makeListRow({ name: 'Tarp', weightGrams: 240, cost: 5 }),
+      makeListRow({ name: 'Brand new thing', weightGrams: 300, cost: 12.5 }),
+    ]
+    const plan = planListImport(rows, [], existingGear, makeGenId())
+    // The matched row produced no new gear, so no cost can reach the store.
+    expect(plan.newGear).toHaveLength(1)
+    expect(plan.newGear[0]?.name).toBe('Brand new thing')
+    expect(plan.newGear[0]?.cost).toBe(12.5)
+    expect(plan.items[0]?.gear).toEqual({ kind: 'existing', id: 'g-tarp' })
+    // Nothing in the plan references the stored item's cost - the only
+    // channel by which an import could overwrite it.
+    expect(JSON.stringify(plan)).not.toContain('89.99')
+    expect(plan.newGear.some((g) => g.cost === 5)).toBe(false)
+  })
+})
 
 describe('planListImport', () => {
   it('reuses existing library gear as a ref instead of skipping the row', () => {
@@ -327,6 +369,7 @@ describe('assertListImportWithinCaps', () => {
       newCategories: [],
       newGear: Array.from({ length: newGearCount }, (_, i) => ({
         tempId: `t-${i}`, name: `G${i}`, description: null, weightGrams: 0, category: null,
+        cost: null,
       })),
       items: Array.from({ length: itemCount }, (_, i) => ({
         gear: { kind: 'new', tempId: `t-${i}` } as const,

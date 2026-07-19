@@ -216,6 +216,35 @@ describe('gear csv with cost and purchaseDate', () => {
     })
   })
 
+  it('treats a price-only ZERO as unknown, but keeps a nonzero price', () => {
+    // Lighterpack defaults an unpriced item to 0, and grampacker's own
+    // exports hardcoded price=0 before the columns were collapsed. Reading
+    // those as "free" would fabricate inventory data. Deliberately a
+    // price-ONLY fixture: with a cost column present, cost wins and this
+    // branch never runs - which is how it went untested at first.
+    const csv = [
+      'Item Name,Category,weight,price',
+      'Legacy row,Shelter,100,0',
+      'Really priced,Shelter,100,42.50',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBeNull()
+    expect(parsed[1]?.cost).toBe(42.5)
+  })
+
+  it('keeps a zero in our OWN cost column as genuinely free', () => {
+    // The other half of the rule: `cost` is grampacker's column, so 0 there
+    // is a real price the user set, not a default.
+    const csv = [
+      'Item Name,Category,weight,cost',
+      'Gifted mug,Kitchen,50,0',
+    ].join('\r\n')
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBe(0)
+  })
+
   it('falls back to the "price" column on import (Lighterpack compatibility)', () => {
     const csv = [
       'Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable',

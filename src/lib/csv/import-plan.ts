@@ -192,6 +192,10 @@ export type PlannedListGear = {
   description: string | null
   weightGrams: number
   category: CategoryRef | null
+  // Applied only to gear this import CREATES. A row matching existing
+  // library gear resolves to an existing-id reference and never reaches
+  // here, so an import can never overwrite a stored price.
+  cost: number | null
 }
 
 export type PlannedListItem = {
@@ -263,6 +267,10 @@ export function planListImport(
         description: row.description ? row.description.slice(0, MAX_DESC_LENGTH) : null,
         weightGrams: row.weightGrams,
         category: ref,
+        // Only the new-gear branch carries cost. The existing branch above
+        // deliberately drops row.cost on the floor: a list import must never
+        // rewrite the price of gear already in the library.
+        cost: row.cost,
       })
       gear = { kind: 'new', tempId }
     }

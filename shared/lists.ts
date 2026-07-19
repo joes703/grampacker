@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { gearItemResponseSchema, importCategoryRefSchema } from './gear'
+import { costSchema, gearItemResponseSchema, importCategoryRefSchema } from './gear'
 
 // DTO contracts for /api/lists, /api/lists/:id/items and the public
 // /api/shares/:slug read. Same rules as shared/gear.ts: response schemas
@@ -324,9 +324,14 @@ export const importListGearRefSchema = z.discriminatedUnion('kind', [
 ])
 export type ImportListGearRef = z.infer<typeof importListGearRefSchema>
 
-// New gear created by the import. No cost/purchaseDate (the list CSV
-// format does not carry them; the server inserts null) and no status
-// (server default), matching the gear-import contract.
+// New gear created by the import. Carries cost (the list CSV does carry it -
+// our own export emits it, and a Lighterpack list export has `price`), but
+// no purchaseDate (no column in the list format) and no status (server
+// default), matching the gear-import contract.
+//
+// costSchema is imported from ./gear rather than redefined: a second copy
+// would drift from the 2-decimal-place / max-99,999,999.99 contract the
+// server enforces, and the two would disagree silently.
 const importListGearEntrySchema = z
   .object({
     tempId: tempIdSchema,
@@ -334,6 +339,7 @@ const importListGearEntrySchema = z
     description: z.string().trim().min(1).max(2000).nullable().default(null),
     weightGrams: z.number().int().min(0).max(100000).default(0),
     category: importCategoryRefSchema.nullable().default(null),
+    cost: costSchema.nullable().default(null),
   })
   .strict()
 

@@ -258,26 +258,140 @@ describe('list csv round-trip', () => {
     expect(parsed.map((r) => r.name)).toEqual(['Kept', 'Also kept'])
   })
 
-  it('emits the byte-exact Lighterpack-compatible export format', () => {
+  it('emits the byte-exact Lighterpack-shaped export format', () => {
     const csv = listItemsToCsv(items, categories)
     const lines = csv.split('\r\n')
-    expect(lines[0]).toBe('Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable')
+    expect(lines[0]).toBe('Item Name,Category,desc,qty,weight,unit,url,cost,worn,consumable')
 
     // Row index 0 - Tarp: isWorn=false, isConsumable=false. Lighterpack
     // emits empty strings for false-flag rows. unit is the literal 'gram',
-    // url is empty, price is the numeric default 0.
-    expect(lines[1]).toBe('Tarp,Shelter,cuben fiber,1,240,gram,,0,,')
+    // url is empty, and cost is BLANK for these unpriced fixtures - never
+    // the fabricated 0 this column used to carry.
+    expect(lines[1]).toBe('Tarp,Shelter,cuben fiber,1,240,gram,,,,')
 
     // Row index 1 - Stove fuel canister: isConsumable=true.
-    expect(lines[2]).toBe('Stove fuel canister,Kitchen,,2,100,gram,,0,,Consumable')
+    expect(lines[2]).toBe('Stove fuel canister,Kitchen,,2,100,gram,,,,Consumable')
 
     // Row index 2 - Rain jacket: isWorn=true, name has comma + embedded
     // quotes (exercises escapeCell's quote-doubling). description has a +
     // sign that is NOT a leading character - formula-injection escape only
     // triggers on leading =, +, -, @, tab, CR.
     expect(lines[3]).toBe(
-      '"Rain jacket, ""shell""",,with comma + quotes for escapeCell,1,320,gram,,0,Worn,',
+      '"Rain jacket, ""shell""",,with comma + quotes for escapeCell,1,320,gram,,,Worn,',
     )
+  })
+
+  it('pins the first six columns BY POSITION (Lighterpack import contract)', () => {
+    // Lighterpack's importer is positional and builds each item from exactly
+    // row[0..5]. Reordering these six does not fail an import - it succeeds
+    // with a description landing in the category. The cost column moved into
+    // index 7 in this change, so the guard matters more, not less.
+    const lines = listItemsToCsv(items, categories).split('\r\n')
+    expect(lines[0]?.split(',').slice(0, 6)).toEqual([
+      'Item Name', 'Category', 'desc', 'qty', 'weight', 'unit',
+    ])
+    expect(lines[1]?.split(',').slice(0, 6)).toEqual([
+      'Tarp', 'Shelter', 'cuben fiber', '1', '240', 'gram',
+    ])
+  })
+
+  it('exports the gear item\'s real cost, keeping zero distinct from unknown', () => {
+    // A list item has no price of its own - it points at a gear item that
+    // does. Previously this column was hardcoded to 0, so every exported
+    // list claimed to cost nothing.
+    const priced: ListItemWithGear[] = [
+      makeListItem({
+        id: 'li-p', quantity: 1, sortOrder: 0,
+        gearItem: makeGear({ id: 'g-p', name: 'Tent', weightGrams: 1200, categoryId: null, cost: 27.29 }),
+      }),
+      makeListItem({
+        id: 'li-z', quantity: 1, sortOrder: 1,
+        gearItem: makeGear({ id: 'g-z', name: 'Gifted mug', weightGrams: 50, categoryId: null, cost: 0 }),
+      }),
+      makeListItem({
+        id: 'li-n', quantity: 1, sortOrder: 2,
+        gearItem: makeGear({ id: 'g-n', name: 'Old rope', weightGrams: 60, categoryId: null, cost: null }),
+      }),
+    ]
+    const lines = listItemsToCsv(priced, categories).split('\r\n')
+    expect(lines[1]).toBe('Tent,,,1,1200,gram,,27.29,,')
+    // Free, not unknown.
+    expect(lines[2]).toBe('Gifted mug,,,1,50,gram,,0,,')
+    // Unknown, not free.
+    expect(lines[3]).toBe('Old rope,,,1,60,gram,,,,')
+  })
+})
+
+// Cost on the list path: our own export writes `cost`, a Lighterpack export
+// writes `price`, and the two differ in what a ZERO means. See
+// parseCostFromColumn in money.ts.
+describe('list csv cost import', () => {
+  it('parses our own cost column, including a genuine zero', () => {
+    const csv = [
+      'Item Name,Category,desc,qty,weight,unit,url,cost,worn,consumable',
+      'Tent,Shelter,,1,1200,gram,,$27.29,,',
+      'Gifted mug,Kitchen,,1,50,gram,,0,,',
+      'Old rope,,,1,60,gram,,,,',
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    // Inherits the currency-symbol handling from the shared money module.
+    expect(parsed[0]?.cost).toBe(27.29)
+    expect(parsed[1]?.cost).toBe(0)
+    expect(parsed[2]?.cost).toBeNull()
+  })
+
+  it('reads a Lighterpack price column but treats its ZERO as unset', () => {
+    // Lighterpack defaults an unpriced item to 0, and grampacker's own list
+    // export used to hardcode price=0 on EVERY row. Reading those as real
+    // would import an entire list as free - inventing data. A nonzero price
+    // is still a real price.
+    const csv = [
+      'Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable',
+      'Tent,Shelter,,1,1200,gram,,42.50,,',
+      'Legacy row,Shelter,,1,100,gram,,0,,',
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBe(42.5)
+    expect(parsed[1]?.cost).toBeNull()
+  })
+
+  it('prefers cost over price when both columns are present', () => {
+    const csv = [
+      'Item Name,weight,price,cost',
+      'Tent,1200,0,27.29',
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBe(27.29)
+  })
+
+  it('leaves cost null when the file has no money column at all', () => {
+    const csv = ['name,weight', 'Tent,1200'].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBeNull()
+  })
+
+  it('round-trips cost through export and back', () => {
+    const priced: ListItemWithGear[] = [
+      makeListItem({
+        id: 'li-p', quantity: 1, sortOrder: 0,
+        gearItem: makeGear({ id: 'g-p', name: 'Tent', weightGrams: 1200, categoryId: null, cost: 27.29 }),
+      }),
+      makeListItem({
+        id: 'li-z', quantity: 1, sortOrder: 1,
+        gearItem: makeGear({ id: 'g-z', name: 'Gifted mug', weightGrams: 50, categoryId: null, cost: 0 }),
+      }),
+      makeListItem({
+        id: 'li-n', quantity: 1, sortOrder: 2,
+        gearItem: makeGear({ id: 'g-n', name: 'Old rope', weightGrams: 60, categoryId: null, cost: null }),
+      }),
+    ]
+    const parsed = parseListCsv(listItemsToCsv(priced, []))
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed.map((r) => r.cost)).toEqual([27.29, 0, null])
   })
 })
 
