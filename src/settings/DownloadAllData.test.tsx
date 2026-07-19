@@ -25,6 +25,7 @@ vi.mock('../lib/queries', async (importOriginal) => ({
   fetchFoodItems: vi.fn(),
   fetchFoodPlans: vi.fn(),
   fetchFoodPlan: vi.fn(),
+  fetchTargetDefaults: vi.fn(),
 }))
 
 import {
@@ -35,8 +36,10 @@ import {
   fetchFoodItems,
   fetchFoodPlans,
   fetchFoodPlan,
+  fetchTargetDefaults,
   type FoodPlanDocument,
   type FoodPlanSummary,
+  type TargetDefault,
 } from '../lib/queries'
 import type { FoodItem } from '../lib/types'
 import DownloadAllData from './DownloadAllData'
@@ -87,6 +90,9 @@ const planSummaries: FoodPlanSummary[] = [
     createdAt: '2024-01-01', updatedAt: '2024-01-01',
   },
 ]
+const targetDefaults: TargetDefault[] = [
+  { id: 'td-1', metric: 'protein', mode: 'min', targetMin: 120, targetMax: null },
+]
 const planDoc: FoodPlanDocument = {
   id: 'p-1', name: 'JMT week 1', sortOrder: 0,
   createdAt: '2024-01-01', updatedAt: '2024-01-01',
@@ -107,6 +113,7 @@ beforeEach(() => {
   vi.mocked(fetchFoodItems).mockResolvedValue(foodItems)
   vi.mocked(fetchFoodPlans).mockResolvedValue(planSummaries)
   vi.mocked(fetchFoodPlan).mockResolvedValue(planDoc)
+  vi.mocked(fetchTargetDefaults).mockResolvedValue(targetDefaults)
   // jsdom implements neither of these object-URL helpers.
   URL.createObjectURL = vi.fn(() => 'blob:mock')
   URL.revokeObjectURL = vi.fn()
@@ -158,6 +165,12 @@ describe('DownloadAllData', () => {
     // Plan documents were fetched once per plan (same per-entity pattern).
     expect(fetchFoodPlan).toHaveBeenCalledTimes(1)
     expect(vi.mocked(fetchFoodPlan).mock.calls[0]?.[0]).toBe('p-1')
+    // Target defaults ride in food-data.json (version 4).
+    expect(fetchTargetDefaults).toHaveBeenCalledTimes(1)
+    const foodDataRaw = new TextDecoder().decode(files['food-data.json'])
+    const foodData = JSON.parse(foodDataRaw) as { version: number; targetDefaults: unknown }
+    expect(foodData.version).toBe(4)
+    expect(foodData.targetDefaults).toEqual(targetDefaults)
 
     // A download fired with the export filename.
     expect(clickedDownloadName).toMatch(/^grampacker-export-.*\.zip$/)
