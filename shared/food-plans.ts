@@ -168,6 +168,111 @@ export const mealTargetSchema = z.object({
 })
 export type MealTarget = z.infer<typeof mealTargetSchema>
 
+// A target bound mirrors the old numeric(12,4): >= 0, < 1e8, at most 4
+// decimal places (round-trip check, not epsilon - see shared/food.ts for why
+// the epsilon form is magnitude-fragile). Magnitude is also a DB CHECK; the
+// scale is zod-only, like every other REAL column.
+const targetBoundSchema = z
+  .number()
+  .min(0)
+  .lt(100_000_000)
+  .refine((v) => Math.round(v * 10_000) / 10_000 === v, {
+    message: 'at most 4 decimal places',
+  })
+
+// I-BOUNDS, exactly the DB CHECK's mode branches. Shared by the plan-targets
+// and defaults request schemas so the mirrors cannot drift.
+export function targetBoundsConsistent(t: {
+  mode: TargetMode
+  targetMin: number | null
+  targetMax: number | null
+}): boolean {
+  switch (t.mode) {
+    case 'min':
+      return t.targetMin !== null && t.targetMax === null
+    case 'max':
+      return t.targetMax !== null && t.targetMin === null
+    case 'range':
+      return (
+        t.targetMin !== null && t.targetMax !== null && t.targetMin <= t.targetMax
+      )
+  }
+}
+const boundsRefine = {
+  message: 'bounds do not match mode',
+} as const
+
+export const dailyTargetInputSchema = z
+  .object({
+    metric: z.enum(DAILY_TARGET_METRICS),
+    mode: targetModeSchema,
+    targetMin: targetBoundSchema.nullable(),
+    targetMax: targetBoundSchema.nullable(),
+  })
+  .strict()
+  .refine(targetBoundsConsistent, boundsRefine)
+export type DailyTargetInput = z.infer<typeof dailyTargetInputSchema>
+
+export const mealTargetInputSchema = z
+  .object({
+    mealId: idSchema,
+    metric: z.enum(MEAL_TARGET_METRICS),
+    mode: targetModeSchema,
+    targetMin: targetBoundSchema.nullable(),
+    targetMax: targetBoundSchema.nullable(),
+  })
+  .strict()
+  .refine(targetBoundsConsistent, boundsRefine)
+  // I-PCT: percent metrics cap at 100 (mirrors meal_target_pct_ceiling).
+  .refine(
+    (t) =>
+      (t.metric !== 'fat_pct' && t.metric !== 'sugar_pct') ||
+      ((t.targetMin === null || t.targetMin <= 100) &&
+        (t.targetMax === null || t.targetMax <= 100)),
+    { message: 'percent targets cap at 100' },
+  )
+export type MealTargetInput = z.infer<typeof mealTargetInputSchema>
+
+// FULL-replace save: the payload is the COMPLETE target set for the plan
+// (design decision 1 - no diff, no contradiction guards; a metric absent
+// from the payload is deleted, and "off" in the editor simply omits the
+// row). Duplicate metrics / (mealId, metric) pairs are payload bugs, not
+// mergeable intent, so they 400.
+export const saveTargetsRequestSchema = z
+  .object({
+    daily: z.array(dailyTargetInputSchema).max(DAILY_TARGET_METRICS.length),
+    meals: z
+      .array(mealTargetInputSchema)
+      .max(MEAL_DEFINITION_CAP * MEAL_TARGET_METRICS.length),
+  })
+  .strict()
+  .superRefine((val, ctx) => {
+    const metrics = new Set<string>()
+    for (const t of val.daily) {
+      if (metrics.has(t.metric)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['daily'],
+          message: `duplicate daily metric: ${t.metric}`,
+        })
+      }
+      metrics.add(t.metric)
+    }
+    const pairs = new Set<string>()
+    for (const t of val.meals) {
+      const key = `${t.mealId} ${t.metric}`
+      if (pairs.has(key)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['meals'],
+          message: `duplicate meal target: ${t.metric}`,
+        })
+      }
+      pairs.add(key)
+    }
+  })
+export type SaveTargetsRequest = z.infer<typeof saveTargetsRequestSchema>
+
 // The whole plan graph in one batched read (design 5.2). Every structural
 // mutation returns the fresh document so the editor stays a pure projection of
 // this single cache entry (no fine-grained optimistic fan-out; design 5.5).

@@ -105,6 +105,7 @@ describe('/api/food-plans authorization matrix', () => {
       ['PATCH', '/api/food-plans/some-id/entries/e', { amount: 2 }],
       ['DELETE', '/api/food-plans/some-id/entries/e', undefined],
       ['POST', '/api/food-plans/some-id/duplicate', undefined],
+      ['PUT', '/api/food-plans/some-id/targets', { daily: [], meals: [] }],
     ] as const) {
       const res = await apiRequest(null, method, path, body)
       expect(res.status, `${method} ${path}`).toBe(401)
@@ -1195,5 +1196,200 @@ describe('/api/food-plans robustness (Codex review fixes)', () => {
     })
     expect(isForeignKeyViolation(fkWrapper)).toBe(true)
     expect(isAnyUniqueViolation(fkWrapper)).toBe(false)
+  })
+})
+
+describe('PUT /api/food-plans/:id/targets', () => {
+  async function targetCounts(userId: string) {
+    const daily = (await env.DB.prepare(
+      'select count(*) as count from food_plan_daily_targets where user_id = ?',
+    ).bind(userId).first()) as { count: number }
+    const meal = (await env.DB.prepare(
+      'select count(*) as count from meal_targets where user_id = ?',
+    ).bind(userId).first()) as { count: number }
+    return { daily: daily.count, meal: meal.count }
+  }
+
+  it('404s on another user\'s plan', async () => {
+    const a = await signUpVerifiedUser('tgt-put-a@example.com', 'A')
+    const b = await signUpVerifiedUser('tgt-put-b@example.com', 'B')
+    const plan = await createPlan(a.cookie, { name: 'Not yours' })
+    const res = await apiRequest(b.cookie, 'PUT', `/api/food-plans/${plan.id}/targets`, {
+      daily: [{ metric: 'calories', mode: 'min', targetMin: 2000, targetMax: null }],
+      meals: [],
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('saves daily + meal targets and returns the fresh document', async () => {
+    const { cookie } = await signUpVerifiedUser('tgt-put-happy@example.com', 'H')
+    const plan = await createPlan(cookie, { name: 'Targets happy' })
+    const breakfast = mealByRole(plan, 'breakfast')
+
+    const res = await apiRequest(cookie, 'PUT', `/api/food-plans/${plan.id}/targets`, {
+      daily: [
+        { metric: 'protein', mode: 'min', targetMin: 120, targetMax: null },
+        { metric: 'calories', mode: 'range', targetMin: 2500, targetMax: 3500 },
+      ],
+      meals: [
+        { mealId: breakfast.id, metric: 'fat_pct', mode: 'max', targetMin: null, targetMax: 30 },
+      ],
+    })
+    expect(res.status).toBe(200)
+    const doc = foodPlanDocumentSchema.parse(await res.json())
+    // Sorted by metric; server-minted ids present.
+    expect(doc.dailyTargets.map((t) => t.metric)).toEqual(['calories', 'protein'])
+    expect(doc.dailyTargets[0]).toMatchObject({
+      metric: 'calories', mode: 'range', targetMin: 2500, targetMax: 3500,
+    })
+    expect(doc.dailyTargets[0]!.id).toBeTruthy()
+    expect(doc.mealTargets).toHaveLength(1)
+    expect(doc.mealTargets[0]).toMatchObject({
+      mealId: breakfast.id, metric: 'fat_pct', mode: 'max', targetMin: null, targetMax: 30,
+    })
+
+    // A re-GET agrees with the mutation's return.
+    const again = await apiRequest(cookie, 'GET', `/api/food-plans/${plan.id}`)
+    const reread = foodPlanDocumentSchema.parse(await again.json())
+    expect(reread.dailyTargets).toEqual(doc.dailyTargets)
+    expect(reread.mealTargets).toEqual(doc.mealTargets)
+  })
+
+  it('is a FULL replace: absent metrics are removed, empty payload clears all', async () => {
+    const { cookie } = await signUpVerifiedUser('tgt-put-replace@example.com', 'R')
+    const plan = await createPlan(cookie, { name: 'Targets replace' })
+    const dinner = mealByRole(plan, 'dinner')
+
+    let res = await apiRequest(cookie, 'PUT', `/api/food-plans/${plan.id}/targets`, {
+      daily: [
+        { metric: 'calories', mode: 'min', targetMin: 2000, targetMax: null },
+        { metric: 'fiber', mode: 'min', targetMin: 25, targetMax: null },
+      ],
+      meals: [
+        { mealId: dinner.id, metric: 'calories', mode: 'max', targetMin: null, targetMax: 900 },
+      ],
+    })
+    expect(res.status).toBe(200)
+
+    res = await apiRequest(cookie, 'PUT', `/api/food-plans/${plan.id}/targets`, {
+      daily: [{ metric: 'fiber', mode: 'max', targetMin: null, targetMax: 40 }],
+      meals: [],
+    })
+    expect(res.status).toBe(200)
+    let doc = foodPlanDocumentSchema.parse(await res.json())
+    expect(doc.dailyTargets).toHaveLength(1)
+    expect(doc.dailyTargets[0]).toMatchObject({ metric: 'fiber', mode: 'max', targetMax: 40 })
+    expect(doc.mealTargets).toEqual([])
+
+    res = await apiRequest(cookie, 'PUT', `/api/food-plans/${plan.id}/targets`, {
+      daily: [],
+      meals: [],
+    })
+    expect(res.status).toBe(200)
+    doc = foodPlanDocumentSchema.parse(await res.json())
+    expect(doc.dailyTargets).toEqual([])
+    expect(doc.mealTargets).toEqual([])
+  })
+
+  it('400s every zod-invalid payload shape', async () => {
+    const { cookie } = await signUpVerifiedUser('tgt-put-400@example.com', 'Z')
+    const plan = await createPlan(cookie, { name: 'Targets 400s' })
+    const breakfast = mealByRole(plan, 'breakfast')
+    const daily = (row: Record<string, unknown>) => ({ daily: [row], meals: [] })
+    const meal = (row: Record<string, unknown>) => ({
+      daily: [],
+      meals: [{ mealId: breakfast.id, ...row }],
+    })
+
+    const badBodies: unknown[] = [
+      daily({ metric: 'vibes', mode: 'min', targetMin: 1, targetMax: null }), // unknown metric
+      daily({ metric: 'fat_pct', mode: 'min', targetMin: 1, targetMax: null }), // meal-only metric in daily
+      daily({ metric: 'calories', mode: 'off', targetMin: null, targetMax: null }), // off is not a wire mode
+      daily({ metric: 'calories', mode: 'min', targetMin: 1, targetMax: 2 }), // min mode forbids max
+      daily({ metric: 'calories', mode: 'max', targetMin: 1, targetMax: 2 }), // max mode forbids min
+      daily({ metric: 'calories', mode: 'range', targetMin: 1, targetMax: null }), // range needs both
+      daily({ metric: 'calories', mode: 'range', targetMin: 300, targetMax: 200 }), // min <= max
+      daily({ metric: 'calories', mode: 'min', targetMin: -1, targetMax: null }), // negative
+      daily({ metric: 'calories', mode: 'min', targetMin: 100000000, targetMax: null }), // magnitude
+      daily({ metric: 'calories', mode: 'min', targetMin: 1.00001, targetMax: null }), // > 4 dp
+      meal({ metric: 'fiber', mode: 'min', targetMin: 1, targetMax: null }), // daily-only metric in meals
+      meal({ metric: 'fat_pct', mode: 'max', targetMin: null, targetMax: 101 }), // pct ceiling
+      {
+        daily: [
+          { metric: 'calories', mode: 'min', targetMin: 1, targetMax: null },
+          { metric: 'calories', mode: 'max', targetMin: null, targetMax: 2 },
+        ],
+        meals: [],
+      }, // duplicate daily metric
+      {
+        daily: [],
+        meals: [
+          { mealId: breakfast.id, metric: 'calories', mode: 'min', targetMin: 1, targetMax: null },
+          { mealId: breakfast.id, metric: 'calories', mode: 'max', targetMin: null, targetMax: 2 },
+        ],
+      }, // duplicate (mealId, metric)
+      {
+        daily: [
+          'calories', 'protein', 'carbs', 'fiber', 'sodium', 'calorie_density', 'calories',
+        ].map((m) => ({ metric: m, mode: 'min', targetMin: 1, targetMax: null })),
+        meals: [],
+      }, // 7 daily rows (> 6)
+      { daily: [], meals: [], extra: true }, // strict
+    ]
+    for (const [i, body] of badBodies.entries()) {
+      const res = await apiRequest(cookie, 'PUT', `/api/food-plans/${plan.id}/targets`, body)
+      expect(res.status, `bad body #${i}`).toBe(400)
+    }
+  })
+
+  it('422s a meal id from another plan (same user) and writes nothing', async () => {
+    const { cookie } = await signUpVerifiedUser('tgt-put-foreign@example.com', 'F')
+    const userId = await userIdFor(cookie)
+    const planOne = await createPlan(cookie, { name: 'Mine one' })
+    const planTwo = await createPlan(cookie, { name: 'Mine two' })
+
+    const res = await apiRequest(cookie, 'PUT', `/api/food-plans/${planOne.id}/targets`, {
+      daily: [{ metric: 'calories', mode: 'min', targetMin: 2000, targetMax: null }],
+      meals: [
+        {
+          mealId: mealByRole(planTwo, 'breakfast').id,
+          metric: 'calories', mode: 'max', targetMin: null, targetMax: 700,
+        },
+      ],
+    })
+    expect(res.status).toBe(422)
+    expect(await targetCounts(userId)).toEqual({ daily: 0, meal: 0 })
+  })
+
+  it('a failing statement inside the replace batch rolls back the deletes (6b)', async () => {
+    const { cookie } = await signUpVerifiedUser('tgt-put-atomic@example.com', 'X')
+    const userId = await userIdFor(cookie)
+    const plan = await createPlan(cookie, { name: 'Atomic' })
+    const save = await apiRequest(cookie, 'PUT', `/api/food-plans/${plan.id}/targets`, {
+      daily: [
+        { metric: 'calories', mode: 'min', targetMin: 2000, targetMax: null },
+        { metric: 'protein', mode: 'min', targetMin: 100, targetMax: null },
+      ],
+      meals: [],
+    })
+    expect(save.status).toBe(200)
+
+    // The route's zod makes an in-batch failure unreachable through the API,
+    // so the D1 transaction property the full-replace design leans on is
+    // proven at the DB layer: delete-all + a CHECK-violating insert in ONE
+    // batch must leave the original rows intact.
+    await expect(
+      env.DB.batch([
+        env.DB.prepare(
+          'delete from food_plan_daily_targets where food_plan_id = ? and user_id = ?',
+        ).bind(plan.id, userId),
+        env.DB.prepare(
+          `insert into food_plan_daily_targets
+             (id, user_id, food_plan_id, metric, mode, target_min, target_max, created_at, updated_at)
+           values (?, ?, ?, 'calories', 'off', null, null, 1, 1)`,
+        ).bind('dt-atomic', userId, plan.id),
+      ]),
+    ).rejects.toThrow()
+    expect(await targetCounts(userId)).toEqual({ daily: 2, meal: 0 })
   })
 })

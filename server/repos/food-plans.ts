@@ -19,6 +19,7 @@ import {
 } from './db-errors'
 import {
   buildPlanCopyStatements,
+  chunkForParamCap,
   isFoodPlanCapError,
 } from './food-plan-copy'
 import { copyName } from './lists'
@@ -1011,6 +1012,91 @@ export function createFoodPlansRepo(db: Db, userId: string) {
         reconcilePackState(planId),
       ])
       if (rows.length === 0) return { ok: false, reason: 'not_found' }
+      return okDoc(planId)
+    },
+
+    // FULL replace of the plan's target set (design decision 1): delete-all +
+    // insert-all in one batch. The payload is zod-validated upstream (bounds,
+    // pct ceiling, duplicates, size caps), so the only repo-level concerns are
+    // ownership and the meal references.
+    async saveTargets(
+      planId: string,
+      daily: Omit<DailyTargetRow, 'id'>[],
+      mealTargetInputs: Omit<MealTargetRow, 'id'>[],
+    ): Promise<PlanDocResult> {
+      if (!(await requirePlan(planId))) return { ok: false, reason: 'not_found' }
+
+      // Meal-ownership precheck, INVERTED: select the plan's own meal ids
+      // (at most the 20-per-plan cap - 2 bound params, never chunked) and
+      // test payload ids against that set in JS. The straight shape - binding
+      // every payload id into one in(...) - can meet D1's 100-param cap,
+      // because a zod-valid payload may carry up to 100 distinct ids.
+      const ownMeals = await db
+        .select({ id: meals.id })
+        .from(meals)
+        .where(and(eq(meals.foodPlanId, planId), eq(meals.userId, userId)))
+      const ownMealIds = new Set(ownMeals.map((m) => m.id))
+      for (const t of mealTargetInputs) {
+        if (!ownMealIds.has(t.mealId)) return { ok: false, reason: 'invalid_ref' }
+      }
+
+      const now = Date.now()
+      const dailyRows = daily.map((t) => ({
+        id: crypto.randomUUID(),
+        userId,
+        foodPlanId: planId,
+        metric: t.metric,
+        mode: t.mode,
+        targetMin: t.targetMin,
+        targetMax: t.targetMax,
+        createdAt: now,
+        updatedAt: now,
+      }))
+      const mealRows = mealTargetInputs.map((t) => ({
+        id: crypto.randomUUID(),
+        userId,
+        foodPlanId: planId,
+        mealId: t.mealId,
+        metric: t.metric,
+        mode: t.mode,
+        targetMin: t.targetMin,
+        targetMax: t.targetMax,
+        createdAt: now,
+        updatedAt: now,
+      }))
+
+      try {
+        await db.batch([
+          db
+            .delete(foodPlanDailyTargets)
+            .where(
+              and(
+                eq(foodPlanDailyTargets.foodPlanId, planId),
+                eq(foodPlanDailyTargets.userId, userId),
+              ),
+            ),
+          db
+            .delete(mealTargets)
+            .where(
+              and(
+                eq(mealTargets.foodPlanId, planId),
+                eq(mealTargets.userId, userId),
+              ),
+            ),
+          ...chunkForParamCap(dailyRows).map((rows) =>
+            db.insert(foodPlanDailyTargets).values(rows),
+          ),
+          ...chunkForParamCap(mealRows).map((rows) =>
+            db.insert(mealTargets).values(rows),
+          ),
+        ])
+      } catch (err) {
+        // A meal deleted between the precheck and the batch trips the
+        // (meal_id, food_plan_id) FK; the batch (including the deletes) rolls
+        // back, so this maps to the same 422 the precheck gives - not a 500.
+        if (isForeignKeyViolation(err)) return { ok: false, reason: 'invalid_ref' }
+        throw err
+      }
       return okDoc(planId)
     },
   }

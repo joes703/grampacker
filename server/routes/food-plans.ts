@@ -8,6 +8,7 @@ import {
   createFoodPlanRequestSchema,
   duplicateFoodPlanRequestSchema,
   renameFoodPlanRequestSchema,
+  saveTargetsRequestSchema,
   updateEntryRequestSchema,
   type FoodPlanDocument,
   type FoodPlanSummary,
@@ -151,6 +152,22 @@ foodPlanRoutes.post('/:id/duplicate', async (c) => {
       parsed.data.expectedFoodPlanId,
     )
   return respond(c, result, 'Food plan limit reached (100 per user)', 201)
+})
+
+// ------------------------------------------------------------------- targets
+
+// FULL replace (design decision 1): the body is the complete target set;
+// metrics absent from it are deleted. Bounds/pct/duplicate/size rules all
+// live in the zod schema, so the repo only re-checks ownership and meal
+// references. Off never crosses the wire - the editor omits the row.
+foodPlanRoutes.put('/:id/targets', async (c) => {
+  const raw = await c.req.json().catch(() => null)
+  const parsed = saveTargetsRequestSchema.safeParse(raw)
+  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const result = await c
+    .get('repos')
+    .foodPlans.saveTargets(c.req.param('id'), parsed.data.daily, parsed.data.meals)
+  return respond(c, result, '')
 })
 
 // --------------------------------------------------------------------- days
