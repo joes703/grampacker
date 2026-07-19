@@ -10,6 +10,7 @@ import {
   fetchFoodItems,
   fetchFoodPlans,
   fetchFoodPlan,
+  fetchTargetDefaults,
 } from '../lib/queries'
 import { buildTakeoutFiles, exportTimestamp } from '../lib/export/takeout-files'
 import type { FoodPlanDocument } from '../lib/queries'
@@ -39,7 +40,7 @@ export default function DownloadAllData() {
       // 30-second staleTime still considers fresh - another tab or device
       // may have written since this tab's cache filled (Codex finding).
       // Successful results still land in the cache for the app to reuse.
-      const [fflate, categories, gearItems, lists, foodItems, planSummaries] =
+      const [fflate, categories, gearItems, lists, foodItems, planSummaries, targetDefaults] =
         await Promise.all([
           fflatePromise,
           qc.fetchQuery({ queryKey: queryKeys.categories(), queryFn: fetchCategories, staleTime: 0 }),
@@ -47,6 +48,7 @@ export default function DownloadAllData() {
           qc.fetchQuery({ queryKey: queryKeys.lists(), queryFn: fetchLists, staleTime: 0 }),
           qc.fetchQuery({ queryKey: queryKeys.foodItems(), queryFn: fetchFoodItems, staleTime: 0 }),
           qc.fetchQuery({ queryKey: queryKeys.foodPlans(), queryFn: fetchFoodPlans, staleTime: 0 }),
+          qc.fetchQuery({ queryKey: queryKeys.targetDefaults(), queryFn: fetchTargetDefaults, staleTime: 0 }),
         ])
 
       // Items for every list, fetched per list and flattened;
@@ -85,6 +87,7 @@ export default function DownloadAllData() {
         allItems,
         foodItems,
         foodPlans,
+        targetDefaults,
       })
       const files: Record<string, Uint8Array> = {}
       for (const [name, content] of Object.entries(fileContents)) {

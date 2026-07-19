@@ -4,11 +4,14 @@ import {
   dayMeals,
   foodItems,
   foodPackState,
+  foodPlanDailyTargets,
   foodPlanDays,
   foodPlanEntries,
   foodPlans,
+  foodPlanTargetDefaults,
   lists,
   meals,
+  mealTargets,
 } from '../db/schema'
 import {
   isAnyUniqueViolation,
@@ -17,6 +20,7 @@ import {
 } from './db-errors'
 import {
   buildPlanCopyStatements,
+  chunkForParamCap,
   isFoodPlanCapError,
 } from './food-plan-copy'
 import { copyName } from './lists'
@@ -75,6 +79,23 @@ export type EntryRow = {
 
 export type UsedByListRow = { id: string; name: string }
 
+export type DailyTargetRow = {
+  id: string
+  metric: 'calories' | 'protein' | 'carbs' | 'fiber' | 'sodium' | 'calorie_density'
+  mode: 'range' | 'min' | 'max'
+  targetMin: number | null
+  targetMax: number | null
+}
+
+export type MealTargetRow = {
+  id: string
+  mealId: string
+  metric: 'calories' | 'protein' | 'fat_pct' | 'sugar_pct' | 'carb_protein_ratio'
+  mode: 'range' | 'min' | 'max'
+  targetMin: number | null
+  targetMax: number | null
+}
+
 export type FoodPlanDocumentRow = {
   id: string
   name: string
@@ -85,6 +106,8 @@ export type FoodPlanDocumentRow = {
   days: DayRow[]
   dayMeals: DayMealRow[]
   entries: EntryRow[]
+  dailyTargets: DailyTargetRow[]
+  mealTargets: MealTargetRow[]
   usedByList: UsedByListRow | null
 }
 
@@ -195,8 +218,16 @@ export function createFoodPlansRepo(db: Db, userId: string) {
   async function getDocument(
     planId: string,
   ): Promise<FoodPlanDocumentRow | null> {
-    const [planRows, mealRows, dayRows, dayMealRows, entryRows, usedByRows] =
-      await db.batch([
+    const [
+      planRows,
+      mealRows,
+      dayRows,
+      dayMealRows,
+      entryRows,
+      dailyTargetRows,
+      mealTargetRows,
+      usedByRows,
+    ] = await db.batch([
         db
           .select(planCols)
           .from(foodPlans)
@@ -259,6 +290,39 @@ export function createFoodPlansRepo(db: Db, userId: string) {
             asc(foodPlanEntries.createdAt),
           ),
         db
+          .select({
+            id: foodPlanDailyTargets.id,
+            metric: foodPlanDailyTargets.metric,
+            mode: foodPlanDailyTargets.mode,
+            targetMin: foodPlanDailyTargets.targetMin,
+            targetMax: foodPlanDailyTargets.targetMax,
+          })
+          .from(foodPlanDailyTargets)
+          .where(
+            and(
+              eq(foodPlanDailyTargets.foodPlanId, planId),
+              eq(foodPlanDailyTargets.userId, userId),
+            ),
+          )
+          .orderBy(asc(foodPlanDailyTargets.metric)),
+        db
+          .select({
+            id: mealTargets.id,
+            mealId: mealTargets.mealId,
+            metric: mealTargets.metric,
+            mode: mealTargets.mode,
+            targetMin: mealTargets.targetMin,
+            targetMax: mealTargets.targetMax,
+          })
+          .from(mealTargets)
+          .where(
+            and(
+              eq(mealTargets.foodPlanId, planId),
+              eq(mealTargets.userId, userId),
+            ),
+          )
+          .orderBy(asc(mealTargets.mealId), asc(mealTargets.metric)),
+        db
           .select({ id: lists.id, name: lists.name })
           .from(lists)
           .where(and(eq(lists.foodPlanId, planId), eq(lists.userId, userId)))
@@ -273,6 +337,8 @@ export function createFoodPlansRepo(db: Db, userId: string) {
       days: dayRows,
       dayMeals: dayMealRows,
       entries: entryRows,
+      dailyTargets: dailyTargetRows,
+      mealTargets: mealTargetRows,
       usedByList: usedByRows[0] ?? null,
     }
   }
@@ -395,8 +461,40 @@ export function createFoodPlansRepo(db: Db, userId: string) {
           }),
         ),
       )
+      // Copy the account's default daily targets BY VALUE (I-SNAPSHOT): no
+      // linkage, so later default edits never rewrite this plan. The read
+      // runs before the batch; an interleaved defaults edit lands wholly
+      // before or wholly after this snapshot, both fine.
+      const defaultRows = await db
+        .select({
+          metric: foodPlanTargetDefaults.metric,
+          mode: foodPlanTargetDefaults.mode,
+          targetMin: foodPlanTargetDefaults.targetMin,
+          targetMax: foodPlanTargetDefaults.targetMax,
+        })
+        .from(foodPlanTargetDefaults)
+        .where(eq(foodPlanTargetDefaults.userId, userId))
+      const insertDefaultTargets = chunkForParamCap(
+        defaultRows.map((d) => ({
+          id: crypto.randomUUID(),
+          userId,
+          foodPlanId: planId,
+          metric: d.metric,
+          mode: d.mode,
+          targetMin: d.targetMin,
+          targetMax: d.targetMax,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      ).map((rows) => db.insert(foodPlanDailyTargets).values(rows))
       try {
-        await db.batch([insertPlan, ...insertMeals, ...insertDays, ...insertGrid])
+        await db.batch([
+          insertPlan,
+          ...insertMeals,
+          ...insertDays,
+          ...insertGrid,
+          ...insertDefaultTargets,
+        ])
       } catch (err) {
         if (isFoodPlanCapError(err)) return { ok: false, reason: 'cap_exceeded' }
         throw err
@@ -947,6 +1045,116 @@ export function createFoodPlansRepo(db: Db, userId: string) {
         reconcilePackState(planId),
       ])
       if (rows.length === 0) return { ok: false, reason: 'not_found' }
+      return okDoc(planId)
+    },
+
+    // Force a day full/partial for target grading (null = back to auto). The
+    // predicate carries all THREE columns - day id, plan id, user id - not
+    // just ownership: a caller who owns two plans must not be able to reach
+    // plan B's day through plan A's URL (same-plan membership is its own
+    // invariant, exactly like the composite FKs).
+    async setDayType(
+      planId: string,
+      dayId: string,
+      override: 'full' | 'partial' | null,
+    ): Promise<PlanDocResult> {
+      const rows = await db
+        .update(foodPlanDays)
+        .set({ dayTypeOverride: override, updatedAt: Date.now() })
+        .where(
+          and(
+            eq(foodPlanDays.id, dayId),
+            eq(foodPlanDays.foodPlanId, planId),
+            eq(foodPlanDays.userId, userId),
+          ),
+        )
+        .returning({ id: foodPlanDays.id })
+      if (rows.length === 0) return { ok: false, reason: 'not_found' }
+      return okDoc(planId)
+    },
+
+    // FULL replace of the plan's target set (design decision 1): delete-all +
+    // insert-all in one batch. The payload is zod-validated upstream (bounds,
+    // pct ceiling, duplicates, size caps), so the only repo-level concerns are
+    // ownership and the meal references.
+    async saveTargets(
+      planId: string,
+      daily: Omit<DailyTargetRow, 'id'>[],
+      mealTargetInputs: Omit<MealTargetRow, 'id'>[],
+    ): Promise<PlanDocResult> {
+      if (!(await requirePlan(planId))) return { ok: false, reason: 'not_found' }
+
+      // Meal-ownership precheck, INVERTED: select the plan's own meal ids
+      // (at most the 20-per-plan cap - 2 bound params, never chunked) and
+      // test payload ids against that set in JS. The straight shape - binding
+      // every payload id into one in(...) - can meet D1's 100-param cap,
+      // because a zod-valid payload may carry up to 100 distinct ids.
+      const ownMeals = await db
+        .select({ id: meals.id })
+        .from(meals)
+        .where(and(eq(meals.foodPlanId, planId), eq(meals.userId, userId)))
+      const ownMealIds = new Set(ownMeals.map((m) => m.id))
+      for (const t of mealTargetInputs) {
+        if (!ownMealIds.has(t.mealId)) return { ok: false, reason: 'invalid_ref' }
+      }
+
+      const now = Date.now()
+      const dailyRows = daily.map((t) => ({
+        id: crypto.randomUUID(),
+        userId,
+        foodPlanId: planId,
+        metric: t.metric,
+        mode: t.mode,
+        targetMin: t.targetMin,
+        targetMax: t.targetMax,
+        createdAt: now,
+        updatedAt: now,
+      }))
+      const mealRows = mealTargetInputs.map((t) => ({
+        id: crypto.randomUUID(),
+        userId,
+        foodPlanId: planId,
+        mealId: t.mealId,
+        metric: t.metric,
+        mode: t.mode,
+        targetMin: t.targetMin,
+        targetMax: t.targetMax,
+        createdAt: now,
+        updatedAt: now,
+      }))
+
+      try {
+        await db.batch([
+          db
+            .delete(foodPlanDailyTargets)
+            .where(
+              and(
+                eq(foodPlanDailyTargets.foodPlanId, planId),
+                eq(foodPlanDailyTargets.userId, userId),
+              ),
+            ),
+          db
+            .delete(mealTargets)
+            .where(
+              and(
+                eq(mealTargets.foodPlanId, planId),
+                eq(mealTargets.userId, userId),
+              ),
+            ),
+          ...chunkForParamCap(dailyRows).map((rows) =>
+            db.insert(foodPlanDailyTargets).values(rows),
+          ),
+          ...chunkForParamCap(mealRows).map((rows) =>
+            db.insert(mealTargets).values(rows),
+          ),
+        ])
+      } catch (err) {
+        // A meal deleted between the precheck and the batch trips the
+        // (meal_id, food_plan_id) FK; the batch (including the deletes) rolls
+        // back, so this maps to the same 422 the precheck gives - not a 500.
+        if (isForeignKeyViolation(err)) return { ok: false, reason: 'invalid_ref' }
+        throw err
+      }
       return okDoc(planId)
     },
   }

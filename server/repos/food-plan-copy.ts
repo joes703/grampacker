@@ -3,10 +3,12 @@ import { and, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db'
 import {
   dayMeals,
+  foodPlanDailyTargets,
   foodPlanDays,
   foodPlanEntries,
   foodPlans,
   meals,
+  mealTargets,
 } from '../db/schema'
 import { isTriggerAbort } from './db-errors'
 
@@ -20,8 +22,22 @@ import { isTriggerAbort } from './db-errors'
 // each can import it without lists.ts <-> food-plans.ts becoming a cycle.
 
 type Basis = 'servings' | 'packages' | 'weight'
+type TargetMode = 'range' | 'min' | 'max'
+type DailyMetric =
+  | 'calories'
+  | 'protein'
+  | 'carbs'
+  | 'fiber'
+  | 'sodium'
+  | 'calorie_density'
+type MealMetric =
+  | 'calories'
+  | 'protein'
+  | 'fat_pct'
+  | 'sugar_pct'
+  | 'carb_protein_ratio'
 
-// The four child collections, field-compatible with the document row types in
+// The six child collections, field-compatible with the document row types in
 // food-plans.ts (which are one source of a graph; readPlanGraph is the other).
 export type PlanGraph = {
   meals: {
@@ -44,6 +60,22 @@ export type PlanGraph = {
     basis: Basis
     amount: number
     sortOrder: number
+  }[]
+  // Targets copy with the plan (slice 7): a duplicate is "the same menu for
+  // another trip", and its goals are part of the menu. Meal target rows cite
+  // meal ids, remapped through the same id map as the grid.
+  dailyTargets: {
+    metric: DailyMetric
+    mode: TargetMode
+    targetMin: number | null
+    targetMax: number | null
+  }[]
+  mealTargets: {
+    mealId: string
+    metric: MealMetric
+    mode: TargetMode
+    targetMin: number | null
+    targetMax: number | null
   }[]
 }
 
@@ -83,7 +115,15 @@ export async function readPlanGraph(
   userId: string,
   planId: string,
 ): Promise<(PlanGraph & { name: string }) | null> {
-  const [planRows, mealRows, dayRows, dayMealRows, entryRows] = await db.batch([
+  const [
+    planRows,
+    mealRows,
+    dayRows,
+    dayMealRows,
+    entryRows,
+    dailyTargetRows,
+    mealTargetRows,
+  ] = await db.batch([
     db
       .select({ name: foodPlans.name })
       .from(foodPlans)
@@ -135,6 +175,35 @@ export async function readPlanGraph(
           eq(foodPlanEntries.userId, userId),
         ),
       ),
+    db
+      .select({
+        metric: foodPlanDailyTargets.metric,
+        mode: foodPlanDailyTargets.mode,
+        targetMin: foodPlanDailyTargets.targetMin,
+        targetMax: foodPlanDailyTargets.targetMax,
+      })
+      .from(foodPlanDailyTargets)
+      .where(
+        and(
+          eq(foodPlanDailyTargets.foodPlanId, planId),
+          eq(foodPlanDailyTargets.userId, userId),
+        ),
+      ),
+    db
+      .select({
+        mealId: mealTargets.mealId,
+        metric: mealTargets.metric,
+        mode: mealTargets.mode,
+        targetMin: mealTargets.targetMin,
+        targetMax: mealTargets.targetMax,
+      })
+      .from(mealTargets)
+      .where(
+        and(
+          eq(mealTargets.foodPlanId, planId),
+          eq(mealTargets.userId, userId),
+        ),
+      ),
   ])
   const plan = planRows[0]
   if (!plan) return null
@@ -144,6 +213,8 @@ export async function readPlanGraph(
     days: dayRows,
     dayMeals: dayMealRows,
     entries: entryRows,
+    dailyTargets: dailyTargetRows,
+    mealTargets: mealTargetRows,
   }
 }
 
@@ -209,6 +280,29 @@ export function buildPlanCopyStatements(
     createdAt: now,
     updatedAt: now,
   }))
+  const dailyTargetRows = graph.dailyTargets.map((t) => ({
+    id: crypto.randomUUID(),
+    userId,
+    foodPlanId: newPlanId,
+    metric: t.metric,
+    mode: t.mode,
+    targetMin: t.targetMin,
+    targetMax: t.targetMax,
+    createdAt: now,
+    updatedAt: now,
+  }))
+  const mealTargetRows = graph.mealTargets.map((t) => ({
+    id: crypto.randomUUID(),
+    userId,
+    foodPlanId: newPlanId,
+    mealId: mealIdMap.get(t.mealId) as string,
+    metric: t.metric,
+    mode: t.mode,
+    targetMin: t.targetMin,
+    targetMax: t.targetMax,
+    createdAt: now,
+    updatedAt: now,
+  }))
 
   const insertPlan = db.insert(foodPlans).values({
     id: newPlanId,
@@ -229,6 +323,12 @@ export function buildPlanCopyStatements(
     ),
     ...chunkForParamCap(entryRows).map((rows) =>
       db.insert(foodPlanEntries).values(rows),
+    ),
+    ...chunkForParamCap(dailyTargetRows).map((rows) =>
+      db.insert(foodPlanDailyTargets).values(rows),
+    ),
+    ...chunkForParamCap(mealTargetRows).map((rows) =>
+      db.insert(mealTargets).values(rows),
     ),
   ]
 }

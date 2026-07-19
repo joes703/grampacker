@@ -8,6 +8,8 @@ import {
   createFoodPlanRequestSchema,
   duplicateFoodPlanRequestSchema,
   renameFoodPlanRequestSchema,
+  saveTargetsRequestSchema,
+  updateDayRequestSchema,
   updateEntryRequestSchema,
   type FoodPlanDocument,
   type FoodPlanSummary,
@@ -58,6 +60,8 @@ function toDocument(doc: FoodPlanDocumentRow): FoodPlanDocument {
     days: doc.days,
     dayMeals: doc.dayMeals,
     entries: doc.entries,
+    dailyTargets: doc.dailyTargets,
+    mealTargets: doc.mealTargets,
     usedByList: doc.usedByList,
   }
 }
@@ -151,6 +155,22 @@ foodPlanRoutes.post('/:id/duplicate', async (c) => {
   return respond(c, result, 'Food plan limit reached (100 per user)', 201)
 })
 
+// ------------------------------------------------------------------- targets
+
+// FULL replace (design decision 1): the body is the complete target set;
+// metrics absent from it are deleted. Bounds/pct/duplicate/size rules all
+// live in the zod schema, so the repo only re-checks ownership and meal
+// references. Off never crosses the wire - the editor omits the row.
+foodPlanRoutes.put('/:id/targets', async (c) => {
+  const raw = await c.req.json().catch(() => null)
+  const parsed = saveTargetsRequestSchema.safeParse(raw)
+  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const result = await c
+    .get('repos')
+    .foodPlans.saveTargets(c.req.param('id'), parsed.data.daily, parsed.data.meals)
+  return respond(c, result, '')
+})
+
 // --------------------------------------------------------------------- days
 
 foodPlanRoutes.post('/:id/days', async (c) => {
@@ -162,6 +182,21 @@ foodPlanRoutes.delete('/:id/days/:dayId', async (c) => {
   const result = await c
     .get('repos')
     .foodPlans.removeDay(c.req.param('id'), c.req.param('dayId'))
+  return respond(c, result, '')
+})
+
+// Day-type override for target grading (slice 7): full / partial / null=auto.
+foodPlanRoutes.patch('/:id/days/:dayId', async (c) => {
+  const raw = await c.req.json().catch(() => null)
+  const parsed = updateDayRequestSchema.safeParse(raw)
+  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const result = await c
+    .get('repos')
+    .foodPlans.setDayType(
+      c.req.param('id'),
+      c.req.param('dayId'),
+      parsed.data.dayTypeOverride,
+    )
   return respond(c, result, '')
 })
 

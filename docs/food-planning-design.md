@@ -100,9 +100,9 @@ structurally self-sealing.
 | `food_plan_days` | Explicit day rows. Authoritative for "how many days". | None |
 | `day_meals` | The day x meal grid. **Stays a table.** A row means "this meal is enabled on this day", which an empty cell must still be able to express - collapsing it to JSON would lose that. | None |
 | `food_plan_entries` | One food x quantity in a (day, meal) cell or in Extras. `basis` in `servings` \| `packages` \| `weight`. | None |
-| `food_plan_daily_targets` | Per-plan daily nutrition targets. | None (**deferred**, slice 7) |
-| `meal_targets` | Per-meal targets. | None (**deferred**, slice 7) |
-| `food_plan_target_defaults` | Account-level default targets (Settings). | None (**deferred**, slice 7) |
+| `food_plan_daily_targets` | Per-plan daily nutrition targets. | **`mode` stores no `'off'`** - off = row absent, uniformly (section 14) |
+| `meal_targets` | Per-meal targets. | Same no-off tightening; doubly pinned by `(meal_id, food_plan_id)` (section 14) |
+| `food_plan_target_defaults` | Account-level default targets (Settings). | None (the old build already forbade stored off here) - section 14 |
 | `food_pack_state` | `(list_id, food_item_id)` - **presence means packed.** | **Re-keyed; `packed_signature` AND `is_packed` both dropped.** |
 
 `food_pack_state` gets composite FKs to `lists(id, user_id) ON DELETE CASCADE` and
@@ -774,7 +774,7 @@ name, and then do nothing with. That is not a shippable increment.
 | 4 | **Pack mode**: `food_pack_state`, the checklist, the progress counter, reset, the pack-state lifecycle (section 6) | The packing checklist. |
 | 5 | **Share**: the nullable `food` object, plus the `items.length === 0` fix | Food weight on `/r/:slug`. |
 | 6 | **CSV + takeout**: food CSV import/export, food in the takeout bundle | Data portability. |
-| 7 | **Targets**: daily/meal targets + `DefaultTargetsSection` in Settings | **Deferred.** Nutrition targets are the least load-bearing part of the feature and must not block the core path. |
+| 7 | **Targets**: daily/meal targets + `DefaultTargetsSection` in Settings | Was deferred to last (least load-bearing; must not block the core path). Designed 2026-07-18 in section 14; ships as **7a backend** (schema, save/defaults routes, copy semantics, day-type endpoint, takeout v4) then **7b frontend** (nutrition math, grading, editors, day review, Settings). |
 
 Slices 1-4 are ordered. 5 follows 3. 6 and 7 can land any time after 2, and **7 is
 explicitly last**.
@@ -840,8 +840,9 @@ It encodes "this meal is enabled on this day", which an *empty* cell must still 
 able to express. Collapsing it into JSON to reduce the table count would lose that
 distinction.
 
-### 12.8 Targets are deferred to last
-They are the least load-bearing part of the feature. (Section 11.)
+### 12.8 Targets are deferred to last (resolved 2026-07-18)
+They are the least load-bearing part of the feature. (Section 11.) Every other
+slice shipped first; the targets design is section 14.
 
 ### 12.9 A live reference must not be a surprise (superseded 2026-07-16)
 As designed: when a plan backed more than one list, the editor said so and
@@ -860,11 +861,135 @@ must be identical. (Section 5.6.)
 
 ## 13. Deferred
 
-- **Nutrition targets** (slice 7).
 - **Derived kcal/day targets.** Packstack estimates calories *burned* from pack weight,
   terrain, pace and temperature (Pandolf equation) instead of making you type a target
-  in. A natural later upgrade once targets exist at all.
+  in. A natural later upgrade now that targets exist (section 14).
 - **Richer public food share.** Additive if the audience ever materializes (section 7).
+- **The old build's nutrition summary strips** (headline strip, DayTotalsStrip,
+  FoodPlanSummary's all-days target table): not ported in slice 7b v1 - the per-day
+  review panel is the grading surface, and the strips are additive polish that can
+  land later with zero schema or wire changes. (Section 14.6.)
 
 (Rev 1 also deferred "clearing pack rows on entry delete". That is **no longer
-deferred** - it is rule 2 of section 6, and it is correctness.)
+deferred** - it is rule 2 of section 6, and it is correctness. Rev 5 deferred
+nutrition targets wholesale; they are now designed in section 14 and shipping as
+slices 7a/7b.)
+
+---
+
+## 14. Nutrition targets (designed 2026-07-18; slices 7a/7b)
+
+The last subsystem of the rewrite. Targets let a plan say "aim for 3000-3500 kcal
+per full day" or "dinner should be under 35% fat", and the review UI grades each
+day against them. NOT a verbatim port: the old build's diff-based save RPC, its
+stored `mode='off'` rows in per-plan tables, and its all-days summary strips are
+all deliberately dropped (14.6). Slice 7a is the backend (schema, save/defaults
+routes, copy semantics, day-type endpoint, takeout v4); 7b is the frontend
+(nutrition math, grading, editors, day review, Settings).
+
+### 14.1 Schema: off is unrepresentable, everywhere
+
+Migration 0012 adds the three tables from 2.2. The structural rule that governs
+all of them: **a target that is off is a row that does not exist.** The old build
+stored `mode='off'` rows in the per-plan tables (but forbade them in defaults);
+the rewrite makes the representation uniform - `mode` is CHECKed to
+`('range','min','max')` in every table, so "off" cannot be stored anywhere and
+readers never filter it out.
+
+- `food_plan_daily_targets` - `(id, food_plan_id, user_id, metric, mode,
+  target_min, target_max)`. Composite FK `(food_plan_id, user_id)` ->
+  `food_plans(id, user_id)` CASCADE; `UNIQUE(food_plan_id, metric)`.
+- `meal_targets` - the same plus `meal_id`, doubly pinned: the plan FK above AND
+  `(meal_id, food_plan_id)` -> `meals(id, food_plan_id)` CASCADE, so a target can
+  never point at another plan's meal even if the repo misses a check.
+  `UNIQUE(meal_id, metric)`.
+- `food_plan_target_defaults` - account-level, `UNIQUE(user_id, metric)`, only
+  the plain `user_id` cascade.
+
+Bounds are CHECKed as a backstop behind zod (which is the real gate, 14.2):
+each bound is `NULL or (>= 0 and < 100000000)` (the old numeric(12,4) magnitude),
+and the mode dictates shape - `min` requires target_min alone, `max` requires
+target_max alone, `range` requires both with `min <= max`. Percent metrics
+(`fat_pct`, `sugar_pct`) get a `<= 100` ceiling on both bounds.
+
+**Metrics.** Daily: `calories, protein, carbs, fiber, sodium, calorie_density`.
+Meal: `calories, protein, fat_pct, sugar_pct, carb_protein_ratio`. Canonical
+units: kcal, grams, mg sodium, kcal/g density. There is no `sort_order` column -
+targets are a keyed set, and reads order by `(metric)` / `(meal_id, metric)` so
+documents are deterministic without write-side bookkeeping.
+
+### 14.2 The save API is a full replace
+
+`PUT /api/food-plans/:id/targets` takes the complete target state - `daily`
+(<= 6, one per metric) and `meals` (<= 100 across <= 20 meals, one per
+(meal, metric)) - and replaces everything: one `db.batch` of [delete all daily,
+delete all meal, chunked inserts]. Omitting a target IS turning it off, which is
+what makes no-off storage workable. Target ids are re-minted server-side on every
+save; nothing downstream holds a target id across saves.
+
+Zod does the real validation (modes, bounds, 4-decimal scale, percent ceiling,
+duplicate metric / duplicate (mealId, metric) rejection - 400). The repo then
+prechecks meal ownership **inverted**: it selects the plan's own <= 20 meals and
+checks membership in JS, rather than `inArray`-ing the payload's meal ids - a
+zod-valid payload can carry 100 distinct foreign ids, which would blow the D1
+100-param cap. A foreign meal id is 422 `invalid_ref` with zero writes. The
+precheck races with a concurrent meal delete; the composite FK catches that, and
+the repo maps the FK violation to the same 422 instead of a 500.
+
+Full-replace loses concurrent edits (two tabs editing targets - last writer
+wins). Accepted: same trade-off every other editor in the app makes, and the
+payload is the whole state so the loss is coherent, never a half-merge.
+
+### 14.3 Defaults: copied by value at plan creation
+
+`GET`/`PUT /api/target-defaults` manage the account-level set (Settings UI in
+7b); PUT is the same full-replace shape (<= 6, one per metric). Plan creation
+**snapshots** the defaults into `food_plan_daily_targets` - copy by value, once.
+Editing defaults later never rewrites existing plans, and clearing defaults
+leaves them untouched. This is the old build's semantic, kept on purpose: a
+plan's targets are the plan's, and defaults are just the starting point.
+
+### 14.4 Duplicates carry targets
+
+`readPlanGraph`/`buildPlanCopyStatements` (the shared copy machinery behind plan
+duplicate and "Duplicate & attach") grow the two per-plan target tables. Daily
+targets copy directly; meal targets remap `meal_id` through the same id map the
+entries already use. Fresh ids throughout, chunked inserts, same one-batch
+atomicity as the rest of the copy.
+
+### 14.5 Day type and grading (7b consumes; 7a ships the endpoint)
+
+`PATCH /api/food-plans/:id/days/:dayId` sets `day_type_override` to `'full'`,
+`'partial'`, or null (auto). The update predicate is three-column - `(id,
+food_plan_id, user_id)` - so a same-user cross-plan day id is a 404, not a
+mutation.
+
+Grading (7b, pure modules):
+
+- **dayType** = `dayTypeOverride ?? (every anchor-role meal scheduled on the day
+  -> 'full' : 'partial')`; `every` over an empty anchor set is vacuously full.
+- **Daily targets grade only full days**; partial days show as neutral. Meal
+  targets always grade.
+- `evaluateTarget` -> `off | incomplete | neutral | pass | under | over`, no
+  near-miss tolerance. `incomplete` propagates from the nutrition math: a
+  packages-basis entry whose food lacks `servingsPerPackage` makes every
+  nutrient it touches incomplete rather than silently zero.
+- `fat_pct`/`sugar_pct` are percent of **macro** calories (fat*9 + carbs*4 +
+  protein*4), ceilinged at 100. `calorie_density` divides by **unrounded**
+  `projectFoodGrams` output - never the plan view's display-rounded grams
+  (section 12.10 discipline applies to grading too).
+
+### 14.6 Boundaries: takeout, sharing, and what is not ported
+
+- **Takeout.** `food-data.json` bumps to **version 4**: top-level
+  `targetDefaults` plus per-plan `dailyTargets`/`mealTargets` riding in the plan
+  documents. Compat rule: a v3 archive is simply targets-empty - no migration
+  step, absent means none.
+- **Public shares are unchanged.** D6 (weight-only) stands; no target data
+  crosses the share boundary, and the old build's public MealTargetsBar dies
+  with it.
+- **Not ported:** the diff-based save RPC (full replace is simpler and the
+  contradiction classes it guarded against cannot be expressed in the new
+  payload); stored `off` rows; the sample-plan onboarding feature (never ported
+  at all); and the all-days summary strips, which are deferred, not dead
+  (section 13).

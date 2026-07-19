@@ -81,6 +81,8 @@ function planDoc(): FoodPlanDocument {
       { id: 'e2', dayMealId: 'c1', isExtra: false, foodItemId: 'f2', basis: 'servings', amount: 1, sortOrder: 1 },
       { id: 'e3', dayMealId: 'c1', isExtra: false, foodItemId: 'f-gone', basis: 'servings', amount: 1, sortOrder: 2 },
     ],
+    dailyTargets: [],
+    mealTargets: [],
     usedByList: null,
   }
 }

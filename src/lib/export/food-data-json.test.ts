@@ -50,26 +50,51 @@ function makePlan(over: Partial<FoodPlanDocument> & { id: string; name: string }
         sortOrder: 0,
       },
     ],
+    dailyTargets: over.dailyTargets ?? [],
+    mealTargets: over.mealTargets ?? [],
     usedByList: over.usedByList ?? null,
   }
 }
 
 describe('buildFoodDataJson', () => {
-  it('wraps the library and full plan documents in a version-3 envelope', () => {
+  it('wraps library, plan documents and target defaults in a version-4 envelope', () => {
     const foodItems = [makeFood({ id: 'f-1', name: 'Oats', sodiumMg: 0 })]
-    const foodPlans = [makePlan({ id: 'p-1', name: 'JMT week 1', usedByList: { id: 'l-1', name: 'JMT' } })]
-    const doc = buildFoodDataJson({ foodItems, foodPlans })
-    expect(doc).toEqual({ version: 3, foodItems, foodPlans })
+    const foodPlans = [
+      makePlan({
+        id: 'p-1',
+        name: 'JMT week 1',
+        usedByList: { id: 'l-1', name: 'JMT' },
+        dailyTargets: [
+          { id: 'dt-1', metric: 'calories', mode: 'range', targetMin: 2500, targetMax: 3500 },
+        ],
+        mealTargets: [
+          { id: 'mt-1', mealId: 'm-1', metric: 'fat_pct', mode: 'max', targetMin: null, targetMax: 35 },
+        ],
+      }),
+    ]
+    const targetDefaults = [
+      { id: 'td-1', metric: 'protein' as const, mode: 'min' as const, targetMin: 120, targetMax: null },
+    ]
+    const doc = buildFoodDataJson({ foodItems, foodPlans, targetDefaults })
+    expect(doc).toEqual({ version: 4, foodItems, foodPlans, targetDefaults })
     // Exactly the envelope - nothing else rides along (pack state is
     // deliberately excluded: ephemeral trip-prep, not portable data).
-    expect(Object.keys(doc).sort()).toEqual(['foodItems', 'foodPlans', 'version'])
+    expect(Object.keys(doc).sort()).toEqual([
+      'foodItems',
+      'foodPlans',
+      'targetDefaults',
+      'version',
+    ])
   })
 
   it('keeps empty collections as empty arrays so the shape is stable', () => {
-    expect(buildFoodDataJson({ foodItems: [], foodPlans: [] })).toEqual({
-      version: 3,
+    expect(
+      buildFoodDataJson({ foodItems: [], foodPlans: [], targetDefaults: [] }),
+    ).toEqual({
+      version: 4,
       foodItems: [],
       foodPlans: [],
+      targetDefaults: [],
     })
   })
 })

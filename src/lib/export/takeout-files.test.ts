@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { FOOD_CSV_HEADER, foodItemsToCsv, gearItemsToCsv, listItemsToCsv } from '../csv'
 import type { Category, FoodItem, GearItem, List, ListItemWithGear } from '../types'
-import type { FoodPlanDocument } from '../queries'
+import type { FoodPlanDocument, TargetDefault } from '../queries'
 import { buildTakeoutFiles, exportTimestamp } from './takeout-files'
 
 // No foods / no plans - spread into the gear-focused tests so their
 // assertions stay about gear and lists.
-const noFood = { foodItems: [] as FoodItem[], foodPlans: [] as FoodPlanDocument[] }
+const noFood = {
+  foodItems: [] as FoodItem[],
+  foodPlans: [] as FoodPlanDocument[],
+  targetDefaults: [] as TargetDefault[],
+}
 
 function makeCategory(over: Partial<Category> & { id: string; name: string }): Category {
   return {
@@ -93,13 +97,14 @@ describe('buildTakeoutFiles', () => {
     // Header-only, never a zero-byte file, so the bundle shape is stable.
     expect(files['food-library.csv']).toBe(FOOD_CSV_HEADER)
     expect(JSON.parse(files['food-data.json'] ?? '')).toEqual({
-      version: 3,
+      version: 4,
       foodItems: [],
       foodPlans: [],
+      targetDefaults: [],
     })
   })
 
-  it('emits food-library.csv and a version-3 food-data.json with the full plan graphs', () => {
+  it('emits food-library.csv and a version-4 food-data.json with plan graphs + defaults', () => {
     const foodItems: FoodItem[] = [
       {
         id: 'f-1', name: 'Oats', brand: 'Quaker', servingDescription: '1 packet',
@@ -118,17 +123,27 @@ describe('buildTakeoutFiles', () => {
         days: [{ id: 'd-1', dayTypeOverride: null, sortOrder: 0 }],
         dayMeals: [{ id: 'dm-1', dayId: 'd-1', mealId: 'm-1' }],
         entries: [{ id: 'e-1', dayMealId: 'dm-1', isExtra: false, foodItemId: 'f-1', basis: 'servings', amount: 2, sortOrder: 0 }],
+        dailyTargets: [
+          { id: 'dt-1', metric: 'calories', mode: 'min', targetMin: 2500, targetMax: null },
+        ],
+        mealTargets: [
+          { id: 'mt-1', mealId: 'm-1', metric: 'fat_pct', mode: 'max', targetMin: null, targetMax: 35 },
+        ],
         usedByList: { id: 'l-1', name: 'JMT' },
       },
     ]
+    const targetDefaults: TargetDefault[] = [
+      { id: 'td-1', metric: 'protein', mode: 'min', targetMin: 120, targetMax: null },
+    ]
     const files = buildTakeoutFiles({
-      categories, gearItems, lists: [], allItems: [], foodItems, foodPlans,
+      categories, gearItems, lists: [], allItems: [], foodItems, foodPlans, targetDefaults,
     })
     expect(files['food-library.csv']).toBe(foodItemsToCsv(foodItems))
     expect(JSON.parse(files['food-data.json'] ?? '')).toEqual({
-      version: 3,
+      version: 4,
       foodItems,
       foodPlans,
+      targetDefaults,
     })
   })
 

@@ -123,6 +123,8 @@ function planDoc(over: Partial<FoodPlanDocument> = {}): FoodPlanDocument {
       // 2 servings of a 50 g food = 100 g in Day 1 breakfast.
       { id: 'e1', dayMealId: 'c-bfast', isExtra: false, foodItemId: 'f1', basis: 'servings', amount: 2, sortOrder: 0 },
     ],
+    dailyTargets: [],
+    mealTargets: [],
     usedByList: null,
     ...over,
   }

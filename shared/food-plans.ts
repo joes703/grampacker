@@ -123,6 +123,201 @@ export const foodPlanUsedBySchema = z.object({
 })
 export type FoodPlanUsedBy = z.infer<typeof foodPlanUsedBySchema>
 
+// ------------------------------------------------------------------- targets
+
+// Nutrition targets (slice 7). `mode` NEVER includes 'off' on the wire or in
+// the DB: "off" is the absence of the row (a deliberate tightening of the old
+// build, where plan tables could store an off row the client never wrote).
+export const DAILY_TARGET_METRICS = [
+  'calories',
+  'protein',
+  'carbs',
+  'fiber',
+  'sodium',
+  'calorie_density',
+] as const
+export const MEAL_TARGET_METRICS = [
+  'calories',
+  'protein',
+  'fat_pct',
+  'sugar_pct',
+  'carb_protein_ratio',
+] as const
+export type DailyTargetMetric = (typeof DAILY_TARGET_METRICS)[number]
+export type MealTargetMetric = (typeof MEAL_TARGET_METRICS)[number]
+
+export const targetModeSchema = z.enum(['range', 'min', 'max'])
+export type TargetMode = z.infer<typeof targetModeSchema>
+
+export const foodPlanDailyTargetSchema = z.object({
+  id: z.string(),
+  metric: z.enum(DAILY_TARGET_METRICS),
+  mode: targetModeSchema,
+  targetMin: z.number().nullable(),
+  targetMax: z.number().nullable(),
+})
+export type FoodPlanDailyTarget = z.infer<typeof foodPlanDailyTargetSchema>
+
+export const mealTargetSchema = z.object({
+  id: z.string(),
+  mealId: z.string(),
+  metric: z.enum(MEAL_TARGET_METRICS),
+  mode: targetModeSchema,
+  targetMin: z.number().nullable(),
+  targetMax: z.number().nullable(),
+})
+export type MealTarget = z.infer<typeof mealTargetSchema>
+
+// A target bound mirrors the old numeric(12,4): >= 0, < 1e8, at most 4
+// decimal places (round-trip check, not epsilon - see shared/food.ts for why
+// the epsilon form is magnitude-fragile). Magnitude is also a DB CHECK; the
+// scale is zod-only, like every other REAL column.
+const targetBoundSchema = z
+  .number()
+  .min(0)
+  .lt(100_000_000)
+  .refine((v) => Math.round(v * 10_000) / 10_000 === v, {
+    message: 'at most 4 decimal places',
+  })
+
+// I-BOUNDS, exactly the DB CHECK's mode branches. Shared by the plan-targets
+// and defaults request schemas so the mirrors cannot drift.
+export function targetBoundsConsistent(t: {
+  mode: TargetMode
+  targetMin: number | null
+  targetMax: number | null
+}): boolean {
+  switch (t.mode) {
+    case 'min':
+      return t.targetMin !== null && t.targetMax === null
+    case 'max':
+      return t.targetMax !== null && t.targetMin === null
+    case 'range':
+      return (
+        t.targetMin !== null && t.targetMax !== null && t.targetMin <= t.targetMax
+      )
+  }
+}
+const boundsRefine = {
+  message: 'bounds do not match mode',
+} as const
+
+export const dailyTargetInputSchema = z
+  .object({
+    metric: z.enum(DAILY_TARGET_METRICS),
+    mode: targetModeSchema,
+    targetMin: targetBoundSchema.nullable(),
+    targetMax: targetBoundSchema.nullable(),
+  })
+  .strict()
+  .refine(targetBoundsConsistent, boundsRefine)
+export type DailyTargetInput = z.infer<typeof dailyTargetInputSchema>
+
+export const mealTargetInputSchema = z
+  .object({
+    mealId: idSchema,
+    metric: z.enum(MEAL_TARGET_METRICS),
+    mode: targetModeSchema,
+    targetMin: targetBoundSchema.nullable(),
+    targetMax: targetBoundSchema.nullable(),
+  })
+  .strict()
+  .refine(targetBoundsConsistent, boundsRefine)
+  // I-PCT: percent metrics cap at 100 (mirrors meal_target_pct_ceiling).
+  .refine(
+    (t) =>
+      (t.metric !== 'fat_pct' && t.metric !== 'sugar_pct') ||
+      ((t.targetMin === null || t.targetMin <= 100) &&
+        (t.targetMax === null || t.targetMax <= 100)),
+    { message: 'percent targets cap at 100' },
+  )
+export type MealTargetInput = z.infer<typeof mealTargetInputSchema>
+
+// FULL-replace save: the payload is the COMPLETE target set for the plan
+// (design decision 1 - no diff, no contradiction guards; a metric absent
+// from the payload is deleted, and "off" in the editor simply omits the
+// row). Duplicate metrics / (mealId, metric) pairs are payload bugs, not
+// mergeable intent, so they 400.
+export const saveTargetsRequestSchema = z
+  .object({
+    daily: z.array(dailyTargetInputSchema).max(DAILY_TARGET_METRICS.length),
+    meals: z
+      .array(mealTargetInputSchema)
+      .max(MEAL_DEFINITION_CAP * MEAL_TARGET_METRICS.length),
+  })
+  .strict()
+  .superRefine((val, ctx) => {
+    const metrics = new Set<string>()
+    for (const t of val.daily) {
+      if (metrics.has(t.metric)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['daily'],
+          message: `duplicate daily metric: ${t.metric}`,
+        })
+      }
+      metrics.add(t.metric)
+    }
+    const pairs = new Set<string>()
+    for (const t of val.meals) {
+      const key = `${t.mealId}\u0000${t.metric}`
+      if (pairs.has(key)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['meals'],
+          message: `duplicate meal target: ${t.metric}`,
+        })
+      }
+      pairs.add(key)
+    }
+  })
+export type SaveTargetsRequest = z.infer<typeof saveTargetsRequestSchema>
+
+// Day-type override (slice 7): forces a day full/partial for target grading;
+// null returns it to auto (derived from whether both anchor meals are
+// scheduled). PATCH-shaped but the single field is required - there is
+// nothing else on a day to edit.
+export const updateDayRequestSchema = z
+  .object({
+    dayTypeOverride: z.enum(['full', 'partial']).nullable(),
+  })
+  .strict()
+export type UpdateDayRequest = z.infer<typeof updateDayRequestSchema>
+
+// Account-level default daily targets (Settings). Same row shape as a plan's
+// daily target - the copy at plan create is field-for-field - and the same
+// full-replace save contract. Off = absent, here enforced by the DB too
+// (the defaults table never allowed a stored off row, even in the old build).
+export const targetDefaultSchema = foodPlanDailyTargetSchema
+export type TargetDefault = z.infer<typeof targetDefaultSchema>
+
+export const targetDefaultsResponseSchema = z.object({
+  defaults: targetDefaultSchema.array(),
+})
+export type TargetDefaultsResponse = z.infer<typeof targetDefaultsResponseSchema>
+
+export const saveTargetDefaultsRequestSchema = z
+  .object({
+    defaults: z.array(dailyTargetInputSchema).max(DAILY_TARGET_METRICS.length),
+  })
+  .strict()
+  .superRefine((val, ctx) => {
+    const metrics = new Set<string>()
+    for (const t of val.defaults) {
+      if (metrics.has(t.metric)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['defaults'],
+          message: `duplicate metric: ${t.metric}`,
+        })
+      }
+      metrics.add(t.metric)
+    }
+  })
+export type SaveTargetDefaultsRequest = z.infer<
+  typeof saveTargetDefaultsRequestSchema
+>
+
 // The whole plan graph in one batched read (design 5.2). Every structural
 // mutation returns the fresh document so the editor stays a pure projection of
 // this single cache entry (no fine-grained optimistic fan-out; design 5.5).
@@ -136,6 +331,11 @@ export const foodPlanDocumentSchema = z.object({
   days: foodPlanDaySchema.array(),
   dayMeals: dayMealSchema.array(),
   entries: foodPlanEntrySchema.array(),
+  // Sorted by metric / (mealId, metric) for a stable wire shape; empty arrays
+  // when no targets are set (never absent - takeout and the editor both key
+  // off presence of the field, not presence of rows).
+  dailyTargets: foodPlanDailyTargetSchema.array(),
+  mealTargets: mealTargetSchema.array(),
   usedByList: foodPlanUsedBySchema.nullable(),
 })
 export type FoodPlanDocument = z.infer<typeof foodPlanDocumentSchema>
