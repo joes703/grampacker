@@ -334,3 +334,146 @@ describe('target tables: cascades (I-CASCADE)', () => {
     expect(await countRows('food_plan_target_defaults', userId)).toBe(0)
   })
 })
+
+describe('target copy semantics', () => {
+  async function putDefaults(cookie: string, defaults: unknown[]) {
+    const res = await apiRequest(cookie, 'PUT', '/api/target-defaults', { defaults })
+    expect(res.status).toBe(200)
+  }
+
+  it('create copies the current defaults BY VALUE (I-SNAPSHOT)', async () => {
+    const { cookie } = await signUpVerifiedUser('tgt-copy-1@example.com', 'T')
+    await putDefaults(cookie, [
+      { metric: 'calories', mode: 'range', targetMin: 2500, targetMax: 3500 },
+      { metric: 'protein', mode: 'min', targetMin: 120, targetMax: null },
+    ])
+
+    const doc = await createPlan(cookie, 'Snapshot plan')
+    expect(doc.dailyTargets.map((t) => t.metric)).toEqual(['calories', 'protein'])
+    expect(doc.dailyTargets[0]).toMatchObject({
+      metric: 'calories', mode: 'range', targetMin: 2500, targetMax: 3500,
+    })
+    expect(doc.mealTargets).toEqual([])
+
+    // Editing defaults afterwards must not rewrite the existing plan...
+    await putDefaults(cookie, [
+      { metric: 'calories', mode: 'min', targetMin: 9000, targetMax: null },
+    ])
+    const res = await apiRequest(cookie, 'GET', `/api/food-plans/${doc.id}`)
+    const reread = foodPlanDocumentSchema.parse(await res.json())
+    expect(reread.dailyTargets).toEqual(doc.dailyTargets)
+
+    // ...and clearing them means a new plan copies nothing.
+    await putDefaults(cookie, [])
+    const bare = await createPlan(cookie, 'No defaults')
+    expect(bare.dailyTargets).toEqual([])
+  })
+
+  it('duplicate copies targets with fresh ids and remapped meal ids', async () => {
+    const { cookie } = await signUpVerifiedUser('tgt-copy-2@example.com', 'T')
+    const doc = await createPlan(cookie, 'Dup source')
+    const breakfast = doc.meals.find((m) => m.anchorRole === 'breakfast')!
+    const save = await apiRequest(cookie, 'PUT', `/api/food-plans/${doc.id}/targets`, {
+      daily: [{ metric: 'fiber', mode: 'min', targetMin: 25, targetMax: null }],
+      meals: [{ mealId: breakfast.id, metric: 'sugar_pct', mode: 'max', targetMin: null, targetMax: 20 }],
+    })
+    expect(save.status).toBe(200)
+    const source = foodPlanDocumentSchema.parse(await save.json())
+
+    const dupRes = await apiRequest(cookie, 'POST', `/api/food-plans/${doc.id}/duplicate`)
+    expect(dupRes.status).toBe(201)
+    const copy = foodPlanDocumentSchema.parse(await dupRes.json())
+
+    expect(copy.dailyTargets).toHaveLength(1)
+    expect(copy.dailyTargets[0]).toMatchObject({ metric: 'fiber', mode: 'min', targetMin: 25 })
+    expect(copy.dailyTargets[0]!.id).not.toBe(source.dailyTargets[0]!.id)
+
+    const copyBreakfast = copy.meals.find((m) => m.anchorRole === 'breakfast')!
+    expect(copy.mealTargets).toHaveLength(1)
+    expect(copy.mealTargets[0]).toMatchObject({
+      mealId: copyBreakfast.id, metric: 'sugar_pct', mode: 'max', targetMax: 20,
+    })
+    // The copy's meal target cites the COPY's meal, never the source's.
+    expect(copy.mealTargets[0]!.mealId).not.toBe(breakfast.id)
+  })
+
+  it('duplicating a LIST duplicates its plan WITH targets', async () => {
+    const { cookie } = await signUpVerifiedUser('tgt-copy-3@example.com', 'T')
+    const doc = await createPlan(cookie, 'List-held plan')
+    const save = await apiRequest(cookie, 'PUT', `/api/food-plans/${doc.id}/targets`, {
+      daily: [{ metric: 'sodium', mode: 'max', targetMin: null, targetMax: 5000 }],
+      meals: [],
+    })
+    expect(save.status).toBe(200)
+
+    const listRes = await apiRequest(cookie, 'POST', '/api/lists', { name: 'Trip' })
+    expect(listRes.status).toBe(201)
+    const list = (await listRes.json()) as { id: string }
+    const attach = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/food-plan`, {
+      foodPlanId: doc.id,
+    })
+    expect(attach.status).toBe(200)
+
+    const dupRes = await apiRequest(cookie, 'POST', `/api/lists/${list.id}/duplicate`)
+    expect(dupRes.status).toBe(201)
+    const dupList = (await dupRes.json()) as { id: string; foodPlanId: string | null }
+    expect(dupList.foodPlanId).toBeTruthy()
+    expect(dupList.foodPlanId).not.toBe(doc.id)
+
+    const copyRes = await apiRequest(cookie, 'GET', `/api/food-plans/${dupList.foodPlanId}`)
+    const copy = foodPlanDocumentSchema.parse(await copyRes.json())
+    expect(copy.dailyTargets).toHaveLength(1)
+    expect(copy.dailyTargets[0]).toMatchObject({ metric: 'sodium', mode: 'max', targetMax: 5000 })
+  })
+
+  it('max-size save (6 daily + 100 meal) round-trips and duplicates (9b)', async () => {
+    const { cookie } = await signUpVerifiedUser('tgt-copy-4@example.com', 'T')
+    const doc = await createPlan(cookie, 'Max targets')
+    // 3 seeded meals + 17 more = the 20-per-plan cap.
+    let current = doc
+    for (let i = 0; i < 17; i++) {
+      const res = await apiRequest(cookie, 'POST', `/api/food-plans/${doc.id}/meals`, {
+        name: `Snack ${i + 1}`,
+      })
+      expect(res.status).toBe(201)
+      current = foodPlanDocumentSchema.parse(await res.json())
+    }
+    expect(current.meals).toHaveLength(20)
+
+    const daily = [
+      { metric: 'calories', mode: 'range', targetMin: 2500, targetMax: 3500 },
+      { metric: 'protein', mode: 'min', targetMin: 120, targetMax: null },
+      { metric: 'carbs', mode: 'min', targetMin: 300, targetMax: null },
+      { metric: 'fiber', mode: 'min', targetMin: 25, targetMax: null },
+      { metric: 'sodium', mode: 'max', targetMin: null, targetMax: 5000 },
+      { metric: 'calorie_density', mode: 'min', targetMin: 4.1234, targetMax: null },
+    ]
+    const meals = current.meals.flatMap((m) => [
+      { mealId: m.id, metric: 'calories', mode: 'max', targetMin: null, targetMax: 900 },
+      { mealId: m.id, metric: 'protein', mode: 'min', targetMin: 10, targetMax: null },
+      { mealId: m.id, metric: 'fat_pct', mode: 'max', targetMin: null, targetMax: 35 },
+      { mealId: m.id, metric: 'sugar_pct', mode: 'max', targetMin: null, targetMax: 25 },
+      { mealId: m.id, metric: 'carb_protein_ratio', mode: 'range', targetMin: 2, targetMax: 4 },
+    ])
+    expect(meals).toHaveLength(100)
+
+    const save = await apiRequest(cookie, 'PUT', `/api/food-plans/${doc.id}/targets`, {
+      daily,
+      meals,
+    })
+    expect(save.status).toBe(200)
+    const saved = foodPlanDocumentSchema.parse(await save.json())
+    expect(saved.dailyTargets).toHaveLength(6)
+    expect(saved.mealTargets).toHaveLength(100)
+
+    const dupRes = await apiRequest(cookie, 'POST', `/api/food-plans/${doc.id}/duplicate`)
+    expect(dupRes.status).toBe(201)
+    const copy = foodPlanDocumentSchema.parse(await dupRes.json())
+    expect(copy.dailyTargets).toHaveLength(6)
+    expect(copy.mealTargets).toHaveLength(100)
+    const copyMealIds = new Set(copy.meals.map((m) => m.id))
+    for (const t of copy.mealTargets) {
+      expect(copyMealIds.has(t.mealId)).toBe(true)
+    }
+  })
+})

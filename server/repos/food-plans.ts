@@ -8,6 +8,7 @@ import {
   foodPlanDays,
   foodPlanEntries,
   foodPlans,
+  foodPlanTargetDefaults,
   lists,
   meals,
   mealTargets,
@@ -460,8 +461,40 @@ export function createFoodPlansRepo(db: Db, userId: string) {
           }),
         ),
       )
+      // Copy the account's default daily targets BY VALUE (I-SNAPSHOT): no
+      // linkage, so later default edits never rewrite this plan. The read
+      // runs before the batch; an interleaved defaults edit lands wholly
+      // before or wholly after this snapshot, both fine.
+      const defaultRows = await db
+        .select({
+          metric: foodPlanTargetDefaults.metric,
+          mode: foodPlanTargetDefaults.mode,
+          targetMin: foodPlanTargetDefaults.targetMin,
+          targetMax: foodPlanTargetDefaults.targetMax,
+        })
+        .from(foodPlanTargetDefaults)
+        .where(eq(foodPlanTargetDefaults.userId, userId))
+      const insertDefaultTargets = chunkForParamCap(
+        defaultRows.map((d) => ({
+          id: crypto.randomUUID(),
+          userId,
+          foodPlanId: planId,
+          metric: d.metric,
+          mode: d.mode,
+          targetMin: d.targetMin,
+          targetMax: d.targetMax,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      ).map((rows) => db.insert(foodPlanDailyTargets).values(rows))
       try {
-        await db.batch([insertPlan, ...insertMeals, ...insertDays, ...insertGrid])
+        await db.batch([
+          insertPlan,
+          ...insertMeals,
+          ...insertDays,
+          ...insertGrid,
+          ...insertDefaultTargets,
+        ])
       } catch (err) {
         if (isFoodPlanCapError(err)) return { ok: false, reason: 'cap_exceeded' }
         throw err
