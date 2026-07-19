@@ -93,6 +93,7 @@ describe('/api/food-plans authorization matrix', () => {
       ['DELETE', '/api/food-plans/some-id', undefined],
       ['POST', '/api/food-plans/some-id/days', undefined],
       ['DELETE', '/api/food-plans/some-id/days/d', undefined],
+      ['PATCH', '/api/food-plans/some-id/days/d', { dayTypeOverride: 'partial' }],
       ['POST', '/api/food-plans/some-id/meals', { name: 'M' }],
       ['DELETE', '/api/food-plans/some-id/meals/m', undefined],
       ['POST', '/api/food-plans/some-id/day-meals', { dayId: 'd', mealId: 'm' }],
@@ -1391,5 +1392,90 @@ describe('PUT /api/food-plans/:id/targets', () => {
       ]),
     ).rejects.toThrow()
     expect(await targetCounts(userId)).toEqual({ daily: 2, meal: 0 })
+  })
+})
+
+describe('PATCH /api/food-plans/:id/days/:dayId (day type override)', () => {
+  it('sets, changes and clears the override, returning the fresh document', async () => {
+    const { cookie } = await signUpVerifiedUser('daytype-crud@example.com', 'D')
+    const plan = await createPlan(cookie, { name: 'Day types', days: 2 })
+    const dayId = plan.days[0]!.id
+    expect(plan.days[0]!.dayTypeOverride).toBeNull()
+
+    let res = await apiRequest(cookie, 'PATCH', `/api/food-plans/${plan.id}/days/${dayId}`, {
+      dayTypeOverride: 'partial',
+    })
+    expect(res.status).toBe(200)
+    let doc = foodPlanDocumentSchema.parse(await res.json())
+    expect(doc.days.find((d) => d.id === dayId)!.dayTypeOverride).toBe('partial')
+
+    res = await apiRequest(cookie, 'PATCH', `/api/food-plans/${plan.id}/days/${dayId}`, {
+      dayTypeOverride: 'full',
+    })
+    expect(res.status).toBe(200)
+    doc = foodPlanDocumentSchema.parse(await res.json())
+    expect(doc.days.find((d) => d.id === dayId)!.dayTypeOverride).toBe('full')
+
+    res = await apiRequest(cookie, 'PATCH', `/api/food-plans/${plan.id}/days/${dayId}`, {
+      dayTypeOverride: null,
+    })
+    expect(res.status).toBe(200)
+    doc = foodPlanDocumentSchema.parse(await res.json())
+    expect(doc.days.find((d) => d.id === dayId)!.dayTypeOverride).toBeNull()
+    // The other day was never touched.
+    expect(doc.days[1]!.dayTypeOverride).toBeNull()
+  })
+
+  it('400s a bad body and 404s a missing day or foreign plan', async () => {
+    const a = await signUpVerifiedUser('daytype-authz-a@example.com', 'A')
+    const b = await signUpVerifiedUser('daytype-authz-b@example.com', 'B')
+    const plan = await createPlan(a.cookie, { name: 'Mine' })
+    const dayId = plan.days[0]!.id
+
+    for (const body of [
+      { dayTypeOverride: 'weekend' }, // not in the enum
+      {}, // missing key
+      { dayTypeOverride: 'partial', extra: 1 }, // strict
+    ]) {
+      const res = await apiRequest(
+        a.cookie, 'PATCH', `/api/food-plans/${plan.id}/days/${dayId}`, body,
+      )
+      expect(res.status).toBe(400)
+    }
+
+    const missing = await apiRequest(
+      a.cookie, 'PATCH', `/api/food-plans/${plan.id}/days/nope`,
+      { dayTypeOverride: 'partial' },
+    )
+    expect(missing.status).toBe(404)
+
+    const cross = await apiRequest(
+      b.cookie, 'PATCH', `/api/food-plans/${plan.id}/days/${dayId}`,
+      { dayTypeOverride: 'partial' },
+    )
+    expect(cross.status).toBe(404)
+  })
+
+  it('404s a day id that belongs to ANOTHER plan of the same user, touching nothing', async () => {
+    const { cookie } = await signUpVerifiedUser('daytype-crossplan@example.com', 'X')
+    const planA = await createPlan(cookie, { name: 'Plan A' })
+    const planB = await createPlan(cookie, { name: 'Plan B' })
+    const dayB = planB.days[0]!.id
+
+    // /planA/days/<planB's day>: user scoping alone would match the day row;
+    // the same-plan predicate must refuse it and leave BOTH plans unchanged.
+    const res = await apiRequest(
+      cookie, 'PATCH', `/api/food-plans/${planA.id}/days/${dayB}`,
+      { dayTypeOverride: 'partial' },
+    )
+    expect(res.status).toBe(404)
+    const aDoc = foodPlanDocumentSchema.parse(
+      await (await apiRequest(cookie, 'GET', `/api/food-plans/${planA.id}`)).json(),
+    )
+    const bDoc = foodPlanDocumentSchema.parse(
+      await (await apiRequest(cookie, 'GET', `/api/food-plans/${planB.id}`)).json(),
+    )
+    expect(aDoc.days.every((d) => d.dayTypeOverride === null)).toBe(true)
+    expect(bDoc.days.every((d) => d.dayTypeOverride === null)).toBe(true)
   })
 })

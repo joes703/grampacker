@@ -273,6 +273,17 @@ export const saveTargetsRequestSchema = z
   })
 export type SaveTargetsRequest = z.infer<typeof saveTargetsRequestSchema>
 
+// Day-type override (slice 7): forces a day full/partial for target grading;
+// null returns it to auto (derived from whether both anchor meals are
+// scheduled). PATCH-shaped but the single field is required - there is
+// nothing else on a day to edit.
+export const updateDayRequestSchema = z
+  .object({
+    dayTypeOverride: z.enum(['full', 'partial']).nullable(),
+  })
+  .strict()
+export type UpdateDayRequest = z.infer<typeof updateDayRequestSchema>
+
 // Account-level default daily targets (Settings). Same row shape as a plan's
 // daily target - the copy at plan create is field-for-field - and the same
 // full-replace save contract. Off = absent, here enforced by the DB too

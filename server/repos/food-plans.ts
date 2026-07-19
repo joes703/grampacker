@@ -1048,6 +1048,31 @@ export function createFoodPlansRepo(db: Db, userId: string) {
       return okDoc(planId)
     },
 
+    // Force a day full/partial for target grading (null = back to auto). The
+    // predicate carries all THREE columns - day id, plan id, user id - not
+    // just ownership: a caller who owns two plans must not be able to reach
+    // plan B's day through plan A's URL (same-plan membership is its own
+    // invariant, exactly like the composite FKs).
+    async setDayType(
+      planId: string,
+      dayId: string,
+      override: 'full' | 'partial' | null,
+    ): Promise<PlanDocResult> {
+      const rows = await db
+        .update(foodPlanDays)
+        .set({ dayTypeOverride: override, updatedAt: Date.now() })
+        .where(
+          and(
+            eq(foodPlanDays.id, dayId),
+            eq(foodPlanDays.foodPlanId, planId),
+            eq(foodPlanDays.userId, userId),
+          ),
+        )
+        .returning({ id: foodPlanDays.id })
+      if (rows.length === 0) return { ok: false, reason: 'not_found' }
+      return okDoc(planId)
+    },
+
     // FULL replace of the plan's target set (design decision 1): delete-all +
     // insert-all in one batch. The payload is zod-validated upstream (bounds,
     // pct ceiling, duplicates, size caps), so the only repo-level concerns are

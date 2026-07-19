@@ -9,6 +9,7 @@ import {
   duplicateFoodPlanRequestSchema,
   renameFoodPlanRequestSchema,
   saveTargetsRequestSchema,
+  updateDayRequestSchema,
   updateEntryRequestSchema,
   type FoodPlanDocument,
   type FoodPlanSummary,
@@ -181,6 +182,21 @@ foodPlanRoutes.delete('/:id/days/:dayId', async (c) => {
   const result = await c
     .get('repos')
     .foodPlans.removeDay(c.req.param('id'), c.req.param('dayId'))
+  return respond(c, result, '')
+})
+
+// Day-type override for target grading (slice 7): full / partial / null=auto.
+foodPlanRoutes.patch('/:id/days/:dayId', async (c) => {
+  const raw = await c.req.json().catch(() => null)
+  const parsed = updateDayRequestSchema.safeParse(raw)
+  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const result = await c
+    .get('repos')
+    .foodPlans.setDayType(
+      c.req.param('id'),
+      c.req.param('dayId'),
+      parsed.data.dayTypeOverride,
+    )
   return respond(c, result, '')
 })
 
