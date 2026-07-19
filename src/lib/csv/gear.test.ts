@@ -31,10 +31,17 @@ function makeGear(over: Partial<GearItem> & { id: string; name: string }): GearI
   }
 }
 
-// The 12-column export header is a Lighterpack-compatible layout with two
+// The 11-column export header is a Lighterpack-shaped layout with two
 // grampacker extension columns (cost, purchase_date) appended. The column
-// HEADERS stay byte-identical to the old repo's snake_case export so a
-// grampacker export re-imports cleanly into Lighterpack and back.
+// HEADERS stay snake_case so a grampacker export re-imports cleanly into
+// Lighterpack and back.
+//
+// ONE money column, `cost`. A second column `price`, hardcoded to 0, used to
+// sit at index 7 as a "Lighterpack default" - but Lighterpack's importer is
+// positional and never reads a price column, so it bought no compatibility
+// and only misled humans reading the file. Import still ACCEPTS `price`, both
+// for real Lighterpack exports and for grampacker exports downloaded before
+// the collapse.
 describe('gearItemsToCsv export format', () => {
   const categories: Category[] = [
     makeCategory({ id: 'cat-shelter', name: 'Shelter', sortOrder: 0 }),
@@ -57,25 +64,87 @@ describe('gearItemsToCsv export format', () => {
     }),
   ]
 
-  it('emits the exact 12-column header', () => {
+  it('emits the exact 11-column header', () => {
     const lines = gearItemsToCsv(items, categories).split('\r\n')
     expect(lines[0]).toBe(
-      'Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable,cost,purchase_date',
+      'Item Name,Category,desc,qty,weight,unit,url,worn,consumable,cost,purchase_date',
     )
   })
 
-  it('emits byte-exact rows (qty=1, gram unit, price=0, blank null extensions)', () => {
+  it('pins the first six columns BY POSITION (Lighterpack import contract)', () => {
+    // Lighterpack's importer is positional, not header-driven. It builds
+    // each item from exactly row[0..5]:
+    //   name: row[0], category: row[1], description: row[2],
+    //   qty: row[3], weight: row[4], unit: row[5]
+    // So reordering these six does not produce a failed import - it produces
+    // a SUCCESSFUL one with the wrong fields (a description landing in the
+    // category, a weight read as a quantity). Nothing else in the suite
+    // would catch that, hence a dedicated positional assertion on both the
+    // headers and a representative data row.
+    const lines = gearItemsToCsv(items, categories).split('\r\n')
+    expect(lines[0]?.split(',').slice(0, 6)).toEqual([
+      'Item Name', 'Category', 'desc', 'qty', 'weight', 'unit',
+    ])
+    expect(lines[1]?.split(',').slice(0, 6)).toEqual([
+      'Tarp', 'Shelter', 'cuben fiber', '1', '240', 'gram',
+    ])
+  })
+
+  it('emits byte-exact rows (qty=1, gram unit, blank null extensions)', () => {
     const lines = gearItemsToCsv(items, categories).split('\r\n')
     // Populated cost + purchase_date; category resolved from id.
-    expect(lines[1]).toBe('Tarp,Shelter,cuben fiber,1,240,gram,,0,,,89.99,2024-04-15')
+    expect(lines[1]).toBe('Tarp,Shelter,cuben fiber,1,240,gram,,,,89.99,2024-04-15')
     // Null description/cost/purchase_date all blank (never 0 / epoch).
-    expect(lines[2]).toBe('Stove fuel canister,Kitchen,,1,100,gram,,0,,,,')
+    expect(lines[2]).toBe('Stove fuel canister,Kitchen,,1,100,gram,,,,,')
     // Null category -> empty Category; name with comma + embedded quotes
     // exercises escapeCell's quote-doubling; the "+" in desc is NOT leading
     // so it is not formula-escaped. cost populated, purchase_date blank.
     expect(lines[3]).toBe(
-      '"Rain jacket, ""shell""",,with comma + quotes for escapeCell,1,320,gram,,0,,,250,',
+      '"Rain jacket, ""shell""",,with comma + quotes for escapeCell,1,320,gram,,,,250,',
     )
+  })
+
+  it('keeps a genuine zero cost distinct from an unknown one', () => {
+    // A free item costs 0; an unknown price is null. The export must not
+    // collapse them - an `|| ''` instead of `?? ''` would turn every free
+    // item into "price unknown", and blank re-imports as null.
+    const zeroAndNull: GearItem[] = [
+      makeGear({ id: 'g-0', name: 'Gifted mug', weightGrams: 50, categoryId: null, cost: 0 }),
+      makeGear({ id: 'g-n', name: 'Old rope', weightGrams: 60, categoryId: null, cost: null }),
+    ]
+    const csv = gearItemsToCsv(zeroAndNull, categories)
+    const lines = csv.split('\r\n')
+    expect(lines[1]).toBe('Gifted mug,,,1,50,gram,,,,0,')
+    expect(lines[2]).toBe('Old rope,,,1,60,gram,,,,,')
+
+    // ...and survives the round trip as 0, not null.
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBe(0)
+    expect(parsed[1]?.cost).toBeNull()
+  })
+
+  it('round-trips the single-cost export back through import', () => {
+    const csv = gearItemsToCsv(items, categories)
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed.map((r) => r.cost)).toEqual([89.99, null, 250])
+    expect(parsed.map((r) => r.purchaseDate)).toEqual(['2024-04-15', null, null])
+  })
+
+  it('still reads a pre-collapse export that carries price=0 beside cost', () => {
+    // Backward compatibility for files the user already downloaded. The
+    // cost-preferred precedence is what keeps that fake 0 from winning.
+    const legacy = [
+      'Item Name,Category,desc,qty,weight,unit,url,price,worn,consumable,cost,purchase_date',
+      'Tarp,Shelter,cuben fiber,1,240,gram,,0,,,89.99,2024-04-15',
+      'Old rope,,,1,60,gram,,0,,,,',
+    ].join('\r\n')
+    const parsed = parseGearCsv(legacy)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]?.cost).toBe(89.99)
+    // Blank cost beside price=0 stays unknown rather than becoming free.
+    expect(parsed[1]?.cost).toBeNull()
   })
 })
 
@@ -116,8 +185,9 @@ describe('gear csv with cost and purchaseDate', () => {
   })
 
   it('prefers the "cost" column over "price" when both are present', () => {
-    // The export emits price=0 alongside the real cost column. Re-importing
-    // a grampacker export must not pick up the Lighterpack-default 0.
+    // Pre-collapse exports emitted price=0 alongside the real cost column
+    // (current ones emit cost alone). Re-importing one of those older files
+    // must not pick up the fake 0.
     const csv = [
       'Item Name,Category,weight,price,cost',
       'Tarp,Shelter,240,0,89.99',
