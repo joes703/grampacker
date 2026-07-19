@@ -4,11 +4,13 @@ import {
   dayMeals,
   foodItems,
   foodPackState,
+  foodPlanDailyTargets,
   foodPlanDays,
   foodPlanEntries,
   foodPlans,
   lists,
   meals,
+  mealTargets,
 } from '../db/schema'
 import {
   isAnyUniqueViolation,
@@ -75,6 +77,23 @@ export type EntryRow = {
 
 export type UsedByListRow = { id: string; name: string }
 
+export type DailyTargetRow = {
+  id: string
+  metric: 'calories' | 'protein' | 'carbs' | 'fiber' | 'sodium' | 'calorie_density'
+  mode: 'range' | 'min' | 'max'
+  targetMin: number | null
+  targetMax: number | null
+}
+
+export type MealTargetRow = {
+  id: string
+  mealId: string
+  metric: 'calories' | 'protein' | 'fat_pct' | 'sugar_pct' | 'carb_protein_ratio'
+  mode: 'range' | 'min' | 'max'
+  targetMin: number | null
+  targetMax: number | null
+}
+
 export type FoodPlanDocumentRow = {
   id: string
   name: string
@@ -85,6 +104,8 @@ export type FoodPlanDocumentRow = {
   days: DayRow[]
   dayMeals: DayMealRow[]
   entries: EntryRow[]
+  dailyTargets: DailyTargetRow[]
+  mealTargets: MealTargetRow[]
   usedByList: UsedByListRow | null
 }
 
@@ -195,8 +216,16 @@ export function createFoodPlansRepo(db: Db, userId: string) {
   async function getDocument(
     planId: string,
   ): Promise<FoodPlanDocumentRow | null> {
-    const [planRows, mealRows, dayRows, dayMealRows, entryRows, usedByRows] =
-      await db.batch([
+    const [
+      planRows,
+      mealRows,
+      dayRows,
+      dayMealRows,
+      entryRows,
+      dailyTargetRows,
+      mealTargetRows,
+      usedByRows,
+    ] = await db.batch([
         db
           .select(planCols)
           .from(foodPlans)
@@ -259,6 +288,39 @@ export function createFoodPlansRepo(db: Db, userId: string) {
             asc(foodPlanEntries.createdAt),
           ),
         db
+          .select({
+            id: foodPlanDailyTargets.id,
+            metric: foodPlanDailyTargets.metric,
+            mode: foodPlanDailyTargets.mode,
+            targetMin: foodPlanDailyTargets.targetMin,
+            targetMax: foodPlanDailyTargets.targetMax,
+          })
+          .from(foodPlanDailyTargets)
+          .where(
+            and(
+              eq(foodPlanDailyTargets.foodPlanId, planId),
+              eq(foodPlanDailyTargets.userId, userId),
+            ),
+          )
+          .orderBy(asc(foodPlanDailyTargets.metric)),
+        db
+          .select({
+            id: mealTargets.id,
+            mealId: mealTargets.mealId,
+            metric: mealTargets.metric,
+            mode: mealTargets.mode,
+            targetMin: mealTargets.targetMin,
+            targetMax: mealTargets.targetMax,
+          })
+          .from(mealTargets)
+          .where(
+            and(
+              eq(mealTargets.foodPlanId, planId),
+              eq(mealTargets.userId, userId),
+            ),
+          )
+          .orderBy(asc(mealTargets.mealId), asc(mealTargets.metric)),
+        db
           .select({ id: lists.id, name: lists.name })
           .from(lists)
           .where(and(eq(lists.foodPlanId, planId), eq(lists.userId, userId)))
@@ -273,6 +335,8 @@ export function createFoodPlansRepo(db: Db, userId: string) {
       days: dayRows,
       dayMeals: dayMealRows,
       entries: entryRows,
+      dailyTargets: dailyTargetRows,
+      mealTargets: mealTargetRows,
       usedByList: usedByRows[0] ?? null,
     }
   }

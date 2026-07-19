@@ -50,6 +50,8 @@ function makePlan(over: Partial<FoodPlanDocument> & { id: string; name: string }
         sortOrder: 0,
       },
     ],
+    dailyTargets: over.dailyTargets ?? [],
+    mealTargets: over.mealTargets ?? [],
     usedByList: over.usedByList ?? null,
   }
 }

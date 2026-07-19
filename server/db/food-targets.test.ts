@@ -255,6 +255,41 @@ describe('target tables: ownership FKs (I-OWNER)', () => {
   })
 })
 
+describe('plan document carries targets', () => {
+  it('a fresh plan has empty target arrays', async () => {
+    const { cookie } = await signUpVerifiedUser('tgt-doc-1@example.com', 'T')
+    const doc = await createPlan(cookie, 'Doc empty')
+    expect(doc.dailyTargets).toEqual([])
+    expect(doc.mealTargets).toEqual([])
+  })
+
+  it('seeded targets come back camelCase, sorted by metric / (mealId, metric)', async () => {
+    const { cookie } = await signUpVerifiedUser('tgt-doc-2@example.com', 'T')
+    const userId = await userIdFor(cookie)
+    const doc = await createPlan(cookie, 'Doc targets')
+    const mealA = doc.meals[0]!.id
+    const mealB = doc.meals[1]!.id
+
+    // Inserted out of order to prove the read sorts.
+    await insertDaily({ id: 'dt-doc-2', userId, planId: doc.id, metric: 'protein', mode: 'range', min: 100, max: 150 })
+    await insertDaily({ id: 'dt-doc-1', userId, planId: doc.id, metric: 'calories', mode: 'min', min: 2500, max: null })
+    await insertMeal({ id: 'mt-doc-2', userId, planId: doc.id, mealId: mealB, metric: 'calories', mode: 'max', min: null, max: 700 })
+    await insertMeal({ id: 'mt-doc-1', userId, planId: doc.id, mealId: mealA, metric: 'fat_pct', mode: 'max', min: null, max: 35 })
+
+    const res = await apiRequest(cookie, 'GET', `/api/food-plans/${doc.id}`)
+    expect(res.status).toBe(200)
+    const body = foodPlanDocumentSchema.parse(await res.json())
+    expect(body.dailyTargets).toEqual([
+      { id: 'dt-doc-1', metric: 'calories', mode: 'min', targetMin: 2500, targetMax: null },
+      { id: 'dt-doc-2', metric: 'protein', mode: 'range', targetMin: 100, targetMax: 150 },
+    ])
+    expect(body.mealTargets).toEqual([
+      { id: 'mt-doc-1', mealId: mealA, metric: 'fat_pct', mode: 'max', targetMin: null, targetMax: 35 },
+      { id: 'mt-doc-2', mealId: mealB, metric: 'calories', mode: 'max', targetMin: null, targetMax: 700 },
+    ].sort((a, b) => (a.mealId < b.mealId ? -1 : a.mealId > b.mealId ? 1 : 0)))
+  })
+})
+
 describe('target tables: cascades (I-CASCADE)', () => {
   it('plan delete removes its daily and meal targets', async () => {
     const { cookie } = await signUpVerifiedUser('tgt-schema-10@example.com', 'T')

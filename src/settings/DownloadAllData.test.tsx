@@ -90,7 +90,8 @@ const planSummaries: FoodPlanSummary[] = [
 const planDoc: FoodPlanDocument = {
   id: 'p-1', name: 'JMT week 1', sortOrder: 0,
   createdAt: '2024-01-01', updatedAt: '2024-01-01',
-  meals: [], days: [], dayMeals: [], entries: [], usedByList: null,
+  meals: [], days: [], dayMeals: [], entries: [],
+  dailyTargets: [], mealTargets: [], usedByList: null,
 }
 
 let clickedDownloadName: string | null = null

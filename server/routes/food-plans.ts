@@ -58,6 +58,8 @@ function toDocument(doc: FoodPlanDocumentRow): FoodPlanDocument {
     days: doc.days,
     dayMeals: doc.dayMeals,
     entries: doc.entries,
+    dailyTargets: doc.dailyTargets,
+    mealTargets: doc.mealTargets,
     usedByList: doc.usedByList,
   }
 }

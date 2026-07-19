@@ -118,6 +118,8 @@ describe('buildTakeoutFiles', () => {
         days: [{ id: 'd-1', dayTypeOverride: null, sortOrder: 0 }],
         dayMeals: [{ id: 'dm-1', dayId: 'd-1', mealId: 'm-1' }],
         entries: [{ id: 'e-1', dayMealId: 'dm-1', isExtra: false, foodItemId: 'f-1', basis: 'servings', amount: 2, sortOrder: 0 }],
+        dailyTargets: [],
+        mealTargets: [],
         usedByList: { id: 'l-1', name: 'JMT' },
       },
     ]

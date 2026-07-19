@@ -66,6 +66,8 @@ const DOC_KEYS = [
   'days',
   'dayMeals',
   'entries',
+  'dailyTargets',
+  'mealTargets',
   'usedByList',
 ].sort()
 

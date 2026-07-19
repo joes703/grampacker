@@ -123,6 +123,51 @@ export const foodPlanUsedBySchema = z.object({
 })
 export type FoodPlanUsedBy = z.infer<typeof foodPlanUsedBySchema>
 
+// ------------------------------------------------------------------- targets
+
+// Nutrition targets (slice 7). `mode` NEVER includes 'off' on the wire or in
+// the DB: "off" is the absence of the row (a deliberate tightening of the old
+// build, where plan tables could store an off row the client never wrote).
+export const DAILY_TARGET_METRICS = [
+  'calories',
+  'protein',
+  'carbs',
+  'fiber',
+  'sodium',
+  'calorie_density',
+] as const
+export const MEAL_TARGET_METRICS = [
+  'calories',
+  'protein',
+  'fat_pct',
+  'sugar_pct',
+  'carb_protein_ratio',
+] as const
+export type DailyTargetMetric = (typeof DAILY_TARGET_METRICS)[number]
+export type MealTargetMetric = (typeof MEAL_TARGET_METRICS)[number]
+
+export const targetModeSchema = z.enum(['range', 'min', 'max'])
+export type TargetMode = z.infer<typeof targetModeSchema>
+
+export const foodPlanDailyTargetSchema = z.object({
+  id: z.string(),
+  metric: z.enum(DAILY_TARGET_METRICS),
+  mode: targetModeSchema,
+  targetMin: z.number().nullable(),
+  targetMax: z.number().nullable(),
+})
+export type FoodPlanDailyTarget = z.infer<typeof foodPlanDailyTargetSchema>
+
+export const mealTargetSchema = z.object({
+  id: z.string(),
+  mealId: z.string(),
+  metric: z.enum(MEAL_TARGET_METRICS),
+  mode: targetModeSchema,
+  targetMin: z.number().nullable(),
+  targetMax: z.number().nullable(),
+})
+export type MealTarget = z.infer<typeof mealTargetSchema>
+
 // The whole plan graph in one batched read (design 5.2). Every structural
 // mutation returns the fresh document so the editor stays a pure projection of
 // this single cache entry (no fine-grained optimistic fan-out; design 5.5).
@@ -136,6 +181,11 @@ export const foodPlanDocumentSchema = z.object({
   days: foodPlanDaySchema.array(),
   dayMeals: dayMealSchema.array(),
   entries: foodPlanEntrySchema.array(),
+  // Sorted by metric / (mealId, metric) for a stable wire shape; empty arrays
+  // when no targets are set (never absent - takeout and the editor both key
+  // off presence of the field, not presence of rows).
+  dailyTargets: foodPlanDailyTargetSchema.array(),
+  mealTargets: mealTargetSchema.array(),
   usedByList: foodPlanUsedBySchema.nullable(),
 })
 export type FoodPlanDocument = z.infer<typeof foodPlanDocumentSchema>
