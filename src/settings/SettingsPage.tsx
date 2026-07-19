@@ -1,7 +1,8 @@
-import { Download, TriangleAlert } from 'lucide-react'
+import { Download, Goal, TriangleAlert } from 'lucide-react'
 import { TABLE_RADIUS, TABLE_SURFACE_BG, TABLE_STRONG_DIVIDER } from '../components/flat-table-styles'
 import { useDocumentTitle } from '../lib/use-document-title'
 import PasskeySection from './PasskeySection'
+import DefaultTargetsSection from './DefaultTargetsSection'
 import DownloadAllData from './DownloadAllData'
 import DeleteAccountSection from './DeleteAccountSection'
 
@@ -18,7 +19,6 @@ import DeleteAccountSection from './DeleteAccountSection'
 // Still deferred from the old app's six sections:
 //   - Display / weight units ........ the g/oz control already lives on the
 //                                     pages + Share view
-//   - Default nutrition targets ..... returns with the food slice
 export default function SettingsPage() {
   useDocumentTitle('Settings')
 
@@ -31,6 +31,14 @@ export default function SettingsPage() {
           Section. */}
       <Section>
         <PasskeySection />
+      </Section>
+
+      <Section
+        title="Default nutrition targets"
+        subtitle="Copied into each new food plan; existing plans are not changed"
+        icon={<Goal size={16} />}
+      >
+        <DefaultTargetsSection />
       </Section>
 
       <Section

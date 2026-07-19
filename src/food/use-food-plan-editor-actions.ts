@@ -9,10 +9,13 @@ import {
   addFoodPlanEntry,
   updateFoodPlanEntry,
   removeFoodPlanEntry,
+  setFoodPlanDayType,
+  saveFoodPlanTargets,
   type FoodPlanDocument,
 } from '../lib/queries'
 import type {
   AddEntryRequestInput,
+  SaveTargetsRequest,
   UpdateEntryRequest,
 } from '../../shared/food-plans'
 
@@ -98,6 +101,23 @@ export function useFoodPlanEditorActions(planId: string) {
     onSuccess: onDoc,
   })
 
+  const setDayType = useMutation({
+    mutationFn: ({
+      dayId,
+      dayTypeOverride,
+    }: {
+      dayId: string
+      dayTypeOverride: 'full' | 'partial' | null
+    }) => setFoodPlanDayType(planId, dayId, dayTypeOverride),
+    onSuccess: onDoc,
+  })
+
+  const saveTargets = useMutation({
+    mutationFn: (payload: SaveTargetsRequest) =>
+      saveFoodPlanTargets(planId, payload),
+    onSuccess: onDoc,
+  })
+
   return {
     rename,
     addDay,
@@ -107,5 +127,7 @@ export function useFoodPlanEditorActions(planId: string) {
     addEntry,
     updateEntry,
     removeEntry,
+    setDayType,
+    saveTargets,
   }
 }

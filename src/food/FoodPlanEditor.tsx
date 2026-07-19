@@ -5,6 +5,8 @@ import {
   AlertTriangle,
   ArrowLeft,
   CalendarPlus,
+  Gauge,
+  Goal,
   Pencil,
   Plus,
   Trash2,
@@ -36,6 +38,8 @@ import {
   type PlanExtrasView,
 } from './plan-view'
 import { AddEntryDialog, EditEntryDialog } from './EntryDialog'
+import DayNutritionReview from './DayNutritionReview'
+import TargetsDialog from './TargetsDialog'
 import { useFoodPlanEditorActions } from './use-food-plan-editor-actions'
 
 // Where a new entry is going: a specific cell, or the Extras pile.
@@ -46,6 +50,7 @@ type EntryTarget =
 type Dialog =
   | { type: 'rename' }
   | { type: 'addMeal' }
+  | { type: 'targets' }
   | { type: 'addEntry'; target: EntryTarget }
   | { type: 'editEntry'; entry: PlanEntryView }
   | { type: 'deleteEntry'; entry: PlanEntryView }
@@ -74,6 +79,7 @@ export default function FoodPlanEditor() {
   const actions = useFoodPlanEditorActions(id ?? '')
   const { weightUnit } = useWeightUnit()
   const [dialog, setDialog] = useState<Dialog | null>(null)
+  const [reviewDayId, setReviewDayId] = useState<string | null>(null)
 
   const doc = planQuery.data
   const view = doc ? selectFoodPlanView(doc, foods) : null
@@ -116,12 +122,22 @@ export default function FoodPlanEditor() {
     actions.removeMeal.isPending ||
     actions.addEntry.isPending ||
     actions.updateEntry.isPending ||
-    actions.removeEntry.isPending
+    actions.removeEntry.isPending ||
+    actions.setDayType.isPending ||
+    actions.saveTargets.isPending
 
   // Structural mutations have no dialog to host their error, so they toast.
   function runStructural(promise: Promise<unknown>, fallback: string) {
     void promise.catch((err) => showToast(apiMessage(err) ?? fallback, { type: 'error' }))
   }
+
+  // The review panel reads the LIVE view each render, so an edit made while
+  // it is open re-grades immediately; a deleted day simply resolves to null
+  // and the panel unmounts.
+  const reviewDay = reviewDayId
+    ? (view.days.find((d) => d.id === reviewDayId) ?? null)
+    : null
+  const foodById = new Map(foods.map((f) => [f.id, f]))
 
   return (
     <div className="pb-4">
@@ -143,7 +159,16 @@ export default function FoodPlanEditor() {
           </button>
         </div>
 
-        <div className="flex items-center gap-2 text-right">
+        <div className="flex items-center gap-3 text-right">
+          <button
+            type="button"
+            onClick={() => setDialog({ type: 'targets' })}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <Goal size={15} />
+            Targets
+          </button>
           <div>
             <div className="text-lg font-semibold tabular-nums text-gray-900">
               <TotalWeightValue grams={view.totalGrams} unit={weightUnit} />
@@ -163,60 +188,92 @@ export default function FoodPlanEditor() {
         busy={busy}
       />
 
-      <div className="mt-4 flex flex-col gap-3">
-        {view.days.map((day) => (
-          <DaySection
-            key={day.id}
-            day={day}
-            unit={weightUnit}
-            busy={busy}
-            onAddFood={(cell) =>
-              setDialog({
-                type: 'addEntry',
-                target: {
-                  kind: 'cell',
-                  dayMealId: cell.dayMealId,
-                  label: `Day ${day.index} · ${cell.mealName}`,
-                },
-              })
-            }
-            onEditEntry={(entry) => setDialog({ type: 'editEntry', entry })}
-            onDeleteEntry={(entry) => setDialog({ type: 'deleteEntry', entry })}
-            onRemoveDay={() => setDialog({ type: 'deleteDay', day })}
-          />
-        ))}
+      <div
+        className={
+          reviewDay
+            ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start lg:gap-4'
+            : ''
+        }
+      >
+        <div>
+          <div className="mt-4 flex flex-col gap-3">
+            {view.days.map((day) => (
+              <DaySection
+                key={day.id}
+                day={day}
+                unit={weightUnit}
+                busy={busy}
+                onAddFood={(cell) =>
+                  setDialog({
+                    type: 'addEntry',
+                    target: {
+                      kind: 'cell',
+                      dayMealId: cell.dayMealId,
+                      label: `Day ${day.index} · ${cell.mealName}`,
+                    },
+                  })
+                }
+                onEditEntry={(entry) => setDialog({ type: 'editEntry', entry })}
+                onDeleteEntry={(entry) => setDialog({ type: 'deleteEntry', entry })}
+                onRemoveDay={() => setDialog({ type: 'deleteDay', day })}
+                onSetDayType={(override) =>
+                  runStructural(
+                    actions.setDayType.mutateAsync({
+                      dayId: day.id,
+                      dayTypeOverride: override,
+                    }),
+                    "Couldn't change the day type.",
+                  )
+                }
+                onReview={() => setReviewDayId(day.id)}
+              />
+            ))}
 
-        <ExtrasSection
-          extras={view.extras}
-          unit={weightUnit}
-          busy={busy}
-          onAddFood={() =>
-            setDialog({
-              type: 'addEntry',
-              target: { kind: 'extras', label: 'Extras' },
-            })
-          }
-          onEditEntry={(entry) => setDialog({ type: 'editEntry', entry })}
-          onDeleteEntry={(entry) => setDialog({ type: 'deleteEntry', entry })}
-        />
-      </div>
+            <ExtrasSection
+              extras={view.extras}
+              unit={weightUnit}
+              busy={busy}
+              onAddFood={() =>
+                setDialog({
+                  type: 'addEntry',
+                  target: { kind: 'extras', label: 'Extras' },
+                })
+              }
+              onEditEntry={(entry) => setDialog({ type: 'editEntry', entry })}
+              onDeleteEntry={(entry) => setDialog({ type: 'deleteEntry', entry })}
+            />
+          </div>
 
-      <div className="mt-4">
-        <button
-          type="button"
-          disabled={atDayCap || busy}
-          onClick={() =>
-            runStructural(actions.addDay.mutateAsync(), "Couldn't add a day.")
-          }
-          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-        >
-          <CalendarPlus size={15} />
-          {actions.addDay.isPending ? 'Adding day…' : 'Add day'}
-        </button>
-        {atDayCap && (
-          <p className="mt-1 text-xs text-gray-500">
-            You&apos;ve reached the {FOOD_PLAN_DAY_CAP}-day limit.
-          </p>
+          <div className="mt-4">
+            <button
+              type="button"
+              disabled={atDayCap || busy}
+              onClick={() =>
+                runStructural(actions.addDay.mutateAsync(), "Couldn't add a day.")
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <CalendarPlus size={15} />
+              {actions.addDay.isPending ? 'Adding day…' : 'Add day'}
+            </button>
+            {atDayCap && (
+              <p className="mt-1 text-xs text-gray-500">
+                You&apos;ve reached the {FOOD_PLAN_DAY_CAP}-day limit.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {reviewDay && doc && (
+          <div className="lg:mt-4">
+            <DayNutritionReview
+              day={reviewDay}
+              foodById={foodById}
+              dailyTargets={doc.dailyTargets}
+              mealTargets={doc.mealTargets}
+              onClose={() => setReviewDayId(null)}
+            />
+          </div>
         )}
       </div>
 
@@ -248,6 +305,22 @@ export default function FoodPlanEditor() {
           onClose={() => setDialog(null)}
           onSubmit={(name) =>
             actions.addMeal.mutate(name, { onSuccess: () => setDialog(null) })
+          }
+        />
+      )}
+
+      {dialog?.type === 'targets' && doc && (
+        <TargetsDialog
+          meals={view.meals}
+          dailyTargets={doc.dailyTargets}
+          mealTargets={doc.mealTargets}
+          saving={actions.saveTargets.isPending}
+          saveError={apiMessage(actions.saveTargets.error)}
+          onClose={() => setDialog(null)}
+          onSave={(payload) =>
+            actions.saveTargets.mutate(payload, {
+              onSuccess: () => setDialog(null),
+            })
           }
         />
       )}
@@ -438,6 +511,8 @@ function DaySection({
   onEditEntry,
   onDeleteEntry,
   onRemoveDay,
+  onSetDayType,
+  onReview,
 }: {
   day: PlanDayView
   unit: 'g' | 'oz'
@@ -446,15 +521,52 @@ function DaySection({
   onEditEntry: (entry: PlanEntryView) => void
   onDeleteEntry: (entry: PlanEntryView) => void
   onRemoveDay: () => void
+  onSetDayType: (override: 'full' | 'partial' | null) => void
+  onReview: () => void
 }) {
   return (
     <section className="rounded-lg border border-gray-200 bg-white">
       <header className="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5">
-        <h2 className="text-sm font-semibold text-gray-900">Day {day.index}</h2>
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="text-sm font-semibold text-gray-900">Day {day.index}</h2>
+          {day.dayType === 'partial' && (
+            <span
+              className="inline-flex shrink-0 items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
+              title="Daily targets are shown as neutral reference on a partial day. Meal targets are still checked."
+            >
+              Partial day
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
+          {/* Auto derives full/partial from whether every anchor meal is
+              scheduled; Full/Partial pin it for target grading (design 14.5). */}
+          <select
+            aria-label={`Day ${day.index} type`}
+            value={day.dayTypeOverride ?? 'auto'}
+            disabled={busy}
+            onChange={(e) => {
+              const v = e.target.value
+              onSetDayType(v === 'full' || v === 'partial' ? v : null)
+            }}
+            className="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 disabled:opacity-40"
+          >
+            <option value="auto">Auto</option>
+            <option value="full">Full</option>
+            <option value="partial">Partial</option>
+          </select>
           <span className="text-sm tabular-nums text-gray-600">
             {formatItemWeight(day.grams, unit)}
           </span>
+          <button
+            type="button"
+            onClick={onReview}
+            aria-label={`Review Day ${day.index} nutrition`}
+            title="Nutrition review: day totals and targets"
+            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+          >
+            <Gauge size={14} />
+          </button>
           <button
             type="button"
             onClick={onRemoveDay}

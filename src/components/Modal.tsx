@@ -22,6 +22,14 @@ type Props = {
   /** Extra classes applied to the dialog element itself (sizing, max-height). */
   className?: string
   closeOnBackdropClick?: boolean
+  /**
+   * Block every dismissal path (Escape, backdrop) while true - for dialogs
+   * that must stay up during an in-flight save. This must intercept the
+   * native CANCELABLE `cancel` event: a guard on onClose alone runs AFTER
+   * the dialog has already closed itself, leaving the parent's open state
+   * pointing at a hidden dialog with no way back to the error/retry UI.
+   */
+  preventDismiss?: boolean
 }
 
 export default function Modal({
@@ -31,6 +39,7 @@ export default function Modal({
   children,
   className,
   closeOnBackdropClick = true,
+  preventDismiss = false,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
 
@@ -52,8 +61,28 @@ export default function Modal({
     } else if (!open && dialog.open) dialog.close()
   }, [open])
 
+  // Escape (and other user-agent dismissals) fire a cancelable `cancel`
+  // event BEFORE the dialog closes - this is the only point where dismissal
+  // can actually be stopped.
+  function handleCancel(e: React.SyntheticEvent<HTMLDialogElement>) {
+    if (preventDismiss) e.preventDefault()
+  }
+
+  // The `close` event fires after the dialog has closed. Normally it feeds
+  // onClose so the parent drops its open state. Under preventDismiss a close
+  // can still slip through (e.g. a close watcher skipping the second
+  // Escape's cancel): reopen and swallow it rather than desync from the
+  // parent, which still renders the dialog as open.
+  function handleClose(e: React.SyntheticEvent<HTMLDialogElement>) {
+    if (preventDismiss) {
+      if (open && !e.currentTarget.open) e.currentTarget.showModal()
+      return
+    }
+    onClose()
+  }
+
   function handleClick(e: React.MouseEvent<HTMLDialogElement>) {
-    if (!closeOnBackdropClick) return
+    if (!closeOnBackdropClick || preventDismiss) return
     // With the current `p-0` dialog + inner-wrapper structure, a
     // target===currentTarget click represents a click on the ::backdrop
     // area: child elements own their own click targets, and the dialog
@@ -76,7 +105,8 @@ export default function Modal({
       ref={ref}
       tabIndex={-1}
       aria-label={title}
-      onClose={onClose}
+      onCancel={handleCancel}
+      onClose={handleClose}
       onClick={handleClick}
       // m-auto restores native dialog centering: the UA stylesheet's
       // dialog:modal { margin: auto } gets overridden by Tailwind preflight's

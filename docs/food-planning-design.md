@@ -993,3 +993,31 @@ Grading (7b, pure modules):
   payload); stored `off` rows; the sample-plan onboarding feature (never ported
   at all); and the all-days summary strips, which are deferred, not dead
   (section 13).
+
+### 14.7 7b UI surfaces (shipped with slice 7b)
+
+- **Editor header: a `Targets` action at every breakpoint.** The plan sketch
+  put it behind the add-affordance breakpoint split, but that rule exists for
+  pages with a mobile bottom action bar duplicating a header control - the
+  plan EDITOR has no bottom bar (MobilePlanActionBar belongs to the Plans
+  index), so a single always-visible header button duplicates nothing.
+- **Day header:** an Auto/Full/Partial native select wired to the 14.5 PATCH
+  (the plan sketched a kebab item; the editor has no per-day kebab), a
+  "Partial day" tag whenever the derived dayType is partial, and a gauge
+  icon opening the day's nutrition review.
+- **DayNutritionReview:** mobile bottom sheet; on lg the editor becomes a
+  two-column grid with the panel sticky in the right column. It reads the
+  LIVE plan view each render, so edits re-grade immediately and deleting the
+  day closes it.
+- **Editors submit full arrays** (14.2), which makes per-field canonical
+  preservation load-bearing for EVERY stored row, not just dirty ones: an
+  untouched bound resubmits its stored canonical kcal/g value rather than a
+  re-parse of the 2dp display string, and the baseline rows + weight unit
+  freeze once at dialog open so a mid-edit unit toggle cannot corrupt them.
+- **Settings defaults section** blocks editing on a failed read - with a
+  full-replace save, an editor seeded from a failed load reading as "no
+  defaults" would overwrite real rows with nothing.
+- Old `nutrition.ts` members that only fed unported surfaces stayed behind:
+  `summarizeTrip`/`derivedValue` (all-days strips, section 13) and
+  `sodiumDensity` (MealTargetsBar-only). Value formatters that already
+  existed in `serving-format.ts` are reused, not duplicated.

@@ -72,6 +72,11 @@ export type PlanDayView = {
   // 1-based position, for the "Day N" label.
   index: number
   dayTypeOverride: 'full' | 'partial' | null
+  // Grading day type (design 14.5): the override when set, otherwise full
+  // exactly when EVERY anchor-role meal is scheduled on this day (vacuously
+  // full when the plan has no anchor meals). Daily targets grade only full
+  // days; partial days show them as neutral reference.
+  dayType: 'full' | 'partial'
   cells: PlanCellView[]
   grams: number
   incomplete: boolean
@@ -199,6 +204,10 @@ export function selectFoodPlanView(
 
   const orderedMeals = [...doc.meals].sort(bySortOrder)
   const mealOrder = new Map(orderedMeals.map((m, i) => [m.id, i]))
+  // Anchor meals still ON the plan; a deleted anchor can't hold days partial.
+  const anchorMealIds = orderedMeals
+    .filter((m) => m.anchorRole !== null)
+    .map((m) => m.id)
 
   const days: PlanDayView[] = [...doc.days]
     .sort(bySortOrder)
@@ -209,10 +218,17 @@ export function selectFoodPlanView(
       )
       const dayEntries = cells.flatMap((c) => c.entries)
       const { grams, incomplete } = aggregate(dayEntries)
+      // Cells only exist for meals still on the plan, so this set is the
+      // day's scheduled surviving meals.
+      const scheduledMealIds = new Set(cells.map((c) => c.mealId))
+      const allAnchorsScheduled = anchorMealIds.every((id) =>
+        scheduledMealIds.has(id),
+      )
       return {
         id: day.id,
         index: i + 1,
         dayTypeOverride: day.dayTypeOverride,
+        dayType: day.dayTypeOverride ?? (allAnchorsScheduled ? 'full' : 'partial'),
         cells,
         grams,
         incomplete,

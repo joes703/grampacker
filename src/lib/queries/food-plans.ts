@@ -5,6 +5,7 @@ import {
   type CreateFoodPlanRequestInput,
   type FoodPlanDocument,
   type FoodPlanSummary,
+  type SaveTargetsRequest,
   type UpdateEntryRequest,
 } from '../../../shared/food-plans'
 import { apiFetch, apiFetchVoid } from '../api'
@@ -121,6 +122,32 @@ export async function removeFoodPlanDayMeal(
     foodPlanDocumentSchema,
     { method: 'DELETE' },
   )
+}
+
+// FULL-replace targets save (design decision 1): the body is the COMPLETE
+// target set - a metric absent from the payload is deleted, and "off" in
+// the editor simply omits the row. Returns the fresh document.
+export async function saveFoodPlanTargets(
+  id: string,
+  body: SaveTargetsRequest,
+): Promise<FoodPlanDocument> {
+  return apiFetch(`/food-plans/${id}/targets`, foodPlanDocumentSchema, {
+    method: 'PUT',
+    body,
+  })
+}
+
+// Force a day full/partial for target grading; null returns it to auto
+// (derived from whether every anchor meal is scheduled - design 14.5).
+export async function setFoodPlanDayType(
+  id: string,
+  dayId: string,
+  dayTypeOverride: 'full' | 'partial' | null,
+): Promise<FoodPlanDocument> {
+  return apiFetch(`/food-plans/${id}/days/${dayId}`, foodPlanDocumentSchema, {
+    method: 'PATCH',
+    body: { dayTypeOverride },
+  })
 }
 
 export async function addFoodPlanEntry(
