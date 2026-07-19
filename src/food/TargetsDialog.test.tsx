@@ -137,6 +137,72 @@ describe('TargetsDialog', () => {
     expect(density.targetMin).toBe(Math.round((120 / ozToGrams(1)) * 10_000) / 10_000)
   })
 
+  it('validates against the ACTUAL outgoing bounds, not re-parsed display strings', () => {
+    unitRef.current = 'oz'
+    // Stored canonical density min 4.2333 kcal/g displays as 120.01 kcal/oz,
+    // which re-parses to 4.2332 - BELOW the stored value. Switching min ->
+    // range (min field untouched) and entering that same display value as the
+    // max builds a payload of {min: 4.2333 (preserved), max: 4.2332}, which
+    // the server rejects. Validation must see the preserved min and block.
+    render(
+      <TargetsDialog
+        meals={noMeals}
+        dailyTargets={[dailyTarget({ metric: 'calorie_density', mode: 'min', targetMin: 4.2333 })]}
+        mealTargets={[]}
+        saveError={null}
+        onSave={() => {}}
+        onClose={() => {}}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Calorie density (kcal/oz) mode'), { target: { value: 'range' } })
+    fireEvent.change(screen.getByLabelText('Calorie density (kcal/oz) maximum'), { target: { value: '120.01' } })
+    expect(screen.getByText('Min must be <= max')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Save targets' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('a mode transition keeps the untouched bound canonical and the payload schema-valid', () => {
+    unitRef.current = 'oz'
+    const onSave = vi.fn()
+    render(
+      <TargetsDialog
+        meals={noMeals}
+        dailyTargets={[dailyTarget({ metric: 'calorie_density', mode: 'min', targetMin: 4.2333 })]}
+        mealTargets={[]}
+        saveError={null}
+        onSave={onSave}
+        onClose={() => {}}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Calorie density (kcal/oz) mode'), { target: { value: 'range' } })
+    fireEvent.change(screen.getByLabelText('Calorie density (kcal/oz) maximum'), { target: { value: '130' } })
+    save()
+    const density = payloadOf(onSave).daily.find((u) => u.metric === 'calorie_density')!
+    expect(density.mode).toBe('range')
+    expect(density.targetMin).toBe(4.2333) // exact stored canonical, min field untouched
+    expect(saveTargetsRequestSchema.safeParse(payloadOf(onSave)).success).toBe(true)
+  })
+
+  it('blocks a bound at or above the 1e8 magnitude cap', () => {
+    render(
+      <TargetsDialog meals={noMeals} dailyTargets={[]} mealTargets={[]} saveError={null} onSave={() => {}} onClose={() => {}} />,
+    )
+    fireEvent.change(screen.getByLabelText('Calories mode'), { target: { value: 'min' } })
+    fireEvent.change(screen.getByLabelText('Calories minimum'), { target: { value: '100000000' } })
+    expect(screen.getByText('Must be less than 100,000,000')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Save targets' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('cannot be dismissed while a save is in flight', () => {
+    const onClose = vi.fn()
+    render(
+      <TargetsDialog meals={noMeals} dailyTargets={[]} mealTargets={[]} saving saveError={null} onSave={() => {}} onClose={onClose} />,
+    )
+    const cancel = screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement
+    expect(cancel.disabled).toBe(true)
+    fireEvent.click(cancel)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('every submitted payload passes the server schema (scale included)', () => {
     unitRef.current = 'oz'
     const onSave = vi.fn()

@@ -152,11 +152,12 @@ describe('derived values (canonical)', () => {
 describe('density uses UNROUNDED grams', () => {
   it('a rounding of the weight would flip the target verdict; the unrounded value must win', () => {
     // 200 kcal over 99.6 g -> 2.008 kcal/g. Rounding 99.6 up to 100 g would
-    // read 2.000 and PASS a max-2.0 target; the true value is OVER.
-    const foods = foodsOf(food({ id: 'a' }))
-    const entries = [entry({ foodItemId: 'a', basis: 'weight', amount: 99.6 }), entry({ foodItemId: 'a', basis: 'weight', amount: 0 })]
+    // read 2.000 and PASS a max-2.0 target; the true value is OVER. ONE entry
+    // set feeds both totals, exactly as the review panel computes them.
+    const foods = foodsOf(food({ id: 'a', servingWeightGrams: 49.8, caloriesPerServing: 100 }))
+    const entries = [entry({ foodItemId: 'a', amount: 2 })]
     const weight = totalWeight(entries, foods)
-    const calories = nutrientTotal([entry({ foodItemId: 'a', amount: 2 })], foods, 'calories')
+    const calories = nutrientTotal(entries, foods, 'calories')
     const density = calorieDensityPerGram(calories, weight)
     expect(density).toBeCloseTo(200 / 99.6, 6)
     expect(

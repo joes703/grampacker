@@ -2,9 +2,11 @@ import { useState, type FormEvent } from 'react'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import { useWeightUnit } from '../lib/use-weight-unit'
-import type {
-  SaveTargetDefaultsRequest,
-  TargetDefault,
+import {
+  saveTargetDefaultsRequestSchema,
+  type DailyTargetMetric,
+  type SaveTargetDefaultsRequest,
+  type TargetDefault,
 } from '../../shared/food-plans'
 import {
   DAILY_METRICS,
@@ -51,14 +53,17 @@ export default function DefaultTargetsDialog({
   const { unit } = snapshot
   const [rows, setRows] = useState(snapshot.rows)
 
-  const errors = DAILY_METRICS.map(({ metric }) =>
-    rowError(metric, rows[metric] ?? EMPTY, metric === 'calorie_density', unit),
-  ).filter(Boolean)
-  const canSave = errors.length === 0
+  const error = (metric: DailyTargetMetric, row: Row) =>
+    rowError(
+      metric,
+      row,
+      snapshot.rows[metric] ?? EMPTY,
+      snapshot.by.get(metric),
+      metric === 'calorie_density',
+      unit,
+    )
 
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    if (!canSave) return
+  function buildPayload(): SaveTargetDefaultsRequest {
     const payload: SaveTargetDefaultsRequest = { defaults: [] }
     for (const { metric } of DAILY_METRICS) {
       const row = rows[metric] ?? EMPTY
@@ -73,14 +78,32 @@ export default function DefaultTargetsDialog({
       )
       payload.defaults.push({ metric, mode: row.mode, targetMin: b.min, targetMax: b.max })
     }
-    onSave(payload)
+    return payload
+  }
+
+  const errors = DAILY_METRICS.map(({ metric }) =>
+    error(metric, rows[metric] ?? EMPTY),
+  ).filter(Boolean)
+  // Backstop: the actual payload must pass the server's zod contract, so no
+  // rowError blind spot can enable Save on a request the PUT would 400.
+  const canSave =
+    errors.length === 0 && saveTargetDefaultsRequestSchema.safeParse(buildPayload()).success
+
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!canSave) return
+    onSave(buildPayload())
   }
 
   const densityLabel = unit === 'oz' ? 'kcal/oz' : 'kcal/g'
   return (
     <Modal
       open
-      onClose={onClose}
+      // A full-replace save must not race a second one: block Escape/backdrop
+      // dismissal while the PUT is in flight (Cancel below is disabled too).
+      onClose={() => {
+        if (!saving) onClose()
+      }}
       title="Default daily targets"
       className="w-[calc(100vw-2rem)] max-w-lg"
       closeOnBackdropClick={false}
@@ -99,7 +122,7 @@ export default function DefaultTargetsDialog({
               id={`default-${metric}`}
               label={metric === 'calorie_density' ? `Calorie density (${densityLabel})` : label}
               row={rows[metric] ?? EMPTY}
-              error={rowError(metric, rows[metric] ?? EMPTY, metric === 'calorie_density', unit)}
+              error={error(metric, rows[metric] ?? EMPTY)}
               onChange={(r) => setRows((s) => ({ ...s, [metric]: r }))}
             />
           ))}
@@ -109,7 +132,8 @@ export default function DefaultTargetsDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+            disabled={saving}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
           >
             Cancel
           </button>

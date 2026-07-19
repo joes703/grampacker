@@ -51,17 +51,6 @@ export function num(s: string, density: boolean, unit: WeightUnit): number | nul
   return Math.round(canonical * 10_000) / 10_000
 }
 
-export function bounds(
-  row: Row,
-  density: boolean,
-  unit: WeightUnit,
-): { min: number | null; max: number | null } {
-  if (row.mode === 'off') return { min: null, max: null }
-  if (row.mode === 'min') return { min: num(row.min, density, unit), max: null }
-  if (row.mode === 'max') return { min: null, max: num(row.max, density, unit) }
-  return { min: num(row.min, density, unit), max: num(row.max, density, unit) }
-}
-
 // Per-FIELD canonical preservation (I-CANONICAL). A field whose string the
 // user did not touch reuses the STORED canonical value instead of re-parsing
 // the rounded display string. This is what stops calorie-density drift on a
@@ -87,10 +76,17 @@ export function outBounds(
   return { min, max }
 }
 
-// Inline error string (mirrors zod's I-BOUNDS / I-PCT) or null when valid.
+// Inline error string (mirrors zod's I-BOUNDS / I-PCT / magnitude) or null
+// when valid. Numeric checks run on the outBounds result - the ACTUAL values
+// the payload will carry - because a preserved canonical bound and its
+// re-parsed 2dp display string can straddle a comparison (e.g. stored density
+// min 4.2333 displays as a string that re-parses to 4.2332): validating the
+// display strings would enable Save on a payload the server rejects.
 export function rowError(
   metric: string,
   row: Row,
+  initRow: Row,
+  stored: StoredBounds | undefined,
   density: boolean,
   unit: WeightUnit,
 ): string | null {
@@ -104,9 +100,15 @@ export function rowError(
   if (row.mode === 'range' && (!need(row.min) || !need(row.max))) {
     return 'Enter both bounds'
   }
-  const b = bounds(row, density, unit)
+  const b = outBounds(row, initRow, stored, density, unit)
   if ((b.min !== null && b.min < 0) || (b.max !== null && b.max < 0)) {
     return 'Must be 0 or more'
+  }
+  if (
+    (b.min !== null && b.min >= 100_000_000) ||
+    (b.max !== null && b.max >= 100_000_000)
+  ) {
+    return 'Must be less than 100,000,000'
   }
   if (
     isPct(metric) &&

@@ -78,7 +78,11 @@ export default function DefaultTargetsSection() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        // Defense in depth alongside the dialog's own dismissal guards: a
+        // reopen while a full-replace save is still in flight could race a
+        // second save against it.
+        disabled={saveMut.isPending}
+        className="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
       >
         Edit defaults
       </button>

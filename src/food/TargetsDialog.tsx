@@ -3,12 +3,14 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import { useWeightUnit } from '../lib/use-weight-unit'
-import type {
-  FoodPlanDailyTarget,
-  Meal,
-  MealTarget,
-  MealTargetMetric,
-  SaveTargetsRequest,
+import {
+  saveTargetsRequestSchema,
+  type DailyTargetMetric,
+  type FoodPlanDailyTarget,
+  type Meal,
+  type MealTarget,
+  type MealTargetMetric,
+  type SaveTargetsRequest,
 } from '../../shared/food-plans'
 import {
   DAILY_METRICS,
@@ -85,21 +87,19 @@ export default function TargetsDialog({
   const [meal, setMeal] = useState(snapshot.meal)
   const [openMeals, setOpenMeals] = useState<Set<string>>(new Set())
 
-  const errors = [
-    ...DAILY_METRICS.map(({ metric }) =>
-      rowError(metric, daily[metric] ?? EMPTY, metric === 'calorie_density', unit),
-    ),
-    ...meals.flatMap((m) =>
-      MEAL_METRICS.map(({ metric }) =>
-        rowError(metric, meal[`${m.id}:${metric}`] ?? EMPTY, false, unit),
-      ),
-    ),
-  ].filter(Boolean)
-  const canSave = errors.length === 0
+  const dailyError = (metric: DailyTargetMetric, row: Row) =>
+    rowError(
+      metric,
+      row,
+      snapshot.daily[metric] ?? EMPTY,
+      snapshot.dailyBy.get(metric),
+      metric === 'calorie_density',
+      unit,
+    )
+  const mealError = (metric: string, key: string, row: Row) =>
+    rowError(metric, row, snapshot.meal[key] ?? EMPTY, snapshot.mealBy.get(key), false, unit)
 
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    if (!canSave) return
+  function buildPayload(): SaveTargetsRequest {
     const payload: SaveTargetsRequest = { daily: [], meals: [] }
     for (const { metric } of DAILY_METRICS) {
       const row = daily[metric] ?? EMPTY
@@ -130,14 +130,38 @@ export default function TargetsDialog({
         })
       }
     }
-    onSave(payload)
+    return payload
+  }
+
+  const errors = [
+    ...DAILY_METRICS.map(({ metric }) => dailyError(metric, daily[metric] ?? EMPTY)),
+    ...meals.flatMap((m) =>
+      MEAL_METRICS.map(({ metric }) => {
+        const key = `${m.id}:${metric}`
+        return mealError(metric, key, meal[key] ?? EMPTY)
+      }),
+    ),
+  ].filter(Boolean)
+  // Backstop: the actual payload must pass the server's zod contract, so no
+  // rowError blind spot can enable Save on a request the PUT would 400.
+  const canSave =
+    errors.length === 0 && saveTargetsRequestSchema.safeParse(buildPayload()).success
+
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!canSave) return
+    onSave(buildPayload())
   }
 
   const densityLabel = unit === 'oz' ? 'kcal/oz' : 'kcal/g'
   return (
     <Modal
       open
-      onClose={onClose}
+      // A full-replace save must not race a second one: block Escape/backdrop
+      // dismissal while the PUT is in flight (Cancel below is disabled too).
+      onClose={() => {
+        if (!saving) onClose()
+      }}
       title="Targets"
       className="w-[calc(100vw-2rem)] max-w-lg"
       closeOnBackdropClick={false}
@@ -152,7 +176,7 @@ export default function TargetsDialog({
               id={`daily-${metric}`}
               label={metric === 'calorie_density' ? `Calorie density (${densityLabel})` : label}
               row={daily[metric] ?? EMPTY}
-              error={rowError(metric, daily[metric] ?? EMPTY, metric === 'calorie_density', unit)}
+              error={dailyError(metric, daily[metric] ?? EMPTY)}
               onChange={(r) => setDaily((s) => ({ ...s, [metric]: r }))}
             />
           ))}
@@ -194,7 +218,7 @@ export default function TargetsDialog({
                         id={`meal-${key}`}
                         label={label}
                         row={meal[key] ?? EMPTY}
-                        error={rowError(metric, meal[key] ?? EMPTY, false, unit)}
+                        error={mealError(metric, key, meal[key] ?? EMPTY)}
                         onChange={(r) => setMeal((s) => ({ ...s, [key]: r }))}
                       />
                     )
@@ -208,7 +232,8 @@ export default function TargetsDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+            disabled={saving}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
           >
             Cancel
           </button>

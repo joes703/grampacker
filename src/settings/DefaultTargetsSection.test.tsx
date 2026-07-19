@@ -2,9 +2,10 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type {
-  SaveTargetDefaultsRequest,
-  TargetDefault,
+import {
+  saveTargetDefaultsRequestSchema,
+  type SaveTargetDefaultsRequest,
+  type TargetDefault,
 } from '../../shared/food-plans'
 
 const h = vi.hoisted(() => ({
@@ -102,6 +103,51 @@ describe('DefaultTargetsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save defaults' }))
 
     await waitFor(() => expect(h.save).toHaveBeenCalledWith({ defaults: [] }))
+  })
+
+  it('emits a payload that passes the server schema, canonical density preserved', async () => {
+    h.fetch.mockResolvedValue([
+      { id: 'c', metric: 'calorie_density', mode: 'min', targetMin: 4.2333, targetMax: null },
+    ])
+    h.save.mockResolvedValue([])
+    renderSection()
+
+    fireEvent.click(await screen.findByRole('button', { name: /edit defaults/i }))
+    fireEvent.change(screen.getByLabelText('Protein (g) mode'), { target: { value: 'min' } })
+    fireEvent.change(screen.getByLabelText('Protein (g) minimum'), { target: { value: '100' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save defaults' }))
+
+    await waitFor(() => expect(h.save).toHaveBeenCalled())
+    const payload = h.save.mock.calls[0]![0]
+    expect(saveTargetDefaultsRequestSchema.safeParse(payload).success).toBe(true)
+    expect(payload.defaults.find((d) => d.metric === 'calorie_density')).toEqual({
+      metric: 'calorie_density',
+      mode: 'min',
+      targetMin: 4.2333,
+      targetMax: null,
+    })
+  })
+
+  it('cannot be closed or re-entered while a save is in flight', async () => {
+    h.fetch.mockResolvedValue([])
+    h.save.mockReturnValue(new Promise(() => {})) // never settles
+    renderSection()
+
+    fireEvent.click(await screen.findByRole('button', { name: /edit defaults/i }))
+    fireEvent.change(screen.getByLabelText('Calories mode'), { target: { value: 'max' } })
+    fireEvent.change(screen.getByLabelText('Calories maximum'), { target: { value: '2500' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save defaults' }))
+
+    await waitFor(() => expect(h.save).toHaveBeenCalled())
+    // A second full-replace racing the first can leave cache and D1
+    // disagreeing about which set won - every dismissal path is blocked.
+    const cancel = screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement
+    expect(cancel.disabled).toBe(true)
+    fireEvent.click(cancel)
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeInTheDocument()
+    expect(
+      (screen.getByRole('button', { name: /edit defaults/i }) as HTMLButtonElement).disabled,
+    ).toBe(true)
   })
 
   it('keeps the dialog open when the save fails', async () => {
