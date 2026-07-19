@@ -39,3 +39,32 @@ outward gates.
 
 ## Merge
 - Always merge with `gh pr merge --auto --squash`. Never merge while checks are pending.
+
+## Codex review policy
+
+The review gate is intentionally DISABLED. Do not re-enable it.
+Reviews are explicit and happen at two gates:
+
+GATE 1 - Plan review (before any code is written)
+  /codex:adversarial-review --background <plan framing + attack surfaces>
+  Wait for VERDICT. Do not start implementation until I approve the findings.
+
+GATE 2 - Change review (before commit, after lint/build/test pass)
+  /codex:adversarial-review --base main --background <adversarial framing>
+  Required: VERDICT: MERGE | MERGE-WITH-FIXES | BLOCK
+
+Never use /codex:review - unsteerable, takes no custom focus text.
+
+Queue fallback: if /codex:status shows a job queued >5 min without starting,
+/codex:cancel it and fall back to the direct `codex exec -s read-only`
+pattern. Say so in the transcript when you do.
+
+Standing invariants to name in every GATE 2 review prompt:
+  - session-scoped ownership: every repo query filters by the better-auth
+    session's user_id; no route touches another user's rows
+  - locked public share projection: /r/:slug returns only the strict DTO
+    (constants + wire-shape tests on RAW json; no owner data leaks)
+  - ownership prechecks on bulk/batch writes under the D1 100-param limit
+    (owned-set membership in JS, chunked batch statements)
+  - CSRF + auth layering on all write routes (403 without header, 401
+    without session)
