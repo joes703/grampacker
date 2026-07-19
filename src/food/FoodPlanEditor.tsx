@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   CalendarPlus,
+  Goal,
   Pencil,
   Plus,
   Trash2,
@@ -36,6 +37,7 @@ import {
   type PlanExtrasView,
 } from './plan-view'
 import { AddEntryDialog, EditEntryDialog } from './EntryDialog'
+import TargetsDialog from './TargetsDialog'
 import { useFoodPlanEditorActions } from './use-food-plan-editor-actions'
 
 // Where a new entry is going: a specific cell, or the Extras pile.
@@ -46,6 +48,7 @@ type EntryTarget =
 type Dialog =
   | { type: 'rename' }
   | { type: 'addMeal' }
+  | { type: 'targets' }
   | { type: 'addEntry'; target: EntryTarget }
   | { type: 'editEntry'; entry: PlanEntryView }
   | { type: 'deleteEntry'; entry: PlanEntryView }
@@ -117,7 +120,8 @@ export default function FoodPlanEditor() {
     actions.addEntry.isPending ||
     actions.updateEntry.isPending ||
     actions.removeEntry.isPending ||
-    actions.setDayType.isPending
+    actions.setDayType.isPending ||
+    actions.saveTargets.isPending
 
   // Structural mutations have no dialog to host their error, so they toast.
   function runStructural(promise: Promise<unknown>, fallback: string) {
@@ -144,7 +148,16 @@ export default function FoodPlanEditor() {
           </button>
         </div>
 
-        <div className="flex items-center gap-2 text-right">
+        <div className="flex items-center gap-3 text-right">
+          <button
+            type="button"
+            onClick={() => setDialog({ type: 'targets' })}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <Goal size={15} />
+            Targets
+          </button>
           <div>
             <div className="text-lg font-semibold tabular-nums text-gray-900">
               <TotalWeightValue grams={view.totalGrams} unit={weightUnit} />
@@ -258,6 +271,22 @@ export default function FoodPlanEditor() {
           onClose={() => setDialog(null)}
           onSubmit={(name) =>
             actions.addMeal.mutate(name, { onSuccess: () => setDialog(null) })
+          }
+        />
+      )}
+
+      {dialog?.type === 'targets' && doc && (
+        <TargetsDialog
+          meals={view.meals}
+          dailyTargets={doc.dailyTargets}
+          mealTargets={doc.mealTargets}
+          saving={actions.saveTargets.isPending}
+          saveError={apiMessage(actions.saveTargets.error)}
+          onClose={() => setDialog(null)}
+          onSave={(payload) =>
+            actions.saveTargets.mutate(payload, {
+              onSuccess: () => setDialog(null),
+            })
           }
         />
       )}

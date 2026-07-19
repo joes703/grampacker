@@ -68,6 +68,7 @@ vi.mock('./use-food-plan-editor-actions', () => ({
       updateEntry: make('updateEntry'),
       removeEntry: make('removeEntry'),
       setDayType: make('setDayType'),
+      saveTargets: make('saveTargets'),
     }
   },
 }))
@@ -216,6 +217,32 @@ describe('FoodPlanEditor', () => {
       (screen.getByRole('button', { name: 'Rename plan' }) as HTMLButtonElement)
         .disabled,
     ).toBe(true)
+    expect(
+      (screen.getByRole('button', { name: 'Targets' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
+  })
+
+  it('opens the targets dialog from the header action', async () => {
+    h.fetchFoodPlan.mockResolvedValue(
+      planDoc({
+        dailyTargets: [
+          { id: 't1', metric: 'protein', mode: 'min', targetMin: 100, targetMax: null },
+        ],
+      }),
+    )
+    h.fetchFoodItems.mockResolvedValue([food('f1')])
+    renderEditor()
+
+    await screen.findByText('JMT resupply')
+    fireEvent.click(screen.getByRole('button', { name: 'Targets' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Targets' })
+    expect(within(dialog).getByText('Daily targets')).toBeTruthy()
+    // The stored target seeds its row.
+    expect(
+      (within(dialog).getByLabelText('Protein (g) minimum') as HTMLInputElement)
+        .value,
+    ).toBe('100')
   })
 
   describe('day type', () => {
