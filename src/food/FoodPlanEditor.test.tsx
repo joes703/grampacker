@@ -292,6 +292,18 @@ describe('FoodPlanEditor', () => {
     })
   })
 
+  it('opens the day nutrition review from the day header and closes it', async () => {
+    h.fetchFoodPlan.mockResolvedValue(planDoc())
+    h.fetchFoodItems.mockResolvedValue([food('f1')])
+    renderEditor()
+
+    await screen.findByText('JMT resupply')
+    fireEvent.click(screen.getByRole('button', { name: 'Review Day 1 nutrition' }))
+    expect(screen.getByLabelText('Day 1 nutrition review panel')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Close nutrition review' }))
+    expect(screen.queryByLabelText('Day 1 nutrition review panel')).toBeNull()
+  })
+
   it('shows a not-found message when the plan is missing', async () => {
     const { ApiError } = await import('../lib/api')
     h.fetchFoodPlan.mockRejectedValue(new ApiError(404, 'Not found'))
