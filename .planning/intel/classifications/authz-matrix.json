@@ -1,0 +1,26 @@
+{
+  "source_path": "/home/joe/code/grampacker-next/docs/authz-matrix.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Route authorization matrix",
+  "summary": "Per-route authorization contract for the API: auth level, ownership scoping, request/response DTOs, and required tests for every endpoint, plus cross-cutting CSRF, rate-limit, and security-header rules.",
+  "scope": [
+    "API routes",
+    "session authentication (better-auth)",
+    "magic-link sign-in",
+    "passkeys and fresh-session gating",
+    "ownership scoping (user-scoped repositories)",
+    "CSRF middleware",
+    "rate limiting (IP / per-address / global buckets)",
+    "public share read-only surface (/api/shares/:slug)",
+    "food plans and food pack state",
+    "lists, gear items, categories",
+    "security response headers"
+  ],
+  "cross_refs": [],
+  "cross_refs_override": "manifest .planning/ingest-manifest.yaml - back-edge to food-planning-design.md dropped to break cycle; its citations are informational provenance from the route registry, not dependency edges",
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

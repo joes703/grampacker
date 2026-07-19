@@ -1,6 +1,7 @@
 # Passwordless auth: design
 
-Status: PROPOSED (not yet implemented)
+Status: ACCEPTED - shipped to production 2026-07-12 (PRs #46-#51 + teardown
+migration 0006; passwords removed with no rollback path)
 Date: 2026-07-11
 Supersedes: REWRITE_PLAN.md decision 13.3 ("no magic links")
 
