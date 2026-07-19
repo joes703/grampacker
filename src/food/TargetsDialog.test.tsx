@@ -2,11 +2,12 @@
 import { afterEach, beforeAll, describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
 import TargetsDialog from './TargetsDialog'
-import type {
-  FoodPlanDailyTarget,
-  Meal,
-  MealTarget,
-  SaveTargetsRequest,
+import {
+  saveTargetsRequestSchema,
+  type FoodPlanDailyTarget,
+  type Meal,
+  type MealTarget,
+  type SaveTargetsRequest,
 } from '../../shared/food-plans'
 import { ozToGrams } from '../lib/weight'
 
@@ -130,7 +131,27 @@ describe('TargetsDialog', () => {
     save()
     const density = payloadOf(onSave).daily.find((u) => u.metric === 'calorie_density')!
     expect(density.targetMax).toBe(5.0) // exact canonical, NOT a round-tripped display value
-    expect(density.targetMin).toBeCloseTo(120 / ozToGrams(1), 6)
+    // The edited bound converts to canonical kcal/g ROUNDED to the 4dp
+    // storage scale - the raw conversion (120 / 28.3495 = 4.23288...) would
+    // fail the server's targetBoundSchema scale refine.
+    expect(density.targetMin).toBe(Math.round((120 / ozToGrams(1)) * 10_000) / 10_000)
+  })
+
+  it('every submitted payload passes the server schema (scale included)', () => {
+    unitRef.current = 'oz'
+    const onSave = vi.fn()
+    render(
+      <TargetsDialog meals={noMeals} dailyTargets={[]} mealTargets={[]} saveError={null} onSave={onSave} onClose={() => {}} />,
+    )
+    // An oz density entry and a long-decimal gram entry: both must land
+    // 4dp-clean or the 7a PUT would 400 on targetBoundSchema.
+    fireEvent.change(screen.getByLabelText('Calorie density (kcal/oz) mode'), { target: { value: 'min' } })
+    fireEvent.change(screen.getByLabelText('Calorie density (kcal/oz) minimum'), { target: { value: '127.3' } })
+    fireEvent.change(screen.getByLabelText('Protein (g) mode'), { target: { value: 'min' } })
+    fireEvent.change(screen.getByLabelText('Protein (g) minimum'), { target: { value: '100.123456' } })
+    save()
+    const parsed = saveTargetsRequestSchema.safeParse(payloadOf(onSave))
+    expect(parsed.success).toBe(true)
   })
 
   it('freezes the opening unit: a unit change while open does not corrupt untouched rows', () => {

@@ -37,11 +37,18 @@ export function seed(
   return { mode: t.mode, min: f(t.targetMin), max: f(t.targetMax) }
 }
 
+// Parse a bound the user TYPED, landing on the 4-decimal-place storage
+// scale (targetBoundSchema's round-trip refine): the density unit
+// conversion - and free typing - can produce longer scales, which the
+// server would 400. Only touched fields pass through here; untouched
+// fields resubmit their stored canonical values via outBounds, which are
+// already scale-clean.
 export function num(s: string, density: boolean, unit: WeightUnit): number | null {
   if (s.trim() === '') return null
   const n = Number(s)
   if (!Number.isFinite(n)) return null
-  return density ? inputToKcalPerGram(n, unit) : n
+  const canonical = density ? inputToKcalPerGram(n, unit) : n
+  return Math.round(canonical * 10_000) / 10_000
 }
 
 export function bounds(
