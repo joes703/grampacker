@@ -7,3 +7,9 @@ worker-configuration.d.ts
 *.local
 .claude/settings.local.json
 .DS_Store
+
+# Agent scratch: Codex review prompts/outputs and Playwright snapshots.
+# Working notes, not repo history - the reviews that mattered are summarized
+# in the PRs they gated.
+.tmp/
+.playwright-mcp/
