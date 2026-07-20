@@ -99,3 +99,149 @@ describe('CategoryGroup region id', () => {
     expect(container.querySelectorAll('[id^="cat-region-"]')).toHaveLength(0)
   })
 })
+
+// The per-section footer subtotal. This used to be summed inside CategoryGroup
+// from its own rows, which counted consumables into it, and counted worn items
+// too whenever the list's Group Worn toggle was off - so the subtotals never
+// reconciled with the summary panel's Base weight, and an unrelated display
+// toggle changed what the number meant.
+//
+// The section no longer computes it. The parent, which already holds the
+// canonical computeWeightBreakdown result, passes it down. These tests pin
+// that the section RENDERS what it is handed and never re-derives it.
+describe('CategoryGroup footer subtotal', () => {
+  function consumable(id: string, name: string): ListItemWithGear {
+    const item = itemNamed(id, name)
+    return { ...item, isConsumable: true }
+  }
+
+  // Every fixture row weighs 100 g, so the subtotals asserted below are
+  // deliberately values NO row can produce (777 / 0). An assertion satisfiable
+  // by row text would still pass if the footer silently went back to summing
+  // rows, which is the exact regression these tests exist to catch.
+  it('renders the supplied subtotal, not the sum of its own rows', () => {
+    render(
+      <CategoryGroup
+        name="Shelter"
+        categoryId="cat-1"
+        items={[itemNamed('a', 'Tarp'), consumable('b', 'Gas')]}
+        weightUnit="g"
+        subtotalLabel="Base"
+        subtotalGrams={777}
+      />,
+    )
+    expect(screen.getAllByText('777 g').length).toBeGreaterThan(0)
+    // 200 g is what summing the two rows would produce.
+    expect(screen.queryByText('200 g')).toBeNull()
+  })
+
+  it('labels the subtotal, because it is not the visible rows added up', () => {
+    render(
+      <CategoryGroup
+        name="Shelter"
+        categoryId="cat-1"
+        items={[itemNamed('a', 'Tarp')]}
+        weightUnit="g"
+        subtotalLabel="Base"
+        subtotalGrams={777}
+      />,
+    )
+    expect(screen.getAllByText(/Base/).length).toBeGreaterThan(0)
+  })
+
+  it('renders an explicit zero for a category whose items are all consumable', () => {
+    // The trap: catRows omits zero-base categories entirely, so "absent" must
+    // still render 0 rather than blanking or borrowing another section's value.
+    render(
+      <CategoryGroup
+        name="Food"
+        categoryId="cat-food"
+        items={[consumable('b', 'Gas')]}
+        weightUnit="g"
+        subtotalLabel="Base"
+        subtotalGrams={0}
+      />,
+    )
+    expect(screen.getAllByText('0 g').length).toBeGreaterThan(0)
+  })
+
+  it('renders a bare value when given no label, and never mislabels it Base', () => {
+    // The Worn pseudo-section. Calling it "Base" would be flatly wrong - worn
+    // weight is excluded from base by definition - and repeating "Worn" beside
+    // a section already titled Worn is noise.
+    render(
+      <CategoryGroup
+        name="Worn"
+        regionKey="worn"
+        items={[itemNamed('a', 'Jacket')]}
+        weightUnit="g"
+        subtotalGrams={777}
+      />,
+    )
+    expect(screen.getAllByText('777 g').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Base/)).toBeNull()
+    // The section title must remain the only "Worn" in the subtree, so callers
+    // asserting on it are not made ambiguous by a duplicate label. SharePage's
+    // groupWorn test broke on exactly this.
+    expect(screen.getAllByText('Worn')).toHaveLength(1)
+  })
+
+  it('renders no subtotal when the parent supplies none', () => {
+    render(
+      <CategoryGroup
+        name="Shelter"
+        categoryId="cat-1"
+        items={[itemNamed('a', 'Tarp')]}
+        weightUnit="g"
+      />,
+    )
+    expect(screen.queryByText(/Base/)).toBeNull()
+    // The footer ROW still renders (it carries "Add new item"); what must be
+    // absent is any weight in it. The item rows legitimately show their own
+    // 100 g, so scope the assertion to the footer rather than the document.
+    const footer = document.querySelector('.print\\:flex')
+    expect(footer).not.toBeNull()
+    expect(footer!.textContent).not.toMatch(/\d+(\.\d+)?\s*g/)
+  })
+
+  it('renders no subtotal in pack mode, not even an unlabelled one', () => {
+    // The footer is !packMode-gated. Pack mode deliberately keeps counts on
+    // full section membership; a packed/unpacked-dependent weight would be a
+    // third definition of the metric. Asserting only on the absent label would
+    // miss a leaked bare value, so assert on the unique value itself.
+    render(
+      <CategoryGroup
+        name="Shelter"
+        categoryId="cat-1"
+        items={[itemNamed('a', 'Tarp')]}
+        weightUnit="g"
+        packMode
+        subtotalLabel="Base"
+        subtotalGrams={777}
+      />,
+    )
+    expect(screen.queryByText(/Base/)).toBeNull()
+    expect(screen.queryByText('777 g')).toBeNull()
+  })
+
+  it('keeps the subtotal out of the rows when an item is both worn and consumable', () => {
+    // computeWeightBreakdown buckets the defensive isConsumable+isWorn state as
+    // consumable, while the Worn section's grouper selects on isWorn. So such a
+    // row can render in Worn while its weight sits in consumableGrams. A DB
+    // CHECK forbids the state; this locks in that the SECTION still renders
+    // exactly what it was handed rather than quietly re-deriving a total to
+    // paper over the mismatch.
+    const dual = { ...itemNamed('a', 'Jacket'), isWorn: true, isConsumable: true }
+    render(
+      <CategoryGroup
+        name="Worn"
+        regionKey="worn"
+        items={[dual]}
+        weightUnit="g"
+        subtotalGrams={0}
+      />,
+    )
+    expect(screen.getAllByText('0 g').length).toBeGreaterThan(0)
+    expect(screen.queryByText('100 g')).toBeNull()
+  })
+})
