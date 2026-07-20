@@ -538,6 +538,17 @@ const POST_CHECKS = [
     sql: "update lists set food_plan_id = 'plan-seed' where id = 'list-seed-3'",
     expectErrorMatch: /unique/i,
   },
+  {
+    migration: '0013_gear-weight-real.sql',
+    description: 'gear_items.weight_grams is declared REAL, not integer',
+    // SQLite INTEGER affinity already STORES 12.4 as a real, so a
+    // write-then-read round trip passes whether or not this migration ran and
+    // cannot prove it. The declared type is the only observable difference.
+    sql:
+      "select upper(type) as type from pragma_table_info('gear_items') " +
+      "where name = 'weight_grams'",
+    expectRows: [{ type: 'REAL' }],
+  },
 ]
 
 const quoteIdent = (name) => `"${name.replaceAll('"', '""')}"`
@@ -607,6 +618,22 @@ const expectSqlError = (statement, pattern) => {
   return 'succeeded, but should have been rejected'
 }
 
+// The other half of expectSqlError: assert a probe SELECT returns exactly the
+// rows expected. Needed for probes that assert a fact about the schema rather
+// than a constraint - SQLite's RAISE() only works inside a trigger program, so
+// a schema fact cannot be phrased as "this statement must fail".
+const expectSqlRows = (statement, expected) => {
+  let rows
+  try {
+    rows = execSql([statement])[0]
+  } catch (error) {
+    return `could not be run:\n${error.message}`
+  }
+  const actual = JSON.stringify(rows)
+  const wanted = JSON.stringify(expected)
+  return actual === wanted ? null : `returned ${actual}, expected ${wanted}`
+}
+
 // The before-snapshot, rewritten to what it SHOULD look like after the new
 // migrations: every EXPECTED_CHANGES entry whose migration is in this branch's
 // new set is applied to its row. Comparing this against the real
@@ -637,8 +664,9 @@ const applyExpectedChanges = (before, newMigrations) => {
           modified = true
         }
       }
-      // Untouched rows keep SQLite's own JSON rendering, so a JS-vs-SQLite
-      // formatting difference can never masquerade as a data change.
+      // Both sides are already canonicalized (see canonicalize()), so
+      // re-stringifying a rewritten row here renders identically to an
+      // untouched one - no JS-vs-SQLite formatting skew either way.
       return modified ? JSON.stringify(row) : json
     })
     // Re-sort: the rewrite can change the rows' relative string order.
@@ -725,6 +753,21 @@ const seed = (columnsByTable, newMigrations) => {
   return seededColumns
 }
 
+// Re-render SQLite's JSON through JS so a column's STORAGE CLASS cannot
+// masquerade as a changed value. SQLite prints the same number differently
+// depending on the column's declared type - an integer 1200 renders as `1200`,
+// the identical value in a REAL column as `1200.0` - so a migration that only
+// widens integer -> real would trip the row-changed check while altering no
+// data. Parsing to a JS number and re-stringifying collapses that difference.
+//
+// This normalizes NUMBER FORMATTING only. A genuine value change (1200 -> 1201)
+// still differs, and so does a type change across the string/number boundary
+// ('1200' stays quoted). Assumes every numeric column fits in a JS safe
+// integer, which holds here: ids and slugs are text, epoch-ms timestamps and
+// cost_cents are both far below 2^53. An int64 column beyond that range would
+// need a different comparison.
+const canonicalize = (json) => JSON.stringify(JSON.parse(json))
+
 // Every seeded row, as JSON, keyed by table. Reads only the columns that
 // existed before the migration: new columns are expected to differ, old ones
 // are not allowed to.
@@ -743,7 +786,7 @@ const snapshot = (seededColumns) => {
     tables.map((table, i) => [
       table,
       // Sorted so the comparison does not depend on row order.
-      resultSets[i].map(({ row }) => row).sort(),
+      resultSets[i].map(({ row }) => canonicalize(row)).sort(),
     ]),
   )
 }
@@ -896,7 +939,9 @@ const main = () => {
     // row comparison above.
     for (const check of POST_CHECKS) {
       if (!addedNames.has(check.migration)) continue
-      const problem = expectSqlError(check.sql, check.expectErrorMatch)
+      const problem = check.expectErrorMatch
+        ? expectSqlError(check.sql, check.expectErrorMatch)
+        : expectSqlRows(check.sql, check.expectRows)
       if (problem) {
         failures.push(`Post-check "${check.description}" ${problem}`)
       }

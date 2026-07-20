@@ -15,13 +15,20 @@ describe('toGrams', () => {
 
   it('converts ounce aliases (oz / ounce / ounces)', () => {
     expect(toGrams('3', 'oz')).toBe(85) // 3 * 28.3495 = 85.0485
-    expect(toGrams('2.5', 'ounces')).toBe(71) // 70.87375
-    expect(toGrams('1', 'ounce')).toBe(28) // 28.3495
+    expect(toGrams('2.5', 'ounces')).toBe(70.9) // 70.87375
+    expect(toGrams('1', 'ounce')).toBe(28.3) // 28.3495
+  })
+
+  it('keeps the tenths an ounce conversion produces', () => {
+    // Regression: this used to round to whole grams, silently discarding up
+    // to 0.5 g on every row of an ounce-denominated import.
+    expect(toGrams('4.2', 'oz')).toBe(119.1) // 119.0679
+    expect(toGrams('1', 'oz')).not.toBe(28)
   })
 
   it('converts pound aliases (lb / pound / pounds)', () => {
-    expect(toGrams('1', 'lb')).toBe(454) // 453.592
-    expect(toGrams('2', 'pounds')).toBe(907) // 907.184
+    expect(toGrams('1', 'lb')).toBe(453.6) // 453.592
+    expect(toGrams('2', 'pounds')).toBe(907.2) // 907.184
   })
 
   it('converts kilogram aliases (kg / kilogram / kilograms)', () => {
@@ -31,7 +38,7 @@ describe('toGrams', () => {
 
   it('is case- and whitespace-insensitive on the unit', () => {
     expect(toGrams('1', ' KG ')).toBe(1000)
-    expect(toGrams('1', 'Oz')).toBe(28)
+    expect(toGrams('1', 'Oz')).toBe(28.3)
   })
 
   it('returns 0 for NaN / non-numeric weights', () => {
@@ -44,9 +51,19 @@ describe('toGrams', () => {
     expect(toGrams('-1', 'kg')).toBe(0)
   })
 
-  it('rounds to the nearest gram', () => {
-    expect(toGrams('1.4', 'g')).toBe(1)
-    expect(toGrams('1.6', 'g')).toBe(2)
+  it('rounds to the nearest tenth of a gram', () => {
+    expect(toGrams('1.4', 'g')).toBe(1.4)
+    expect(toGrams('1.44', 'g')).toBe(1.4)
+    expect(toGrams('1.46', 'g')).toBe(1.5)
+  })
+
+  it('never emits more than one decimal, so the DTO cannot reject an import', () => {
+    // shared/gear.ts caps stored weights at 1 decimal place. A parser that
+    // returned 119.0679 would produce rows the server rejects wholesale.
+    for (const [value, unit] of [['4.2', 'oz'], ['1.3', 'lb'], ['0.777', 'kg']] as const) {
+      const grams = toGrams(value, unit)
+      expect(Math.round(grams * 10) / 10).toBe(grams)
+    }
   })
 
   it('clamps to MAX_ITEM_WEIGHT_GRAMS', () => {

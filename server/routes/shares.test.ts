@@ -212,7 +212,9 @@ describe('GET /api/shares/:slug', () => {
       // omit". FORBIDDEN_KEYS below asserts neither key reaches the wire.
       name: 'Tarp',
       description: 'DCF 8x10',
-      weightGrams: 250,
+      // Fractional on purpose: gear weight is published to anonymous viewers,
+      // so the tenth has to survive the share projection too.
+      weightGrams: 250.5,
       categoryId: zetaId,
       cost: 289.99,
       purchaseDate: '2024-04-15',
@@ -267,11 +269,16 @@ describe('GET /api/shares/:slug', () => {
       gear: {
         name: 'Tarp',
         description: 'DCF 8x10',
-        weightGrams: 250,
+        weightGrams: 250.5,
         categoryId: zetaId,
       },
     })
     expect(body.items[2]!.gear.categoryId).toBeNull()
+
+    // Asserted on RAW json, not the parsed DTO: zod would happily coerce a
+    // truncated 250 into a valid number and the schema check would still pass.
+    const rawItems = (raw as { items: { gear: { weightGrams: number } }[] }).items
+    expect(rawItems[0]!.gear.weightGrams).toBe(250.5)
 
     // The leak guard: nothing private at any depth, and the list object
     // exposes neither its id nor its slug (the viewer already has the

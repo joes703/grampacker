@@ -1,5 +1,33 @@
 import { describe, it, expect } from 'vitest'
-import { formatItemWeight, formatTotalWeight } from './weight'
+import { formatGrams, formatItemWeight, formatTotalWeight, roundGrams } from './weight'
+
+describe('roundGrams', () => {
+  it('snaps to one decimal place', () => {
+    expect(roundGrams(12.4)).toBe(12.4)
+    expect(roundGrams(12.44)).toBe(12.4)
+    expect(roundGrams(12.46)).toBe(12.5)
+    expect(roundGrams(240)).toBe(240)
+  })
+
+  it('collapses the float noise a sum introduces', () => {
+    expect(roundGrams(0.1 + 0.2)).toBe(0.3)
+  })
+})
+
+describe('formatGrams', () => {
+  it('trims trailing zeros so whole grams stay whole', () => {
+    expect(formatGrams(240)).toBe('240')
+    expect(formatGrams(12.4)).toBe('12.4')
+    expect(formatGrams(0)).toBe('0')
+  })
+
+  it('never renders float noise', () => {
+    // The reason this formatter exists: raw interpolation of a summed weight
+    // would put "0.30000000000000004 g" on the page.
+    expect(formatGrams(0.1 + 0.2)).toBe('0.3')
+    expect(String(0.1 + 0.2)).not.toBe('0.3')
+  })
+})
 
 // formatItemWeight is the per-row formatter — oz-only in imperial mode so
 // row columns stay narrow and tabular. Pinning the behavior so a future
@@ -8,6 +36,11 @@ describe('formatItemWeight', () => {
   it('renders grams unchanged in g mode', () => {
     expect(formatItemWeight(0, 'g')).toBe('0 g')
     expect(formatItemWeight(450, 'g')).toBe('450 g')
+  })
+
+  it('shows a fractional gram without padding a whole one', () => {
+    expect(formatItemWeight(12.4, 'g')).toBe('12.4 g')
+    expect(formatItemWeight(240, 'g')).toBe('240 g')
   })
 
   it('renders oz-only in oz mode regardless of magnitude', () => {
@@ -43,5 +76,12 @@ describe('formatTotalWeight', () => {
     expect(formatTotalWeight(500, 'oz')).toBe('1 lb 1.6 oz')
     // Pack-weight territory: 14 kg → ~30 lb 13.8 oz.
     expect(formatTotalWeight(14000, 'oz')).toBe('30 lb 13.8 oz')
+  })
+
+  it('keeps a summed fractional total clean in g mode', () => {
+    // Three 0.1 g items sum to 0.30000000000000004 in IEEE-754. This is the
+    // aggregate path, where individual one-decimal snapping does not apply.
+    expect(formatTotalWeight(0.1 + 0.1 + 0.1, 'g')).toBe('0.3 g')
+    expect(formatTotalWeight(1234.5, 'g')).toBe('1234.5 g')
   })
 })

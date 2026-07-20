@@ -1,4 +1,4 @@
-import { formatItemWeight, gramsToOz, type WeightUnit } from '../lib/weight'
+import { formatGrams, formatItemWeight, gramsToOz, type WeightUnit } from '../lib/weight'
 
 type Props = {
   grams: number
@@ -15,7 +15,7 @@ export default function ItemWeightValue({ grams, unit }: Props) {
           aria-hidden="true"
           className="inline-grid grid-cols-[5ch_1ch] justify-end gap-x-1"
         >
-          <span className="text-right">{grams}</span>
+          <span className="text-right">{formatGrams(grams)}</span>
           <span className="text-left">g</span>
         </span>
       </span>

@@ -605,6 +605,29 @@ describe('/api/gear-items authorization matrix', () => {
     expect(await listGear(cookie)).toHaveLength(0)
   })
 
+  it('fractional grams survive the write, the read back, and a PATCH', async () => {
+    // The wire assertion for the REAL column: an integer-affinity column plus
+    // an .int() DTO both truncated tenths, and neither failure was visible
+    // anywhere except the value the user got back.
+    const { cookie } = await signUpVerifiedUser('gear-fraction@example.com', 'F')
+
+    const created = await createGear(cookie, { name: 'Stake', weightGrams: 12.4 })
+    expect(created.weightGrams).toBe(12.4)
+
+    const [listed] = await listGear(cookie)
+    expect(listed?.weightGrams).toBe(12.4)
+
+    const patched = await apiRequest(cookie, 'PATCH', `/api/gear-items/${created.id}`, {
+      weightGrams: 0.1,
+    })
+    expect(patched.status).toBe(200)
+    expect(gearItemResponseSchema.parse(await patched.json()).weightGrams).toBe(0.1)
+
+    // Quick-add takes the same schema by a different route.
+    const quick = await createGear(cookie, { name: 'Cord', weightGrams: 3.5 })
+    expect(quick.weightGrams).toBe(3.5)
+  })
+
   it('validation: bounds, dates, money, status, oversized arrays', async () => {
     const { cookie } = await signUpVerifiedUser('gear-valid@example.com', 'V')
     for (const body of [
@@ -612,7 +635,7 @@ describe('/api/gear-items authorization matrix', () => {
       { name: 'x'.repeat(257) },
       { name: 'ok', weightGrams: -1 },
       { name: 'ok', weightGrams: 100001 },
-      { name: 'ok', weightGrams: 12.5 },
+      { name: 'ok', weightGrams: 12.45 }, // 2 decimal places; 1 is the limit
       { name: 'ok', cost: -1 },
       { name: 'ok', cost: 12.999 }, // 3 decimal places
       { name: 'ok', cost: 100_000_000 },

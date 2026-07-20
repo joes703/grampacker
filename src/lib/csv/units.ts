@@ -15,6 +15,7 @@
 // outside either to avoid circular imports and to keep the dependency
 // direction one-way (gear/list -> units, never the reverse).
 import { MAX_ITEM_WEIGHT_GRAMS } from '../caps'
+import { roundGrams } from '../weight'
 
 export function toGrams(value: string, unit: string): number {
   const n = parseFloat(value)
@@ -47,5 +48,8 @@ export function toGrams(value: string, unit: string): number {
       // explicit instead of hidden under `default`.
       grams = n
   }
-  return Math.min(Math.round(grams), MAX_ITEM_WEIGHT_GRAMS)
+  // Round to one decimal, not to a whole gram. Rounding to integers here
+  // silently discarded up to 0.5 g per row on every ounce-denominated import
+  // (4.2 oz landed as 119 g instead of 119.1 g).
+  return Math.min(roundGrams(grams), MAX_ITEM_WEIGHT_GRAMS)
 }

@@ -851,7 +851,9 @@ describe('caps and slug integrity', () => {
         {
           tempId: 'gear-2',
           name: 'Stakes',
-          weightGrams: 60,
+          // Fractional: the list-import DTO shares weightGramsSchema with the
+          // gear routes, and this is the only place that path is exercised.
+          weightGrams: 60.4,
           category: { kind: 'existing', id: shelter.id },
         },
       ],
@@ -878,6 +880,7 @@ describe('caps and slug integrity', () => {
     const gear = (await (await apiRequest(cookie, 'GET', '/api/gear-items')).json()) as {
       name: string
       categoryId: string | null
+      weightGrams: number
     }[]
     expect(gear).toHaveLength(4) // Tent + 3 imported
     const cats = (await (await apiRequest(cookie, 'GET', '/api/categories')).json()) as {
@@ -889,6 +892,7 @@ describe('caps and slug integrity', () => {
     expect(gear.find((g) => g.name === 'Stove')?.categoryId).toBe(cooking?.id)
     expect(gear.find((g) => g.name === 'Headlamp')?.categoryId).toBeNull()
     expect(gear.find((g) => g.name === 'Stakes')?.categoryId).toBe(shelter.id)
+    expect(gear.find((g) => g.name === 'Stakes')?.weightGrams).toBe(60.4)
   })
 
   it('import: gear cost lands as cents, keeping zero distinct from unknown', async () => {

@@ -2,12 +2,34 @@ export type WeightUnit = 'g' | 'oz'
 
 const OZ_PER_GRAM = 0.035274 // 1 / 28.3495
 
+// Gear weights carry one decimal place (shared/gear.ts weightGramsSchema is
+// the authority; this is the client-side half of the same contract).
+const GRAM_DECIMALS = 1
+const GRAM_SCALE = 10 ** GRAM_DECIMALS
+
+// Snap a computed gram value onto the stored precision. Every path that
+// produces grams from user input or a unit conversion must go through this,
+// or it produces a value the server will reject as too precise.
+export function roundGrams(grams: number): number {
+  return Math.round(grams * GRAM_SCALE) / GRAM_SCALE
+}
+
+// Grams as display text: at most one decimal, trailing zeros trimmed, so 240
+// reads "240" and 12.4 reads "12.4" - never "12.40".
+//
+// This is also what keeps float noise off the screen. Individual weights are
+// snapped to one decimal, but SUMS are not: 0.1 + 0.2 is 0.30000000000000004,
+// and raw interpolation would render exactly that.
+export function formatGrams(grams: number): string {
+  return String(roundGrams(grams))
+}
+
 export function gramsToOz(grams: number): number {
   return grams * OZ_PER_GRAM
 }
 
-// Inverse of gramsToOz. Returns a fractional gram value; callers that need
-// integer grams (storage / display rounding) should Math.round the result.
+// Inverse of gramsToOz. Returns an unrounded gram value; callers storing the
+// result should pass it through roundGrams to land on the stored precision.
 export function ozToGrams(oz: number): number {
   return oz / OZ_PER_GRAM
 }
@@ -15,7 +37,7 @@ export function ozToGrams(oz: number): number {
 // Individual item weight (oz only, never compound lb+oz). Pass 'g' when the
 // caller never toggles units.
 export function formatItemWeight(grams: number, unit: WeightUnit): string {
-  if (unit === 'g') return `${grams} g`
+  if (unit === 'g') return `${formatGrams(grams)} g`
   return `${gramsToOz(grams).toFixed(1)} oz`
 }
 
@@ -25,7 +47,7 @@ export function formatItemWeight(grams: number, unit: WeightUnit): string {
 // row oz-only keeps row columns tabular, while a summary stat at 14 kg
 // reads as "30 lb 13.8 oz" not "493.8 oz".
 export function formatTotalWeight(grams: number, unit: WeightUnit): string {
-  if (unit === 'g') return `${grams} g`
+  if (unit === 'g') return `${formatGrams(grams)} g`
   const { lb, oz } = gramsToLbOzParts(grams)
   if (lb > 0) return `${lb} lb ${oz.toFixed(1)} oz`
   return `${oz.toFixed(1)} oz`
