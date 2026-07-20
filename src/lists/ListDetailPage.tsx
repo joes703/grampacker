@@ -111,6 +111,7 @@ import DesktopListsPanel from './DesktopListsPanel'
 import { FLAT_TABLE_EYEBROW, FLAT_TABLE_META_TEXT, FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import MobilePackToggle from './MobilePackToggle'
+import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import ListDocumentToolbar from './ListDocumentToolbar'
 import EmptyListCell from './EmptyListCell'
 import PackingProgress from './PackingProgress'
@@ -786,7 +787,20 @@ function ListDetailInner({
           the mobile bottom bar (which now stays uniform Gear/Lists/Add/
           Options across every page). Desktop's equivalent toggle is in
           ListDocumentToolbar below. */}
-      <MobilePackToggle packMode={mode === 'pack'} onTogglePackMode={togglePackMode} />
+      {/* Units sit opposite Pack on the same mobile row. Gated lg:hidden to
+          pair with the lg+ placement in ListDocumentToolbar, so exactly one
+          instance renders at every width. NOT md: the toolbar below is
+          `hidden md:flex`, so anything gated md+ double-renders across
+          768-1023px - the trap docs/ui-density.md documents. (The Pack toggle
+          itself already has that overlap; fixing it is its own change, not
+          something to smuggle in here.) Stays mounted in pack mode, where
+          weights are still on screen. */}
+      <div className="lg:hidden flex items-center gap-2 print:hidden">
+        <MobilePackToggle packMode={mode === 'pack'} onTogglePackMode={togglePackMode} />
+        <div className="ml-auto">
+          <UnitSegmentedControl idPrefix="list-mobile" />
+        </div>
+      </div>
 
       {/* Two-column grid (sidebar collapses in pack mode). The visibility
           condition is `mode !== 'pack'` — derived directly, not stored. */}

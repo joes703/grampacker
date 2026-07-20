@@ -1,5 +1,17 @@
-import { describe, it, expect } from 'vitest'
-import { formatGrams, formatItemWeight, formatTotalWeight, roundGrams } from './weight'
+// @vitest-environment jsdom
+import { beforeEach, describe, it, expect } from 'vitest'
+import {
+  SHARE_WEIGHT_UNIT_KEY,
+  WEIGHT_UNIT_KEY,
+  formatGrams,
+  formatItemWeight,
+  formatTotalWeight,
+  getShareWeightUnit,
+  getWeightUnit,
+  roundGrams,
+  setShareWeightUnit,
+  setWeightUnit,
+} from './weight'
 
 describe('roundGrams', () => {
   it('snaps to one decimal place', () => {
@@ -83,5 +95,71 @@ describe('formatTotalWeight', () => {
     // aggregate path, where individual one-decimal snapping does not apply.
     expect(formatTotalWeight(0.1 + 0.1 + 0.1, 'g')).toBe('0.3 g')
     expect(formatTotalWeight(1234.5, 'g')).toBe('1234.5 g')
+  })
+})
+
+// The public share view (/r/:slug) is anonymous and may be opened by anyone,
+// on any browser. It used to drive WEIGHT_UNIT_KEY - the same key the
+// authenticated app reads - so a stranger toggling oz on someone's shared list
+// silently reconfigured that device's own gear/lists/food views.
+//
+// No account data was ever reachable (the share route is GET-only and no unit
+// preference exists server-side), but reconfiguring the owner's app from a
+// public page is still wrong. These tests pin the isolation, in the direction
+// that matters: share writes must NEVER touch the app's key.
+describe('share weight unit isolation', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('never writes the authenticated key when the share unit changes', () => {
+    setWeightUnit('g')
+    setShareWeightUnit('oz')
+    expect(localStorage.getItem(WEIGHT_UNIT_KEY)).toBe('g')
+    expect(getWeightUnit()).toBe('g')
+    expect(getShareWeightUnit()).toBe('oz')
+  })
+
+  it('persists the viewer choice across reloads, rather than resetting', () => {
+    // The share view always documented "persists on this device". Isolating it
+    // must not quietly downgrade that to ephemeral state.
+    setShareWeightUnit('oz')
+    expect(getShareWeightUnit()).toBe('oz')
+  })
+
+  it('reads through to the app preference until the viewer chooses', () => {
+    // An owner opening their own share link starts in their usual units.
+    setWeightUnit('oz')
+    expect(getShareWeightUnit()).toBe('oz')
+    // ...but once the viewer picks, the two are independent.
+    setShareWeightUnit('g')
+    expect(getShareWeightUnit()).toBe('g')
+    expect(getWeightUnit()).toBe('oz')
+  })
+
+  it('does not let the app preference clobber an explicit share choice', () => {
+    setShareWeightUnit('g')
+    setWeightUnit('oz')
+    expect(getShareWeightUnit()).toBe('g')
+  })
+
+  it('treats a corrupt share value as no preference, not as g', () => {
+    // localStorage is a trust boundary; anything can be in there.
+    //
+    // The earlier version of this test set ONLY the share key and asserted 'g',
+    // which passed for the wrong reason: with the app key unset, read-through
+    // lands on getWeightUnit's own 'g' default, so it never distinguished
+    // "falls back to g" from "reads through". Setting BOTH keys is what makes
+    // the assertion mean something.
+    localStorage.setItem(SHARE_WEIGHT_UNIT_KEY, 'stones')
+    setWeightUnit('oz')
+    expect(getShareWeightUnit()).toBe('oz')
+  })
+
+  it('bottoms out at g when BOTH keys are corrupt', () => {
+    // The end of the fallback chain: no usable value anywhere.
+    localStorage.setItem(SHARE_WEIGHT_UNIT_KEY, 'stones')
+    localStorage.setItem(WEIGHT_UNIT_KEY, 'furlongs')
+    expect(getShareWeightUnit()).toBe('g')
   })
 })

@@ -1,6 +1,7 @@
 import { useWeightUnit } from '../lib/use-weight-unit'
+import type { WeightUnit } from '../lib/weight'
 
-type Props = {
+type CommonProps = {
   /** Visual ID prefix for the two radio inputs so multiple instances on the
    *  same page get distinct ids. Defaults to "wuc" if not provided. */
   idPrefix?: string
@@ -11,17 +12,31 @@ type Props = {
   hint?: string
 }
 
-// Metric/Imperial segmented control bound to the global weight unit
-// preference. Writes through to the same useWeightUnit store every other
-// consumer in the app reads, so changing the unit here propagates to lists,
-// gear inventory, and the public share view immediately.
+type ViewProps = CommonProps & {
+  value: WeightUnit
+  onValueChange: (unit: WeightUnit) => void
+}
+
+// Presentational half: renders the radio group against whatever value it is
+// given. It subscribes to NOTHING.
+//
+// This is split out from the store-bound default export on purpose. The public
+// share view drives its own isolated preference (see SHARE_WEIGHT_UNIT_KEY),
+// and a control that unconditionally subscribed to the authenticated store
+// would both do useless work on an anonymous page and make it far too easy to
+// reintroduce the bug where the public page wrote the app-wide key.
 //
 // We render real radio inputs (sr-only) and label them visually so keyboard
 // arrow navigation works for free and the control still feels like a
 // segmented control. Touch + click both work because the labels are wired
 // via `for=` to the inputs.
-export default function UnitSegmentedControl({ idPrefix = 'wuc', label, hint }: Props) {
-  const { weightUnit, setUnit } = useWeightUnit()
+export function UnitSegmentedControlView({
+  idPrefix = 'wuc',
+  label,
+  hint,
+  value,
+  onValueChange,
+}: ViewProps) {
   const groupName = `${idPrefix}-units`
   const metricId = `${idPrefix}-metric`
   const imperialId = `${idPrefix}-imperial`
@@ -46,15 +61,15 @@ export default function UnitSegmentedControl({ idPrefix = 'wuc', label, hint }: 
           type="radio"
           id={metricId}
           name={groupName}
-          checked={weightUnit === 'g'}
-          onChange={() => setUnit('g')}
+          checked={value === 'g'}
+          onChange={() => onValueChange('g')}
           className="peer/m sr-only"
         />
         <label
           htmlFor={metricId}
           title="Metric"
           className={`min-w-9 cursor-pointer rounded px-2 py-1 text-center text-sm font-semibold transition-colors ${
-            weightUnit === 'g'
+            value === 'g'
               ? 'bg-blue-600 text-white'
               : 'text-gray-600 hover:bg-gray-50'
           } peer-focus-visible/m:ring-2 peer-focus-visible/m:ring-blue-300`}
@@ -65,15 +80,15 @@ export default function UnitSegmentedControl({ idPrefix = 'wuc', label, hint }: 
           type="radio"
           id={imperialId}
           name={groupName}
-          checked={weightUnit === 'oz'}
-          onChange={() => setUnit('oz')}
+          checked={value === 'oz'}
+          onChange={() => onValueChange('oz')}
           className="peer/i sr-only"
         />
         <label
           htmlFor={imperialId}
           title="Imperial"
           className={`min-w-9 cursor-pointer rounded px-2 py-1 text-center text-sm font-semibold transition-colors ${
-            weightUnit === 'oz'
+            value === 'oz'
               ? 'bg-blue-600 text-white'
               : 'text-gray-600 hover:bg-gray-50'
           } peer-focus-visible/i:ring-2 peer-focus-visible/i:ring-blue-300`}
@@ -84,4 +99,16 @@ export default function UnitSegmentedControl({ idPrefix = 'wuc', label, hint }: 
       {hint && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
     </div>
   )
+}
+
+// Store-bound half, for AUTHENTICATED surfaces only (Settings, list detail).
+// Writes through to the shared useWeightUnit store, so changing the unit here
+// propagates to lists, gear inventory and food immediately.
+//
+// Do NOT render this on the public share view - that is precisely the bug this
+// split exists to prevent. Use UnitSegmentedControlView with the share-scoped
+// preference instead.
+export default function UnitSegmentedControl(props: CommonProps) {
+  const { weightUnit, setUnit } = useWeightUnit()
+  return <UnitSegmentedControlView {...props} value={weightUnit} onValueChange={setUnit} />
 }

@@ -85,3 +85,39 @@ export function setWeightUnit(unit: WeightUnit): void {
     window.dispatchEvent(new Event(WEIGHT_UNIT_EVENT))
   }
 }
+
+// ---------------------------------------------------------------------------
+// Public share view unit — DELIBERATELY a separate key.
+// ---------------------------------------------------------------------------
+// The /r/:slug page is anonymous and may be opened by anyone, including on a
+// shared or borrowed browser. It used to drive WEIGHT_UNIT_KEY, the same key
+// the authenticated app reads, so a stranger toggling oz on someone's shared
+// list silently reconfigured that device's own gear/lists/food views. No
+// account data was ever at risk (the share route is GET-only and there is no
+// server-side unit preference), but reconfiguring the owner's app from a public
+// page is still wrong.
+//
+// Isolating it rather than making it ephemeral preserves the behavior the share
+// view always documented: the viewer's choice persists on their device. It just
+// no longer reaches across into the authenticated app's preference.
+//
+// These write ONLY the share key. Nothing here may ever call setWeightUnit.
+export const SHARE_WEIGHT_UNIT_KEY = 'shareWeightUnit'
+
+export function getShareWeightUnit(): WeightUnit {
+  // Same trust-boundary validation as getWeightUnit: localStorage can hold
+  // anything. Falls back to the authenticated preference when the share key
+  // holds no USABLE value - absent and present-but-unparseable are treated
+  // identically on purpose, because neither expresses a viewer preference.
+  // (The chain still bottoms out at 'g': getWeightUnit defaults there when its
+  // own key is missing or corrupt.) A signed-in owner opening their own share
+  // link therefore starts in their usual units - the isolation is one-way,
+  // read-through but never write-through.
+  const raw = localStorage.getItem(SHARE_WEIGHT_UNIT_KEY)
+  if (raw === 'g' || raw === 'oz') return raw
+  return getWeightUnit()
+}
+
+export function setShareWeightUnit(unit: WeightUnit): void {
+  localStorage.setItem(SHARE_WEIGHT_UNIT_KEY, unit)
+}

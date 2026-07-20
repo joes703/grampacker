@@ -2,6 +2,7 @@ import type { List } from '../lib/types'
 import CurrentListHeader from './CurrentListHeader'
 import ListSettingsButton from './ListSettingsButton'
 import PackToggle from './PackToggle'
+import UnitSegmentedControl from '../components/UnitSegmentedControl'
 
 type Props = {
   list: List
@@ -25,6 +26,13 @@ export default function ListDocumentToolbar({ list, packMode, onTogglePackMode }
     <div className="hidden md:flex items-center gap-2 print:hidden">
       <CurrentListHeader list={list} />
       <div className="ml-auto flex items-center gap-2">
+        {/* Units. Gated lg even though this toolbar is md+, because the
+            mobile placement in ListDetailPage is lg:hidden - anything md+
+            here would double-render across 768-1023px. Deliberately outside
+            the !packMode gate: weights are still on screen while packing. */}
+        <div className="hidden lg:block">
+          <UnitSegmentedControl idPrefix="list-toolbar" />
+        </div>
         <PackToggle active={packMode} onClick={onTogglePackMode} />
         {!packMode && <ListSettingsButton list={list} />}
       </div>

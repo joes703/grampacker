@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { SHARE_WEIGHT_UNIT_KEY, WEIGHT_UNIT_KEY } from '../lib/weight'
 
 // PasskeySection, DownloadAllData and DeleteAccountSection each do their own
 // I/O (authClient.passkey.*, a QueryClient fetch, authClient.deleteUser,
@@ -43,5 +44,33 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
     expect(screen.queryByRole('heading', { name: 'Account', level: 2 })).not.toBeInTheDocument()
     expect(screen.queryByText(/password/i)).not.toBeInTheDocument()
+  })
+})
+
+// Weight units landed in Settings because the app had NO unit switcher at all:
+// the control existed only on the public /r/:slug share page, so a signed-in
+// user had to open somebody's shared list to change their own units.
+describe('SettingsPage weight units', () => {
+  afterEach(() => localStorage.clear())
+
+  it('offers a units control that writes the app-wide preference', () => {
+    localStorage.setItem(WEIGHT_UNIT_KEY, 'g')
+    render(<SettingsPage />)
+
+    expect(screen.getByRole('heading', { name: 'Weight units', level: 2 })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTitle('Imperial'))
+    expect(localStorage.getItem(WEIGHT_UNIT_KEY)).toBe('oz')
+
+    fireEvent.click(screen.getByTitle('Metric'))
+    expect(localStorage.getItem(WEIGHT_UNIT_KEY)).toBe('g')
+  })
+
+  it('does not write the share-scoped key', () => {
+    // The isolation runs both ways: Settings must not reach into the public
+    // page's preference either.
+    render(<SettingsPage />)
+    fireEvent.click(screen.getByTitle('Imperial'))
+    expect(localStorage.getItem(SHARE_WEIGHT_UNIT_KEY)).toBeNull()
   })
 })
