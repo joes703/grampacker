@@ -83,6 +83,13 @@ export type GroupProps = {
   /** Stable region id derivation + add-item context. null = uncategorized.
    *  undefined disables the chevron/region-id behavior (share view). */
   categoryId?: string | null
+  /** Overrides the categoryId-derived region id for sections that have no
+   *  category of their own. Required by the trailing Worn pseudo-section:
+   *  it passes no categoryId, so without this it derives the SAME
+   *  `cat-region-uncategorized` id as the real Uncategorized section, and
+   *  whenever both render the two collapse chevrons point their
+   *  aria-controls at one duplicated id. */
+  regionKey?: string
   /** Supply the DRAG rendering for this category's rows. Absent (the share
    *  view) means plain, non-draggable rows.
    *
@@ -147,6 +154,7 @@ function CategoryGroup({
   readyChecksEnabled = false,
   collapsible = true,
   categoryId,
+  regionKey,
   renderRows,
   reorderPending = false,
   showUnpackedOnly = false,
@@ -168,9 +176,11 @@ function CategoryGroup({
   const [adding, setAdding] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   // Stable id for the collapsible region so the header button can announce
-  // aria-controls. categoryId is always set when collapsible=true (share view
-  // passes collapsible=false and the button isn't rendered there).
-  const regionId = `cat-region-${categoryId ?? 'uncategorized'}`
+  // aria-controls. Category sections derive it from categoryId; sections with
+  // no category of their own (the Worn pseudo-section) pass an explicit
+  // regionKey, because categoryId-less sections would otherwise all collapse
+  // onto the same 'uncategorized' id and duplicate it in the document.
+  const regionId = `cat-region-${regionKey ?? categoryId ?? 'uncategorized'}`
   // sectionItems = the items that BELONG to this category section. When
   // hideWorn is on (list.group_worn enabled, in any mode including the
   // share view), worn items belong to the trailing Worn section instead,
@@ -335,7 +345,13 @@ function CategoryGroup({
 
       {/* Items + footer (footer is the row's "total" line, lined up under Weight) */}
       {!collapsed && (
-        <div id={regionId}>
+        // The id exists solely as the chevron's aria-controls target, so it is
+        // emitted only when the chevron is. The share view passes
+        // collapsible={false} AND no categoryId for any section, so without
+        // this gate every section there (plus Worn) rendered the same
+        // `cat-region-uncategorized` id - duplicate ids on the public page,
+        // referenced by nothing.
+        <div id={collapsible ? regionId : undefined}>
           {renderRows
             ? renderRows(visibleItems, rowPropsFor)
             : visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}

@@ -58,8 +58,11 @@ import PackModeCheckbox from './PackModeCheckbox'
 //   - `onEditGearItem` / `onDeleteGearItem` add the Edit / Delete-from-
 //     inventory items to the kebab; without them the kebab shows only
 //     "Remove from list".
-//   - `dragHandle` injects a drag handle button (rendered absolute-left).
-//     Provided by the SortableItemRow wrapper, omitted by share view.
+//   - `dragHandle` injects a drag handle button as the row's first in-flow
+//     child. Provided by the SortableItemRow wrapper, omitted by share view.
+//     (It used to sit in an absolutely-positioned outside-left gutter; that
+//     was moved into the row because the flat table surface clips
+//     out-of-surface children. See SortableItemRow.tsx.)
 //   - `outerRef` / `outerStyle` are the dnd-kit ref + transform style passed
 //     by the sortable wrapper. Share view omits both.
 //
