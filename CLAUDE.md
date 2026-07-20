@@ -39,3 +39,37 @@ outward gates.
 
 ## Merge
 - Always merge with `gh pr merge --auto --squash`. Never merge while checks are pending.
+
+## Codex review policy
+
+The review gate is intentionally DISABLED. Do not re-enable it.
+Reviews are explicit and happen at two gates:
+
+GATE 1 - Plan review (before any code is written)
+  /codex:adversarial-review --background <plan framing + attack surfaces>
+  Wait for VERDICT. Do not start implementation until I approve the findings.
+
+GATE 2 - Change review (before commit, after lint/build/test pass)
+  /codex:adversarial-review --base main --background <adversarial framing>
+  Required: VERDICT: MERGE | MERGE-WITH-FIXES | BLOCK
+
+Never use /codex:review - unsteerable, takes no custom focus text.
+
+Queue fallback: if /codex:status shows a job queued >5 min without starting,
+/codex:cancel it and fall back to the direct `codex exec -s read-only`
+pattern. Say so in the transcript when you do.
+
+Standing invariants to name in every GATE 2 review prompt:
+  - session-scoped ownership: authenticated repo queries filter by the
+    better-auth session's user_id; no route touches another user's rows.
+    Deliberate exceptions: the anonymous public-share read (slug-gated on
+    is_shared) and system tables like rate-limit buckets
+  - locked public share projection: GET /api/shares/:slug (serving the
+    /r/:slug SPA view) returns only the strict share DTO (constants +
+    wire-shape tests on RAW json; no owner data leaks)
+  - ownership prechecks on writes that take client-supplied ids, done
+    under the D1 100-param limit (owned-set membership in JS, chunked
+    batch statements - never an unbounded inArray)
+  - CSRF + auth layering on app write routes (403 without the custom
+    header, 401 without session). Exception: /api/auth/* uses
+    better-auth's own origin validation, not the custom header

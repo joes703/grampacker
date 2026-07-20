@@ -1,8 +1,11 @@
 # Food planning: design
 
-Status: PROPOSED (not yet implemented)
-Date: 2026-07-14 (rev 5; APPROVED in direction. Nothing implemented yet.)
-Implements: REWRITE_PLAN.md phase 5, the last unshipped feature
+Status: ACCEPTED - slices 1-7 shipped to production 2026-07-19 (PRs #62-#83;
+final slice 7b squash e1ebee0); section 13 all-days summary strips remain
+deferred
+Date: 2026-07-14 (rev 5; revised in place as decisions changed - current text
+is authoritative)
+Implements: REWRITE_PLAN.md phase 5, the last feature of the rewrite
 Supersedes: the old build's food-plan-as-child-of-list model
 
 A food plan becomes a **standalone, named, reusable** object that a gear list may

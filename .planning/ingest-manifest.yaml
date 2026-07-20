@@ -1,0 +1,19 @@
+# Ingest manifest for grampacker-next planning docs.
+#
+# Exists to break the cross-ref cycle the 2026-07-19 ingest blocked on:
+#   food-planning-design.md -> authz-matrix.md (routes must register there)
+#   authz-matrix.md -> food-planning-design.md (route rows cite design sections)
+# The references are complementary (registry <-> design), not contradictory.
+# Resolution: drop the BACK-edge from the downstream registry, keeping the
+# design -> registry edge, so the cross-ref graph is acyclic.
+docs:
+  - path: docs/passwordless-auth-design.md
+    type: ADR
+  - path: docs/food-planning-design.md
+    type: SPEC
+  - path: docs/authz-matrix.md
+    type: SPEC
+    # Override: treat this doc's citations of food-planning-design.md as
+    # informational provenance, NOT a dependency edge. The matrix is the
+    # downstream route registry; its rows cite design sections as sources.
+    cross_refs: []

@@ -1,6 +1,8 @@
 # Passwordless auth: design
 
-Status: PROPOSED (not yet implemented)
+Status: ACCEPTED - shipped to production 2026-07-12 (PRs #46-#51 + teardown
+migration 0006; passwords removed with no rollback path; follow-ups #53
+validated-send quota charging and #55 fragment-carried tokens)
 Date: 2026-07-11
 Supersedes: REWRITE_PLAN.md decision 13.3 ("no magic links")
 
@@ -247,9 +249,11 @@ not a quota control, and should not be relaxed for convenience.
 
 **Charge order is IP -> email -> global, and it is load-bearing.** A request the
 narrower caps already refused never reaches the shared quota, so a flood cannot
-spend mail budget it was never going to use: the global count tracks mail actually
-SENT, not attempts made. Reverse the order and a single host could 429 the entire
-app's recovery path for a day.
+spend mail budget it was never going to use: the global count tracks VALIDATED
+send attempts (charged in sendMagicLink just before email.send - a provider
+failure still spends the charge; see server/middleware/rate-limit.ts), not raw
+requests. Reverse the order and a single host could 429 the entire app's
+recovery path for a day.
 
 **Accepted trade-off:** a drained global bucket means nobody can recover an
 account until the window rolls. This is no worse than the provider's quota running

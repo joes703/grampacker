@@ -1,0 +1,32 @@
+{
+  "source_path": "docs/food-planning-design.md",
+  "type": "SPEC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Food planning: design",
+  "summary": "Design and implementation contract for standalone reusable food plans: schema, plan-list link semantics, projection math, pack-state lifecycle, share DTO, caps, slicing, and nutrition targets.",
+  "scope": [
+    "food_plans",
+    "food_items",
+    "food_pack_state",
+    "food_plan_entries",
+    "meals / food_plan_days / day_meals",
+    "nutrition targets (food_plan_daily_targets, meal_targets, food_plan_target_defaults)",
+    "lists.food_plan_id link",
+    "weight projection (withProjectedFood)",
+    "public share DTO (/r/:slug food object)",
+    "/food and /food/plans/:id routes",
+    "targets API (PUT /api/food-plans/:id/targets, /api/target-defaults)",
+    "CSV import/export and takeout (food-data.json v4)",
+    "per-user caps and D1 param limits"
+  ],
+  "cross_refs": [
+    "REWRITE_PLAN.md",
+    "AGENTS.md",
+    "docs/authz-matrix.md",
+    "SECURITY.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": "ADR/SPEC ambiguity resolved to SPEC: the doc carries ADR-style headers (Status/Date/Supersedes) and a numbered Decisions section (12.1-12.10), but it is a multi-decision technical specification (schemas, SQL contracts, API shapes, DTOs, required tests) rather than one locked decision. Header status is PROPOSED/'APPROVED in direction' while memory and in-doc revisions show most slices shipped; decisions are marked 'settled but revisable' and several were revised in place (12.9 superseded by 12.1; section 14 added 2026-07-18), so no locked flag applies. Also references ADR 12 by number without a path, plus old-repo migration files (code, excluded from cross_refs)."
+}
