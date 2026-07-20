@@ -71,6 +71,35 @@ export function computeWeightBreakdown(
   return { catRows, baseGrams, consumableGrams, wornGrams, totalPackGrams }
 }
 
+// Sentinel row id for Uncategorized inside `catRows`. Exported so callers can
+// map a rendered section's `category: null` onto the right row instead of
+// re-spelling the literal.
+export const UNCATEGORIZED_ROW_ID = '__uncategorized__'
+
+// Per-section base subtotal, for the footer under each rendered category.
+//
+// This exists so a category section CANNOT compute its own subtotal. It used
+// to: CategoryGroup summed its own rows, which meant consumables landed in the
+// subtotal, and worn items did too whenever the list's Group Worn toggle was
+// off - so an unrelated display toggle silently redefined a weight metric, and
+// the subtotals never summed to the summary's Base weight.
+//
+// Returns BASE grams only: consumable and worn weight are excluded, always and
+// regardless of any display toggle. Because that makes the number no longer the
+// arithmetic sum of the visible rows, the footer labels it ("Base:") rather
+// than presenting a bare figure that promises to add up.
+//
+// `catRows` omits any category with no base weight, so a missing row is a real
+// zero, not a lookup failure - a consumable-only category must render 0, never
+// fall through to another section's number.
+export function baseGramsForCategory(
+  breakdown: WeightBreakdown,
+  categoryId: string | null,
+): number {
+  const rowId = categoryId ?? UNCATEGORIZED_ROW_ID
+  return breakdown.catRows.find((r) => r.id === rowId)?.grams ?? 0
+}
+
 // Composes a gear list's attached food plan into its weight
 // (food-planning-design.md 5.3). Food is ALWAYS consumable - it is consumable
 // by definition, not by user choice - so only consumableGrams and

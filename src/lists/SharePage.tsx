@@ -8,7 +8,7 @@ import type { Category, ListItemWithGear, SharedListResponse } from '../lib/type
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useDocumentTitle } from '../lib/use-document-title'
-import { computeWeightBreakdown, withProjectedFood } from '../lib/weight-breakdown'
+import { baseGramsForCategory, computeWeightBreakdown, withProjectedFood } from '../lib/weight-breakdown'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
@@ -231,6 +231,8 @@ export default function SharePage() {
                 isBelowLg={isBelowLg}
                 collapsible={false}
                 hideWorn={showWornGroup}
+                subtotalLabel="Base"
+                subtotalGrams={baseGramsForCategory(weightBreakdown, group.category?.id ?? null)}
               />
             ))}
             {showWornGroup && wornItems.length > 0 && (
@@ -240,6 +242,11 @@ export default function SharePage() {
                 weightUnit={weightUnit}
                 isBelowLg={isBelowLg}
                 collapsible={false}
+                // See the owner-page Worn section for the full reasoning,
+                // including the accepted dual-flag caveat: unlabelled, sourced
+                // from the canonical list-level wornGrams, never looked up as
+                // a category.
+                subtotalGrams={weightBreakdown.wornGrams}
               />
             )}
           </div>

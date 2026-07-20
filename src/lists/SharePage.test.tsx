@@ -253,3 +253,93 @@ describe('SharePage error and not-found states', () => {
     expect(await screen.findByText('List not found')).toBeTruthy()
   })
 })
+
+// Parent-level wiring for the per-section footer subtotals. CategoryGroup's own
+// tests prove it renders what it is handed; only a test at this level can prove
+// the PARENT hands each section the right number. The failure modes are all
+// silent and plausible-looking: passing a null category lookup to the Worn
+// section (which would show Uncategorized's base), passing the wrong category
+// id, or letting attached food weight leak into a category subtotal.
+describe('SharePage category subtotals', () => {
+  const shelterBase: SharedListResponse['items'][number] = {
+    id: 'i-base', gearItemId: 'g-base', quantity: 1, isWorn: false, isConsumable: false, sortOrder: 0,
+    gear: { name: 'Tent', description: null, weightGrams: 1200, categoryId: 'cat-1' },
+  }
+  const shelterConsumable: SharedListResponse['items'][number] = {
+    id: 'i-cons', gearItemId: 'g-cons', quantity: 1, isWorn: false, isConsumable: true, sortOrder: 1,
+    gear: { name: 'Gas', description: null, weightGrams: 230, categoryId: 'cat-1' },
+  }
+  const shelterWorn: SharedListResponse['items'][number] = {
+    id: 'i-worn', gearItemId: 'g-worn', quantity: 1, isWorn: true, isConsumable: false, sortOrder: 2,
+    gear: { name: 'Jacket', description: null, weightGrams: 550, categoryId: 'cat-1' },
+  }
+  const orphan: SharedListResponse['items'][number] = {
+    id: 'i-orphan', gearItemId: 'g-orphan', quantity: 2, isWorn: false, isConsumable: false, sortOrder: 3,
+    // Category id that is NOT in `categories` - must route to Uncategorized in
+    // BOTH the grouper and the subtotal lookup, or the section renders against
+    // a bucket it does not own.
+    gear: { name: 'Mystery', description: null, weightGrams: 40, categoryId: 'cat-gone' },
+  }
+
+  it('gives each section its own base weight, excluding consumable and worn', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue(
+      share({
+        categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
+        items: [shelterBase, shelterConsumable, shelterWorn, orphan],
+      }),
+    )
+    renderShareView()
+
+    // Shelter holds 1200 base + 230 consumable + 550 worn. Its subtotal is the
+    // base alone; 1980 g (the row sum) must appear nowhere.
+    expect((await screen.findAllByText('Shelter')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('1200 g').length).toBeGreaterThan(0)
+    expect(screen.queryByText('1980 g')).toBeNull()
+    // Orphan: 2 x 40 g, routed to Uncategorized by both paths.
+    expect(screen.getAllByText('80 g').length).toBeGreaterThan(0)
+  })
+
+  it('does not give the Worn section the Uncategorized base figure', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue(
+      share({
+        list: { groupWorn: true },
+        categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
+        // Uncategorized base is 80 g; worn is 550 g. If the Worn section were
+        // looked up with a null categoryId it would render 80 g here.
+        items: [shelterBase, shelterWorn, orphan],
+      }),
+    )
+    renderShareView()
+
+    expect(await screen.findByText('Worn')).toBeTruthy()
+    expect(screen.getAllByText('550 g').length).toBeGreaterThan(0)
+    // 80 g still appears (it is Uncategorized's own legitimate subtotal), so
+    // assert the Worn section specifically does not contain it.
+    const wornHeading = screen.getByText('Worn')
+    const wornSection = wornHeading.closest('div')?.parentElement
+    expect(wornSection?.textContent).toContain('550 g')
+    expect(wornSection?.textContent).not.toContain('80 g')
+  })
+
+  it('keeps attached food weight out of every category subtotal', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue(
+      share({
+        categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
+        items: [shelterBase],
+        // Food is always consumable: it may move consumable + pack total, and
+        // must never move a category's base subtotal.
+        food: { weightGrams: 3000, incomplete: false },
+      }),
+    )
+    renderShareView()
+
+    expect((await screen.findAllByText('Shelter')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('1200 g').length).toBeGreaterThan(0)
+    // 4200 g = base + food. It may appear as the pack total, but never as a
+    // category subtotal, so scope the check to the section footers.
+    const footers = [...document.querySelectorAll('.print\\:flex')]
+      .map((f) => f.textContent ?? '')
+    expect(footers.some((t) => t.includes('1200 g'))).toBe(true)
+    expect(footers.some((t) => t.includes('4200 g'))).toBe(false)
+  })
+})

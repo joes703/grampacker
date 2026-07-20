@@ -13,6 +13,7 @@ import {
   FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_HEADER_TITLE_MUTED,
+  FLAT_TABLE_META_TEXT,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_SURFACE,
   MOBILE_ROW_HEIGHT,
@@ -114,6 +115,32 @@ export type GroupProps = {
    *  produce a fresh items array per group every time the toggle flips,
    *  which would defeat React.memo's shallow compare. */
   hideWorn?: boolean
+  /** Footer subtotal for this section, supplied by the parent.
+   *
+   *  Deliberately NOT computed here. This section used to sum its own rows,
+   *  which put consumable weight into the subtotal, and worn weight too
+   *  whenever `hideWorn` happened to be off - so the subtotals never summed to
+   *  the summary panel's Base weight, and flipping an unrelated display toggle
+   *  silently changed what the number meant. The parents already hold the
+   *  canonical computeWeightBreakdown result; they pass the answer down
+   *  (see baseGramsForCategory) so there is one definition of base weight.
+   *
+   *  Passed as two PRIMITIVES, deliberately, not as one `{label, grams}`
+   *  object. This component is memo'd and its call sites go to real lengths to
+   *  keep every prop reference stable (see useGroupedListItems, sharedGroupProps,
+   *  useStableWornItems). An object literal in JSX is freshly allocated on every
+   *  parent render, so it would fail the shallow compare and re-render every
+   *  section on unrelated list mutations - including in pack mode, where the
+   *  subtotal is not rendered at all.
+   *
+   *  `subtotalLabel` is rendered beside the value when the subtotal is NOT the
+   *  arithmetic sum of the rows above it - a bare figure sitting under those
+   *  rows promises to add up, and a Base subtotal doesn't when the section
+   *  holds worn or consumable gear. The Worn pseudo-section omits the label:
+   *  its number is the canonical list-level worn total, and "Worn Worn 550 g"
+   *  is noise. Omit `subtotalGrams` to render no subtotal at all. */
+  subtotalGrams?: number
+  subtotalLabel?: string
   onUpdate?: (itemId: string, patch: ListItemPatch) => void
   onDelete?: (itemId: string) => void
   onSaveGearName?: (gearItemId: string, name: string) => void
@@ -159,6 +186,8 @@ function CategoryGroup({
   reorderPending = false,
   showUnpackedOnly = false,
   hideWorn = false,
+  subtotalGrams,
+  subtotalLabel,
   onUpdate,
   onDelete,
   onSaveGearName,
@@ -194,14 +223,6 @@ function CategoryGroup({
   // the share view (which never enters pack mode) doesn't pull is_packed
   // off each item; that field is excluded from the public read path.
   const packedCount = packMode ? sectionItems.filter((i) => i.isPacked).length : 0
-  // Footer total (non-pack mode). Sums sectionItems so the displayed total
-  // matches the visible rows when hideWorn is on. The list-level
-  // WeightTable is unaffected and still reports worn weight as
-  // "Worn (not added)" for the overall pack-weight summary.
-  const totalGrams = sectionItems.reduce(
-    (s, i) => s + i.gearItem.weightGrams * i.quantity,
-    0,
-  )
   const showKebabSlot = !packMode && Boolean(onDelete)
   // "Complete" = pack mode, has section items, every section item packed.
   const complete = packMode && sectionItems.length > 0 && packedCount === sectionItems.length
@@ -394,14 +415,30 @@ function CategoryGroup({
                 <div className="shrink-0 w-7" />
                 <div className="shrink-0 w-7" />
                 <div className={`shrink-0 w-[9.375rem] text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
-                  {items.length > 0 ? <TotalWeightValue grams={totalGrams} unit={weightUnit} /> : ''}
+                  {subtotalGrams !== undefined ? (
+                    <>
+                      {/* The label is not decorative: it is what stops the
+                          figure from reading as "these rows added up". */}
+                      {subtotalLabel ? (
+                        <span className={`mr-1 font-normal ${FLAT_TABLE_META_TEXT}`}>{subtotalLabel}</span>
+                      ) : null}
+                      <TotalWeightValue grams={subtotalGrams} unit={weightUnit} />
+                    </>
+                  ) : ''}
                 </div>
                 {showKebabSlot && <div className="shrink-0 w-7" />}
               </div>
               <div className="lg:hidden flex items-center gap-2">
                 <div className="shrink-0 w-6" />
                 <div className={`shrink-0 w-[7.5rem] text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
-                  {items.length > 0 ? <TotalWeightValue grams={totalGrams} unit={weightUnit} /> : ''}
+                  {subtotalGrams !== undefined ? (
+                    <>
+                      {subtotalLabel ? (
+                        <span className={`mr-1 font-normal ${FLAT_TABLE_META_TEXT}`}>{subtotalLabel}</span>
+                      ) : null}
+                      <TotalWeightValue grams={subtotalGrams} unit={weightUnit} />
+                    </>
+                  ) : ''}
                 </div>
               </div>
             </div>

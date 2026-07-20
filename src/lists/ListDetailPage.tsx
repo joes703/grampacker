@@ -46,7 +46,7 @@ import { parseDnDId } from '../lib/dnd-ids'
 import { assignSortOrderSlots } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
-import { computeWeightBreakdown, withProjectedFood } from '../lib/weight-breakdown'
+import { baseGramsForCategory, computeWeightBreakdown, withProjectedFood } from '../lib/weight-breakdown'
 import { useFoodProjection } from './use-food-projection'
 import { useFoodPlanLink } from './use-food-plan-link'
 import { useFoodPack } from './use-food-pack'
@@ -1007,6 +1007,8 @@ function ListDetailInner({
                               {...sharedGroupProps}
                               reorderPending={reorderItemsMut.isPending}
                               hideWorn={showWornGroup}
+                              subtotalLabel="Base"
+                              subtotalGrams={baseGramsForCategory(weightBreakdown, category.id)}
                               onAddItem={onAddNewItem}
                             />
                           )
@@ -1022,6 +1024,8 @@ function ListDetailInner({
                             {...sharedGroupProps}
                             reorderPending={reorderItemsMut.isPending}
                             hideWorn={showWornGroup}
+                            subtotalLabel="Base"
+                            subtotalGrams={baseGramsForCategory(weightBreakdown, null)}
                             onAddItem={onAddNewItem}
                           />
                         ))}
@@ -1058,6 +1062,22 @@ function ListDetailInner({
                         name="Worn"
                         items={wornItems}
                         regionKey="worn"
+                        // Unlabelled on purpose: the section title already says
+                        // Worn, and this is the canonical list-level worn total.
+                        // It must NOT look itself up by category - it has no
+                        // categoryId, and a null lookup would hand it
+                        // Uncategorized's base figure.
+                        //
+                        // Caveat, deliberately accepted: computeWeightBreakdown
+                        // buckets the defensive isConsumable+isWorn state as
+                        // consumable, while this section's grouper selects on
+                        // isWorn. So a dual-flagged row would render here while
+                        // its weight sat in consumableGrams. A DB CHECK forbids
+                        // that state; the aggregator only tolerates it so an
+                        // optimistic-update glitch cannot crash the page. Do not
+                        // "fix" it by summing rows here - that reintroduces the
+                        // second definition of the metric this change removed.
+                        subtotalGrams={weightBreakdown.wornGrams}
                         renderRows={undefined}
                       />
                     )}
