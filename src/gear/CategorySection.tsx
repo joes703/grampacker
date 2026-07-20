@@ -18,6 +18,7 @@ import {
   FLAT_TABLE_EYEBROW,
   FLAT_TABLE_HEADER,
   FLAT_TABLE_HEADER_COUNT,
+  FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_SURFACE,
   INLINE_EDIT_FOCUS_RING,
@@ -111,32 +112,27 @@ function CategorySectionInner(
     <div className={FLAT_TABLE_SURFACE}>
       {/* Category header — flat section divider (bg-gray-50 + bottom border),
           matching the gear-picker reference grammar. */}
-      <div className={`${FLAT_TABLE_HEADER} gap-1 px-2 py-0 ${
-        // gap-1 + px-2 is a deliberate tighter variant than the canonical
-        // FLAT_TABLE_HEADER_PADDING (gap-1.5 + px-3): this header carries an
-        // extra drag-handle column on the left and a per-category kebab on
-        // the right, so the tighter horizontal padding gives those controls
-        // room without forcing the strip to wrap. Vertical py-0 lets the
-        // shared header height (FLAT_TABLE_HEADER) own the band height.
+      <div className={`${FLAT_TABLE_HEADER} gap-1.5 ${FLAT_TABLE_HEADER_PADDING} ${
+        // Canonical gap-1.5 + px-3, matching GearItemRow's own gap and
+        // padding. This header previously used a tighter gap-1 + px-2 to make
+        // room for an extra LEADING drag-handle column; that grip now sits
+        // after the title, so the reason for the tighter variant is gone and
+        // the header can share the row geometry exactly. Matching both values
+        // is what puts the chevron in the same column as each row's drag
+        // handle and the category title in the same column as the item names
+        // - verified in a browser, not derived on paper.
         //
         // Collapsed: header is the card's only child, so its divider border
         // would double with the card's bottom border. Drop it.
         collapsed ? 'border-b-0' : ''
       }`}>
-        {/* Drag handle — only for real categories */}
-        {!isUncategorized && dragHandleRef ? (
-          <RowIconButton
-            ref={dragHandleRef}
-            {...dragHandleListeners}
-            {...dragHandleAttributes}
-            tabIndex={-1}
-            variant="dragHandle"
-            ariaLabel="Drag to reorder"
-            icon={<GripVertical size={16} />}
-          />
-        ) : (
-          <span className="w-5" />
-        )}
+        {/* The category grip used to lead this header, ahead of the chevron.
+            That gave the header TWO leading controls where each GearItemRow
+            has one (its own drag handle), so the category title started 30px
+            right of the item names beneath it - measured, not inferred. The
+            chevron is the control that mirrors the row's slot, so it leads
+            now and the section-only grip moved after the title. See
+            docs/ui-density.md "Reserved space". */}
 
         {/* Collapse toggle - sized for touch on mobile (40x40, the minimum
             comfortable target on phone hardware) and tightened on desktop
@@ -180,7 +176,13 @@ function CategorySectionInner(
                 setRenaming(true)
               }}
               title="Rename category"
-              className={`flex-1 min-w-0 rounded px-1 py-0.5 text-left ${FLAT_TABLE_HEADER_TITLE} hover:bg-gray-200`}
+              // -ml-1 cancels this button's own px-1 so the TEXT starts on the
+              // shared content column (where item names start), not 4px right
+              // of it. The padding itself stays: it is what gives the rename
+              // hover background room to breathe around the label. The
+              // non-interactive title variant below needs no such offset
+              // because it carries no padding.
+              className={`flex-1 min-w-0 -ml-1 rounded px-1 py-0.5 text-left ${FLAT_TABLE_HEADER_TITLE} hover:bg-gray-200`}
             >
               <span className="truncate">{name}</span>
               <span className={`ml-1.5 ${FLAT_TABLE_HEADER_COUNT}`}>({items.length})</span>
@@ -193,18 +195,46 @@ function CategorySectionInner(
           )
         )}
 
+        {/* Category drag handle. Deliberately a sibling BEFORE the trailing
+            cluster, not a child of it: that cluster's Price/Purchased/Weight/
+            kebab columns are width-matched to GearItemRow's right-side
+            columns, so adding a control inside it would shift every label off
+            its row column. Sitting here, it takes its width from the
+            flex-1 min-w-0 title instead, which only truncates a long category
+            name slightly earlier and leaves every column coordinate intact.
+            Hidden while renaming: the rename input needs that flexible space,
+            and dragging a section mid-rename is not a real interaction. */}
+        {/* Category drag handle. Deliberately a sibling BEFORE the trailing
+            cluster, not a child of it: that cluster's Price/Purchased/Weight/
+            kebab columns are width-matched to GearItemRow's right-side
+            columns, so adding a control inside it would shift every label off
+            its row column. Sitting here, it takes its width from the
+            flex-1 min-w-0 title instead, which only truncates a long category
+            name slightly earlier and leaves every column coordinate intact.
+            Hidden while renaming: the rename input needs that flexible space,
+            and dragging a section mid-rename is not a real interaction. */}
+        {!isUncategorized && dragHandleRef && !renaming && (
+          <RowIconButton
+            ref={dragHandleRef}
+            {...dragHandleListeners}
+            {...dragHandleAttributes}
+            tabIndex={-1}
+            variant="dragHandle"
+            ariaLabel="Drag to reorder"
+            icon={<GripVertical size={16} />}
+          />
+        )}
+
         {/* Header actions — hidden in select mode */}
         {!selectMode && !renaming && (
-          <div
-            className={`flex items-center gap-1.5 ml-auto ${
-              items.length > 0 && !collapsed ? 'lg:pr-1' : ''
-            }`}
-          >
+          <div className="flex items-center gap-1.5 ml-auto">
             {/* Desktop column labels — widths and gap mirror GearItemRow's
                right-side columns (w-20 cost, w-24 purchase date, w-24
                weight, w-7 kebab) so labels sit directly above row values.
-               lg:pr-1 nudges the block 4px left to absorb the header's
-               px-2 vs the row's px-3 outer-padding difference. lg:contents
+               No horizontal nudge is needed any more: the header now uses the
+               row's own px-3 + gap-1.5, so the two rails share coordinates
+               outright instead of compensating for a 4px difference.
+               lg:contents
                flattens the labels into the parent flex on desktop so the
                parent's gap-1.5 applies between every column. Suppressed
                on mobile, when the category is collapsed, on empty

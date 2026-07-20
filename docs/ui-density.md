@@ -151,9 +151,50 @@ The distinctions that matter:
 ### Reserved space
 
 A control hidden with `opacity-0` still occupies its box. Rows that
-hover-reveal a drag handle therefore reserve its width on every row, and any
-aligned header must reserve a matching leading stub or the header label and
-the row content below it will not line up.
+hover-reveal a drag handle therefore reserve its width on every row.
+
+The rule that follows, and the reason the gear header and its rows now share
+coordinates exactly:
+
+- **The content column aligns per breakpoint, in the normal read state.** A
+  section title and the item names beneath it start at the same x. Two desktop
+  states are knowingly exempt, because each reshapes the row rather than the
+  header: **select mode** swaps the row's 28px drag handle for a 16px
+  checkbox, leaving the header title 12px right of the item names; **rename
+  mode** puts the title in an input whose `px-1.5` sits its editable text 6px
+  right of the item text. Both are improved by the current geometry but not
+  zeroed. Do not "fix" either by re-tightening the header, which would break
+  the normal state that the vast majority of viewing happens in.
+- **A leading header control may reserve a row-control slot only when the rows
+  reserve an equivalent slot at that breakpoint.** The collapse chevron
+  qualifies: every row leads with a drag handle of the same width.
+- **Section-only controls go after the title, before the trailing rail.** A
+  category-level reorder grip has no per-row counterpart, so it must not lead.
+  It also must not join the trailing cluster, because those
+  Price/Purchased/Weight/kebab columns are width-matched to the row's own
+  columns and anything inserted there shifts every label off-column. Placed
+  after a `flex-1 min-w-0` title it takes its width from the flexible title
+  region instead, costing only slightly earlier truncation of a long name.
+- **The kebab stays last.** That invariant is what keeps the trailing rail
+  aligned.
+- **Do not buy alignment by taxing the rows.** Adding a stub to every data row
+  to match a section-only control moves the problem rather than fixing it, and
+  spends horizontal room on every row for a per-section affordance.
+- **Disclosure stays an explicit button.** Never make the whole header strip
+  clickable to solve a layout problem; that was deliberately removed because of
+  mobile mistaps.
+
+Justify this as **column alignment, not tree indentation**. A section header is
+not a parent node, and "children indent less than their parent" is not itself
+the defect. It matters here because this codebase treats these strips as column
+headers and aligns their trailing labels to row values on purpose.
+
+NOT YET APPLIED: on phones the list rows drop their drag handle entirely
+(reorder moves to a long-press on the row) while the header keeps a 40px
+chevron, so the title sits 46px right of the item names. By the rule above the
+chevron should move trailing at that breakpoint. Ship it separately from the
+desktop fix: relocating a touch affordance needs its own testing for mistaps,
+trailing-edge crowding, and collapsed-state discoverability.
 
 ## Typography
 
@@ -279,9 +320,14 @@ each class still appears literally in source.
 
 - **`WeightTable`** is a deliberately tighter compact-summary table and does
   not consume the row density tokens.
-- **`CategorySection`** (gear) uses a tighter `gap-1 px-2` header than the
-  canonical `gap-1.5 px-3`, because that header carries an inline rename
-  input. Its column-label block compensates with `lg:pr-1`.
+- **`CategorySection`** (gear) previously used a tighter `gap-1 px-2` header
+  with an `lg:pr-1` nudge on its column-label block. Both are gone: that
+  variant existed to make room for an extra LEADING drag-handle column, and
+  once the grip moved after the title the header could adopt the row's own
+  `gap-1.5 px-3` outright. Sharing the row geometry is what makes the chevron,
+  the title, and both ends of the trailing rail land on the row's coordinates
+  with no compensation at all. Do not reintroduce a tighter variant here
+  without re-measuring all four columns.
 - **Picker rows** (`LibraryPanel`) and draft/footer rows use a flush `px-3`
   mobile pattern rather than `FLAT_TABLE_ROW_PADDING`.
 - **The non-pack `ItemRow`** also keeps `px-3` on mobile rather than the
