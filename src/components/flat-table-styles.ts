@@ -74,8 +74,11 @@ export const FLAT_TABLE_ROW_PADDING = 'px-2 lg:px-3 py-2 lg:py-0'
 // (touch and pointer both want some inset from the surface edge for the
 // chevron/kebab targets); vertical py-0 because min-h-11 / lg:min-h-8 owns
 // the height and items-center centers the title. Headers with denser
-// horizontal layout (CategorySection's gap-1 px-2) or pack-mode (px-2 mobile
-// ramping to px-3) keep their horizontal padding inline.
+// horizontal layout - pack-mode (px-2 mobile ramping to px-3) - keep their
+// horizontal padding inline. CategorySection USED to be such an exception
+// (gap-1 px-2, to make room for a leading category grip); it now consumes
+// this token, which is what puts its chevron, title, and trailing rail on
+// GearItemRow's own coordinates. See docs/ui-density.md "Reserved space".
 export const FLAT_TABLE_HEADER_PADDING = 'px-3 py-0'
 
 // White table shell. The app background is gray-50, and section headers are
