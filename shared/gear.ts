@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { decimalNumber } from './decimal'
 
 // DTO contracts for /api/categories and /api/gear-items. Response schemas
 // are the allowlist: fields not named here never leave the server (user_id
@@ -20,7 +21,12 @@ const categoryNameSchema = z.string().trim().min(1).max(128)
 const gearNameSchema = z.string().trim().min(1).max(256)
 // Empty string is not a valid description - clients send null to clear.
 const descriptionSchema = z.string().trim().min(1).max(2000)
-const weightGramsSchema = z.number().int().min(0).max(100000)
+// Tenths of a gram, not whole grams: packing multiples of a small item makes
+// the fraction matter. One decimal is deliberately tighter than food's three -
+// it is the precision the UI renders, so everything storable is displayable,
+// and a rejected value is a real signal rather than silent rounding. Widening
+// to more decimals later is backwards-compatible; narrowing is not.
+export const weightGramsSchema = decimalNumber({ min: 0, max: 100000, decimals: 1 })
 const idSchema = z.string().min(1).max(64)
 
 // Dollars with at most 2 decimal places (stored as integer cents; REAL is
@@ -72,7 +78,7 @@ export const gearItemResponseSchema = z.object({
   categoryId: z.string().nullable(),
   name: z.string(),
   description: z.string().nullable(),
-  weightGrams: z.number().int(),
+  weightGrams: z.number(),
   cost: z.number().nullable(), // dollars
   purchaseDate: z.string().nullable(), // ISO YYYY-MM-DD
   status: gearStatusSchema,

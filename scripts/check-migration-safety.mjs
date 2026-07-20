@@ -58,6 +58,10 @@
 // probe) - the row-changed failure flips into an assertion that the rewrite
 // happened exactly as declared.
 //
+// Changing a column's declared TYPE? Declare it in EXPECTED_TYPE_CHANGES. Value
+// comparison ignores numeric formatting (1200 vs 1200.0), so the declared type
+// is the only thing standing between you and an accidental widening.
+//
 // Usage: node scripts/check-migration-safety.mjs [--base=<git-ref>]
 
 import { execFileSync } from 'node:child_process'
@@ -525,6 +529,19 @@ const EXPECTED_CHANGES = [
   },
 ]
 
+// Column type changes a migration is ALLOWED to make. Anything not listed here
+// that changes type fails the run. Keep this tight: an unintended rebuild that
+// widens a column is exactly the silent corruption this script exists to catch,
+// and canonicalize() means the value comparison can no longer see it.
+const EXPECTED_TYPE_CHANGES = [
+  {
+    migration: '0013_gear-weight-real.sql',
+    column: 'gear_items.weight_grams',
+    from: 'INTEGER',
+    to: 'REAL',
+  },
+]
+
 // One-shot probes that run right after the new migrations apply, while the
 // migration that motivates them is still on this branch. Later regressions are
 // covered elsewhere (listSchemaObjects fails if the index ever vanishes).
@@ -537,6 +554,17 @@ const POST_CHECKS = [
     // list-seed-3 at it must hit the partial unique index.
     sql: "update lists set food_plan_id = 'plan-seed' where id = 'list-seed-3'",
     expectErrorMatch: /unique/i,
+  },
+  {
+    migration: '0013_gear-weight-real.sql',
+    description: 'gear_items.weight_grams is declared REAL, not integer',
+    // SQLite INTEGER affinity already STORES 12.4 as a real, so a
+    // write-then-read round trip passes whether or not this migration ran and
+    // cannot prove it. The declared type is the only observable difference.
+    sql:
+      "select upper(type) as type from pragma_table_info('gear_items') " +
+      "where name = 'weight_grams'",
+    expectRows: [{ type: 'REAL' }],
   },
 ]
 
@@ -607,6 +635,22 @@ const expectSqlError = (statement, pattern) => {
   return 'succeeded, but should have been rejected'
 }
 
+// The other half of expectSqlError: assert a probe SELECT returns exactly the
+// rows expected. Needed for probes that assert a fact about the schema rather
+// than a constraint - SQLite's RAISE() only works inside a trigger program, so
+// a schema fact cannot be phrased as "this statement must fail".
+const expectSqlRows = (statement, expected) => {
+  let rows
+  try {
+    rows = execSql([statement])[0]
+  } catch (error) {
+    return `could not be run:\n${error.message}`
+  }
+  const actual = JSON.stringify(rows)
+  const wanted = JSON.stringify(expected)
+  return actual === wanted ? null : `returned ${actual}, expected ${wanted}`
+}
+
 // The before-snapshot, rewritten to what it SHOULD look like after the new
 // migrations: every EXPECTED_CHANGES entry whose migration is in this branch's
 // new set is applied to its row. Comparing this against the real
@@ -637,8 +681,9 @@ const applyExpectedChanges = (before, newMigrations) => {
           modified = true
         }
       }
-      // Untouched rows keep SQLite's own JSON rendering, so a JS-vs-SQLite
-      // formatting difference can never masquerade as a data change.
+      // Both sides are already canonicalized (see canonicalize()), so
+      // re-stringifying a rewritten row here renders identically to an
+      // untouched one - no JS-vs-SQLite formatting skew either way.
       return modified ? JSON.stringify(row) : json
     })
     // Re-sort: the rewrite can change the rows' relative string order.
@@ -679,6 +724,20 @@ const describeColumns = () => {
     byTable.get(tbl).add(col)
   }
   return byTable
+}
+
+// Every column's DECLARED type, as "table.column" -> type. Guards the one hole
+// that canonicalize() opens: because the value comparison now ignores numeric
+// FORMATTING, an unintended integer -> real rebuild of some other column would
+// no longer show up as a changed value (45000 vs 45000.0 compare equal). The
+// declared type is what catches that instead, and it is a stronger check than
+// the one it replaces - previously nothing verified column types at all.
+const describeColumnTypes = () => {
+  const rows = query(
+    'select m.name as tbl, p.name as col, p.type as type from sqlite_master m ' +
+      `join pragma_table_info(m.name) p where ${appTablesFilter('m')}`,
+  )
+  return new Map(rows.map(({ tbl, col, type }) => [`${tbl}.${col}`, String(type).toUpperCase()]))
 }
 
 // Drops fixture columns the base ref does not have yet, so a fixture can be
@@ -725,6 +784,25 @@ const seed = (columnsByTable, newMigrations) => {
   return seededColumns
 }
 
+// Re-render SQLite's JSON through JS so a column's STORAGE CLASS cannot
+// masquerade as a changed value. SQLite prints the same number differently
+// depending on the column's declared type - an integer 1200 renders as `1200`,
+// the identical value in a REAL column as `1200.0` - so a migration that only
+// widens integer -> real would trip the row-changed check while altering no
+// data. Parsing to a JS number and re-stringifying collapses that difference.
+//
+// This normalizes NUMBER FORMATTING only. A genuine value change (1200 -> 1201)
+// still differs, and so does a type change across the string/number boundary
+// ('1200' stays quoted). Assumes every numeric column fits in a JS safe
+// integer, which holds here: ids and slugs are text, epoch-ms timestamps and
+// cost_cents are both far below 2^53. An int64 column beyond that range would
+// need a different comparison.
+//
+// It DOES make this comparison blind to an integer -> real widening on any
+// column, not just an intended one. EXPECTED_TYPE_CHANGES plus the declared-
+// type check in main() is what covers that; neither is sufficient alone.
+const canonicalize = (json) => JSON.stringify(JSON.parse(json))
+
 // Every seeded row, as JSON, keyed by table. Reads only the columns that
 // existed before the migration: new columns are expected to differ, old ones
 // are not allowed to.
@@ -743,7 +821,7 @@ const snapshot = (seededColumns) => {
     tables.map((table, i) => [
       table,
       // Sorted so the comparison does not depend on row order.
-      resultSets[i].map(({ row }) => row).sort(),
+      resultSets[i].map(({ row }) => canonicalize(row)).sort(),
     ]),
   )
 }
@@ -848,6 +926,7 @@ const main = () => {
 
     const before = snapshot(seededColumns)
     const schemaBefore = listSchemaObjects()
+    const typesBefore = describeColumnTypes()
     const seededRows = [...before.values()].reduce((n, rows) => n + rows.length, 0)
     console.log(`Seeded ${seededRows} rows across ${before.size} tables.`)
 
@@ -879,6 +958,40 @@ const main = () => {
       }
     }
 
+    // Column types that changed without being declared. canonicalize() makes
+    // the value comparison blind to integer -> real, so this is what stops an
+    // unintended widening (e.g. rebuilding cost_cents as REAL, which would let
+    // fractional cents in later).
+    const allowedTypeChanges = new Map(
+      EXPECTED_TYPE_CHANGES.filter((c) => addedNames.has(c.migration)).map((c) => [
+        c.column,
+        c,
+      ]),
+    )
+    const typesAfter = describeColumnTypes()
+    for (const [column, beforeType] of typesBefore) {
+      const afterType = typesAfter.get(column)
+      if (afterType === undefined || afterType === beforeType) continue
+      const allowed = allowedTypeChanges.get(column)
+      if (allowed && allowed.from === beforeType && allowed.to === afterType) {
+        allowedTypeChanges.delete(column)
+        continue
+      }
+      failures.push(
+        `${column}: declared type changed ${beforeType} -> ${afterType} without being ` +
+          'declared in EXPECTED_TYPE_CHANGES. A rebuild that widens a column is ' +
+          'silent - the value comparison cannot see it.',
+      )
+    }
+    // A declared change that never happened is also a failure: it means the
+    // migration did not do what its entry here claims.
+    for (const [column, change] of allowedTypeChanges) {
+      failures.push(
+        `${column}: EXPECTED_TYPE_CHANGES declares ${change.from} -> ${change.to}, ` +
+          `but the type is ${typesAfter.get(column) ?? 'absent'}.`,
+      )
+    }
+
     // Triggers and indexes that a rebuild dropped and never put back.
     const schemaAfter = new Set(listSchemaObjects())
     const dropped = schemaBefore.filter((object) => !schemaAfter.has(object))
@@ -896,7 +1009,9 @@ const main = () => {
     // row comparison above.
     for (const check of POST_CHECKS) {
       if (!addedNames.has(check.migration)) continue
-      const problem = expectSqlError(check.sql, check.expectErrorMatch)
+      const problem = check.expectErrorMatch
+        ? expectSqlError(check.sql, check.expectErrorMatch)
+        : expectSqlRows(check.sql, check.expectRows)
       if (problem) {
         failures.push(`Post-check "${check.description}" ${problem}`)
       }

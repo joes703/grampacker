@@ -64,6 +64,28 @@ describe('gearItemsToCsv export format', () => {
     }),
   ]
 
+  it('exports a fractional weight byte-exactly and re-imports it unchanged', () => {
+    // The weight column is index 4. A whole gram must not gain a ".0" (it
+    // would change the Lighterpack-facing bytes), and a tenth must survive
+    // the export -> parse round trip so re-importing dedups instead of
+    // duplicating the library.
+    const fractional: GearItem[] = [
+      makeGear({ id: 'f-1', name: 'Stake', weightGrams: 12.4, categoryId: null }),
+      makeGear({ id: 'f-2', name: 'Cord', weightGrams: 0.1, categoryId: null }),
+      makeGear({ id: 'f-3', name: 'Tarp', weightGrams: 240, categoryId: null }),
+    ]
+    const csv = gearItemsToCsv(fractional, [])
+    expect(csv.split('\r\n').slice(1, 4).map((line) => line.split(',')[4])).toEqual([
+      '12.4',
+      '0.1',
+      '240',
+    ])
+
+    const parsed = parseGearCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed.map((r) => r.weightGrams)).toEqual([12.4, 0.1, 240])
+  })
+
   it('emits the exact 11-column header', () => {
     const lines = gearItemsToCsv(items, categories).split('\r\n')
     expect(lines[0]).toBe(
@@ -528,9 +550,9 @@ describe('parseGearCsv unit conversion and column handling', () => {
     const csv = [
       'name,weight,unit',
       'Item A,3,ounce', // 3 oz -> 85 g
-      'Item B,2.5,ounces', // 2.5 oz -> 71 g
-      'Item C,1,pound', // 1 lb -> 454 g
-      'Item D,2,pounds', // 2 lb -> 907 g
+      'Item B,2.5,ounces', // 2.5 oz -> 70.9 g
+      'Item C,1,pound', // 1 lb -> 453.6 g
+      'Item D,2,pounds', // 2 lb -> 907.2 g
       'Item E,1.5,kilogram', // 1.5 kg -> 1500 g
       'Item F,0.5,kilograms', // 0.5 kg -> 500 g
       'Item G,100,gram', // 100 g -> 100 g
@@ -539,7 +561,9 @@ describe('parseGearCsv unit conversion and column handling', () => {
     ].join('\r\n')
     const parsed = parseGearCsv(csv)
     if (typeof parsed === 'string') throw new Error(parsed)
-    expect(parsed.map((r) => r.weightGrams)).toEqual([85, 71, 454, 907, 1500, 500, 100, 200, 50])
+    expect(parsed.map((r) => r.weightGrams)).toEqual([
+      85, 70.9, 453.6, 907.2, 1500, 500, 100, 200, 50,
+    ])
   })
 
   it('resolves the "name" / "Item Name" and "weight" / "weight_grams" aliases', () => {

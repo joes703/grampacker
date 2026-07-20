@@ -1,5 +1,10 @@
 import { z } from 'zod'
-import { costSchema, gearItemResponseSchema, importCategoryRefSchema } from './gear'
+import {
+  costSchema,
+  gearItemResponseSchema,
+  importCategoryRefSchema,
+  weightGramsSchema,
+} from './gear'
 
 // DTO contracts for /api/lists, /api/lists/:id/items and the public
 // /api/shares/:slug read. Same rules as shared/gear.ts: response schemas
@@ -163,7 +168,7 @@ export const quickAddListItemRequestSchema = z
   .object({
     name: z.string().trim().min(1).max(256),
     description: descriptionSchema.nullable().default(null),
-    weightGrams: z.number().int().min(0).max(100000).default(0),
+    weightGrams: weightGramsSchema.default(0),
     categoryId: idSchema.nullable().default(null),
     // Per-list membership fields the Quick-Add form exposes. Defaults
     // mirror the DB column defaults so older/simpler clients can omit
@@ -255,7 +260,10 @@ export const publicListItemSchema = z.object({
   gear: z.object({
     name: z.string(),
     description: z.string().nullable(),
-    weightGrams: z.number().int(),
+    // Fractional: an individual gear weight carries tenths. Distinct from
+    // publicFoodSchema.weightGrams below, which stays integer because the food
+    // projection is rounded ONCE server-side before it is published.
+    weightGrams: z.number(),
     categoryId: z.string().nullable(),
   }),
 })
@@ -337,7 +345,7 @@ const importListGearEntrySchema = z
     tempId: tempIdSchema,
     name: z.string().trim().min(1).max(256),
     description: z.string().trim().min(1).max(2000).nullable().default(null),
-    weightGrams: z.number().int().min(0).max(100000).default(0),
+    weightGrams: weightGramsSchema.default(0),
     category: importCategoryRefSchema.nullable().default(null),
     cost: costSchema.nullable().default(null),
   })

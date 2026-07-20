@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { decimalNumber } from './decimal'
 
 // DTO contracts for /api/food-items. Response schemas are the allowlist:
 // fields not named here never leave the server (user_id in particular - the
@@ -39,32 +40,6 @@ const servingDescriptionSchema = z
   .max(256)
   .refine(noNulByte, noNulMsg)
 const notesSchema = z.string().trim().min(1).max(2000).refine(noNulByte, noNulMsg)
-
-// A fractional food number with a bounded number of decimal places. The
-// refine rejects any value that is not exactly representable at `decimals`
-// places, so the DB's numeric(10,d) precision can't be exceeded from the
-// client. `decimals` is the numeric(10,d) scale.
-//
-// The check is `round(v*scale)/scale === v`, NOT the epsilon form
-// `abs(v*scale - round(v*scale)) < 1e-6`. The epsilon form is magnitude-
-// fragile: near the upper bound, v*scale loses so much precision that an
-// 8-decimal value can land exactly on an integer and pass as "2 decimals"
-// (Codex finding: 99999999.00999999 * 100 === 9999999901). Comparing the
-// round-tripped value back to the original catches that. (gear's costSchema
-// still uses the epsilon form; not touched here - different PR.)
-function decimalNumber(opts: {
-  min: number
-  minExclusive?: boolean
-  max: number
-  decimals: number
-}) {
-  const scale = 10 ** opts.decimals
-  let schema = z.number().max(opts.max)
-  schema = opts.minExclusive ? schema.gt(opts.min) : schema.min(opts.min)
-  return schema.refine((v) => Math.round(v * scale) / scale === v, {
-    message: `at most ${opts.decimals} decimal places`,
-  })
-}
 
 // numeric(10,3), strictly > 0: always projectable (design 5.4).
 const servingWeightSchema = decimalNumber({

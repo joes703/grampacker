@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState, type Ref } from 'react'
-import { gramsToOz, ozToGrams, getWeightUnit, type WeightUnit } from '../lib/weight'
+import {
+  gramsToOz,
+  ozToGrams,
+  getWeightUnit,
+  roundGrams,
+  formatGrams,
+  type WeightUnit,
+} from '../lib/weight'
 import { MAX_ITEM_WEIGHT_GRAMS } from '../lib/caps'
 
-// Number input + g/oz unit toggle. Storage is always integer grams; the
-// component converts at the input boundary. The initial unit follows the
+// Number input + g/oz unit toggle. Storage is grams to one decimal place; the
+// component converts and snaps at the input boundary. The initial unit follows the
 // user's display preference (lib/weight.getWeightUnit). Toggling the unit
 // while typing converts the displayed value but keeps the underlying grams
 // unchanged.
@@ -35,7 +42,7 @@ type Props = {
 }
 
 function formatDraft(grams: number, unit: WeightUnit): string {
-  if (unit === 'g') return String(grams)
+  if (unit === 'g') return formatGrams(grams)
   return gramsToOz(grams).toFixed(1)
 }
 
@@ -75,7 +82,7 @@ export default function WeightInput({
       onChange(0)
       return
     }
-    const g = u === 'g' ? Math.round(parsed) : Math.round(ozToGrams(parsed))
+    const g = roundGrams(u === 'g' ? parsed : ozToGrams(parsed))
     const clamped = Math.min(g, MAX_ITEM_WEIGHT_GRAMS)
     lastEmitted.current = clamped
     onChange(clamped)
@@ -110,7 +117,7 @@ export default function WeightInput({
         type="number"
         inputMode="decimal"
         min={0}
-        step={unit === 'g' ? 1 : 0.1}
+        step={0.1}
         value={draft}
         onChange={handleChange}
         onKeyDown={onKeyDown}

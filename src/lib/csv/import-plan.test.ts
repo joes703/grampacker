@@ -232,6 +232,39 @@ function makeListRow(over: Partial<ListCsvRow> & { name: string }): ListCsvRow {
   }
 }
 
+describe('fractional weights and dedup identity', () => {
+  // gearKey interpolates the weight straight into a string key, so a
+  // fractional weight only dedups correctly if the value survives an
+  // export -> parse round trip as the identical IEEE-754 double. If it
+  // drifted, a re-import would silently duplicate the whole library
+  // instead of matching it.
+  it('re-importing a fractional weight matches instead of duplicating', () => {
+    const existingGearItems = [
+      makeGearItem({ id: 'gear-stake', name: 'Stake', weightGrams: 12.4, categoryId: null }),
+    ]
+    const rows: GearCsvRow[] = [
+      makeRow({ name: 'Stake', weightGrams: Number('12.4') }),
+    ]
+    const plan = planGearImport(rows, [], existingGearItems, makeGenId())
+
+    expect(plan.skippedCount).toBe(1)
+    expect(plan.newItems).toEqual([])
+  })
+
+  it('treats a different tenth as a genuinely different item', () => {
+    // The other half of the contract: dedup must not be so loose that it
+    // collapses two items that differ only in the fraction.
+    const existingGearItems = [
+      makeGearItem({ id: 'gear-stake', name: 'Stake', weightGrams: 12.4, categoryId: null }),
+    ]
+    const rows: GearCsvRow[] = [makeRow({ name: 'Stake', weightGrams: 12.5 })]
+    const plan = planGearImport(rows, [], existingGearItems, makeGenId())
+
+    expect(plan.skippedCount).toBe(0)
+    expect(plan.newItems.map((i) => i.weightGrams)).toEqual([12.5])
+  })
+})
+
 describe('planListImport cost', () => {
   it('carries cost onto NEW gear, against an empty inventory', () => {
     // Against an empty library every row is new, so this proves the CSV

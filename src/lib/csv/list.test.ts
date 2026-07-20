@@ -206,9 +206,9 @@ describe('list csv round-trip', () => {
     const csv = [
       'name,weight,unit',
       'Item A,3,ounce',      // 3 oz -> 85 g
-      'Item B,2.5,ounces',   // 2.5 oz -> 71 g
-      'Item C,1,pound',      // 1 lb -> 454 g
-      'Item D,2,pounds',     // 2 lb -> 907 g
+      'Item B,2.5,ounces',   // 2.5 oz -> 70.9 g
+      'Item C,1,pound',      // 1 lb -> 453.6 g
+      'Item D,2,pounds',     // 2 lb -> 907.2 g
       'Item E,1.5,kilogram', // 1.5 kg -> 1500 g
       'Item F,0.5,kilograms',// 0.5 kg -> 500 g
       'Item G,100,gram',     // 100 g -> 100 g
@@ -218,7 +218,7 @@ describe('list csv round-trip', () => {
     const parsed = parseListCsv(csv)
     if (typeof parsed === 'string') throw new Error(parsed)
     expect(parsed.map((r) => r.weightGrams)).toEqual([
-      85, 71, 454, 907, 1500, 500, 100, 200, 50,
+      85, 70.9, 453.6, 907.2, 1500, 500, 100, 200, 50,
     ])
   })
 
@@ -392,6 +392,35 @@ describe('list csv cost import', () => {
     const parsed = parseListCsv(listItemsToCsv(priced, []))
     if (typeof parsed === 'string') throw new Error(parsed)
     expect(parsed.map((r) => r.cost)).toEqual([27.29, 0, null])
+  })
+
+  it('round-trips fractional weights exactly, and exports them without float noise', () => {
+    const fractional: ListItemWithGear[] = [
+      makeListItem({
+        id: 'li-a', quantity: 1, sortOrder: 0,
+        gearItem: makeGear({ id: 'g-a', name: 'Stake', weightGrams: 12.4, categoryId: null, cost: null }),
+      }),
+      makeListItem({
+        id: 'li-b', quantity: 1, sortOrder: 1,
+        gearItem: makeGear({ id: 'g-b', name: 'Cord', weightGrams: 0.1, categoryId: null, cost: null }),
+      }),
+      makeListItem({
+        id: 'li-c', quantity: 1, sortOrder: 2,
+        gearItem: makeGear({ id: 'g-c', name: 'Tent', weightGrams: 1200, categoryId: null, cost: null }),
+      }),
+    ]
+    const csv = listItemsToCsv(fractional, [])
+    // Byte-exact: a whole gram must not gain a ".0", and no value may render
+    // as float noise. The weight column is index 4.
+    expect(csv.split('\r\n').slice(1, 4).map((line) => line.split(',')[4])).toEqual([
+      '12.4',
+      '0.1',
+      '1200',
+    ])
+
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed.map((r) => r.weightGrams)).toEqual([12.4, 0.1, 1200])
   })
 })
 
