@@ -1046,12 +1046,18 @@ function ListDetailInner({
                         so they win: section name "Worn", the stable wornItems
                         list, and renderRows={undefined} (no drag). The items
                         array walks categories in display order so in-section
-                        order is stable and predictable. */}
+                        order is stable and predictable. regionKey is explicit
+                        because this section passes no categoryId: without it
+                        the collapsible region derives the same
+                        'cat-region-uncategorized' id as the real Uncategorized
+                        section above, duplicating the id in the document and
+                        pointing both chevrons' aria-controls at one target. */}
                     {showWornGroup && wornItems.length > 0 && (
                       <CategoryGroup
                         {...sharedGroupProps}
                         name="Worn"
                         items={wornItems}
+                        regionKey="worn"
                         renderRows={undefined}
                       />
                     )}
