@@ -6,7 +6,6 @@ import type { WeightUnit } from '../lib/weight'
 import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_HEADER,
-  FLAT_TABLE_HEADER_COUNT,
   FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_NUMERIC_TEXT,
@@ -202,7 +201,6 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
         <span className={`flex-1 truncate ${FLAT_TABLE_HEADER_TITLE}`}>
           {name}
         </span>
-        <span className={`shrink-0 ${FLAT_TABLE_HEADER_COUNT}`}>{items.length}</span>
       </div>
 
       {/* Items - pure picker rows. Activate to add/remove on the active list. */}

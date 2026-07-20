@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import type { ListItemWithGear } from '../lib/types'
 import CategoryGroup from './CategoryGroup'
 
@@ -202,6 +202,45 @@ describe('CategoryGroup footer subtotal', () => {
     const footer = document.querySelector('.print\\:flex')
     expect(footer).not.toBeNull()
     expect(footer!.textContent).not.toMatch(/\d+(\.\d+)?\s*g/)
+  })
+
+  // The plain "(N)" category count was removed everywhere: the rows are right
+  // there to be counted and the number added noise to every header. Pack
+  // mode's "packed / total" is a different metric - it reports progress, not
+  // membership - and deliberately stays. These two pin that boundary, because
+  // the tempting "restore header parity" change breaks it in one direction and
+  // the tempting "drop all counts" sweep breaks it in the other.
+  it('renders no membership count in edit mode', () => {
+    render(
+      <CategoryGroup
+        name="Shelter"
+        categoryId="cat-1"
+        items={[itemNamed('a', 'Tarp'), itemNamed('b', 'Stakes')]}
+        weightUnit="g"
+      />,
+    )
+    // Scoped to the header: an unscoped queryByText('2') would collide with
+    // any legitimate future number elsewhere in the section (a quantity, a
+    // weight), passing or failing for reasons that have nothing to do with
+    // the header count. Asserting the header carries no digit at all is the
+    // claim we actually mean.
+    const header = screen.getByText('Shelter').closest('div')!
+    expect(within(header).queryByText('(2)')).toBeNull()
+    expect(header.textContent).not.toMatch(/\d/)
+  })
+
+  it('still renders packed / total in pack mode', () => {
+    const packed = { ...itemNamed('a', 'Tarp'), isPacked: true }
+    render(
+      <CategoryGroup
+        name="Shelter"
+        categoryId="cat-1"
+        items={[packed, itemNamed('b', 'Stakes')]}
+        weightUnit="g"
+        packMode
+      />,
+    )
+    expect(screen.getByText('1 / 2')).toBeInTheDocument()
   })
 
   it('renders no subtotal in pack mode, not even an unlabelled one', () => {
