@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { SHARE_WEIGHT_UNIT_KEY, WEIGHT_UNIT_KEY } from '../lib/weight'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { SharedListResponse } from '../lib/types'
@@ -341,5 +342,62 @@ describe('SharePage category subtotals', () => {
       .map((f) => f.textContent ?? '')
     expect(footers.some((t) => t.includes('1200 g'))).toBe(true)
     expect(footers.some((t) => t.includes('4200 g'))).toBe(false)
+  })
+})
+
+// The unit control on the public page. SharePage.test previously did not
+// exercise the switcher at all, which is how it went unnoticed that the public
+// page was writing the authenticated app's preference key - and that it was the
+// only unit switcher in the entire product.
+describe('SharePage unit control isolation', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('changes the displayed units without touching the app-wide preference', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue(
+      share({
+        categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
+        items: [tentItem],
+      }),
+    )
+    localStorage.setItem(WEIGHT_UNIT_KEY, 'g')
+    renderShareView()
+
+    expect((await screen.findAllByText('Shelter')).length).toBeGreaterThan(0)
+    // Scope to the category section footer. The summary WeightTable renders a
+    // grams AND an ounces column unconditionally, so document-wide assertions
+    // on '1200 g' prove nothing about the preference.
+    const footer = () => document.querySelector('.print\\:flex')?.textContent ?? ''
+    expect(footer()).toMatch(/1200 g/)
+
+    // A visitor switches to imperial.
+    fireEvent.click(screen.getByTitle('Imperial'))
+
+    // The section follows...
+    expect(footer()).not.toMatch(/1200 g/)
+    expect(footer()).toMatch(/oz/)
+    // ...the share-scoped key records it...
+    expect(localStorage.getItem(SHARE_WEIGHT_UNIT_KEY)).toBe('oz')
+    // ...and the signed-in app's preference is untouched. This is the assertion
+    // the whole change exists for.
+    expect(localStorage.getItem(WEIGHT_UNIT_KEY)).toBe('g')
+  })
+
+  it('starts from the app preference when the viewer has no share choice yet', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue(
+      share({
+        categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
+        items: [tentItem],
+      }),
+    )
+    localStorage.setItem(WEIGHT_UNIT_KEY, 'oz')
+    renderShareView()
+
+    // Owner opening their own link sees their usual units, not a reset to g.
+    expect((await screen.findAllByText('Shelter')).length).toBeGreaterThan(0)
+    const footer = document.querySelector('.print\\:flex')?.textContent ?? ''
+    expect(footer).not.toMatch(/1200 g/)
+    expect(footer).toMatch(/oz/)
   })
 })

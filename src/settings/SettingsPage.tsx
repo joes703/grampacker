@@ -1,4 +1,5 @@
-import { Download, Goal, TriangleAlert } from 'lucide-react'
+import { Download, Goal, Scale, TriangleAlert } from 'lucide-react'
+import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import { TABLE_RADIUS, TABLE_SURFACE_BG, TABLE_STRONG_DIVIDER } from '../components/flat-table-styles'
 import { useDocumentTitle } from '../lib/use-document-title'
 import PasskeySection from './PasskeySection'
@@ -16,9 +17,12 @@ import DeleteAccountSection from './DeleteAccountSection'
 // the account section - it is what you manage, and the email that identifies
 // you is shown there.
 //
-// Still deferred from the old app's six sections:
-//   - Display / weight units ........ the g/oz control already lives on the
-//                                     pages + Share view
+// Weight units landed here after the deferral note below turned out to be
+// false. It claimed "the g/oz control already lives on the pages + Share
+// view"; it lived on the Share view ALONE, so the public share page was the
+// only unit switcher in the entire product and signed-in users had to visit
+// someone's shared list to change their own units. Nothing from the old app's
+// six sections is deferred any more.
 export default function SettingsPage() {
   useDocumentTitle('Settings')
 
@@ -39,6 +43,14 @@ export default function SettingsPage() {
         icon={<Goal size={16} />}
       >
         <DefaultTargetsSection />
+      </Section>
+
+      <Section
+        title="Weight units"
+        subtitle="Applies to every list, your gear library, and food. Saved on this device"
+        icon={<Scale size={16} />}
+      >
+        <UnitSegmentedControl idPrefix="settings" />
       </Section>
 
       <Section

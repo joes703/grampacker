@@ -1,11 +1,15 @@
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Eye } from 'lucide-react'
 import { fetchSharedList, queryKeys } from '../lib/queries'
 import { groupListItemsByCategory } from '../lib/grouping'
 import type { Category, ListItemWithGear, SharedListResponse } from '../lib/types'
-import { useWeightUnit } from '../lib/use-weight-unit'
+import {
+  getShareWeightUnit,
+  setShareWeightUnit,
+  type WeightUnit,
+} from '../lib/weight'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { baseGramsForCategory, computeWeightBreakdown, withProjectedFood } from '../lib/weight-breakdown'
@@ -14,7 +18,7 @@ import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
 import DraftBanner from './DraftBanner'
 import { IncompleteFoodWeightNote } from './WeightSummary'
-import UnitSegmentedControl from '../components/UnitSegmentedControl'
+import { UnitSegmentedControlView } from '../components/UnitSegmentedControl'
 import ItemWeightValue from '../components/ItemWeightValue'
 import {
   FLAT_TABLE_BODY_TEXT,
@@ -50,7 +54,19 @@ const MarkdownContent = lazy(() => import('../components/MarkdownContent'))
 // excluded food would be a lie.
 export default function SharePage() {
   const { slug } = useParams<{ slug: string }>()
-  const { weightUnit } = useWeightUnit()
+  // Share-scoped unit, held locally and persisted under its own key. Lazy
+  // initializer so localStorage is read once on mount, not every render; it
+  // reads through to the authenticated preference when the share key is unset,
+  // so an owner opening their own link still starts in their usual units.
+  //
+  // Plain useState rather than a second useSyncExternalStore: nothing else in
+  // the app writes this key, so there are no other subscribers to keep in
+  // lockstep, and a public page has no cross-tab sync requirement.
+  const [weightUnit, setWeightUnitState] = useState<WeightUnit>(getShareWeightUnit)
+  function setShareUnit(unit: WeightUnit) {
+    setShareWeightUnit(unit)
+    setWeightUnitState(unit)
+  }
   const isBelowLg = useIsBelowLg()
 
   // data is undefined while loading, null for "not a shared list" (the
@@ -175,15 +191,25 @@ export default function SharePage() {
         {/* Header. Viewers don't have Settings access, so the share page
             keeps its own units control. Rendered label-less: the g / oz
             segmented chrome self-describes, and dropping the word keeps
-            it tidy inline with the list title. Writes through the same
-            useWeightUnit store, so the choice persists on this device. */}
+            it tidy inline with the list title.
+
+            It drives a SHARE-SCOPED preference, never the authenticated app's.
+            This page is anonymous and may be opened by anyone, including on a
+            borrowed browser; it used to write the same key the signed-in app
+            reads, so a stranger picking oz here silently reconfigured that
+            device's own gear/lists/food views. The choice still persists on
+            this device - it just no longer reaches into the app. */}
         <div className="mb-6 flex flex-wrap items-center gap-3">
           <h1 className="flex-1 min-w-0 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
           <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-gray-500">
             <Eye size={13} aria-hidden="true" />
             Public - read-only
           </span>
-          <UnitSegmentedControl idPrefix="share" />
+          <UnitSegmentedControlView
+            idPrefix="share"
+            value={weightUnit}
+            onValueChange={setShareUnit}
+          />
         </div>
 
         {/* Notes + Weight summary - side by side on desktop, with Notes
