@@ -623,9 +623,10 @@ describe('/api/gear-items authorization matrix', () => {
     expect(patched.status).toBe(200)
     expect(gearItemResponseSchema.parse(await patched.json()).weightGrams).toBe(0.1)
 
-    // Quick-add takes the same schema by a different route.
-    const quick = await createGear(cookie, { name: 'Cord', weightGrams: 3.5 })
-    expect(quick.weightGrams).toBe(3.5)
+    // A second create, to prove the first was not a one-off. The quick-add
+    // route has its OWN DTO and is covered in lists.test.ts, not here.
+    const second = await createGear(cookie, { name: 'Cord', weightGrams: 3.5 })
+    expect(second.weightGrams).toBe(3.5)
   })
 
   it('validation: bounds, dates, money, status, oversized arrays', async () => {

@@ -58,6 +58,10 @@
 // probe) - the row-changed failure flips into an assertion that the rewrite
 // happened exactly as declared.
 //
+// Changing a column's declared TYPE? Declare it in EXPECTED_TYPE_CHANGES. Value
+// comparison ignores numeric formatting (1200 vs 1200.0), so the declared type
+// is the only thing standing between you and an accidental widening.
+//
 // Usage: node scripts/check-migration-safety.mjs [--base=<git-ref>]
 
 import { execFileSync } from 'node:child_process'
@@ -525,6 +529,19 @@ const EXPECTED_CHANGES = [
   },
 ]
 
+// Column type changes a migration is ALLOWED to make. Anything not listed here
+// that changes type fails the run. Keep this tight: an unintended rebuild that
+// widens a column is exactly the silent corruption this script exists to catch,
+// and canonicalize() means the value comparison can no longer see it.
+const EXPECTED_TYPE_CHANGES = [
+  {
+    migration: '0013_gear-weight-real.sql',
+    column: 'gear_items.weight_grams',
+    from: 'INTEGER',
+    to: 'REAL',
+  },
+]
+
 // One-shot probes that run right after the new migrations apply, while the
 // migration that motivates them is still on this branch. Later regressions are
 // covered elsewhere (listSchemaObjects fails if the index ever vanishes).
@@ -709,6 +726,20 @@ const describeColumns = () => {
   return byTable
 }
 
+// Every column's DECLARED type, as "table.column" -> type. Guards the one hole
+// that canonicalize() opens: because the value comparison now ignores numeric
+// FORMATTING, an unintended integer -> real rebuild of some other column would
+// no longer show up as a changed value (45000 vs 45000.0 compare equal). The
+// declared type is what catches that instead, and it is a stronger check than
+// the one it replaces - previously nothing verified column types at all.
+const describeColumnTypes = () => {
+  const rows = query(
+    'select m.name as tbl, p.name as col, p.type as type from sqlite_master m ' +
+      `join pragma_table_info(m.name) p where ${appTablesFilter('m')}`,
+  )
+  return new Map(rows.map(({ tbl, col, type }) => [`${tbl}.${col}`, String(type).toUpperCase()]))
+}
+
 // Drops fixture columns the base ref does not have yet, so a fixture can be
 // written against the post-migration schema. `newMigrations` decides which
 // side of each EXPECTED_CHANGES entry to seed (see that constant).
@@ -766,6 +797,10 @@ const seed = (columnsByTable, newMigrations) => {
 // integer, which holds here: ids and slugs are text, epoch-ms timestamps and
 // cost_cents are both far below 2^53. An int64 column beyond that range would
 // need a different comparison.
+//
+// It DOES make this comparison blind to an integer -> real widening on any
+// column, not just an intended one. EXPECTED_TYPE_CHANGES plus the declared-
+// type check in main() is what covers that; neither is sufficient alone.
 const canonicalize = (json) => JSON.stringify(JSON.parse(json))
 
 // Every seeded row, as JSON, keyed by table. Reads only the columns that
@@ -891,6 +926,7 @@ const main = () => {
 
     const before = snapshot(seededColumns)
     const schemaBefore = listSchemaObjects()
+    const typesBefore = describeColumnTypes()
     const seededRows = [...before.values()].reduce((n, rows) => n + rows.length, 0)
     console.log(`Seeded ${seededRows} rows across ${before.size} tables.`)
 
@@ -920,6 +956,40 @@ const main = () => {
           failures.push(`${table}: a row changed value\n  before: ${beforeRow}\n  after:  ${afterRows[i]}`)
         }
       }
+    }
+
+    // Column types that changed without being declared. canonicalize() makes
+    // the value comparison blind to integer -> real, so this is what stops an
+    // unintended widening (e.g. rebuilding cost_cents as REAL, which would let
+    // fractional cents in later).
+    const allowedTypeChanges = new Map(
+      EXPECTED_TYPE_CHANGES.filter((c) => addedNames.has(c.migration)).map((c) => [
+        c.column,
+        c,
+      ]),
+    )
+    const typesAfter = describeColumnTypes()
+    for (const [column, beforeType] of typesBefore) {
+      const afterType = typesAfter.get(column)
+      if (afterType === undefined || afterType === beforeType) continue
+      const allowed = allowedTypeChanges.get(column)
+      if (allowed && allowed.from === beforeType && allowed.to === afterType) {
+        allowedTypeChanges.delete(column)
+        continue
+      }
+      failures.push(
+        `${column}: declared type changed ${beforeType} -> ${afterType} without being ` +
+          'declared in EXPECTED_TYPE_CHANGES. A rebuild that widens a column is ' +
+          'silent - the value comparison cannot see it.',
+      )
+    }
+    // A declared change that never happened is also a failure: it means the
+    // migration did not do what its entry here claims.
+    for (const [column, change] of allowedTypeChanges) {
+      failures.push(
+        `${column}: EXPECTED_TYPE_CHANGES declares ${change.from} -> ${change.to}, ` +
+          `but the type is ${typesAfter.get(column) ?? 'absent'}.`,
+      )
     }
 
     // Triggers and indexes that a rebuild dropped and never put back.

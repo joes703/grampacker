@@ -39,7 +39,7 @@ type ItemBody = {
   isReady: boolean
   sortOrder: number
   updatedAt: string
-  gearItem: { id: string; name: string }
+  gearItem: { id: string; name: string; weightGrams: number }
 }
 
 async function createList(cookie: string, name: string): Promise<ListBody> {
@@ -551,11 +551,15 @@ describe('list items', () => {
       cookie,
       'POST',
       `/api/lists/${list.id}/items/quick-add`,
-      { name: 'Windscreen', weightGrams: 30, categoryId: category.id },
+      // Fractional: quick-add has its own DTO
+      // (quickAddListItemRequestSchema), so the gear-route round trip does
+      // not cover it.
+      { name: 'Windscreen', weightGrams: 30.4, categoryId: category.id },
     )
     expect(res.status).toBe(201)
     const item = (await res.json()) as ItemBody
     expect(item.gearItem.name).toBe('Windscreen')
+    expect(item.gearItem.weightGrams).toBe(30.4)
 
     // The gear row is real library gear.
     const gear = await apiRequest(cookie, 'GET', '/api/gear-items')
