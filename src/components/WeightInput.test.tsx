@@ -82,9 +82,13 @@ describe('WeightInput', () => {
     )
 
     expect((getByLabelText('Weight') as HTMLInputElement).value).toBe('12.4')
-    await user.click(getByRole('button', { name: 'Entering grams, switch to ounces' }))
-    await user.click(getByRole('button', { name: 'Entering ounces, switch to grams' }))
 
+    await user.click(getByRole('button', { name: 'Entering grams, switch to ounces' }))
+    // Assert the INTERMEDIATE display too: checking only the value after
+    // toggling back would pass even if the ounce rendering were broken.
+    expect((getByLabelText('Weight') as HTMLInputElement).value).toBe('0.4')
+
+    await user.click(getByRole('button', { name: 'Entering ounces, switch to grams' }))
     expect((getByLabelText('Weight') as HTMLInputElement).value).toBe('12.4')
   })
 
