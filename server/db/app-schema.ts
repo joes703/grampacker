@@ -80,7 +80,13 @@ export const gearItems = sqliteTable(
     categoryId: text('category_id'),
     name: text('name').notNull(),
     description: text('description'),
-    weightGrams: integer('weight_grams').notNull().default(0),
+    // REAL, not integer: gear weights carry tenths of a gram (it matters when
+    // packing multiples of a small item). Matches food_items.serving_weight_grams,
+    // which is already REAL - gear and food weights are summed into one pack
+    // total (src/lib/weight-breakdown.ts), so they must share a representation.
+    // Unlike money, weight is never compared for exact equality across
+    // independently-computed values, so integer sub-units buy nothing here.
+    weightGrams: real('weight_grams').notNull().default(0),
     // Integer cents (exact); DTOs speak dollars. numeric(10,2) does not
     // exist in SQLite and REAL is the wrong tool for money.
     costCents: integer('cost_cents'),
