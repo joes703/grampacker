@@ -161,6 +161,38 @@ type DialogState =
   | { type: 'delete-gear'; candidate: GearItem; returnDialog?: DialogState }
   | { type: 'remove-list-item'; item: ListItemWithGear; returnDialog?: DialogState }
 
+// Does this membership row carry state the user actually entered?
+//
+// Removing an item from a list is not destructive to the GEAR - it stays in
+// the inventory - so confirming every removal is pure friction, and that
+// friction lands hardest exactly when curating a list in bulk. But the
+// membership row itself holds things the user typed or toggled: a quantity,
+// the worn/consumable flags, and pack/ready progress. Dropping those silently
+// on a stray tap IS a loss, and there is no undo affordance to catch it.
+//
+// So the confirm is a dirty-state confirm, the same shape as "discard unsaved
+// changes?" - it appears only when there is something to lose. A freshly
+// added, untouched item removes instantly.
+//
+// sortOrder is EXCLUDED on purpose, and it is the one real judgment call here.
+// It is user-modifiable (dragging a row rewrites it), so removing a row the
+// user positioned does lose that position. But sortOrder is also server-
+// assigned on add, and the row carries no provenance bit saying which of the
+// two put it there - so treating a non-default sortOrder as "dirty" would mark
+// nearly every item on a reordered list dirty and hand the friction straight
+// back. A confirm would not preserve the position either; it only asks. The
+// deliberate trade is: position loss on removal is accepted silently, the
+// fields the user explicitly set are not. Revisit if rows ever gain undo.
+export function hasListItemEdits(item: ListItemWithGear): boolean {
+  return (
+    item.quantity !== 1 ||
+    item.isWorn ||
+    item.isConsumable ||
+    item.isPacked ||
+    item.isReady
+  )
+}
+
 export default function ListDetailPage() {
   // Default title for the wrapper; ListDetailInner overrides with the list
   // name once it mounts and the list resolves. Stays as "Lists" briefly while
@@ -625,12 +657,27 @@ function ListDetailInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- addItem is a TanStack mutation result; .mutate is stable, the wrapper is not
     [],
   )
+  // Every remove-from-list path funnels through here: the picker's unpick
+  // toggle, the row kebab, the mobile swipe, and the edit dialog. One function
+  // so the confirm rule cannot drift between them.
+  const requestRemoveListItem = useCallback(
+    (li: ListItemWithGear, returnDialog?: DialogState) => {
+      if (!hasListItemEdits(li)) {
+        deleteItem.mutate(li.id)
+        return
+      }
+      setDialog({ type: 'remove-list-item', item: li, returnDialog })
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deleteItem is a TanStack mutation result; .mutate is stable, the wrapper is not; setDialog is stable
+    [],
+  )
+
   const onLibraryRemove = useCallback(
     (item: GearItem) => {
       const li = listItemsRef.current.find((l) => l.gearItemId === item.id)
-      if (li) setDialog({ type: 'remove-list-item', item: li })
+      if (li) requestRemoveListItem(li)
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- listItemsRef is a ref (always-stable); setDialog is stable
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- listItemsRef is a ref (always-stable); requestRemoveListItem is stable
     [],
   )
 
@@ -714,7 +761,7 @@ function ListDetailInner({
       onUpdate: (itemId: string, patch: ListItemPatch) => updateItem.mutate({ itemId, patch }),
       onDelete: (itemId: string) => {
         const li = listItemsRef.current.find((item) => item.id === itemId)
-        if (li) setDialog({ type: 'remove-list-item', item: li })
+        if (li) requestRemoveListItem(li)
       },
       onSaveGearName: (gearId: string, n: string) =>
         updateGearItem.mutate({ id: gearId, patch: { name: n } }),
@@ -1185,7 +1232,16 @@ function ListDetailInner({
           }}
           onRemoveFromList={
             editDialogListItem
-              ? () => setDialog({ type: 'remove-list-item', item: editDialogListItem, returnDialog: dialog })
+              ? () => {
+                  // Close the editor first: a pristine item removes with no
+                  // confirm, and leaving the dialog open over a row that no
+                  // longer exists is worse than the friction we just removed.
+                  // If a confirm IS needed, requestRemoveListItem re-opens on
+                  // top of this and `returnDialog` restores the editor on
+                  // cancel (both setDialog calls batch; the confirm wins).
+                  setDialog(null)
+                  requestRemoveListItem(editDialogListItem, dialog)
+                }
               : undefined
           }
           onDeleteFromInventory={
