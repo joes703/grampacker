@@ -52,7 +52,9 @@ import TotalWeightValue from '../components/TotalWeightValue'
 //   - onAddItem          ⇒ "+ Add new item" footer button + AddItemRow draft.
 //   - onDelete + onUpdate + onSaveGear* + onEditGearItem + onDeleteGearItem
 //                        ⇒ forwarded per-row to ItemRow's editing affordances.
-//   - collapsible        ⇒ header gets a chevron + count badge + toggle.
+//   - collapsible        ⇒ header gets a chevron + toggle. No membership
+//                          count: pack mode's packed/total is the only
+//                          number the header carries.
 //                          Default true (authed); share view passes false.
 //   - packMode           ⇒ pack-mode header (qty-only, no weight column) +
 //                          pack-mode row layout. Authed-only.
@@ -213,10 +215,10 @@ function CategoryGroup({
   // sectionItems = the items that BELONG to this category section. When
   // hideWorn is on (list.group_worn enabled, in any mode including the
   // share view), worn items belong to the trailing Worn section instead,
-  // so they're excluded here for header counts, footer totals, AND the
-  // visible row list. Without this split, the category header would show
-  // "(5)" while only 3 non-worn rows render, and the footer total would
-  // include weight the user can't see in this section — double-counted
+  // so they're excluded here for the pack-mode total, footer totals, AND
+  // the visible row list. Without this split, pack mode's header would
+  // show "1 / 5" while only 3 non-worn rows render, and the footer total
+  // would include weight the user can't see in this section — double-counted
   // against the same rows showing in the trailing Worn section.
   const sectionItems = hideWorn ? items.filter((i) => !i.isWorn) : items
   // Only displayed in pack-mode header. Gating the read on packMode means
@@ -306,19 +308,16 @@ function CategoryGroup({
                 read-only here (rename happens via the modal, not by tapping
                 the header). */}
             <span className={`truncate ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
-            <span className={`shrink-0 ${FLAT_TABLE_HEADER_COUNT}`}>
-              {packMode ? (
-                <>
-                  {/* Digital packed count is meaningless on a paper checklist
-                      where every box prints empty. Show the same "(N)"
-                      total as edit mode in print to keep header parity. */}
-                  <span className="print:hidden">{packedCount} / {sectionItems.length}</span>
-                  <span className="hidden print:inline">({sectionItems.length})</span>
-                </>
-              ) : (
-                `(${sectionItems.length})`
-              )}
-            </span>
+            {packMode && (
+              /* Pack progress only. Edit mode shows no count: the rows are
+                 right there to be counted, and the number added noise to
+                 every header. Kept print:hidden because a digital packed
+                 count is meaningless on a paper checklist where every box
+                 prints empty. */
+              <span className={`shrink-0 print:hidden ${FLAT_TABLE_HEADER_COUNT}`}>
+                {packedCount} / {sectionItems.length}
+              </span>
+            )}
             {complete && (
               <Check size={14} className="shrink-0 text-green-600 print:hidden" aria-label="All packed" />
             )}

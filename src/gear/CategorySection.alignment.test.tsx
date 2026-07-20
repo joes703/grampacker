@@ -139,3 +139,41 @@ describe('gear category header alignment contract', () => {
     expect([...header.querySelectorAll('button')][0]).toBe(chevron)
   })
 })
+
+// The "(N)" membership count was removed from the gear category header. The
+// rows are right there to be counted, and the number added noise to every
+// header. There are TWO header variants and the count lived in both, so a
+// partial restoration is the realistic regression: pin them separately.
+describe('gear category header carries no membership count', () => {
+  it('renders no count in the renameable variant', () => {
+    renderSection()
+    const chevron = screen.getByRole('button', { name: /Collapse Shelter/ })
+    const header = chevron.closest('div')!
+    expect(header.textContent).not.toMatch(/\d/)
+  })
+
+  it('renders no count in the static variant', () => {
+    render(
+      <StaticCategorySection
+        category={null}
+        items={[{ ...item, categoryId: null }]}
+        weightUnit="g"
+        isBelowLg={false}
+        collapsed={false}
+        onToggleCollapse={vi.fn()}
+        selectMode={false}
+        selectedIds={new Set()}
+        onToggleSelect={vi.fn()}
+        onInlineSave={vi.fn()}
+        onEditItem={vi.fn()}
+        onDeleteItem={vi.fn()}
+        onSetItemStatus={vi.fn()}
+        onRenameCategory={vi.fn()}
+        onDeleteCategory={vi.fn()}
+      />,
+    )
+    const chevron = screen.getByRole('button', { name: /Collapse Uncategorized/ })
+    const header = chevron.closest('div')!
+    expect(header.textContent).not.toMatch(/\d/)
+  })
+})

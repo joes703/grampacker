@@ -17,7 +17,6 @@ import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
   FLAT_TABLE_HEADER,
-  FLAT_TABLE_HEADER_COUNT,
   FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_SURFACE,
@@ -185,12 +184,10 @@ function CategorySectionInner(
               className={`flex-1 min-w-0 -ml-1 rounded px-1 py-0.5 text-left ${FLAT_TABLE_HEADER_TITLE} hover:bg-gray-200`}
             >
               <span className="truncate">{name}</span>
-              <span className={`ml-1.5 ${FLAT_TABLE_HEADER_COUNT}`}>({items.length})</span>
             </button>
           ) : (
             <span className={`flex-1 select-none ${FLAT_TABLE_HEADER_TITLE}`}>
               {name}
-              <span className={`ml-1.5 ${FLAT_TABLE_HEADER_COUNT}`}>({items.length})</span>
             </span>
           )
         )}
