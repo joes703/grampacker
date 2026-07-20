@@ -29,7 +29,11 @@ docs entered synthesis; the graph is acyclic
     .planning/intel/classifications/authz-matrix.json
 
 [INFO] Stale "Status: PROPOSED" header on docs/food-planning-design.md
-  Note: the header reads "Status: PROPOSED (not yet implemented)" and
+  RESOLVED 2026-07-19: the header now reads "Status: ACCEPTED - slices 1-7
+    shipped to production 2026-07-19 ...; section 13 all-days summary strips
+    remain deferred". Kept as a record of what the ingest saw.
+  Note (as observed at ingest time): the header read "Status: PROPOSED
+    (not yet implemented)" and
     "Nothing implemented yet", but the doc's own body records every slice
     shipped (12.1 revised via migration 0010, section 14 "shipped with
     slice 7b") and the rewrite completed with PR #83 on 2026-07-19. Same

@@ -5,7 +5,9 @@
 The core journey is already complete: a full rewrite of grampacker from
 Supabase onto Cloudflare Workers + D1 (Hono, Drizzle, better-auth, React/Vite),
 shipped incrementally to production between 2026-07-07 and 2026-07-19 and
-finished with the food-planning targets frontend (PR #83). Phases 1-7 below
+finished with the food-planning targets frontend (PR #83), then hardened by a
+same-day fix batch from first real use (PRs #85-#88: CSV money handling and
+sub-gram gear weights). Phases 1-7 below
 record that shipped work as the as-built baseline; they were executed pre-GSD
 via reviewed PRs, not GSD plans. The only remaining known work is the v1.1
 polish backlog the design docs explicitly deferred: visual-parity/design-token

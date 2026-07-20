@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-07-19)
 Phase: none active (7 of 7 v1.0 phases complete; phases 8-9 planned)
 Plan: -
 Status: Milestone complete - production healthy
-Last activity: 2026-07-19 - Rewrite completed with PR #83 (food targets frontend); project initialized into GSD from ingested docs
+Last activity: 2026-07-19 - Post-v1.0 fix batch from first real use: PRs #85-#88 (currency-symbol CSV import, one `cost` column on gear export, cost through the list CSV path, decimal gear weights + migration 0013). All merged, deployed and smoked.
 
 Progress (v1.0 Rewrite): [██████████] 100%
 Progress (v1.1 Polish):  [░░░░░░░░░░] 0% (not started)
@@ -44,6 +44,12 @@ future work:
 - Food projection: one shared function, round once at the DTO boundary -
   Phase 9 summary strips must obey it
 - Visual parity direction settled: action color is blue, not emerald (Phase 8)
+- Gear weight is REAL grams at 1dp; `roundGrams`/`formatGrams` in
+  src/lib/weight.ts are mandatory on any path that produces or renders grams.
+  `formatGrams` is load-bearing on AGGREGATES (sums are not snapped), so
+  Phase 9 summary strips must use it rather than interpolating raw grams
+- A migration that changes a column's declared type must declare it in
+  EXPECTED_TYPE_CHANGES (scripts/check-migration-safety.mjs) or the run fails
 
 ### Pending Todos
 
@@ -66,5 +72,6 @@ Items acknowledged and carried forward:
 ## Session Continuity
 
 Last session: 2026-07-19
-Stopped at: Project initialized from ingest (PROJECT.md, REQUIREMENTS.md, ROADMAP.md, STATE.md written)
+Stopped at: PRs #85-#88 shipped and deployed; owner confirmed 12.4 g entry works
+in production. No phase active. Next candidate work is Phase 8 (visual parity).
 Resume file: None

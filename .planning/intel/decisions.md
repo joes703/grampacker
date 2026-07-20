@@ -101,7 +101,9 @@ cannot be auto-overridden by any lower-precedence source in a future ingest.
   three buckets - global 90/day (guards the global Resend quota; the one
   number to raise on a quota change), per-IP 10/10min, per-address 5/hour -
   because no single key stops all three abuses. Charge order IP -> email ->
-  global is load-bearing: the global count tracks mail actually SENT. The
+  global is load-bearing: the global count tracks VALIDATED send attempts,
+  charged in sendMagicLink just before email.send - a provider failure
+  still spends the charge (server/middleware/rate-limit.ts). The
   email key is the LOWERCASED, UNTRIMMED address, HMAC'd with
   BETTER_AUTH_SECRET (matches the identity better-auth resolves; keeps
   rate_limits from becoming an address list). `GET /magic-link/verify`

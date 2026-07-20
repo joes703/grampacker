@@ -128,6 +128,9 @@ source may override them. Full text: .planning/intel/decisions.md.
 | Merge to main = deploy (CI-only; prod token lives only in GitHub secrets) | One gate; no local deploy path to leak credentials | ✓ Good |
 | Offline support removed entirely | Queue + SW cache complexity not worth it for this app | ✓ Good |
 | Public shares are read-only (gear-copy reverted, PR #72) | Copy affordances on anon surface not wanted | ✓ Good |
+| Gear weight is REAL grams at 1dp, not integer milligrams (PR #88, migration 0013) | Food serving weight was already REAL and the two sum into one pack total; the cents argument does not transfer because weights are never compared for equality | ✓ Good |
+| CSV money is ONE `cost` column; a 0 in a legacy `price` column reads as unknown (PRs #86/#87) | Two columns for one field was the bad decision; Lighterpack writes a fabricated 0, and importing a whole library as free is worse than importing it as unpriced | ✓ Good |
+| Column type changes must be declared in EXPECTED_TYPE_CHANGES (PR #88) | Value comparison canonicalizes numeric rendering, so it is blind to integer -> real; the declared type is the only thing catching an accidental widening | ✓ Good |
 | TS7 upgrade deferred | Repo is TS-6-ready; bump only when Joe says | - Pending |
 
 ---

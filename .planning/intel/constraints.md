@@ -214,8 +214,8 @@ superseded (e.g. the shared-plan warning banner of old 12.9, `packed_signature`,
   to the same 422. `GET/PUT /api/target-defaults` is the same full-replace
   shape (<= 6); plan creation SNAPSHOTS defaults by value - editing or
   clearing defaults never touches existing plans. Duplicates carry targets
-  through the shared copy machinery (meal_id remapped via the entries' id
-  map). `PATCH /api/food-plans/:id/days/:dayId` sets `day_type_override`
+  through the shared copy machinery (meal_id remapped via mealIdMap;
+  entries receive independent new ids). `PATCH /api/food-plans/:id/days/:dayId` sets `day_type_override`
   (full/partial/null=auto) with a three-column predicate (id, food_plan_id,
   user_id). Grading (7b, pure modules): daily targets grade only full days;
   `incomplete` propagates from unprojectable entries rather than reading as
@@ -281,7 +281,8 @@ superseded (e.g. the shared-plan warning banner of old 12.9, `packed_signature`,
   everything else 30/10min; over budget -> 429 + Retry-After. Magic-link
   send charges THREE buckets - global 90/day, per-IP 10/10min, per-address
   5/hour - charge order IP -> address -> global (the global count tracks
-  mail actually SENT); the address key is an HMAC of the lowercased,
+  VALIDATED send attempts, charged just before email.send - provider
+  failures still spend it); the address key is an HMAC of the lowercased,
   UNTRIMMED address. This limiter is the ONLY one: better-auth's is
   disabled, so the magic-link plugin's shipped rule never fires. IPv6
   buckets by /64 prefix; IPv4 exact; IPv4-mapped IPv6 unwrapped. Fail-closed

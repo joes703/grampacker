@@ -60,11 +60,16 @@ Queue fallback: if /codex:status shows a job queued >5 min without starting,
 pattern. Say so in the transcript when you do.
 
 Standing invariants to name in every GATE 2 review prompt:
-  - session-scoped ownership: every repo query filters by the better-auth
-    session's user_id; no route touches another user's rows
-  - locked public share projection: /r/:slug returns only the strict DTO
-    (constants + wire-shape tests on RAW json; no owner data leaks)
-  - ownership prechecks on bulk/batch writes under the D1 100-param limit
-    (owned-set membership in JS, chunked batch statements)
-  - CSRF + auth layering on all write routes (403 without header, 401
-    without session)
+  - session-scoped ownership: authenticated repo queries filter by the
+    better-auth session's user_id; no route touches another user's rows.
+    Deliberate exceptions: the anonymous public-share read (slug-gated on
+    is_shared) and system tables like rate-limit buckets
+  - locked public share projection: GET /api/shares/:slug (serving the
+    /r/:slug SPA view) returns only the strict share DTO (constants +
+    wire-shape tests on RAW json; no owner data leaks)
+  - ownership prechecks on writes that take client-supplied ids, done
+    under the D1 100-param limit (owned-set membership in JS, chunked
+    batch statements - never an unbounded inArray)
+  - CSRF + auth layering on app write routes (403 without the custom
+    header, 401 without session). Exception: /api/auth/* uses
+    better-auth's own origin validation, not the custom header
