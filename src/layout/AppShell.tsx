@@ -1,7 +1,6 @@
-import { Link, Outlet, useLocation, useNavigate } from 'react-router'
+import { Link, Outlet, useLocation } from 'react-router'
 import { Settings } from 'lucide-react'
 import { authClient } from '../lib/auth-client'
-import { readLastListPath } from '../lib/last-list-path'
 import { MobilePrimaryNavProvider } from './mobile-primary-nav-context'
 import { SidebarDrawerProvider } from './sidebar-drawer-context'
 import MobilePrimaryNav from './MobilePrimaryNav'
@@ -20,7 +19,6 @@ import { useSignOut } from './use-sign-out'
 export default function AppShell() {
   const { data: session } = authClient.useSession()
   const { pathname } = useLocation()
-  const navigate = useNavigate()
   const { signingOut, signOut } = useSignOut()
 
   return (
@@ -33,7 +31,7 @@ export default function AppShell() {
               <Link to="/" className="text-lg font-bold tracking-tight text-gray-900">
                 grampacker
               </Link>
-              <nav className="hidden md:flex items-center gap-4" aria-label="Primary">
+              <nav className="hidden lg:flex items-center gap-4" aria-label="Primary">
                 <Link
                   to="/gear"
                   className={`text-sm font-medium ${
@@ -42,22 +40,8 @@ export default function AppShell() {
                 >
                   Gear
                 </Link>
-                {/* Return-to-workspace shortcut: clicking Lists lands on
-                    the last opened list path (so workflows resume where
-                    the user left off), or /lists when no cached path
-                    exists. The onClick intercept handles the shortcut;
-                    falling through to the default target (/lists) covers
-                    the first-visit / no-cached-path case. Active on the
-                    card page and every list detail/pack URL. */}
                 <Link
                   to="/lists"
-                  onClick={(e) => {
-                    const lastPath = readLastListPath()
-                    if (lastPath) {
-                      e.preventDefault()
-                      void navigate(lastPath)
-                    }
-                  }}
                   className={`text-sm font-medium ${
                     pathname === '/lists' || pathname.startsWith('/lists/')
                       ? 'text-blue-600'
