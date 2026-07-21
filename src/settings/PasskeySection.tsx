@@ -285,24 +285,19 @@ export default function PasskeySection() {
   // credentials here, and a blank space would not explain why.
   if (!passkeysSupported()) {
     return (
-      <section className="mt-8">
-        <h2 className="text-sm font-semibold text-gray-900">Passkeys</h2>
-        <p className="mt-1 text-sm text-gray-600">
-          This browser doesn't support passkeys. You can still sign in with an
-          email link, and add a passkey later from a browser that does.
-        </p>
-      </section>
+      <p className="text-sm text-gray-600">
+        This browser doesn't support passkeys. You can still sign in with an
+        email link, and add a passkey later from a browser that does.
+      </p>
     )
   }
 
   return (
-    <section className="mt-8">
-      <h2 className="text-sm font-semibold text-gray-900">Passkeys</h2>
-      <p className="mt-1 text-sm text-gray-600">
-        Your passkeys are how you sign in{session?.user.email ? ` as ${session.user.email}` : ''}.
-        Each one lives on a single device, so add one per device you use.
-      </p>
-      <div className="mt-3 space-y-2">
+    <div className="space-y-3">
+      {session?.user.email && (
+        <p className="text-sm text-gray-600">Signed in as {session.user.email}.</p>
+      )}
+      <div className="space-y-2">
         {rows === null && !error && (
           <p className="text-sm text-gray-500">Loading...</p>
         )}
@@ -439,6 +434,6 @@ export default function PasskeySection() {
           </button>
         )}
       </div>
-    </section>
+    </div>
   )
 }

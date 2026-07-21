@@ -1,4 +1,4 @@
-import { Download, Goal, Scale, TriangleAlert } from 'lucide-react'
+import { Download, Goal, KeyRound, Scale, TriangleAlert } from 'lucide-react'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import { TABLE_RADIUS, TABLE_SURFACE_BG, TABLE_STRONG_DIVIDER } from '../components/flat-table-styles'
 import { useDocumentTitle } from '../lib/use-document-title'
@@ -30,10 +30,11 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-2xl space-y-8">
       <h1 className="text-xl font-semibold text-gray-900">Settings</h1>
 
-      {/* PasskeySection brings its own heading + description, so it sits in
-          a bare card (Section with no title row) rather than a titled
-          Section. */}
-      <Section>
+      <Section
+        title="Passkeys"
+        subtitle="Your passkeys are how you sign in. Add one per device you use"
+        icon={<KeyRound size={16} />}
+      >
         <PasskeySection />
       </Section>
 
@@ -55,7 +56,7 @@ export default function SettingsPage() {
 
       <Section
         title="Download all data"
-        subtitle="A zip with your gear library and one CSV per list"
+        subtitle="A complete archive of your gear, lists, food library, plans, and settings"
         icon={<Download size={16} />}
       >
         <DownloadAllData />
@@ -73,11 +74,9 @@ export default function SettingsPage() {
   )
 }
 
-// Card shell for a settings section. Titled form (icon + title + optional
-// subtitle) for headless content; pass no title to get just the card
-// (used for PasskeySection, which supplies its own heading). `danger`
-// switches the border/heading to the destructive palette. Ported from the
-// old SettingsPage's Section; exported for the slices that follow.
+// Card shell for a settings section. The shared icon, title, and optional
+// subtitle treatment keeps every card on the same hierarchy. `danger`
+// switches the border/heading to the destructive palette.
 export function Section({
   id,
   title,

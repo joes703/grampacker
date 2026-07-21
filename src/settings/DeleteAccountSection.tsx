@@ -10,7 +10,8 @@ const CONFIRM_WORD = 'delete'
 
 // Danger-zone control: permanent, irreversible account deletion. The ON DELETE
 // CASCADE off user.id wipes every trace of the user's data (gear, categories,
-// lists, list items, passkeys). There is no undo and no email round-trip.
+// lists, list items, packing data, food, plans, target defaults, and
+// passkeys). There is no undo and no email round-trip.
 //
 // Two gates, and neither is a password, because there isn't one:
 //   1. Type-to-confirm - guards against the fat-finger.
@@ -157,8 +158,8 @@ export default function DeleteAccountSection() {
   return (
     <form onSubmit={(e) => void submit(e)} className="max-w-md space-y-3">
       <p className="text-sm text-gray-600">
-        Permanently delete your account and everything in it - gear, lists, and
-        passkeys. This cannot be undone.
+        Permanently delete your account and everything in it - gear, lists,
+        food, plans, and passkeys. This cannot be undone.
       </p>
       <div>
         <FormLabel htmlFor="del-confirm">
