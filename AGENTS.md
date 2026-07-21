@@ -231,6 +231,14 @@ time. Never delete or recreate the D1 database.
 
 - Work on a feature branch. Focused commits, descriptive messages, one logical
   change per commit. Do not fold unrelated cleanups into a focused PR.
+- **Squash is the default PR landing method.** Do not ask the human to choose a
+  merge method unless squash is unavailable or they explicitly request another
+  method.
+- When the human tells Codex to "push and merge", treat that as authorization
+  to push the current feature branch, open the PR, and shepherd it through CI,
+  reviews, conflicts, and readiness without intermediate approval prompts. The
+  PR-completion workflow's final confirmation for the exact ready PR head is
+  still mandatory; at that point, ask only for that landing confirmation.
 - **Never `git add -A` or `git add .`.** Stage exact files by path.
 - No destructive git (`reset --hard`, `clean -fd`, force-push) without explicit
   approval. Never discard or overwrite the user's changes.
