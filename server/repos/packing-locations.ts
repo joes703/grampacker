@@ -136,8 +136,12 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
             containerListItemId,
             // Hand-alias the subquery: drizzle renders interpolated columns
             // unqualified in single-table statements, which can silently turn
-            // a correlation into a tautology.
-            sortOrder: sql`coalesce((select max(pl.sort_order) + 1 from packing_locations pl where pl.list_id = ${listId} and pl.user_id = ${userId}), 0)`,
+            // a correlation into a tautology. Named locations append; promoted
+            // gear containers prepend so they appear directly after the fixed
+            // Unassigned section instead of jumping to the bottom.
+            sortOrder: containerListItemId === null
+              ? sql`coalesce((select max(pl.sort_order) + 1 from packing_locations pl where pl.list_id = ${listId} and pl.user_id = ${userId}), 0)`
+              : sql`coalesce((select min(pl.sort_order) - 1 from packing_locations pl where pl.list_id = ${listId} and pl.user_id = ${userId}), 0)`,
             createdAt: now,
             updatedAt: now,
           })

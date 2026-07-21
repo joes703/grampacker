@@ -292,13 +292,19 @@ describe('packing location CRUD, assignment, and integrity', () => {
       foreignList.id,
       await createGear(other.cookie, 'Foreign pack'),
     )
+    const existingLocation = await createLocation(owner.cookie, list.id, 'Top lid')
+    expect(existingLocation.sortOrder).toBe(0)
 
     const location = await createItemContainer(owner.cookie, list.id, canister.id)
     expect(location).toMatchObject({
       name: 'Bear canister',
-      sortOrder: 0,
+      sortOrder: -1,
       containerListItemId: canister.id,
     })
+    expect((await getLocations(owner.cookie, list.id)).map((entry) => entry.name)).toEqual([
+      'Bear canister',
+      'Top lid',
+    ])
 
     const renameGear = await apiRequest(
       owner.cookie,

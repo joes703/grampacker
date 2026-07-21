@@ -594,8 +594,11 @@ column is still set; unmark, assert the item is back in its group.
   backing item supplies the Organize header and its move action. A container
   assigned to another item-backed location renders recursively inside that
   parent; its source never also appears in Unassigned or the parent's ordinary
-  rows.
-- **Unassigned** always renders in Organize, pinned last, even when empty.
+  rows. Newly promoted top-level containers are inserted immediately after
+  Unassigned, ahead of older locations. Their headers expose separate drag
+  controls: the leading grip reorders sibling locations, while the package
+  control moves/nests the backing gear item in another container.
+- **Unassigned** always renders in Organize, pinned first, even when empty.
 - **`Move to…`** on every row via `RowMenuItem` (desktop) and
   `MobileOptionsModal` (mobile). The primary path: accessible, mobile-friendly,
   one-handed. Not a fallback.

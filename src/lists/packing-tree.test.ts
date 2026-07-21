@@ -106,6 +106,21 @@ describe('buildPackingTree', () => {
     expect(tree.unassignedItems.map((entry) => entry.id)).toEqual(['orphan'])
   })
 
+  it('places a newly promoted root before older location roots', () => {
+    const tree = buildPackingTree(
+      [item('pack', null, 0)],
+      [
+        location('loc-existing', null, 0),
+        location('loc-pack', 'pack', -1),
+      ],
+    )
+
+    expect(tree.roots.map((node) => node.location.id)).toEqual([
+      'loc-pack',
+      'loc-existing',
+    ])
+  })
+
   it('fails safe to root containers if optimistic data contains a cycle', () => {
     const tree = buildPackingTree(
       [item('pack', 'loc-can', 0), item('bear-can', 'loc-pack', 1)],
