@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import type { CategoryGroup } from './grouping'
 import type { ListItemWithGear } from './types'
 
 /**
@@ -21,7 +20,7 @@ import type { ListItemWithGear } from './types'
  * guarded by the early return when `next` is structurally equal to cache.
  */
 export function useStableWornItems(
-  grouped: CategoryGroup<ListItemWithGear>[],
+  grouped: { items: ListItemWithGear[] }[],
   enabled: boolean,
 ): ListItemWithGear[] {
   const [cached, setCached] = useState<ListItemWithGear[]>([])

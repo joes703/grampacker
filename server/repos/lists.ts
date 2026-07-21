@@ -7,6 +7,7 @@ import {
   gearItems,
   listItems,
   lists,
+  packingLocations,
 } from '../db/schema'
 import { isForeignKeyViolation, isTriggerAbort, isUniqueViolation } from './db-errors'
 import {
@@ -150,6 +151,13 @@ export function generateSlug(): string {
 // carry the same 256 CHECK, and two truncation rules would drift.
 export function copyName(name: string): string {
   return `${name.slice(0, 249)} (copy)`
+}
+
+export function remapPackingLocationId(
+  sourceId: string | null,
+  idMap: ReadonlyMap<string, string>,
+): string | null {
+  return sourceId === null ? null : (idMap.get(sourceId) ?? null)
 }
 
 export function createListsRepo(db: Db, userId: string) {
@@ -492,7 +500,8 @@ export function createListsRepo(db: Db, userId: string) {
     // POINTER cannot be carried over - when the source has a plan, its whole
     // graph is deep-copied (food-plan-copy.ts) and the new list points at the
     // copy. Everything lands in ONE db.batch in FK order (plan graph -> list
-    // -> items): a late failure - either cap trigger included - leaves no
+    // -> packing locations -> items): a late failure - either cap trigger
+    // included - leaves no
     // orphan plan and no half-copied list. Food pack state is NOT copied (it
     // is not keyed by plan, and a duplicate is a different, fully-unpacked
     // trip).
@@ -503,18 +512,38 @@ export function createListsRepo(db: Db, userId: string) {
         .where(and(eq(lists.id, id), eq(lists.userId, userId)))
         .limit(1)
       if (!source) return { ok: false, reason: 'not_found' }
-      const items = await db
-        .select({
-          gearItemId: listItems.gearItemId,
-          quantity: listItems.quantity,
-          isWorn: listItems.isWorn,
-          isConsumable: listItems.isConsumable,
-          isPacked: listItems.isPacked,
-          isReady: listItems.isReady,
-          sortOrder: listItems.sortOrder,
-        })
-        .from(listItems)
-        .where(and(eq(listItems.listId, id), eq(listItems.userId, userId)))
+      // Items and locations are one D1 batch snapshot so a concurrent delete
+      // cannot split the organization graph across two moments.
+      const [items, sourceLocations] = await db.batch([
+        db
+          .select({
+            gearItemId: listItems.gearItemId,
+            quantity: listItems.quantity,
+            isWorn: listItems.isWorn,
+            isConsumable: listItems.isConsumable,
+            isPacked: listItems.isPacked,
+            isReady: listItems.isReady,
+            packingLocationId: listItems.packingLocationId,
+            sortOrder: listItems.sortOrder,
+          })
+          .from(listItems)
+          .where(
+            and(eq(listItems.listId, id), eq(listItems.userId, userId)),
+          ),
+        db
+          .select({
+            id: packingLocations.id,
+            name: packingLocations.name,
+            sortOrder: packingLocations.sortOrder,
+          })
+          .from(packingLocations)
+          .where(
+            and(
+              eq(packingLocations.listId, id),
+              eq(packingLocations.userId, userId),
+            ),
+          ),
+      ])
 
       // The plan graph is read once, outside the slug-retry loop: a retry
       // re-runs the same copy (nothing committed on a failed batch). Null
@@ -543,6 +572,13 @@ export function createListsRepo(db: Db, userId: string) {
         const newId = crypto.randomUUID()
         const newPlanId = crypto.randomUUID()
         const now = Date.now()
+        const locationCopies = sourceLocations.map((location) => ({
+          ...location,
+          newId: crypto.randomUUID(),
+        }))
+        const locationIdMap = new Map(
+          locationCopies.map((location) => [location.id, location.newId]),
+        )
         const planStatements =
           planGraph === null
             ? null
@@ -569,6 +605,18 @@ export function createListsRepo(db: Db, userId: string) {
             updatedAt: now,
           })
           .returning(cols)
+        const locationRows = locationCopies.map((location) => ({
+          id: location.newId,
+          userId,
+          listId: newId,
+          name: location.name,
+          sortOrder: location.sortOrder,
+          createdAt: now,
+          updatedAt: now,
+        }))
+        const insertLocations = chunkForParamCap(locationRows).map((rows) =>
+          db.insert(packingLocations).values(rows),
+        )
         const itemRows = items.map((it) => ({
           id: crypto.randomUUID(),
           userId,
@@ -579,12 +627,17 @@ export function createListsRepo(db: Db, userId: string) {
           isConsumable: it.isConsumable,
           isPacked: it.isPacked,
           isReady: it.isReady,
+          packingLocationId: remapPackingLocationId(
+            it.packingLocationId,
+            locationIdMap,
+          ),
           sortOrder: it.sortOrder,
           createdAt: now,
           updatedAt: now,
         }))
         // Multi-row inserts (floor(90/columns) rows each) rather than one
-        // statement per item: 300 items is ~43 statements instead of 300,
+        // statement per item: with the assignment column, 300 items is 50
+        // statements instead of 300,
         // which matters because the whole batch already carries up to ~360
         // plan-copy statements ahead of it.
         const insertItems = chunkForParamCap(itemRows).map((rows) =>
@@ -593,13 +646,18 @@ export function createListsRepo(db: Db, userId: string) {
         try {
           let results: unknown[]
           if (planStatements === null) {
-            results = await db.batch([insertList, ...insertItems])
+            results = await db.batch([
+              insertList,
+              ...insertLocations,
+              ...insertItems,
+            ])
           } else {
             const [planFirst, ...planRest] = planStatements
             results = await db.batch([
               planFirst,
               ...planRest,
               insertList,
+              ...insertLocations,
               ...insertItems,
             ])
           }

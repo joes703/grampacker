@@ -49,6 +49,7 @@ export default function AuthenticatedApp() {
         <Route path="lists" element={<ListsPage />} />
         <Route path="lists/:id" element={<ListDetailPage />} />
         <Route path="lists/:id/pack" element={<ListDetailPage />} />
+        <Route path="lists/:id/pack/organize" element={<ListDetailPage />} />
       </Route>
       {/* Unknown path under the gate: send them home rather than showing a
           dead end. This is the old top-level "*" catch-all - it lives here now

@@ -3,6 +3,7 @@ import { cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { useGroupedListItems } from './use-grouped-list-items'
 import type { Category, ListItemWithGear } from './types'
+import type { PackingLocation } from './types'
 
 // The grouping algorithm itself is exhaustively covered in
 // `grouping.test.ts`. This file pins the React-hook wrapper's load-bearing
@@ -38,6 +39,7 @@ function makeItem(overrides: {
   categoryId: string | null
   sortOrder?: number
   quantity?: number
+  packingLocationId?: string | null
 }): ListItemWithGear {
   return {
     id: overrides.id,
@@ -48,6 +50,7 @@ function makeItem(overrides: {
     isConsumable: false,
     isPacked: false,
     isReady: false,
+    packingLocationId: overrides.packingLocationId ?? null,
     sortOrder: overrides.sortOrder ?? 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -81,12 +84,14 @@ describe('useGroupedListItems', () => {
       makeItem({ id: 'c', categoryId: null }),
     ]
     // Pass categories OUT of sort order to confirm the hook sorts.
-    const { result } = renderHook(() => useGroupedListItems(items, [kitchen, shelter]))
+    const { result } = renderHook(() =>
+      useGroupedListItems(items, { kind: 'category', groups: [kitchen, shelter] }),
+    )
 
     expect(result.current).toHaveLength(3)
-    expect(result.current[0]?.category?.id).toBe('cat-shelter')
-    expect(result.current[1]?.category?.id).toBe('cat-kitchen')
-    expect(result.current[2]?.category).toBeNull() // Uncategorized last
+    expect(result.current[0]?.group?.id).toBe('cat-shelter')
+    expect(result.current[1]?.group?.id).toBe('cat-kitchen')
+    expect(result.current[2]?.group).toBeNull() // Uncategorized last
     expect(result.current[2]?.items.map((i) => i.id)).toEqual(['c'])
   })
 
@@ -97,10 +102,12 @@ describe('useGroupedListItems', () => {
       // categoryId points at something that isn't in the categories array.
       makeItem({ id: 'b', categoryId: 'cat-deleted' }),
     ]
-    const { result } = renderHook(() => useGroupedListItems(items, [shelter]))
+    const { result } = renderHook(() =>
+      useGroupedListItems(items, { kind: 'category', groups: [shelter] }),
+    )
 
     expect(result.current).toHaveLength(2)
-    expect(result.current[1]?.category).toBeNull()
+    expect(result.current[1]?.group).toBeNull()
     expect(result.current[1]?.items.map((i) => i.id)).toEqual(['b'])
   })
 
@@ -108,11 +115,14 @@ describe('useGroupedListItems', () => {
     const shelter = makeCategory('cat-shelter', 'Shelter', 0)
     const kitchen = makeCategory('cat-kitchen', 'Kitchen', 1) // no items
     const { result } = renderHook(() =>
-      useGroupedListItems([makeItem({ id: 'a', categoryId: 'cat-shelter' })], [shelter, kitchen]),
+      useGroupedListItems(
+        [makeItem({ id: 'a', categoryId: 'cat-shelter' })],
+        { kind: 'category', groups: [shelter, kitchen] },
+      ),
     )
 
     expect(result.current).toHaveLength(1)
-    expect(result.current[0]?.category?.id).toBe('cat-shelter')
+    expect(result.current[0]?.group?.id).toBe('cat-shelter')
   })
 
   it('returns the SAME top-level array reference when inputs are unchanged across renders', () => {
@@ -128,7 +138,7 @@ describe('useGroupedListItems', () => {
 
     const { result, rerender } = renderHook(
       ({ items, cats }: { items: ListItemWithGear[]; cats: Category[] }) =>
-        useGroupedListItems(items, cats),
+        useGroupedListItems(items, { kind: 'category', groups: cats }),
       { initialProps: { items, cats: [shelter] } },
     )
 
@@ -145,7 +155,8 @@ describe('useGroupedListItems', () => {
       makeItem({ id: 'b', categoryId: 'cat-kitchen', quantity: 1 }),
     ]
     const { result, rerender } = renderHook(
-      ({ items }: { items: ListItemWithGear[] }) => useGroupedListItems(items, [shelter, kitchen]),
+      ({ items }: { items: ListItemWithGear[] }) =>
+        useGroupedListItems(items, { kind: 'category', groups: [shelter, kitchen] }),
       { initialProps: { items: original } },
     )
 
@@ -174,7 +185,8 @@ describe('useGroupedListItems', () => {
     const shelter = makeCategory('cat-shelter', 'Shelter', 0)
     const item = makeItem({ id: 'a', categoryId: 'cat-shelter' })
     const { result, rerender } = renderHook(
-      ({ items }: { items: ListItemWithGear[] }) => useGroupedListItems(items, [shelter]),
+      ({ items }: { items: ListItemWithGear[] }) =>
+        useGroupedListItems(items, { kind: 'category', groups: [shelter] }),
       { initialProps: { items: [item] } },
     )
 
@@ -189,7 +201,62 @@ describe('useGroupedListItems', () => {
 
   it('handles an empty items list (no categories emitted) without throwing', () => {
     const shelter = makeCategory('cat-shelter', 'Shelter', 0)
-    const { result } = renderHook(() => useGroupedListItems([], [shelter]))
+    const { result } = renderHook(() =>
+      useGroupedListItems([], { kind: 'category', groups: [shelter] }),
+    )
     expect(result.current).toEqual([])
+  })
+
+  it('keeps one hook instance stable across category and location grouping', () => {
+    const shelter = makeCategory('cat-shelter', 'Shelter', 0)
+    const locations: PackingLocation[] = [
+      { id: 'loc-main', name: 'Main pack', sortOrder: 0 },
+      { id: 'loc-lid', name: 'Lid', sortOrder: 1 },
+    ]
+    const item = makeItem({
+      id: 'a',
+      categoryId: shelter.id,
+      packingLocationId: locations[0]!.id,
+    })
+    const { result, rerender } = renderHook(
+      ({ kind }: { kind: 'category' | 'location' }) =>
+        useGroupedListItems(
+          [item],
+          kind === 'category'
+            ? { kind, groups: [shelter] }
+            : { kind, groups: locations },
+        ),
+      { initialProps: { kind: 'category' as 'category' | 'location' } },
+    )
+
+    expect(result.current.map((group) => group.group?.id ?? null)).toEqual([shelter.id])
+
+    rerender({ kind: 'location' })
+    expect(result.current.map((group) => group.group?.id ?? null)).toEqual([
+      'loc-main',
+      'loc-lid',
+    ])
+
+    const locationResult = result.current
+    rerender({ kind: 'location' })
+    expect(result.current).toBe(locationResult)
+  })
+
+  it('rebuilds location groups when only packingLocationId changes', () => {
+    const locations: PackingLocation[] = [
+      { id: 'loc-main', name: 'Main pack', sortOrder: 0 },
+      { id: 'loc-lid', name: 'Lid', sortOrder: 1 },
+    ]
+    const original = makeItem({ id: 'a', categoryId: null, packingLocationId: 'loc-main' })
+    const { result, rerender } = renderHook(
+      ({ item }: { item: ListItemWithGear }) =>
+        useGroupedListItems([item], { kind: 'location', groups: locations }),
+      { initialProps: { item: original } },
+    )
+
+    rerender({ item: { ...original, packingLocationId: 'loc-lid' } })
+
+    expect(result.current[0]!.items).toEqual([])
+    expect(result.current[1]!.items[0]?.id).toBe('a')
   })
 })

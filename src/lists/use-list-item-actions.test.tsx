@@ -63,6 +63,7 @@ function item(over: Partial<ListItemWithGear> = {}): ListItemWithGear {
   return {
     id: 'a', listId: LIST_ID, gearItemId: 'g1', gearItem: gear(),
     quantity: 1, isWorn: false, isConsumable: false, isPacked: false, isReady: false,
+    packingLocationId: null,
     sortOrder: 0, createdAt: now, updatedAt: now, ...over,
   }
 }

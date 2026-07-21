@@ -112,6 +112,7 @@ function toListItemResponse(row: ListItemWithGear): ListItemResponse {
     isConsumable: row.item.isConsumable,
     isPacked: row.item.isPacked,
     isReady: row.item.isReady,
+    packingLocationId: row.item.packingLocationId,
     sortOrder: row.item.sortOrder,
     createdAt: new Date(row.item.createdAt).toISOString(),
     updatedAt: new Date(row.item.updatedAt).toISOString(),
@@ -133,6 +134,8 @@ function listItemFailure(result: Extract<ListItemWriteResult, { ok: false }>): {
       return { status: 400, error: 'Invalid gear item' }
     case 'invalid_category':
       return { status: 400, error: 'Invalid category' }
+    case 'invalid_location':
+      return { status: 400, error: 'Invalid packing location' }
     case 'worn_consumable_conflict':
       return {
         status: 400,

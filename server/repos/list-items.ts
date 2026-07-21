@@ -13,6 +13,7 @@ const itemCols = {
   isConsumable: listItems.isConsumable,
   isPacked: listItems.isPacked,
   isReady: listItems.isReady,
+  packingLocationId: listItems.packingLocationId,
   sortOrder: listItems.sortOrder,
   createdAt: listItems.createdAt,
   updatedAt: listItems.updatedAt,
@@ -41,6 +42,7 @@ export type ListItemRow = {
   isConsumable: boolean
   isPacked: boolean
   isReady: boolean
+  packingLocationId: string | null
   sortOrder: number
   createdAt: number // epoch ms
   updatedAt: number // epoch ms
@@ -56,6 +58,7 @@ export type UpdateListItemPatch = {
   isConsumable?: boolean
   isPacked?: boolean
   isReady?: boolean
+  packingLocationId?: string | null
 }
 
 export type QuickAddInput = {
@@ -77,6 +80,7 @@ export type ListItemWriteResult =
         | 'not_found'
         | 'invalid_gear'
         | 'invalid_category'
+        | 'invalid_location'
         | 'worn_consumable_conflict'
         | 'cap_exceeded'
         | 'gear_cap_exceeded'
@@ -273,6 +277,18 @@ export function createListItemsRepo(db: Db, userId: string) {
         set.isConsumable = patch.isConsumable
       if (patch.isPacked !== undefined) set.isPacked = patch.isPacked
       if (patch.isReady !== undefined) set.isReady = patch.isReady
+      if (patch.packingLocationId !== undefined) {
+        set.packingLocationId = patch.packingLocationId
+      }
+      // A real assignment is accepted only when the target location belongs
+      // to this same list and user. The aliases are hand-written because
+      // drizzle can render interpolated columns unqualified inside a
+      // correlated subquery. Null (Unassigned) deliberately skips the gate.
+      const packingLocationGate =
+        patch.packingLocationId === undefined ||
+        patch.packingLocationId === null
+          ? undefined
+          : sql`exists (select 1 from packing_locations pl where pl.id = ${patch.packingLocationId} and pl.list_id = ${listId} and pl.user_id = ${userId})`
       // listId in the WRITE's where-clause too, not just the SELECT
       // above: today nothing can move an item between lists, but the
       // write must stay parent-path-consistent by construction if that
@@ -285,10 +301,27 @@ export function createListItemsRepo(db: Db, userId: string) {
             eq(listItems.id, itemId),
             eq(listItems.listId, listId),
             eq(listItems.userId, userId),
+            packingLocationGate,
           ),
         )
         .returning(itemCols)
-      if (!item) return { ok: false, reason: 'not_found' }
+      if (!item) {
+        if (packingLocationGate !== undefined) {
+          const [stillExists] = await db
+            .select({ id: listItems.id })
+            .from(listItems)
+            .where(
+              and(
+                eq(listItems.id, itemId),
+                eq(listItems.listId, listId),
+                eq(listItems.userId, userId),
+              ),
+            )
+            .limit(1)
+          if (stillExists) return { ok: false, reason: 'invalid_location' }
+        }
+        return { ok: false, reason: 'not_found' }
+      }
       const [gear] = await db
         .select(gearCols)
         .from(gearItems)

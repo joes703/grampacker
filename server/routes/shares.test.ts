@@ -57,6 +57,21 @@ async function addItem(
   return ((await res.json()) as { id: string }).id
 }
 
+async function createPackingLocation(
+  cookie: string,
+  listId: string,
+  name: string,
+): Promise<string> {
+  const res = await apiRequest(
+    cookie,
+    'POST',
+    `/api/lists/${listId}/packing-locations`,
+    { name },
+  )
+  expect(res.status).toBe(201)
+  return ((await res.json()) as { id: string }).id
+}
+
 async function getShare(slug: string): Promise<Response> {
   // No cookie, no CSRF header: a plain anonymous GET, exactly what a
   // share viewer's browser sends.
@@ -179,6 +194,10 @@ const FORBIDDEN_KEYS = new Set([
   'mode',
   'mealId',
   'dayTypeOverride',
+  'packingLocationId',
+  'packing_location_id',
+  'packingLocations',
+  'packing_locations',
 ])
 
 function collectKeys(value: unknown, into: Set<string>): Set<string> {
@@ -229,11 +248,16 @@ describe('GET /api/shares/:slug', () => {
     const tarpItemId = await addItem(cookie, list.id, tarpId)
     await addItem(cookie, list.id, potId)
     await addItem(cookie, list.id, mysteryId)
+    const packingLocationId = await createPackingLocation(
+      cookie,
+      list.id,
+      'Main bag',
+    )
     const worn = await apiRequest(
       cookie,
       'PATCH',
       `/api/lists/${list.id}/items/${tarpItemId}`,
-      { isWorn: true, quantity: 2 },
+      { isWorn: true, quantity: 2, packingLocationId },
     )
     expect(worn.status).toBe(200)
 

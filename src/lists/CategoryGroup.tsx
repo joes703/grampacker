@@ -83,6 +83,11 @@ export type GroupProps = {
    *  edit-mode pages don't pass it. */
   readyChecksEnabled?: boolean
   collapsible?: boolean
+  /** Optional controlled collapse state. Packing-location sections use this
+   *  pair so their state can persist per list; category/share callers omit it
+   *  and retain the component's local state. */
+  collapsed?: boolean
+  onCollapsedChange?: (collapsed: boolean) => void
   /** Stable region id derivation + add-item context. null = uncategorized.
    *  undefined disables the chevron/region-id behavior (share view). */
   categoryId?: string | null
@@ -182,6 +187,8 @@ function CategoryGroup({
   packMode = false,
   readyChecksEnabled = false,
   collapsible = true,
+  collapsed: controlledCollapsed,
+  onCollapsedChange,
   categoryId,
   regionKey,
   renderRows,
@@ -205,7 +212,13 @@ function CategoryGroup({
   // path is the top-bar "Add" button, which opens the gear picker drawer
   // over existing inventory. New gear is created from the Gear page.
   const [adding, setAdding] = useState(false)
-  const [collapsed, setCollapsed] = useState(false)
+  const [localCollapsed, setLocalCollapsed] = useState(false)
+  const collapsed = controlledCollapsed ?? localCollapsed
+  function toggleCollapsed() {
+    const next = !collapsed
+    if (onCollapsedChange) onCollapsedChange(next)
+    else setLocalCollapsed(next)
+  }
   // Stable id for the collapsible region so the header button can announce
   // aria-controls. Category sections derive it from categoryId; sections with
   // no category of their own (the Worn pseudo-section) pass an explicit
@@ -291,7 +304,7 @@ function CategoryGroup({
           <div className="flex flex-1 min-w-0 items-center gap-1.5">
             <button
               type="button"
-              onClick={() => setCollapsed((v) => !v)}
+              onClick={toggleCollapsed}
               aria-expanded={!collapsed}
               aria-controls={regionId}
               aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}

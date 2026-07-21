@@ -49,6 +49,7 @@ function item(over: Partial<ListItemWithGear> = {}): ListItemWithGear {
       sortOrder: 0, createdAt: now, updatedAt: now,
     },
     quantity: 1, isWorn: false, isConsumable: false, isPacked: false, isReady: false,
+    packingLocationId: null,
     sortOrder: 0, createdAt: now, updatedAt: now, ...over,
   }
 }

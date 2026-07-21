@@ -310,6 +310,15 @@ const FIXTURES = [
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
   }],
+  ['packing_locations', {
+    id: 'pl-seed',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    name: 'Seed Location',
+    sort_order: 0,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
   // The row 0009 would have destroyed: it cascades from BOTH lists and
   // gear_items, so it is the canary for any rebuild of either parent.
   ['list_items', {
@@ -322,6 +331,7 @@ const FIXTURES = [
     is_consumable: 0, // list_items_worn_xor_consumable
     is_packed: 0,
     is_ready: 0,
+    packing_location_id: null,
     sort_order: 0,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
@@ -336,6 +346,7 @@ const FIXTURES = [
     is_consumable: 0,
     is_packed: 1,
     is_ready: 1,
+    packing_location_id: null,
     sort_order: 1,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
@@ -566,6 +577,43 @@ const POST_CHECKS = [
       "where name = 'weight_grams'",
     expectRows: [{ type: 'REAL' }],
   },
+  // 1. new column exists and is TEXT
+  { migration: '0014_packing-locations.sql', description: 'list_items.packing_location_id is TEXT',
+    sql: "select upper(type) as type from pragma_table_info('list_items') where name='packing_location_id'",
+    expectRows: [{ type: 'TEXT' }] },
+  // 2. all four new indexes exist (deterministic order)
+  { migration: '0014_packing-locations.sql', description: 'packing-location indexes exist',
+    sql: "select name from sqlite_master where type='index' and name in ('list_items_packing_location_idx','packing_locations_id_list_user_unique','packing_locations_id_user_unique','packing_locations_list_sort_idx') order by name",
+    expectRows: [ { name: 'list_items_packing_location_idx' }, { name: 'packing_locations_id_list_user_unique' },
+                  { name: 'packing_locations_id_user_unique' }, { name: 'packing_locations_list_sort_idx' } ] },
+  // 3. INSERT trigger fires on a bogus location (no setup needed)
+  { migration: '0014_packing-locations.sql', description: 'insert with unknown location aborts',
+    sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,sort_order,created_at,updated_at,packing_location_id) values ('li-chk-ins','u-seed','list-seed','gear-seed',1,0,0,0,0,90,0,0,'nonexistent')",
+    expectErrorMatch: /does not belong to this list/ },
+  // 4. SETUP: create a valid location on list-seed
+  { migration: '0014_packing-locations.sql', description: 'setup: valid location',
+    sql: "insert into packing_locations (id,user_id,list_id,name,sort_order,created_at,updated_at) values ('pl-chk','u-seed','list-seed','Chk',0,0,0) returning id",
+    expectRows: [{ id: 'pl-chk' }] },
+  // 5. a legitimate assignment is ALLOWED (trigger must not over-fire)
+  { migration: '0014_packing-locations.sql', description: 'setup: valid assignment allowed',
+    sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,sort_order,created_at,updated_at,packing_location_id) values ('li-chk','u-seed','list-seed','gear-seed',1,0,0,0,0,91,0,0,'pl-chk') returning id",
+    expectRows: [{ id: 'li-chk' }] },
+  // 6. child list_id-only update fires (the rev-2 hole): pl-chk is on list-seed
+  { migration: '0014_packing-locations.sql', description: 'child list_id move aborts while assigned',
+    sql: "update list_items set list_id='list-seed-3' where id='li-chk'",
+    expectErrorMatch: /does not belong to this list/ },
+  // 7. child packing_location_id update to a bogus id fires
+  { migration: '0014_packing-locations.sql', description: 'child assignment to unknown location aborts',
+    sql: "update list_items set packing_location_id='nonexistent' where id='li-chk'",
+    expectErrorMatch: /does not belong to this list/ },
+  // 8. parent immutability fires (the rev-3 hole)
+  { migration: '0014_packing-locations.sql', description: 'moving a location to another list aborts',
+    sql: "update packing_locations set list_id='list-seed-3' where id='pl-chk'",
+    expectErrorMatch: /cannot change list or owner/ },
+  // 9. cap fires: pl-chk is 1; a recursive insert of 30 more makes the 31st abort
+  { migration: '0014_packing-locations.sql', description: 'packing-location cap enforced',
+    sql: "insert into packing_locations (id,user_id,list_id,name,sort_order,created_at,updated_at) with recursive c(x) as (select 1 union all select x+1 from c where x<30) select 'cap-'||x,'u-seed','list-seed','Cap'||x,x,0,0 from c",
+    expectErrorMatch: /packing location cap exceeded/ },
 ]
 
 const quoteIdent = (name) => `"${name.replaceAll('"', '""')}"`

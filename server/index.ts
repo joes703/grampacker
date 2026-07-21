@@ -13,6 +13,7 @@ import { foodItemRoutes } from './routes/food-items'
 import { foodPlanRoutes } from './routes/food-plans'
 import { gearItemRoutes } from './routes/gear-items'
 import { listRoutes } from './routes/lists'
+import { packingLocationRoutes } from './routes/packing-locations'
 import { meRoutes } from './routes/me'
 import { shareRoutes } from './routes/shares'
 import { targetDefaultRoutes } from './routes/target-defaults'
@@ -81,6 +82,7 @@ api.route('/categories', categoryRoutes)
 api.route('/food-items', foodItemRoutes)
 api.route('/food-plans', foodPlanRoutes)
 api.route('/gear-items', gearItemRoutes)
+api.route('/lists', packingLocationRoutes)
 api.route('/lists', listRoutes)
 api.route('/target-defaults', targetDefaultRoutes)
 // Anonymous by design: the public share read (see routes/shares.ts for

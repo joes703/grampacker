@@ -10,6 +10,7 @@ const noFood = {
   foodItems: [] as FoodItem[],
   foodPlans: [] as FoodPlanDocument[],
   targetDefaults: [] as TargetDefault[],
+  packingLocationsByListId: new Map(),
 }
 
 function makeCategory(over: Partial<Category> & { id: string; name: string }): Category {
@@ -49,6 +50,7 @@ function makeListItem(
     isConsumable: over.isConsumable ?? false,
     isPacked: over.isPacked ?? false,
     isReady: over.isReady ?? false,
+    packingLocationId: over.packingLocationId ?? null,
     sortOrder: over.sortOrder ?? 0,
     createdAt: over.createdAt ?? '2024-01-01',
     updatedAt: over.updatedAt ?? '2024-01-01',
@@ -92,6 +94,7 @@ describe('buildTakeoutFiles', () => {
       'food-data.json',
       'food-library.csv',
       'gear-library.csv',
+      'packing.json',
     ])
     expect(files['gear-library.csv']).toBe(gearItemsToCsv(gearItems, categories))
     // Header-only, never a zero-byte file, so the bundle shape is stable.
@@ -136,7 +139,14 @@ describe('buildTakeoutFiles', () => {
       { id: 'td-1', metric: 'protein', mode: 'min', targetMin: 120, targetMax: null },
     ]
     const files = buildTakeoutFiles({
-      categories, gearItems, lists: [], allItems: [], foodItems, foodPlans, targetDefaults,
+      categories,
+      gearItems,
+      lists: [],
+      allItems: [],
+      packingLocationsByListId: new Map(),
+      foodItems,
+      foodPlans,
+      targetDefaults,
     })
     expect(files['food-library.csv']).toBe(foodItemsToCsv(foodItems))
     expect(JSON.parse(files['food-data.json'] ?? '')).toEqual({
@@ -169,6 +179,7 @@ describe('buildTakeoutFiles', () => {
       'gear-library.csv',
       'lists/thru-hike.csv',
       'lists/weekend-trip.csv',
+      'packing.json',
     ])
     // Each list CSV contains only its own items.
     expect(files['lists/weekend-trip.csv']).toBe(listItemsToCsv([itemA], categories))
@@ -200,6 +211,70 @@ describe('buildTakeoutFiles', () => {
     const lists = [makeList({ id: 'l-1', name: 'Empty' })]
     const files = buildTakeoutFiles({ categories, gearItems, lists, allItems: [], ...noFood })
     expect(files['lists/empty.csv']).toBe(listItemsToCsv([], categories))
+  })
+
+  it('emits a self-contained packing snapshot with empty and duplicate-named locations', () => {
+    const lists = [makeList({ id: 'l-1', name: 'JMT section' })]
+    const assigned = makeListItem({
+      id: 'i-1',
+      listId: 'l-1',
+      gearItem: gearItems[0]!,
+      packingLocationId: 'loc-a',
+    })
+    const unassigned = makeListItem({
+      id: 'i-2',
+      listId: 'l-1',
+      gearItem: gearItems[1]!,
+      packingLocationId: null,
+    })
+    const packingLocationsByListId = new Map([
+      ['l-1', [
+        { id: 'loc-b', name: 'Side pocket', sortOrder: 1 },
+        { id: 'loc-a', name: 'Side pocket', sortOrder: 0 },
+        { id: 'loc-empty', name: 'Lid', sortOrder: 2 },
+      ]],
+    ])
+
+    const files = buildTakeoutFiles({
+      categories,
+      gearItems,
+      lists,
+      allItems: [assigned, unassigned],
+      ...noFood,
+      packingLocationsByListId,
+    })
+    const packing = JSON.parse(files['packing.json'] ?? '') as {
+      version: number
+      lists: Array<{
+        list: { id: string; name: string }
+        locations: Array<{ id: string; name: string; sortOrder: number }>
+        items: Array<{
+          listItemId: string
+          gearItem: { id: string; name: string }
+          packingLocationId: string | null
+        }>
+      }>
+    }
+
+    expect(packing.version).toBe(1)
+    expect(packing.lists[0]?.list).toEqual({ id: 'l-1', name: 'JMT section' })
+    expect(packing.lists[0]?.locations.map((location) => location.id)).toEqual([
+      'loc-a', 'loc-b', 'loc-empty',
+    ])
+    expect(packing.lists[0]?.locations.filter((location) => location.name === 'Side pocket'))
+      .toHaveLength(2)
+
+    const locationIds = new Set(packing.lists[0]?.locations.map((location) => location.id))
+    for (const item of packing.lists[0]?.items ?? []) {
+      expect(item.listItemId).not.toBe('')
+      expect(item.gearItem.id).not.toBe('')
+      expect(item.gearItem.name).not.toBe('')
+      if (item.packingLocationId !== null) {
+        expect(locationIds.has(item.packingLocationId)).toBe(true)
+      }
+    }
+    expect(packing.lists[0]?.items.find((item) => item.listItemId === 'i-2')?.packingLocationId)
+      .toBeNull()
   })
 })
 

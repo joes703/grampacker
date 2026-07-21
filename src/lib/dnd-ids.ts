@@ -20,16 +20,23 @@
 // drop (drag a gear-item over a category header) bails cleanly via
 // `active.kind !== over.kind` instead of relying on coincidence.
 //
-// Format is `<kind>:<uuid>`. The colon is the delimiter; uuids never contain
-// colons so `indexOf(':')` is unambiguous. Numeric ids would need a different
-// delimiter, but every id in this codebase is a uuid.
+// Format is `<kind>:<id>`. The colon is the delimiter; persisted ids are UUIDs
+// and packing's local `unassigned` sentinel contains no colon, so
+// `indexOf(':')` is unambiguous.
 
 // Single source of truth for DnD kinds. The `as const` tuple gives us both
 // a runtime list (used by `parseDnDId`'s validation) and a derived type
 // union (`DnDIdKind`), so adding a new kind requires one edit instead of
 // two. Deliberately NOT exported — only the type is — to keep the surface
 // minimal and prevent callers from importing the runtime tuple directly.
-const DND_KINDS = ['category', 'gear-item', 'item', 'list-card'] as const
+const DND_KINDS = [
+  'category',
+  'gear-item',
+  'item',
+  'list-card',
+  'packing-location',
+  'packing-item',
+] as const
 
 export type DnDIdKind = (typeof DND_KINDS)[number]
 

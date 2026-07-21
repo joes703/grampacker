@@ -133,6 +133,7 @@ export default function SharePage() {
     isConsumable: item.isConsumable,
     isPacked: false,
     isReady: false,
+    packingLocationId: null,
     sortOrder: item.sortOrder,
     createdAt: '',
     updatedAt: '',

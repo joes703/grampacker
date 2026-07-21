@@ -40,7 +40,7 @@ const list: List = {
 // does not join it.
 describe('list unit control placement', () => {
   it('gates the toolbar unit control on lg, not md', () => {
-    render(<ListDocumentToolbar list={list} packMode={false} onTogglePackMode={vi.fn()} />)
+    render(<ListDocumentToolbar list={list} packMode={false} onTogglePackMode={vi.fn()} onOrganizePack={vi.fn()} />)
 
     const group = screen.getByRole('radiogroup', { name: 'Weight units' })
     // Walk up to the responsive wrapper and assert the breakpoint literally.
@@ -82,9 +82,33 @@ describe('list unit control placement', () => {
   it('keeps the unit control available in pack mode', () => {
     // Weights are still on screen while packing, so the switcher must not be
     // swept away with the pack-mode-suppressed list-admin controls.
-    render(<ListDocumentToolbar list={list} packMode onTogglePackMode={vi.fn()} />)
+    render(<ListDocumentToolbar list={list} packMode onTogglePackMode={vi.fn()} onOrganizePack={vi.fn()} />)
     expect(screen.getByRole('radiogroup', { name: 'Weight units' })).toBeInTheDocument()
     // ...whereas List options IS suppressed, which is the existing contract.
     expect(screen.queryByText('list-settings-button')).toBeNull()
+  })
+
+  it('offers Organize only from the pack toolbar', () => {
+    const onOrganizePack = vi.fn()
+    const { rerender } = render(
+      <ListDocumentToolbar
+        list={list}
+        packMode={false}
+        onTogglePackMode={vi.fn()}
+        onOrganizePack={onOrganizePack}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Organize' })).toBeNull()
+
+    rerender(
+      <ListDocumentToolbar
+        list={list}
+        packMode
+        onTogglePackMode={vi.fn()}
+        onOrganizePack={onOrganizePack}
+      />,
+    )
+    screen.getByRole('button', { name: 'Organize' }).click()
+    expect(onOrganizePack).toHaveBeenCalledTimes(1)
   })
 })

@@ -8,6 +8,7 @@ type Props = {
   list: List
   packMode: boolean
   onTogglePackMode: () => void
+  onOrganizePack: () => void
 }
 
 // Desktop list-document toolbar (md+). Anchors list identity and
@@ -21,7 +22,12 @@ type Props = {
 // PackingProgress; the remaining List options (Group worn, Sharing,
 // Rename/Duplicate/Export/Delete) are list-admin concerns the user
 // doesn't need while actively packing, so the button isn't shown.
-export default function ListDocumentToolbar({ list, packMode, onTogglePackMode }: Props) {
+export default function ListDocumentToolbar({
+  list,
+  packMode,
+  onTogglePackMode,
+  onOrganizePack,
+}: Props) {
   return (
     <div className="hidden md:flex items-center gap-2 print:hidden">
       <CurrentListHeader list={list} />
@@ -34,6 +40,15 @@ export default function ListDocumentToolbar({ list, packMode, onTogglePackMode }
           <UnitSegmentedControl idPrefix="list-toolbar" />
         </div>
         <PackToggle active={packMode} onClick={onTogglePackMode} />
+        {packMode ? (
+          <button
+            type="button"
+            onClick={onOrganizePack}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Organize
+          </button>
+        ) : null}
         {!packMode && <ListSettingsButton list={list} />}
       </div>
     </div>

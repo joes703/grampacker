@@ -42,6 +42,7 @@ function makeListItem(
     isConsumable: over.isConsumable ?? false,
     isPacked: over.isPacked ?? false,
     isReady: over.isReady ?? false,
+    packingLocationId: over.packingLocationId ?? null,
     sortOrder: over.sortOrder ?? 0,
     createdAt: over.createdAt ?? '2024-01-01',
     updatedAt: over.updatedAt ?? '2024-01-01',
