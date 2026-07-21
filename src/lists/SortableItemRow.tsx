@@ -55,6 +55,7 @@ export default function SortableItemRow(
   const handle =
     props.packMode ? undefined : (
       <RowIconButton
+        touchSafe
         ref={asButtonRef(setActivatorNodeRef)}
         {...listeners}
         {...attributes}

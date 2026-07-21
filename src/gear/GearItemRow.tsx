@@ -334,6 +334,7 @@ export const SortableGearItemRow = memo(function SortableGearItemRow(
         {...listeners}
         {...attributes}
         variant="dragHandle"
+        touchSafe
         ariaLabel={`Reorder ${props.item.name}`}
         icon={<GripVertical size={14} />}
         className={props.isBelowLg ? '' : 'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity'}

@@ -42,6 +42,7 @@ export default function PackingItemRow({ item, locations, mobile, disabled, onMo
       className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_ROW_PADDING} ${FLAT_TABLE_BODY_TEXT} gap-2 bg-white`}
     >
       <RowIconButton
+        touchSafe
         ref={asButtonRef(setActivatorNodeRef)}
         {...listeners}
         {...attributes}

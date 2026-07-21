@@ -48,6 +48,7 @@ export default function MoveToLocationMenu({
   return (
     <>
       <RowIconButton
+        touchSafe
         ref={triggerRef}
         onClick={() => open ? close() : openMenu()}
         disabled={disabled}

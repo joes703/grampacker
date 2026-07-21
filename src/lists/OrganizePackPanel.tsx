@@ -366,6 +366,7 @@ function SortableLocationSection({
         location={location}
         dragHandle={(
           <RowIconButton
+            touchSafe
             ref={asButtonRef(setActivatorNodeRef)}
             {...listeners}
             {...attributes}

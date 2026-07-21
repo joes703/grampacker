@@ -11,6 +11,7 @@ import { useWeightUnit } from '../lib/use-weight-unit'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import FormLabel from '../components/FormLabel'
+import { NUMERIC_VALUE_TEXT } from '../components/flat-table-styles'
 import { formatServingDescriptor } from './serving-format'
 
 // Where an entry is being added, for the dialog heading (e.g. "Day 1 ·
@@ -150,7 +151,7 @@ function AmountForm({
 
       <div className="mt-3 min-h-[1.25rem] text-sm text-gray-600">
         {preview && !preview.incomplete && (
-          <span className="tabular-nums">
+          <span className={NUMERIC_VALUE_TEXT}>
             = {formatItemWeight(roundProjectedGrams(preview.grams), weightUnit)}
           </span>
         )}
@@ -287,7 +288,7 @@ export function AddEntryDialog({
                         })}
                       </span>
                     </span>
-                    <span className="shrink-0 text-xs tabular-nums text-gray-500">
+                    <span className={`shrink-0 text-xs text-gray-500 ${NUMERIC_VALUE_TEXT}`}>
                       {f.caloriesPerServing} kcal
                     </span>
                   </button>

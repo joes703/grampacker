@@ -79,6 +79,7 @@ export default function FoodRow({
         <ItemWeightValue grams={projection.grams} unit={weightUnit} />
 
         <RowIconButton
+          touchSafe
           ref={triggerRef}
           onClick={() => (menuOpen ? close() : openMenu())}
           disabled={busy}

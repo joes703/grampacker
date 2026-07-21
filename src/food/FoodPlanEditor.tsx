@@ -29,6 +29,7 @@ import PrimaryButton from '../components/PrimaryButton'
 import FormLabel from '../components/FormLabel'
 import ConfirmDialog from '../components/ConfirmDialog'
 import TotalWeightValue from '../components/TotalWeightValue'
+import { NUMERIC_VALUE_TEXT } from '../components/flat-table-styles'
 import {
   selectFoodPlanView,
   describeEntryAmount,
@@ -170,7 +171,7 @@ export default function FoodPlanEditor() {
             Targets
           </button>
           <div>
-            <div className="text-lg font-semibold tabular-nums text-gray-900">
+            <div className={`text-lg font-semibold text-gray-900 ${NUMERIC_VALUE_TEXT}`}>
               <TotalWeightValue grams={view.totalGrams} unit={weightUnit} />
             </div>
             <div className="text-xs text-gray-500">food weight</div>
@@ -555,7 +556,7 @@ function DaySection({
             <option value="full">Full</option>
             <option value="partial">Partial</option>
           </select>
-          <span className="text-sm tabular-nums text-gray-600">
+          <span className={`text-sm text-gray-600 ${NUMERIC_VALUE_TEXT}`}>
             {formatItemWeight(day.grams, unit)}
           </span>
           <button
@@ -621,7 +622,7 @@ function MealCell({
         <h3 className="text-xs font-medium uppercase tracking-wide text-gray-500">
           {cell.mealName}
         </h3>
-        <span className="text-xs tabular-nums text-gray-400">
+        <span className={`text-xs text-gray-400 ${NUMERIC_VALUE_TEXT}`}>
           {formatItemWeight(cell.grams, unit)}
         </span>
       </div>
@@ -676,7 +677,7 @@ function ExtrasSection({
             Food you&apos;re carrying that isn&apos;t tied to a meal.
           </p>
         </div>
-        <span className="text-sm tabular-nums text-gray-600">
+        <span className={`text-sm text-gray-600 ${NUMERIC_VALUE_TEXT}`}>
           {formatItemWeight(extras.grams, unit)}
         </span>
       </header>
@@ -744,7 +745,7 @@ function EntryRow({
           </span>
         )}
       </button>
-      <span className="shrink-0 text-sm tabular-nums text-gray-600">
+      <span className={`shrink-0 text-sm text-gray-600 ${NUMERIC_VALUE_TEXT}`}>
         {entry.incomplete ? '—' : formatItemWeight(entry.grams, unit)}
       </span>
       <button

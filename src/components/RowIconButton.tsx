@@ -1,16 +1,18 @@
 import { type ButtonHTMLAttributes, type ReactNode, type Ref } from 'react'
+import { ROW_CONTROL_TARGET } from './flat-table-styles'
 
 // Single shared component for the small icon buttons that live inside a row
 // (item-row toggles, kebabs, drag handles, gear-row edit/delete, category-
-// header actions, etc.). Canonical sizing is w-7 h-6 (28×24) so every row
-// has a consistent click-target floor and matching column geometry.
+// header actions, etc.). The compact default is w-7 h-6 (28x24) for controls
+// that render only on desktop. Set `touchSafe` on any control that can render
+// below lg to use the shared 40px touch / 28px pointer target.
 //
 // Pick a variant; the variant owns idle + hover styling. For toggles, set
 // `active` to render the chip-background "on" state. Pass dnd-kit listeners
 // / attributes via spread (they go through to the underlying <button>).
 //
-// Out of scope: toolbar buttons (border + larger padding), modal close
-// buttons, link-styled buttons. These are not row-level.
+// Out of scope: toolbar buttons (border + larger padding) and link-styled
+// buttons. These are not row-level.
 
 type Variant =
   | 'default'        // muted gray, gray hover bg
@@ -30,10 +32,12 @@ type Props = {
    *  visible because there's no parent row hover affordance to reveal
    *  them. No-op for variants whose idle state is already always-visible. */
   alwaysVisible?: boolean
+  touchSafe?: boolean
   ref?: Ref<HTMLButtonElement>
 } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label' | 'children'>
 
 const BASE = 'shrink-0 w-7 h-6 inline-flex items-center justify-center rounded'
+const TOUCH_BASE = `shrink-0 ${ROW_CONTROL_TARGET}`
 
 const VARIANT_CLASSES: Record<Variant, string> = {
   default: 'text-gray-500 hover:text-gray-700 hover:bg-gray-100',
@@ -65,6 +69,7 @@ export default function RowIconButton({
   variant = 'default',
   active = false,
   alwaysVisible = false,
+  touchSafe = false,
   type = 'button',
   className = '',
   ref,
@@ -81,7 +86,7 @@ export default function RowIconButton({
       ref={ref}
       type={type}
       aria-label={ariaLabel}
-      className={`${BASE} ${stateClass} ${visibilityClass} ${className}`.trim()}
+      className={`${touchSafe ? TOUCH_BASE : BASE} ${stateClass} ${visibilityClass} ${className}`.trim()}
       {...rest}
     >
       {icon}

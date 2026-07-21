@@ -10,10 +10,6 @@ token owns which control** so the choice is a lookup rather than a judgement
 call. The gear picker (`LibraryPanel`) is the reference implementation of the
 row language.
 
-Anything in this document marked NOT YET APPLIED describes a decision that has
-been made but not finished rolling out. Do not read those rows as descriptions
-of the current code.
-
 ## Why tokens at all
 
 These are *base fragments*, not finished class strings. Call sites compose
@@ -66,9 +62,8 @@ Two hooks in `src/lib/use-breakpoint.ts` mirror Tailwind exactly:
 presentation across 768-1023px while its controls are still sized for touch,
 or worse, sized for pointer on a touch device.
 
-`FoodLibraryPage` currently swaps at `useIsMobile()` and is the known
-exception. NOT YET APPLIED: it should move to `useIsBelowLg()` to match gear
-and lists.
+`FoodLibraryPage`, gear, and lists all use `useIsBelowLg()` for their
+touch/dense layout handoff.
 
 This is a recurring bug class in this repo. The mobile bottom bar is
 `lg:hidden`, so header add-affordances must be gated `lg+` and not `md+` or
@@ -81,34 +76,18 @@ the control lives and whether it can be touched**, not by what the icon is.
 
 | Control | Token | Size |
 |---|---|---|
-| Chevron, kebab, drag handle, or action icon in a row or section header | `ROW_CONTROL_TARGET` | 40px touch / 28px pointer |
+| Chevron, kebab, drag handle, or action icon in a row or section header | `ROW_CONTROL_TARGET` (or `RowIconButton touchSafe`) | 40px touch / 28px pointer |
 | Compact inline icon button in a surface that renders **only** at `lg+` | `RowIconButton` | 28x24, no touch box |
 | Modal / drawer close button | `ROW_CONTROL_TARGET` | 40px touch / 28px pointer |
 | Full-width disclosure button where the chevron is inline content | neither | the whole row is the hit area |
 | Toolbar button, labelled options trigger, form stepper | neither | out of scope; bordered controls with their own padding |
 | Compact panel header action (`PanelCard` `headerAction`) | neither | see below |
 
-`RowIconButton` is the narrow case. It has no touch box, so it is only
-correct where the containing surface provably cannot render below `lg`. If a
-surface swaps at `md`, or renders at all widths, its row controls need
-`ROW_CONTROL_TARGET` instead. Getting this wrong puts a 24px tap target on a
-tablet.
-
-NOT YET APPLIED: the taxonomy row above states the target rule, not the
-current state. Several surfaces use `RowIconButton` while rendering at all
-widths, so they present 28x24 controls to touch users:
-`src/gear/CategorySection.tsx` (category drag, rename, and kebab controls),
-`src/lists/FoodRow.tsx` (row kebab), and the food-module sites listed under
-"Numbers" below. These are drift, not sanctioned exceptions - do not read
-their existence as certifying the pattern.
-
-Modal close buttons: six already use `ROW_CONTROL_TARGET`
-(`QuickAddItemModal`, `ListImportPreviewDialog`, `FoodImportPreviewDialog`,
-`GearImportPreviewDialog`, `CreateListFromSelectionDialog`, `GearItemDialog`)
-and four are hand-written (`FoodItemDialog`, `MobileOptionsModal`,
-`ListsPage`'s share modal, `ListSidebarDrawer`). The majority pattern wins.
-NOT YET APPLIED: convert the remaining four and drop the "modal close buttons
-are out of scope" line from `RowIconButton`'s header comment.
+`RowIconButton` defaults to the narrow desktop-only target. Callers that can
+render below `lg` set `touchSafe`, which makes the component consume
+`ROW_CONTROL_TARGET`; callers whose containing surface provably cannot render
+below `lg` retain the compact default. Modal and drawer close buttons consume
+`ROW_CONTROL_TARGET` directly.
 
 Panel header actions are genuinely a third case. `PanelCard`'s header is
 `py-2` and documents `headerAction` as compact and baseline-aligned; a 40px
@@ -189,12 +168,11 @@ not a parent node, and "children indent less than their parent" is not itself
 the defect. It matters here because this codebase treats these strips as column
 headers and aligns their trailing labels to row values on purpose.
 
-NOT YET APPLIED: on phones the list rows drop their drag handle entirely
-(reorder moves to a long-press on the row) while the header keeps a 40px
-chevron, so the title sits 46px right of the item names. By the rule above the
-chevron should move trailing at that breakpoint. Ship it separately from the
-desktop fix: relocating a touch affordance needs its own testing for mistaps,
-trailing-edge crowding, and collapsed-state discoverability.
+List and gear rows now keep a dedicated leading drag handle at every viewport.
+The handle and header chevron both use the responsive row-control target, so
+the title and item-name columns reserve the same leading space below `lg` as
+well as on desktop. Touch listeners stay on the grip rather than the whole row,
+preserving ordinary vertical scrolling.
 
 ## Typography
 
@@ -228,7 +206,7 @@ treatment. Classify before reaching for a token:
 
 | Kind | Meaning | Token | Mono? |
 |---|---|---|---|
-| **Value** | A measurement in a column: weight, cost, purchase date | `FLAT_TABLE_NUMERIC_TEXT` | yes |
+| **Value** | A measurement in a column: weight, cost, purchase date | `FLAT_TABLE_NUMERIC_TEXT`, or `NUMERIC_VALUE_TEXT` when the caller owns its size | yes |
 | **Panel value** | An emphasis stat inside a compact panel | `COMPACT_PANEL_META_TEXT` | yes |
 | **Quantity** | A count of items, in a Qty cell | `FLAT_TABLE_QUANTITY_TEXT` | no |
 | **Count metadata** | "(5)" beside a section title | `FLAT_TABLE_HEADER_COUNT` | no |
@@ -249,23 +227,12 @@ Legitimate non-value `font-mono`: markdown `<code>` spans, the CSV header
 `<pre>` in the import dialog, and the read-only share-URL input. These are
 monospace for their own reasons, unrelated to the numeric rule.
 
-NOT YET APPLIED: the `src/food/` module is **partially** converted. Newer
-food code already consumes the shared tokens - `NutrientTotalCell` uses
-`FLAT_TABLE_NUMERIC_TEXT`, `DayNutritionReview` uses the numeric, eyebrow, and
-control-target tokens, and `FoodImportPreviewDialog` uses
-`ROW_CONTROL_TARGET`. What remains unconverted is roughly twenty value cells
-in `FoodLibraryPage`, `FoodPlanEditor`, `EntryDialog`, and the import-preview
-value columns, which use `tabular-nums` without `font-mono`.
-
-Check each site before converting; this is a partially completed migration,
-not an untouched module. Food is not a separate visual family - the same files
-that skipped the typography tokens also skipped the control-target ones, which
-are unrelated to each other - so the remainder is drift rather than design.
-
-Because several of those sites are currently `text-sm`, adopting
-`FLAT_TABLE_NUMERIC_TEXT` verbatim would shrink them from 14px to 12px. The
-decision is to preserve the size tier and add a size-preserving mono token
-rather than collapse the hierarchy.
+The food module uses the same numeric treatment as the rest of the app.
+`NUMERIC_VALUE_TEXT` supplies `font-mono tabular-nums` without choosing a font
+size; food tables, cards, editor totals, entry previews, and import-preview
+value columns compose it with their existing size tier. Dense row values that
+do not own a separate hierarchy use `FLAT_TABLE_NUMERIC_TEXT`. Numeric form
+inputs and count metadata intentionally keep tabular digits without mono.
 
 ## Chrome
 

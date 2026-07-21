@@ -7,12 +7,14 @@ import type { ReactNode } from 'react'
 import type { FoodItem } from '../lib/types'
 import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
 
-// jsdom has no matchMedia; the page reads it via useIsMobile() (max-width:
-// 767px) to switch between the desktop table and the mobile card list.
-// stubViewport(true) makes that query match so the card list renders.
-function stubViewport(mobile: boolean) {
+// jsdom has no matchMedia; model its max-width queries from a concrete
+// viewport so the 1024px card/table boundary is covered directly.
+function stubViewport(width: number) {
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: mobile && query.includes('767px'),
+    matches: (() => {
+      const maxWidth = /max-width:\s*(\d+)px/.exec(query)?.[1]
+      return maxWidth ? width <= Number(maxWidth) : false
+    })(),
     media: query,
     onchange: null,
     addEventListener: () => {},
@@ -22,7 +24,7 @@ function stubViewport(mobile: boolean) {
     dispatchEvent: () => false,
   }))
 }
-beforeEach(() => stubViewport(false))
+beforeEach(() => stubViewport(1440))
 
 // jsdom has no native <dialog> support; Modal opens via showModal().
 beforeAll(() => {
@@ -192,8 +194,8 @@ describe('FoodLibraryPage', () => {
     expect(screen.getByText('8.0 g')).toBeTruthy()
   })
 
-  it('renders the mobile card list (not the table) below the md breakpoint', async () => {
-    stubViewport(true)
+  it.each([390, 767, 768, 800, 1023])('renders the touch card list (not the table) at %ipx', async (width) => {
+    stubViewport(width)
     h.fetchFoodItems.mockResolvedValue([food({ name: 'Ramen', brand: 'Maruchan' })])
     renderPage()
     // The card list is a <ul> labelled "Food library"; the desktop <table>
@@ -204,6 +206,15 @@ describe('FoodLibraryPage', () => {
     // New food is reachable on mobile: the in-content button plus the bottom
     // bar's Add slot both carry that accessible name.
     expect(screen.getAllByRole('button', { name: /New food/ }).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it.each([1024, 1440])('renders the dense table at %ipx', async (width) => {
+    stubViewport(width)
+    h.fetchFoodItems.mockResolvedValue([food({ name: 'Ramen' })])
+    renderPage()
+
+    expect(await screen.findByRole('table', { name: 'Food library' })).toBeTruthy()
+    expect(screen.queryByRole('list', { name: 'Food library' })).toBeNull()
   })
 })
 

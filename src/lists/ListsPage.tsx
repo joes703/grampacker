@@ -327,7 +327,7 @@ export default function ListsPage() {
                   type="button"
                   onClick={() => setDialog(null)}
                   aria-label="Close"
-                  className="rounded p-1 text-gray-500 hover:text-gray-600"
+                  className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:text-gray-600`}
                 >
                   <X size={16} />
                 </button>

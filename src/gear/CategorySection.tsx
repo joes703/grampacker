@@ -216,6 +216,7 @@ function CategorySectionInner(
             {...dragHandleListeners}
             {...dragHandleAttributes}
             variant="dragHandle"
+            touchSafe
             ariaLabel={`Reorder ${name}`}
             icon={<GripVertical size={16} />}
           />
@@ -265,12 +266,14 @@ function CategorySectionInner(
           <div className="flex items-center gap-0.5 ml-auto">
             <RowIconButton
               variant="success"
+              touchSafe
               onClick={commitRename}
               title="Confirm rename"
               ariaLabel="Confirm rename"
               icon={<Check size={14} />}
             />
             <RowIconButton
+              touchSafe
               onClick={() => {
                 setRenameDraft(category?.name ?? '')
                 setRenaming(false)
@@ -333,6 +336,7 @@ function CategoryKebab({
   return (
     <>
       <RowIconButton
+        touchSafe
         ref={triggerRef}
         onClick={(e) => {
           e.stopPropagation()

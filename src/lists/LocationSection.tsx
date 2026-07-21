@@ -80,6 +80,7 @@ export default function LocationSection({
         {location && onRename && onDelete ? (
           <>
             <RowIconButton
+              touchSafe
               ref={triggerRef}
               onClick={() => open ? close() : openMenu()}
               ariaLabel={`${title} options`}
