@@ -137,7 +137,7 @@ import {
   toggledListModePath,
   type ListDetailMode,
 } from './list-detail-mode'
-import { selectPackGroupingState } from './packing-grouping'
+import { orderPackGroups, selectPackGroupingState } from './packing-grouping'
 import { usePackingCollapsed } from './packing-collapse'
 
 // TRANSPLANT NOTE (print): the old page rendered PrintListHeader above the
@@ -628,6 +628,7 @@ function ListDetailInner({
     ? packingGroupingState.grouping
     : { kind: 'category' as const, groups: categories }
   const grouped = useGroupedListItems(listItems, grouping)
+  const orderedPackGroups = orderPackGroups(grouped, grouping.kind)
   const packingCollapseHandlers = useMemo(
     () => new Map(
       (locationsQuery.data ?? []).map((packingLocation) => [
@@ -1114,13 +1115,9 @@ function ListDetailInner({
                           Couldn&apos;t load packing locations. Showing the last available grouping.
                         </p>
                       )}
-                      {grouped
-                        .filter((g) => g.group !== null)
-                        .map((group) => {
-                          // The filter above makes this non-null in practice.
-                          // Keep the guard so TypeScript narrows without an assertion.
-                          const definition = group.group
-                          if (!definition) return null
+                      {orderedPackGroups.map((group) => {
+                        const definition = group.group
+                        if (definition) {
                           const locationGrouping = grouping.kind === 'location'
                           return (
                             <CategoryGroup
@@ -1139,10 +1136,8 @@ function ListDetailInner({
                               onAddItem={locationGrouping ? undefined : onAddNewItem}
                             />
                           )
-                        })}
-                      {grouped
-                        .filter((g) => g.group === null)
-                        .map((group) => (
+                        }
+                        return (
                           <CategoryGroup
                             key={grouping.kind === 'location' ? '__unassigned__' : '__uncategorized__'}
                             name={grouping.kind === 'location' ? 'Unassigned' : 'Uncategorized'}
@@ -1158,7 +1153,8 @@ function ListDetailInner({
                             subtotalGrams={grouping.kind === 'location' ? undefined : baseGramsForCategory(weightBreakdown, null)}
                             onAddItem={grouping.kind === 'location' ? undefined : onAddNewItem}
                           />
-                        ))}
+                        )
+                      })}
                       <DragOverlay dropAnimation={null}>
                         {activeItem ? (
                           <ItemRow item={activeItem} weightUnit={weightUnit} isBelowLg={isBelowLg} />
