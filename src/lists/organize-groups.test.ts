@@ -3,7 +3,7 @@ import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import { buildOrganizeGroups } from './organize-groups'
 
 const locations: PackingLocation[] = [
-  { id: 'loc-main', name: 'Main pack', sortOrder: 0 },
+  { id: 'loc-main', name: 'Main pack', sortOrder: 0, containerListItemId: null },
 ]
 
 function item(id: string, packingLocationId: string | null, isWorn = false): ListItemWithGear {
@@ -57,5 +57,21 @@ describe('buildOrganizeGroups', () => {
     const groups = buildOrganizeGroups([item('orphan', 'loc-deleted')], locations)
 
     expect(groups.at(-1)?.items.map((entry) => entry.id)).toEqual(['orphan'])
+  })
+
+  it('keeps a container source as a real item outside its own contents', () => {
+    const itemLocations: PackingLocation[] = [{
+      id: 'loc-canister',
+      name: 'Bear canister',
+      sortOrder: 0,
+      containerListItemId: 'canister',
+    }]
+    const groups = buildOrganizeGroups([
+      item('canister', null),
+      item('food', 'loc-canister'),
+    ], itemLocations)
+
+    expect(groups[0]?.items.map((entry) => entry.id)).toEqual(['food'])
+    expect(groups.at(-1)?.items.map((entry) => entry.id)).toEqual(['canister'])
   })
 })

@@ -1,5 +1,6 @@
 import {
   packingLocationResponseSchema,
+  type CreatePackingLocationRequest,
   type PackingLocationResponse,
   type ReorderPackingLocationsRequest,
 } from '../../../shared/lists'
@@ -16,11 +17,11 @@ export async function fetchPackingLocations(listId: string): Promise<PackingLoca
 
 export async function createPackingLocation(
   listId: string,
-  name: string,
+  input: CreatePackingLocationRequest,
 ): Promise<PackingLocation> {
   return apiFetch(`/lists/${listId}/packing-locations`, packingLocationResponseSchema, {
     method: 'POST',
-    body: { name },
+    body: input,
   })
 }
 

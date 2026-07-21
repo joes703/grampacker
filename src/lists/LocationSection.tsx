@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { MoreVertical, Pencil, Trash2 } from 'lucide-react'
+import { MoreVertical, Package, PackageMinus, Pencil, Trash2 } from 'lucide-react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import { makeDnDId } from '../lib/dnd-ids'
@@ -20,10 +20,13 @@ type Props = {
   locations: PackingLocation[]
   mobile: boolean
   movePending: boolean
+  containerCreationDisabled: boolean
+  containerItemIds: ReadonlySet<string>
   dragHandle?: ReactNode
   onRename?: (name: string) => void
   onDelete?: () => void
   onMove: (itemId: string, locationId: string | null) => void
+  onUseAsContainer: (item: ListItemWithGear) => void
 }
 
 export default function LocationSection({
@@ -32,16 +35,20 @@ export default function LocationSection({
   locations,
   mobile,
   movePending,
+  containerCreationDisabled,
+  containerItemIds,
   dragHandle,
   onRename,
   onDelete,
   onMove,
+  onUseAsContainer,
 }: Props) {
   const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState(location?.name ?? '')
   const { open, openMenu, close, triggerRef, menuRef, menuPos } =
     useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
   const title = location?.name ?? 'Unassigned'
+  const itemBacked = location !== null && location.containerListItemId !== null
 
   function commitRename() {
     const name = draft.trim()
@@ -72,12 +79,19 @@ export default function LocationSection({
             className="min-w-0 flex-1 rounded border border-blue-400 bg-white px-2 py-1 text-sm font-semibold text-gray-900"
           />
         ) : (
-          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900">{title}</h2>
+          <h2 className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-sm font-semibold text-gray-900">
+            {itemBacked ? (
+              <span aria-label="Item-backed container" title="Item-backed container">
+                <Package size={14} className="text-blue-600" />
+              </span>
+            ) : null}
+            <span className="truncate">{title}</span>
+          </h2>
         )}
         <span className={FLAT_TABLE_META_TEXT}>
           {items.length} {items.length === 1 ? 'item' : 'items'}
         </span>
-        {location && onRename && onDelete ? (
+        {location && onDelete && !location.id.startsWith('temp-') ? (
           <>
             <RowIconButton
               touchSafe
@@ -94,19 +108,34 @@ export default function LocationSection({
                 className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
                 style={{ top: menuPos.top, left: menuPos.left }}
               >
-                <RowMenuItem icon={<Pencil size={13} />} onClick={() => {
-                  close()
-                  setRenaming(true)
-                }}>
-                  Rename
-                </RowMenuItem>
-                <RowMenuSeparator />
-                <RowMenuItem icon={<Trash2 size={13} />} tone="danger" onClick={() => {
-                  close()
-                  onDelete()
-                }}>
-                  Delete location
-                </RowMenuItem>
+                {itemBacked ? (
+                  <RowMenuItem
+                    icon={<PackageMinus size={13} />}
+                    tone="removal"
+                    onClick={() => {
+                      close()
+                      onDelete()
+                    }}
+                  >
+                    Stop using as container
+                  </RowMenuItem>
+                ) : (
+                  <>
+                    <RowMenuItem icon={<Pencil size={13} />} onClick={() => {
+                      close()
+                      setRenaming(true)
+                    }}>
+                      Rename
+                    </RowMenuItem>
+                    <RowMenuSeparator />
+                    <RowMenuItem icon={<Trash2 size={13} />} tone="danger" onClick={() => {
+                      close()
+                      onDelete()
+                    }}>
+                      Delete location
+                    </RowMenuItem>
+                  </>
+                )}
               </div>,
               document.body,
             )}
@@ -129,7 +158,10 @@ export default function LocationSection({
               locations={locations}
               mobile={mobile}
               disabled={movePending}
+              containerCreationDisabled={containerCreationDisabled}
+              isContainer={containerItemIds.has(item.id)}
               onMove={(locationId) => onMove(item.id, locationId)}
+              onUseAsContainer={() => onUseAsContainer(item)}
             />
           ))}
         </SortableContext>

@@ -16,7 +16,12 @@ export const packingLocationRoutes = new Hono<{
 packingLocationRoutes.use('*', requireSession)
 
 function toResponse(row: PackingLocationRow): PackingLocationResponse {
-  return { id: row.id, name: row.name, sortOrder: row.sortOrder }
+  return {
+    id: row.id,
+    name: row.name,
+    sortOrder: row.sortOrder,
+    containerListItemId: row.containerListItemId,
+  }
 }
 
 packingLocationRoutes.get('/:id/packing-locations', async (c) => {
@@ -33,15 +38,21 @@ packingLocationRoutes.post('/:id/packing-locations', async (c) => {
   if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
   const result = await c
     .get('repos')
-    .packingLocations.create(c.req.param('id'), parsed.data.name)
+    .packingLocations.create(c.req.param('id'), parsed.data)
   if (!result.ok) {
     if (result.reason === 'list_not_found') {
       return c.json({ error: 'Not found' }, 404)
     }
-    return c.json(
-      { error: 'Packing location limit reached (30 per list)' },
-      422,
-    )
+    if (result.reason === 'cap_exceeded') {
+      return c.json(
+        { error: 'Packing location limit reached (30 per list)' },
+        422,
+      )
+    }
+    if (result.reason === 'already_container') {
+      return c.json({ error: 'Item is already a container' }, 409)
+    }
+    return c.json({ error: 'Invalid container item' }, 400)
   }
   return c.json(toResponse(result.row), 201)
 })
@@ -64,15 +75,20 @@ packingLocationRoutes.patch(
     const raw = await c.req.json().catch(() => null)
     const parsed = updatePackingLocationRequestSchema.safeParse(raw)
     if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
-    const row = await c
+    const result = await c
       .get('repos')
       .packingLocations.rename(
         c.req.param('id'),
         c.req.param('locationId'),
         parsed.data.name,
       )
-    if (!row) return c.json({ error: 'Not found' }, 404)
-    return c.json(toResponse(row))
+    if (!result.ok) {
+      if (result.reason === 'item_backed') {
+        return c.json({ error: 'Item-backed locations use the item name' }, 409)
+      }
+      return c.json({ error: 'Not found' }, 404)
+    }
+    return c.json(toResponse(result.row))
   },
 )
 

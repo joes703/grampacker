@@ -23,8 +23,12 @@ const sleep: Category = {
   createdAt: '2024-01-01',
 }
 
-const mainPack: PackingLocation = { id: 'loc-main', name: 'Main pack', sortOrder: 0 }
-const hipBelt: PackingLocation = { id: 'loc-hip', name: 'Hip belt', sortOrder: 1 }
+const mainPack: PackingLocation = {
+  id: 'loc-main', name: 'Main pack', sortOrder: 0, containerListItemId: null,
+}
+const hipBelt: PackingLocation = {
+  id: 'loc-hip', name: 'Hip belt', sortOrder: 1, containerListItemId: null,
+}
 
 function listItem(overrides: {
   id: string

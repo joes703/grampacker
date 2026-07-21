@@ -9,7 +9,16 @@ Status: rev 6 implementation baseline; shipped 2026-07-20.
 > switches directly. The original `/pack/organize` route redirects to the
 > canonical peer route, and last-list restoration persists `/organize`. This
 > user-requested amendment supersedes only the route, entry-point, and
-> persistence decisions below; the packing-location contract is unchanged.
+> persistence decisions below; it did not otherwise change the original
+> packing-location contract. The later item-backed amendment below does.
+
+> **Item-backed container amendment (2026-07-21):** A packing location may
+> optionally be backed by one membership row on the same list. Its displayed
+> name follows that item's live gear name. The source remains a normal list
+> item, so it can be packed and may itself live in another location; self-links
+> and nesting cycles are rejected. Removing the source or stopping its
+> container role unassigns the contents without deleting them. Name-only
+> locations remain supported for physical places that are not gear items.
 
 Five GATE 1 adversarial passes drove this from BLOCK to clean. The rev-5 review
 confirmed **M5 fixed (all nine literal POST_CHECKS verified to pass against the

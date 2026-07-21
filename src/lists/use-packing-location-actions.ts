@@ -16,14 +16,33 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
   const queryKey = queryKeys.packingLocations(listId)
 
   const createLocation = useMutation({
-    mutationFn: (name: string) => createPackingLocation(listId, name),
+    mutationFn: (name: string) => createPackingLocation(listId, { name }),
     ...makeOptimisticInsert<PackingLocation, string>({
       qc,
       queryKey,
       optimistic: (name) => ({
         id: `temp-${randomTempId()}`,
         name,
+        containerListItemId: null,
         sortOrder: locations.reduce((max, location) => Math.max(max, location.sortOrder), -1) + 1,
+      }),
+    }),
+  })
+
+  const createItemContainer = useMutation({
+    mutationFn: ({ itemId }: { itemId: string; name: string }) =>
+      createPackingLocation(listId, { containerListItemId: itemId }),
+    ...makeOptimisticInsert<PackingLocation, { itemId: string; name: string }>({
+      qc,
+      queryKey,
+      optimistic: ({ itemId, name }) => ({
+        id: `temp-${randomTempId()}`,
+        name,
+        containerListItemId: itemId,
+        sortOrder: locations.reduce(
+          (max, location) => Math.max(max, location.sortOrder),
+          -1,
+        ) + 1,
       }),
     }),
   })
@@ -49,5 +68,10 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
     }),
   })
 
-  return { createLocation, renameLocation, removeLocation }
+  return {
+    createLocation,
+    createItemContainer,
+    renameLocation,
+    removeLocation,
+  }
 }

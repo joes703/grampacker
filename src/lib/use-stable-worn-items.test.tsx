@@ -38,7 +38,9 @@ function item(id: string, locationId: string | null, isWorn: boolean): ListItemW
 }
 
 describe('useStableWornItems with location groups', () => {
-  const locations: PackingLocation[] = [{ id: 'loc-1', name: 'Main pack', sortOrder: 0 }]
+  const locations: PackingLocation[] = [{
+    id: 'loc-1', name: 'Main pack', sortOrder: 0, containerListItemId: null,
+  }]
   const wornAssigned = item('worn-assigned', 'loc-1', true)
   const wornUnassigned = item('worn-unassigned', null, true)
   const normal = item('normal', 'loc-1', false)

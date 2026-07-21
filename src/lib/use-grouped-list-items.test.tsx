@@ -210,8 +210,8 @@ describe('useGroupedListItems', () => {
   it('keeps one hook instance stable across category and location grouping', () => {
     const shelter = makeCategory('cat-shelter', 'Shelter', 0)
     const locations: PackingLocation[] = [
-      { id: 'loc-main', name: 'Main pack', sortOrder: 0 },
-      { id: 'loc-lid', name: 'Lid', sortOrder: 1 },
+      { id: 'loc-main', name: 'Main pack', sortOrder: 0, containerListItemId: null },
+      { id: 'loc-lid', name: 'Lid', sortOrder: 1, containerListItemId: null },
     ]
     const item = makeItem({
       id: 'a',
@@ -244,8 +244,8 @@ describe('useGroupedListItems', () => {
 
   it('rebuilds location groups when only packingLocationId changes', () => {
     const locations: PackingLocation[] = [
-      { id: 'loc-main', name: 'Main pack', sortOrder: 0 },
-      { id: 'loc-lid', name: 'Lid', sortOrder: 1 },
+      { id: 'loc-main', name: 'Main pack', sortOrder: 0, containerListItemId: null },
+      { id: 'loc-lid', name: 'Lid', sortOrder: 1, containerListItemId: null },
     ]
     const original = makeItem({ id: 'a', categoryId: null, packingLocationId: 'loc-main' })
     const { result, rerender } = renderHook(

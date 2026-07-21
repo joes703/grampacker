@@ -97,7 +97,7 @@ const targetDefaults: TargetDefault[] = [
   { id: 'td-1', metric: 'protein', mode: 'min', targetMin: 120, targetMax: null },
 ]
 const packingLocations: PackingLocation[] = [
-  { id: 'loc-1', name: 'Main pack', sortOrder: 0 },
+  { id: 'loc-1', name: 'Main pack', sortOrder: 0, containerListItemId: null },
 ]
 const planDoc: FoodPlanDocument = {
   id: 'p-1', name: 'JMT week 1', sortOrder: 0,

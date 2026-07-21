@@ -222,14 +222,16 @@ export const packingLocationResponseSchema = z.object({
   id: z.string(),
   name: z.string(),
   sortOrder: z.number().int(),
+  containerListItemId: z.string().nullable(),
 })
 export type PackingLocationResponse = z.infer<
   typeof packingLocationResponseSchema
 >
 
-export const createPackingLocationRequestSchema = z
-  .object({ name: packingLocationNameSchema })
-  .strict()
+export const createPackingLocationRequestSchema = z.union([
+  z.object({ name: packingLocationNameSchema }).strict(),
+  z.object({ containerListItemId: idSchema }).strict(),
+])
 export type CreatePackingLocationRequest = z.infer<
   typeof createPackingLocationRequestSchema
 >

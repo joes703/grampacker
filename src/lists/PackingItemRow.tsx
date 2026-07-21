@@ -17,10 +17,22 @@ type Props = {
   locations: PackingLocation[]
   mobile: boolean
   disabled: boolean
+  containerCreationDisabled: boolean
+  isContainer: boolean
   onMove: (locationId: string | null) => void
+  onUseAsContainer: () => void
 }
 
-export default function PackingItemRow({ item, locations, mobile, disabled, onMove }: Props) {
+export default function PackingItemRow({
+  item,
+  locations,
+  mobile,
+  disabled,
+  containerCreationDisabled,
+  isContainer,
+  onMove,
+  onUseAsContainer,
+}: Props) {
   const {
     attributes,
     listeners,
@@ -54,12 +66,16 @@ export default function PackingItemRow({ item, locations, mobile, disabled, onMo
       <span className="min-w-0 flex-1 truncate text-gray-900">{item.gearItem.name}</span>
       {item.quantity > 1 ? <span className="text-gray-500">x{item.quantity}</span> : null}
       <MoveToLocationMenu
+        itemId={item.id}
         itemName={item.gearItem.name}
         currentLocationId={item.packingLocationId}
         locations={locations}
         mobile={mobile}
         disabled={disabled}
+        containerCreationDisabled={containerCreationDisabled}
+        isContainer={isContainer}
         onMove={onMove}
+        onUseAsContainer={onUseAsContainer}
       />
     </div>
   )
