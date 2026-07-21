@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import app from '../index'
 import { createDb } from '../db'
 import { listItems, packingLocations } from '../db/schema'
+import { isTriggerAbort } from '../repos/db-errors'
 import { remapPackingLocationId } from '../repos/lists'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
@@ -111,10 +112,7 @@ async function expectTriggerAbort(
     await operation
     throw new Error('expected trigger abort')
   } catch (error) {
-    expect(error).toBeInstanceOf(Error)
-    const message = (error as Error).message
-    expect(message).toContain(marker)
-    expect(message).toContain('SQLITE_CONSTRAINT_TRIGGER')
+    expect(isTriggerAbort(error, marker)).toBe(true)
   }
 }
 
