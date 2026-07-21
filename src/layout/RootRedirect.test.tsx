@@ -68,6 +68,17 @@ function Probe() {
 }
 
 describe('RootRedirect', () => {
+  it('shows a loading landmark while the list redirect is unresolved', () => {
+    vi.mocked(readLastListPath).mockReturnValue(null)
+    vi.mocked(fetchLists).mockReturnValue(new Promise(() => {}))
+    renderAt()
+
+    expect(screen.getByRole('status', { name: 'Loading your lists...' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    )
+  })
+
   it('fast path: redirects to the cached last-list path without fetching', async () => {
     vi.mocked(readLastListPath).mockReturnValue(
       '/lists/11111111-1111-1111-1111-111111111111/pack',

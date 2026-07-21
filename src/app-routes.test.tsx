@@ -76,6 +76,12 @@ describe('the authenticated area (lazy chunk, relative paths under the splat)', 
     ['/lists', 'lists'],
   ])('renders %s inside the shell', async (path, testId) => {
     renderAt(path, SIGNED_IN)
+    if (path === '/') {
+      expect(screen.getByRole('status', { name: 'Loading grampacker...' })).toHaveAttribute(
+        'aria-busy',
+        'true',
+      )
+    }
     expect(await screen.findByTestId(testId)).toBeInTheDocument()
     expect(screen.getByTestId('shell')).toBeInTheDocument()
   })
@@ -113,11 +119,14 @@ describe('the session gate', () => {
     expect(screen.queryByTestId('shell')).not.toBeInTheDocument()
   })
 
-  it('renders nothing while the session is still pending', () => {
-    const { container } = renderAt('/', PENDING)
+  it('renders a stable loading landmark while the session is still pending', () => {
+    renderAt('/', PENDING)
     // Deliberately not a redirect: bouncing a pending session to /sign-in would
     // flash the form at every already-signed-in user on every cold load.
-    expect(container).toBeEmptyDOMElement()
+    expect(screen.getByRole('status', { name: 'Loading grampacker...' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    )
   })
 
   it('keeps a signed-in user off the sign-in form', async () => {
@@ -130,6 +139,7 @@ describe('the session gate', () => {
 describe('the public paths', () => {
   it('serves a share link to a signed-out visitor, with no app chrome', async () => {
     renderAt('/r/my-kit', SIGNED_OUT)
+    expect(screen.getByRole('status', { name: 'Loading grampacker...' })).toBeInTheDocument()
     expect(await screen.findByTestId('share')).toHaveTextContent('my-kit')
     expect(screen.queryByTestId('shell')).not.toBeInTheDocument()
   })

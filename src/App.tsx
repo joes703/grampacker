@@ -9,6 +9,7 @@ import SignInPage from './auth/SignInPage'
 import MagicLinkPage from './auth/MagicLinkPage'
 import ToastViewport from './components/Toast'
 import ChunkErrorBoundary from './components/ChunkErrorBoundary'
+import AppLoading from './components/AppLoading'
 
 // The two anonymous surfaces are split out of the main bundle, because until
 // now both of them shipped the whole authenticated app to people who could not
@@ -80,10 +81,10 @@ const queryClient = new QueryClient({
 })
 
 // Gate rule: never unmount children on a PENDING session. The auth client
-// refetches the session after every auth mutation, and an isPending ->
-// null render would unmount the page mid-flow and wipe its local state
-// (e.g. the sign-up "check your email" card). Blank only the initial
-// load, where there is no data yet.
+// refetches the session after every auth mutation, and replacing the page
+// during that refetch would unmount it mid-flow and wipe its local state
+// (e.g. the sign-up "check your email" card). Show the stable loading surface
+// only on the initial load, where there is no data yet.
 function RequireSession({ children }: { children: ReactNode }) {
   const { data: session, isPending } = authClient.useSession()
 
@@ -95,7 +96,7 @@ function RequireSession({ children }: { children: ReactNode }) {
     if (session) rememberSession()
   }, [session])
 
-  if (isPending && !session) return null
+  if (isPending && !session) return <AppLoading fullScreen />
   if (!session) return <Navigate to="/sign-in" replace />
   return children
 }
@@ -146,7 +147,7 @@ export function AppRoutes() {
       <Route
         path="/r/:slug"
         element={
-          <Suspense fallback={null}>
+          <Suspense fallback={<AppLoading fullScreen />}>
             <SharePage />
           </Suspense>
         }
@@ -156,17 +157,14 @@ export function AppRoutes() {
           still win: react-router ranks by specificity, not by source order, so
           a splat never shadows them.
 
-          fallback={null} rather than a spinner: RequireSession ALREADY rendered
-          null here while the session was pending, so this paints exactly what
-          the previous code painted, and a spinner that appeared and vanished
-          would be new layout movement on a page currently scoring CLS 0. That
-          is a reason to prefer null, not a proof the score holds - CLS is
-          measured in a browser, and this was not. */}
+          The session and lazy boundaries share the same full-viewport loading
+          landmark, so handing off between those two serial gates does not flash
+          a second shape. */}
       <Route
         path="/*"
         element={
           <RequireSession>
-            <Suspense fallback={null}>
+            <Suspense fallback={<AppLoading fullScreen />}>
               <AuthenticatedApp />
             </Suspense>
           </RequireSession>
