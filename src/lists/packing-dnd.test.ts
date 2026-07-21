@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ListItemWithGear } from '../lib/types'
 import { makeDnDId } from '../lib/dnd-ids'
-import { planPackingItemDrop } from './packing-dnd'
+import { isPackingCollisionTarget, planPackingItemDrop } from './packing-dnd'
 
 function item(id: string, locationId: string | null): ListItemWithGear {
   return {
@@ -88,5 +88,41 @@ describe('planPackingItemDrop', () => {
       items,
       validLocationIds,
     )).toBeNull()
+  })
+})
+
+describe('isPackingCollisionTarget', () => {
+  it('keeps location reorders on real location sections, not their nested item rows', () => {
+    const active = makeDnDId('packing-location', 'loc-a')
+
+    expect(isPackingCollisionTarget(
+      active,
+      makeDnDId('packing-location', 'loc-b'),
+    )).toBe(true)
+    expect(isPackingCollisionTarget(
+      active,
+      makeDnDId('packing-item', target.id),
+    )).toBe(false)
+    expect(isPackingCollisionTarget(
+      active,
+      makeDnDId('packing-location', 'unassigned'),
+    )).toBe(false)
+  })
+
+  it('retains item, location, and Unassigned targets while moving an item', () => {
+    const active = makeDnDId('packing-item', source.id)
+
+    expect(isPackingCollisionTarget(
+      active,
+      makeDnDId('packing-item', target.id),
+    )).toBe(true)
+    expect(isPackingCollisionTarget(
+      active,
+      makeDnDId('packing-location', 'loc-b'),
+    )).toBe(true)
+    expect(isPackingCollisionTarget(
+      active,
+      makeDnDId('packing-location', 'unassigned'),
+    )).toBe(true)
   })
 })

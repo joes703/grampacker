@@ -3,6 +3,23 @@ import type { ListItemWithGear } from '../lib/types'
 
 export type PackingItemDrop = { itemId: string; locationId: string | null }
 
+export function isPackingCollisionTarget(
+  activeId: string,
+  targetId: string,
+): boolean {
+  const active = parseDnDId(activeId)
+  const target = parseDnDId(targetId)
+  if (!active || !target) return false
+
+  if (active.kind === 'packing-location') {
+    return target.kind === 'packing-location' && target.id !== 'unassigned'
+  }
+  if (active.kind === 'packing-item') {
+    return target.kind === 'packing-item' || target.kind === 'packing-location'
+  }
+  return false
+}
+
 export function planPackingItemDrop(
   activeId: string,
   overId: string | undefined,

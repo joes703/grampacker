@@ -11,6 +11,7 @@ import {
   useSensor,
   useSensors,
   useDroppable,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
@@ -40,7 +41,14 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import LocationSection from './LocationSection'
 import { usePackingLocationActions } from './use-packing-location-actions'
 import { buildOrganizeGroups } from './organize-groups'
-import { planPackingItemDrop } from './packing-dnd'
+import { isPackingCollisionTarget, planPackingItemDrop } from './packing-dnd'
+
+const packingCollisionDetection: CollisionDetection = (args) => closestCenter({
+  ...args,
+  droppableContainers: args.droppableContainers.filter((container) =>
+    isPackingCollisionTarget(String(args.active.id), String(container.id)),
+  ),
+})
 
 export default function OrganizePackPanel({ list }: { list: List }) {
   const qc = useQueryClient()
@@ -237,7 +245,7 @@ export default function OrganizePackPanel({ list }: { list: List }) {
       ) : (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCenter}
+          collisionDetection={packingCollisionDetection}
           onDragStart={onDragStart}
           onDragCancel={onDragCancel}
           onDragEnd={onDragEnd}
