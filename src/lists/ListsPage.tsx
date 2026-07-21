@@ -498,6 +498,7 @@ function SortableListRow(
 ) {
   const { outerRef, outerStyle, dragHandle } = useListCardSortable({
     listId: props.list.id,
+    listName: props.list.name,
     disabled: props.renaming || props.reorderPending,
     gripIconSize: 16,
   })

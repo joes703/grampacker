@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup, screen, fireEvent } from '@testing-library/react'
-import GearItemRow from './GearItemRow'
+import GearItemRow, { SortableGearItemRow } from './GearItemRow'
 import type { GearItem } from '../lib/types'
 
 // Locks the entity-aware row callback contract introduced with the gear-row
@@ -89,5 +89,14 @@ describe('GearItemRow callback contracts', () => {
 
     expect(props.onToggleSelect).toHaveBeenCalledTimes(1)
     expect(props.onToggleSelect).toHaveBeenCalledWith('gear-3')
+  })
+})
+
+describe('SortableGearItemRow activator', () => {
+  it.each([false, true])('renders a named, focusable handle when isBelowLg=%s', (isBelowLg) => {
+    render(<SortableGearItemRow item={gear()} {...baseProps()} isBelowLg={isBelowLg} />)
+
+    const handle = screen.getByRole('button', { name: 'Reorder Tent' })
+    expect(handle).toHaveAttribute('tabindex', '0')
   })
 })

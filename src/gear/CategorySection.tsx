@@ -215,9 +215,8 @@ function CategorySectionInner(
             ref={dragHandleRef}
             {...dragHandleListeners}
             {...dragHandleAttributes}
-            tabIndex={-1}
             variant="dragHandle"
-            ariaLabel="Drag to reorder"
+            ariaLabel={`Reorder ${name}`}
             icon={<GripVertical size={16} />}
           />
         )}

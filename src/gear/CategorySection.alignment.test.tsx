@@ -76,8 +76,9 @@ describe('gear category header alignment contract', () => {
     const chevron = screen.getByRole('button', { name: /Collapse Shelter/ })
     const header = chevron.closest('div')!
     const grip = [...header.querySelectorAll('button')]
-      .find((b) => b.getAttribute('aria-label') === 'Drag to reorder')
+      .find((b) => b.getAttribute('aria-label') === 'Reorder Shelter')
     expect(grip).toBeDefined()
+    expect(grip).toHaveAttribute('tabindex', '0')
 
     const title = header.querySelector('button[title="Rename category"]')!
     expect(title).not.toBeNull()
@@ -92,7 +93,7 @@ describe('gear category header alignment contract', () => {
     const kebab = [...header.querySelectorAll('button')]
       .find((b) => /Category options/i.test(b.getAttribute('aria-label') ?? ''))!
     const grip = [...header.querySelectorAll('button')]
-      .find((b) => b.getAttribute('aria-label') === 'Drag to reorder')!
+      .find((b) => b.getAttribute('aria-label') === 'Reorder Shelter')!
 
     // The rail is the ml-auto cluster holding the width-matched
     // Price/Purchased/Weight labels and the kebab. Putting the grip anywhere
@@ -134,7 +135,7 @@ describe('gear category header alignment contract', () => {
     // variants now, which is what keeps their titles on the same column.
     expect(
       [...header.querySelectorAll('button')]
-        .find((b) => b.getAttribute('aria-label') === 'Drag to reorder'),
+        .find((b) => b.getAttribute('aria-label')?.startsWith('Reorder ')),
     ).toBeUndefined()
     expect([...header.querySelectorAll('button')][0]).toBe(chevron)
   })

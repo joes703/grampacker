@@ -1,7 +1,6 @@
 import { memo, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useSortable } from '@dnd-kit/sortable'
-import type { DraggableSyntheticListeners } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import type { GearItem } from '../lib/types'
@@ -45,11 +44,6 @@ type Props = {
   onSetStatus: (id: string, status: GearStatus) => void
   // Drag plumbing — populated by SortableGearItemRow.
   dragHandle?: ReactNode
-  // Touch reorder activator. On mobile the wrapper passes the dnd-kit
-  // listeners here (instead of rendering a grip) so a press-and-hold on the
-  // single tap-target row begins a drag; desktop keeps the hover grip. Drag
-  // is disabled in select mode, so this is only set in normal mode.
-  rowDragListeners?: DraggableSyntheticListeners
   outerRef?: (el: HTMLElement | null) => void
   outerStyle?: React.CSSProperties
 }
@@ -66,7 +60,6 @@ export default function GearItemRow({
   onDelete,
   onSetStatus,
   dragHandle,
-  rowDragListeners,
   outerRef,
   outerStyle,
 }: Props) {
@@ -95,10 +88,6 @@ export default function GearItemRow({
     <div
       ref={outerRef}
       style={outerStyle}
-      // rowDragListeners is set on mobile only (see Props). No touch-action:
-      // none here — the TouchSensor press-and-hold delay separates scroll from
-      // drag, so the library can scroll the list until a hold activates a drag.
-      {...rowDragListeners}
       // px-3 mobile is intentional (not the canonical px-2 mobile ramp) — the
       // gear-inventory row has fewer columns than pack mode and reads better
       // with a uniform inset. lg:py-0 lets min-h-7 (28px) own the height on
@@ -332,23 +321,21 @@ export const SortableGearItemRow = memo(function SortableGearItemRow(
     opacity: isDragging ? 0.4 : 1,
   }
 
-  // Desktop uses a compact in-row grip. Keep it inside the flat-table
+  // Use a dedicated grip at every viewport. Keep it inside the flat-table
   // surface: those surfaces use overflow-hidden for rounded corners, so an
-  // outside-left gutter handle would be clipped. On mobile (isBelowLg) the
-  // row itself is the long-press activator (listeners go on the row via
-  // rowDragListeners) and the grip is not rendered. Select mode disables
-  // drag entirely, so neither activator is wired there.
+  // outside-left gutter handle would be clipped. On mobile, the dedicated
+  // touch target preserves normal row scrolling, while
+  // the page-level TouchSensor keeps its delayed activation contract.
   const handle =
-    props.selectMode || props.isBelowLg ? undefined : (
+    props.selectMode ? undefined : (
       <RowIconButton
         ref={asButtonRef(setActivatorNodeRef)}
         {...listeners}
         {...attributes}
-        tabIndex={-1}
         variant="dragHandle"
-        ariaLabel="Drag to reorder"
+        ariaLabel={`Reorder ${props.item.name}`}
         icon={<GripVertical size={14} />}
-        className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+        className={props.isBelowLg ? '' : 'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity'}
       />
     )
 
@@ -356,7 +343,6 @@ export const SortableGearItemRow = memo(function SortableGearItemRow(
     <GearItemRow
       {...props}
       dragHandle={handle}
-      rowDragListeners={props.isBelowLg && !props.selectMode ? listeners : undefined}
       outerRef={setNodeRef}
       outerStyle={sortableStyle}
     />
