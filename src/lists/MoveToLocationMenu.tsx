@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { MapPin, MoreVertical, PackagePlus } from 'lucide-react'
+import { MapPin, MoreVertical, PackageMinus, PackagePlus } from 'lucide-react'
 import type { PackingLocation } from '../lib/types'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import RowIconButton from '../components/RowIconButton'
@@ -16,8 +16,10 @@ type Props = {
   disabled: boolean
   containerCreationDisabled: boolean
   isContainer: boolean
+  excludedLocationIds?: ReadonlySet<string>
   onMove: (locationId: string | null) => void
-  onUseAsContainer: () => void
+  onUseAsContainer?: () => void
+  onStopUsingAsContainer?: () => void
 }
 
 export default function MoveToLocationMenu({
@@ -29,15 +31,20 @@ export default function MoveToLocationMenu({
   disabled,
   containerCreationDisabled,
   isContainer,
+  excludedLocationIds,
   onMove,
   onUseAsContainer,
+  onStopUsingAsContainer,
 }: Props) {
   const { open, openMenu, close, triggerRef, menuRef, menuPos } =
     useAnchoredMenu({ variant: 'right-flush', menuWidth: 224 })
 
   const choices = [
     ...locations
-      .filter((location) => location.containerListItemId !== itemId)
+      .filter((location) =>
+        location.containerListItemId !== itemId &&
+        !excludedLocationIds?.has(location.id),
+      )
       .map((location) => ({ id: location.id as string | null, name: location.name })),
     { id: null, name: 'Unassigned' },
   ]
@@ -63,7 +70,7 @@ export default function MoveToLocationMenu({
             disabled={disabled || containerCreationDisabled}
             onClick={() => {
               close()
-              onUseAsContainer()
+              onUseAsContainer?.()
             }}
           >
             Use as container
@@ -72,6 +79,22 @@ export default function MoveToLocationMenu({
         </>
       ) : null}
       {moveRows}
+      {onStopUsingAsContainer ? (
+        <>
+          <div className="my-1 border-t border-gray-100" />
+          <RowMenuItem
+            icon={<PackageMinus size={13} />}
+            tone="removal"
+            disabled={disabled}
+            onClick={() => {
+              close()
+              onStopUsingAsContainer()
+            }}
+          >
+            Stop using as container
+          </RowMenuItem>
+        </>
+      ) : null}
     </>
   )
 

@@ -26,6 +26,7 @@ export function planPackingItemDrop(
   items: ListItemWithGear[],
   validLocationIds: ReadonlySet<string>,
   containerItemIdByLocation: ReadonlyMap<string, string> = new Map(),
+  excludedLocationIdsByItem: ReadonlyMap<string, ReadonlySet<string>> = new Map(),
 ): PackingItemDrop | null {
   if (overId === undefined) return null
   const active = parseDnDId(activeId)
@@ -49,6 +50,10 @@ export function planPackingItemDrop(
   if (
     locationId !== null &&
     containerItemIdByLocation.get(locationId) === activeItem.id
+  ) return null
+  if (
+    locationId !== null &&
+    excludedLocationIdsByItem.get(activeItem.id)?.has(locationId)
   ) return null
   if (activeItem.packingLocationId === locationId) return null
   return { itemId: activeItem.id, locationId }

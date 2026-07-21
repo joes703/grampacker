@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { MoreVertical, Package, PackageMinus, Pencil, Trash2 } from 'lucide-react'
+import { MoreVertical, Package, Pencil, Trash2 } from 'lucide-react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import { makeDnDId } from '../lib/dnd-ids'
@@ -13,42 +13,52 @@ import {
   POPOVER_SURFACE,
 } from '../components/flat-table-styles'
 import PackingItemRow from './PackingItemRow'
+import MoveToLocationMenu from './MoveToLocationMenu'
 
 type Props = {
   location: PackingLocation | null
+  containerItem?: ListItemWithGear
   items: ListItemWithGear[]
+  itemCount?: number
   locations: PackingLocation[]
   mobile: boolean
   movePending: boolean
   containerCreationDisabled: boolean
   containerItemIds: ReadonlySet<string>
+  excludedLocationIds?: ReadonlySet<string>
   dragHandle?: ReactNode
   onRename?: (name: string) => void
   onDelete?: () => void
   onMove: (itemId: string, locationId: string | null) => void
   onUseAsContainer: (item: ListItemWithGear) => void
+  children?: ReactNode
 }
 
 export default function LocationSection({
   location,
+  containerItem,
   items,
+  itemCount,
   locations,
   mobile,
   movePending,
   containerCreationDisabled,
   containerItemIds,
+  excludedLocationIds,
   dragHandle,
   onRename,
   onDelete,
   onMove,
   onUseAsContainer,
+  children,
 }: Props) {
   const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState(location?.name ?? '')
   const { open, openMenu, close, triggerRef, menuRef, menuPos } =
     useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
-  const title = location?.name ?? 'Unassigned'
+  const title = containerItem?.gearItem.name ?? location?.name ?? 'Unassigned'
   const itemBacked = location !== null && location.containerListItemId !== null
+  const displayedItemCount = itemCount ?? items.length
 
   function commitRename() {
     const name = draft.trim()
@@ -89,9 +99,23 @@ export default function LocationSection({
           </h2>
         )}
         <span className={FLAT_TABLE_META_TEXT}>
-          {items.length} {items.length === 1 ? 'item' : 'items'}
+          {displayedItemCount} {displayedItemCount === 1 ? 'item' : 'items'}
         </span>
-        {location && onDelete && !location.id.startsWith('temp-') ? (
+        {itemBacked && containerItem && location && onDelete && !location.id.startsWith('temp-') ? (
+          <MoveToLocationMenu
+            itemId={containerItem.id}
+            itemName={containerItem.gearItem.name}
+            currentLocationId={containerItem.packingLocationId}
+            locations={locations}
+            mobile={mobile}
+            disabled={movePending}
+            containerCreationDisabled={containerCreationDisabled}
+            isContainer
+            excludedLocationIds={excludedLocationIds}
+            onMove={(locationId) => onMove(containerItem.id, locationId)}
+            onStopUsingAsContainer={onDelete}
+          />
+        ) : location && onDelete && !location.id.startsWith('temp-') ? (
           <>
             <RowIconButton
               touchSafe
@@ -108,41 +132,26 @@ export default function LocationSection({
                 className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
                 style={{ top: menuPos.top, left: menuPos.left }}
               >
-                {itemBacked ? (
-                  <RowMenuItem
-                    icon={<PackageMinus size={13} />}
-                    tone="removal"
-                    onClick={() => {
-                      close()
-                      onDelete()
-                    }}
-                  >
-                    Stop using as container
-                  </RowMenuItem>
-                ) : (
-                  <>
-                    <RowMenuItem icon={<Pencil size={13} />} onClick={() => {
-                      close()
-                      setRenaming(true)
-                    }}>
-                      Rename
-                    </RowMenuItem>
-                    <RowMenuSeparator />
-                    <RowMenuItem icon={<Trash2 size={13} />} tone="danger" onClick={() => {
-                      close()
-                      onDelete()
-                    }}>
-                      Delete location
-                    </RowMenuItem>
-                  </>
-                )}
+                <RowMenuItem icon={<Pencil size={13} />} onClick={() => {
+                  close()
+                  setRenaming(true)
+                }}>
+                  Rename
+                </RowMenuItem>
+                <RowMenuSeparator />
+                <RowMenuItem icon={<Trash2 size={13} />} tone="danger" onClick={() => {
+                  close()
+                  onDelete()
+                }}>
+                  Delete location
+                </RowMenuItem>
               </div>,
               document.body,
             )}
           </>
         ) : null}
       </div>
-      {items.length === 0 ? (
+      {items.length === 0 && !children ? (
         <p className="px-3 py-3 text-sm text-gray-500">
           {location ? 'No items in this location.' : 'Everything has a location.'}
         </p>
@@ -164,6 +173,7 @@ export default function LocationSection({
               onUseAsContainer={() => onUseAsContainer(item)}
             />
           ))}
+          {children}
         </SortableContext>
       )}
     </section>

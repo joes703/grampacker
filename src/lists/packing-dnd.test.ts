@@ -100,6 +100,17 @@ describe('planPackingItemDrop', () => {
       containerItemIdByLocation,
     )).toBeNull()
   })
+
+  it('rejects dropping a container into one of its descendants', () => {
+    expect(planPackingItemDrop(
+      makeDnDId('packing-item', source.id),
+      makeDnDId('packing-location', 'loc-child'),
+      items,
+      new Set([...validLocationIds, 'loc-child']),
+      containerItemIdByLocation,
+      new Map([['source', new Set(['loc-b', 'loc-child'])]]),
+    )).toBeNull()
+  })
 })
 
 describe('isPackingCollisionTarget', () => {

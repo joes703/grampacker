@@ -1,5 +1,5 @@
 import { memo, useState, type ReactNode } from 'react'
-import { Check, ChevronDown, ChevronRight, Plus } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Package, Plus } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import type { ListItemPatch } from '../lib/queries'
@@ -23,6 +23,8 @@ import ItemRow, { type ItemRowProps } from './ItemRow'
 import AddItemRow from './AddItemRow'
 import { type AddItemData } from './use-quick-add-form'
 import TotalWeightValue from '../components/TotalWeightValue'
+import PackModeCheckbox from './PackModeCheckbox'
+import { ConsumableIcon, WornIcon } from './list-item-flags'
 
 // Single source of truth for a category section. Used by both the
 // authenticated list detail view and the public share view.
@@ -71,6 +73,13 @@ export type RenderRows = (
 export type GroupProps = {
   name: string
   items: ListItemWithGear[]
+  /** The gear item represented by an item-backed packing location. In pack
+   *  mode it becomes the section header checklist row instead of also
+   *  rendering as an ordinary item in its parent location. */
+  containerItem?: ListItemWithGear | null
+  /** Nested item-backed location sections. Kept as injected content so this
+   *  public-share component does not import authenticated tree machinery. */
+  children?: ReactNode
   weightUnit: WeightUnit
   // Page-level breakpoint: <1024 px (Tailwind `lg:` boundary). Drilled down
   // to ItemRow so a long list registers one matchMedia subscription instead
@@ -182,6 +191,8 @@ export type GroupProps = {
 function CategoryGroup({
   name,
   items,
+  containerItem,
+  children,
   weightUnit,
   isBelowLg = false,
   packMode = false,
@@ -237,10 +248,11 @@ function CategoryGroup({
   // Only displayed in pack-mode header. Gating the read on packMode means
   // the share view (which never enters pack mode) doesn't pull is_packed
   // off each item; that field is excluded from the public read path.
-  const packedCount = packMode ? sectionItems.filter((i) => i.isPacked).length : 0
+  const progressItems = containerItem ? [containerItem, ...sectionItems] : sectionItems
+  const packedCount = packMode ? progressItems.filter((i) => i.isPacked).length : 0
   const showKebabSlot = !packMode && Boolean(onDelete)
   // "Complete" = pack mode, has section items, every section item packed.
-  const complete = packMode && sectionItems.length > 0 && packedCount === sectionItems.length
+  const complete = packMode && progressItems.length > 0 && packedCount === progressItems.length
   // When the unpacked-only filter is on, hide packed items from the
   // rendered rows. Applied AFTER the section split so packed-but-worn
   // items don't sneak through.
@@ -316,11 +328,51 @@ function CategoryGroup({
                 <ChevronDown size={14} />
               )}
             </button>
-            {/* Static label area - explicitly NOT a button, no hover state.
-                Chevron is the obvious affordance; the name remains
-                read-only here (rename happens via the modal, not by tapping
-                the header). */}
-            <span className={`truncate ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
+            {packMode && containerItem ? (
+              <>
+                {readyChecksEnabled && (
+                  <>
+                    <PackModeCheckbox
+                      variant="ready"
+                      checked={containerItem.isReady}
+                      onChange={(checked) => onUpdate?.(containerItem.id, { isReady: checked })}
+                      ariaLabel={`Mark ${containerItem.gearItem.name} ready`}
+                      title="Ready"
+                      standaloneLabel
+                    />
+                    <span
+                      aria-hidden="true"
+                      className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
+                    />
+                  </>
+                )}
+                <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5">
+                  <PackModeCheckbox
+                    variant="packed"
+                    checked={containerItem.isPacked}
+                    onChange={(checked) => onUpdate?.(containerItem.id, { isPacked: checked })}
+                  />
+                  <span
+                    aria-hidden="true"
+                    className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
+                  />
+                  <Package size={14} className="shrink-0 text-blue-600 print:hidden" />
+                  <span className={`truncate ${
+                    containerItem.isPacked
+                      ? `${FLAT_TABLE_HEADER_TITLE_MUTED} line-through print:text-gray-900 print:no-underline`
+                      : FLAT_TABLE_HEADER_TITLE
+                  }`}>
+                    {containerItem.gearItem.name}
+                  </span>
+                </label>
+              </>
+            ) : (
+              /* Static label area - explicitly NOT a button, no hover state.
+                 Chevron is the obvious affordance; the name remains
+                 read-only here (rename happens via the modal, not by tapping
+                 the header). */
+              <span className={`truncate ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
+            )}
             {packMode && (
               /* Pack progress only. Edit mode shows no count: the rows are
                  right there to be counted, and the number added noise to
@@ -328,7 +380,7 @@ function CategoryGroup({
                  count is meaningless on a paper checklist where every box
                  prints empty. */
               <span className={`shrink-0 print:hidden ${FLAT_TABLE_HEADER_COUNT}`}>
-                {packedCount} / {sectionItems.length}
+                {packedCount} / {progressItems.length}
               </span>
             )}
             {complete && (
@@ -365,6 +417,18 @@ function CategoryGroup({
               </div>
             </div>
           </>
+        ) : containerItem ? (
+          <>
+            <span className="shrink-0 w-6 lg:w-7 inline-flex items-center justify-center">
+              {containerItem.isWorn && <WornIcon />}
+            </span>
+            <span className="shrink-0 w-6 lg:w-7 inline-flex items-center justify-center">
+              {containerItem.isConsumable && <ConsumableIcon />}
+            </span>
+            <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
+              {containerItem.quantity}
+            </span>
+          </>
         ) : (
           <>
             <div className="shrink-0 w-6 lg:w-7" />
@@ -388,6 +452,7 @@ function CategoryGroup({
           {renderRows
             ? renderRows(visibleItems, rowPropsFor)
             : visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}
+          {children}
 
           {/* Draft row when adding — full editable item row */}
           {!packMode && onAddItem && adding && (

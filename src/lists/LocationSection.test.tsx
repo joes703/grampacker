@@ -3,13 +3,48 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { PackingLocation } from '../lib/types'
+import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import LocationSection from './LocationSection'
 
-function renderSection(location: PackingLocation, onDelete = vi.fn()) {
+function containerItem(id: string, name: string): ListItemWithGear {
+  return {
+    id,
+    listId: 'list-1',
+    gearItemId: `gear-${id}`,
+    quantity: 1,
+    isWorn: false,
+    isConsumable: false,
+    isPacked: false,
+    isReady: false,
+    packingLocationId: null,
+    sortOrder: 0,
+    createdAt: '2026-01-01',
+    updatedAt: '2026-01-01',
+    gearItem: {
+      id: `gear-${id}`,
+      name,
+      description: null,
+      weightGrams: 100,
+      categoryId: null,
+      cost: null,
+      purchaseDate: null,
+      status: 'active',
+      sortOrder: 0,
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+    },
+  }
+}
+
+function renderSection(
+  location: PackingLocation,
+  onDelete = vi.fn(),
+  backingItem?: ListItemWithGear,
+) {
   render(
     <LocationSection
       location={location}
+      containerItem={backingItem}
       items={[]}
       locations={[location]}
       mobile={false}
@@ -33,10 +68,11 @@ describe('LocationSection item-backed actions', () => {
       name: 'Bear canister',
       sortOrder: 0,
       containerListItemId: 'item-canister',
-    })
+    }, vi.fn(), containerItem('item-canister', 'Bear canister'))
 
     expect(screen.getByLabelText('Item-backed container')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Bear canister options' }))
+    expect(screen.getAllByText('Bear canister')).toHaveLength(1)
+    await user.click(screen.getByRole('button', { name: 'Open Bear canister packing options' }))
     expect(screen.queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Stop using as container' }))
     expect(onDelete).toHaveBeenCalledTimes(1)

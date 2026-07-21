@@ -277,6 +277,29 @@ describe('CategoryGroup footer subtotal', () => {
     expect(screen.getByText('1 / 2')).toBeInTheDocument()
   })
 
+  it('renders an item-backed location as the checklist header, not a duplicate row', () => {
+    const containerItem = itemNamed('pack', 'Backpack')
+    const onUpdate = vi.fn()
+    render(
+      <CategoryGroup
+        name="Backpack"
+        regionKey="loc-pack"
+        containerItem={containerItem}
+        items={[itemNamed('bag', 'Sleeping bag')]}
+        weightUnit="g"
+        packMode
+        readyChecksEnabled
+        onUpdate={onUpdate}
+      />,
+    )
+
+    expect(screen.getAllByText('Backpack')).toHaveLength(1)
+    expect(screen.getByRole('checkbox', { name: 'Mark Backpack ready' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Backpack' }))
+    expect(onUpdate).toHaveBeenCalledWith('pack', { isPacked: true })
+    expect(screen.getByText('0 / 2')).toBeInTheDocument()
+  })
+
   it('renders no subtotal in pack mode, not even an unlabelled one', () => {
     // The footer is !packMode-gated. Pack mode deliberately keeps counts on
     // full section membership; a packed/unpacked-dependent weight would be a
