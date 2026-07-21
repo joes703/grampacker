@@ -610,7 +610,6 @@ function ListRow({
           else openMenu()
         }}
         aria-label="List options"
-        aria-haspopup="menu"
         aria-expanded={menuOpen}
         className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:bg-gray-100 hover:text-gray-600`}
       >
@@ -620,7 +619,8 @@ function ListRow({
       {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
           ref={menuRef}
-          role="menu"
+          role="group"
+          aria-label={`${list.name} actions`}
           className={`fixed z-50 w-44 py-1 ${POPOVER_SURFACE}`}
           style={{ top: menuPos.top, left: menuPos.left }}
         >

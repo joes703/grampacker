@@ -25,8 +25,7 @@ export default function GearStatusMenuItems({ current, onSelect }: Props) {
           <button
             key={opt.status}
             type="button"
-            role="menuitemradio"
-            aria-checked={isCurrent}
+            aria-pressed={isCurrent}
             onClick={() => {
               if (!isCurrent) onSelect(opt.status)
             }}

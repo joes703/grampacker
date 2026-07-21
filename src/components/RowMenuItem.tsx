@@ -21,14 +21,6 @@ type RowMenuItemProps = {
   onClick: () => void
   tone?: RowMenuTone
   disabled?: boolean
-  /** Set false when the surrounding container is NOT an ARIA menu
-   *  (e.g. a settings/options panel that mixes buttons and inputs).
-   *  Default true keeps the kebab popovers' menu semantics intact;
-   *  setting false drops the role="menuitem" attribute so the button
-   *  reads as a plain button to assistive tech. This avoids invalid
-   *  ARIA when the container can hold non-menuitem children (a text
-   *  input for inline rename, etc.). */
-  inMenu?: boolean
 }
 
 export function RowMenuItem({
@@ -37,12 +29,10 @@ export function RowMenuItem({
   onClick,
   tone = 'neutral',
   disabled = false,
-  inMenu = true,
 }: RowMenuItemProps) {
   return (
     <button
       type="button"
-      role={inMenu ? 'menuitem' : undefined}
       onClick={onClick}
       disabled={disabled}
       className={`${ROW_MENU_ITEM_BASE} ${ROW_MENU_TONE_CLASS[tone]} disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent`}

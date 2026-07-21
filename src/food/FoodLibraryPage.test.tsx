@@ -221,7 +221,7 @@ describe('FoodLibraryPage CSV import/export', () => {
     // (jsdom doesn't apply the lg:hidden split); only the desktop popover
     // trigger carries the title attribute.
     fireEvent.click(screen.getByTitle('Food options'))
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Export to CSV' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Export to CSV' }))
     // Sorted rows are a VIEW concern; the export writes library order.
     expect(h.downloadCsv).toHaveBeenCalledWith('food-library.csv', foodItemsToCsv(items))
   })

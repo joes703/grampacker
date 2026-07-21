@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup, screen, fireEvent } from '@testing-library/react'
+import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
 import GearItemRow, { SortableGearItemRow } from './GearItemRow'
 import type { GearItem } from '../lib/types'
 
@@ -44,6 +44,20 @@ function baseProps() {
 }
 
 describe('GearItemRow callback contracts', () => {
+  it('focuses ordinary popover buttons on open and returns focus on Escape', async () => {
+    render(<GearItemRow item={gear()} {...baseProps()} />)
+    const trigger = screen.getByRole('button', { name: 'Item options' })
+
+    fireEvent.click(trigger)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toHaveFocus())
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.queryByRole('menuitem')).toBeNull()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(trigger).toHaveFocus()
+  })
+
   it('kebab Edit calls onEdit with the item', () => {
     const item = gear()
     const props = baseProps()
@@ -74,7 +88,7 @@ describe('GearItemRow callback contracts', () => {
     render(<GearItemRow item={item} {...props} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Item options' }))
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Loaned out' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Loaned out' }))
 
     expect(props.onSetStatus).toHaveBeenCalledTimes(1)
     expect(props.onSetStatus).toHaveBeenCalledWith('gear-9', 'loaned_out')

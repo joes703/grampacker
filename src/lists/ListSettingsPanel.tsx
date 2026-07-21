@@ -127,10 +127,8 @@ export default function ListSettingsPanel({ list }: Props) {
           the divider and action rows go edge-to-edge while RowMenuItem's
           own px-3 keeps the visible content inset where the toggles
           above sit.
-          No role="menu" here: when renaming, the Rename row swaps for
-          a text input, which is not a valid ARIA menu child. This
-          surface is a settings panel, not a keyboard-navigable menu,
-          so each action is a plain button (inMenu={false}). The card
+          This surface is a settings panel rather than an ARIA menu, so each
+          action is a plain button. The card
           kebabs in ListsPage keep menu semantics where they belong. */}
       <div className="-mx-3 border-t border-gray-100 pt-1">
         <div className="space-y-0.5">
@@ -155,7 +153,6 @@ export default function ListSettingsPanel({ list }: Props) {
             <RowMenuItem
               icon={<Pencil size={13} />}
               onClick={startRename}
-              inMenu={false}
             >
               Rename
             </RowMenuItem>
@@ -163,7 +160,6 @@ export default function ListSettingsPanel({ list }: Props) {
           <RowMenuItem
             icon={<Copy size={13} />}
             onClick={() => duplicateMut.mutate(list)}
-            inMenu={false}
           >
             Duplicate
           </RowMenuItem>
@@ -171,7 +167,6 @@ export default function ListSettingsPanel({ list }: Props) {
             icon={<Download size={13} />}
             onClick={() => void exportCsv(list)}
             disabled={exporting}
-            inMenu={false}
           >
             {exporting ? 'Exporting…' : 'Export CSV'}
           </RowMenuItem>
@@ -179,7 +174,6 @@ export default function ListSettingsPanel({ list }: Props) {
             icon={<Trash2 size={13} />}
             tone="danger"
             onClick={() => setConfirmingDelete(true)}
-            inMenu={false}
           >
             Delete list
           </RowMenuItem>

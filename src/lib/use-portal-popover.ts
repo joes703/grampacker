@@ -11,8 +11,9 @@ import { useEffect, useRef, type RefObject } from 'react'
 //      inside any nested container bubbles through.
 //   3. resize closes (the popover position is computed from a getBoundingClientRect
 //      snapshot at open time and would otherwise drift).
-//   4. Escape closes — common a11y expectation; none of the call sites had
-//      a competing Escape handler.
+//   4. Escape closes and returns focus to the trigger.
+//   5. Opening focuses the first enabled control so keyboard users enter the
+//      surface predictably without claiming a full ARIA menu pattern.
 //
 // Listeners attach when isOpen flips true and detach when it flips false or
 // the component unmounts. No-op when isOpen is false.
@@ -52,6 +53,11 @@ export function usePortalPopover(opts: {
 
   useEffect(() => {
     if (!isOpen) return
+
+    const firstControl = contentRef.current?.querySelector<HTMLElement>(
+      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )
+    firstControl?.focus()
 
     function handleMouseDown(e: MouseEvent) {
       const target = e.target as Node | null

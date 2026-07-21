@@ -36,7 +36,6 @@ export default function MoveToLocationMenu({
       key={choice.id ?? '__unassigned__'}
       icon={<MapPin size={13} />}
       disabled={disabled || choice.id === currentLocationId}
-      inMenu={!mobile}
       onClick={() => {
         close()
         onMove(choice.id)
@@ -63,7 +62,8 @@ export default function MoveToLocationMenu({
       ) : !mobile && open && menuPos && 'left' in menuPos ? createPortal(
         <div
           ref={menuRef}
-          role="menu"
+          role="group"
+          aria-label={`Move ${itemName}`}
           className={`fixed z-50 w-56 py-1 ${POPOVER_SURFACE}`}
           style={{ top: menuPos.top, left: menuPos.left }}
         >
