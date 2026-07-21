@@ -219,6 +219,15 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+describe('GearLibraryPage route identity', () => {
+  it('renders one Gear route heading', async () => {
+    renderPage()
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Gear' })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  })
+})
+
 describe('GearLibraryPage bulk success handling', () => {
   it('shows a first-run empty state when there are no categories or gear items', async () => {
     h.reorderableItems.mockReturnValue([])

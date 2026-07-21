@@ -31,6 +31,12 @@ const list: List = {
 }
 
 describe('CurrentListHeader', () => {
+  it('renders the list name as the document heading', () => {
+    render(<CurrentListHeader list={list} />)
+
+    expect(screen.getAllByRole('heading', { level: 1, name: 'Test List' })).toHaveLength(1)
+  })
+
   it('groups draft status with the title rather than the rename action', () => {
     render(<CurrentListHeader list={list} />)
 

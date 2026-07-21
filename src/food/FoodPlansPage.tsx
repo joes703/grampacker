@@ -46,9 +46,12 @@ export default function FoodPlansPage() {
       <FoodTabs />
 
       <div className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-3">
-        <p className="shrink-0 text-sm text-gray-500">
-          {plans.length} {plans.length === 1 ? 'plan' : 'plans'}
-        </p>
+        <div className="flex items-baseline gap-2">
+          <h1 className="text-xl font-semibold text-gray-900">Plans</h1>
+          <span className="text-sm text-gray-500">
+            {plans.length} {plans.length === 1 ? 'plan' : 'plans'}
+          </span>
+        </div>
 
         {/* Desktop-only (>=lg): the mobile bottom bar owns Add below lg, so the
             header button would duplicate it. lg (not md) hands off at exactly

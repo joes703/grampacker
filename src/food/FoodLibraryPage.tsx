@@ -193,7 +193,10 @@ export default function FoodLibraryPage() {
       />
 
       <div className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-3">
-        <p className="shrink-0 text-sm text-gray-500">{allItems.length} foods</p>
+        <div className="flex w-full items-baseline gap-2">
+          <h1 className="text-xl font-semibold text-gray-900">Foods</h1>
+          <span className="text-sm text-gray-500">{allItems.length} foods</span>
+        </div>
 
         <div className="relative min-w-0 flex-1 md:w-64 md:flex-none">
           <Search

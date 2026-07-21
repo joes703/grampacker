@@ -41,7 +41,7 @@ import LocationSection from './LocationSection'
 import { usePackingLocationActions } from './use-packing-location-actions'
 import { buildOrganizeGroups } from './organize-groups'
 import { isPackingCollisionTarget, planPackingItemDrop } from './packing-dnd'
-import ListModeToggles from './ListModeToggles'
+import ListDocumentToolbar from './ListDocumentToolbar'
 
 const packingCollisionDetection: CollisionDetection = (args) => closestCenter({
   ...args,
@@ -187,19 +187,12 @@ export default function OrganizePackPanel({
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4 pb-20 lg:pb-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Organize pack</p>
-          <h1 className="text-xl font-semibold text-gray-900">{list.name}</h1>
-        </div>
-        <div className="self-start sm:self-auto">
-          <ListModeToggles
-            mode="organize"
-            onTogglePackMode={onTogglePackMode}
-            onToggleOrganizeMode={onToggleOrganizeMode}
-          />
-        </div>
-      </div>
+      <ListDocumentToolbar
+        list={list}
+        mode="organize"
+        onTogglePackMode={onTogglePackMode}
+        onToggleOrganizeMode={onToggleOrganizeMode}
+      />
 
       <form onSubmit={submitLocation} noValidate className="flex gap-2">
         <label className="sr-only" htmlFor="new-packing-location">New packing location</label>

@@ -89,6 +89,14 @@ function renderPage() {
 }
 
 describe('FoodPlansPage', () => {
+  it('renders one Plans route heading', async () => {
+    h.fetchFoodPlans.mockResolvedValue([summary()])
+    renderPage()
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Plans' })).toBeTruthy()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  })
+
   it('renders the empty state when there are no plans', async () => {
     h.fetchFoodPlans.mockResolvedValue([])
     renderPage()

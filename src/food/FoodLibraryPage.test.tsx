@@ -120,6 +120,14 @@ function rowNames(): string[] {
 }
 
 describe('FoodLibraryPage', () => {
+  it('renders one Foods route heading', async () => {
+    h.fetchFoodItems.mockResolvedValue([food()])
+    renderPage()
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Foods' })).toBeTruthy()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  })
+
   it('renders the empty state when there are no foods', async () => {
     h.fetchFoodItems.mockResolvedValue([])
     renderPage()

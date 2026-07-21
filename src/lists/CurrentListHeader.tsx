@@ -10,8 +10,7 @@ type Props = {
 }
 
 // Current-list title + inline-rename header. Used by:
-//   - NavBar's mobile route heading (md:hidden) for the top-bar list name.
-//   - ListDetailPage's desktop list toolbar in the page body.
+//   - ListDetailPage's list toolbar at every viewport.
 //
 // List switching does NOT happen here — that's owned by the Lists page and
 // the Lists nav destination. This header only identifies the current list

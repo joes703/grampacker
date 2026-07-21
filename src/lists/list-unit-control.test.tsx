@@ -31,50 +31,22 @@ const list: List = {
 // public share page. These pin the placement, because the placement is where
 // this repo keeps getting burned.
 //
-// docs/ui-density.md: the mode controls move to the md+ document toolbar,
-// while the unit control does not move there until lg. Their mobile wrappers
-// deliberately use different breakpoints so neither control double-renders.
+// Route identity, mode controls, and units share one document toolbar at every
+// viewport so switching modes changes tools without replacing the heading.
 describe('list unit control placement', () => {
-  it('gates the toolbar unit control on lg, not md', () => {
+  it('keeps a single unit control in the viewport-independent toolbar', () => {
     render(<ListDocumentToolbar list={list} mode="edit" onTogglePackMode={vi.fn()} onToggleOrganizeMode={vi.fn()} />)
 
-    const group = screen.getByRole('radiogroup', { name: 'Weight units' })
-    // Walk up to the responsive wrapper and assert the breakpoint literally.
-    const wrapper = group.closest('div.hidden')
-    expect(wrapper).not.toBeNull()
-    const cls = wrapper!.className
-    expect(cls).toContain('lg:block')
-    // If this ever reads md:, the control double-renders at 768-1023px
-    // alongside the lg:hidden mobile placement in ListDetailPage.
-    expect(cls).not.toContain('md:')
-  })
+    expect(screen.getAllByRole('radiogroup', { name: 'Weight units' })).toHaveLength(1)
 
-  it('gates the list-detail mobile unit control on lg:hidden', () => {
-    // The desktop assertion above is only half the contract: a breakpoint pair
-    // is only safe if BOTH sides agree. Rendering ListDetailPage here would
-    // need a QueryClient, a router and a pile of mocks for what is a one-token
-    // question, so this reads the source instead - the same '?raw' pattern the
-    // repo already uses for tests that must inspect repo files (test files get
-    // no node types, so there is no fs module available).
     const sources = import.meta.glob('./ListDetailPage.tsx', {
       query: '?raw',
       import: 'default',
       eager: true,
     }) as Record<string, string>
     const src = Object.values(sources)[0]!
-
-    // The mobile placement's wrapper must be lg:hidden, pairing with the
-    // toolbar's hidden lg:block. If either side drifts to md:, the control
-    // double-renders across 768-1023px.
-    const mobileRow = src
-      .split('\n')
-      .find((line) => line.includes('lg:hidden') && line.includes('flex-wrap items-center gap-2'))
-    expect(mobileRow, 'mobile unit/pack row wrapper not found').toBeDefined()
-    expect(mobileRow).not.toContain('md:hidden')
-    // And the control itself is inside that row, not gated separately.
-    expect(src).toContain('idPrefix="list-mobile"')
-    expect(src).toContain('className="md:hidden"')
-    expect(src).toContain('<ListModeToggles')
+    expect(src).not.toContain('idPrefix="list-mobile"')
+    expect(src.match(/<ListDocumentToolbar/g)).toHaveLength(1)
   })
 
   it('keeps the unit control available in pack mode', () => {
@@ -117,5 +89,17 @@ describe('list unit control placement', () => {
     )
     expect(screen.getByRole('button', { name: 'Pack mode' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: 'Organize mode' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('uses the same document header in Organize instead of replacing identity', () => {
+    const sources = import.meta.glob('./OrganizePackPanel.tsx', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    }) as Record<string, string>
+    const src = Object.values(sources)[0]!
+
+    expect(src).toContain('<ListDocumentToolbar')
+    expect(src).not.toContain('<h1')
   })
 })
