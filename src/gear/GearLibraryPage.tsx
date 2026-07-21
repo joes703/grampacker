@@ -443,8 +443,10 @@ export default function GearLibraryPage() {
               min-w-0) so it isn't squeezed; locks to a comfortable
               fixed width at md+ so the right-side cluster has room. */}
           <div className="relative flex-1 min-w-0 md:flex-none md:w-56">
+            <label className="sr-only" htmlFor="gear-library-search">Search gear</label>
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
             <input
+              id="gear-library-search"
               type="search"
               placeholder="Search…"
               value={search}

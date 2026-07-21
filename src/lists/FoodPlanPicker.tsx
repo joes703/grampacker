@@ -62,8 +62,10 @@ export default function FoodPlanPicker({
     <div className="flex h-full flex-col">
       <div className="p-3 border-b border-gray-200">
         <div className="relative">
+          <label className="sr-only" htmlFor="list-food-plan-search">Search food plans</label>
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
           <input
+            id="list-food-plan-search"
             type="search"
             placeholder="Search food plans…"
             value={search}

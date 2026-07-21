@@ -242,11 +242,13 @@ export function AddEntryDialog({
           </h2>
 
           <div className="relative mt-4">
+            <label className="sr-only" htmlFor="entry-food-search">Search foods to add</label>
             <Search
               size={14}
               className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500"
             />
             <input
+              id="entry-food-search"
               type="search"
               placeholder="Search your food library"
               value={search}

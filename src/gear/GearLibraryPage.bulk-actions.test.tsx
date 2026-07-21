@@ -225,6 +225,7 @@ describe('GearLibraryPage route identity', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Gear' })).toBeInTheDocument()
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('searchbox', { name: 'Search gear' })).toBeInTheDocument()
   })
 })
 

@@ -199,11 +199,13 @@ export default function FoodLibraryPage() {
         </div>
 
         <div className="relative min-w-0 flex-1 md:w-64 md:flex-none">
+          <label className="sr-only" htmlFor="food-library-search">Search foods</label>
           <Search
             size={14}
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500"
           />
           <input
+            id="food-library-search"
             type="search"
             placeholder="Search foods by name or brand"
             value={search}

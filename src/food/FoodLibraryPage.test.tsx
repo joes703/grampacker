@@ -126,6 +126,7 @@ describe('FoodLibraryPage', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Foods' })).toBeTruthy()
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('searchbox', { name: 'Search foods' })).toBeTruthy()
   })
 
   it('renders the empty state when there are no foods', async () => {
