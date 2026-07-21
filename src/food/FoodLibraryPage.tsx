@@ -16,7 +16,7 @@ import type { CreateFoodItemRequest } from '../../shared/food'
 import type { FoodItem } from '../lib/types'
 import { ApiError } from '../lib/api'
 import { useWeightUnit } from '../lib/use-weight-unit'
-import { useIsMobile } from '../lib/use-breakpoint'
+import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useDocumentTitle } from '../lib/use-document-title'
 import PrimaryButton from '../components/PrimaryButton'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -27,6 +27,7 @@ import MobileFoodActionBar from './MobileFoodActionBar'
 import FoodOptionsButton from './FoodOptionsButton'
 import FoodImportPreviewDialog from './FoodImportPreviewDialog'
 import { useFoodItemActions } from './use-food-item-actions'
+import { NUMERIC_VALUE_TEXT, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import {
   calorieDensity,
   carbProteinRatio,
@@ -66,7 +67,7 @@ function compareNullable(
 export default function FoodLibraryPage() {
   useDocumentTitle('Food')
   const { weightUnit } = useWeightUnit()
-  const isMobile = useIsMobile()
+  const isBelowLg = useIsBelowLg()
 
   const {
     data: allItems = [],
@@ -193,14 +194,19 @@ export default function FoodLibraryPage() {
       />
 
       <div className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-3">
-        <p className="shrink-0 text-sm text-gray-500">{allItems.length} foods</p>
+        <div className="flex w-full items-baseline gap-2">
+          <h1 className="text-xl font-semibold text-gray-900">Foods</h1>
+          <span className="text-sm text-gray-500">{allItems.length} foods</span>
+        </div>
 
         <div className="relative min-w-0 flex-1 md:w-64 md:flex-none">
+          <label className="sr-only" htmlFor="food-library-search">Search foods</label>
           <Search
             size={14}
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500"
           />
           <input
+            id="food-library-search"
             type="search"
             placeholder="Search foods by name or brand"
             value={search}
@@ -252,7 +258,7 @@ export default function FoodLibraryPage() {
         />
       ) : sorted.length === 0 ? (
         <p className="text-sm text-gray-500">No foods match &ldquo;{search}&rdquo;.</p>
-      ) : isMobile ? (
+      ) : isBelowLg ? (
         <FoodCardList
           rows={sorted}
           unit={weightUnit}
@@ -513,21 +519,21 @@ function FoodTable({
                   unit,
                 })}
               </td>
-              <td className="px-3 py-2 text-right tabular-nums text-gray-700">
+              <td className={`px-3 py-2 text-right text-gray-700 ${NUMERIC_VALUE_TEXT}`}>
                 {food.caloriesPerServing} kcal
               </td>
-              <td className="px-3 py-2 text-right tabular-nums text-gray-700">
+              <td className={`px-3 py-2 text-right text-gray-700 ${NUMERIC_VALUE_TEXT}`}>
                 {formatCalorieDensity(calorieDensity(food), unit)}
               </td>
               {showMacros && (
                 <>
-                  <td className="px-3 py-2 text-right tabular-nums text-gray-600">{formatGrams(food.proteinGrams)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-gray-600">{formatGrams(food.carbsGrams)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-gray-600">{formatGrams(food.fatGrams)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-gray-600">{formatGrams(food.fiberGrams)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-gray-600">{formatMilligrams(food.sodiumMg)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-gray-600">{formatMilligrams(food.potassiumMg)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-gray-600">{formatRatio(carbProteinRatio(food))}</td>
+                  <td className={`px-3 py-2 text-right text-gray-600 ${NUMERIC_VALUE_TEXT}`}>{formatGrams(food.proteinGrams)}</td>
+                  <td className={`px-3 py-2 text-right text-gray-600 ${NUMERIC_VALUE_TEXT}`}>{formatGrams(food.carbsGrams)}</td>
+                  <td className={`px-3 py-2 text-right text-gray-600 ${NUMERIC_VALUE_TEXT}`}>{formatGrams(food.fatGrams)}</td>
+                  <td className={`px-3 py-2 text-right text-gray-600 ${NUMERIC_VALUE_TEXT}`}>{formatGrams(food.fiberGrams)}</td>
+                  <td className={`px-3 py-2 text-right text-gray-600 ${NUMERIC_VALUE_TEXT}`}>{formatMilligrams(food.sodiumMg)}</td>
+                  <td className={`px-3 py-2 text-right text-gray-600 ${NUMERIC_VALUE_TEXT}`}>{formatMilligrams(food.potassiumMg)}</td>
+                  <td className={`px-3 py-2 text-right text-gray-600 ${NUMERIC_VALUE_TEXT}`}>{formatRatio(carbProteinRatio(food))}</td>
                 </>
               )}
               <td className="px-3 py-2">
@@ -610,17 +616,17 @@ function FoodCardList({
               )}
             </button>
             <div className="flex flex-col items-end">
-              <div className="text-sm tabular-nums text-gray-700">
+              <div className={`text-sm text-gray-700 ${NUMERIC_VALUE_TEXT}`}>
                 {food.caloriesPerServing} kcal
               </div>
-              <div className="text-xs tabular-nums text-gray-500">
+              <div className={`text-xs text-gray-500 ${NUMERIC_VALUE_TEXT}`}>
                 {formatCalorieDensity(calorieDensity(food), unit)}
               </div>
               <button
                 type="button"
                 onClick={() => onDelete(food)}
                 aria-label={`Delete ${food.name}`}
-                className="mt-1 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                className={`mt-1 shrink-0 text-gray-400 hover:bg-red-50 hover:text-red-600 ${ROW_CONTROL_TARGET}`}
               >
                 <Trash2 size={15} />
               </button>

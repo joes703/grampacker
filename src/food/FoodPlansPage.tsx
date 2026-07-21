@@ -1,7 +1,8 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
-import { ChevronRight, Copy, Plus, Trash2 } from 'lucide-react'
+import { ChevronRight, Copy, MoreVertical, Plus, Trash2 } from 'lucide-react'
 import { queryKeys, fetchFoodPlans, type FoodPlanSummary } from '../lib/queries'
 import { ApiError } from '../lib/api'
 import { useDocumentTitle } from '../lib/use-document-title'
@@ -11,6 +12,10 @@ import FoodTabs from './FoodTabs'
 import CreatePlanDialog from './CreatePlanDialog'
 import MobilePlanActionBar from './MobilePlanActionBar'
 import { useFoodPlanActions } from './use-food-plan-actions'
+import RowIconButton from '../components/RowIconButton'
+import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
+import { POPOVER_SURFACE } from '../components/flat-table-styles'
+import { useAnchoredMenu } from '../lib/use-anchored-menu'
 
 type Dialog =
   | { type: 'create' }
@@ -46,9 +51,12 @@ export default function FoodPlansPage() {
       <FoodTabs />
 
       <div className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-3">
-        <p className="shrink-0 text-sm text-gray-500">
-          {plans.length} {plans.length === 1 ? 'plan' : 'plans'}
-        </p>
+        <div className="flex items-baseline gap-2">
+          <h1 className="text-xl font-semibold text-gray-900">Plans</h1>
+          <span className="text-sm text-gray-500">
+            {plans.length} {plans.length === 1 ? 'plan' : 'plans'}
+          </span>
+        </div>
 
         {/* Desktop-only (>=lg): the mobile bottom bar owns Add below lg, so the
             header button would duplicate it. lg (not md) hands off at exactly
@@ -74,49 +82,13 @@ export default function FoodPlansPage() {
       ) : (
         <ul className="flex flex-col gap-2" aria-label="Food plans">
           {plans.map((plan) => (
-            <li
+            <FoodPlanRow
               key={plan.id}
-              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-3"
-            >
-              <Link
-                to={`/food/plans/${plan.id}`}
-                className="group flex min-w-0 flex-1 items-center gap-3"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium text-gray-900 group-hover:text-blue-600">
-                    {plan.name}
-                  </div>
-                  <div className="truncate text-xs text-gray-500">
-                    {plan.dayCount} {plan.dayCount === 1 ? 'day' : 'days'} ·{' '}
-                    {plan.entryCount}{' '}
-                    {plan.entryCount === 1 ? 'item' : 'items'}
-                    {plan.usedByListName !== null &&
-                      ` · In use by ${plan.usedByListName}`}
-                  </div>
-                </div>
-                <ChevronRight
-                  size={16}
-                  className="shrink-0 text-gray-400 group-hover:text-blue-600"
-                />
-              </Link>
-              <button
-                type="button"
-                onClick={() => duplicatePlan.mutate(plan.id)}
-                disabled={duplicatePlan.isPending}
-                aria-label={`Duplicate ${plan.name}`}
-                className="shrink-0 rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40"
-              >
-                <Copy size={15} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setDialog({ type: 'delete', plan })}
-                aria-label={`Delete ${plan.name}`}
-                className="shrink-0 rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
-              >
-                <Trash2 size={15} />
-              </button>
-            </li>
+              plan={plan}
+              duplicating={duplicatePlan.isPending}
+              onDuplicate={() => duplicatePlan.mutate(plan.id)}
+              onDelete={() => setDialog({ type: 'delete', plan })}
+            />
           ))}
         </ul>
       )}
@@ -146,6 +118,87 @@ export default function FoodPlansPage() {
 
       <MobilePlanActionBar onNewPlan={() => setDialog({ type: 'create' })} />
     </div>
+  )
+}
+
+function FoodPlanRow({
+  plan,
+  duplicating,
+  onDuplicate,
+  onDelete,
+}: {
+  plan: FoodPlanSummary
+  duplicating: boolean
+  onDuplicate: () => void
+  onDelete: () => void
+}) {
+  const { open, openMenu, close, triggerRef, menuRef, menuPos } =
+    useAnchoredMenu({ variant: 'right-flush', menuWidth: 176 })
+
+  return (
+    <li className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-3">
+      <Link
+        to={`/food/plans/${plan.id}`}
+        className="group flex min-w-0 flex-1 items-center gap-3"
+      >
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium text-gray-900 group-hover:text-blue-600">
+            {plan.name}
+          </div>
+          <div className="truncate text-xs text-gray-500">
+            {plan.dayCount} {plan.dayCount === 1 ? 'day' : 'days'} ·{' '}
+            {plan.entryCount} {plan.entryCount === 1 ? 'item' : 'items'}
+            {plan.usedByListName !== null && ` · In use by ${plan.usedByListName}`}
+          </div>
+        </div>
+        <ChevronRight
+          size={16}
+          className="shrink-0 text-gray-400 group-hover:text-blue-600"
+        />
+      </Link>
+
+      <RowIconButton
+        touchSafe
+        ref={triggerRef}
+        onClick={() => open ? close() : openMenu()}
+        aria-expanded={open}
+        ariaLabel={`${plan.name} options`}
+        icon={<MoreVertical size={15} />}
+      />
+
+      {open && menuPos && 'left' in menuPos && createPortal(
+        <div
+          ref={menuRef}
+          role="group"
+          aria-label={`${plan.name} actions`}
+          className={`fixed z-50 w-44 py-1 ${POPOVER_SURFACE}`}
+          style={{ top: menuPos.top, left: menuPos.left }}
+        >
+          <RowMenuItem
+            icon={<Copy size={13} />}
+            disabled={duplicating}
+            onClick={() => {
+              close()
+              onDuplicate()
+            }}
+          >
+            Duplicate plan
+          </RowMenuItem>
+          <RowMenuSeparator />
+          <RowMenuItem
+            icon={<Trash2 size={13} />}
+            tone="danger"
+            onClick={() => {
+              close()
+              onDelete()
+            }}
+          >
+            Delete plan
+          </RowMenuItem>
+        </div>,
+        document.body,
+      )}
+    </li>
   )
 }
 

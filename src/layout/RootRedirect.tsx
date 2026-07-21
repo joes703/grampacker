@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { queryKeys, fetchLists } from '../lib/queries'
 import { readLastListPath } from '../lib/last-list-path'
 import type { List } from '../lib/types'
+import AppLoading from '../components/AppLoading'
 
 // Authenticated landing for `/`. There is no home page: pick the most-
 // recently-touched list and redirect there. Transplanted from the old
@@ -27,9 +28,9 @@ import type { List } from '../lib/types'
 // Empty/error path: zero lists (a brand-new verified account) OR a failed
 // fetch. Either way there is no list to land on, so fall through to
 // /lists, which owns the lists query and its own loading/empty/error UI.
-// Crucially we only return null while the fetch is GENUINELY in flight
-// (isLoading) - returning null on error too would leave `/` permanently
-// blank with no way forward.
+// Crucially we only hold on the loading surface while the fetch is GENUINELY
+// in flight (isLoading) - doing so on error too would strand `/` with no way
+// forward.
 //
 // Hooks-order note: the cached-path check is read at render top, but
 // useQuery is called unconditionally with `enabled: !cachedPath` so the
@@ -49,7 +50,7 @@ export default function RootRedirect() {
   // Hold the render only while the fetch is in flight. On error the query
   // settles with isLoading=false and lists=undefined, so we fall through
   // to the /lists redirect below rather than rendering a blank page.
-  if (isLoading) return null
+  if (isLoading) return <AppLoading label="Loading your lists..." />
 
   // fetchLists orders by sortOrder then name; pick the most-recently-
   // touched list by max-by-updatedAt. localeCompare on the ISO-8601

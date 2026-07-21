@@ -9,6 +9,7 @@ import { MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
 import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
+import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 
 // The validated payload the dialog hands back. It is exactly the create
 // request shape (every field present); the edit path sends it as a full
@@ -199,7 +200,7 @@ export default function FoodItemDialog({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded p-1.5 text-gray-500 hover:text-gray-600"
+            className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:text-gray-600`}
           >
             <X size={18} />
           </button>

@@ -59,10 +59,9 @@ export default function MobileListsActionBar({ onNewList, onImportCsv }: Props) 
         onClose={() => setOptionsOpen(false)}
         title="Lists options"
       >
-        <div className="space-y-1" role="menu" aria-label="Lists options">
+        <div className="space-y-1" role="group" aria-label="Lists options">
           <button
             type="button"
-            role="menuitem"
             onClick={() => {
               setOptionsOpen(false)
               onImportCsv()

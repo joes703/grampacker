@@ -27,10 +27,12 @@ import { makeDnDId } from '../lib/dnd-ids'
 // 14 matches the more recent panel surface.
 export function useListCardSortable({
   listId,
+  listName,
   disabled,
   gripIconSize = 14,
 }: {
   listId: string
+  listName: string
   disabled?: boolean
   gripIconSize?: number
 }): {
@@ -68,8 +70,7 @@ export function useListCardSortable({
       type="button"
       {...listeners}
       {...attributes}
-      tabIndex={-1}
-      aria-label="Drag to reorder list"
+      aria-label={`Reorder ${listName}`}
       className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing`}
     >
       <GripVertical size={gripIconSize} />

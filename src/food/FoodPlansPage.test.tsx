@@ -44,6 +44,7 @@ vi.mock('../lib/queries', async (importOriginal) => {
 })
 const actionMocks = vi.hoisted(() => ({
   duplicateMutate: vi.fn(),
+  removeMutate: vi.fn(),
 }))
 vi.mock('./use-food-plan-actions', () => ({
   useFoodPlanActions: () => ({
@@ -53,7 +54,7 @@ vi.mock('./use-food-plan-actions', () => ({
       isPending: false,
       error: null,
     },
-    removePlan: { mutate: vi.fn(), isPending: false, error: null },
+    removePlan: { mutate: actionMocks.removeMutate, isPending: false, error: null },
   }),
 }))
 
@@ -89,6 +90,14 @@ function renderPage() {
 }
 
 describe('FoodPlansPage', () => {
+  it('renders one Plans route heading', async () => {
+    h.fetchFoodPlans.mockResolvedValue([summary()])
+    renderPage()
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Plans' })).toBeTruthy()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  })
+
   it('renders the empty state when there are no plans', async () => {
     h.fetchFoodPlans.mockResolvedValue([])
     renderPage()
@@ -127,14 +136,34 @@ describe('FoodPlansPage', () => {
     ).toBeTruthy()
   })
 
-  it('duplicates a plan from its card', async () => {
+  it('opens a plan from the row and keeps secondary actions in a touch-safe menu', async () => {
     const plan = summary({ name: 'Weekender' })
     h.fetchFoodPlans.mockResolvedValue([plan])
     renderPage()
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Duplicate Weekender' }),
-    )
+
+    expect(await screen.findByRole('link', { name: /Weekender/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Duplicate plan' })).toBeNull()
+
+    const options = screen.getByRole('button', { name: 'Weekender options' })
+    expect(options.className).toContain('h-10 w-10 lg:h-7 lg:w-7')
+    fireEvent.click(options)
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate plan' }))
+
     expect(actionMocks.duplicateMutate).toHaveBeenCalledWith(plan.id)
+    expect(screen.queryByRole('button', { name: 'Duplicate plan' })).toBeNull()
+  })
+
+  it('preserves the destructive confirmation behind the plan menu', async () => {
+    const plan = summary({ name: 'Weekender' })
+    h.fetchFoodPlans.mockResolvedValue([plan])
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Weekender options' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete plan' }))
+
+    expect(screen.getByText(/This will delete "Weekender" and everything in it/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(actionMocks.removeMutate).toHaveBeenCalledWith(plan.id)
   })
 
   it('opens the create dialog from a New plan control', async () => {

@@ -57,6 +57,14 @@ function submit() {
 
 const button = () => screen.getByRole('button', { name: 'Delete account' })
 
+it('names food and plans in the deletion scope', () => {
+  render(<DeleteAccountSection />)
+
+  expect(
+    screen.getByText(/everything in it - gear, lists, food, plans, and passkeys/i),
+  ).toBeInTheDocument()
+})
+
 describe('DeleteAccountSection gating', () => {
   it('never asks for a password: there is none to ask for', () => {
     // The authorization gate moved to session freshness (server-side). A

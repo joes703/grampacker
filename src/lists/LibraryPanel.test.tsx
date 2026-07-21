@@ -35,6 +35,21 @@ const category: Category = {
 // through the panel - which is also the honest integration: the count only
 // ever appeared as a result of the panel grouping items by category.
 describe('gear picker group header carries no membership count', () => {
+  it('names the gear search control', () => {
+    render(
+      <LibraryPanel
+        gearItems={[item]}
+        categories={[category]}
+        listItemGearIds={new Set()}
+        weightUnit="g"
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('searchbox', { name: 'Search gear to add' })).toBeInTheDocument()
+  })
+
   it('renders the category name with no count beside it', () => {
     render(
       <LibraryPanel

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import type { ListItemWithGear } from '../lib/types'
 import ItemRow from './ItemRow'
+import SortableItemRow from './SortableItemRow'
 
 afterEach(() => {
   cleanup()
@@ -50,5 +51,14 @@ describe('ItemRow', () => {
     )
 
     expect(screen.getByRole('button', { name: 'Edit Backpack, quantity 2, 1200 g' })).toBeInTheDocument()
+  })
+})
+
+describe('SortableItemRow activator', () => {
+  it.each([false, true])('renders a named, focusable handle when isBelowLg=%s', (isBelowLg) => {
+    render(<SortableItemRow item={item} weightUnit="g" isBelowLg={isBelowLg} />)
+
+    const handle = screen.getByRole('button', { name: 'Reorder Backpack' })
+    expect(handle).toHaveAttribute('tabindex', '0')
   })
 })

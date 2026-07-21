@@ -21,7 +21,8 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
     expect(screen.getByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument()
 
-    // Passkeys (self-headed stub) and Download all data.
+    // Every card, including Passkeys, gets its heading from the shared shell.
+    expect(screen.getByRole('heading', { name: 'Passkeys', level: 2 })).toBeInTheDocument()
     expect(screen.getByText('passkey-section')).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: 'Default nutrition targets', level: 2 }),
@@ -31,6 +32,9 @@ describe('SettingsPage', () => {
       screen.getByRole('heading', { name: 'Download all data', level: 2 }),
     ).toBeInTheDocument()
     expect(screen.getByText('download-all-data')).toBeInTheDocument()
+    expect(
+      screen.getByText('A complete archive of your gear, lists, food library, plans, and settings'),
+    ).toBeInTheDocument()
 
     // Danger zone: delete account.
     expect(screen.getByRole('heading', { name: 'Delete account', level: 2 })).toBeInTheDocument()

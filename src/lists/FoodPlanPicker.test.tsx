@@ -54,6 +54,11 @@ function renderPicker(
 }
 
 describe('FoodPlanPicker', () => {
+  it('names the food-plan search control', () => {
+    renderPicker()
+    expect(screen.getByRole('searchbox', { name: 'Search food plans' })).toBeInTheDocument()
+  })
+
   // The Food side is "pick THE one plan for this trip", not gear's "add many".
   it('attaches the picked plan', () => {
     const { onAttach, onDetach } = renderPicker()
@@ -146,7 +151,7 @@ describe('FoodPlanPicker', () => {
 
   it('distinguishes "no plans" from "no matches"', () => {
     renderPicker()
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zzz' } })
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search food plans' }), { target: { value: 'zzz' } })
     expect(screen.getByText('No matching plans.')).toBeInTheDocument()
   })
 

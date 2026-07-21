@@ -34,7 +34,7 @@ export default function GearOptionsContent({
     }
   }
   return (
-    <div role="menu" aria-label="Gear options" className="space-y-1">
+    <div role="group" aria-label="Gear options" className="space-y-1">
       <OptionRow icon={<FolderPlus size={16} />} label="New category" onClick={run(onNewCategory)} />
       <OptionRow icon={<Upload size={16} />} label="Import from CSV" onClick={run(onImport)} />
       <OptionRow
@@ -76,7 +76,6 @@ function OptionRow({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      role="menuitem"
       className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
     >
       <span className="text-gray-500">{icon}</span>

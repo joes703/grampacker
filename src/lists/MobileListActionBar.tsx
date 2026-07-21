@@ -8,6 +8,7 @@ import { buildMobileDestinationItems } from '../layout/mobile-nav-destinations'
 import MobileOptionsModal from '../components/MobileOptionsModal'
 import MobileBottomBar from '../components/MobileBottomBar'
 import ListSettingsPanel from './ListSettingsPanel'
+import type { ListDetailMode } from './list-detail-mode'
 
 type MobileBottomBarItem = Parameters<typeof MobileBottomBar>[0]['items'][number]
 
@@ -17,19 +18,13 @@ type Props = {
    *  body needs a List row to wire mutations to. Add is drawer-driven
    *  and remains enabled. */
   list: List | null
-  /** Pack mode suppresses the Options slot. Pack-mode controls live
-   *  inline at the top of PackingProgress; the rest of List options
-   *  (Group worn, Sharing, lifecycle actions) is list-admin not needed
-   *  during a pack pass. The bar shrinks from 4 slots to 3 in pack mode
-   *  — same pattern as how Add stays available mid-pack even though Pack
-   *  isn't a destination slot. */
-  packMode: boolean
+  mode: ListDetailMode
 }
 
-// Mobile-only bottom action bar for List Detail. Normal list mode uses
-// the shared 4-slot shape (Gear / Lists / Add / Options). Pack mode
-// intentionally drops Options because pack-specific controls live in
-// PackingProgress, leaving Gear / Lists / Add.
+// Mobile-only bottom action bar for List Detail. Edit uses destinations plus
+// Add and Options. Pack keeps Add but drops list-admin Options. Organize uses
+// only stable destinations because adding gear and editing list settings are
+// outside that location-reorder task.
 //
 // Pack mode used to live as a fifth slot here, but pack is URL state on
 // a list (/lists/:id/pack), not a global destination — it would have
@@ -41,24 +36,24 @@ type Props = {
 // Visibility: this component is only rendered by ListDetailPage's authed
 // branch, so it's automatically scoped away from Gear, Lists, Settings,
 // Help, and the public /r/:slug share view.
-export default function MobileListActionBar({ list, packMode }: Props) {
+export default function MobileListActionBar({ list, mode }: Props) {
   useSuppressMobilePrimaryNav()
   const { pathname } = useLocation()
   const drawer = useSidebarDrawer()
   const [settingsOpen, setSettingsOpen] = useState(false)
 
-  const items: MobileBottomBarItem[] = [
-    ...buildMobileDestinationItems(pathname),
-    {
+  const items: MobileBottomBarItem[] = buildMobileDestinationItems(pathname)
+  if (mode !== 'organize') {
+    items.push({
       type: 'button',
       label: 'Add',
       icon: <Plus size={18} />,
       onClick: () => drawer.setOpen(true),
       disabled: !drawer.available,
       ariaLabel: 'Add gear to list',
-    },
-  ]
-  if (!packMode) {
+    })
+  }
+  if (mode === 'edit') {
     items.push({
       type: 'button',
       label: 'Options',
@@ -73,7 +68,7 @@ export default function MobileListActionBar({ list, packMode }: Props) {
     <>
       <MobileBottomBar label="List navigation and actions" items={items} />
 
-      {list && !packMode && (
+      {list && mode === 'edit' && (
         <MobileOptionsModal
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}

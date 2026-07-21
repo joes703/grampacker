@@ -210,7 +210,6 @@ export default function DesktopListsPanel({
             else openHeaderMenu()
           }}
           aria-label="New list or import CSV"
-          aria-haspopup="menu"
           aria-expanded={headerMenuOpen}
           className={`ml-auto ${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:bg-gray-200/60 hover:text-gray-800`}
         >
@@ -220,7 +219,8 @@ export default function DesktopListsPanel({
           createPortal(
             <div
               ref={headerMenuRef}
-              role="menu"
+              role="group"
+              aria-label="Create or import list"
               className={`fixed z-50 w-44 py-1 ${POPOVER_SURFACE}`}
               style={{ top: headerMenuPos.top, left: headerMenuPos.left }}
             >
@@ -475,6 +475,7 @@ function SortableListRow(
 ) {
   const { outerRef, outerStyle, dragHandle } = useListCardSortable({
     listId: props.list.id,
+    listName: props.list.name,
     disabled: props.renaming || props.reorderPending,
   })
   return (
@@ -580,7 +581,6 @@ function ListPanelRow({
           else openMenu()
         }}
         aria-label="List options"
-        aria-haspopup="menu"
         aria-expanded={menuOpen}
         className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:bg-gray-100 hover:text-gray-600`}
       >
@@ -591,7 +591,8 @@ function ListPanelRow({
         createPortal(
           <div
             ref={menuRef}
-            role="menu"
+            role="group"
+            aria-label={`${list.name} actions`}
             className={`fixed z-50 w-44 py-1 ${POPOVER_SURFACE}`}
             style={{ top: menuPos.top, left: menuPos.left }}
           >

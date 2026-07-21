@@ -87,8 +87,10 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
           have the per-category section collapse / item tap to navigate. */}
       <div className="p-3 border-b border-gray-200">
         <div className="relative">
+          <label className="sr-only" htmlFor="list-gear-search">Search gear to add</label>
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
           <input
+            id="list-gear-search"
             type="search"
             placeholder="Search gear…"
             value={search}

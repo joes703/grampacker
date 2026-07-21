@@ -26,7 +26,7 @@ export default function FoodOptionsContent({
     }
   }
   return (
-    <div role="menu" aria-label="Food options" className="space-y-1">
+    <div role="group" aria-label="Food options" className="space-y-1">
       <OptionRow icon={<Upload size={16} />} label="Import from CSV" onClick={run(onImport)} />
       <OptionRow
         icon={<Download size={16} />}
@@ -54,7 +54,6 @@ function OptionRow({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      role="menuitem"
       className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
     >
       <span className="text-gray-500">{icon}</span>

@@ -426,8 +426,7 @@ export default function GearLibraryPage() {
         className="hidden"
         onChange={handleImportFile}
       />
-      {/* Page header. NavBar renders "Gear" as the route heading, so the
-          in-content title is dropped. Both viewports expose only the
+      {/* Page header. Both viewports expose only the
           frequent actions (search + New item + Select + Options);
           rare/utility actions (New category, Collapse / Expand all) live
           behind the Options surface — a desktop popover
@@ -435,17 +434,19 @@ export default function GearLibraryPage() {
           The two surfaces consume the same GearOptionsContent so the
           row list stays in lockstep. */}
       <div className="mb-6 space-y-3">
+        <div className="flex items-baseline gap-2">
+          <h1 className="text-xl font-semibold text-gray-900">Gear</h1>
+          <span className="text-sm text-gray-500">{allItems.length} items</span>
+        </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
-          {/* Item count metadata — kept on every viewport now that the
-              page h1 is gone; sits to the left of search. */}
-          <p className="text-sm text-gray-500 shrink-0">{allItems.length} items</p>
-
           {/* Search — fills the remaining mobile-row width (flex-1
               min-w-0) so it isn't squeezed; locks to a comfortable
               fixed width at md+ so the right-side cluster has room. */}
           <div className="relative flex-1 min-w-0 md:flex-none md:w-56">
+            <label className="sr-only" htmlFor="gear-library-search">Search gear</label>
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
             <input
+              id="gear-library-search"
               type="search"
               placeholder="Search…"
               value={search}
@@ -576,6 +577,10 @@ export default function GearLibraryPage() {
           onImport={() => setDialog({ type: 'import-explainer' })}
           onCreateCategory={() => setDialog({ type: 'add-category' })}
         />
+      ) : search.trim() !== '' && searchFiltered.length === 0 ? (
+        <p className="text-sm text-gray-500">
+          No gear matches &ldquo;{search}&rdquo;.
+        </p>
       ) : (() => {
         const activeParsed = activeId ? parseDnDId(activeId) : null
         const activeItem =

@@ -215,9 +215,9 @@ function CategorySectionInner(
             ref={dragHandleRef}
             {...dragHandleListeners}
             {...dragHandleAttributes}
-            tabIndex={-1}
             variant="dragHandle"
-            ariaLabel="Drag to reorder"
+            touchSafe
+            ariaLabel={`Reorder ${name}`}
             icon={<GripVertical size={16} />}
           />
         )}
@@ -266,12 +266,14 @@ function CategorySectionInner(
           <div className="flex items-center gap-0.5 ml-auto">
             <RowIconButton
               variant="success"
+              touchSafe
               onClick={commitRename}
               title="Confirm rename"
               ariaLabel="Confirm rename"
               icon={<Check size={14} />}
             />
             <RowIconButton
+              touchSafe
               onClick={() => {
                 setRenameDraft(category?.name ?? '')
                 setRenaming(false)
@@ -334,6 +336,7 @@ function CategoryKebab({
   return (
     <>
       <RowIconButton
+        touchSafe
         ref={triggerRef}
         onClick={(e) => {
           e.stopPropagation()
@@ -347,7 +350,8 @@ function CategoryKebab({
       {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
           ref={menuRef}
-          role="menu"
+          role="group"
+          aria-label="Category actions"
           className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
           style={{ top: menuPos.top, left: menuPos.left }}
         >

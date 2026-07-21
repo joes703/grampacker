@@ -121,6 +121,14 @@ async function renderSettledPage() {
 }
 
 describe('ListsPage create-input placement', () => {
+  it.each([390, 1024])('renders one visible route heading at %i px', async (width) => {
+    stubViewport(width)
+    h.fetchLists.mockResolvedValue([list()])
+    await renderSettledPage()
+
+    expect(screen.getAllByRole('heading', { level: 1, name: /Lists/ })).toHaveLength(1)
+  })
+
   it('renders the create input in the phone surface, not the desktop header, on a phone (regression: phone create was impossible)', async () => {
     stubViewport(375)
     h.fetchLists.mockResolvedValue([list()])

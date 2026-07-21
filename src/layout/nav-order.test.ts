@@ -7,9 +7,7 @@ import { buildMobileDestinationItems } from './mobile-nav-destinations'
 //
 // The order exists in TWO places that cannot import each other: this shared
 // array (consumed by six mobile bars) and the hand-written <Link>s in
-// AppShell's desktop header, which differ because the desktop Lists link
-// carries a "return to last opened list" onClick the mobile array has no
-// equivalent for. Two sources, one contract - so this pins the shared half by
+// AppShell's desktop header. Two sources, one contract - so this pins the shared half by
 // behavior, and asserts the desktop half by reading AppShell's source, since
 // rendering AppShell would need a session, a router and a QueryClient for what
 // is a pure ordering question.
@@ -47,13 +45,7 @@ describe('primary navigation order', () => {
     expect(order).toEqual(['/gear', '/lists', '/food'])
   })
 
-  it('keeps the last-opened-list shortcut on the Lists link specifically', () => {
-    // Moving the Lists <Link> past Food meant moving its onClick intercept
-    // with it. An earlier version of this test just asserted
-    // readLastListPath() appeared SOMEWHERE in the file, which would still
-    // pass if the reorder had left the handler on the Food link - i.e. it
-    // proved nothing about the thing that could actually break. Scope it to
-    // the link element that owns it.
+  it('keeps Lists as the same index destination at every viewport', () => {
     const sources = import.meta.glob('./AppShell.tsx', {
       query: '?raw',
       import: 'default',
@@ -61,8 +53,6 @@ describe('primary navigation order', () => {
     }) as Record<string, string>
     const src = Object.values(sources)[0]!
 
-    // Slice each destination <Link ...> element out by its `to` target and
-    // check which one carries the handler.
     function linkElement(to: string): string {
       const start = src.indexOf(`to="${to}"`)
       expect(start, `no <Link to="${to}"> found`).toBeGreaterThan(-1)
@@ -71,9 +61,19 @@ describe('primary navigation order', () => {
       return src.slice(start, end)
     }
 
-    expect(linkElement('/lists')).toContain('readLastListPath()')
-    // ...and nowhere else in the nav, which is what the old assertion missed.
-    expect(linkElement('/food')).not.toContain('readLastListPath()')
-    expect(linkElement('/gear')).not.toContain('readLastListPath()')
+    expect(linkElement('/lists')).not.toContain('readLastListPath()')
+    expect(src).not.toContain("from '../lib/last-list-path'")
+  })
+
+  it('hands primary navigation from the bottom bar to the header at lg', () => {
+    const sources = import.meta.glob('./AppShell.tsx', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    }) as Record<string, string>
+    const src = Object.values(sources)[0]!
+
+    expect(src).toContain('className="hidden lg:flex items-center gap-4"')
+    expect(src).not.toContain('className="hidden md:flex items-center gap-4"')
   })
 })

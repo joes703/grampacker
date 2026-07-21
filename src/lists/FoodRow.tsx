@@ -79,6 +79,7 @@ export default function FoodRow({
         <ItemWeightValue grams={projection.grams} unit={weightUnit} />
 
         <RowIconButton
+          touchSafe
           ref={triggerRef}
           onClick={() => (menuOpen ? close() : openMenu())}
           disabled={busy}
@@ -90,7 +91,8 @@ export default function FoodRow({
       {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
           ref={menuRef}
-          role="menu"
+          role="group"
+          aria-label="Food actions"
           className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
           style={{ top: menuPos.top, left: menuPos.left }}
         >

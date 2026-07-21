@@ -134,14 +134,20 @@ export default function ListsPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  // Brand-new user with zero lists → friendly "create your first list" view.
-  if (!listsLoading && lists.length === 0) return <ListsEmptyState />
+  // Brand-new user with zero lists: retain the route heading above the
+  // teaching empty state so page identity does not disappear with data.
+  if (!listsLoading && lists.length === 0) {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="text-xl font-semibold text-gray-900">Lists</h1>
+        <ListsEmptyState />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Desktop page header. Mobile already has the "Lists" route title in
-          the top bar and the New action in the bottom action bar. */}
-      <div className="hidden md:flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold text-gray-900">
           Lists
           <span className="ml-2 text-sm font-normal text-gray-500">{lists.length}</span>
@@ -321,7 +327,7 @@ export default function ListsPage() {
                   type="button"
                   onClick={() => setDialog(null)}
                   aria-label="Close"
-                  className="rounded p-1 text-gray-500 hover:text-gray-600"
+                  className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:text-gray-600`}
                 >
                   <X size={16} />
                 </button>
@@ -492,6 +498,7 @@ function SortableListRow(
 ) {
   const { outerRef, outerStyle, dragHandle } = useListCardSortable({
     listId: props.list.id,
+    listName: props.list.name,
     disabled: props.renaming || props.reorderPending,
     gripIconSize: 16,
   })
@@ -603,7 +610,6 @@ function ListRow({
           else openMenu()
         }}
         aria-label="List options"
-        aria-haspopup="menu"
         aria-expanded={menuOpen}
         className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:bg-gray-100 hover:text-gray-600`}
       >
@@ -613,7 +619,8 @@ function ListRow({
       {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
           ref={menuRef}
-          role="menu"
+          role="group"
+          aria-label={`${list.name} actions`}
           className={`fixed z-50 w-44 py-1 ${POPOVER_SURFACE}`}
           style={{ top: menuPos.top, left: menuPos.left }}
         >

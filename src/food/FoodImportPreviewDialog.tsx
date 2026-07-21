@@ -4,7 +4,7 @@ import type { FoodImportRow } from '../lib/csv'
 import { FOOD_ITEM_CAP } from '../lib/caps'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
-import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import { NUMERIC_VALUE_TEXT, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 
 type Props = {
   rows: FoodImportRow[]
@@ -91,10 +91,10 @@ export default function FoodImportPreviewDialog({
                   <td className="px-3 py-1.5 font-normal text-gray-900 max-w-[180px] truncate">
                     {row.name || '--'}
                   </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
+                  <td className={`px-3 py-1.5 text-right text-gray-600 ${NUMERIC_VALUE_TEXT}`}>
                     {row.item ? row.item.servingWeightGrams : '--'}
                   </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
+                  <td className={`px-3 py-1.5 text-right text-gray-600 ${NUMERIC_VALUE_TEXT}`}>
                     {row.item ? row.item.caloriesPerServing : '--'}
                   </td>
                   <td className={`px-3 py-1.5 ${invalid ? 'text-red-700' : 'text-gray-500'}`}>

@@ -29,6 +29,7 @@ import PrimaryButton from '../components/PrimaryButton'
 import FormLabel from '../components/FormLabel'
 import ConfirmDialog from '../components/ConfirmDialog'
 import TotalWeightValue from '../components/TotalWeightValue'
+import { NUMERIC_VALUE_TEXT, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import {
   selectFoodPlanView,
   describeEntryAmount,
@@ -153,7 +154,7 @@ export default function FoodPlanEditor() {
             onClick={() => setDialog({ type: 'rename' })}
             disabled={busy}
             aria-label="Rename plan"
-            className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40"
+            className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40`}
           >
             <Pencil size={15} />
           </button>
@@ -170,7 +171,7 @@ export default function FoodPlanEditor() {
             Targets
           </button>
           <div>
-            <div className="text-lg font-semibold tabular-nums text-gray-900">
+            <div className={`text-lg font-semibold text-gray-900 ${NUMERIC_VALUE_TEXT}`}>
               <TotalWeightValue grams={view.totalGrams} unit={weightUnit} />
             </div>
             <div className="text-xs text-gray-500">food weight</div>
@@ -476,7 +477,7 @@ function MealBar({
       {meals.map((meal) => (
         <span
           key={meal.id}
-          className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white py-1 pl-3 pr-1 text-sm text-gray-700"
+          className="inline-flex min-h-10 lg:min-h-7 items-center gap-1 rounded-full border border-gray-200 bg-white pl-3 text-sm text-gray-700"
         >
           {meal.name}
           <button
@@ -484,7 +485,7 @@ function MealBar({
             onClick={() => onRemoveMeal(meal)}
             disabled={busy}
             aria-label={`Delete ${meal.name}`}
-            className="rounded-full p-0.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+            className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40`}
           >
             <X size={13} />
           </button>
@@ -494,7 +495,7 @@ function MealBar({
         type="button"
         onClick={onAddMeal}
         disabled={busy}
-        className="inline-flex items-center gap-1 rounded-full border border-dashed border-gray-300 px-3 py-1 text-sm text-gray-600 hover:border-gray-400 hover:text-gray-800 disabled:opacity-50"
+        className="inline-flex min-h-10 lg:min-h-7 items-center gap-1 rounded-full border border-dashed border-gray-300 px-3 text-sm text-gray-600 hover:border-gray-400 hover:text-gray-800 disabled:opacity-50"
       >
         <Plus size={13} />
         Add meal
@@ -555,7 +556,7 @@ function DaySection({
             <option value="full">Full</option>
             <option value="partial">Partial</option>
           </select>
-          <span className="text-sm tabular-nums text-gray-600">
+          <span className={`text-sm text-gray-600 ${NUMERIC_VALUE_TEXT}`}>
             {formatItemWeight(day.grams, unit)}
           </span>
           <button
@@ -563,7 +564,7 @@ function DaySection({
             onClick={onReview}
             aria-label={`Review Day ${day.index} nutrition`}
             title="Nutrition review: day totals and targets"
-            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-400 hover:bg-gray-100 hover:text-gray-700`}
           >
             <Gauge size={14} />
           </button>
@@ -572,7 +573,7 @@ function DaySection({
             onClick={onRemoveDay}
             disabled={busy}
             aria-label={`Delete Day ${day.index}`}
-            className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+            className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40`}
           >
             <Trash2 size={14} />
           </button>
@@ -621,7 +622,7 @@ function MealCell({
         <h3 className="text-xs font-medium uppercase tracking-wide text-gray-500">
           {cell.mealName}
         </h3>
-        <span className="text-xs tabular-nums text-gray-400">
+        <span className={`text-xs text-gray-400 ${NUMERIC_VALUE_TEXT}`}>
           {formatItemWeight(cell.grams, unit)}
         </span>
       </div>
@@ -676,7 +677,7 @@ function ExtrasSection({
             Food you&apos;re carrying that isn&apos;t tied to a meal.
           </p>
         </div>
-        <span className="text-sm tabular-nums text-gray-600">
+        <span className={`text-sm text-gray-600 ${NUMERIC_VALUE_TEXT}`}>
           {formatItemWeight(extras.grams, unit)}
         </span>
       </header>
@@ -744,7 +745,7 @@ function EntryRow({
           </span>
         )}
       </button>
-      <span className="shrink-0 text-sm tabular-nums text-gray-600">
+      <span className={`shrink-0 text-sm text-gray-600 ${NUMERIC_VALUE_TEXT}`}>
         {entry.incomplete ? '—' : formatItemWeight(entry.grams, unit)}
       </span>
       <button
@@ -752,7 +753,7 @@ function EntryRow({
         onClick={onDelete}
         disabled={busy}
         aria-label={`Remove ${name}`}
-        className="shrink-0 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+        className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40`}
       >
         <Trash2 size={14} />
       </button>

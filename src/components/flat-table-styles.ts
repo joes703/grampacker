@@ -188,7 +188,13 @@ export const FLAT_TABLE_META_TEXT = 'text-xs lg:text-[13px]'
 // don't read like measurement data.
 export const FLAT_TABLE_QUANTITY_TEXT = 'text-xs lg:text-[13px] tabular-nums'
 
-// Numeric value cells on rows (weight / cost / purchase date right
+// Size-neutral numeric value treatment. Compose this when a value display
+// already owns a deliberate size tier (for example the text-sm food UI).
+// Keeping size out of this token lets migrations add mono alignment without
+// flattening the existing visual hierarchy.
+export const NUMERIC_VALUE_TEXT = 'font-mono tabular-nums'
+
+// Numeric value cells on dense rows (weight / cost / purchase date right
 // rails). font-mono + tabular-nums so mixed weight strings like
 // "1 lb 4.0 oz", "15.2 oz", and "800 g" line up across rows in the same
 // column. font-mono is applied to value DISPLAYS only — do NOT use this
@@ -196,7 +202,7 @@ export const FLAT_TABLE_QUANTITY_TEXT = 'text-xs lg:text-[13px] tabular-nums'
 // action buttons, or panel labels. Mono glyphs render optically larger than
 // the system sans face, so value displays stay at text-xs on desktop instead
 // of joining the 13px body tier.
-export const FLAT_TABLE_NUMERIC_TEXT = 'text-xs font-mono tabular-nums'
+export const FLAT_TABLE_NUMERIC_TEXT = `text-xs ${NUMERIC_VALUE_TEXT}`
 
 // Compact stat panel body text (WeightTable cells). Denser than flat
 // row body text on mobile because these panels are summary surfaces,

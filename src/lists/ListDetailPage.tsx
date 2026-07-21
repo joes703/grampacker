@@ -112,8 +112,6 @@ import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
 import { FLAT_TABLE_EYEBROW, FLAT_TABLE_META_TEXT, FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
-import ListModeToggles from './ListModeToggles'
-import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import ListDocumentToolbar from './ListDocumentToolbar'
 import EmptyListCell from './EmptyListCell'
 import PackingProgress from './PackingProgress'
@@ -867,13 +865,16 @@ function ListDetailInner({
 
   if (mode === 'organize') {
     return (
-      <Suspense fallback={<ListDetailStatus title="Loading pack organizer..." busy />}>
-        <OrganizePackPanel
-          list={list}
-          onTogglePackMode={togglePackMode}
-          onToggleOrganizeMode={toggleOrganizeMode}
-        />
-      </Suspense>
+      <>
+        <Suspense fallback={<ListDetailStatus title="Loading pack organizer..." busy />}>
+          <OrganizePackPanel
+            list={list}
+            onTogglePackMode={togglePackMode}
+            onToggleOrganizeMode={toggleOrganizeMode}
+          />
+        </Suspense>
+        <MobileListActionBar list={list} mode="organize" />
+      </>
     )
   }
 
@@ -883,32 +884,6 @@ function ListDetailInner({
 
   return (
     <div className="flex flex-col gap-4 print:pb-0">
-      {/* Mobile list-mode toggles. Pack and Organize are modes of THIS list, not
-          global destinations, so they live on the list page rather than in
-          the mobile bottom bar (which now stays uniform Gear/Lists/Add/
-          Options across every page). Desktop's equivalent controls are in
-          ListDocumentToolbar below. */}
-      {/* Units sit opposite the mode controls on the same mobile row. Gated lg:hidden to
-          pair with the lg+ placement in ListDocumentToolbar, so exactly one
-          instance renders at every width. NOT md: the toolbar below is
-          `hidden md:flex`, so anything gated md+ double-renders across
-          768-1023px - the trap docs/ui-density.md documents. The mode
-          controls use md:hidden inside this row so the md+ toolbar owns them
-          without duplication. Units stay mounted in pack mode, where weights
-          are still on screen. */}
-      <div className="lg:hidden flex flex-wrap items-center gap-2 print:hidden">
-        <div className="md:hidden">
-          <ListModeToggles
-            mode={mode}
-            onTogglePackMode={togglePackMode}
-            onToggleOrganizeMode={toggleOrganizeMode}
-          />
-        </div>
-        <div className="ml-auto">
-          <UnitSegmentedControl idPrefix="list-mobile" />
-        </div>
-      </div>
-
       {/* Two-column grid (sidebar renders only in Edit; Organize returned
           through its exclusive branch above and Pack stays focused). */}
       <div className="flex gap-4 items-start">
@@ -1366,7 +1341,7 @@ function ListDetailInner({
           list-admin not needed mid-pack). The mode toggles above stay
           available independently. lg:hidden inside the bar
           itself, so desktop never renders it. */}
-      <MobileListActionBar list={list} packMode={mode === 'pack'} />
+      <MobileListActionBar list={list} mode={mode} />
 
     </div>
   )

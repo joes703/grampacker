@@ -1,12 +1,10 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-// TYPE-only, and it has to stay that way. This module is on the public share
-// view's critical path (SharePage -> CategoryGroup -> ItemRow), and a share view
-// is read-only: it can never drag anything. `import type` is erased at build, so
-// this costs nothing; a VALUE import from @dnd-kit here would pull the whole
-// drag-and-drop library into the anonymous bundle. That is exactly what
+// This module is on the public share view's critical path
+// (SharePage -> CategoryGroup -> ItemRow), and a share view is read-only: it
+// can never drag anything. A VALUE import from @dnd-kit here would pull the
+// whole drag-and-drop library into the anonymous bundle. That is exactly what
 // SortableItemRow living in this file used to do - hence SortableItemRow.tsx.
-import type { DraggableSyntheticListeners } from '@dnd-kit/core'
 import { CircleMinus, MoreVertical, Pencil, Shirt, Trash2, UtensilsCrossed } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
@@ -97,13 +95,6 @@ export type ItemRowProps = {
   // status sub-menu. Omitted on the share view, which can't mutate.
   onSetGearStatus?: (status: GearStatus) => void
   dragHandle?: ReactNode
-  // Touch reorder activator. On mobile the SortableItemRow wrapper passes the
-  // dnd-kit listeners here instead of rendering a grip handle, so a press-and-
-  // hold anywhere on the (single tap-target) mobile row begins a drag. Desktop
-  // leaves this undefined and keeps listeners on the hover grip handle. Spread
-  // on the normal-row container only; the pack-mode row omits it (drag is
-  // disabled in pack mode).
-  rowDragListeners?: DraggableSyntheticListeners
   outerRef?: (el: HTMLElement | null) => void
   outerStyle?: React.CSSProperties
 }
@@ -123,7 +114,6 @@ export default function ItemRow({
   onDeleteGearItem,
   onSetGearStatus,
   dragHandle,
-  rowDragListeners,
   outerRef,
   outerStyle,
 }: ItemRowProps) {
@@ -306,14 +296,6 @@ export default function ItemRow({
     <div
       ref={outerRef}
       style={outerStyle}
-      // rowDragListeners is set on mobile only (see Props). We deliberately do
-      // NOT set touch-action: none here: that would kill vertical scrolling on
-      // the row. The TouchSensor's press-and-hold delay is what separates
-      // scroll from drag — a stationary hold past the delay activates the drag
-      // (after which dnd-kit's non-passive move listener preventDefaults to
-      // stop scroll), while an immediate move scrolls the page and cancels the
-      // pending drag via the tolerance constraint.
-      {...rowDragListeners}
       // Non-pack normal row keeps px-3 mobile inline (not the canonical
       // FLAT_TABLE_ROW_PADDING px-2 mobile ramp) because the mobile read
       // body has fewer columns than pack mode, so a uniform px-3 inset
@@ -591,7 +573,8 @@ function RowKebab({
       {menuOpen && menuPos && 'left' in menuPos && createPortal(
         <div
           ref={menuRef}
-          role="menu"
+          role="group"
+          aria-label="Item actions"
           className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
           style={{ top: menuPos.top, left: menuPos.left }}
         >

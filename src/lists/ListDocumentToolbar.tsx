@@ -12,10 +12,10 @@ type Props = {
   onToggleOrganizeMode: () => void
 }
 
-// Desktop list-document toolbar (md+). Anchors list identity and
+// List-document toolbar. Anchors list identity and
 // list-scoped actions to the document column on /lists/:id now that the
-// global top bar is global-only. Mobile renders the same peer mode toggles
-// above the document column.
+// global top bar is global-only. The same identity and peer mode controls
+// render at every viewport.
 // Hidden in print: the print-only header carries the list name on paper.
 //
 // Pack mode suppresses List options. Pack-mode-specific controls
@@ -30,13 +30,13 @@ export default function ListDocumentToolbar({
   onToggleOrganizeMode,
 }: Props) {
   return (
-    <div className="hidden md:flex items-center gap-2 print:hidden">
-      <CurrentListHeader list={list} />
+    <div className="flex flex-wrap items-center gap-2 print:hidden">
+      <div className="flex min-w-0 basis-full sm:basis-auto sm:flex-1">
+        <CurrentListHeader list={list} />
+      </div>
       <div className="ml-auto flex items-center gap-2">
-        {/* Units. Gated lg even though this toolbar is md+, because the
-            mobile placement in ListDetailPage is lg:hidden. Deliberately
-            mode-independent: weights are still on screen while packing. */}
-        <div className="hidden lg:block">
+        {/* Deliberately mode-independent: weights remain on screen while packing. */}
+        <div>
           <UnitSegmentedControl idPrefix="list-toolbar" />
         </div>
         <ListModeToggles

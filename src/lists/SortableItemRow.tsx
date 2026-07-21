@@ -46,22 +46,23 @@ export default function SortableItemRow(
     opacity: isDragging ? 0.4 : 1,
   }
 
-  // Desktop drives reorder from a compact in-row grip. This used to sit in
+  // Every viewport drives reorder from a dedicated in-row grip. This used to sit in
   // the outside-left gutter, but flat table surfaces intentionally use
   // overflow-hidden for rounded corners, which clips out-of-surface handles.
-  // Mobile has no hover affordance, so the row itself remains the long-press
-  // activator via rowDragListeners. Pack mode disables drag entirely.
+  // On touch, keeping listeners on the grip preserves ordinary row scrolling;
+  // the page-level TouchSensor still supplies delayed activation. Pack mode
+  // disables drag entirely.
   const handle =
-    props.isBelowLg || props.packMode ? undefined : (
+    props.packMode ? undefined : (
       <RowIconButton
+        touchSafe
         ref={asButtonRef(setActivatorNodeRef)}
         {...listeners}
         {...attributes}
-        tabIndex={-1}
         variant="dragHandle"
-        ariaLabel="Drag to reorder"
+        ariaLabel={`Reorder ${props.item.gearItem.name}`}
         icon={<GripVertical size={14} />}
-        className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+        className={props.isBelowLg ? '' : 'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity'}
       />
     )
 
@@ -69,7 +70,6 @@ export default function SortableItemRow(
     <ItemRow
       {...props}
       dragHandle={handle}
-      rowDragListeners={props.isBelowLg && !props.packMode ? listeners : undefined}
       outerRef={setNodeRef}
       outerStyle={sortableStyle}
     />

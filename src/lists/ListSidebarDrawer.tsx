@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
-import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
+import { FLAT_TABLE_SURFACE, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 
 // Lazy boundary for the left-anchored sidebar drawer on the list page.
 // The panel body (LibraryPanel) is passed in as `children` so this file
@@ -35,7 +35,7 @@ export default function ListSidebarDrawer({ open, onOpenChange, title, children 
             </Dialog.Title>
             <Dialog.Close
               aria-label="Close picker"
-              className="ml-auto rounded p-1 text-gray-500 hover:text-gray-600"
+              className={`${ROW_CONTROL_TARGET} ml-auto shrink-0 text-gray-500 hover:text-gray-600`}
             >
               <X size={18} />
             </Dialog.Close>
