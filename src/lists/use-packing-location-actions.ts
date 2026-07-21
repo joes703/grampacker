@@ -11,6 +11,12 @@ import {
 import { randomTempId } from '../lib/random-temp-id'
 import type { PackingLocation } from '../lib/types'
 
+export function promotedContainerSortOrder(locations: PackingLocation[]): number {
+  return locations.length === 0
+    ? 0
+    : Math.min(...locations.map((location) => location.sortOrder)) - 1
+}
+
 export function usePackingLocationActions(listId: string, locations: PackingLocation[]) {
   const qc = useQueryClient()
   const queryKey = queryKeys.packingLocations(listId)
@@ -39,10 +45,7 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
         id: `temp-${randomTempId()}`,
         name,
         containerListItemId: itemId,
-        sortOrder: locations.reduce(
-          (max, location) => Math.max(max, location.sortOrder),
-          -1,
-        ) + 1,
+        sortOrder: promotedContainerSortOrder(locations),
       }),
     }),
   })

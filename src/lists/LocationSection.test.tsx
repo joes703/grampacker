@@ -45,6 +45,8 @@ function renderSection(
     <LocationSection
       location={location}
       containerItem={backingItem}
+      dragHandle={backingItem ? <button type="button" aria-label={`Reorder ${backingItem.gearItem.name}`} /> : undefined}
+      nestHandle={backingItem ? <button type="button" aria-label={`Move ${backingItem.gearItem.name} into another container`} /> : undefined}
       items={[]}
       locations={[location]}
       mobile={false}
@@ -72,6 +74,8 @@ describe('LocationSection item-backed actions', () => {
 
     expect(screen.getByLabelText('Item-backed container')).toBeInTheDocument()
     expect(screen.getAllByText('Bear canister')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Reorder Bear canister' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Move Bear canister into another container' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Open Bear canister packing options' }))
     expect(screen.queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Stop using as container' }))

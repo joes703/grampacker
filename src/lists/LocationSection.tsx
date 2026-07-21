@@ -27,6 +27,7 @@ type Props = {
   containerItemIds: ReadonlySet<string>
   excludedLocationIds?: ReadonlySet<string>
   dragHandle?: ReactNode
+  nestHandle?: ReactNode
   onRename?: (name: string) => void
   onDelete?: () => void
   onMove: (itemId: string, locationId: string | null) => void
@@ -46,6 +47,7 @@ export default function LocationSection({
   containerItemIds,
   excludedLocationIds,
   dragHandle,
+  nestHandle,
   onRename,
   onDelete,
   onMove,
@@ -101,6 +103,7 @@ export default function LocationSection({
         <span className={FLAT_TABLE_META_TEXT}>
           {displayedItemCount} {displayedItemCount === 1 ? 'item' : 'items'}
         </span>
+        {nestHandle}
         {itemBacked && containerItem && location && onDelete && !location.id.startsWith('temp-') ? (
           <MoveToLocationMenu
             itemId={containerItem.id}

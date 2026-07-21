@@ -22,7 +22,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Plus } from 'lucide-react'
+import { GripVertical, PackageOpen, Plus } from 'lucide-react'
 import {
   fetchListItems,
   fetchPackingLocations,
@@ -218,9 +218,16 @@ export default function OrganizePackPanel({
   function renderLocationNode(node: PackingTreeLocation): ReactNode {
     const location = node.location
     const nested = node.children.length > 0 ? (
-      <div className="space-y-2 border-l border-gray-200 bg-gray-50/40 p-2 pl-3">
-        {node.children.map((child) => renderLocationNode(child))}
-      </div>
+      <SortableContext
+        items={node.children.map((child) =>
+          makeDnDId('packing-location', child.location.id),
+        )}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="space-y-2 border-l border-gray-200 bg-gray-50/40 p-2 pl-3">
+          {node.children.map((child) => renderLocationNode(child))}
+        </div>
+      </SortableContext>
     ) : undefined
     const sharedProps = {
       location,
@@ -245,10 +252,11 @@ export default function OrganizePackPanel({
     }
 
     return node.containerItem ? (
-      <DraggableItemContainerSection
+      <SortableItemContainerSection
         key={location.id}
         {...sharedProps}
         containerItem={node.containerItem}
+        reorderPending={reorderPending || locationCreationPending}
       />
     ) : (
       <SortableLocationSection
@@ -342,9 +350,9 @@ export default function OrganizePackPanel({
               })}
             />
             <SortableContext
-              items={packingTree.roots
-                .filter((node) => node.containerItem === null)
-                .map((node) => makeDnDId('packing-location', node.location.id))}
+              items={packingTree.roots.map((node) =>
+                makeDnDId('packing-location', node.location.id),
+              )}
               strategy={verticalListSortingStrategy}
             >
               {packingTree.roots.map((node) => renderLocationNode(node))}
@@ -398,45 +406,55 @@ function DroppableUnassignedSection(props: React.ComponentProps<typeof LocationS
   )
 }
 
-function DraggableItemContainerSection({
+function SortableItemContainerSection({
   location,
   containerItem,
   movePending,
+  reorderPending,
   ...props
-}: Omit<React.ComponentProps<typeof LocationSection>, 'location' | 'containerItem' | 'dragHandle'> & {
+}: Omit<React.ComponentProps<typeof LocationSection>, 'location' | 'containerItem' | 'dragHandle' | 'nestHandle'> & {
   location: PackingLocation
   containerItem: ListItemWithGear
   movePending: boolean
+  reorderPending: boolean
 }) {
   const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef: setDraggableNodeRef,
-    transform,
-    isDragging,
+    attributes: reorderAttributes,
+    listeners: reorderListeners,
+    setActivatorNodeRef: setReorderActivatorNodeRef,
+    setNodeRef: setSortableNodeRef,
+    transform: reorderTransform,
+    transition,
+    isDragging: isReordering,
+    isOver,
+  } = useSortable({
+    id: makeDnDId('packing-location', location.id),
+    disabled: reorderPending || location.id.startsWith('temp-'),
+  })
+  const {
+    attributes: nestingAttributes,
+    listeners: nestingListeners,
+    setActivatorNodeRef: setNestingActivatorNodeRef,
+    setNodeRef: setNestingNodeRef,
+    transform: nestingTransform,
+    isDragging: isNesting,
   } = useDraggable({
     id: makeDnDId('packing-item', containerItem.id),
     disabled: movePending,
   })
-  const {
-    setNodeRef: setDroppableNodeRef,
-    isOver,
-  } = useDroppable({
-    id: makeDnDId('packing-location', location.id),
-  })
   const setNodeRef = useCallback((node: HTMLDivElement | null) => {
-    setDraggableNodeRef(node)
-    setDroppableNodeRef(node)
-  }, [setDraggableNodeRef, setDroppableNodeRef])
+    setSortableNodeRef(node)
+    setNestingNodeRef(node)
+  }, [setNestingNodeRef, setSortableNodeRef])
 
   return (
     <div
       ref={setNodeRef}
       className={isOver ? 'rounded-lg ring-2 ring-blue-400' : ''}
       style={{
-        transform: CSS.Transform.toString(transform),
-        opacity: isDragging ? 0.35 : 1,
+        transform: CSS.Transform.toString(isNesting ? nestingTransform : reorderTransform),
+        transition: isNesting ? undefined : transition,
+        opacity: isNesting || isReordering ? 0.35 : 1,
       }}
     >
       <LocationSection
@@ -447,13 +465,25 @@ function DraggableItemContainerSection({
         dragHandle={(
           <RowIconButton
             touchSafe
-            ref={asButtonRef(setActivatorNodeRef)}
-            {...listeners}
-            {...attributes}
-            disabled={movePending}
+            ref={asButtonRef(setReorderActivatorNodeRef)}
+            {...reorderListeners}
+            {...reorderAttributes}
+            disabled={reorderPending}
             variant="dragHandle"
-            ariaLabel={`Move ${containerItem.gearItem.name}`}
+            ariaLabel={`Reorder ${containerItem.gearItem.name}`}
             icon={<GripVertical size={14} />}
+          />
+        )}
+        nestHandle={(
+          <RowIconButton
+            touchSafe
+            ref={asButtonRef(setNestingActivatorNodeRef)}
+            {...nestingListeners}
+            {...nestingAttributes}
+            disabled={movePending}
+            ariaLabel={`Move ${containerItem.gearItem.name} into another container`}
+            title="Move into another container"
+            icon={<PackageOpen size={14} />}
           />
         )}
       />
