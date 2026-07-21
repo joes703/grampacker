@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import type { ListItemWithGear } from '../lib/types'
 import { makeDnDId } from '../lib/dnd-ids'
-import { isPackingCollisionTarget, planPackingItemDrop } from './packing-dnd'
+import {
+  isPackingCollisionTarget,
+  planPackingItemDragEnd,
+  planPackingItemDrop,
+  planPackingItemReorder,
+} from './packing-dnd'
 
-function item(id: string, locationId: string | null): ListItemWithGear {
+function item(
+  id: string,
+  locationId: string | null,
+  sortOrder = 0,
+): ListItemWithGear {
   return {
     id,
     listId: 'list-1',
@@ -14,7 +23,7 @@ function item(id: string, locationId: string | null): ListItemWithGear {
     isPacked: false,
     isReady: false,
     packingLocationId: locationId,
-    sortOrder: 0,
+    sortOrder,
     createdAt: '2026-01-01',
     updatedAt: '2026-01-01',
     gearItem: {
@@ -38,6 +47,63 @@ const target = item('target', 'loc-b')
 const items = [source, target]
 const validLocationIds = new Set(['loc-a', 'loc-b'])
 const containerItemIdByLocation = new Map([['loc-b', 'source']])
+
+describe('planPackingItemReorder', () => {
+  const first = item('first', 'loc-a', 2)
+  const second = item('second', 'loc-a', 8)
+  const elsewhere = item('elsewhere', 'loc-b', 5)
+  const reorderItems = [first, elsewhere, second]
+
+  it('reorders rows within the same packing location', () => {
+    expect(planPackingItemReorder(
+      makeDnDId('packing-item', first.id),
+      makeDnDId('packing-item', second.id),
+      reorderItems,
+    )).toEqual([
+      { id: 'second', sortOrder: 2 },
+      { id: 'first', sortOrder: 8 },
+    ])
+  })
+
+  it('supports the checklist item id kind used in Pack Mode', () => {
+    expect(planPackingItemReorder(
+      makeDnDId('item', first.id),
+      makeDnDId('item', second.id),
+      reorderItems,
+      'item',
+    )).toEqual([
+      { id: 'second', sortOrder: 2 },
+      { id: 'first', sortOrder: 8 },
+    ])
+  })
+
+  it('does not reorder hidden backing items that render as container headers', () => {
+    const hiddenContainer = item('hidden-container', 'loc-a', 5)
+    expect(planPackingItemReorder(
+      makeDnDId('packing-item', first.id),
+      makeDnDId('packing-item', second.id),
+      [first, hiddenContainer, second],
+      'packing-item',
+      new Set([hiddenContainer.id]),
+    )).toEqual([
+      { id: 'second', sortOrder: 2 },
+      { id: 'first', sortOrder: 8 },
+    ])
+  })
+
+  it('leaves cross-location and location-section drops for the move planner', () => {
+    expect(planPackingItemReorder(
+      makeDnDId('packing-item', first.id),
+      makeDnDId('packing-item', elsewhere.id),
+      reorderItems,
+    )).toBeNull()
+    expect(planPackingItemReorder(
+      makeDnDId('packing-item', first.id),
+      makeDnDId('packing-location', 'loc-a'),
+      reorderItems,
+    )).toBeNull()
+  })
+})
 
 describe('planPackingItemDrop', () => {
   it('assigns when dropped on a location section', () => {
@@ -110,6 +176,35 @@ describe('planPackingItemDrop', () => {
       containerItemIdByLocation,
       new Map([['source', new Set(['loc-b', 'loc-child'])]]),
     )).toBeNull()
+  })
+})
+
+describe('planPackingItemDragEnd', () => {
+  const sibling = item('sibling', 'loc-a', 3)
+  const dragItems = [item('dragged', 'loc-a', 1), sibling, target]
+
+  it('prioritizes a same-location row drop as a reorder', () => {
+    expect(planPackingItemDragEnd(
+      makeDnDId('packing-item', 'dragged'),
+      makeDnDId('packing-item', sibling.id),
+      dragItems,
+      validLocationIds,
+    )).toEqual({
+      kind: 'reorder',
+      updates: [
+        { id: 'sibling', sortOrder: 1 },
+        { id: 'dragged', sortOrder: 3 },
+      ],
+    })
+  })
+
+  it('keeps a cross-location row drop as a move', () => {
+    expect(planPackingItemDragEnd(
+      makeDnDId('packing-item', 'dragged'),
+      makeDnDId('packing-item', target.id),
+      dragItems,
+      validLocationIds,
+    )).toEqual({ kind: 'move', itemId: 'dragged', locationId: 'loc-b' })
   })
 })
 
