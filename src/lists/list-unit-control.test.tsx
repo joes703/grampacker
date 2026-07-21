@@ -49,13 +49,17 @@ describe('list unit control placement', () => {
     expect(src.match(/<ListDocumentToolbar/g)).toHaveLength(1)
   })
 
-  it('keeps the unit control available in pack mode', () => {
-    // Weights are still on screen while packing, so the switcher must not be
-    // swept away with the pack-mode-suppressed list-admin controls.
-    render(<ListDocumentToolbar list={list} mode="pack" onTogglePackMode={vi.fn()} onToggleOrganizeMode={vi.fn()} />)
-    expect(screen.getByRole('radiogroup', { name: 'Weight units' })).toBeInTheDocument()
-    // ...whereas List options IS suppressed, which is the existing contract.
+  it('hides the unit control when Pack and Organize hide weights', () => {
+    const { rerender } = render(
+      <ListDocumentToolbar list={list} mode="pack" onTogglePackMode={vi.fn()} onToggleOrganizeMode={vi.fn()} />,
+    )
+    expect(screen.queryByRole('radiogroup', { name: 'Weight units' })).toBeNull()
     expect(screen.queryByText('list-settings-button')).toBeNull()
+
+    rerender(
+      <ListDocumentToolbar list={list} mode="organize" onTogglePackMode={vi.fn()} onToggleOrganizeMode={vi.fn()} />,
+    )
+    expect(screen.queryByRole('radiogroup', { name: 'Weight units' })).toBeNull()
   })
 
   it('offers Pack and Organize as peer toggles in every list mode', () => {
