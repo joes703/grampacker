@@ -93,6 +93,11 @@ describe('the authenticated area (lazy chunk, relative paths under the splat)', 
     expect(await screen.findByTestId('detail')).toHaveTextContent('abc123')
   })
 
+  it('renders organize mode as a peer segment of the same detail page', async () => {
+    renderAt('/lists/abc123/organize', SIGNED_IN)
+    expect(await screen.findByTestId('detail')).toHaveTextContent('abc123')
+  })
+
   it('sends an unknown path home rather than to a dead end', async () => {
     renderAt('/no/such/page', SIGNED_IN)
     expect(await screen.findByTestId('root-redirect')).toBeInTheDocument()

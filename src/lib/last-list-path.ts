@@ -1,6 +1,6 @@
-// Stores the path of the last-visited list (including pack route) so
+// Stores the path of the last-visited list (including list modes) so
 // the nav's Lists shortcut can return the user to their workspace. Pack
-// mode itself is URL state (/lists/:id/pack); this helper just makes
+// and Organize are URL state; this helper just makes
 // the shortcut honor the full path rather than only the list id.
 //
 // TRANSPLANT NOTE: the old repo's primary consumer was RootRedirect
@@ -12,7 +12,7 @@
 // not-found handling make that safe.
 //
 // Validation is intentionally strict: only `/lists/<uuid>` with an
-// optional exact `/pack`. The helper refuses to store anything
+// optional exact `/pack` or `/organize`. The helper refuses to store anything
 // else, so a malformed value can never make it past write-time and
 // any tampered localStorage entry that doesn't match the regex is
 // treated as a miss on read. If a future list-detail URL state needs
@@ -22,7 +22,7 @@
 const KEY = 'lastListPath'
 const LEGACY_KEY = 'lastListId'
 const LIST_PATH_RE =
-  /^\/lists\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/pack)?$/i
+  /^\/lists\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\/(?:pack|organize))?$/i
 const LEGACY_PACK_PATH_RE =
   /^\/lists\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\?mode=pack$/i
 const UUID_RE =

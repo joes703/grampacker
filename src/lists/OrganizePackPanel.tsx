@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   closestCenter,
@@ -42,6 +41,7 @@ import LocationSection from './LocationSection'
 import { usePackingLocationActions } from './use-packing-location-actions'
 import { buildOrganizeGroups } from './organize-groups'
 import { isPackingCollisionTarget, planPackingItemDrop } from './packing-dnd'
+import ListModeToggles from './ListModeToggles'
 
 const packingCollisionDetection: CollisionDetection = (args) => closestCenter({
   ...args,
@@ -50,7 +50,15 @@ const packingCollisionDetection: CollisionDetection = (args) => closestCenter({
   ),
 })
 
-export default function OrganizePackPanel({ list }: { list: List }) {
+export default function OrganizePackPanel({
+  list,
+  onTogglePackMode,
+  onToggleOrganizeMode,
+}: {
+  list: List
+  onTogglePackMode: () => void
+  onToggleOrganizeMode: () => void
+}) {
   const qc = useQueryClient()
   const mobile = useIsBelowLg()
   const [newName, setNewName] = useState('')
@@ -179,17 +187,18 @@ export default function OrganizePackPanel({ list }: { list: List }) {
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4 pb-20 lg:pb-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Organize pack</p>
           <h1 className="text-xl font-semibold text-gray-900">{list.name}</h1>
         </div>
-        <Link
-          to={`/lists/${list.id}/pack`}
-          className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
-          Done
-        </Link>
+        <div className="self-start sm:self-auto">
+          <ListModeToggles
+            mode="organize"
+            onTogglePackMode={onTogglePackMode}
+            onToggleOrganizeMode={onToggleOrganizeMode}
+          />
+        </div>
       </div>
 
       <form onSubmit={submitLocation} noValidate className="flex gap-2">

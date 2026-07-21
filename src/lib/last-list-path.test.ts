@@ -10,6 +10,7 @@ import {
 const UUID = '11111111-2222-3333-4444-555555555555'
 const BARE_PATH = `/lists/${UUID}`
 const PACK_PATH = `/lists/${UUID}/pack`
+const ORGANIZE_PATH = `/lists/${UUID}/organize`
 const LEGACY_PACK_PATH = `/lists/${UUID}?mode=pack`
 
 beforeEach(() => {
@@ -31,6 +32,11 @@ describe('readLastListPath', () => {
     expect(readLastListPath()).toBe(PACK_PATH)
   })
 
+  it('returns a valid organize-mode path round-tripped through write', () => {
+    writeLastListPath(ORGANIZE_PATH)
+    expect(readLastListPath()).toBe(ORGANIZE_PATH)
+  })
+
   it('returns null when localStorage holds a tampered/invalid value', () => {
     // Bypass write-time validation by setting directly.
     localStorage.setItem('lastListPath', '/evil.example.com')
@@ -39,6 +45,11 @@ describe('readLastListPath', () => {
 
   it('rejects paths with extra query keys', () => {
     localStorage.setItem('lastListPath', `${LEGACY_PACK_PATH}&extra=1`)
+    expect(readLastListPath()).toBeNull()
+  })
+
+  it('rejects the legacy nested organize route from storage', () => {
+    localStorage.setItem('lastListPath', `${PACK_PATH}/organize`)
     expect(readLastListPath()).toBeNull()
   })
 
@@ -63,6 +74,11 @@ describe('writeLastListPath', () => {
   it('stores a valid pack-mode path', () => {
     writeLastListPath(PACK_PATH)
     expect(localStorage.getItem('lastListPath')).toBe(PACK_PATH)
+  })
+
+  it('stores a valid organize-mode path', () => {
+    writeLastListPath(ORGANIZE_PATH)
+    expect(localStorage.getItem('lastListPath')).toBe(ORGANIZE_PATH)
   })
 
   it('no-ops on an arbitrary path (does not store)', () => {
@@ -113,6 +129,10 @@ describe('getListIdFromListPath', () => {
 
   it('extracts the UUID from a pack-mode path', () => {
     expect(getListIdFromListPath(PACK_PATH)).toBe(UUID)
+  })
+
+  it('extracts the UUID from an organize-mode path', () => {
+    expect(getListIdFromListPath(ORGANIZE_PATH)).toBe(UUID)
   })
 
   it('returns null for an invalid path', () => {

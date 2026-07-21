@@ -6,19 +6,11 @@ type Props = {
   onClick: () => void
 }
 
-// The pack-mode pill toggle. One canonical component for both surfaces
-// that render the control — MobilePackToggle (lg:hidden, above the
-// document column) and ListDocumentToolbar (md+, next to the list name).
+// The pack-mode pill toggle. ListModeToggles composes it with the peer
+// Organize mode on every list-detail surface.
 //
-// Centralized so the label, icon, ariaLabel, and title strings can never
-// drift between the two surfaces. Before this extraction, both call
-// sites carried the same inline <PillToggle ... label="Pack" ...> block
-// with a "do not drift" comment narrating the invariant; making the
-// component shared makes the invariant structural instead of narrated.
-//
-// Layout (lg:hidden vs the desktop flex container with its
-// ListSettingsButton sibling) stays at the call sites — those are the
-// real differences and they belong where the surrounding markup lives.
+// Centralized so the label, icon, ariaLabel, and title strings cannot drift
+// between the responsive list toolbar and organizer header surfaces.
 export default function PackToggle({ active, onClick }: Props) {
   return (
     <PillToggle

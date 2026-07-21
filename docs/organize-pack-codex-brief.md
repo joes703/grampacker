@@ -1,5 +1,11 @@
 # Codex implementation brief: Organize Pack
 
+> **Post-launch note (2026-07-20):** The feature has shipped. A later
+> user-requested amendment raises Organize from `/pack/organize` to the peer
+> `/organize` list mode with Pack/Organize pill toggles. See the amendment at
+> the top of `docs/organize-pack-design.md`; it supersedes the route and
+> persistence instructions in this historical implementation brief.
+
 You are implementing a fully-specified, already-reviewed feature in the
 grampacker-next repo. A detailed design doc exists and is the contract. Your job
 is to build it, phase by phase, with tests, following this repo's rules.

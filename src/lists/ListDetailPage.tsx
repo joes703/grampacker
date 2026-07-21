@@ -112,7 +112,7 @@ import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
 import { FLAT_TABLE_EYEBROW, FLAT_TABLE_META_TEXT, FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
-import MobilePackToggle from './MobilePackToggle'
+import ListModeToggles from './ListModeToggles'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import ListDocumentToolbar from './ListDocumentToolbar'
 import EmptyListCell from './EmptyListCell'
@@ -131,7 +131,12 @@ import GearItemDialog from '../components/gear/GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
-import { deriveListMode, persistedListPath, type ListDetailMode } from './list-detail-mode'
+import {
+  deriveListMode,
+  persistedListPath,
+  toggledListModePath,
+  type ListDetailMode,
+} from './list-detail-mode'
 import { selectPackGroupingState } from './packing-grouping'
 import { usePackingCollapsed } from './packing-collapse'
 
@@ -247,16 +252,13 @@ function ListDetailInner({
   const location = useLocation()
   const navigate = useNavigate()
   const legacyPackMode = location.pathname === `/lists/${listId}` && new URLSearchParams(location.search).get('mode') === 'pack'
+  const legacyOrganizeMode = location.pathname === `/lists/${listId}/pack/organize`
   const mode: ListDetailMode = deriveListMode(location.pathname, location.search, listId)
   function togglePackMode() {
-    if (mode === 'organize') {
-      void navigate(`/lists/${listId}/pack`)
-      return
-    }
-    void navigate(mode === 'pack' ? `/lists/${listId}` : `/lists/${listId}/pack`)
+    void navigate(toggledListModePath(listId, mode, 'pack'))
   }
-  function openPackOrganizer() {
-    void navigate(`/lists/${listId}/pack/organize`)
+  function toggleOrganizeMode() {
+    void navigate(toggledListModePath(listId, mode, 'organize'))
   }
   const { weightUnit } = useWeightUnit()
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
@@ -371,8 +373,10 @@ function ListDetailInner({
   useEffect(() => {
     if (legacyPackMode) {
       void navigate(`/lists/${listId}/pack`, { replace: true })
+    } else if (legacyOrganizeMode) {
+      void navigate(`/lists/${listId}/organize`, { replace: true })
     }
-  }, [legacyPackMode, listId, navigate])
+  }, [legacyOrganizeMode, legacyPackMode, listId, navigate])
 
   // Last-list cache write: stash the list path only AFTER the list resolves
   // to a real, server-permitted row. Writing on mount unconditionally would
@@ -380,9 +384,8 @@ function ListDetailInner({
   // dead list and the unconditional write would refresh the bad path,
   // locking the loop in. The reactive dep `list?.id` is undefined while
   // the lists query is in-flight or the route is invalid, so no write
-  // fires on those paths. The `mode` dep tracks pack-mode toggling so
-  // the stored path stays in sync: enters pack mode -> stored path
-  // gains /pack; exits -> stored path drops it.
+  // fires on those paths. The `mode` dep tracks peer-mode toggling so the
+  // stored path stays in sync with List, Pack, or Organize.
   useEffect(() => {
     if (list?.id) {
       writeLastListPath(persistedListPath(list.id, mode))
@@ -864,7 +867,11 @@ function ListDetailInner({
   if (mode === 'organize') {
     return (
       <Suspense fallback={<ListDetailStatus title="Loading pack organizer..." busy />}>
-        <OrganizePackPanel list={list} />
+        <OrganizePackPanel
+          list={list}
+          onTogglePackMode={togglePackMode}
+          onToggleOrganizeMode={toggleOrganizeMode}
+        />
       </Suspense>
     )
   }
@@ -875,30 +882,27 @@ function ListDetailInner({
 
   return (
     <div className="flex flex-col gap-4 print:pb-0">
-      {/* Mobile pack-mode toggle. Pack is a mode of THIS list, not a
-          global destination, so it lives on the list page rather than in
+      {/* Mobile list-mode toggles. Pack and Organize are modes of THIS list, not
+          global destinations, so they live on the list page rather than in
           the mobile bottom bar (which now stays uniform Gear/Lists/Add/
-          Options across every page). Desktop's equivalent toggle is in
+          Options across every page). Desktop's equivalent controls are in
           ListDocumentToolbar below. */}
-      {/* Units sit opposite Pack on the same mobile row. Gated lg:hidden to
+      {/* Units sit opposite the mode controls on the same mobile row. Gated lg:hidden to
           pair with the lg+ placement in ListDocumentToolbar, so exactly one
           instance renders at every width. NOT md: the toolbar below is
           `hidden md:flex`, so anything gated md+ double-renders across
-          768-1023px - the trap docs/ui-density.md documents. (The Pack toggle
-          itself already has that overlap; fixing it is its own change, not
-          something to smuggle in here.) Stays mounted in pack mode, where
-          weights are still on screen. */}
-      <div className="lg:hidden flex items-center gap-2 print:hidden">
-        <MobilePackToggle packMode={mode === 'pack'} onTogglePackMode={togglePackMode} />
-        {mode === 'pack' ? (
-          <button
-            type="button"
-            onClick={openPackOrganizer}
-            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Organize
-          </button>
-        ) : null}
+          768-1023px - the trap docs/ui-density.md documents. The mode
+          controls use md:hidden inside this row so the md+ toolbar owns them
+          without duplication. Units stay mounted in pack mode, where weights
+          are still on screen. */}
+      <div className="lg:hidden flex flex-wrap items-center gap-2 print:hidden">
+        <div className="md:hidden">
+          <ListModeToggles
+            mode={mode}
+            onTogglePackMode={togglePackMode}
+            onToggleOrganizeMode={toggleOrganizeMode}
+          />
+        </div>
         <div className="ml-auto">
           <UnitSegmentedControl idPrefix="list-mobile" />
         </div>
@@ -941,9 +945,9 @@ function ListDetailInner({
         <div className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'max-w-3xl mx-auto' : ''}`}>
           <ListDocumentToolbar
             list={list}
-            packMode={mode === 'pack'}
+            mode={mode}
             onTogglePackMode={togglePackMode}
-            onOrganizePack={openPackOrganizer}
+            onToggleOrganizeMode={toggleOrganizeMode}
           />
 
           {detailDataError ? (
@@ -1363,8 +1367,8 @@ function ListDetailInner({
       {/* Mobile-only bottom action bar. Gear / Lists / Add / Options
           in normal mode; Options is dropped in pack mode (pack-mode
           controls live inline in PackingProgress, and List options is
-          list-admin not needed mid-pack). MobilePackToggle above
-          carries the Pack toggle itself. lg:hidden inside the bar
+          list-admin not needed mid-pack). The mode toggles above stay
+          available independently. lg:hidden inside the bar
           itself, so desktop never renders it. */}
       <MobileListActionBar list={list} packMode={mode === 'pack'} />
 

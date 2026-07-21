@@ -8,7 +8,7 @@ import type { MobileBottomBarItem } from '../components/MobileBottomBar'
 //
 // Active-state rules live here so all callers stay aligned:
 //   - Gear active on /gear
-//   - Lists active on /lists and any /lists/:id (+ /pack) — the slot is a
+//   - Lists active on /lists and every list-detail mode — the slot is a
 //     destination for the whole lists workspace, so detail pages keep it lit.
 //   - Food active on /food and any /food/... (the food workspace, so a
 //     future plan editor keeps it lit)
