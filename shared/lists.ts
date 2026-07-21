@@ -15,6 +15,7 @@ import {
 // Caps mirror the 0004 triggers and CHECKs; the DB is authoritative.
 export const LIST_CAP = 100
 export const LIST_ITEM_CAP = 300
+export const PACKING_LOCATION_CAP = 30
 export const MAX_LIST_ITEM_QUANTITY = 9999
 
 const listNameSchema = z.string().trim().min(1).max(256)
@@ -148,6 +149,7 @@ export const listItemResponseSchema = z.object({
   isConsumable: z.boolean(),
   isPacked: z.boolean(),
   isReady: z.boolean(),
+  packingLocationId: z.string().nullable(),
   sortOrder: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -201,6 +203,7 @@ export const updateListItemRequestSchema = z
     isConsumable: z.boolean().optional(),
     isPacked: z.boolean().optional(),
     isReady: z.boolean().optional(),
+    packingLocationId: z.string().uuid().nullable().optional(),
   })
   .strict()
   .refine((v) => Object.values(v).some((field) => field !== undefined), {
@@ -210,6 +213,33 @@ export const updateListItemRequestSchema = z
     message: 'an item cannot be both worn and consumable',
   })
 export type UpdateListItemRequest = z.infer<typeof updateListItemRequestSchema>
+
+// ------------------------------------------------------- packing locations
+
+const packingLocationNameSchema = z.string().trim().min(1).max(60)
+
+export const packingLocationResponseSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  sortOrder: z.number().int(),
+})
+export type PackingLocationResponse = z.infer<
+  typeof packingLocationResponseSchema
+>
+
+export const createPackingLocationRequestSchema = z
+  .object({ name: packingLocationNameSchema })
+  .strict()
+export type CreatePackingLocationRequest = z.infer<
+  typeof createPackingLocationRequestSchema
+>
+
+export const updatePackingLocationRequestSchema = z
+  .object({ name: packingLocationNameSchema })
+  .strict()
+export type UpdatePackingLocationRequest = z.infer<
+  typeof updatePackingLocationRequestSchema
+>
 
 // ---------------------------------------------------------- public share read
 
@@ -309,6 +339,13 @@ export type ReorderListsRequest = z.infer<typeof reorderListsRequestSchema>
 export const reorderListItemsRequestSchema = reorderSchema(LIST_ITEM_CAP)
 export type ReorderListItemsRequest = z.infer<
   typeof reorderListItemsRequestSchema
+>
+
+export const reorderPackingLocationsRequestSchema = reorderSchema(
+  PACKING_LOCATION_CAP,
+)
+export type ReorderPackingLocationsRequest = z.infer<
+  typeof reorderPackingLocationsRequestSchema
 >
 
 // ---------------------------------------------------------------- csv import

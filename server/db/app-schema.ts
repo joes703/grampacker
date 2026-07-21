@@ -201,6 +201,44 @@ export const lists = sqliteTable(
   ],
 )
 
+// Per-list physical organization for Pack Mode. A location belongs to one
+// list and owner; list_items may point at one location through the nullable
+// packing_location_id column below. The single-column FK is intentional so
+// ON DELETE SET NULL can clear only the assignment. Same-list/same-owner
+// integrity is restored by the triggers in migration 0014.
+export const packingLocations = sqliteTable(
+  'packing_locations',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    listId: text('list_id').notNull(),
+    name: text('name').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    unique('packing_locations_id_user_unique').on(t.id, t.userId),
+    unique('packing_locations_id_list_user_unique').on(
+      t.id,
+      t.listId,
+      t.userId,
+    ),
+    index('packing_locations_list_sort_idx').on(t.listId, t.sortOrder),
+    foreignKey({
+      name: 'packing_locations_list_same_owner_fk',
+      columns: [t.listId, t.userId],
+      foreignColumns: [lists.id, lists.userId],
+    }).onDelete('cascade'),
+    check(
+      'packing_locations_name_length',
+      sql`length(${t.name}) between 1 and 60`,
+    ),
+  ],
+)
+
 // List membership rows. Weight/cost/etc. live only on gear_items - the
 // list reads them through the join (the old repo dropped its duplicated
 // weight_grams column for exactly this reason). Both parent FKs are
@@ -228,6 +266,10 @@ export const listItems = sqliteTable(
       .default(false),
     isPacked: integer('is_packed', { mode: 'boolean' }).notNull().default(false),
     isReady: integer('is_ready', { mode: 'boolean' }).notNull().default(false),
+    packingLocationId: text('packing_location_id').references(
+      () => packingLocations.id,
+      { onDelete: 'set null' },
+    ),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: integer('created_at').notNull(), // epoch ms
     updatedAt: integer('updated_at').notNull(), // epoch ms, repo-maintained
@@ -238,6 +280,7 @@ export const listItems = sqliteTable(
     // fetch both filter by list alone.
     index('list_items_list_sort_idx').on(t.listId, t.sortOrder),
     index('list_items_gear_item_user_idx').on(t.gearItemId, t.userId),
+    index('list_items_packing_location_idx').on(t.packingLocationId),
     foreignKey({
       name: 'list_items_list_same_owner_fk',
       columns: [t.listId, t.userId],

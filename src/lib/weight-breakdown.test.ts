@@ -14,6 +14,7 @@ function listItem(overrides: {
   quantity?: number
   isWorn?: boolean
   isConsumable?: boolean
+  packingLocationId?: string | null
 }): ListItemWithGear {
   return {
     id: overrides.id,
@@ -24,6 +25,7 @@ function listItem(overrides: {
     isConsumable: overrides.isConsumable ?? false,
     isPacked: false,
     isReady: false,
+    packingLocationId: overrides.packingLocationId ?? null,
     sortOrder: 0,
     createdAt: '2024-01-01',
     updatedAt: '2024-01-01',

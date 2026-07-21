@@ -29,6 +29,7 @@ function listItem(overrides: {
   isConsumable?: boolean
   isPacked?: boolean
   isReady?: boolean
+  packingLocationId?: string | null
   sortOrder?: number
   name?: string
   description?: string | null
@@ -43,6 +44,7 @@ function listItem(overrides: {
     isConsumable: overrides.isConsumable ?? false,
     isPacked: overrides.isPacked ?? false,
     isReady: overrides.isReady ?? false,
+    packingLocationId: overrides.packingLocationId ?? null,
     sortOrder: overrides.sortOrder ?? 0,
     createdAt: '2024-01-01',
     updatedAt: '2024-01-01',

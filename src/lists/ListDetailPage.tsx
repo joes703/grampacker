@@ -189,7 +189,8 @@ export function hasListItemEdits(item: ListItemWithGear): boolean {
     item.isWorn ||
     item.isConsumable ||
     item.isPacked ||
-    item.isReady
+    item.isReady ||
+    item.packingLocationId !== null
   )
 }
 

@@ -39,6 +39,7 @@ function listItem(over: Partial<ListItemWithGear> = {}): ListItemWithGear {
   return {
     id: `li-${g.id}`, listId: 'l1', gearItemId: g.id, quantity: 1,
     isWorn: false, isConsumable: false, isPacked: false, isReady: false,
+    packingLocationId: null,
     sortOrder: 0, createdAt: NOW, updatedAt: NOW, gearItem: g, ...over,
   }
 }

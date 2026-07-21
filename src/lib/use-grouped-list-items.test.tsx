@@ -38,6 +38,7 @@ function makeItem(overrides: {
   categoryId: string | null
   sortOrder?: number
   quantity?: number
+  packingLocationId?: string | null
 }): ListItemWithGear {
   return {
     id: overrides.id,
@@ -48,6 +49,7 @@ function makeItem(overrides: {
     isConsumable: false,
     isPacked: false,
     isReady: false,
+    packingLocationId: overrides.packingLocationId ?? null,
     sortOrder: overrides.sortOrder ?? 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

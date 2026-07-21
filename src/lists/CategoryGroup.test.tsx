@@ -18,6 +18,7 @@ function itemNamed(id: string, name: string): ListItemWithGear {
     isConsumable: false,
     isPacked: false,
     isReady: false,
+    packingLocationId: null,
     sortOrder: 0,
     createdAt: '2026-06-06T00:00:00.000Z',
     updatedAt: '2026-06-06T00:00:00.000Z',

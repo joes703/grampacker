@@ -70,6 +70,7 @@ export function useListItemActions(
           isConsumable: false,
           isPacked: false,
           isReady: false,
+          packingLocationId: null,
           sortOrder: nextListItemSortOrder(listItems),
           createdAt: now,
           updatedAt: now,
