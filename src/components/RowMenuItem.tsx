@@ -13,7 +13,7 @@ const ROW_MENU_TONE_CLASS: Record<RowMenuTone, string> = {
 }
 
 export const ROW_MENU_ITEM_BASE =
-  'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm'
+  'flex min-h-10 lg:min-h-7 w-full items-center gap-2 px-3 py-2 lg:py-1 text-left text-sm'
 
 type RowMenuItemProps = {
   icon: ReactNode
