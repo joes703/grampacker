@@ -605,8 +605,10 @@ column is still set; unmark, assert the item is back in its group.
 - **Drag** layered on top: `MouseSensor + TouchSensor + KeyboardSensor`,
   matching `ListDetailPage.tsx:509-512`. `SwipeableRow` coexistence is already
   solved (`SwipeableRow.tsx:3-19`).
-- **Dropping assigns location only; it does not reorder.** One drop, one write,
-  one field. Within-location ordering is deferred.
+- **A row drop has one meaning based on its target.** Dropping on a sibling row
+  in the same location reorders those rows through the existing list-item order
+  endpoint. Dropping on another location assigns the item there. Each path is
+  still one drop and one write; `Move to...` remains the accessible move path.
 
 ### 4.7 Pack Mode after organization
 
@@ -952,8 +954,9 @@ read path) / 2b (organize screen), still gated by the deferred entry point.
 **Unresolved product decisions** (recommendation given, all reversible)
 
 1. **Duplicate location names** — allow, matching categories.
-2. **Within-location ordering** — defer. Second write per drop, second
-   sortOrder space, nobody asked.
+2. ~~**Within-location ordering** — defer.~~ **SETTLED 2026-07-21 (Joe):** row
+   drops within one location reorder the existing global list-item `sortOrder`
+   slots; cross-location drops continue to assign instead.
 3. **Cap of 30** — a guess; it is a trigger, so a one-line migration to change.
 4. **Organize entry point placement** — pack toolbar. Needs a browser, not
    paper.

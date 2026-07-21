@@ -60,7 +60,7 @@ export default function PackingItemRow({
         {...attributes}
         disabled={disabled}
         variant="dragHandle"
-        ariaLabel={`Move ${item.gearItem.name}`}
+        ariaLabel={`Reorder or move ${item.gearItem.name}`}
         icon={<GripVertical size={14} />}
       />
       <span className="min-w-0 flex-1 truncate text-gray-900">{item.gearItem.name}</span>

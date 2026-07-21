@@ -26,8 +26,10 @@ import { GripVertical, PackageOpen, Plus } from 'lucide-react'
 import {
   fetchListItems,
   fetchPackingLocations,
+  makeOptimisticReorder,
   makeOptimisticUpdate,
   queryKeys,
+  reorderListItems,
   reorderPackingLocations,
   updateListItem,
 } from '../lib/queries'
@@ -40,7 +42,10 @@ import RowIconButton from '../components/RowIconButton'
 import ConfirmDialog from '../components/ConfirmDialog'
 import LocationSection from './LocationSection'
 import { usePackingLocationActions } from './use-packing-location-actions'
-import { isPackingCollisionTarget, planPackingItemDrop } from './packing-dnd'
+import {
+  isPackingCollisionTarget,
+  planPackingItemDragEnd,
+} from './packing-dnd'
 import ListDocumentToolbar from './ListDocumentToolbar'
 import {
   buildContainerMoveExclusions,
@@ -109,6 +114,13 @@ export default function OrganizePackPanel({
       apply: (item, { locationId }) => ({ ...item, packingLocationId: locationId }),
     }),
   })
+  const reorderItems = useMutation({
+    mutationFn: (updates: { id: string; sortOrder: number }[]) =>
+      reorderListItems(list.id, updates),
+    ...makeOptimisticReorder<ListItemWithGear>(qc, queryKeys.listItems(list.id)),
+  })
+  const itemDragPending =
+    moveItem.isPending || reorderItems.isPending || locationCreationPending
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -148,6 +160,10 @@ export default function OrganizePackPanel({
     )),
     [realLocations],
   )
+  const hiddenReorderItemIds = useMemo(
+    () => new Set(items.filter((item) => item.isWorn).map((item) => item.id)),
+    [items],
+  )
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
   const activePackingItem = activePackingItemId
     ? itemsById.get(activePackingItemId) ?? null
@@ -175,7 +191,11 @@ export default function OrganizePackPanel({
     if (parsed?.kind !== 'packing-item') return
     setActivePackingItemId(parsed.id)
     const item = itemsById.get(parsed.id)
-    if (item) setAnnouncement(`Moving ${item.gearItem.name}. Choose a packing location.`)
+    if (item) {
+      setAnnouncement(
+        `Dragging ${item.gearItem.name}. Reorder it here or choose another packing location.`,
+      )
+    }
   }
 
   function onDragCancel() {
@@ -186,17 +206,36 @@ export default function OrganizePackPanel({
 
   function onDragEnd(event: DragEndEvent) {
     handleDragEnd(event)
-    const plan = planPackingItemDrop(
-      String(event.active.id),
-      event.over ? String(event.over.id) : undefined,
+    const activeId = String(event.active.id)
+    const overId = event.over ? String(event.over.id) : undefined
+    const activeParsed = parseDnDId(activeId)
+    const draggedItem = activeParsed?.kind === 'packing-item'
+      ? itemsById.get(activeParsed.id)
+      : undefined
+    const plan = planPackingItemDragEnd(
+      activeId,
+      overId,
       items,
       realLocationIds,
       containerItemIdByLocation,
       containerMoveExclusions,
+      hiddenReorderItemIds,
     )
     setActivePackingItemId(null)
+    if (plan?.kind === 'reorder') {
+      if (draggedItem) setAnnouncement(`Reordering ${draggedItem.gearItem.name}.`)
+      reorderItems.mutate(plan.updates, {
+        onSuccess: () => {
+          if (draggedItem) setAnnouncement(`Reordered ${draggedItem.gearItem.name}.`)
+        },
+        onError: () => {
+          if (draggedItem) setAnnouncement(`Could not reorder ${draggedItem.gearItem.name}.`)
+        },
+      })
+      return
+    }
     if (!plan) {
-      if (parseDnDId(String(event.active.id))?.kind === 'packing-item') {
+      if (activeParsed?.kind === 'packing-item') {
         setAnnouncement('Move cancelled.')
       }
       return
@@ -234,7 +273,7 @@ export default function OrganizePackPanel({
       items: node.items,
       locations: realLocations,
       mobile,
-      movePending: moveItem.isPending || locationCreationPending,
+      movePending: itemDragPending,
       containerCreationDisabled: locations.length >= 30 || locationCreationPending,
       containerItemIds,
       excludedLocationIds: node.containerItem
@@ -340,7 +379,7 @@ export default function OrganizePackPanel({
               items={packingTree.unassignedItems}
               locations={realLocations}
               mobile={mobile}
-              movePending={moveItem.isPending || locationCreationPending}
+              movePending={itemDragPending}
               containerCreationDisabled={locations.length >= 30 || locationCreationPending}
               containerItemIds={containerItemIds}
               onMove={requestMove}

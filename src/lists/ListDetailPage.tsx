@@ -55,6 +55,7 @@ import { useFoodPack } from './use-food-pack'
 import FoodPackSection from './FoodPackSection'
 import FoodRow from './FoodRow'
 import FoodPlanPicker from './FoodPlanPicker'
+import { planPackingItemReorder } from './packing-dnd'
 
 type LibraryTab = 'gear' | 'food'
 
@@ -444,6 +445,10 @@ function ListDetailInner({
     queryFn: () => fetchPackingLocations(listId),
     enabled: mode === 'pack',
   })
+  const packingGroupingState = selectPackGroupingState(categories, locationsQuery)
+  const grouping = mode === 'pack'
+    ? packingGroupingState.grouping
+    : { kind: 'category' as const, groups: categories }
   const detailDataLoading = listItemsQuery.isPending || gearItemsQuery.isPending || categoriesQuery.isPending
   const detailDataError =
     (listItemsQuery.isError && listItemsQuery.data === undefined) ||
@@ -548,12 +553,10 @@ function ListDetailInner({
     setActiveId(null)
   }
 
-  // Single page-level drag handler. Within-category item reorder only —
-  // category-level DnD is /gear-only (categories on this page render in
-  // their global order but cannot be reordered here). Cross-category drops
-  // are deliberately rejected: moving an item between categories happens
-  // exclusively via the item edit modal. A drop whose destination differs
-  // from the source category is ignored (item snaps back).
+  // Single page-level drag handler. Items reorder within their rendered
+  // category or packing location; cross-group drops are deliberately rejected
+  // here. Organize Mode owns moving gear between packing locations, while
+  // category changes happen in the item edit modal.
   function handleDragEnd(e: DragEndEvent) {
     setActiveId(null)
     const { active, over } = e
@@ -564,6 +567,28 @@ function ListDetailInner({
     const overParsed = parseDnDId(String(over.id))
     if (!activeParsed || !overParsed) return
     if (activeParsed.kind !== 'item' || overParsed.kind !== 'item') return
+
+    if (grouping.kind === 'location') {
+      const excludedItemIds = new Set(
+        (locationsQuery.data ?? []).flatMap((location) =>
+          location.containerListItemId === null ? [] : [location.containerListItemId],
+        ),
+      )
+      if (list?.groupWorn) {
+        for (const item of listItems) {
+          if (item.isWorn) excludedItemIds.add(item.id)
+        }
+      }
+      const updates = planPackingItemReorder(
+        String(active.id),
+        String(over.id),
+        listItems,
+        'item',
+        excludedItemIds,
+      )
+      if (updates) reorderItemsMut.mutate(updates)
+      return
+    }
 
     // Within-category item reorder. The drop target must be another item
     // AND in the same category as the dragged item. Anything else
@@ -622,10 +647,6 @@ function ListDetailInner({
     [gearIdsKey],
   )
 
-  const packingGroupingState = selectPackGroupingState(categories, locationsQuery)
-  const grouping = mode === 'pack'
-    ? packingGroupingState.grouping
-    : { kind: 'category' as const, groups: categories }
   const grouped = useGroupedListItems(listItems, grouping)
   const orderedPackGroups = orderPackGroups(grouped, grouping.kind)
   const packingTree = useMemo(
