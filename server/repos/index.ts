@@ -5,6 +5,7 @@ import { createFoodPlansRepo } from './food-plans'
 import { createGearItemsRepo } from './gear-items'
 import { createListItemsRepo } from './list-items'
 import { createListsRepo } from './lists'
+import { createPackingLocationsRepo } from './packing-locations'
 import { createTargetDefaultsRepo } from './target-defaults'
 import { createUsersRepo } from './users'
 
@@ -22,6 +23,7 @@ export function reposForUser(db: Db, userId: string) {
     gearItems: createGearItemsRepo(db, userId),
     lists: createListsRepo(db, userId),
     listItems: createListItemsRepo(db, userId),
+    packingLocations: createPackingLocationsRepo(db, userId),
     targetDefaults: createTargetDefaultsRepo(db, userId),
   }
 }
