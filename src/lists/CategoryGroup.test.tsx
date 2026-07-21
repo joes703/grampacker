@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import type { ListItemWithGear } from '../lib/types'
 import CategoryGroup from './CategoryGroup'
 
@@ -72,6 +72,39 @@ describe('CategoryGroup region id', () => {
       expect(id).not.toBeNull()
       expect(document.querySelectorAll(`#${id}`)).toHaveLength(1)
     }
+  })
+
+  it('gives every packing location and Unassigned a unique region id', () => {
+    render(
+      <>
+        <CategoryGroup name="Main pack" regionKey="loc-main" items={[itemNamed('item-1', 'Tarp')]} weightUnit="g" />
+        <CategoryGroup name="Lid" regionKey="loc-lid" items={[itemNamed('item-2', 'Stove')]} weightUnit="g" />
+        <CategoryGroup name="Unassigned" regionKey="packing-unassigned" items={[itemNamed('item-3', 'Cup')]} weightUnit="g" />
+      </>,
+    )
+
+    const targets = screen
+      .getAllByRole('button', { name: /Collapse|Expand/ })
+      .map((button) => button.getAttribute('aria-controls'))
+    expect(new Set(targets).size).toBe(3)
+  })
+
+  it('supports controlled collapse for persisted packing-location state', () => {
+    const onCollapsedChange = vi.fn()
+    render(
+      <CategoryGroup
+        name="Main pack"
+        regionKey="loc-main"
+        items={[itemNamed('item-1', 'Tarp')]}
+        weightUnit="g"
+        collapsed
+        onCollapsedChange={onCollapsedChange}
+      />,
+    )
+
+    expect(screen.queryByText('Tarp')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Expand Main pack' }))
+    expect(onCollapsedChange).toHaveBeenCalledWith(false)
   })
 
   // The share view (SharePage) passes collapsible={false} and NO categoryId

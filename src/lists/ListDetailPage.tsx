@@ -19,12 +19,14 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable'
 const ListSidebarDrawer = lazy(() => import('./ListSidebarDrawer'))
+const OrganizePackPanel = lazy(() => import('./OrganizePackPanel'))
 import {
   queryKeys,
   fetchLists,
   fetchListItems,
   fetchGearItems,
   fetchCategories,
+  fetchPackingLocations,
   fetchFoodPlans,
   updateList,
   reorderListItems,
@@ -129,6 +131,9 @@ import GearItemDialog from '../components/gear/GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
+import { deriveListMode, persistedListPath, type ListDetailMode } from './list-detail-mode'
+import { selectPackGroupingState } from './packing-grouping'
+import { usePackingCollapsed } from './packing-collapse'
 
 // TRANSPLANT NOTE (print): the old page rendered PrintListHeader above the
 // grid (a print-only document header) and carried print:* utility classes
@@ -139,8 +144,6 @@ import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
 // Gear/Pack two-tab remnant) above ListDocumentToolbar. The toolbar's own
 // PackToggle covers mode switching in the rewrite; the tab strip returns
 // only if the workspace grows real tabs (e.g. a Food tab with that slice).
-
-type Mode = 'edit' | 'pack'
 
 const EMPTY_LIST_ITEMS: ListItemWithGear[] = []
 const EMPTY_GEAR_ITEMS: GearItem[] = []
@@ -244,9 +247,16 @@ function ListDetailInner({
   const location = useLocation()
   const navigate = useNavigate()
   const legacyPackMode = location.pathname === `/lists/${listId}` && new URLSearchParams(location.search).get('mode') === 'pack'
-  const mode: Mode = location.pathname === `/lists/${listId}/pack` || legacyPackMode ? 'pack' : 'edit'
+  const mode: ListDetailMode = deriveListMode(location.pathname, location.search, listId)
   function togglePackMode() {
+    if (mode === 'organize') {
+      void navigate(`/lists/${listId}/pack`)
+      return
+    }
     void navigate(mode === 'pack' ? `/lists/${listId}` : `/lists/${listId}/pack`)
+  }
+  function openPackOrganizer() {
+    void navigate(`/lists/${listId}/pack/organize`)
   }
   const { weightUnit } = useWeightUnit()
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
@@ -257,6 +267,10 @@ function ListDetailInner({
   // full items array. Lifted here because both PackingProgress (the toggle)
   // and CategoryGroup (the filter consumer) live as children of this page.
   const [showUnpackedOnly, setShowUnpackedOnly] = useState(false)
+  const {
+    collapsed: packingCollapsed,
+    toggle: togglePackingCollapsed,
+  } = usePackingCollapsed(listId)
   // Notes panel edit mode. Lifted here so PanelCard.headerAction can
   // render the pencil button conditionally (read mode only) without
   // exposing NotesEditor's internal state up through a callback.
@@ -268,7 +282,9 @@ function ListDetailInner({
   // so the trigger button in NavBar (a sibling subtree under AppShell) can
   // toggle the same state. The hook also sets `available` so NavBar knows
   // to render the trigger only on this page.
-  const { open: drawerOpen, setOpen: setDrawerOpen } = useRegisterSidebarDrawer()
+  const { open: drawerOpen, setOpen: setDrawerOpen } = useRegisterSidebarDrawer(
+    mode === 'edit' || mode === 'pack',
+  )
   // Single discriminated union for every transient dialog/modal/inline-form
   // on this page. Mirrors the pattern in src/gear/GearLibraryPage.tsx —
   // `type` discriminator, `null` for the closed state. Folding the partial-
@@ -369,8 +385,7 @@ function ListDetailInner({
   // gains /pack; exits -> stored path drops it.
   useEffect(() => {
     if (list?.id) {
-      const path = mode === 'pack' ? `/lists/${list.id}/pack` : `/lists/${list.id}`
-      writeLastListPath(path)
+      writeLastListPath(persistedListPath(list.id, mode))
     }
   }, [list?.id, mode])
 
@@ -422,6 +437,11 @@ function ListDetailInner({
     queryFn: fetchCategories,
   })
   const categories = categoriesQuery.data ?? EMPTY_CATEGORIES
+  const locationsQuery = useQuery({
+    queryKey: queryKeys.packingLocations(listId),
+    queryFn: () => fetchPackingLocations(listId),
+    enabled: mode === 'pack',
+  })
   const detailDataLoading = listItemsQuery.isPending || gearItemsQuery.isPending || categoriesQuery.isPending
   const detailDataError =
     (listItemsQuery.isError && listItemsQuery.data === undefined) ||
@@ -600,7 +620,24 @@ function ListDetailInner({
     [gearIdsKey],
   )
 
-  const grouped = useGroupedListItems(listItems, categories)
+  const packingGroupingState = selectPackGroupingState(categories, locationsQuery)
+  const grouping = mode === 'pack'
+    ? packingGroupingState.grouping
+    : { kind: 'category' as const, groups: categories }
+  const grouped = useGroupedListItems(listItems, grouping)
+  const packingCollapseHandlers = useMemo(
+    () => new Map(
+      (locationsQuery.data ?? []).map((packingLocation) => [
+        packingLocation.id,
+        () => togglePackingCollapsed(packingLocation.id),
+      ]),
+    ),
+    [locationsQuery.data, togglePackingCollapsed],
+  )
+  const toggleUnassignedCollapse = useCallback(
+    () => togglePackingCollapsed('__unassigned__'),
+    [togglePackingCollapsed],
+  )
   // Food composes into the gear breakdown here, at the page level, so the
   // mobile strip and the desktop table are handed ONE number and cannot
   // disagree about what the pack weighs. Food moves consumable + total only
@@ -824,6 +861,14 @@ function ListDetailInner({
     )
   }
 
+  if (mode === 'organize') {
+    return (
+      <Suspense fallback={<ListDetailStatus title="Loading pack organizer..." busy />}>
+        <OrganizePackPanel list={list} />
+      </Suspense>
+    )
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   const editDialogListItem = dialog?.type === 'edit-gear' ? dialog.listItem : null
@@ -845,20 +890,29 @@ function ListDetailInner({
           weights are still on screen. */}
       <div className="lg:hidden flex items-center gap-2 print:hidden">
         <MobilePackToggle packMode={mode === 'pack'} onTogglePackMode={togglePackMode} />
+        {mode === 'pack' ? (
+          <button
+            type="button"
+            onClick={openPackOrganizer}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Organize
+          </button>
+        ) : null}
         <div className="ml-auto">
           <UnitSegmentedControl idPrefix="list-mobile" />
         </div>
       </div>
 
-      {/* Two-column grid (sidebar collapses in pack mode). The visibility
-          condition is `mode !== 'pack'` — derived directly, not stored. */}
+      {/* Two-column grid (sidebar renders only in Edit; Organize returned
+          through its exclusive branch above and Pack stays focused). */}
       <div className="flex gap-4 items-start">
         {/* LEFT column — Lists switcher above the gear library picker.
             Hidden in pack mode on desktop so the user can focus on packing.
             DesktopListsPanel is the primary desktop workflow for list
             switching/management; /lists remains the mobile management page
             and a desktop fallback (e.g. when no lists exist). */}
-        {mode !== 'pack' && (
+        {mode === 'edit' && (
           <aside
             className="hidden lg:flex w-80 shrink-0 flex-col gap-3 sticky self-start print:hidden"
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
@@ -889,6 +943,7 @@ function ListDetailInner({
             list={list}
             packMode={mode === 'pack'}
             onTogglePackMode={togglePackMode}
+            onOrganizePack={openPackOrganizer}
           />
 
           {detailDataError ? (
@@ -944,7 +999,7 @@ function ListDetailInner({
                   it's a compact Base/Total/Consumable strip with a collapsed
                   "Weight breakdown" disclosure, at lg+ it's the existing
                   PanelCard table. */}
-              {mode !== 'pack' && (
+              {mode === 'edit' && (
                 // Two columns exactly when WeightSummary renders something -
                 // the same condition it guards itself with. Keying this on
                 // listItems alone hid the weight of a food-only list; keying it
@@ -1011,13 +1066,13 @@ function ListDetailInner({
                   onToggle={foodPack.toggle}
                 />
               )}
-              {mode !== 'pack' && foodProjectionError && (
+              {mode === 'edit' && foodProjectionError && (
                 <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                   Couldn&apos;t load this list&apos;s food plan, so the weight below leaves
                   food out.
                 </p>
               )}
-              {mode !== 'pack' && foodProjection && (
+              {mode === 'edit' && foodProjection && (
                 <FoodRow
                   projection={foodProjection}
                   weightUnit={weightUnit}
@@ -1050,45 +1105,54 @@ function ListDetailInner({
                           reorderable here — category-level DnD is /gear-only. Each
                           CategoryGroup still renders a per-category SortableContext
                           internally so items reorder within their category. */}
+                      {mode === 'pack' && packingGroupingState.showErrorNotice && (
+                        <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                          Couldn&apos;t load packing locations. Showing the last available grouping.
+                        </p>
+                      )}
                       {grouped
-                        .filter((g) => g.category !== null)
+                        .filter((g) => g.group !== null)
                         .map((group) => {
-                          // group.category is narrowed by the filter above; destructure
-                          // to capture it as a non-null local so JSX below doesn't need
-                          // a non-null assertion. The `if (!category) return null` is
-                          // unreachable in practice — filter already excluded nulls —
-                          // but keeps TS happy without resorting to a typeguard.
-                          const { category } = group
-                          if (!category) return null
+                          // The filter above makes this non-null in practice.
+                          // Keep the guard so TypeScript narrows without an assertion.
+                          const definition = group.group
+                          if (!definition) return null
+                          const locationGrouping = grouping.kind === 'location'
                           return (
                             <CategoryGroup
-                              key={category.id}
-                              name={category.name}
-                              categoryId={category.id}
+                              key={definition.id}
+                              name={definition.name}
+                              categoryId={locationGrouping ? undefined : definition.id}
+                              regionKey={locationGrouping ? definition.id : undefined}
+                              collapsed={locationGrouping ? packingCollapsed.has(definition.id) : undefined}
+                              onCollapsedChange={locationGrouping ? packingCollapseHandlers.get(definition.id) : undefined}
                               items={group.items}
                               {...sharedGroupProps}
                               reorderPending={reorderItemsMut.isPending}
                               hideWorn={showWornGroup}
-                              subtotalLabel="Base"
-                              subtotalGrams={baseGramsForCategory(weightBreakdown, category.id)}
-                              onAddItem={onAddNewItem}
+                              subtotalLabel={locationGrouping ? undefined : 'Base'}
+                              subtotalGrams={locationGrouping ? undefined : baseGramsForCategory(weightBreakdown, definition.id)}
+                              onAddItem={locationGrouping ? undefined : onAddNewItem}
                             />
                           )
                         })}
                       {grouped
-                        .filter((g) => g.category === null)
+                        .filter((g) => g.group === null)
                         .map((group) => (
                           <CategoryGroup
-                            key="__uncategorized__"
-                            name="Uncategorized"
+                            key={grouping.kind === 'location' ? '__unassigned__' : '__uncategorized__'}
+                            name={grouping.kind === 'location' ? 'Unassigned' : 'Uncategorized'}
                             categoryId={null}
+                            regionKey={grouping.kind === 'location' ? 'packing-unassigned' : undefined}
+                            collapsed={grouping.kind === 'location' ? packingCollapsed.has('__unassigned__') : undefined}
+                            onCollapsedChange={grouping.kind === 'location' ? toggleUnassignedCollapse : undefined}
                             items={group.items}
                             {...sharedGroupProps}
                             reorderPending={reorderItemsMut.isPending}
                             hideWorn={showWornGroup}
-                            subtotalLabel="Base"
-                            subtotalGrams={baseGramsForCategory(weightBreakdown, null)}
-                            onAddItem={onAddNewItem}
+                            subtotalLabel={grouping.kind === 'location' ? undefined : 'Base'}
+                            subtotalGrams={grouping.kind === 'location' ? undefined : baseGramsForCategory(weightBreakdown, null)}
+                            onAddItem={grouping.kind === 'location' ? undefined : onAddNewItem}
                           />
                         ))}
                       <DragOverlay dropAnimation={null}>

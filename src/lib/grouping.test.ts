@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
+  groupBy,
   groupListItemsByCategory,
+  groupListItemsByLocation,
   groupGearItemsByCategory,
   groupByCategory,
   assignSortOrderSlots,
 } from './grouping'
 import type { Category, GearItem, GearStatus, ListItemWithGear } from './types'
+import type { PackingLocation } from './types'
 
 const shelter: Category = {
   id: 'cat-shelter',
@@ -19,6 +22,9 @@ const sleep: Category = {
   sortOrder: 1,
   createdAt: '2024-01-01',
 }
+
+const mainPack: PackingLocation = { id: 'loc-main', name: 'Main pack', sortOrder: 0 }
+const hipBelt: PackingLocation = { id: 'loc-hip', name: 'Hip belt', sortOrder: 1 }
 
 function listItem(overrides: {
   id: string
@@ -177,6 +183,84 @@ describe('groupListItemsByCategory', () => {
     expect(second).not.toBe(first)
     expect(second[0]!.items).not.toBe(first[0]!.items)
     expect(second[0]!.items[0]!.gearItem.status).toBe('need_to_buy')
+  })
+
+  it('rebuilds when only packingLocationId changes', () => {
+    const items1 = [listItem({ id: 'a', categoryId: 'cat-shelter', packingLocationId: null })]
+    const first = groupListItemsByCategory(items1, [shelter])
+
+    const items2 = [
+      listItem({ id: 'a', categoryId: 'cat-shelter', packingLocationId: mainPack.id }),
+    ]
+    const second = groupListItemsByCategory(items2, [shelter], first)
+
+    expect(second).not.toBe(first)
+    expect(second[0]!.items).not.toBe(first[0]!.items)
+  })
+})
+
+describe('groupListItemsByLocation', () => {
+  it('sorts locations, retains empty locations, and emits Unassigned last', () => {
+    const items = [
+      listItem({ id: 'a', categoryId: 'cat-shelter', packingLocationId: hipBelt.id }),
+      listItem({ id: 'b', categoryId: 'cat-sleep', packingLocationId: null }),
+    ]
+
+    const result = groupListItemsByLocation(items, [hipBelt, mainPack])
+
+    expect(result.map((group) => group.location?.id ?? null)).toEqual([
+      mainPack.id,
+      hipBelt.id,
+      null,
+    ])
+    expect(result[0]!.items).toEqual([])
+    expect(result[1]!.items.map((item) => item.id)).toEqual(['a'])
+    expect(result[2]!.items.map((item) => item.id)).toEqual(['b'])
+  })
+
+  it('routes a missing location reference to Unassigned', () => {
+    const item = listItem({
+      id: 'a',
+      categoryId: 'cat-shelter',
+      packingLocationId: 'loc-deleted',
+    })
+
+    const result = groupListItemsByLocation([item], [mainPack])
+
+    expect(result.at(-1)?.location).toBeNull()
+    expect(result.at(-1)?.items).toEqual([item])
+  })
+
+  it('reuses the prior result when locations and items are unchanged', () => {
+    const items = [
+      listItem({ id: 'a', categoryId: 'cat-shelter', packingLocationId: mainPack.id }),
+    ]
+    const first = groupListItemsByLocation(items, [mainPack, hipBelt])
+    const second = groupListItemsByLocation(items, [mainPack, hipBelt], first)
+
+    expect(second).toBe(first)
+  })
+})
+
+describe('groupBy (generic group definitions)', () => {
+  it('groups definitions that are not categories', () => {
+    type Definition = { id: string; label: string }
+    type Item = { id: string; definitionId: string | null }
+    const definitions: Definition[] = [
+      { id: 'one', label: 'One' },
+      { id: 'two', label: 'Two' },
+    ]
+    const items: Item[] = [
+      { id: 'a', definitionId: 'two' },
+      { id: 'b', definitionId: null },
+    ]
+
+    const result = groupBy(items, definitions, (item) => item.definitionId, {
+      keepEmpty: true,
+      orphanPolicy: 'route-to-ungrouped',
+    })
+
+    expect(result.map((entry) => entry.group?.id ?? null)).toEqual(['one', 'two', null])
   })
 })
 

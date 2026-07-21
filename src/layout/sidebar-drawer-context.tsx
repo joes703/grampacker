@@ -38,15 +38,16 @@ export function useSidebarDrawer() {
 // on unmount, and returns the open/setOpen pair so the page can render
 // its own <Drawer.Root>. The page is responsible for the drawer's
 // content; this hook only handles the registration handshake.
-export function useRegisterSidebarDrawer() {
+export function useRegisterSidebarDrawer(enabled = true) {
   const ctx = useSidebarDrawer()
   const { setAvailable, setOpen } = ctx
   useEffect(() => {
-    setAvailable(true)
+    setAvailable(enabled)
+    if (!enabled) setOpen(false)
     return () => {
       setAvailable(false)
       setOpen(false)
     }
-  }, [setAvailable, setOpen])
+  }, [enabled, setAvailable, setOpen])
   return { open: ctx.open, setOpen: ctx.setOpen }
 }

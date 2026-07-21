@@ -1,6 +1,38 @@
 import { useState } from 'react'
-import { groupListItemsByCategory, type CategoryGroup } from './grouping'
-import type { Category, ListItemWithGear } from './types'
+import { groupBy, listItemsArrayEqual, type Group } from './grouping'
+import type { Category, ListItemWithGear, PackingLocation } from './types'
+
+export type ListItemGrouping =
+  | { kind: 'category'; groups: Category[] }
+  | { kind: 'location'; groups: PackingLocation[] }
+
+export type StableListItemGroup = Group<Category | PackingLocation, ListItemWithGear>
+
+function buildGroups(
+  items: ListItemWithGear[],
+  grouping: ListItemGrouping,
+  prior?: StableListItemGroup[],
+): StableListItemGroup[] {
+  const groups: (Category | PackingLocation)[] = grouping.groups
+    .toSorted((a, b) => a.sortOrder - b.sortOrder)
+  return groupBy(
+    items,
+    groups,
+    grouping.kind === 'category'
+      ? (item) => item.gearItem.categoryId
+      : (item) => item.packingLocationId,
+    {
+      keepEmpty: grouping.kind === 'location',
+      orphanPolicy: 'route-to-ungrouped',
+      stability: prior
+        ? {
+            prior,
+            itemsEqual: listItemsArrayEqual,
+          }
+        : undefined,
+    },
+  )
+}
 
 /**
  * Stable wrapper around groupListItemsByCategory that lets the function
@@ -19,12 +51,12 @@ import type { Category, ListItemWithGear } from './types'
  */
 export function useGroupedListItems(
   items: ListItemWithGear[],
-  categories: Category[],
-): CategoryGroup<ListItemWithGear>[] {
-  const [cached, setCached] = useState<CategoryGroup<ListItemWithGear>[]>(() =>
-    groupListItemsByCategory(items, categories),
+  grouping: ListItemGrouping,
+): StableListItemGroup[] {
+  const [cached, setCached] = useState<StableListItemGroup[]>(() =>
+    buildGroups(items, grouping),
   )
-  const next = groupListItemsByCategory(items, categories, cached)
+  const next = buildGroups(items, grouping, cached)
   if (next !== cached) {
     setCached(next)
   }
