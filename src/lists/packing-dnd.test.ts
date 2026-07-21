@@ -37,6 +37,7 @@ const source = item('source', 'loc-a')
 const target = item('target', 'loc-b')
 const items = [source, target]
 const validLocationIds = new Set(['loc-a', 'loc-b'])
+const containerItemIdByLocation = new Map([['loc-b', 'source']])
 
 describe('planPackingItemDrop', () => {
   it('assigns when dropped on a location section', () => {
@@ -87,6 +88,16 @@ describe('planPackingItemDrop', () => {
       makeDnDId('packing-location', 'temp-pending'),
       items,
       validLocationIds,
+    )).toBeNull()
+  })
+
+  it('rejects dropping an item into the location it backs', () => {
+    expect(planPackingItemDrop(
+      makeDnDId('packing-item', source.id),
+      makeDnDId('packing-location', 'loc-b'),
+      items,
+      validLocationIds,
+      containerItemIdByLocation,
     )).toBeNull()
   })
 })

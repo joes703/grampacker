@@ -86,8 +86,10 @@ export default function OrganizePackPanel({
     queryKey: queryKeys.listItems(list.id),
     queryFn: () => fetchListItems(list.id),
   })
-  const { createLocation, renameLocation, removeLocation } =
+  const { createLocation, createItemContainer, renameLocation, removeLocation } =
     usePackingLocationActions(list.id, locations)
+  const locationCreationPending =
+    createLocation.isPending || createItemContainer.isPending
 
   const moveItem = useMutation({
     mutationFn: ({ itemId, locationId }: { itemId: string; locationId: string | null }) =>
@@ -118,6 +120,20 @@ export default function OrganizePackPanel({
   )
   const realLocationIds = useMemo(
     () => new Set(realLocations.map((location) => location.id)),
+    [realLocations],
+  )
+  const containerItemIds = useMemo(
+    () => new Set(realLocations.flatMap((location) =>
+      location.containerListItemId === null ? [] : [location.containerListItemId],
+    )),
+    [realLocations],
+  )
+  const containerItemIdByLocation = useMemo(
+    () => new Map(realLocations.flatMap((location) =>
+      location.containerListItemId === null
+        ? []
+        : [[location.id, location.containerListItemId] as const],
+    )),
     [realLocations],
   )
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
@@ -163,6 +179,7 @@ export default function OrganizePackPanel({
       event.over ? String(event.over.id) : undefined,
       items,
       realLocationIds,
+      containerItemIdByLocation,
     )
     setActivePackingItemId(null)
     if (!plan) {
@@ -177,7 +194,7 @@ export default function OrganizePackPanel({
   function submitLocation(event: React.FormEvent) {
     event.preventDefault()
     const name = newName.trim()
-    if (!name || name.length > 60 || locations.length >= 30 || createLocation.isPending) return
+    if (!name || name.length > 60 || locations.length >= 30 || locationCreationPending) return
     createLocation.mutate(name)
     setNewName('')
   }
@@ -206,7 +223,7 @@ export default function OrganizePackPanel({
         />
         <button
           type="submit"
-          disabled={!newName.trim() || newName.trim().length > 60 || locations.length >= 30 || createLocation.isPending}
+          disabled={!newName.trim() || newName.trim().length > 60 || locations.length >= 30 || locationCreationPending}
           className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus size={15} /> Add
@@ -227,7 +244,7 @@ export default function OrganizePackPanel({
               <button
                 key={name}
                 type="button"
-                disabled={createLocation.isPending}
+                disabled={locationCreationPending}
                 onClick={() => createLocation.mutate(name)}
                 className="rounded-md border border-blue-300 bg-white px-2.5 py-1.5 text-sm font-medium text-blue-800 hover:bg-blue-100 disabled:opacity-50"
               >
@@ -258,8 +275,14 @@ export default function OrganizePackPanel({
               items={unassignedItems}
               locations={realLocations}
               mobile={mobile}
-              movePending={moveItem.isPending || createLocation.isPending}
+              movePending={moveItem.isPending || locationCreationPending}
+              containerCreationDisabled={locations.length >= 30 || locationCreationPending}
+              containerItemIds={containerItemIds}
               onMove={requestMove}
+              onUseAsContainer={(item) => createItemContainer.mutate({
+                itemId: item.id,
+                name: item.gearItem.name,
+              })}
             />
             <SortableContext
               items={locations.map((location) => makeDnDId('packing-location', location.id))}
@@ -275,11 +298,17 @@ export default function OrganizePackPanel({
                     items={group.items}
                     locations={realLocations}
                     mobile={mobile}
-                    movePending={moveItem.isPending || createLocation.isPending}
-                    reorderPending={reorderPending || createLocation.isPending}
+                    movePending={moveItem.isPending || locationCreationPending}
+                    containerCreationDisabled={locations.length >= 30 || locationCreationPending}
+                    containerItemIds={containerItemIds}
+                    reorderPending={reorderPending || locationCreationPending}
                     onRename={(name) => renameLocation.mutate({ id: location.id, name })}
                     onDelete={() => setDeleteTarget(location)}
                     onMove={requestMove}
+                    onUseAsContainer={(item) => createItemContainer.mutate({
+                      itemId: item.id,
+                      name: item.gearItem.name,
+                    })}
                   />
                 )
               })}
@@ -302,10 +331,14 @@ export default function OrganizePackPanel({
 
       {deleteTarget ? (
         <ConfirmDialog
-          title="Delete packing location"
-          message={`Delete "${deleteTarget.name}"? Its items will move to Unassigned.`}
-          confirmLabel="Delete"
-          dangerous
+          title={deleteTarget.containerListItemId === null
+            ? 'Delete packing location'
+            : 'Stop using item as container'}
+          message={deleteTarget.containerListItemId === null
+            ? `Delete "${deleteTarget.name}"? Its items will move to Unassigned.`
+            : `Stop using "${deleteTarget.name}" as a container? Its items will move to Unassigned.`}
+          confirmLabel={deleteTarget.containerListItemId === null ? 'Delete' : 'Stop using'}
+          dangerous={deleteTarget.containerListItemId === null}
           onCancel={() => setDeleteTarget(null)}
           onConfirm={() => {
             const target = deleteTarget
