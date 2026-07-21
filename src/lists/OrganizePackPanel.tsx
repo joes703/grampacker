@@ -251,6 +251,14 @@ export default function OrganizePackPanel({ list }: { list: List }) {
           onDragEnd={onDragEnd}
         >
           <div className="space-y-3">
+            <DroppableUnassignedSection
+              location={null}
+              items={unassignedItems}
+              locations={realLocations}
+              mobile={mobile}
+              movePending={moveItem.isPending || createLocation.isPending}
+              onMove={requestMove}
+            />
             <SortableContext
               items={locations.map((location) => makeDnDId('packing-location', location.id))}
               strategy={verticalListSortingStrategy}
@@ -274,14 +282,6 @@ export default function OrganizePackPanel({ list }: { list: List }) {
                 )
               })}
             </SortableContext>
-            <DroppableUnassignedSection
-              location={null}
-              items={unassignedItems}
-              locations={realLocations}
-              mobile={mobile}
-              movePending={moveItem.isPending || createLocation.isPending}
-              onMove={requestMove}
-            />
           </div>
           <DragOverlay dropAnimation={null}>
             {activePackingItem ? (
