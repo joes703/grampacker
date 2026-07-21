@@ -35,10 +35,11 @@ export default function ListDocumentToolbar({
         <CurrentListHeader list={list} />
       </div>
       <div className="ml-auto flex items-center gap-2">
-        {/* Deliberately mode-independent: weights remain on screen while packing. */}
-        <div>
-          <UnitSegmentedControl idPrefix="list-toolbar" />
-        </div>
+        {mode === 'edit' && (
+          <div>
+            <UnitSegmentedControl idPrefix="list-toolbar" />
+          </div>
+        )}
         <ListModeToggles
           mode={mode}
           onTogglePackMode={onTogglePackMode}
