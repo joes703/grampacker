@@ -230,6 +230,29 @@ describe('GearLibraryPage route identity', () => {
 })
 
 describe('GearLibraryPage bulk success handling', () => {
+  it('shows one search-empty message and restores empty categories when search clears', async () => {
+    h.reorderableItems.mockReturnValue([
+      category({ id: 'c1', name: 'Shelter' }),
+      category({ id: 'c2', name: 'Cooking' }),
+    ])
+    h.fetchGearItems.mockResolvedValue([gear({ name: 'Tent' })])
+    renderPage()
+
+    fireEvent.change(await screen.findByRole('searchbox', { name: 'Search gear' }), {
+      target: { value: 'stove' },
+    })
+
+    expect(await screen.findByText('No gear matches \u201cstove\u201d.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete category' })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search gear' }), {
+      target: { value: '' },
+    })
+
+    expect(await screen.findAllByRole('button', { name: 'Delete category' })).toHaveLength(2)
+    expect(screen.queryByText(/No gear matches/)).not.toBeInTheDocument()
+  })
+
   it('shows a first-run empty state when there are no categories or gear items', async () => {
     h.reorderableItems.mockReturnValue([])
     h.fetchGearItems.mockResolvedValue([])

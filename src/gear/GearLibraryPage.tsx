@@ -577,6 +577,10 @@ export default function GearLibraryPage() {
           onImport={() => setDialog({ type: 'import-explainer' })}
           onCreateCategory={() => setDialog({ type: 'add-category' })}
         />
+      ) : search.trim() !== '' && searchFiltered.length === 0 ? (
+        <p className="text-sm text-gray-500">
+          No gear matches &ldquo;{search}&rdquo;.
+        </p>
       ) : (() => {
         const activeParsed = activeId ? parseDnDId(activeId) : null
         const activeItem =
