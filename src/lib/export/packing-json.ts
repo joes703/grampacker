@@ -1,12 +1,17 @@
 import type { List, ListItemWithGear, PackingLocation } from '../types'
 
-export const PACKING_DATA_VERSION = 1 as const
+export const PACKING_DATA_VERSION = 2 as const
 
 export type PackingData = {
   version: typeof PACKING_DATA_VERSION
   lists: {
     list: { id: string; name: string }
-    locations: { id: string; name: string; sortOrder: number }[]
+    locations: {
+      id: string
+      name: string
+      sortOrder: number
+      containerListItemId: string | null
+    }[]
     items: {
       listItemId: string
       gearItem: { id: string; name: string }
@@ -33,7 +38,12 @@ export function buildPackingJson(input: {
       list: { id: list.id, name: list.name },
       locations: (input.packingLocationsByListId.get(list.id) ?? [])
         .toSorted((a, b) => a.sortOrder - b.sortOrder)
-        .map(({ id, name, sortOrder }) => ({ id, name, sortOrder })),
+        .map(({ id, name, sortOrder, containerListItemId }) => ({
+          id,
+          name,
+          sortOrder,
+          containerListItemId,
+        })),
       items: (itemsByListId.get(list.id) ?? []).map((item) => ({
         listItemId: item.id,
         gearItem: { id: item.gearItem.id, name: item.gearItem.name },

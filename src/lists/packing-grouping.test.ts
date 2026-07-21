@@ -6,7 +6,7 @@ const categories: Category[] = [
   { id: 'cat-1', name: 'Shelter', sortOrder: 0, createdAt: '2026-01-01' },
 ]
 const locations: PackingLocation[] = [
-  { id: 'loc-1', name: 'Main pack', sortOrder: 0 },
+  { id: 'loc-1', name: 'Main pack', sortOrder: 0, containerListItemId: null },
 ]
 
 describe('selectPackGrouping', () => {

@@ -517,6 +517,7 @@ export function createListsRepo(db: Db, userId: string) {
       const [items, sourceLocations] = await db.batch([
         db
           .select({
+            id: listItems.id,
             gearItemId: listItems.gearItemId,
             quantity: listItems.quantity,
             isWorn: listItems.isWorn,
@@ -535,6 +536,7 @@ export function createListsRepo(db: Db, userId: string) {
             id: packingLocations.id,
             name: packingLocations.name,
             sortOrder: packingLocations.sortOrder,
+            containerListItemId: packingLocations.containerListItemId,
           })
           .from(packingLocations)
           .where(
@@ -579,6 +581,13 @@ export function createListsRepo(db: Db, userId: string) {
         const locationIdMap = new Map(
           locationCopies.map((location) => [location.id, location.newId]),
         )
+        const itemCopies = items.map((item) => ({
+          ...item,
+          newId: crypto.randomUUID(),
+        }))
+        const itemIdMap = new Map(
+          itemCopies.map((item) => [item.id, item.newId]),
+        )
         const planStatements =
           planGraph === null
             ? null
@@ -610,6 +619,11 @@ export function createListsRepo(db: Db, userId: string) {
           userId,
           listId: newId,
           name: location.name,
+          // Insert the two halves of the cyclic graph in FK order: locations
+          // first with no source, items second with their location assignment,
+          // then link item-backed locations below. The whole db.batch is one
+          // transaction, so the nullable intermediate state is never visible.
+          containerListItemId: null,
           sortOrder: location.sortOrder,
           createdAt: now,
           updatedAt: now,
@@ -617,8 +631,8 @@ export function createListsRepo(db: Db, userId: string) {
         const insertLocations = chunkForParamCap(locationRows).map((rows) =>
           db.insert(packingLocations).values(rows),
         )
-        const itemRows = items.map((it) => ({
-          id: crypto.randomUUID(),
+        const itemRows = itemCopies.map((it) => ({
+          id: it.newId,
           userId,
           listId: newId,
           gearItemId: it.gearItemId,
@@ -643,6 +657,25 @@ export function createListsRepo(db: Db, userId: string) {
         const insertItems = chunkForParamCap(itemRows).map((rows) =>
           db.insert(listItems).values(rows),
         )
+        const linkContainerLocations = locationCopies.flatMap((location) => {
+          if (location.containerListItemId === null) return []
+          const copiedContainerItemId = itemIdMap.get(location.containerListItemId)
+          if (!copiedContainerItemId) {
+            throw new Error('packing location lost its container item during duplicate')
+          }
+          return [
+            db
+              .update(packingLocations)
+              .set({ containerListItemId: copiedContainerItemId })
+              .where(
+                and(
+                  eq(packingLocations.id, location.newId),
+                  eq(packingLocations.listId, newId),
+                  eq(packingLocations.userId, userId),
+                ),
+              ),
+          ]
+        })
         try {
           let results: unknown[]
           if (planStatements === null) {
@@ -650,6 +683,7 @@ export function createListsRepo(db: Db, userId: string) {
               insertList,
               ...insertLocations,
               ...insertItems,
+              ...linkContainerLocations,
             ])
           } else {
             const [planFirst, ...planRest] = planStatements
@@ -659,6 +693,7 @@ export function createListsRepo(db: Db, userId: string) {
               insertList,
               ...insertLocations,
               ...insertItems,
+              ...linkContainerLocations,
             ])
           }
           // The list row's returning() sits right after the plan-copy

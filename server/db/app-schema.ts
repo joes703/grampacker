@@ -215,6 +215,16 @@ export const packingLocations = sqliteTable(
       .references(() => user.id, { onDelete: 'cascade' }),
     listId: text('list_id').notNull(),
     name: text('name').notNull(),
+    // Null for a name-only location. When present, this location is backed by
+    // a real membership row on the same list. The stored name is a creation
+    // snapshot used while inserting/duplicating the graph; authenticated reads
+    // join through the item to its gear row so later gear renames stay live.
+    // The FK cascade removes the container role when that membership row goes
+    // away; list_items.packing_location_id then SET NULLs the contents.
+    containerListItemId: text('container_list_item_id').references(
+      (): AnySQLiteColumn => listItems.id,
+      { onDelete: 'cascade' },
+    ),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
@@ -227,6 +237,9 @@ export const packingLocations = sqliteTable(
       t.userId,
     ),
     index('packing_locations_list_sort_idx').on(t.listId, t.sortOrder),
+    uniqueIndex('packing_locations_container_item_unique').on(
+      t.containerListItemId,
+    ),
     foreignKey({
       name: 'packing_locations_list_same_owner_fk',
       columns: [t.listId, t.userId],

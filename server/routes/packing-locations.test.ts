@@ -17,7 +17,12 @@ type ItemBody = {
   isWorn: boolean
   packingLocationId: string | null
 }
-type LocationBody = { id: string; name: string; sortOrder: number }
+type LocationBody = {
+  id: string
+  name: string
+  sortOrder: number
+  containerListItemId: string | null
+}
 
 async function userIdFor(cookie: string): Promise<string> {
   const res = await apiRequest(cookie, 'GET', '/api/me')
@@ -64,6 +69,21 @@ async function createLocation(
     'POST',
     `/api/lists/${listId}/packing-locations`,
     { name },
+  )
+  expect(res.status).toBe(201)
+  return (await res.json()) as LocationBody
+}
+
+async function createItemContainer(
+  cookie: string,
+  listId: string,
+  containerListItemId: string,
+): Promise<LocationBody> {
+  const res = await apiRequest(
+    cookie,
+    'POST',
+    `/api/lists/${listId}/packing-locations`,
+    { containerListItemId },
   )
   expect(res.status).toBe(201)
   return (await res.json()) as LocationBody
@@ -254,6 +274,150 @@ describe('packing location CRUD, assignment, and integrity', () => {
     ).toBe(400)
   })
 
+  it('promotes an owned list item using its live gear name and rejects ambiguous or foreign sources', async () => {
+    const owner = await signUpVerifiedUser('packing-container-owner@example.com', 'O')
+    const other = await signUpVerifiedUser('packing-container-other@example.com', 'X')
+    const list = await createList(owner.cookie, 'Trip')
+    const otherList = await createList(owner.cookie, 'Other trip')
+    const canisterGear = await createGear(owner.cookie, 'Bear canister')
+    const canister = await addItem(owner.cookie, list.id, canisterGear)
+    const otherListItem = await addItem(
+      owner.cookie,
+      otherList.id,
+      await createGear(owner.cookie, 'Other pack'),
+    )
+    const foreignList = await createList(other.cookie, 'Foreign trip')
+    const foreignItem = await addItem(
+      other.cookie,
+      foreignList.id,
+      await createGear(other.cookie, 'Foreign pack'),
+    )
+
+    const location = await createItemContainer(owner.cookie, list.id, canister.id)
+    expect(location).toMatchObject({
+      name: 'Bear canister',
+      sortOrder: 0,
+      containerListItemId: canister.id,
+    })
+
+    const renameGear = await apiRequest(
+      owner.cookie,
+      'PATCH',
+      `/api/gear-items/${canisterGear}`,
+      { name: 'BV500' },
+    )
+    expect(renameGear.status).toBe(200)
+    expect((await getLocations(owner.cookie, list.id))[0]?.name).toBe('BV500')
+
+    for (const body of [
+      {},
+      { name: 'Copy', containerListItemId: canister.id },
+      { containerListItemId: otherListItem.id },
+      { containerListItemId: foreignItem.id },
+      { containerListItemId: crypto.randomUUID() },
+    ]) {
+      const res = await apiRequest(
+        owner.cookie,
+        'POST',
+        `/api/lists/${list.id}/packing-locations`,
+        body,
+      )
+      expect(res.status).toBe(400)
+    }
+
+    const duplicate = await apiRequest(
+      owner.cookie,
+      'POST',
+      `/api/lists/${list.id}/packing-locations`,
+      { containerListItemId: canister.id },
+    )
+    expect(duplicate.status).toBe(409)
+
+    const renameLocation = await apiRequest(
+      owner.cookie,
+      'PATCH',
+      `/api/lists/${list.id}/packing-locations/${location.id}`,
+      { name: 'Detached name' },
+    )
+    expect(renameLocation.status).toBe(409)
+  })
+
+  it('prevents self-containment and unassigns contents when the source item is removed', async () => {
+    const { cookie } = await signUpVerifiedUser('packing-container-delete@example.com', 'O')
+    const list = await createList(cookie, 'Trip')
+    const canister = await addItem(
+      cookie,
+      list.id,
+      await createGear(cookie, 'Bear canister'),
+    )
+    const foodBag = await addItem(
+      cookie,
+      list.id,
+      await createGear(cookie, 'Food bag'),
+    )
+    const location = await createItemContainer(cookie, list.id, canister.id)
+
+    const selfAssign = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${list.id}/items/${canister.id}`,
+      { packingLocationId: location.id },
+    )
+    expect(selfAssign.status).toBe(400)
+    expect((await getItems(cookie, list.id)).find((item) => item.id === canister.id)?.packingLocationId)
+      .toBeNull()
+
+    const assignContents = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${list.id}/items/${foodBag.id}`,
+      { packingLocationId: location.id },
+    )
+    expect(assignContents.status).toBe(200)
+
+    const removeSource = await apiRequest(
+      cookie,
+      'DELETE',
+      `/api/lists/${list.id}/items/${canister.id}`,
+    )
+    expect(removeSource.status).toBe(204)
+    expect(await getLocations(cookie, list.id)).toEqual([])
+    expect((await getItems(cookie, list.id))).toEqual([
+      expect.objectContaining({ id: foodBag.id, packingLocationId: null }),
+    ])
+  })
+
+  it('allows nested item containers but rejects a cycle with zero writes', async () => {
+    const { cookie } = await signUpVerifiedUser('packing-container-cycle@example.com', 'O')
+    const list = await createList(cookie, 'Trip')
+    const pack = await addItem(cookie, list.id, await createGear(cookie, 'Pack'))
+    const canister = await addItem(
+      cookie,
+      list.id,
+      await createGear(cookie, 'Bear canister'),
+    )
+    const packLocation = await createItemContainer(cookie, list.id, pack.id)
+    const canisterLocation = await createItemContainer(cookie, list.id, canister.id)
+
+    const nestCanister = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${list.id}/items/${canister.id}`,
+      { packingLocationId: packLocation.id },
+    )
+    expect(nestCanister.status).toBe(200)
+
+    const createCycle = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${list.id}/items/${pack.id}`,
+      { packingLocationId: canisterLocation.id },
+    )
+    expect(createCycle.status).toBe(400)
+    expect((await getItems(cookie, list.id)).find((item) => item.id === pack.id)?.packingLocationId)
+      .toBeNull()
+  })
+
   it('assigns, unassigns, preserves assignment across worn toggles, and leaves it untouched when omitted', async () => {
     const { cookie } = await signUpVerifiedUser('packing-assign@example.com', 'O')
     const list = await createList(cookie, 'Trip')
@@ -432,6 +596,36 @@ describe('packing location CRUD, assignment, and integrity', () => {
         .where(eq(packingLocations.listId, list.id)),
     ).toEqual([])
   })
+
+  it('duplicates an item-backed container with both sides remapped to the copied graph', async () => {
+    const { cookie } = await signUpVerifiedUser('packing-container-copy@example.com', 'O')
+    const list = await createList(cookie, 'Source')
+    const canisterGear = await createGear(cookie, 'Bear canister')
+    const foodGear = await createGear(cookie, 'Food bag')
+    const canister = await addItem(cookie, list.id, canisterGear)
+    const foodBag = await addItem(cookie, list.id, foodGear)
+    const location = await createItemContainer(cookie, list.id, canister.id)
+    await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${foodBag.id}`, {
+      packingLocationId: location.id,
+    })
+
+    const duplicate = await apiRequest(cookie, 'POST', `/api/lists/${list.id}/duplicate`)
+    expect(duplicate.status).toBe(201)
+    const copy = (await duplicate.json()) as ListBody
+    const copyItems = await getItems(cookie, copy.id)
+    const copiedCanister = copyItems.find((item) => item.gearItemId === canisterGear)
+    const copiedFood = copyItems.find((item) => item.gearItemId === foodGear)
+    const [copiedLocation] = await getLocations(cookie, copy.id)
+
+    expect(copiedCanister?.id).toBeDefined()
+    expect(copiedCanister?.id).not.toBe(canister.id)
+    expect(copiedLocation).toMatchObject({
+      name: 'Bear canister',
+      containerListItemId: copiedCanister?.id,
+    })
+    expect(copiedLocation?.id).not.toBe(location.id)
+    expect(copiedFood?.packingLocationId).toBe(copiedLocation?.id)
+  })
 })
 
 describe('packing location database triggers', () => {
@@ -447,6 +641,11 @@ describe('packing location database triggers', () => {
     const otherLocation = await createLocation(a.cookie, aOther.id, 'Other loc')
     const aGear = await createGear(a.cookie, 'A gear')
     const item = await addItem(a.cookie, aList.id, aGear)
+    const otherListItem = await addItem(
+      a.cookie,
+      aOther.id,
+      await createGear(a.cookie, 'A other gear'),
+    )
     const db = createDb(env.DB)
 
     await expectTriggerAbort(
@@ -493,5 +692,52 @@ describe('packing location database triggers', () => {
         'packing location cannot change list or owner',
       )
     }
+
+    await expectTriggerAbort(
+      db
+        .update(packingLocations)
+        .set({ containerListItemId: otherListItem.id })
+        .where(eq(packingLocations.id, aLocation.id)),
+      'container item does not belong to this list',
+    )
+    await db
+      .update(listItems)
+      .set({ packingLocationId: null })
+      .where(eq(listItems.id, item.id))
+    await expect(
+      db
+        .update(packingLocations)
+        .set({ containerListItemId: item.id })
+        .where(eq(packingLocations.id, aLocation.id)),
+    ).resolves.toBeDefined()
+    await expectTriggerAbort(
+      db
+        .update(listItems)
+        .set({ packingLocationId: aLocation.id })
+        .where(eq(listItems.id, item.id)),
+      'container nesting cycle',
+    )
+
+    const nestedItem = await addItem(
+      a.cookie,
+      aList.id,
+      await createGear(a.cookie, 'Nested container'),
+    )
+    const nestedLocation = await createItemContainer(
+      a.cookie,
+      aList.id,
+      nestedItem.id,
+    )
+    await db
+      .update(listItems)
+      .set({ packingLocationId: aLocation.id })
+      .where(eq(listItems.id, nestedItem.id))
+    await expectTriggerAbort(
+      db
+        .update(listItems)
+        .set({ packingLocationId: nestedLocation.id })
+        .where(eq(listItems.id, item.id)),
+      'container nesting cycle',
+    )
   })
 })

@@ -288,7 +288,30 @@ export function createListItemsRepo(db: Db, userId: string) {
         patch.packingLocationId === undefined ||
         patch.packingLocationId === null
           ? undefined
-          : sql`exists (select 1 from packing_locations pl where pl.id = ${patch.packingLocationId} and pl.list_id = ${listId} and pl.user_id = ${userId})`
+          : sql`exists (select 1 from packing_locations pl where pl.id = ${patch.packingLocationId} and pl.list_id = ${listId} and pl.user_id = ${userId})
+              and not exists (
+                with recursive container_ancestors(item_id) as (
+                  select pl.container_list_item_id
+                    from packing_locations pl
+                   where pl.id = ${patch.packingLocationId}
+                     and pl.list_id = ${listId}
+                     and pl.user_id = ${userId}
+                     and pl.container_list_item_id is not null
+                  union
+                  select parent.container_list_item_id
+                    from container_ancestors ca
+                    join list_items li
+                      on li.id = ca.item_id
+                     and li.list_id = ${listId}
+                     and li.user_id = ${userId}
+                    join packing_locations parent
+                      on parent.id = li.packing_location_id
+                     and parent.list_id = ${listId}
+                     and parent.user_id = ${userId}
+                   where parent.container_list_item_id is not null
+                )
+                select 1 from container_ancestors where item_id = ${itemId}
+              )`
       // listId in the WRITE's where-clause too, not just the SELECT
       // above: today nothing can move an item between lists, but the
       // write must stay parent-path-consistent by construction if that

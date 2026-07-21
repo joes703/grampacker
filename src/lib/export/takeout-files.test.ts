@@ -229,9 +229,15 @@ describe('buildTakeoutFiles', () => {
     })
     const packingLocationsByListId = new Map([
       ['l-1', [
-        { id: 'loc-b', name: 'Side pocket', sortOrder: 1 },
-        { id: 'loc-a', name: 'Side pocket', sortOrder: 0 },
-        { id: 'loc-empty', name: 'Lid', sortOrder: 2 },
+        {
+          id: 'loc-b', name: 'Side pocket', sortOrder: 1, containerListItemId: null,
+        },
+        {
+          id: 'loc-a', name: 'Side pocket', sortOrder: 0, containerListItemId: 'i-2',
+        },
+        {
+          id: 'loc-empty', name: 'Lid', sortOrder: 2, containerListItemId: null,
+        },
       ]],
     ])
 
@@ -247,7 +253,12 @@ describe('buildTakeoutFiles', () => {
       version: number
       lists: Array<{
         list: { id: string; name: string }
-        locations: Array<{ id: string; name: string; sortOrder: number }>
+        locations: Array<{
+          id: string
+          name: string
+          sortOrder: number
+          containerListItemId: string | null
+        }>
         items: Array<{
           listItemId: string
           gearItem: { id: string; name: string }
@@ -256,13 +267,15 @@ describe('buildTakeoutFiles', () => {
       }>
     }
 
-    expect(packing.version).toBe(1)
+    expect(packing.version).toBe(2)
     expect(packing.lists[0]?.list).toEqual({ id: 'l-1', name: 'JMT section' })
     expect(packing.lists[0]?.locations.map((location) => location.id)).toEqual([
       'loc-a', 'loc-b', 'loc-empty',
     ])
     expect(packing.lists[0]?.locations.filter((location) => location.name === 'Side pocket'))
       .toHaveLength(2)
+    expect(packing.lists[0]?.locations.find((location) => location.id === 'loc-a'))
+      .toMatchObject({ containerListItemId: 'i-2' })
 
     const locationIds = new Set(packing.lists[0]?.locations.map((location) => location.id))
     for (const item of packing.lists[0]?.items ?? []) {
