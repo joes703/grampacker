@@ -12,13 +12,13 @@ import type { List } from '../lib/types'
 //
 // Fast path: if localStorage has a cached last-visited list path, redirect
 // to it immediately without waiting for fetchLists. The path includes
-// `/pack` when the user was last packing, so a cold start lands them back
-// in pack mode instead of the edit view. Server-side misses (deleted list,
+// `/pack` or `/organize` when the user was last in that mode, so a cold start
+// lands them back in the same workspace. Server-side misses (deleted list,
 // or a stale value from the old app under the same domain) hit the
 // destination page's not-found branch, which clears the cache when the
 // failing route matches the cached id - so a poisoned cache self-heals on
 // the next visit. readLastListPath already rejects anything that isn't a
-// strict `/lists/<uuid>(/pack)?`.
+// strict `/lists/<uuid>` with an optional exact mode segment.
 //
 // Slow path: no cached path (first login, cleared storage, or a stored
 // value that failed strict validation). Fall back to fetchLists +

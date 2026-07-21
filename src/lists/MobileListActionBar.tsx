@@ -34,8 +34,8 @@ type Props = {
 // Pack mode used to live as a fifth slot here, but pack is URL state on
 // a list (/lists/:id/pack), not a global destination — it would have
 // forced either a 5-slot inconsistent shape or a confusing
-// always-grayed Add in pack mode. The Pack toggle now lives inline on
-// the list page itself (MobilePackToggle), which also keeps Add
+// always-grayed Add in pack mode. The list mode toggles now live inline on
+// the list page itself, which also keeps Add
 // available mid-pack so the "I forgot water filter" flow is one tap.
 //
 // Visibility: this component is only rendered by ListDetailPage's authed

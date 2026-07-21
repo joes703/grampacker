@@ -55,6 +55,7 @@ function renderAt() {
           <Route path="/lists" element={<div>lists-page</div>} />
           <Route path="/lists/:id" element={<Probe />} />
           <Route path="/lists/:id/pack" element={<div>pack-page</div>} />
+          <Route path="/lists/:id/organize" element={<div>organize-page</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -75,6 +76,16 @@ describe('RootRedirect', () => {
 
     await waitFor(() => expect(screen.getByText('pack-page')).toBeInTheDocument())
     // The cache short-circuit means fetchLists is never called.
+    expect(fetchLists).not.toHaveBeenCalled()
+  })
+
+  it('fast path: restores the peer Organize mode', async () => {
+    vi.mocked(readLastListPath).mockReturnValue(
+      '/lists/11111111-1111-1111-1111-111111111111/organize',
+    )
+    renderAt()
+
+    await waitFor(() => expect(screen.getByText('organize-page')).toBeInTheDocument())
     expect(fetchLists).not.toHaveBeenCalled()
   })
 

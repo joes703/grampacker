@@ -21,13 +21,12 @@ type Props = {
 // Pill-shaped toggle button. Rounded border, fills with blue-50/blue-700
 // when active, gray border + muted text when idle.
 //
-// Reserved for page/list mode toggles. Currently the only consumer is
-// the Pack mode pill (desktop ListDocumentToolbar + MobilePackToggle).
+// Reserved for page/list mode toggles. Pack and Organize use it through
+// the shared ListModeToggles control.
 // Binary on/off settings and in-content view toggles use ToggleSwitch
 // instead — see docs/ui-density.md "Toggle Taxonomy" for the rule.
 //
-// Sizing is fixed (no `size` prop) since one consumer doesn't need
-// variation. Reintroduce a size variant when a second consumer arrives.
+// Sizing is fixed so peer modes remain visually equal.
 const PILL_CLASSES = 'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium'
 const ACTIVE_CLASSES = 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
 const IDLE_CLASSES = 'border-gray-300 text-gray-600 hover:bg-gray-50'

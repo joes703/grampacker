@@ -31,16 +31,12 @@ const list: List = {
 // public share page. These pin the placement, because the placement is where
 // this repo keeps getting burned.
 //
-// docs/ui-density.md: the mobile bottom bar is `lg:hidden`, so any control with
-// a separate mobile placement must gate its desktop copy on `lg`, NOT `md`, or
-// both render across 768-1023px. That exact bug has shipped four times here
-// (gear, food, lists add-affordances) and STILL exists for the Pack toggle -
-// ListDocumentToolbar is `hidden md:flex` while MobilePackToggle is
-// `lg:hidden`. Fixing Pack is its own change; this asserts the unit control
-// does not join it.
+// docs/ui-density.md: the mode controls move to the md+ document toolbar,
+// while the unit control does not move there until lg. Their mobile wrappers
+// deliberately use different breakpoints so neither control double-renders.
 describe('list unit control placement', () => {
   it('gates the toolbar unit control on lg, not md', () => {
-    render(<ListDocumentToolbar list={list} packMode={false} onTogglePackMode={vi.fn()} onOrganizePack={vi.fn()} />)
+    render(<ListDocumentToolbar list={list} mode="edit" onTogglePackMode={vi.fn()} onToggleOrganizeMode={vi.fn()} />)
 
     const group = screen.getByRole('radiogroup', { name: 'Weight units' })
     // Walk up to the responsive wrapper and assert the breakpoint literally.
@@ -72,43 +68,54 @@ describe('list unit control placement', () => {
     // double-renders across 768-1023px.
     const mobileRow = src
       .split('\n')
-      .find((line) => line.includes('lg:hidden') && line.includes('flex items-center gap-2'))
+      .find((line) => line.includes('lg:hidden') && line.includes('flex-wrap items-center gap-2'))
     expect(mobileRow, 'mobile unit/pack row wrapper not found').toBeDefined()
     expect(mobileRow).not.toContain('md:hidden')
     // And the control itself is inside that row, not gated separately.
     expect(src).toContain('idPrefix="list-mobile"')
+    expect(src).toContain('className="md:hidden"')
+    expect(src).toContain('<ListModeToggles')
   })
 
   it('keeps the unit control available in pack mode', () => {
     // Weights are still on screen while packing, so the switcher must not be
     // swept away with the pack-mode-suppressed list-admin controls.
-    render(<ListDocumentToolbar list={list} packMode onTogglePackMode={vi.fn()} onOrganizePack={vi.fn()} />)
+    render(<ListDocumentToolbar list={list} mode="pack" onTogglePackMode={vi.fn()} onToggleOrganizeMode={vi.fn()} />)
     expect(screen.getByRole('radiogroup', { name: 'Weight units' })).toBeInTheDocument()
     // ...whereas List options IS suppressed, which is the existing contract.
     expect(screen.queryByText('list-settings-button')).toBeNull()
   })
 
-  it('offers Organize only from the pack toolbar', () => {
-    const onOrganizePack = vi.fn()
+  it('offers Pack and Organize as peer toggles in every list mode', () => {
+    const onTogglePackMode = vi.fn()
+    const onToggleOrganizeMode = vi.fn()
     const { rerender } = render(
       <ListDocumentToolbar
         list={list}
-        packMode={false}
-        onTogglePackMode={vi.fn()}
-        onOrganizePack={onOrganizePack}
+        mode="edit"
+        onTogglePackMode={onTogglePackMode}
+        onToggleOrganizeMode={onToggleOrganizeMode}
       />,
     )
-    expect(screen.queryByRole('button', { name: 'Organize' })).toBeNull()
+    expect(screen.getByRole('group', { name: 'List mode' })).toBeInTheDocument()
+    const pack = screen.getByRole('button', { name: 'Pack mode' })
+    const organize = screen.getByRole('button', { name: 'Organize mode' })
+    expect(pack).toHaveAttribute('aria-pressed', 'false')
+    expect(organize).toHaveAttribute('aria-pressed', 'false')
+    pack.click()
+    organize.click()
+    expect(onTogglePackMode).toHaveBeenCalledTimes(1)
+    expect(onToggleOrganizeMode).toHaveBeenCalledTimes(1)
 
     rerender(
       <ListDocumentToolbar
         list={list}
-        packMode
-        onTogglePackMode={vi.fn()}
-        onOrganizePack={onOrganizePack}
+        mode="organize"
+        onTogglePackMode={onTogglePackMode}
+        onToggleOrganizeMode={onToggleOrganizeMode}
       />,
     )
-    screen.getByRole('button', { name: 'Organize' }).click()
-    expect(onOrganizePack).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Pack mode' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Organize mode' })).toHaveAttribute('aria-pressed', 'true')
   })
 })

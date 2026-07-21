@@ -1,6 +1,15 @@
 # Organize Pack: design
 
-Status: rev 6 — implementation baseline. Nothing here is implemented yet.
+Status: rev 6 implementation baseline; shipped 2026-07-20.
+
+> **Post-launch route amendment (2026-07-20):** Organize is now a peer list
+> mode at `/lists/:id/organize`, alongside List (`/lists/:id`) and Pack
+> (`/lists/:id/pack`). Pack and Organize are persistent pill toggles on the
+> list page; clicking the active mode returns to List, and clicking the other
+> switches directly. The original `/pack/organize` route redirects to the
+> canonical peer route, and last-list restoration persists `/organize`. This
+> user-requested amendment supersedes only the route, entry-point, and
+> persistence decisions below; the packing-location contract is unchanged.
 
 Five GATE 1 adversarial passes drove this from BLOCK to clean. The rev-5 review
 confirmed **M5 fixed (all nine literal POST_CHECKS verified to pass against the

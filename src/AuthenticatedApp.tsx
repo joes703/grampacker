@@ -44,11 +44,13 @@ export default function AuthenticatedApp() {
         <Route path="food/plans" element={<FoodPlansPage />} />
         <Route path="food/plans/:id" element={<FoodPlanEditor />} />
         <Route path="settings" element={<SettingsPage />} />
-        {/* Pack mode is a URL segment of the same detail page (see
-            ListDetailPage's mode derivation + legacy ?mode=pack redirect). */}
+        {/* Pack and Organize are URL segments of the same detail page (see
+            ListDetailPage's mode derivation + legacy redirects). */}
         <Route path="lists" element={<ListsPage />} />
         <Route path="lists/:id" element={<ListDetailPage />} />
         <Route path="lists/:id/pack" element={<ListDetailPage />} />
+        <Route path="lists/:id/organize" element={<ListDetailPage />} />
+        {/* Compatibility route for Organize's original nesting under Pack. */}
         <Route path="lists/:id/pack/organize" element={<ListDetailPage />} />
       </Route>
       {/* Unknown path under the gate: send them home rather than showing a
