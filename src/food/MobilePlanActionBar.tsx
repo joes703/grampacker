@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router'
-import { Plus, Settings2 } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import MobileBottomBar from '../components/MobileBottomBar'
 import { useSuppressMobilePrimaryNav } from '../layout/mobile-primary-nav-context'
 import { buildMobileDestinationItems } from '../layout/mobile-nav-destinations'
@@ -9,10 +9,9 @@ type Props = {
   onNewPlan: () => void
 }
 
-// Mobile-only bottom action bar for the Plans index. Same standardized shape as
-// MobileFoodActionBar (Gear / Food / Lists / Add / Options); it exists so the
-// index has a working mobile Add rather than falling back to MobilePrimaryNav's
-// disabled buttons. Options stays disabled until a plans slice needs it.
+// Mobile-only bottom action bar for the Plans index. It keeps the shared
+// destinations and appends the one working page action, New plan. Future
+// actions do not reserve disabled slots.
 export default function MobilePlanActionBar({ onNewPlan }: Props) {
   useSuppressMobilePrimaryNav()
   const { pathname } = useLocation()
@@ -28,14 +27,6 @@ export default function MobilePlanActionBar({ onNewPlan }: Props) {
           icon: <Plus size={18} />,
           onClick: onNewPlan,
           ariaLabel: 'New plan',
-        },
-        {
-          type: 'button',
-          label: 'Options',
-          icon: <Settings2 size={18} />,
-          onClick: () => {},
-          disabled: true,
-          ariaLabel: 'Plan options (no action yet)',
         },
       ]}
     />

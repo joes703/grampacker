@@ -865,13 +865,16 @@ function ListDetailInner({
 
   if (mode === 'organize') {
     return (
-      <Suspense fallback={<ListDetailStatus title="Loading pack organizer..." busy />}>
-        <OrganizePackPanel
-          list={list}
-          onTogglePackMode={togglePackMode}
-          onToggleOrganizeMode={toggleOrganizeMode}
-        />
-      </Suspense>
+      <>
+        <Suspense fallback={<ListDetailStatus title="Loading pack organizer..." busy />}>
+          <OrganizePackPanel
+            list={list}
+            onTogglePackMode={togglePackMode}
+            onToggleOrganizeMode={toggleOrganizeMode}
+          />
+        </Suspense>
+        <MobileListActionBar list={list} mode="organize" />
+      </>
     )
   }
 
@@ -1338,7 +1341,7 @@ function ListDetailInner({
           list-admin not needed mid-pack). The mode toggles above stay
           available independently. lg:hidden inside the bar
           itself, so desktop never renders it. */}
-      <MobileListActionBar list={list} packMode={mode === 'pack'} />
+      <MobileListActionBar list={list} mode={mode} />
 
     </div>
   )
