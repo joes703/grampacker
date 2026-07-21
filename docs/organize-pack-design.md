@@ -15,10 +15,14 @@ Status: rev 6 implementation baseline; shipped 2026-07-20.
 > **Item-backed container amendment (2026-07-21):** A packing location may
 > optionally be backed by one membership row on the same list. Its displayed
 > name follows that item's live gear name. The source remains a normal list
-> item, so it can be packed and may itself live in another location; self-links
-> and nesting cycles are rejected. Removing the source or stopping its
-> container role unassigns the contents without deleting them. Name-only
-> locations remain supported for physical places that are not gear items.
+> item in storage and packing progress, but promotion transforms its UI: the
+> item becomes the single visible container header instead of also appearing
+> as a row in its parent. Its Ready/Packed controls remain on that header in
+> Pack mode. Item-backed containers nest under the location containing their
+> source item; self-links and nesting cycles are rejected. Removing the source
+> or stopping its container role unassigns the contents without deleting them.
+> Name-only locations remain supported for physical places that are not gear
+> items.
 
 Five GATE 1 adversarial passes drove this from BLOCK to clean. The rev-5 review
 confirmed **M5 fixed (all nine literal POST_CHECKS verified to pass against the
@@ -586,6 +590,11 @@ column is still set; unmark, assert the item is back in its group.
   checklist with `groupWorn` off that same item is visible and counted — each
   screen counts what it renders. Codex confirmed this is coherent: `PackingProgress`
   takes global list totals from `ListDetailPage`, not per-location counts.)
+- **Item-backed locations are container nodes, not duplicate rows.** Their
+  backing item supplies the Organize header and its move action. A container
+  assigned to another item-backed location renders recursively inside that
+  parent; its source never also appears in Unassigned or the parent's ordinary
+  rows.
 - **Unassigned** always renders in Organize, pinned last, even when empty.
 - **`Move to…`** on every row via `RowMenuItem` (desktop) and
   `MobileOptionsModal` (mobile). The primary path: accessible, mobile-friendly,
@@ -600,7 +609,10 @@ column is still set; unmark, assert the item is back in its group.
 
 Unchanged behavior, new grouping: Ready/Packed checkboxes, per-section
 `packed / total`, collapse, "Show unpacked only" all already live in
-`CategoryGroup` + `PackingProgress` and are agnostic to what defines a section.
+`CategoryGroup` + `PackingProgress`. An item-backed location moves the source
+item's Ready/Packed controls into the location header and nests the section
+under its parent location, so the source remains checkable without rendering
+twice.
 Drag stays disabled (`SortableItemRow.tsx:40`). An "Organize" button in the
 pack toolbar navigates to Organize Mode.
 

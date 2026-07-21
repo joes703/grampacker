@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   closestCenter,
@@ -7,6 +7,7 @@ import {
   KeyboardSensor,
   MouseSensor,
   TouchSensor,
+  useDraggable,
   useSensor,
   useSensors,
   useDroppable,
@@ -39,9 +40,13 @@ import RowIconButton from '../components/RowIconButton'
 import ConfirmDialog from '../components/ConfirmDialog'
 import LocationSection from './LocationSection'
 import { usePackingLocationActions } from './use-packing-location-actions'
-import { buildOrganizeGroups } from './organize-groups'
 import { isPackingCollisionTarget, planPackingItemDrop } from './packing-dnd'
 import ListDocumentToolbar from './ListDocumentToolbar'
+import {
+  buildContainerMoveExclusions,
+  buildPackingTree,
+  type PackingTreeLocation,
+} from './packing-tree'
 
 const packingCollisionDetection: CollisionDetection = (args) => closestCenter({
   ...args,
@@ -111,9 +116,16 @@ export default function OrganizePackPanel({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  const grouped = buildOrganizeGroups(items, locations)
-  const assignedGroups = grouped.filter((group) => group.location !== null)
-  const unassignedItems = grouped.find((group) => group.location === null)?.items ?? []
+  const packingTree = useMemo(
+    () => buildPackingTree(items, locations, {
+      includeItem: (item) => !item.isWorn,
+    }),
+    [items, locations],
+  )
+  const containerMoveExclusions = useMemo(
+    () => buildContainerMoveExclusions(packingTree),
+    [packingTree],
+  )
   const realLocations = useMemo(
     () => locations.filter((location) => !location.id.startsWith('temp-')),
     [locations],
@@ -180,6 +192,7 @@ export default function OrganizePackPanel({
       items,
       realLocationIds,
       containerItemIdByLocation,
+      containerMoveExclusions,
     )
     setActivePackingItemId(null)
     if (!plan) {
@@ -201,6 +214,50 @@ export default function OrganizePackPanel({
 
   const busy = locationsLoading || itemsLoading
   const failed = (locationsError && locations.length === 0) || itemsError
+
+  function renderLocationNode(node: PackingTreeLocation): ReactNode {
+    const location = node.location
+    const nested = node.children.length > 0 ? (
+      <div className="space-y-2 border-l border-gray-200 bg-gray-50/40 p-2 pl-3">
+        {node.children.map((child) => renderLocationNode(child))}
+      </div>
+    ) : undefined
+    const sharedProps = {
+      location,
+      items: node.items,
+      locations: realLocations,
+      mobile,
+      movePending: moveItem.isPending || locationCreationPending,
+      containerCreationDisabled: locations.length >= 30 || locationCreationPending,
+      containerItemIds,
+      excludedLocationIds: node.containerItem
+        ? containerMoveExclusions.get(node.containerItem.id)
+        : undefined,
+      itemCount: node.items.length + node.children.length,
+      onRename: (name: string) => renameLocation.mutate({ id: location.id, name }),
+      onDelete: () => setDeleteTarget(location),
+      onMove: requestMove,
+      onUseAsContainer: (item: ListItemWithGear) => createItemContainer.mutate({
+        itemId: item.id,
+        name: item.gearItem.name,
+      }),
+      children: nested,
+    }
+
+    return node.containerItem ? (
+      <DraggableItemContainerSection
+        key={location.id}
+        {...sharedProps}
+        containerItem={node.containerItem}
+      />
+    ) : (
+      <SortableLocationSection
+        key={location.id}
+        {...sharedProps}
+        reorderPending={reorderPending || locationCreationPending}
+      />
+    )
+  }
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4 pb-20 lg:pb-4">
@@ -272,7 +329,7 @@ export default function OrganizePackPanel({
           <div className="space-y-3">
             <DroppableUnassignedSection
               location={null}
-              items={unassignedItems}
+              items={packingTree.unassignedItems}
               locations={realLocations}
               mobile={mobile}
               movePending={moveItem.isPending || locationCreationPending}
@@ -285,33 +342,12 @@ export default function OrganizePackPanel({
               })}
             />
             <SortableContext
-              items={locations.map((location) => makeDnDId('packing-location', location.id))}
+              items={packingTree.roots
+                .filter((node) => node.containerItem === null)
+                .map((node) => makeDnDId('packing-location', node.location.id))}
               strategy={verticalListSortingStrategy}
             >
-              {assignedGroups.map((group) => {
-                const location = group.location
-                if (!location) return null
-                return (
-                  <SortableLocationSection
-                    key={location.id}
-                    location={location}
-                    items={group.items}
-                    locations={realLocations}
-                    mobile={mobile}
-                    movePending={moveItem.isPending || locationCreationPending}
-                    containerCreationDisabled={locations.length >= 30 || locationCreationPending}
-                    containerItemIds={containerItemIds}
-                    reorderPending={reorderPending || locationCreationPending}
-                    onRename={(name) => renameLocation.mutate({ id: location.id, name })}
-                    onDelete={() => setDeleteTarget(location)}
-                    onMove={requestMove}
-                    onUseAsContainer={(item) => createItemContainer.mutate({
-                      itemId: item.id,
-                      name: item.gearItem.name,
-                    })}
-                  />
-                )
-              })}
+              {packingTree.roots.map((node) => renderLocationNode(node))}
             </SortableContext>
           </div>
           <DragOverlay dropAnimation={null}>
@@ -358,6 +394,69 @@ function DroppableUnassignedSection(props: React.ComponentProps<typeof LocationS
   return (
     <div ref={setNodeRef} className={isOver ? 'rounded-lg ring-2 ring-blue-400' : ''}>
       <LocationSection {...props} />
+    </div>
+  )
+}
+
+function DraggableItemContainerSection({
+  location,
+  containerItem,
+  movePending,
+  ...props
+}: Omit<React.ComponentProps<typeof LocationSection>, 'location' | 'containerItem' | 'dragHandle'> & {
+  location: PackingLocation
+  containerItem: ListItemWithGear
+  movePending: boolean
+}) {
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef: setDraggableNodeRef,
+    transform,
+    isDragging,
+  } = useDraggable({
+    id: makeDnDId('packing-item', containerItem.id),
+    disabled: movePending,
+  })
+  const {
+    setNodeRef: setDroppableNodeRef,
+    isOver,
+  } = useDroppable({
+    id: makeDnDId('packing-location', location.id),
+  })
+  const setNodeRef = useCallback((node: HTMLDivElement | null) => {
+    setDraggableNodeRef(node)
+    setDroppableNodeRef(node)
+  }, [setDraggableNodeRef, setDroppableNodeRef])
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={isOver ? 'rounded-lg ring-2 ring-blue-400' : ''}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        opacity: isDragging ? 0.35 : 1,
+      }}
+    >
+      <LocationSection
+        {...props}
+        location={location}
+        containerItem={containerItem}
+        movePending={movePending}
+        dragHandle={(
+          <RowIconButton
+            touchSafe
+            ref={asButtonRef(setActivatorNodeRef)}
+            {...listeners}
+            {...attributes}
+            disabled={movePending}
+            variant="dragHandle"
+            ariaLabel={`Move ${containerItem.gearItem.name}`}
+            icon={<GripVertical size={14} />}
+          />
+        )}
+      />
     </div>
   )
 }

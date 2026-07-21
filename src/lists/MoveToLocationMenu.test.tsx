@@ -104,4 +104,27 @@ describe('MoveToLocationMenu container actions', () => {
     expect(screen.queryByRole('button', { name: 'Bear canister' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Main pack' })).toBeInTheDocument()
   })
+
+  it('does not offer a descendant location that would create a cycle', async () => {
+    const user = userEvent.setup()
+    stubViewport(1024)
+    render(
+      <MoveToLocationMenu
+        itemId="item-pack"
+        itemName="Main pack"
+        currentLocationId={null}
+        locations={locations}
+        mobile={false}
+        disabled={false}
+        containerCreationDisabled={false}
+        isContainer
+        excludedLocationIds={new Set(['loc-canister'])}
+        onMove={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Open Main pack packing options' }))
+
+    expect(screen.queryByRole('button', { name: 'Bear canister' })).not.toBeInTheDocument()
+  })
 })

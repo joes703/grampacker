@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Pencil } from 'lucide-react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -137,6 +137,7 @@ import {
 } from './list-detail-mode'
 import { orderPackGroups, selectPackGroupingState } from './packing-grouping'
 import { usePackingCollapsed } from './packing-collapse'
+import { buildPackingTree, type PackingTreeLocation } from './packing-tree'
 
 // TRANSPLANT NOTE (print): the old page rendered PrintListHeader above the
 // grid (a print-only document header) and carried print:* utility classes
@@ -627,6 +628,22 @@ function ListDetailInner({
     : { kind: 'category' as const, groups: categories }
   const grouped = useGroupedListItems(listItems, grouping)
   const orderedPackGroups = orderPackGroups(grouped, grouping.kind)
+  const packingTree = useMemo(
+    () => mode === 'pack' && locationsQuery.data && locationsQuery.data.length > 0
+      ? buildPackingTree(listItems, locationsQuery.data)
+      : null,
+    [listItems, locationsQuery.data, mode],
+  )
+  const containerItemIds = useMemo(
+    () => new Set(
+      (locationsQuery.data ?? []).flatMap((packingLocation) =>
+        packingLocation.containerListItemId === null
+          ? []
+          : [packingLocation.containerListItemId],
+      ),
+    ),
+    [locationsQuery.data],
+  )
   const packingCollapseHandlers = useMemo(
     () => new Map(
       (locationsQuery.data ?? []).map((packingLocation) => [
@@ -669,6 +686,12 @@ function ListDetailInner({
   // and pack mode.
   const showWornGroup = list?.groupWorn ?? false
   const wornItems = useStableWornItems(grouped, showWornGroup)
+  const visibleWornItems = useMemo(
+    () => grouping.kind === 'location'
+      ? wornItems.filter((item) => !containerItemIds.has(item.id))
+      : wornItems,
+    [containerItemIds, grouping.kind, wornItems],
+  )
 
   // gearItems / listItems are read by handlers in sharedGroupProps and the
   // LibraryPanel onAdd / onRemove callbacks, but only at call time (never
@@ -827,6 +850,33 @@ function ListDetailInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above re: mutation refs
     [mode, list?.readyChecksEnabled, weightUnit, isBelowLg, showUnpackedOnly],
   )
+
+  function renderPackingLocationNode(
+    node: PackingTreeLocation,
+    depth = 0,
+  ): ReactNode {
+    const location = node.location
+    return (
+      <div
+        key={location.id}
+        className={depth === 0 ? '' : 'ml-3 border-l border-gray-200 pl-3 pt-2'}
+      >
+        <CategoryGroup
+          name={node.containerItem?.gearItem.name ?? location.name}
+          regionKey={location.id}
+          containerItem={node.containerItem}
+          collapsed={packingCollapsed.has(location.id)}
+          onCollapsedChange={packingCollapseHandlers.get(location.id)}
+          items={node.items}
+          {...sharedGroupProps}
+          reorderPending={reorderItemsMut.isPending}
+          hideWorn={showWornGroup}
+        >
+          {node.children.map((child) => renderPackingLocationNode(child, depth + 1))}
+        </CategoryGroup>
+      </div>
+    )
+  }
 
   // ── Loading / not found ────────────────────────────────────────────────────
 
@@ -1090,46 +1140,55 @@ function ListDetailInner({
                           Couldn&apos;t load packing locations. Showing the last available grouping.
                         </p>
                       )}
-                      {orderedPackGroups.map((group) => {
-                        const definition = group.group
-                        if (definition) {
-                          const locationGrouping = grouping.kind === 'location'
+                      {grouping.kind === 'location' && packingTree ? (
+                        <>
+                          <CategoryGroup
+                            key="__unassigned__"
+                            name="Unassigned"
+                            categoryId={null}
+                            regionKey="packing-unassigned"
+                            collapsed={packingCollapsed.has('__unassigned__')}
+                            onCollapsedChange={toggleUnassignedCollapse}
+                            items={packingTree.unassignedItems}
+                            {...sharedGroupProps}
+                            reorderPending={reorderItemsMut.isPending}
+                            hideWorn={showWornGroup}
+                          />
+                          {packingTree.roots.map((node) => renderPackingLocationNode(node))}
+                        </>
+                      ) : orderedPackGroups.map((group) => {
+                          const definition = group.group
+                          if (definition) {
+                            return (
+                              <CategoryGroup
+                                key={definition.id}
+                                name={definition.name}
+                                categoryId={definition.id}
+                                items={group.items}
+                                {...sharedGroupProps}
+                                reorderPending={reorderItemsMut.isPending}
+                                hideWorn={showWornGroup}
+                                subtotalLabel="Base"
+                                subtotalGrams={baseGramsForCategory(weightBreakdown, definition.id)}
+                                onAddItem={onAddNewItem}
+                              />
+                            )
+                          }
                           return (
                             <CategoryGroup
-                              key={definition.id}
-                              name={definition.name}
-                              categoryId={locationGrouping ? undefined : definition.id}
-                              regionKey={locationGrouping ? definition.id : undefined}
-                              collapsed={locationGrouping ? packingCollapsed.has(definition.id) : undefined}
-                              onCollapsedChange={locationGrouping ? packingCollapseHandlers.get(definition.id) : undefined}
+                              key="__uncategorized__"
+                              name="Uncategorized"
+                              categoryId={null}
                               items={group.items}
                               {...sharedGroupProps}
                               reorderPending={reorderItemsMut.isPending}
                               hideWorn={showWornGroup}
-                              subtotalLabel={locationGrouping ? undefined : 'Base'}
-                              subtotalGrams={locationGrouping ? undefined : baseGramsForCategory(weightBreakdown, definition.id)}
-                              onAddItem={locationGrouping ? undefined : onAddNewItem}
+                              subtotalLabel="Base"
+                              subtotalGrams={baseGramsForCategory(weightBreakdown, null)}
+                              onAddItem={onAddNewItem}
                             />
                           )
-                        }
-                        return (
-                          <CategoryGroup
-                            key={grouping.kind === 'location' ? '__unassigned__' : '__uncategorized__'}
-                            name={grouping.kind === 'location' ? 'Unassigned' : 'Uncategorized'}
-                            categoryId={null}
-                            regionKey={grouping.kind === 'location' ? 'packing-unassigned' : undefined}
-                            collapsed={grouping.kind === 'location' ? packingCollapsed.has('__unassigned__') : undefined}
-                            onCollapsedChange={grouping.kind === 'location' ? toggleUnassignedCollapse : undefined}
-                            items={group.items}
-                            {...sharedGroupProps}
-                            reorderPending={reorderItemsMut.isPending}
-                            hideWorn={showWornGroup}
-                            subtotalLabel={grouping.kind === 'location' ? undefined : 'Base'}
-                            subtotalGrams={grouping.kind === 'location' ? undefined : baseGramsForCategory(weightBreakdown, null)}
-                            onAddItem={grouping.kind === 'location' ? undefined : onAddNewItem}
-                          />
-                        )
-                      })}
+                        })}
                       <DragOverlay dropAnimation={null}>
                         {activeItem ? (
                           <ItemRow item={activeItem} weightUnit={weightUnit} isBelowLg={isBelowLg} />
@@ -1157,11 +1216,11 @@ function ListDetailInner({
                         'cat-region-uncategorized' id as the real Uncategorized
                         section above, duplicating the id in the document and
                         pointing both chevrons' aria-controls at one target. */}
-                    {showWornGroup && wornItems.length > 0 && (
+                    {showWornGroup && visibleWornItems.length > 0 && (
                       <CategoryGroup
                         {...sharedGroupProps}
                         name="Worn"
-                        items={wornItems}
+                        items={visibleWornItems}
                         regionKey="worn"
                         // Unlabelled on purpose: the section title already says
                         // Worn, and this is the canonical list-level worn total.
