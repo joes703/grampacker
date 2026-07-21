@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { Category, GearItem, List, ListItemWithGear } from '../lib/types'
+import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../lib/types'
 
 // Mock fflate's dynamic import: strToU8 stays functional (encodes to
 // bytes), zipSync is a stub returning fixed bytes. The REAL
@@ -22,6 +22,7 @@ vi.mock('../lib/queries', async (importOriginal) => ({
   fetchGearItems: vi.fn(),
   fetchLists: vi.fn(),
   fetchListItems: vi.fn(),
+  fetchPackingLocations: vi.fn(),
   fetchFoodItems: vi.fn(),
   fetchFoodPlans: vi.fn(),
   fetchFoodPlan: vi.fn(),
@@ -33,6 +34,7 @@ import {
   fetchGearItems,
   fetchLists,
   fetchListItems,
+  fetchPackingLocations,
   fetchFoodItems,
   fetchFoodPlans,
   fetchFoodPlan,
@@ -94,6 +96,9 @@ const planSummaries: FoodPlanSummary[] = [
 const targetDefaults: TargetDefault[] = [
   { id: 'td-1', metric: 'protein', mode: 'min', targetMin: 120, targetMax: null },
 ]
+const packingLocations: PackingLocation[] = [
+  { id: 'loc-1', name: 'Main pack', sortOrder: 0 },
+]
 const planDoc: FoodPlanDocument = {
   id: 'p-1', name: 'JMT week 1', sortOrder: 0,
   createdAt: '2024-01-01', updatedAt: '2024-01-01',
@@ -111,6 +116,7 @@ beforeEach(() => {
   vi.mocked(fetchListItems).mockImplementation((listId: string) =>
     Promise.resolve([itemFor(listId, `i-${listId}`)]),
   )
+  vi.mocked(fetchPackingLocations).mockResolvedValue(packingLocations)
   vi.mocked(fetchFoodItems).mockResolvedValue(foodItems)
   vi.mocked(fetchFoodPlans).mockResolvedValue(planSummaries)
   vi.mocked(fetchFoodPlan).mockResolvedValue(planDoc)
@@ -155,11 +161,17 @@ describe('DownloadAllData', () => {
       'gear-library.csv',
       'lists/thru-hike.csv',
       'lists/weekend-trip.csv',
+      'packing.json',
     ])
 
     // Items were fetched once per list (no bulk endpoint).
     expect(fetchListItems).toHaveBeenCalledTimes(2)
     expect(vi.mocked(fetchListItems).mock.calls.map(([id]) => id).sort()).toEqual([
+      'l-1',
+      'l-2',
+    ])
+    expect(fetchPackingLocations).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(fetchPackingLocations).mock.calls.map(([id]) => id).sort()).toEqual([
       'l-1',
       'l-2',
     ])

@@ -7,6 +7,7 @@ import {
   fetchGearItems,
   fetchLists,
   fetchListItems,
+  fetchPackingLocations,
   fetchFoodItems,
   fetchFoodPlans,
   fetchFoodPlan,
@@ -14,7 +15,7 @@ import {
 } from '../lib/queries'
 import { buildTakeoutFiles, exportTimestamp } from '../lib/export/takeout-files'
 import type { FoodPlanDocument } from '../lib/queries'
-import type { ListItemWithGear } from '../lib/types'
+import type { ListItemWithGear, PackingLocation } from '../lib/types'
 
 // "Download all data" control for the settings page: builds a zip client-
 // side (gear library CSV + one CSV per list + food library CSV + the
@@ -58,13 +59,21 @@ export default function DownloadAllData() {
       // document fetch per plan (request count = plan count, capped at 100).
       const [perList, foodPlans] = await Promise.all([
         Promise.all(
-          lists.map((l) =>
-            qc.fetchQuery({
-              queryKey: queryKeys.listItems(l.id),
-              queryFn: () => fetchListItems(l.id),
-              staleTime: 0,
-            }),
-          ),
+          lists.map(async (list) => {
+            const [items, locations] = await Promise.all([
+              qc.fetchQuery({
+                queryKey: queryKeys.listItems(list.id),
+                queryFn: () => fetchListItems(list.id),
+                staleTime: 0,
+              }),
+              qc.fetchQuery({
+                queryKey: queryKeys.packingLocations(list.id),
+                queryFn: () => fetchPackingLocations(list.id),
+                staleTime: 0,
+              }),
+            ])
+            return { listId: list.id, items, locations }
+          }),
         ),
         Promise.all(
           planSummaries.map(
@@ -77,7 +86,10 @@ export default function DownloadAllData() {
           ),
         ),
       ])
-      const allItems: ListItemWithGear[] = perList.flat()
+      const allItems: ListItemWithGear[] = perList.flatMap(({ items }) => items)
+      const packingLocationsByListId = new Map<string, PackingLocation[]>(
+        perList.map(({ listId, locations }) => [listId, locations]),
+      )
 
       const { zipSync, strToU8 } = fflate
       const fileContents = buildTakeoutFiles({
@@ -85,6 +97,7 @@ export default function DownloadAllData() {
         gearItems,
         lists,
         allItems,
+        packingLocationsByListId,
         foodItems,
         foodPlans,
         targetDefaults,

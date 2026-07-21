@@ -12,6 +12,7 @@ export const queryKeys = {
   // Partial-match prefix for cross-cache operations (the gear fan-out
   // finds every per-list cache through this).
   listItemsAll: () => ['list-items'] as const,
+  packingLocations: (listId: string) => ['packing-locations', listId] as const,
   // Public /r/:slug read cache. Param accepts undefined because SharePage
   // reads the slug from the URL (useParams types it string | undefined);
   // the query is disabled until it exists.
