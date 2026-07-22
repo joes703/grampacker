@@ -8,15 +8,9 @@ import MobilePrimaryNav from './MobilePrimaryNav'
 import { useSignOut } from './use-sign-out'
 
 // Session-gated layout shell: slim top header (brand, desktop nav links,
-// sign out) + the always-on mobile primary nav. Mounted as a react-router
-// layout route in App.tsx, so every signed-in page renders through the
-// Outlet inside the shared <main> container.
-//
-// TRANSPLANT NOTE: the old repo's AppShell composed a full NavBar
-// (sidebar drawer, mobile menu, route-context heading) plus lazy-loaded
-// secondary routes. Those arrive with their slices; this shell stays
-// minimal on purpose so each transplant lands against a surface it can
-// grow.
+// settings, sign out) plus the mobile primary nav. Route components own their
+// page headings and actions; this shared shell intentionally stays independent
+// of route-specific state.
 export default function AppShell() {
   const { data: session } = authClient.useSession()
   const { pathname } = useLocation()

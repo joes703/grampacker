@@ -1,16 +1,12 @@
 import { createContext, useContext, useMemo, useState, useEffect } from 'react'
 
-// Coordinates the mobile sidebar trigger (in NavBar, top-left of the
-// header) with the drawer instance owned by whichever page provides
-// sidebar content. The trigger and the drawer live in different React
-// subtrees — NavBar is mounted by AppShell, the drawer is mounted by
-// ListDetailPage — so a context bridges them.
+// Coordinates the mobile bottom bar's Add action with the drawer instance
+// owned by whichever page provides sidebar content. The trigger and drawer
+// live in different React subtrees, so a context bridges them.
 //
 // Pages that have a sidebar drawer call useRegisterSidebarDrawer() on
-// mount; the trigger renders whenever any page is registered. Pages
-// that don't (Gear, Settings, Help) simply omit the call and the
-// trigger stays hidden, leaving NavBar's mobile chrome at: brand
-// + hamburger.
+// mount; the Add action is enabled whenever a page is registered. Pages that
+// do not provide the drawer simply omit the call.
 
 type SidebarDrawerContextValue = {
   open: boolean
