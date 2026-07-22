@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import FoodPlanPicker from './FoodPlanPicker'
 import type { FoodPlanSummary } from '../../shared/food-plans'
@@ -57,6 +57,34 @@ describe('FoodPlanPicker', () => {
   it('names the food-plan search control', () => {
     renderPicker()
     expect(screen.getByRole('searchbox', { name: 'Search food plans' })).toBeInTheDocument()
+  })
+
+  it('binds each search input to its own label when two pickers are mounted', () => {
+    const props = {
+      plans,
+      isPending: false,
+      isError: false,
+      attachedPlanId: null,
+      busy: false,
+      onAttach: vi.fn(),
+      onDetach: vi.fn(),
+      onDuplicateAttach: vi.fn(),
+    }
+    render(
+      <>
+        <section data-testid="food-picker-a"><FoodPlanPicker {...props} /></section>
+        <section data-testid="food-picker-b"><FoodPlanPicker {...props} /></section>
+      </>,
+    )
+
+    const ids = screen.getAllByTestId(/food-picker-/).map((picker) => {
+      const label = within(picker).getByText('Search food plans') as HTMLLabelElement
+      const input = within(picker).getByRole('searchbox')
+      expect(label.control).toBe(input)
+      expect(input).toHaveAccessibleName('Search food plans')
+      return input.id
+    })
+    expect(new Set(ids).size).toBe(2)
   })
 
   // The Food side is "pick THE one plan for this trip", not gear's "add many".

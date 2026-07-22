@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useId, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { groupByCategory } from '../lib/grouping'
@@ -28,6 +28,7 @@ type Props = {
 export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove }: Props) {
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState(new Set<string>())
+  const searchId = useId()
 
   // Stable across renders: setCollapsed from useState is referentially
   // stable, and the closure captures only that. Stability matters because
@@ -87,10 +88,10 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
           have the per-category section collapse / item tap to navigate. */}
       <div className="p-3 border-b border-gray-200">
         <div className="relative">
-          <label className="sr-only" htmlFor="list-gear-search">Search gear to add</label>
+          <label className="sr-only" htmlFor={searchId}>Search gear to add</label>
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
           <input
-            id="list-gear-search"
+            id={searchId}
             type="search"
             placeholder="Search gear…"
             value={search}
