@@ -48,51 +48,37 @@ PR #106 already implements exactly this (`ListDocumentToolbar.tsx:38`), so **the
 toggle placement itself needs no change.** What is left is the reason the
 control was there in the first place.
 
-**The problem it leaves.** Pack mode is not actually weight-free. Gear is:
-`WeightSummary` is hidden (`ListDetailPage.tsx:1032`), category subtotals are
-hidden (`CategoryGroup.tsx:476`), and `ItemRow.tsx:175` returns a qty-only
-checklist row with no weight column. But `ListDetailPage.tsx:1091` renders
-`FoodPackSection` under `{mode === 'pack' && ...}`, and
-`FoodPackSection.tsx:79` renders `<ItemWeightValue grams={row.grams}
-unit={weightUnit} />` per row. Verified by rendering the component directly:
+**Gear is weight-free in Pack and always has been:** `WeightSummary` is hidden
+(`ListDetailPage.tsx:1032`), category subtotals are hidden
+(`CategoryGroup.tsx:476`), and `ItemRow.tsx:175` returns a qty-only checklist
+row with no weight column.
 
-```html
-<span class="block truncate ...">Ramen</span>
-<span aria-label="128 g" class="inline-block whitespace-nowrap">
-  <span class="text-right">128</span>
-  <span class="text-left">g</span>
-```
+**The one exception is the food checklist, and it is DEFERRED — do not touch
+it.** `FoodPackSection.tsx:79` renders a per-row weight, and has since the file
+was created in PR #79 (`feat(food): pack-mode food checklist`, 2026-07-18). It
+is not a regression and Codex did not introduce it. It renders only when a list
+has a food plan attached.
 
-Switching `weightUnit` to `oz` re-renders those rows as `4.5 oz`. No hiding
-classes, not print-only. So on any list with a food plan attached, Pack shows
-gram figures with the unit control removed — reachable only via Settings.
+**Decision (Joe, 2026-07-21): leave it. Revisit when food is in use.** Do not
+remove the weight column, the `weightUnit` prop, or anything else in
+`FoodPackSection`.
 
-**Change:** remove the weight column from `FoodPackSection`, making "Pack mode
-shows no weights" true everywhere instead of true-with-an-exception. Delete the
-`ItemWeightValue` render at `FoodPackSection.tsx:79` and the now-unused
-`weightUnit` prop, and drop the prop at the `ListDetailPage.tsx:1094` call site.
-
-> If you would rather keep per-food weights visible while packing, strike this
-> item — but then P0-1 is not done, and the honest resolution is to show the
-> toggle in Pack after all. Do not leave weights on screen with no way to
-> switch units.
-
-**Also fix the test.** `list-unit-control.test.tsx` currently reads:
+**The only work in this item is the test name.**
+`list-unit-control.test.tsx` currently reads:
 
 ```
 it('hides the unit control when Pack and Organize hide weights')
 ```
 
-That name asserts a premise that is false for Pack today. It becomes true once
-the food weight column is gone. Keep the name only if this item lands in full;
-otherwise rename it to describe what it actually pins.
+That name states a premise that is false — Pack does still show food weights.
+Rename it to describe what it actually pins (the control is absent in Pack and
+Organize), so nobody later reads it as proof that Pack is weight-free.
 
 **Acceptance**
-- No weight value renders anywhere in Pack mode, gear or food, with or without
-  a food plan attached.
 - The unit control renders in Edit and in Settings; not in Pack or Organize.
-- A test asserts the food checklist renders no weight, so this cannot regress
-  silently the way it did the first time.
+  (Already true as of #106 — verify, change nothing.)
+- `FoodPackSection.tsx` is untouched.
+- The test name describes the assertion it makes.
 
 ## P0-2. Worn gear is always grouped; the toggle goes away
 
