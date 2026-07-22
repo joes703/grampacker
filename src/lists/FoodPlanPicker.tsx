@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { Check, Copy, Search } from 'lucide-react'
 import type { FoodPlanSummary } from '../../shared/food-plans'
 import {
@@ -50,6 +50,7 @@ export default function FoodPlanPicker({
   onDuplicateAttach,
 }: Props) {
   const [search, setSearch] = useState('')
+  const searchId = useId()
   const q = search.trim().toLowerCase()
 
   const filtered = useMemo(() => {
@@ -62,10 +63,10 @@ export default function FoodPlanPicker({
     <div className="flex h-full flex-col">
       <div className="p-3 border-b border-gray-200">
         <div className="relative">
-          <label className="sr-only" htmlFor="list-food-plan-search">Search food plans</label>
+          <label className="sr-only" htmlFor={searchId}>Search food plans</label>
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
           <input
-            id="list-food-plan-search"
+            id={searchId}
             type="search"
             placeholder="Search food plans…"
             value={search}
