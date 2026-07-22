@@ -259,7 +259,7 @@ describe('SharePage category subtotals', () => {
     gear: { name: 'Mystery', description: null, weightGrams: 40, categoryId: 'cat-gone' },
   }
 
-  it('gives each section its own base weight, excluding consumable and worn', async () => {
+  it('gives each section its nonzero base and consumable weights, excluding worn', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue(
       share({
         categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
@@ -268,13 +268,24 @@ describe('SharePage category subtotals', () => {
     )
     renderShareView()
 
-    // Shelter holds 1200 base + 230 consumable + 550 worn. Its subtotal is the
-    // base alone; 1980 g (the row sum) must appear nowhere.
+    // Shelter holds 1200 base + 230 consumable + 550 worn. Its footer reports
+    // the first two buckets separately; 1980 g (the row sum) must appear nowhere.
     expect((await screen.findAllByText('Shelter')).length).toBeGreaterThan(0)
     expect(screen.getAllByText('1200 g').length).toBeGreaterThan(0)
     expect(screen.queryByText('1980 g')).toBeNull()
     // Orphan: 2 x 40 g, routed to Uncategorized by both paths.
     expect(screen.getAllByText('80 g').length).toBeGreaterThan(0)
+    // Scope the assertion to a section footer. The Weight summary above also
+    // contains these labels and values, so page-wide queries would stay green
+    // if SharePage forgot to wire the new footer props.
+    const footers = [...document.querySelectorAll('.print\\:flex')]
+      .map((footer) => footer.textContent ?? '')
+    expect(footers.some((text) =>
+      text.includes('Base')
+      && text.includes('1200 g')
+      && text.includes('Consumable')
+      && text.includes('230 g')
+    )).toBe(true)
   })
 
   it('does not give the Worn section the Uncategorized base figure', async () => {

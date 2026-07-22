@@ -5,6 +5,7 @@ import type { ListItemWithGear, Category } from './types'
 // sentinel as GearLibraryPage to avoid colliding with any real id.
 export type WeightBreakdown = {
   catRows: { id: string; name: string; grams: number }[]
+  consumableCatRows: { id: string; name: string; grams: number }[]
   baseGrams: number
   consumableGrams: number
   wornGrams: number
@@ -20,6 +21,8 @@ export function computeWeightBreakdown(
   categories: Category[],
 ): WeightBreakdown {
   const basePerCat = new Map<string | null, number>()
+  const consumablePerCat = new Map<string | null, number>()
+  const knownCategoryIds = new Set(categories.map((category) => category.id))
   let consumableGrams = 0
   let wornGrams = 0
 
@@ -40,13 +43,16 @@ export function computeWeightBreakdown(
     }
     if (item.isConsumable) {
       consumableGrams += w
+      const raw = item.gearItem.categoryId
+      const key = raw !== null && knownCategoryIds.has(raw) ? raw : null
+      consumablePerCat.set(key, (consumablePerCat.get(key) ?? 0) + w)
     } else if (item.isWorn) {
       wornGrams += w
     } else {
       // Route unknown category ids (cache drift between ['categories'] and
       // ['list-items']) to Uncategorized so their weight still sums into base.
       const raw = item.gearItem.categoryId
-      const key = raw !== null && categories.some((c) => c.id === raw) ? raw : null
+      const key = raw !== null && knownCategoryIds.has(raw) ? raw : null
       basePerCat.set(key, (basePerCat.get(key) ?? 0) + w)
     }
   }
@@ -65,10 +71,27 @@ export function computeWeightBreakdown(
     catRows.push({ id: '__uncategorized__', name: 'Uncategorized', grams: uncatGrams })
   }
 
+  const consumableCatRows = [...categories]
+    .filter((category) => consumablePerCat.has(category.id))
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      grams: consumablePerCat.get(category.id) ?? 0,
+    }))
+  const uncategorizedConsumableGrams = consumablePerCat.get(null)
+  if (uncategorizedConsumableGrams !== undefined) {
+    consumableCatRows.push({
+      id: UNCATEGORIZED_ROW_ID,
+      name: 'Uncategorized',
+      grams: uncategorizedConsumableGrams,
+    })
+  }
+
   const baseGrams = catRows.reduce((s, r) => s + r.grams, 0)
   const totalPackGrams = baseGrams + consumableGrams
 
-  return { catRows, baseGrams, consumableGrams, wornGrams, totalPackGrams }
+  return { catRows, consumableCatRows, baseGrams, consumableGrams, wornGrams, totalPackGrams }
 }
 
 // Sentinel row id for Uncategorized inside `catRows`. Exported so callers can
@@ -97,6 +120,16 @@ export function baseGramsForCategory(
 ): number {
   const rowId = categoryId ?? UNCATEGORIZED_ROW_ID
   return breakdown.catRows.find((r) => r.id === rowId)?.grams ?? 0
+}
+
+/** Per-section consumable gear subtotal. Projected food is intentionally not
+ * represented here: food is not a gear item and has no category section. */
+export function consumableGramsForCategory(
+  breakdown: WeightBreakdown,
+  categoryId: string | null,
+): number {
+  const rowId = categoryId ?? UNCATEGORIZED_ROW_ID
+  return breakdown.consumableCatRows.find((row) => row.id === rowId)?.grams ?? 0
 }
 
 // Composes a gear list's attached food plan into its weight

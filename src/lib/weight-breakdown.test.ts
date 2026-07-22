@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
-import { baseGramsForCategory, computeWeightBreakdown, withProjectedFood } from './weight-breakdown'
+import {
+  baseGramsForCategory,
+  computeWeightBreakdown,
+  consumableGramsForCategory,
+  withProjectedFood,
+} from './weight-breakdown'
 import type { Category, ListItemWithGear } from './types'
 
 // computeWeightBreakdown coverage (moved here from lists/WeightTable.test.ts,
@@ -263,5 +268,47 @@ describe('baseGramsForCategory', () => {
       + baseGramsForCategory(b, consumables.id)
       + baseGramsForCategory(b, null)
     expect(summed).toBe(b.baseGrams)
+  })
+})
+
+describe('consumableGramsForCategory', () => {
+  const food: Category = { id: 'cat-food', name: 'Food', sortOrder: 1, createdAt: '2024-01-01' }
+
+  function breakdown() {
+    return computeWeightBreakdown(
+      [
+        listItem({ id: 'tent', categoryId: shelter.id, weightGrams: 1200 }),
+        listItem({ id: 'gas', categoryId: shelter.id, weightGrams: 230, isConsumable: true }),
+        listItem({ id: 'bar', categoryId: food.id, weightGrams: 45, quantity: 2, isConsumable: true }),
+        listItem({ id: 'orphan', categoryId: 'cat-deleted', weightGrams: 20, isConsumable: true }),
+        listItem({ id: 'uncat', categoryId: null, weightGrams: 15, isConsumable: true }),
+      ],
+      [shelter, food],
+    )
+  }
+
+  it('returns only consumable gear in the requested category', () => {
+    expect(consumableGramsForCategory(breakdown(), shelter.id)).toBe(230)
+    expect(consumableGramsForCategory(breakdown(), food.id)).toBe(90)
+  })
+
+  it('routes orphan category ids to Uncategorized and counts quantity', () => {
+    expect(consumableGramsForCategory(breakdown(), null)).toBe(35)
+    expect(consumableGramsForCategory(breakdown(), 'cat-deleted')).toBe(0)
+  })
+
+  it('returns zero when a category contains no consumables', () => {
+    const result = computeWeightBreakdown(
+      [listItem({ id: 'tent', categoryId: shelter.id, weightGrams: 1200 })],
+      [shelter],
+    )
+    expect(consumableGramsForCategory(result, shelter.id)).toBe(0)
+  })
+
+  it('does not assign projected food to a gear category footer', () => {
+    const before = breakdown()
+    const after = withProjectedFood(before, 800)
+    expect(consumableGramsForCategory(after, shelter.id)).toBe(230)
+    expect(consumableGramsForCategory(after, null)).toBe(35)
   })
 })

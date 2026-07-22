@@ -123,6 +123,7 @@ describe('WeightTable', () => {
     // that, not recompute from `items`.
     const breakdown: WeightBreakdown = {
       catRows: [{ id: shelter.id, name: 'Shelter', grams: 200 }],
+      consumableCatRows: [{ id: shelter.id, name: 'Shelter', grams: 500 }],
       baseGrams: 200, consumableGrams: 500, wornGrams: 0, totalPackGrams: 700,
     }
     render(<WeightTable items={[]} categories={[shelter]} breakdown={breakdown} />)
