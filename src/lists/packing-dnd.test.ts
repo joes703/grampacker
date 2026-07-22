@@ -47,6 +47,8 @@ const target = item('target', 'loc-b')
 const items = [source, target]
 const validLocationIds = new Set(['loc-a', 'loc-b'])
 const containerItemIdByLocation = new Map([['loc-b', 'source']])
+const noContainerItems = new Map<string, string>()
+const noExcludedLocations = new Map<string, ReadonlySet<string>>()
 
 describe('planPackingItemReorder', () => {
   const first = item('first', 'loc-a', 2)
@@ -112,6 +114,8 @@ describe('planPackingItemDrop', () => {
       makeDnDId('packing-location', 'loc-b'),
       items,
       validLocationIds,
+      noContainerItems,
+      noExcludedLocations,
     )).toEqual({ itemId: 'source', locationId: 'loc-b' })
   })
 
@@ -121,6 +125,8 @@ describe('planPackingItemDrop', () => {
       makeDnDId('packing-item', target.id),
       items,
       validLocationIds,
+      noContainerItems,
+      noExcludedLocations,
     )).toEqual({ itemId: 'source', locationId: 'loc-b' })
   })
 
@@ -130,6 +136,8 @@ describe('planPackingItemDrop', () => {
       makeDnDId('packing-location', 'unassigned'),
       items,
       validLocationIds,
+      noContainerItems,
+      noExcludedLocations,
     )).toEqual({ itemId: 'source', locationId: null })
   })
 
@@ -139,12 +147,16 @@ describe('planPackingItemDrop', () => {
       makeDnDId('packing-location', 'loc-a'),
       items,
       validLocationIds,
+      noContainerItems,
+      noExcludedLocations,
     )).toBeNull()
     expect(planPackingItemDrop(
       makeDnDId('packing-location', 'loc-a'),
       makeDnDId('packing-location', 'loc-b'),
       items,
       validLocationIds,
+      noContainerItems,
+      noExcludedLocations,
     )).toBeNull()
   })
 
@@ -154,6 +166,8 @@ describe('planPackingItemDrop', () => {
       makeDnDId('packing-location', 'temp-pending'),
       items,
       validLocationIds,
+      noContainerItems,
+      noExcludedLocations,
     )).toBeNull()
   })
 
@@ -164,6 +178,7 @@ describe('planPackingItemDrop', () => {
       items,
       validLocationIds,
       containerItemIdByLocation,
+      noExcludedLocations,
     )).toBeNull()
   })
 
@@ -189,6 +204,8 @@ describe('planPackingItemDragEnd', () => {
       makeDnDId('packing-item', sibling.id),
       dragItems,
       validLocationIds,
+      noContainerItems,
+      noExcludedLocations,
     )).toEqual({
       kind: 'reorder',
       updates: [
@@ -204,6 +221,8 @@ describe('planPackingItemDragEnd', () => {
       makeDnDId('packing-item', target.id),
       dragItems,
       validLocationIds,
+      noContainerItems,
+      noExcludedLocations,
     )).toEqual({ kind: 'move', itemId: 'dragged', locationId: 'loc-b' })
   })
 })
