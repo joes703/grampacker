@@ -875,6 +875,7 @@ function ListDetailInner({
           collapsed={packingCollapsed.has(location.id)}
           onCollapsedChange={packingCollapseHandlers.get(location.id)}
           items={node.items}
+          packProgressItems={node.packProgressItems}
           {...sharedGroupProps}
           reorderPending={reorderItemsMut.isPending}
         >

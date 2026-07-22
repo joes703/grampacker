@@ -316,6 +316,39 @@ describe('CategoryGroup footer subtotal', () => {
     expect(screen.getByText('0 / 2')).toBeInTheDocument()
   })
 
+  it('includes nested container contents in the parent pack progress', () => {
+    const backpack = { ...itemNamed('pack', 'Backpack'), isPacked: true }
+    const canister = itemNamed('canister', 'Bear canister')
+    const food = itemNamed('food', 'Food bag')
+
+    render(
+      <CategoryGroup
+        name="Backpack"
+        regionKey="loc-pack"
+        containerItem={backpack}
+        items={[]}
+        weightUnit="g"
+        packMode
+        packProgressItems={[backpack, canister, food]}
+      >
+        <CategoryGroup
+          name="Bear canister"
+          regionKey="loc-canister"
+          containerItem={canister}
+          items={[food]}
+          weightUnit="g"
+          packMode
+        />
+      </CategoryGroup>,
+    )
+
+    const backpackHeader = screen
+      .getByRole('button', { name: 'Collapse Backpack' })
+      .parentElement!
+    expect(within(backpackHeader).getByText('1 / 3')).toBeInTheDocument()
+    expect(within(backpackHeader).queryByLabelText('All packed')).toBeNull()
+  })
+
   it('renders no subtotal in pack mode, not even an unlabelled one', () => {
     // The footer is !packMode-gated. Pack mode deliberately keeps counts on
     // full section membership; a packed/unpacked-dependent weight would be a

@@ -5,6 +5,9 @@ export type PackingTreeLocation = {
   containerItem: ListItemWithGear | null
   items: ListItemWithGear[]
   children: PackingTreeLocation[]
+  /** Every checklist row rendered in this location's subtree, including its
+   * own backing item. CategoryGroup uses this for parent-level pack progress. */
+  packProgressItems: ListItemWithGear[]
 }
 
 export type PackingTree = {
@@ -36,6 +39,7 @@ export function buildPackingTree(
       containerItem,
       items: [],
       children: [],
+      packProgressItems: [],
     })
   }
 
@@ -98,6 +102,19 @@ export function buildPackingTree(
   }
   roots.sort(byLocationOrder)
   unassignedItems.sort(byItemOrder)
+
+  function populatePackProgressItems(node: PackingTreeLocation): ListItemWithGear[] {
+    const progressItems = [
+      ...(node.containerItem ? [node.containerItem] : []),
+      ...node.items,
+    ]
+    for (const child of node.children) {
+      progressItems.push(...populatePackProgressItems(child))
+    }
+    node.packProgressItems = progressItems
+    return progressItems
+  }
+  for (const root of roots) populatePackProgressItems(root)
 
   return { roots, unassignedItems }
 }
