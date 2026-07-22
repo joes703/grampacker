@@ -10,6 +10,7 @@ import {
 
 const containerItems = alias(listItems, 'container_items')
 const containerGear = alias(gearItems, 'container_gear')
+const PACKING_LOCATION_NAME_MAX_LENGTH = 60
 
 const cols = {
   id: packingLocations.id,
@@ -119,7 +120,10 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
           )
           .limit(1)
         if (!source) return { ok: false, reason: 'invalid_container_item' }
-        name = source.name
+        // The live read joins back to the gear row, so this stored value is
+        // only a fallback snapshot. Keep it within packing_locations' tighter
+        // CHECK constraint even though gear names may be up to 256 characters.
+        name = source.name.slice(0, PACKING_LOCATION_NAME_MAX_LENGTH)
         containerListItemId = input.containerListItemId
       } else {
         name = input.name
