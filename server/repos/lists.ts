@@ -652,7 +652,7 @@ export function createListsRepo(db: Db, userId: string) {
         // Multi-row inserts (floor(90/columns) rows each) rather than one
         // statement per item: with the assignment column, 300 items is 50
         // statements instead of 300,
-        // which matters because the whole batch already carries up to ~360
+        // which matters because the whole batch can already carry up to 371
         // plan-copy statements ahead of it.
         const insertItems = chunkForParamCap(itemRows).map((rows) =>
           db.insert(listItems).values(rows),
