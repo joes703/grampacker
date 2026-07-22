@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation } from 'react-router'
 import { Settings } from 'lucide-react'
 import { authClient } from '../lib/auth-client'
+import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import { MobilePrimaryNavProvider } from './mobile-primary-nav-context'
 import { SidebarDrawerProvider } from './sidebar-drawer-context'
 import MobilePrimaryNav from './MobilePrimaryNav'
@@ -64,15 +65,14 @@ export default function AppShell() {
             </div>
             <div className="flex items-center gap-3">
               <span className="hidden sm:inline text-sm text-gray-600">{session?.user.email}</span>
-              {/* Settings lives in the header (all screen sizes): the mobile
-                  bottom bar is a fixed 4 slots (Gear/Lists/Add/Options)
-                  with no room for it, so the cog is the single entry point
-                  to /settings on every viewport. */}
+              {/* Settings lives in the header at every viewport because the
+                  mode-specific bottom bars contain destinations and page
+                  actions, not global account controls. */}
               <Link
                 to="/settings"
                 aria-label="Settings"
                 aria-current={pathname === '/settings' ? 'page' : undefined}
-                className={`rounded-md p-1.5 hover:bg-gray-50 ${
+                className={`${ROW_CONTROL_TARGET} shrink-0 hover:bg-gray-50 ${
                   pathname === '/settings' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
