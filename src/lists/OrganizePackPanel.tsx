@@ -85,12 +85,8 @@ export function deriveOrganizeHiddenReorderItemIds(
 
 export default function OrganizePackPanel({
   list,
-  onTogglePackMode,
-  onToggleOrganizeMode,
 }: {
   list: List
-  onTogglePackMode: () => void
-  onToggleOrganizeMode: () => void
 }) {
   const qc = useQueryClient()
   const mobile = useIsBelowLg()
@@ -352,8 +348,6 @@ export default function OrganizePackPanel({
       <ListDocumentToolbar
         list={list}
         mode="organize"
-        onTogglePackMode={onTogglePackMode}
-        onToggleOrganizeMode={onToggleOrganizeMode}
       />
 
       <form onSubmit={submitLocation} noValidate className="flex gap-2">

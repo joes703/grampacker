@@ -4,13 +4,19 @@ Status: rev 6 implementation baseline; shipped 2026-07-20.
 
 > **Post-launch route amendment (2026-07-20):** Organize is now a peer list
 > mode at `/lists/:id/organize`, alongside List (`/lists/:id`) and Pack
-> (`/lists/:id/pack`). Pack and Organize are persistent pill toggles on the
+> (`/lists/:id/pack`). ~~Pack and Organize are persistent pill toggles on the
 > list page; clicking the active mode returns to List, and clicking the other
-> switches directly. The original `/pack/organize` route redirects to the
+> switches directly.~~ The original `/pack/organize` route redirects to the
 > canonical peer route, and last-list restoration persists `/organize`. This
 > user-requested amendment supersedes only the route, entry-point, and
 > persistence decisions below; it did not otherwise change the original
 > packing-location contract. The later item-backed amendment below does.
+
+> **List-view navigation amendment (2026-07-22):** The two toggles are
+> superseded by three direct route links: List, Organize, and Pack. Every view
+> is visible and one activation away; the active link uses `aria-current` and
+> no longer doubles as a hidden "return to List" action. Browser titles include
+> the active view while the visible heading remains the stable list name.
 
 > **Item-backed container amendment (2026-07-21):** A packing location may
 > optionally be backed by one membership row on the same list. Its displayed
