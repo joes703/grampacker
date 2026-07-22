@@ -44,13 +44,13 @@ function baseProps() {
 }
 
 describe('GearItemRow callback contracts', () => {
-  it('focuses ordinary popover buttons on open and returns focus on Escape', async () => {
+  it('focuses the popover surface on open and returns focus on Escape', async () => {
     render(<GearItemRow item={gear()} {...baseProps()} />)
     const trigger = screen.getByRole('button', { name: 'Item options' })
 
     fireEvent.click(trigger)
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toHaveFocus())
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Item actions' })).toHaveFocus())
     expect(screen.queryByRole('menu')).toBeNull()
     expect(screen.queryByRole('menuitem')).toBeNull()
 

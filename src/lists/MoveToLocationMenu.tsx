@@ -7,7 +7,7 @@ import { POPOVER_SURFACE } from '../components/flat-table-styles'
 import { RowMenuItem } from '../components/RowMenuItem'
 import MobileOptionsModal from '../components/MobileOptionsModal'
 
-type Props = {
+type BaseProps = {
   itemId: string
   itemName: string
   currentLocationId: string | null
@@ -18,9 +18,20 @@ type Props = {
   isContainer: boolean
   excludedLocationIds?: ReadonlySet<string>
   onMove: (locationId: string | null) => void
-  onUseAsContainer?: () => void
-  onStopUsingAsContainer?: () => void
 }
+
+type Props = BaseProps & (
+  | {
+      isContainer: false
+      onUseAsContainer: () => void
+      onStopUsingAsContainer?: never
+    }
+  | {
+      isContainer: true
+      onUseAsContainer?: never
+      onStopUsingAsContainer?: () => void
+    }
+)
 
 export default function MoveToLocationMenu({
   itemId,
@@ -70,7 +81,7 @@ export default function MoveToLocationMenu({
             disabled={disabled || containerCreationDisabled}
             onClick={() => {
               close()
-              onUseAsContainer?.()
+              onUseAsContainer()
             }}
           >
             Use as container

@@ -348,6 +348,42 @@ describe('packing location CRUD, assignment, and integrity', () => {
     expect(renameLocation.status).toBe(409)
   })
 
+  it('uses live container names to break equal sort-order ties', async () => {
+    const { cookie } = await signUpVerifiedUser('packing-live-sort@example.com', 'S')
+    const list = await createList(cookie, 'Live sort')
+    const zuluGear = await createGear(cookie, 'Zulu snapshot')
+    const alphaGear = await createGear(cookie, 'Alpha snapshot')
+    const zuluItem = await addItem(cookie, list.id, zuluGear)
+    const alphaItem = await addItem(cookie, list.id, alphaGear)
+    const zuluLocation = await createItemContainer(cookie, list.id, zuluItem.id)
+    const alphaLocation = await createItemContainer(cookie, list.id, alphaItem.id)
+
+    const reorder = await apiRequest(
+      cookie,
+      'PUT',
+      `/api/lists/${list.id}/packing-locations/order`,
+      [
+        { id: zuluLocation.id, sortOrder: 0 },
+        { id: alphaLocation.id, sortOrder: 0 },
+      ],
+    )
+    expect(reorder.status).toBe(204)
+
+    expect(
+      (await apiRequest(cookie, 'PATCH', `/api/gear-items/${zuluGear}`, { name: 'Alpha live' }))
+        .status,
+    ).toBe(200)
+    expect(
+      (await apiRequest(cookie, 'PATCH', `/api/gear-items/${alphaGear}`, { name: 'Zulu live' }))
+        .status,
+    ).toBe(200)
+
+    expect((await getLocations(cookie, list.id)).map((location) => location.name)).toEqual([
+      'Alpha live',
+      'Zulu live',
+    ])
+  })
+
   it('promotes gear with a 250-character name while storing a bounded fallback snapshot', async () => {
     const { cookie } = await signUpVerifiedUser('packing-long-container@example.com', 'L')
     const list = await createList(cookie, 'Long container')

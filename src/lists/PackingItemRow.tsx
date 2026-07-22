@@ -42,6 +42,9 @@ export default function PackingItemRow({
     transition,
     isDragging,
   } = useSortable({ id: makeDnDId('packing-item', item.id), disabled })
+  const containerActionProps = isContainer
+    ? { isContainer: true as const }
+    : { isContainer: false as const, onUseAsContainer }
 
   return (
     <div
@@ -73,9 +76,8 @@ export default function PackingItemRow({
         mobile={mobile}
         disabled={disabled}
         containerCreationDisabled={containerCreationDisabled}
-        isContainer={isContainer}
         onMove={onMove}
-        onUseAsContainer={onUseAsContainer}
+        {...containerActionProps}
       />
     </div>
   )

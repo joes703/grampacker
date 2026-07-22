@@ -45,18 +45,23 @@ vi.mock('../lib/queries', async (importOriginal) => {
 const actionMocks = vi.hoisted(() => ({
   duplicateMutate: vi.fn(),
   removeMutate: vi.fn(),
+  duplicatePending: false,
 }))
 vi.mock('./use-food-plan-actions', () => ({
   useFoodPlanActions: () => ({
     createPlan: { mutate: vi.fn(), isPending: false, error: null },
     duplicatePlan: {
       mutate: actionMocks.duplicateMutate,
-      isPending: false,
+      isPending: actionMocks.duplicatePending,
       error: null,
     },
     removePlan: { mutate: actionMocks.removeMutate, isPending: false, error: null },
   }),
 }))
+
+beforeEach(() => {
+  actionMocks.duplicatePending = false
+})
 
 import FoodPlansPage from './FoodPlansPage'
 
@@ -164,6 +169,21 @@ describe('FoodPlansPage', () => {
     expect(screen.getByText(/This will delete "Weekender" and everything in it/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     expect(actionMocks.removeMutate).toHaveBeenCalledWith(plan.id)
+  })
+
+  it('does not autofocus Delete when Duplicate is temporarily disabled', async () => {
+    actionMocks.duplicatePending = true
+    h.fetchFoodPlans.mockResolvedValue([
+      summary({ name: 'First plan' }),
+      summary({ name: 'Second plan' }),
+    ])
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Second plan options' }))
+
+    const menu = screen.getByRole('group', { name: 'Second plan actions' })
+    expect(menu).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Delete plan' })).not.toHaveFocus()
   })
 
   it('opens the create dialog from a New plan control', async () => {

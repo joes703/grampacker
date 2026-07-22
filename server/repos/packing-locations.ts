@@ -80,7 +80,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
           eq(packingLocations.userId, userId),
         ),
       )
-      .orderBy(asc(packingLocations.sortOrder), asc(packingLocations.name))
+      .orderBy(asc(packingLocations.sortOrder), asc(cols.name))
   }
 
   return {
@@ -161,6 +161,9 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
         }
         if (isUniqueViolation(err, 'packing_locations.container_list_item_id')) {
           return { ok: false, reason: 'already_container' }
+        }
+        if (isTriggerAbort(err, 'container item does not belong to this list')) {
+          return { ok: false, reason: 'invalid_container_item' }
         }
         if (isForeignKeyViolation(err)) {
           return { ok: false, reason: 'invalid_container_item' }

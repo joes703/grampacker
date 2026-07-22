@@ -94,7 +94,6 @@ describe('MoveToLocationMenu container actions', () => {
         containerCreationDisabled={false}
         isContainer
         onMove={vi.fn()}
-        onUseAsContainer={vi.fn()}
       />,
     )
 

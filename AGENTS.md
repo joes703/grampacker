@@ -108,7 +108,7 @@ time. Never delete or recreate the D1 database.
   batch-limits paragraph applies only per-QUERY limits (100 params, 100KB) to
   each batched statement. The account is on the Free tier. Prefer multi-row
   inserts over per-row statements to keep batch statement counts low (the
-  worst-case list duplicate is ~400 statements in one batch), and treat any
+  worst-case list duplicate is about 455 statements in one batch), and treat any
   failure of a large batch in prod as possibly THIS before debugging SQL. A
   maxed-plan duplicate has not yet been wire-verified in prod (follow-up in
   `.tmp/ONE_PLAN_PER_TRIP_PLAN.md`).
