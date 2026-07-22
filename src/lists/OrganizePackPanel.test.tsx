@@ -3,7 +3,28 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CollisionDetection } from '@dnd-kit/core'
+import { closestCenter } from '@dnd-kit/core'
+import { makeDnDId } from '../lib/dnd-ids'
 import type { List, ListItemWithGear, PackingLocation } from '../lib/types'
+
+const dndMocks = vi.hoisted(() => ({
+  collisionDetection: undefined as CollisionDetection | undefined,
+  closestCenter: vi.fn(() => []),
+}))
+
+vi.mock('@dnd-kit/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@dnd-kit/core')>()
+  const React = await import('react')
+  return {
+    ...actual,
+    closestCenter: dndMocks.closestCenter,
+    DndContext: (props: React.ComponentProps<typeof actual.DndContext>) => {
+      dndMocks.collisionDetection = props.collisionDetection
+      return React.createElement(actual.DndContext, props)
+    },
+  }
+})
 
 vi.mock('../lib/queries', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/queries')>()),
@@ -38,7 +59,12 @@ const list: List = {
   updatedAt: '2026-01-01',
 }
 
-function item(id: string, name: string, isWorn: boolean): ListItemWithGear {
+function item(
+  id: string,
+  name: string,
+  isWorn: boolean,
+  packingLocationId = 'loc-1',
+): ListItemWithGear {
   return {
     id,
     listId: list.id,
@@ -48,7 +74,7 @@ function item(id: string, name: string, isWorn: boolean): ListItemWithGear {
     isConsumable: false,
     isPacked: false,
     isReady: false,
-    packingLocationId: 'loc-1',
+    packingLocationId,
     sortOrder: isWorn ? 1 : 0,
     createdAt: '2026-01-01',
     updatedAt: '2026-01-01',
@@ -84,6 +110,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  dndMocks.collisionDetection = undefined
   vi.unstubAllGlobals()
 })
 
@@ -116,5 +143,49 @@ describe('OrganizePackPanel worn section', () => {
     const mainPack = screen.getByRole('region', { name: 'Main pack' })
     expect(within(mainPack).getByText('Tent')).toBeInTheDocument()
     expect(within(mainPack).queryByText('Rain jacket')).not.toBeInTheDocument()
+  })
+})
+
+describe('OrganizePackPanel location collision wiring', () => {
+  it('offers only sibling locations while reordering a location', async () => {
+    const locations: PackingLocation[] = [
+      { id: 'loc-a', name: 'A', sortOrder: 0, containerListItemId: null },
+      { id: 'loc-b', name: 'B', sortOrder: 1, containerListItemId: 'item-b' },
+      { id: 'loc-z', name: 'Z', sortOrder: 2, containerListItemId: null },
+    ]
+    vi.mocked(fetchPackingLocations).mockResolvedValue(locations)
+    vi.mocked(fetchListItems).mockResolvedValue([
+      item('item-b', 'B', false, 'loc-z'),
+    ])
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(
+      <QueryClientProvider client={qc}>
+        <OrganizePackPanel
+          list={list}
+          onTogglePackMode={vi.fn()}
+          onToggleOrganizeMode={vi.fn()}
+        />
+      </QueryClientProvider>,
+    )
+
+    await screen.findByRole('region', { name: 'A' })
+    expect(dndMocks.collisionDetection).toBeDefined()
+
+    const containers = [
+      { id: makeDnDId('packing-location', 'loc-a') },
+      { id: makeDnDId('packing-location', 'loc-b') },
+      { id: makeDnDId('packing-location', 'loc-z') },
+    ]
+    dndMocks.collisionDetection?.({
+      active: { id: makeDnDId('packing-location', 'loc-a') },
+      droppableContainers: containers,
+    } as unknown as Parameters<CollisionDetection>[0])
+
+    const collisionArgs = vi.mocked(closestCenter).mock.calls.at(-1)?.[0]
+    expect(collisionArgs?.droppableContainers.map((container) => container.id)).toEqual([
+      makeDnDId('packing-location', 'loc-a'),
+      makeDnDId('packing-location', 'loc-z'),
+    ])
   })
 })

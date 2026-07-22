@@ -60,12 +60,22 @@ import {
   type PackingTreeLocation,
 } from './packing-tree'
 
-const packingCollisionDetection: CollisionDetection = (args) => closestCenter({
-  ...args,
-  droppableContainers: args.droppableContainers.filter((container) =>
-    isPackingCollisionTarget(String(args.active.id), String(container.id)),
-  ),
-})
+function buildSiblingLocationIdsById(
+  roots: PackingTreeLocation[],
+): Map<string, ReadonlySet<string>> {
+  const siblingIdsById = new Map<string, ReadonlySet<string>>()
+
+  function visit(siblings: PackingTreeLocation[]) {
+    const siblingIds = new Set(siblings.map((node) => node.location.id))
+    for (const node of siblings) {
+      siblingIdsById.set(node.location.id, siblingIds)
+      visit(node.children)
+    }
+  }
+
+  visit(roots)
+  return siblingIdsById
+}
 
 export function deriveOrganizeHiddenReorderItemIds(
   items: ListItemWithGear[],
@@ -147,6 +157,20 @@ export default function OrganizePackPanel({
     }),
     [items, locations],
   )
+  const siblingLocationIdsById = useMemo(
+    () => buildSiblingLocationIdsById(packingTree.roots),
+    [packingTree],
+  )
+  const packingCollisionDetection = useMemo<CollisionDetection>(() => (args) => closestCenter({
+    ...args,
+    droppableContainers: args.droppableContainers.filter((container) =>
+      isPackingCollisionTarget(
+        String(args.active.id),
+        String(container.id),
+        siblingLocationIdsById,
+      ),
+    ),
+  }), [siblingLocationIdsById])
   const containerMoveExclusions = useMemo(
     () => buildContainerMoveExclusions(packingTree),
     [packingTree],
