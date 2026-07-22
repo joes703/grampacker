@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import type { List } from '../lib/types'
 import DraftBadge from '../components/DraftBadge'
+import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import InlineTitle from './InlineTitle'
 import { useCurrentListActions } from './use-current-list-actions'
 
@@ -53,11 +54,9 @@ export default function CurrentListHeader({ list }: Props) {
           onClick={() => setEditTrigger((t) => t + 1)}
           aria-label="Rename list"
           title="Rename list"
-          // 32x32 hit area (h-8 w-8) for touch comfort. opacity-100 at
-          // <md so touch users can always see it; md:opacity-0 +
-          // md:group-hover:opacity-100 hides it on desktop until the
-          // user hovers the header.
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-gray-500 opacity-100 transition-opacity hover:text-gray-600 md:opacity-0 md:group-hover:opacity-100"
+          // The shared target stays 40x40 and visible below lg. At lg it
+          // compacts to 28x28 and hides until a pointer user hovers the header.
+          className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 opacity-100 transition-opacity hover:text-gray-600 lg:opacity-0 lg:group-hover:opacity-100`}
         >
           <Pencil size={14} />
         </button>

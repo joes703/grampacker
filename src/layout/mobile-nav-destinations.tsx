@@ -3,8 +3,8 @@ import type { MobileBottomBarItem } from '../components/MobileBottomBar'
 
 // Shared "destination" items (Gear + Lists + Food) for the mobile bottom
 // bar. Every mobile bar emits the same first three slots so users see
-// consistent geography across the app; page-specific bars then append their
-// own Add and Options items to complete the 5-slot layout.
+// consistent geography across the app; page-specific bars may append actions,
+// producing deliberate 3-, 4-, or 5-slot layouts.
 //
 // Active-state rules live here so all callers stay aligned:
 //   - Gear active on /gear

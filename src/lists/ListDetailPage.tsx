@@ -292,10 +292,9 @@ function ListDetailInner({
   // render the pencil button conditionally (read mode only) without
   // exposing NotesEditor's internal state up through a callback.
   const [notesEditing, setNotesEditing] = useState(false)
-  // Mobile sidebar drawer — open/setOpen are owned by SidebarDrawerContext
-  // so the trigger button in NavBar (a sibling subtree under AppShell) can
-  // toggle the same state. The hook also sets `available` so NavBar knows
-  // to render the trigger only on this page.
+  // Mobile sidebar drawer - open/setOpen are owned by SidebarDrawerContext so
+  // the bottom bar's Add action can toggle the drawer from a sibling subtree.
+  // The hook sets `available` to enable that action in edit and Pack modes.
   const { open: drawerOpen, setOpen: setDrawerOpen } = useRegisterSidebarDrawer(
     mode === 'edit' || mode === 'pack',
   )
