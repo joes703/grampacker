@@ -217,6 +217,58 @@ export function derivePackReorderExclusions(
   return excludedItemIds
 }
 
+export function planListItemReorder({
+  activeId,
+  overId,
+  items,
+  groupingKind,
+  locations,
+  hidePackedItems,
+}: {
+  activeId: string
+  overId: string | undefined
+  items: ListItemWithGear[]
+  groupingKind: 'category' | 'location'
+  locations: PackingLocation[]
+  hidePackedItems: boolean
+}): { id: string; sortOrder: number }[] | null {
+  if (groupingKind === 'location') {
+    const excludedItemIds = derivePackReorderExclusions(items, locations)
+    if (hidePackedItems) {
+      for (const item of items) {
+        if (item.isPacked) excludedItemIds.add(item.id)
+      }
+    }
+    return planPackingItemReorder(
+      activeId,
+      overId,
+      items,
+      'item',
+      excludedItemIds,
+    )
+  }
+
+  const active = parseDnDId(activeId)
+  const over = overId === undefined ? null : parseDnDId(overId)
+  if (active?.kind !== 'item' || over?.kind !== 'item') return null
+
+  const activeItem = items.find((item) => item.id === active.id)
+  const overItem = items.find((item) => item.id === over.id)
+  if (!activeItem || !overItem) return null
+  if (hidePackedItems && (activeItem.isPacked || overItem.isPacked)) return null
+  const categoryId = activeItem.gearItem.categoryId
+  if (overItem.gearItem.categoryId !== categoryId) return null
+
+  const categoryItems = items.filter((item) =>
+    item.gearItem.categoryId === categoryId &&
+    (!hidePackedItems || !item.isPacked),
+  )
+  const oldIndex = categoryItems.findIndex((item) => item.id === active.id)
+  const newIndex = categoryItems.findIndex((item) => item.id === over.id)
+  if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return null
+  return assignSortOrderSlots(arrayMove(categoryItems, oldIndex, newIndex))
+}
+
 export default function ListDetailPage() {
   // Default title for the wrapper; ListDetailInner overrides with the list
   // name once it mounts and the list resolves. Stays as "Lists" briefly while
@@ -574,43 +626,15 @@ function ListDetailInner({
     if (!over) return
     if (active.id === over.id) return
 
-    const activeParsed = parseDnDId(String(active.id))
-    const overParsed = parseDnDId(String(over.id))
-    if (!activeParsed || !overParsed) return
-    if (activeParsed.kind !== 'item' || overParsed.kind !== 'item') return
-
-    if (grouping.kind === 'location') {
-      const excludedItemIds = derivePackReorderExclusions(
-        listItems,
-        locationsQuery.data ?? [],
-      )
-      const updates = planPackingItemReorder(
-        String(active.id),
-        String(over.id),
-        listItems,
-        'item',
-        excludedItemIds,
-      )
-      if (updates) reorderItemsMut.mutate(updates)
-      return
-    }
-
-    // Within-category item reorder. The drop target must be another item
-    // AND in the same category as the dragged item. Anything else
-    // (cross-category drop, drop on empty space) is ignored.
-    const activeItem = listItemsById.get(activeParsed.id)
-    if (!activeItem) return
-    const overItem = listItemsById.get(overParsed.id)
-    if (!overItem) return
-    const activeCat = activeItem.gearItem.categoryId
-    if (overItem.gearItem.categoryId !== activeCat) return
-
-    const itemsInCat = listItems.filter((i) => i.gearItem.categoryId === activeCat)
-    const oldIndex = itemsInCat.findIndex((i) => i.id === activeParsed.id)
-    const newIndex = itemsInCat.findIndex((i) => i.id === overParsed.id)
-    if (oldIndex === -1 || newIndex === -1) return
-    const reordered = arrayMove(itemsInCat, oldIndex, newIndex)
-    reorderItemsMut.mutate(assignSortOrderSlots(reordered))
+    const updates = planListItemReorder({
+      activeId: String(active.id),
+      overId: String(over.id),
+      items: listItems,
+      groupingKind: grouping.kind,
+      locations: locationsQuery.data ?? [],
+      hidePackedItems: mode === 'pack' && showUnpackedOnly,
+    })
+    if (updates) reorderItemsMut.mutate(updates)
   }
 
   // Pack/Ready reset actions live in a dedicated hook; it owns the field-scoped
