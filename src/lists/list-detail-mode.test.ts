@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   deriveListMode,
+  listDocumentTitle,
   persistedListPath,
-  toggledListModePath,
 } from './list-detail-mode'
 
 const LIST_ID = 'list-1'
@@ -30,15 +30,12 @@ describe('persistedListPath', () => {
   })
 })
 
-describe('toggledListModePath', () => {
+describe('listDocumentTitle', () => {
   it.each([
-    ['edit', 'pack', `/lists/${LIST_ID}/pack`],
-    ['pack', 'pack', `/lists/${LIST_ID}`],
-    ['organize', 'pack', `/lists/${LIST_ID}/pack`],
-    ['edit', 'organize', `/lists/${LIST_ID}/organize`],
-    ['organize', 'organize', `/lists/${LIST_ID}`],
-    ['pack', 'organize', `/lists/${LIST_ID}/organize`],
-  ] as const)('toggles %s -> %s to %s', (current, target, expected) => {
-    expect(toggledListModePath(LIST_ID, current, target)).toBe(expected)
+    ['edit', 'Weekend Trip - List'],
+    ['organize', 'Weekend Trip - Organize'],
+    ['pack', 'Weekend Trip - Pack'],
+  ] as const)('names the %s browser view', (mode, expected) => {
+    expect(listDocumentTitle('Weekend Trip', mode)).toBe(expected)
   })
 })

@@ -2,19 +2,17 @@ import type { List } from '../lib/types'
 import type { ListDetailMode } from './list-detail-mode'
 import CurrentListHeader from './CurrentListHeader'
 import ListSettingsButton from './ListSettingsButton'
-import ListModeToggles from './ListModeToggles'
+import ListViewNav from './ListViewNav'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
 
 type Props = {
   list: List
   mode: ListDetailMode
-  onTogglePackMode: () => void
-  onToggleOrganizeMode: () => void
 }
 
 // List-document toolbar. Anchors list identity and
 // list-scoped actions to the document column on /lists/:id now that the
-// global top bar is global-only. The same identity and peer mode controls
+// global top bar is global-only. The same identity and peer view navigation
 // render at every viewport.
 // Hidden in print: the print-only header carries the list name on paper.
 //
@@ -26,27 +24,25 @@ type Props = {
 export default function ListDocumentToolbar({
   list,
   mode,
-  onTogglePackMode,
-  onToggleOrganizeMode,
 }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-2 print:hidden">
-      <div className="flex min-w-0 basis-full sm:basis-auto sm:flex-1">
+      <div className="order-1 flex min-w-0 flex-1">
         <CurrentListHeader list={list} />
       </div>
-      <div className="ml-auto flex items-center gap-2">
-        {mode === 'edit' && (
+
+      <div className="order-3 basis-full lg:order-2 lg:basis-auto">
+        <ListViewNav listId={list.id} mode={mode} />
+      </div>
+
+      {mode === 'edit' && (
+        <div className="order-2 ml-auto flex items-center gap-2 lg:order-3">
           <div>
             <UnitSegmentedControl idPrefix="list-toolbar" />
           </div>
-        )}
-        <ListModeToggles
-          mode={mode}
-          onTogglePackMode={onTogglePackMode}
-          onToggleOrganizeMode={onToggleOrganizeMode}
-        />
-        {mode === 'edit' && <ListSettingsButton list={list} />}
-      </div>
+          <ListSettingsButton list={list} />
+        </div>
+      )}
     </div>
   )
 }

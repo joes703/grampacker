@@ -132,8 +132,8 @@ import { useDocumentTitle } from '../lib/use-document-title'
 import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
 import {
   deriveListMode,
+  listDocumentTitle,
   persistedListPath,
-  toggledListModePath,
   type ListDetailMode,
 } from './list-detail-mode'
 import { orderPackGroups, selectPackGroupingState } from './packing-grouping'
@@ -147,8 +147,8 @@ import { FOOD_PLANNING_ENABLED } from '../lib/product-features'
 // print:hidden classes on transient chrome are kept since they're inert
 // without a print stylesheet consumer.
 // TRANSPLANT NOTE (tabs): the old page rendered ListWorkspaceTabs (a
-// Gear/Pack two-tab remnant) above ListDocumentToolbar. The toolbar's own
-// PackToggle covers mode switching in the rewrite; the tab strip returns
+// Gear/Pack two-tab remnant) above ListDocumentToolbar. The toolbar now owns
+// direct List / Organize / Pack navigation; the old workspace tab strip returns
 // only if the workspace grows real tabs (e.g. a Food tab with that slice).
 
 const EMPTY_LIST_ITEMS: ListItemWithGear[] = []
@@ -322,12 +322,6 @@ function ListDetailInner({
   const legacyPackMode = location.pathname === `/lists/${listId}` && new URLSearchParams(location.search).get('mode') === 'pack'
   const legacyOrganizeMode = location.pathname === `/lists/${listId}/pack/organize`
   const mode: ListDetailMode = deriveListMode(location.pathname, location.search, listId)
-  function togglePackMode() {
-    void navigate(toggledListModePath(listId, mode, 'pack'))
-  }
-  function toggleOrganizeMode() {
-    void navigate(toggledListModePath(listId, mode, 'organize'))
-  }
   const { weightUnit } = useWeightUnit()
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
   // long list registers ONE matchMedia subscription instead of one per row.
@@ -363,7 +357,7 @@ function ListDetailInner({
   // Inner overrides the wrapper's "Lists" default with the list name once
   // it resolves; falls back to "Lists" while the lists query is pending so
   // the title doesn't briefly drop to the bare app name.
-  useDocumentTitle(list?.name ?? 'Lists')
+  useDocumentTitle(list ? listDocumentTitle(list.name, mode) : 'Lists')
 
   // The attached food plan's weight, derived from the plan document + the food
   // library. Passing null while Food is parked keeps preserved links dormant
@@ -950,8 +944,6 @@ function ListDetailInner({
         <Suspense fallback={<ListDetailStatus title="Loading pack organizer..." busy />}>
           <OrganizePackPanel
             list={list}
-            onTogglePackMode={togglePackMode}
-            onToggleOrganizeMode={toggleOrganizeMode}
           />
         </Suspense>
         <MobileListActionBar list={list} mode="organize" />
@@ -1003,8 +995,6 @@ function ListDetailInner({
           <ListDocumentToolbar
             list={list}
             mode={mode}
-            onTogglePackMode={togglePackMode}
-            onToggleOrganizeMode={toggleOrganizeMode}
           />
 
           {detailDataError ? (
@@ -1426,7 +1416,7 @@ function ListDetailInner({
       {/* Mobile-only bottom action bar. Gear / Lists / Add / Options
           in normal mode; Options is dropped in pack mode (pack-mode
           controls live inline in PackingProgress, and List options is
-          list-admin not needed mid-pack). The mode toggles above stay
+          list-admin not needed mid-pack). The view navigation above stays
           available independently. lg:hidden inside the bar
           itself, so desktop never renders it. */}
       <MobileListActionBar list={list} mode={mode} />

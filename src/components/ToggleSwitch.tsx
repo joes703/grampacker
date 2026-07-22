@@ -15,7 +15,7 @@ type Props = {
 // surfaces never drift on size, color, or transition feel.
 //
 // See docs/ui-density.md "Toggle Taxonomy" for when to use this vs
-// PillToggle vs RowIconButton vs UnitSegmentedControl.
+// RowIconButton or UnitSegmentedControl.
 export default function ToggleSwitch({ checked, onChange, ariaLabel, disabled = false }: Props) {
   return (
     <button

@@ -1,5 +1,10 @@
 export type ListDetailMode = 'edit' | 'pack' | 'organize'
-export type ToggleableListMode = Exclude<ListDetailMode, 'edit'>
+
+const LIST_VIEW_LABELS: Record<ListDetailMode, string> = {
+  edit: 'List',
+  organize: 'Organize',
+  pack: 'Pack',
+}
 
 export function deriveListMode(
   pathname: string,
@@ -24,12 +29,6 @@ export function persistedListPath(listId: string, mode: ListDetailMode): string 
   return base
 }
 
-export function toggledListModePath(
-  listId: string,
-  current: ListDetailMode,
-  target: ToggleableListMode,
-): string {
-  return current === target
-    ? `/lists/${listId}`
-    : `/lists/${listId}/${target}`
+export function listDocumentTitle(name: string, mode: ListDetailMode): string {
+  return `${name} - ${LIST_VIEW_LABELS[mode]}`
 }

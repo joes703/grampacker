@@ -130,8 +130,6 @@ describe('OrganizePackPanel worn section', () => {
       <QueryClientProvider client={qc}>
         <OrganizePackPanel
           list={list}
-          onTogglePackMode={vi.fn()}
-          onToggleOrganizeMode={vi.fn()}
         />
       </QueryClientProvider>,
     )
@@ -163,8 +161,6 @@ describe('OrganizePackPanel location collision wiring', () => {
       <QueryClientProvider client={qc}>
         <OrganizePackPanel
           list={list}
-          onTogglePackMode={vi.fn()}
-          onToggleOrganizeMode={vi.fn()}
         />
       </QueryClientProvider>,
     )

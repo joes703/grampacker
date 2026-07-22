@@ -1,8 +1,7 @@
 # UI density and design tokens
 
 Source of truth for grampacker's row/table/panel visual grammar. Cited by
-`src/components/flat-table-styles.ts`, `src/components/PillToggle.tsx`, and
-`src/components/ToggleSwitch.tsx`.
+`src/components/flat-table-styles.ts` and `src/components/ToggleSwitch.tsx`.
 
 The tokens live in `src/components/flat-table-styles.ts`. This document
 explains the reasoning behind them and, more importantly, records **which
@@ -99,27 +98,23 @@ row token onto it.
 
 ## Toggle Taxonomy
 
-Cited by `PillToggle.tsx` and `ToggleSwitch.tsx`. Four components can express
-an on/off or either/or state; they are not interchangeable. Pick by **what the
+Cited by `ToggleSwitch.tsx`. Three components can express an on/off or
+either/or state; they are not interchangeable. Pick by **what the
 state means**, not by where it sits.
 
 | Component | Use for | Semantics |
 |---|---|---|
-| `PillToggle` | Page or list **mode** switches that change how the whole surface behaves | button; blue-50/blue-700 when active |
 | `ToggleSwitch` | Binary **settings** and in-content view toggles | `role="switch"` |
 | `RowIconButton` (`purpleToggle` / `orangeToggle`) | Per-row **flag markers** on an individual item (worn, consumable) | button with an `active` chip state |
 | `UnitSegmentedControl` | Choosing **one of several** mutually exclusive options (metric/imperial) | real `sr-only` radio inputs behind visual labels |
 
 The distinctions that matter:
 
-- **Mode vs setting.** A mode changes what the surface *does* right now and is
-  usually transient (Pack mode). A setting is a persisted preference that
-  changes what the surface *shows* (public sharing). Modes get `PillToggle`,
-  settings get `ToggleSwitch`. `PillToggle`'s only consumer today is the Pack
-  mode pill; its sizing is deliberately fixed, so reintroduce a `size` variant
-  only when a second consumer actually needs one.
-- **Two states vs several.** Anything with more than two options is a radio
-  group, not a toggle. Use `UnitSegmentedControl`'s pattern - real radio
+- **Route views are navigation.** List, Organize, and Pack have distinct URLs,
+  so `ListViewNav` renders links with `aria-current="page"`. Do not describe
+  peer destinations as pressed buttons or binary toggles.
+- **Two states vs several.** An in-place choice with more than two options is a
+  radio group, not a toggle. Use `UnitSegmentedControl`'s pattern - real radio
   inputs, visually relabelled - so keyboard arrow navigation works for free
   rather than being reimplemented with key handlers.
 - **Row flags are not settings.** A worn or consumable marker belongs to one

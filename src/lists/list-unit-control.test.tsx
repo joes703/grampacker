@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import type { List } from '../lib/types'
 import ListDocumentToolbar from './ListDocumentToolbar'
 
@@ -35,7 +36,7 @@ const list: List = {
 // viewport so switching modes changes tools without replacing the heading.
 describe('list unit control placement', () => {
   it('keeps a single unit control in the viewport-independent toolbar', () => {
-    render(<ListDocumentToolbar list={list} mode="edit" onTogglePackMode={vi.fn()} onToggleOrganizeMode={vi.fn()} />)
+    render(<ListDocumentToolbar list={list} mode="edit" />, { wrapper: MemoryRouter })
 
     expect(screen.getAllByRole('radiogroup', { name: 'Weight units' })).toHaveLength(1)
 
@@ -51,48 +52,38 @@ describe('list unit control placement', () => {
 
   it('hides the unit control in Pack and Organize', () => {
     const { rerender } = render(
-      <ListDocumentToolbar list={list} mode="pack" onTogglePackMode={vi.fn()} onToggleOrganizeMode={vi.fn()} />,
+      <ListDocumentToolbar list={list} mode="pack" />,
+      { wrapper: MemoryRouter },
     )
     expect(screen.queryByRole('radiogroup', { name: 'Weight units' })).toBeNull()
     expect(screen.queryByText('list-settings-button')).toBeNull()
 
     rerender(
-      <ListDocumentToolbar list={list} mode="organize" onTogglePackMode={vi.fn()} onToggleOrganizeMode={vi.fn()} />,
+      <ListDocumentToolbar list={list} mode="organize" />,
     )
     expect(screen.queryByRole('radiogroup', { name: 'Weight units' })).toBeNull()
   })
 
-  it('offers Pack and Organize as peer toggles in every list mode', () => {
-    const onTogglePackMode = vi.fn()
-    const onToggleOrganizeMode = vi.fn()
+  it('offers List, Organize, and Pack as peer views in every list mode', () => {
     const { rerender } = render(
       <ListDocumentToolbar
         list={list}
         mode="edit"
-        onTogglePackMode={onTogglePackMode}
-        onToggleOrganizeMode={onToggleOrganizeMode}
       />,
+      { wrapper: MemoryRouter },
     )
-    expect(screen.getByRole('group', { name: 'List mode' })).toBeInTheDocument()
-    const pack = screen.getByRole('button', { name: 'Pack mode' })
-    const organize = screen.getByRole('button', { name: 'Organize mode' })
-    expect(pack).toHaveAttribute('aria-pressed', 'false')
-    expect(organize).toHaveAttribute('aria-pressed', 'false')
-    pack.click()
-    organize.click()
-    expect(onTogglePackMode).toHaveBeenCalledTimes(1)
-    expect(onToggleOrganizeMode).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('navigation', { name: 'List views' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'List', current: 'page' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Organize' })).not.toHaveAttribute('aria-current')
+    expect(screen.getByRole('link', { name: 'Pack' })).not.toHaveAttribute('aria-current')
 
     rerender(
       <ListDocumentToolbar
         list={list}
         mode="organize"
-        onTogglePackMode={onTogglePackMode}
-        onToggleOrganizeMode={onToggleOrganizeMode}
       />,
     )
-    expect(screen.getByRole('button', { name: 'Pack mode' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('button', { name: 'Organize mode' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('link', { name: 'Organize', current: 'page' })).toBeInTheDocument()
   })
 
   it('uses the same document header in Organize instead of replacing identity', () => {
