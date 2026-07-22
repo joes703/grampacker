@@ -40,13 +40,15 @@ export function planPackingItemReorder(
 export function isPackingCollisionTarget(
   activeId: string,
   targetId: string,
+  siblingLocationIdsById: ReadonlyMap<string, ReadonlySet<string>>,
 ): boolean {
   const active = parseDnDId(activeId)
   const target = parseDnDId(targetId)
   if (!active || !target) return false
 
   if (active.kind === 'packing-location') {
-    return target.kind === 'packing-location' && target.id !== 'unassigned'
+    return target.kind === 'packing-location'
+      && siblingLocationIdsById.get(active.id)?.has(target.id) === true
   }
   if (active.kind === 'packing-item') {
     return target.kind === 'packing-item' || target.kind === 'packing-location'

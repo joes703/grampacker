@@ -211,18 +211,24 @@ describe('planPackingItemDragEnd', () => {
 describe('isPackingCollisionTarget', () => {
   it('keeps location reorders on real location sections, not their nested item rows', () => {
     const active = makeDnDId('packing-location', 'loc-a')
+    const siblingLocationIdsById = new Map([
+      ['loc-a', new Set(['loc-a', 'loc-b'])],
+    ])
 
     expect(isPackingCollisionTarget(
       active,
       makeDnDId('packing-location', 'loc-b'),
+      siblingLocationIdsById,
     )).toBe(true)
     expect(isPackingCollisionTarget(
       active,
       makeDnDId('packing-item', target.id),
+      siblingLocationIdsById,
     )).toBe(false)
     expect(isPackingCollisionTarget(
       active,
       makeDnDId('packing-location', 'unassigned'),
+      siblingLocationIdsById,
     )).toBe(false)
   })
 
@@ -232,14 +238,17 @@ describe('isPackingCollisionTarget', () => {
     expect(isPackingCollisionTarget(
       active,
       makeDnDId('packing-item', target.id),
+      new Map(),
     )).toBe(true)
     expect(isPackingCollisionTarget(
       active,
       makeDnDId('packing-location', 'loc-b'),
+      new Map(),
     )).toBe(true)
     expect(isPackingCollisionTarget(
       active,
       makeDnDId('packing-location', 'unassigned'),
+      new Map(),
     )).toBe(true)
   })
 })
