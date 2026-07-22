@@ -169,50 +169,66 @@ describe('CategoryGroup footer subtotal', () => {
   // deliberately values NO row can produce (777 / 0). An assertion satisfiable
   // by row text would still pass if the footer silently went back to summing
   // rows, which is the exact regression these tests exist to catch.
-  it('renders the supplied subtotal, not the sum of its own rows', () => {
+  it('renders supplied Base and Consumable totals, not the sum of its own rows', () => {
     render(
       <CategoryGroup
         name="Shelter"
         categoryId="cat-1"
         items={[itemNamed('a', 'Tarp'), consumable('b', 'Gas')]}
         weightUnit="g"
-        subtotalLabel="Base"
-        subtotalGrams={777}
+        baseSubtotalGrams={777}
+        consumableSubtotalGrams={333}
       />,
     )
     expect(screen.getAllByText('777 g').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('333 g').length).toBeGreaterThan(0)
     // 200 g is what summing the two rows would produce.
     expect(screen.queryByText('200 g')).toBeNull()
   })
 
-  it('labels the subtotal, because it is not the visible rows added up', () => {
+  it('labels both kinds of category weight', () => {
     render(
       <CategoryGroup
         name="Shelter"
         categoryId="cat-1"
         items={[itemNamed('a', 'Tarp')]}
         weightUnit="g"
-        subtotalLabel="Base"
-        subtotalGrams={777}
+        baseSubtotalGrams={777}
+        consumableSubtotalGrams={333}
       />,
     )
     expect(screen.getAllByText(/Base/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Consumable/).length).toBeGreaterThan(0)
   })
 
-  it('renders an explicit zero for a category whose items are all consumable', () => {
-    // The trap: catRows omits zero-base categories entirely, so "absent" must
-    // still render 0 rather than blanking or borrowing another section's value.
+  it('omits Base when the category is consumable-only', () => {
     render(
       <CategoryGroup
         name="Food"
         categoryId="cat-food"
         items={[consumable('b', 'Gas')]}
         weightUnit="g"
-        subtotalLabel="Base"
-        subtotalGrams={0}
+        baseSubtotalGrams={0}
+        consumableSubtotalGrams={100}
       />,
     )
-    expect(screen.getAllByText('0 g').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Base/)).toBeNull()
+    expect(screen.getAllByText(/Consumable/).length).toBeGreaterThan(0)
+  })
+
+  it('omits Consumable when the category is base-only', () => {
+    render(
+      <CategoryGroup
+        name="Shelter"
+        categoryId="cat-1"
+        items={[itemNamed('a', 'Tarp')]}
+        weightUnit="g"
+        baseSubtotalGrams={100}
+        consumableSubtotalGrams={0}
+      />,
+    )
+    expect(screen.getAllByText(/Base/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Consumable/)).toBeNull()
   })
 
   it('renders a bare value when given no label, and never mislabels it Base', () => {
@@ -361,8 +377,7 @@ describe('CategoryGroup footer subtotal', () => {
         items={[itemNamed('a', 'Tarp')]}
         weightUnit="g"
         packMode
-        subtotalLabel="Base"
-        subtotalGrams={777}
+        baseSubtotalGrams={777}
       />,
     )
     expect(screen.queryByText(/Base/)).toBeNull()

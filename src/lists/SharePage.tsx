@@ -12,7 +12,12 @@ import {
 } from '../lib/weight'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useDocumentTitle } from '../lib/use-document-title'
-import { baseGramsForCategory, computeWeightBreakdown, withProjectedFood } from '../lib/weight-breakdown'
+import {
+  baseGramsForCategory,
+  computeWeightBreakdown,
+  consumableGramsForCategory,
+  withProjectedFood,
+} from '../lib/weight-breakdown'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
@@ -249,8 +254,8 @@ export default function SharePage() {
                 weightUnit={weightUnit}
                 isBelowLg={isBelowLg}
                 collapsible={false}
-                subtotalLabel="Base"
-                subtotalGrams={baseGramsForCategory(weightBreakdown, group.category?.id ?? null)}
+                baseSubtotalGrams={baseGramsForCategory(weightBreakdown, group.category?.id ?? null)}
+                consumableSubtotalGrams={consumableGramsForCategory(weightBreakdown, group.category?.id ?? null)}
               />
             ))}
             {wornItems.length > 0 && (

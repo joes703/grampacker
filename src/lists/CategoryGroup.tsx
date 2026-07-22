@@ -125,16 +125,17 @@ type GroupPropsBase = {
   /** The one section allowed to render worn rows. Every ordinary category or
    *  packing-location section filters them into the trailing Worn section. */
   wornSection?: boolean
-  /** Footer subtotal for this section, supplied by the parent.
+  /** Footer totals for this section, supplied by the parent.
    *
    *  Deliberately NOT computed here. This section used to sum its own rows,
    *  which put consumable and worn weight into the subtotal, so the subtotals never summed to
    *  the summary panel's Base weight, and flipping an unrelated display toggle
    *  silently changed what the number meant. The parents already hold the
-   *  canonical computeWeightBreakdown result; they pass the answer down
-   *  (see baseGramsForCategory) so there is one definition of base weight.
+   *  canonical computeWeightBreakdown result; they pass the answers down
+   *  (see baseGramsForCategory and consumableGramsForCategory) so there is one
+   *  definition of each weight bucket.
    *
-   *  Passed as two PRIMITIVES, deliberately, not as one `{label, grams}`
+   *  Passed as PRIMITIVES, deliberately, not as `{label, grams}` objects.
    *  object. This component is memo'd and its call sites go to real lengths to
    *  keep every prop reference stable (see useGroupedListItems, sharedGroupProps,
    *  useStableWornItems). An object literal in JSX is freshly allocated on every
@@ -142,14 +143,13 @@ type GroupPropsBase = {
    *  section on unrelated list mutations - including in pack mode, where the
    *  subtotal is not rendered at all.
    *
-   *  `subtotalLabel` is rendered beside the value when the subtotal is NOT the
-   *  arithmetic sum of the rows above it - a bare figure sitting under those
-   *  rows promises to add up, and a Base subtotal doesn't when the section
-   *  holds worn or consumable gear. The Worn pseudo-section omits the label:
-   *  its number is the canonical list-level worn total, and "Worn Worn 550 g"
-   *  is noise. Omit `subtotalGrams` to render no subtotal at all. */
+   *  Category footers render each positive bucket with its label. Zero-value
+   *  buckets are omitted instead of showing Base 0 or Consumable 0. The Worn
+   *  pseudo-section keeps the legacy bare `subtotalGrams`: its number is the
+   *  canonical list-level worn total, and "Worn Worn 550 g" is noise. */
+  baseSubtotalGrams?: number
+  consumableSubtotalGrams?: number
   subtotalGrams?: number
-  subtotalLabel?: string
   onUpdate?: (itemId: string, patch: ListItemPatch) => void
   onDelete?: (itemId: string) => void
   onSaveGearName?: (gearItemId: string, name: string) => void
@@ -216,8 +216,9 @@ function CategoryGroup({
   reorderPending = false,
   showUnpackedOnly = false,
   wornSection = false,
+  baseSubtotalGrams,
+  consumableSubtotalGrams,
   subtotalGrams,
-  subtotalLabel,
   onUpdate,
   onDelete,
   onSaveGearName,
@@ -498,31 +499,25 @@ function CategoryGroup({
               <div className="hidden lg:contents">
                 <div className="shrink-0 w-7" />
                 <div className="shrink-0 w-7" />
-                <div className={`shrink-0 w-[9.375rem] text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
-                  {subtotalGrams !== undefined ? (
-                    <>
-                      {/* The label is not decorative: it is what stops the
-                          figure from reading as "these rows added up". */}
-                      {subtotalLabel ? (
-                        <span className={`mr-1 font-normal ${FLAT_TABLE_META_TEXT}`}>{subtotalLabel}</span>
-                      ) : null}
-                      <TotalWeightValue grams={subtotalGrams} unit={weightUnit} />
-                    </>
-                  ) : ''}
+                <div className={`shrink-0 min-w-[9.375rem] text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
+                  <CategoryFooterWeights
+                    baseGrams={baseSubtotalGrams}
+                    consumableGrams={consumableSubtotalGrams}
+                    wornGrams={subtotalGrams}
+                    weightUnit={weightUnit}
+                  />
                 </div>
                 {showKebabSlot && <div className="shrink-0 w-7" />}
               </div>
               <div className="lg:hidden flex items-center gap-2">
                 <div className="shrink-0 w-6" />
-                <div className={`shrink-0 w-[7.5rem] text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
-                  {subtotalGrams !== undefined ? (
-                    <>
-                      {subtotalLabel ? (
-                        <span className={`mr-1 font-normal ${FLAT_TABLE_META_TEXT}`}>{subtotalLabel}</span>
-                      ) : null}
-                      <TotalWeightValue grams={subtotalGrams} unit={weightUnit} />
-                    </>
-                  ) : ''}
+                <div className={`shrink-0 min-w-[7.5rem] text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
+                  <CategoryFooterWeights
+                    baseGrams={baseSubtotalGrams}
+                    consumableGrams={consumableSubtotalGrams}
+                    wornGrams={subtotalGrams}
+                    weightUnit={weightUnit}
+                  />
                 </div>
               </div>
             </div>
@@ -531,6 +526,42 @@ function CategoryGroup({
       )}
 
     </div>
+  )
+}
+
+function CategoryFooterWeights({
+  baseGrams,
+  consumableGrams,
+  wornGrams,
+  weightUnit,
+}: {
+  baseGrams?: number
+  consumableGrams?: number
+  wornGrams?: number
+  weightUnit: WeightUnit
+}) {
+  if (wornGrams !== undefined) {
+    return <TotalWeightValue grams={wornGrams} unit={weightUnit} />
+  }
+
+  const totals = [
+    baseGrams !== undefined && baseGrams > 0
+      ? { label: 'Base', grams: baseGrams }
+      : null,
+    consumableGrams !== undefined && consumableGrams > 0
+      ? { label: 'Consumable', grams: consumableGrams }
+      : null,
+  ].filter((total): total is { label: string; grams: number } => total !== null)
+
+  return (
+    <span className="inline-flex flex-wrap justify-end gap-x-3">
+      {totals.map((total) => (
+        <span key={total.label} className="whitespace-nowrap">
+          <span className={`mr-1 font-normal ${FLAT_TABLE_META_TEXT}`}>{total.label}</span>
+          <TotalWeightValue grams={total.grams} unit={weightUnit} />
+        </span>
+      ))}
+    </span>
   )
 }
 

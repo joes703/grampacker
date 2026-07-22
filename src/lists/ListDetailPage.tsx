@@ -48,7 +48,12 @@ import { parseDnDId } from '../lib/dnd-ids'
 import { assignSortOrderSlots } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
-import { baseGramsForCategory, computeWeightBreakdown, withProjectedFood } from '../lib/weight-breakdown'
+import {
+  baseGramsForCategory,
+  computeWeightBreakdown,
+  consumableGramsForCategory,
+  withProjectedFood,
+} from '../lib/weight-breakdown'
 import { useFoodProjection } from './use-food-projection'
 import { useFoodPlanLink } from './use-food-plan-link'
 import { useFoodPack } from './use-food-pack'
@@ -1187,8 +1192,8 @@ function ListDetailInner({
                                 items={group.items}
                                 {...sharedGroupProps}
                                 reorderPending={reorderItemsMut.isPending}
-                                subtotalLabel="Base"
-                                subtotalGrams={baseGramsForCategory(weightBreakdown, definition.id)}
+                                baseSubtotalGrams={baseGramsForCategory(weightBreakdown, definition.id)}
+                                consumableSubtotalGrams={consumableGramsForCategory(weightBreakdown, definition.id)}
                                 onAddItem={onAddNewItem}
                               />
                             )
@@ -1201,8 +1206,8 @@ function ListDetailInner({
                               items={group.items}
                               {...sharedGroupProps}
                               reorderPending={reorderItemsMut.isPending}
-                              subtotalLabel="Base"
-                              subtotalGrams={baseGramsForCategory(weightBreakdown, null)}
+                              baseSubtotalGrams={baseGramsForCategory(weightBreakdown, null)}
+                              consumableSubtotalGrams={consumableGramsForCategory(weightBreakdown, null)}
                               onAddItem={onAddNewItem}
                             />
                           )
