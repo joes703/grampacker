@@ -49,7 +49,7 @@ describe('list unit control placement', () => {
     expect(src.match(/<ListDocumentToolbar/g)).toHaveLength(1)
   })
 
-  it('hides the unit control when Pack and Organize hide weights', () => {
+  it('hides the unit control in Pack and Organize', () => {
     const { rerender } = render(
       <ListDocumentToolbar list={list} mode="pack" onTogglePackMode={vi.fn()} onToggleOrganizeMode={vi.fn()} />,
     )
