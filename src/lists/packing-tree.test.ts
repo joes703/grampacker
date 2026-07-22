@@ -76,6 +76,15 @@ describe('buildPackingTree', () => {
     expect(pack?.items).toEqual([])
     expect(canister?.containerItem?.id).toBe('bear-can')
     expect(canister?.items.map((entry) => entry.id)).toEqual(['food'])
+    expect(pack?.packProgressItems.map((entry) => entry.id)).toEqual([
+      'pack',
+      'bear-can',
+      'food',
+    ])
+    expect(canister?.packProgressItems.map((entry) => entry.id)).toEqual([
+      'bear-can',
+      'food',
+    ])
 
     const visibleIds = [
       ...tree.unassignedItems.map((entry) => entry.id),

@@ -70,16 +70,13 @@ export type RenderRows = (
   rowPropsFor: (item: ListItemWithGear) => RowProps,
 ) => ReactNode
 
-export type GroupProps = {
+type GroupPropsBase = {
   name: string
   items: ListItemWithGear[]
   /** The gear item represented by an item-backed packing location. In pack
    *  mode it becomes the section header checklist row instead of also
    *  rendering as an ordinary item in its parent location. */
   containerItem?: ListItemWithGear | null
-  /** Nested item-backed location sections. Kept as injected content so this
-   *  public-share component does not import authenticated tree machinery. */
-  children?: ReactNode
   weightUnit: WeightUnit
   // Page-level breakpoint: <1024 px (Tailwind `lg:` boundary). Drilled down
   // to ItemRow so a long list registers one matchMedia subscription instead
@@ -172,6 +169,22 @@ export type GroupProps = {
   onSetGearStatus?: (gearItemId: string, status: GearStatus) => void
 }
 
+/** Nested item-backed location sections stay injected so this public-share
+ * component does not import authenticated tree machinery. When nested content
+ * is present, its complete checklist membership is required too: the parent
+ * header must count everything rendered inside its collapsible region. */
+type GroupContentProps =
+  | {
+      children?: undefined
+      packProgressItems?: never
+    }
+  | {
+      children: ReactNode
+      packProgressItems: ListItemWithGear[]
+    }
+
+export type GroupProps = GroupPropsBase & GroupContentProps
+
 // Wrapped in React.memo (default shallow compare) at the export below.
 // Phase 5 Commit 1 introduced structural per-group stability in
 // groupListItemsByCategory — the `items` prop reference is now reused
@@ -189,6 +202,7 @@ function CategoryGroup({
   items,
   containerItem,
   children,
+  packProgressItems,
   weightUnit,
   isBelowLg = false,
   packMode = false,
@@ -240,7 +254,8 @@ function CategoryGroup({
   // Only displayed in pack-mode header. Gating the read on packMode means
   // the share view (which never enters pack mode) doesn't pull is_packed
   // off each item; that field is excluded from the public read path.
-  const progressItems = containerItem ? [containerItem, ...sectionItems] : sectionItems
+  const progressItems = packProgressItems
+    ?? (containerItem ? [containerItem, ...sectionItems] : sectionItems)
   const packedCount = packMode ? progressItems.filter((i) => i.isPacked).length : 0
   const showKebabSlot = !packMode && Boolean(onDelete)
   // "Complete" = pack mode, has section items, every section item packed.
