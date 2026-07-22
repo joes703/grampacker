@@ -7,7 +7,6 @@ import {
   TABLE_STRONG_DIVIDER,
 } from '../components/flat-table-styles'
 import TotalWeightValue from '../components/TotalWeightValue'
-import { formatGrams } from '../lib/weight'
 
 type Props = {
   items: ListItemWithGear[]
@@ -15,11 +14,11 @@ type Props = {
   breakdown?: WeightBreakdown
 }
 
-// Aggregates, so formatGrams is load-bearing rather than cosmetic: summed
-// tenths land on values like 0.30000000000000004 that raw interpolation would
-// render verbatim.
+// The summary table intentionally presents gram aggregates as whole numbers.
+// Keep this display-only: the breakdown and ounce conversion retain the full
+// stored precision.
 function fmtG(grams: number): string {
-  return `${formatGrams(grams)} g`
+  return `${Math.round(grams)} g`
 }
 
 export default function WeightTable({ items, categories, breakdown: providedBreakdown }: Props) {
