@@ -348,6 +348,33 @@ describe('packing location CRUD, assignment, and integrity', () => {
     expect(renameLocation.status).toBe(409)
   })
 
+  it('promotes gear with a 250-character name while storing a bounded fallback snapshot', async () => {
+    const { cookie } = await signUpVerifiedUser('packing-long-container@example.com', 'L')
+    const list = await createList(cookie, 'Long container')
+    const longName = 'x'.repeat(250)
+    const gearId = await createGear(cookie, longName)
+    const item = await addItem(cookie, list.id, gearId)
+
+    const response = await apiRequest(
+      cookie,
+      'POST',
+      `/api/lists/${list.id}/packing-locations`,
+      { containerListItemId: item.id },
+    )
+
+    expect(response.status).toBe(201)
+    expect((await response.json()) as LocationBody).toMatchObject({
+      name: longName,
+      containerListItemId: item.id,
+    })
+
+    const [stored] = await createDb(env.DB)
+      .select({ name: packingLocations.name })
+      .from(packingLocations)
+      .where(eq(packingLocations.containerListItemId, item.id))
+    expect(stored?.name).toBe(longName.slice(0, 60))
+  })
+
   it('prevents self-containment and unassigns contents when the source item is removed', async () => {
     const { cookie } = await signUpVerifiedUser('packing-container-delete@example.com', 'O')
     const list = await createList(cookie, 'Trip')
