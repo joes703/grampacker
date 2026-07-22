@@ -58,6 +58,7 @@ describe('CategoryGroup region id', () => {
           regionKey="worn"
           items={[itemNamed('item-2', 'Sun hat')]}
           weightUnit="g"
+          wornSection
         />
       </>,
     )
@@ -126,6 +127,7 @@ describe('CategoryGroup region id', () => {
           items={[itemNamed('item-2', 'Sun hat')]}
           weightUnit="g"
           collapsible={false}
+          wornSection
         />
       </>,
     )
@@ -134,9 +136,23 @@ describe('CategoryGroup region id', () => {
   })
 })
 
+describe('CategoryGroup worn extraction', () => {
+  it('keeps worn rows out of ordinary sections and renders them in Worn', () => {
+    const jacket = { ...itemNamed('jacket', 'Rain jacket'), isWorn: true }
+    const { rerender } = render(
+      <CategoryGroup name="Clothing" items={[jacket]} weightUnit="g" />,
+    )
+    expect(screen.queryByText('Rain jacket')).not.toBeInTheDocument()
+
+    rerender(
+      <CategoryGroup name="Worn" items={[jacket]} weightUnit="g" wornSection />,
+    )
+    expect(screen.getByText('Rain jacket')).toBeInTheDocument()
+  })
+})
+
 // The per-section footer subtotal. This used to be summed inside CategoryGroup
-// from its own rows, which counted consumables into it, and counted worn items
-// too whenever the list's Group Worn toggle was off - so the subtotals never
+// from its own rows, which counted consumables and worn items into it, so the subtotals never
 // reconciled with the summary panel's Base weight, and an unrelated display
 // toggle changed what the number meant.
 //
@@ -210,13 +226,13 @@ describe('CategoryGroup footer subtotal', () => {
         items={[itemNamed('a', 'Jacket')]}
         weightUnit="g"
         subtotalGrams={777}
+        wornSection
       />,
     )
     expect(screen.getAllByText('777 g').length).toBeGreaterThan(0)
     expect(screen.queryByText(/Base/)).toBeNull()
     // The section title must remain the only "Worn" in the subtree, so callers
-    // asserting on it are not made ambiguous by a duplicate label. SharePage's
-    // groupWorn test broke on exactly this.
+    // asserting on it are not made ambiguous by a duplicate label.
     expect(screen.getAllByText('Worn')).toHaveLength(1)
   })
 
@@ -335,6 +351,7 @@ describe('CategoryGroup footer subtotal', () => {
         items={[dual]}
         weightUnit="g"
         subtotalGrams={0}
+        wornSection
       />,
     )
     expect(screen.getAllByText('0 g').length).toBeGreaterThan(0)

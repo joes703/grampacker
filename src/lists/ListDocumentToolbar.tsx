@@ -20,7 +20,7 @@ type Props = {
 //
 // Pack mode suppresses List options. Pack-mode-specific controls
 // (Show unpacked only, Add ready checks) live inline at the top of
-// PackingProgress; the remaining List options (Group worn, Sharing,
+// PackingProgress; the remaining List options (Sharing,
 // Rename/Duplicate/Export/Delete) are list-admin concerns the user
 // doesn't need while actively packing, so the button isn't shown.
 export default function ListDocumentToolbar({

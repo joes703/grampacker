@@ -4,8 +4,8 @@ import type { ListItemWithGear } from './types'
 /**
  * Flatten worn items across grouped categories with structural stability.
  *
- * Why this exists: when list.groupWorn is enabled, the trailing Worn section
- * renders a CategoryGroup keyed on a worn-items array. The naive shape
+ * Why this exists: the trailing Worn section renders a CategoryGroup keyed on
+ * a worn-items array. The naive shape
  * (`useMemo(() => grouped.flatMap(g => g.items.filter(i => i.isWorn)),
  * [grouped, enabled])`) mints a fresh array on every list-items mutation
  * — even pack-mode isPacked toggles that don't change worn membership —

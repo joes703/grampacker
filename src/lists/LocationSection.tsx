@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { MoreVertical, Package, Pencil, Trash2 } from 'lucide-react'
+import { MoreVertical, Package, PackageOpen, Pencil, Trash2 } from 'lucide-react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import { makeDnDId } from '../lib/dnd-ids'
@@ -135,19 +135,30 @@ export default function LocationSection({
                 className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
                 style={{ top: menuPos.top, left: menuPos.left }}
               >
-                <RowMenuItem icon={<Pencil size={13} />} onClick={() => {
-                  close()
-                  setRenaming(true)
-                }}>
-                  Rename
-                </RowMenuItem>
-                <RowMenuSeparator />
-                <RowMenuItem icon={<Trash2 size={13} />} tone="danger" onClick={() => {
-                  close()
-                  onDelete()
-                }}>
-                  Delete location
-                </RowMenuItem>
+                {itemBacked ? (
+                  <RowMenuItem icon={<PackageOpen size={13} />} onClick={() => {
+                    close()
+                    onDelete()
+                  }}>
+                    Stop using as container
+                  </RowMenuItem>
+                ) : (
+                  <>
+                    <RowMenuItem icon={<Pencil size={13} />} onClick={() => {
+                      close()
+                      setRenaming(true)
+                    }}>
+                      Rename
+                    </RowMenuItem>
+                    <RowMenuSeparator />
+                    <RowMenuItem icon={<Trash2 size={13} />} tone="danger" onClick={() => {
+                      close()
+                      onDelete()
+                    }}>
+                      Delete location
+                    </RowMenuItem>
+                  </>
+                )}
               </div>,
               document.body,
             )}

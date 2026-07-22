@@ -9,7 +9,6 @@ import { INLINE_EDIT_FOCUS_RING, PANEL_TOGGLE_LABEL } from '../components/flat-t
 import { useCommitOnce } from '../lib/use-commit-once'
 import PrivacyPanel from './PrivacyPanel'
 import { useCurrentListActions } from './use-current-list-actions'
-import { useListFlagToggle } from './use-list-flag-toggle'
 
 type Props = { list: List }
 
@@ -20,9 +19,6 @@ type Props = { list: List }
 // Toggles:
 //   - Draft: label-only lifecycle state, shared with CurrentListHeader's
 //     pill via draftToggle.
-//   - Group worn items: moves worn items into their own grouped
-//     section across every view. Stays here because it affects normal
-//     list organization too, not just pack mode.
 //   - Sharing: PrivacyPanel's inline body (toggle + url + Copy when
 //     public).
 //
@@ -47,14 +43,6 @@ type Props = { list: List }
 // points are themselves suppressed in pack mode.
 export default function ListSettingsPanel({ list }: Props) {
   const navigate = useNavigate()
-
-  // Both flag toggles route through useListFlagToggle (absolute target +
-  // synchronous in-flight ref) so rapid double-toggles can't send a stale
-  // or duplicate PATCH; see the hook for the races the naive flip carries.
-  const groupWornToggle = useListFlagToggle({
-    read: (target) => target.groupWorn,
-    patch: (groupWorn) => ({ groupWorn }),
-  })
 
   const { renameMut, duplicateMut, deleteListMut, exportCsv, exportingListId, draftToggle } = useCurrentListActions()
   const exporting = exportingListId === list.id
@@ -111,16 +99,6 @@ export default function ListSettingsPanel({ list }: Props) {
           ariaLabel="Draft"
         />
       </div>
-      <div className="flex items-center justify-between">
-        <span className={PANEL_TOGGLE_LABEL}>Group worn items</span>
-        <ToggleSwitch
-          checked={list.groupWorn}
-          onChange={() => groupWornToggle.toggle(list)}
-          disabled={groupWornToggle.isPending}
-          ariaLabel="Group worn items"
-        />
-      </div>
-
       <PrivacyPanel list={list} />
 
       {/* Actions section. The -mx-3 spans the popover's p-3 padding so

@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import LocationSection from './LocationSection'
+
+afterEach(cleanup)
 
 function containerItem(id: string, name: string): ListItemWithGear {
   return {
@@ -94,5 +96,20 @@ describe('LocationSection item-backed actions', () => {
     await user.click(screen.getByRole('button', { name: 'Side pocket options' }))
     expect(screen.getByRole('button', { name: 'Rename' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Delete location' })).toBeInTheDocument()
+  })
+
+  it('keeps a filtered worn backing item read-only while retaining its container role', async () => {
+    const user = userEvent.setup()
+    renderSection({
+      id: 'loc-jacket',
+      name: 'Rain jacket',
+      sortOrder: 0,
+      containerListItemId: 'item-jacket',
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Rain jacket options' }))
+    expect(screen.getByRole('button', { name: 'Stop using as container' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete location' })).not.toBeInTheDocument()
   })
 })

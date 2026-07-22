@@ -176,14 +176,10 @@ export default function SharePage() {
   // slug fetch).
   const grouped = groupListItemsByCategory(itemsForRender, categoriesForRender)
 
-  // Honor the owner's per-list "Group worn" preference. When on, worn items
-  // are filtered out of category sections (via CategoryGroup's hideWorn)
-  // and rendered in a trailing Worn section, mirroring the authed
-  // ListDetailPage. Share view is read-only; no toggle here.
-  const showWornGroup = list.groupWorn
-  const wornItems = showWornGroup
-    ? grouped.flatMap((g) => g.items.filter((i) => i.isWorn))
-    : []
+  // Match the owner view: worn rows always leave their categories for one
+  // trailing read-only Worn section. The persisted legacy flag remains on the
+  // public DTO, but rendering deliberately ignores its value.
+  const wornItems = grouped.flatMap((g) => g.items.filter((i) => i.isWorn))
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -257,18 +253,18 @@ export default function SharePage() {
                 weightUnit={weightUnit}
                 isBelowLg={isBelowLg}
                 collapsible={false}
-                hideWorn={showWornGroup}
                 subtotalLabel="Base"
                 subtotalGrams={baseGramsForCategory(weightBreakdown, group.category?.id ?? null)}
               />
             ))}
-            {showWornGroup && wornItems.length > 0 && (
+            {wornItems.length > 0 && (
               <CategoryGroup
                 name="Worn"
                 items={wornItems}
                 weightUnit={weightUnit}
                 isBelowLg={isBelowLg}
                 collapsible={false}
+                wornSection
                 // See the owner-page Worn section for the full reasoning,
                 // including the accepted dual-flag caveat: unlabelled, sourced
                 // from the canonical list-level wornGrams, never looked up as

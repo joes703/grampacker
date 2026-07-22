@@ -114,7 +114,7 @@ The distinctions that matter:
 
 - **Mode vs setting.** A mode changes what the surface *does* right now and is
   usually transient (Pack mode). A setting is a persisted preference that
-  changes what the surface *shows* (Group Worn). Modes get `PillToggle`,
+  changes what the surface *shows* (public sharing). Modes get `PillToggle`,
   settings get `ToggleSwitch`. `PillToggle`'s only consumer today is the Pack
   mode pill; its sizing is deliberately fixed, so reintroduce a `size` variant
   only when a second consumer actually needs one.

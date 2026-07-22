@@ -22,10 +22,15 @@ export function buildPackingTree(
   const containerItemIds = new Set<string>()
 
   for (const location of locations) {
-    const containerItem = location.containerListItemId === null
+    const sourceContainerItem = location.containerListItemId === null
       ? null
       : itemsById.get(location.containerListItemId) ?? null
-    if (containerItem) containerItemIds.add(containerItem.id)
+    if (sourceContainerItem) containerItemIds.add(sourceContainerItem.id)
+    const containerItem = sourceContainerItem
+      && options.includeItem
+      && !options.includeItem(sourceContainerItem)
+      ? null
+      : sourceContainerItem
     nodesById.set(location.id, {
       location,
       containerItem,
