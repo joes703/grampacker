@@ -180,8 +180,7 @@ describe('withProjectedFood', () => {
 
 // baseGramsForCategory is the lookup that puts each rendered category section's
 // footer subtotal onto computeWeightBreakdown, instead of the section summing
-// its own rows (which counted consumables into the subtotal, and counted worn
-// items too whenever the list's Group Worn toggle happened to be off).
+// its own rows (which counted consumables and worn items into the subtotal).
 //
 // The three traps this owns, all of which produce a plausible-looking wrong
 // number rather than a crash:

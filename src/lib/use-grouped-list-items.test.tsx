@@ -21,8 +21,8 @@ import type { PackingLocation } from './types'
 //      category membership is unchanged.
 //
 // The "Worn group" concept is NOT this hook's responsibility — worn-group
-// filtering happens in the rendering layer (CategoryGroup.hideWorn,
-// SharePage's worn-section flatMap). Asserting it here would just couple
+// filtering happens in the rendering layer (CategoryGroup's ordinary-section
+// filter and SharePage's worn-section flatMap). Asserting it here would just couple
 // to the consumer's UI, so it's intentionally out of scope.
 
 function makeCategory(id: string, name: string, sortOrder: number): Category {

@@ -144,17 +144,27 @@ describe('SharePage read-only public sharing', () => {
     expect(screen.getByText('Weight summary')).toBeTruthy()
   })
 
-  it('honors groupWorn with a trailing Worn section', async () => {
+  it('always renders worn gear in a trailing Worn section', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue(
       share({
-        list: { groupWorn: true },
         categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
-        items: [tentItem, { ...tentItem, id: 'item-2', sortOrder: 1, isWorn: true }],
+        items: [
+          tentItem,
+          {
+            ...tentItem,
+            id: 'item-2',
+            gearItemId: 'gear-2',
+            sortOrder: 1,
+            isWorn: true,
+            gear: { ...tentItem.gear, name: 'Rain jacket' },
+          },
+        ],
       }),
     )
     renderShareView()
 
     expect(await screen.findByText('Worn')).toBeTruthy()
+    expect(screen.getAllByText('Rain jacket')).toHaveLength(1)
   })
 
   it('shows an empty state when the shared gear list has no items', async () => {
@@ -303,7 +313,6 @@ describe('SharePage category subtotals', () => {
   it('does not give the Worn section the Uncategorized base figure', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue(
       share({
-        list: { groupWorn: true },
         categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
         // Uncategorized base is 80 g; worn is 550 g. If the Worn section were
         // looked up with a null categoryId it would render 80 g here.

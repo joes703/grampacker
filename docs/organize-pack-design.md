@@ -38,7 +38,7 @@ other eight findings**, leaving only two items, both now closed in rev 6:
 
 All earlier corrections remain in force: parent-immutability trigger (2.3);
 literal POST_CHECKS proving column/indexes/three triggers/cap (5); CSRF on writes
-only, GET exempt (3, 6); worn governed by `groupWorn`, drop-in grouping (4.5);
+only, GET exempt (3, 6); worn always extracted into a trailing section (4.5);
 conditional assignment gate allows unassign (3); last-success grouping switch
 (4.4); `hasListItemEdits` learns the field (4.8); atomic delete `RETURNING` (2.4);
 trigger tests bypass the repo gate (6); `LocationSection` owns Organize's header
@@ -101,10 +101,10 @@ membership in JS, never an unbounded `inArray`, because of D1's 100-param cap.
 4. **`toSharedListResponse` (`routes/shares.ts:34-63`) is the runtime response
    allowlist**, guarded by `FORBIDDEN_KEYS` asserted absent at any depth.
 
-5. **`groupWorn` extracts worn items out of every group** into one trailing
-   Worn section (`ListDetailPage.tsx:621, 1100`). It runs **before** any
-   grouping and stays untouched: worn items are outside the location model
-   (4.5).
+5. **Worn items are extracted out of every group** into one trailing
+   Worn section. Grouping runs first; ordinary category/location sections
+   filter worn rows while the stable Worn selector collects them from the
+   grouped result (4.5).
 
 ---
 
@@ -524,11 +524,11 @@ mirrors the existing `isError && data === undefined` guard at
 
 ### 4.5 Worn items are outside the location model **[rev 3, corrected]**
 
-**Decision (SETTLED by Joe 2026-07-20): worn behavior does not change at all.**
+~~**Decision (SETTLED by Joe 2026-07-20): worn behavior does not change at all.**
 Worn means on your body, not in the pack; a packing location answers "where in
-my pack is this", which does not apply to a jacket you are wearing.
+my pack is this", which does not apply to a jacket you are wearing.~~
 
-**[rev 3] Correcting rev 2's factual error about the code.** Rev 2 claimed "worn
+~~**[rev 3] Correcting rev 2's factual error about the code.** Rev 2 claimed "worn
 extraction runs first." It does not. The real flow (verified):
 `useGroupedListItems` groups **first** (`ListDetailPage.tsx:602`);
 `useStableWornItems` then scans the *grouped* result and pulls out `isWorn` rows
@@ -541,26 +541,48 @@ toggle. Rev 2's "exclude worn from every location and Unassigned regardless of
 `groupWorn`" would have made worn gear **vanish** when `groupWorn` is false:
 excluded from every location group *and* from Unassigned, with no Worn section to
 land in, and `useStableWornItems` cannot recover them because it scans the
-grouped rows it was never given.
+grouped rows it was never given.~~
 
-**The correct design keeps worn exactly as it is today. Location grouping is a
-drop-in replacement for category grouping, and nothing about worn changes:**
+~~**The correct design keeps worn exactly as it is today. Location grouping is a
+drop-in replacement for category grouping, and nothing about worn changes:**~~
 
-- **`groupWorn` governs worn, in both layouts.** When it is **on**,
+- ~~**`groupWorn` governs worn, in both layouts.** When it is **on**,
   `useStableWornItems` (generalized to the location-grouped shape — same
   `Group<T>[]`) extracts worn into the trailing Worn section and the leaf hides
   them, identical to category grouping today. When it is **off**, worn rows are
   *not* extracted; they render in place inside their assigned location group, or
   under Unassigned if unassigned — exactly as, today, a worn row renders in place
-  inside its category. No worn row is ever silently dropped.
-- **Organize Pack filters out `isWorn` rows** and offers no `Move to…` for them,
+  inside its category. No worn row is ever silently dropped.~~
+- ~~**Organize Pack filters out `isWorn` rows** and offers no `Move to…` for them,
   independent of `groupWorn`. Organize is "where does this go in my pack"; an
   on-body item is not in the pack. Its stored `packing_location_id` is left
-  untouched (see the nuance below).
-- Because Organize never assigns worn items, the only way a worn row carries an
+  untouched (see the nuance below).~~
+- ~~Because Organize never assigns worn items, the only way a worn row carries an
   assignment is the nuance below. One documented, accepted wrinkle: with
   `groupWorn` **off**, such a row is visible inside its location group in the
-  checklist yet is not movable in Organize. Rare, coherent, and pinned by a test.
+  checklist yet is not movable in Organize. Rare, coherent, and pinned by a test.~~
+
+**SUPERSEDED 2026-07-21 (Joe): worn gear is always grouped.** The persisted
+`group_worn` value no longer controls rendering. Edit, Pack, and the public
+share view always remove worn rows from category or location sections and put
+them in one trailing Worn section. Organize continues excluding worn rows from
+the packing tree, but now also shows them in a trailing read-only Worn section
+with no move action, drag handle, drop target, or reorder participation.
+Location counts continue to include only non-worn assigned rows.
+
+If a worn item backs a packing location, the location and its non-worn
+contents remain visible under the stored fallback name, but the worn backing
+item no longer supplies that location's checklist row or Organize move
+controls. The location keeps only its location-reorder control and the option
+to stop using the item as a container. Clearing Worn restores the item-backed
+header and its stored nesting relationship.
+
+The previously accepted assigned-then-worn wrinkle is now unreachable in the
+UI: a worn row never renders inside its stored location, regardless of the
+legacy flag. The assignment is still retained in the database so unmarking the
+item restores its prior location. Pack and Organize both unconditionally omit
+worn ids from their reorder slot pools, preventing either mode from moving a
+worn row as a side effect of reordering visible gear.
 
 **One stored-state nuance.** If an item is assigned and *then* marked worn, the
 assignment is **kept in the database, not cleared**. Clearing on the worn toggle
@@ -586,10 +608,9 @@ column is still set; unmark, assert the item is back in its group.
   the checklist only.
   **The count is what Organize *shows* — non-worn assigned items.** Organize hides
   worn rows (4.5), so an assigned-then-worn item is excluded from both the list
-  and the count; a location never says "1 item" while displaying none. (In the
-  checklist with `groupWorn` off that same item is visible and counted — each
-  screen counts what it renders. Codex confirmed this is coherent: `PackingProgress`
-  takes global list totals from `ListDetailPage`, not per-location counts.)
+  and the count; a location never says "1 item" while displaying none.
+  `PackingProgress` takes global list totals from `ListDetailPage`, not
+  per-location counts.
 - **Item-backed locations are container nodes, not duplicate rows.** Their
   backing item supplies the Organize header and its move action. A container
   assigned to another item-backed location renders recursively inside that
@@ -597,7 +618,9 @@ column is still set; unmark, assert the item is back in its group.
   rows. Newly promoted top-level containers are inserted immediately after
   Unassigned, ahead of older locations. Their headers expose separate drag
   controls: the leading grip reorders sibling locations, while the package
-  control moves/nests the backing gear item in another container.
+  control moves/nests the backing gear item in another container. The worn
+  exception is documented in 4.5: the location remains, but the backing item
+  moves exclusively to Worn and its item-specific controls disappear.
 - **Unassigned** always renders in Organize, pinned first, even when empty.
 - **`Move to…`** on every row via `RowMenuItem` (desktop) and
   `MobileOptionsModal` (mobile). The primary path: accessible, mobile-friendly,
@@ -876,12 +899,14 @@ tests run on real workerd in CI (`npm run test:api` cannot bind a port or read
   category fallback; **background-refetch error over a non-empty cache -> keeps
   location grouping + stale notice, never a silent flip**; successful empty ->
   category grouping.
-- **Worn, `groupWorn` on (4.5)**: worn items go to the trailing Worn section and
-  appear in no location group; the Worn section is byte-for-byte unchanged by
-  this feature.
-- **Worn, `groupWorn` off (4.5)**: worn items are *not* dropped — a worn item
-  assigned to a location renders inside that location group, an unassigned worn
-  item under Unassigned. (Guards the rev-2 vanishing-gear bug.)
+- ~~**Worn, `groupWorn` on (4.5)**: worn items go to the trailing Worn section
+  and appear in no location group.~~
+- ~~**Worn, `groupWorn` off (4.5)**: worn items render inside their assigned
+  location or under Unassigned.~~
+- **Worn in every view (4.5):** Edit, Pack, Organize, and public share render
+  every worn item in one trailing Worn section regardless of the stored legacy
+  flag. Ordinary category and location sections render no worn rows. Organize's
+  section is read-only and outside all drag-and-drop contexts.
 - **`hasListItemEdits` red-green (4.8)**: add the non-null `packingLocationId`
   case to the **exhaustive dirty-field table** (`remove-list-item-confirm.test.ts`,
   the table around `:64`), not a separate ad hoc assertion, and give every
@@ -943,9 +968,8 @@ read path) / 2b (organize screen), still gated by the deferred entry point.
 | Empty location | Retained (`keepEmpty: true`) |
 | Unassigned empty | Hidden in Pack Mode, shown in Organize |
 | Locations fail to load | Notice + category grouping, never a silent claim (4.4) |
-| Worn item, `groupWorn` on | Worn section as today; in no location group (4.5) |
-| Worn item, `groupWorn` off | Renders in place in its location / Unassigned, as today in its category (4.5) |
-| Item assigned, then marked worn | `groupWorn` on -> Worn section; assignment kept in DB, restored on unmark (4.5) |
+| Worn item, any stored legacy flag | Trailing Worn section only; never in a category or location group (4.5) |
+| Item assigned, then marked worn | Worn section; assignment kept in DB, restored on unmark (4.5) |
 | Remove an assigned-but-pristine item | Confirm still fires — assignment is dirty state (4.8) |
 | List duplicated | Locations copied, assignments remapped (section 5) |
 | Concurrent delete + assign | Gate fails -> 400, zero rows, client refetches |
@@ -962,8 +986,10 @@ read path) / 2b (organize screen), still gated by the deferred entry point.
    paper.
 5. **Weights in Organize** — hide, matching Pack Mode. A bear canister has a
    volume limit, not a weight limit.
-6. ~~`groupWorn` precedence~~ — **SETTLED 2026-07-20 (Joe): worn stays exactly
-   as it is; worn items are outside the location model entirely. See 4.5.**
+6. ~~`groupWorn` precedence — **SETTLED 2026-07-20 (Joe): worn stays exactly
+   as it is; worn items are outside the location model entirely. See 4.5.**~~
+   **SUPERSEDED 2026-07-21 (Joe): worn is always grouped in every view; the
+   persisted flag no longer controls rendering. See 4.5.**
 
 **Future compatibility (explicitly not built)**
 

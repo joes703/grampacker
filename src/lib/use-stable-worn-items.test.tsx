@@ -46,7 +46,7 @@ describe('useStableWornItems with location groups', () => {
   const normal = item('normal', 'loc-1', false)
   const grouped = groupListItemsByLocation([wornAssigned, wornUnassigned, normal], locations)
 
-  it('extracts worn rows when groupWorn is enabled', () => {
+  it('extracts worn rows when enabled', () => {
     const { result } = renderHook(() => useStableWornItems(grouped, true))
     expect(result.current.map((entry) => entry.id)).toEqual([
       'worn-assigned',
@@ -54,7 +54,7 @@ describe('useStableWornItems with location groups', () => {
     ])
   })
 
-  it('extracts nothing when groupWorn is disabled, leaving rows in their location groups', () => {
+  it('extracts nothing when disabled, leaving rows in their location groups', () => {
     const { result } = renderHook(() => useStableWornItems(grouped, false))
     expect(result.current).toEqual([])
     expect(grouped[0]?.items.map((entry) => entry.id)).toEqual(['worn-assigned', 'normal'])

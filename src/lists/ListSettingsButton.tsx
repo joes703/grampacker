@@ -8,7 +8,7 @@ import ListSettingsPanel from './ListSettingsPanel'
 
 type Props = { list: List }
 
-// Popover trigger for current-list settings (Group worn items + Sharing).
+// Popover trigger for current-list settings and Sharing.
 // Shares the usePortalPopover dismiss pattern with the gear/list row
 // kebabs (see CLAUDE.md's popover rule). On /lists, sharing is reached
 // from the per-row kebab's Share entry (modal + PrivacyPanel); this is

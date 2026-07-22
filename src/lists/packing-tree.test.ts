@@ -133,7 +133,7 @@ describe('buildPackingTree', () => {
     expect(tree.roots.map((node) => node.location.id)).toEqual(['loc-pack', 'loc-can'])
   })
 
-  it('filters ordinary worn items from Organize without hiding a worn container', () => {
+  it('filters worn rows from Organize, including a location backing item', () => {
     const wornPack = { ...item('pack', null, 0), isWorn: true }
     const wornHat = { ...item('hat', 'loc-pack', 1), isWorn: true }
     const tree = buildPackingTree(
@@ -142,7 +142,8 @@ describe('buildPackingTree', () => {
       { includeItem: (entry) => !entry.isWorn },
     )
 
-    expect(tree.roots[0]?.containerItem?.id).toBe('pack')
+    expect(tree.roots[0]?.containerItem).toBeNull()
     expect(tree.roots[0]?.items.map((entry) => entry.id)).toEqual(['stove'])
+    expect(tree.unassignedItems).toEqual([])
   })
 })

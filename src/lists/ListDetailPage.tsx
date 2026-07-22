@@ -34,7 +34,7 @@ import {
   makeOptimisticUpdate,
   type ListItemPatch,
 } from '../lib/queries'
-import type { Category, GearItem, ListItemWithGear, List } from '../lib/types'
+import type { Category, GearItem, ListItemWithGear, List, PackingLocation } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useLatestRef } from '../lib/use-latest-ref'
@@ -202,6 +202,21 @@ export function hasListItemEdits(item: ListItemWithGear): boolean {
   )
 }
 
+export function derivePackReorderExclusions(
+  items: ListItemWithGear[],
+  locations: PackingLocation[],
+): Set<string> {
+  const excludedItemIds = new Set(
+    locations.flatMap((location) =>
+      location.containerListItemId === null ? [] : [location.containerListItemId],
+    ),
+  )
+  for (const item of items) {
+    if (item.isWorn) excludedItemIds.add(item.id)
+  }
+  return excludedItemIds
+}
+
 export default function ListDetailPage() {
   // Default title for the wrapper; ListDetailInner overrides with the list
   // name once it mounts and the list resolves. Stays as "Lists" briefly while
@@ -277,9 +292,6 @@ function ListDetailInner({
   // render the pencil button conditionally (read mode only) without
   // exposing NotesEditor's internal state up through a callback.
   const [notesEditing, setNotesEditing] = useState(false)
-  // "Group worn" is per-list and persisted on lists.groupWorn — derived
-  // below from the resolved list row, not local state. Applies in both
-  // normal and pack mode.
   // Mobile sidebar drawer — open/setOpen are owned by SidebarDrawerContext
   // so the trigger button in NavBar (a sibling subtree under AppShell) can
   // toggle the same state. The hook also sets `available` so NavBar knows
@@ -569,16 +581,10 @@ function ListDetailInner({
     if (activeParsed.kind !== 'item' || overParsed.kind !== 'item') return
 
     if (grouping.kind === 'location') {
-      const excludedItemIds = new Set(
-        (locationsQuery.data ?? []).flatMap((location) =>
-          location.containerListItemId === null ? [] : [location.containerListItemId],
-        ),
+      const excludedItemIds = derivePackReorderExclusions(
+        listItems,
+        locationsQuery.data ?? [],
       )
-      if (list?.groupWorn) {
-        for (const item of listItems) {
-          if (item.isWorn) excludedItemIds.add(item.id)
-        }
-      }
       const updates = planPackingItemReorder(
         String(active.id),
         String(over.id),
@@ -651,19 +657,11 @@ function ListDetailInner({
   const orderedPackGroups = orderPackGroups(grouped, grouping.kind)
   const packingTree = useMemo(
     () => mode === 'pack' && locationsQuery.data && locationsQuery.data.length > 0
-      ? buildPackingTree(listItems, locationsQuery.data)
+      ? buildPackingTree(listItems, locationsQuery.data, {
+          includeItem: (item) => !item.isWorn,
+        })
       : null,
     [listItems, locationsQuery.data, mode],
-  )
-  const containerItemIds = useMemo(
-    () => new Set(
-      (locationsQuery.data ?? []).flatMap((packingLocation) =>
-        packingLocation.containerListItemId === null
-          ? []
-          : [packingLocation.containerListItemId],
-      ),
-    ),
-    [locationsQuery.data],
   )
   const packingCollapseHandlers = useMemo(
     () => new Map(
@@ -696,23 +694,11 @@ function ListDetailInner({
   const showWeightSummary =
     listItems.length > 0 || weightBreakdown.totalPackGrams > 0 || incompleteFood
 
-  // Group Worn: hide isWorn items inside each category and render them in
-  // a trailing Worn section. Worn-hiding is done at the leaf via
-  // CategoryGroup's `hideWorn` prop (same shape as the existing
-  // `showUnpackedOnly`), so unchanged categories keep their stable items
-  // reference from useGroupedListItems. The trailing Worn section gets its
-  // items from useStableWornItems, which holds the prior result and reuses
-  // it when worn membership + worn-item references are unchanged. Sourced
-  // from list.groupWorn (per-list, persisted) and active in both normal
-  // and pack mode.
-  const showWornGroup = list?.groupWorn ?? false
-  const wornItems = useStableWornItems(grouped, showWornGroup)
-  const visibleWornItems = useMemo(
-    () => grouping.kind === 'location'
-      ? wornItems.filter((item) => !containerItemIds.has(item.id))
-      : wornItems,
-    [containerItemIds, grouping.kind, wornItems],
-  )
+  // Worn rows are always extracted into one trailing section in Edit and Pack.
+  // CategoryGroup filters ordinary sections at the leaf so unchanged groups
+  // retain their stable item-array references. useStableWornItems similarly
+  // preserves the trailing section's array identity across unrelated updates.
+  const wornItems = useStableWornItems(grouped, true)
 
   // gearItems / listItems are read by handlers in sharedGroupProps and the
   // LibraryPanel onAdd / onRemove callbacks, but only at call time (never
@@ -891,7 +877,6 @@ function ListDetailInner({
           items={node.items}
           {...sharedGroupProps}
           reorderPending={reorderItemsMut.isPending}
-          hideWorn={showWornGroup}
         >
           {node.children.map((child) => renderPackingLocationNode(child, depth + 1))}
         </CategoryGroup>
@@ -1173,7 +1158,6 @@ function ListDetailInner({
                             items={packingTree.unassignedItems}
                             {...sharedGroupProps}
                             reorderPending={reorderItemsMut.isPending}
-                            hideWorn={showWornGroup}
                           />
                           {packingTree.roots.map((node) => renderPackingLocationNode(node))}
                         </>
@@ -1188,7 +1172,6 @@ function ListDetailInner({
                                 items={group.items}
                                 {...sharedGroupProps}
                                 reorderPending={reorderItemsMut.isPending}
-                                hideWorn={showWornGroup}
                                 subtotalLabel="Base"
                                 subtotalGrams={baseGramsForCategory(weightBreakdown, definition.id)}
                                 onAddItem={onAddNewItem}
@@ -1203,7 +1186,6 @@ function ListDetailInner({
                               items={group.items}
                               {...sharedGroupProps}
                               reorderPending={reorderItemsMut.isPending}
-                              hideWorn={showWornGroup}
                               subtotalLabel="Base"
                               subtotalGrams={baseGramsForCategory(weightBreakdown, null)}
                               onAddItem={onAddNewItem}
@@ -1218,11 +1200,11 @@ function ListDetailInner({
                     </DndContext>
 
                     {/* Worn section — visible in both normal and pack mode when
-                        list.groupWorn is on and at least one worn item exists.
+                        at least one worn item exists.
                         Sits outside the DndContext: it isn't a reorder target
                         (no renderRows), and worn items don't render inside
-                        their original category sections while grouping is on
-                        (CategoryGroup's hideWorn handles that). Spreads the
+                        their original category or location sections.
+                        Spreads the
                         same sharedGroupProps every in-category section uses so
                         row chrome stays consistent — including readyChecksEnabled
                         (Ready checkbox column in Pack mode), onSetGearStatus,
@@ -1237,12 +1219,13 @@ function ListDetailInner({
                         'cat-region-uncategorized' id as the real Uncategorized
                         section above, duplicating the id in the document and
                         pointing both chevrons' aria-controls at one target. */}
-                    {showWornGroup && visibleWornItems.length > 0 && (
+                    {wornItems.length > 0 && (
                       <CategoryGroup
                         {...sharedGroupProps}
                         name="Worn"
-                        items={visibleWornItems}
+                        items={wornItems}
                         regionKey="worn"
+                        wornSection
                         // Unlabelled on purpose: the section title already says
                         // Worn, and this is the canonical list-level worn total.
                         // It must NOT look itself up by category - it has no

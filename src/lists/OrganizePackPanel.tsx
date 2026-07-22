@@ -40,6 +40,13 @@ import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
 import { asButtonRef } from '../lib/dnd'
 import RowIconButton from '../components/RowIconButton'
 import ConfirmDialog from '../components/ConfirmDialog'
+import {
+  FLAT_TABLE_BODY_TEXT,
+  FLAT_TABLE_META_TEXT,
+  FLAT_TABLE_ROW,
+  FLAT_TABLE_ROW_PADDING,
+  FLAT_TABLE_SURFACE,
+} from '../components/flat-table-styles'
 import LocationSection from './LocationSection'
 import { usePackingLocationActions } from './use-packing-location-actions'
 import {
@@ -59,6 +66,12 @@ const packingCollisionDetection: CollisionDetection = (args) => closestCenter({
     isPackingCollisionTarget(String(args.active.id), String(container.id)),
   ),
 })
+
+export function deriveOrganizeHiddenReorderItemIds(
+  items: ListItemWithGear[],
+): Set<string> {
+  return new Set(items.filter((item) => item.isWorn).map((item) => item.id))
+}
 
 export default function OrganizePackPanel({
   list,
@@ -161,7 +174,11 @@ export default function OrganizePackPanel({
     [realLocations],
   )
   const hiddenReorderItemIds = useMemo(
-    () => new Set(items.filter((item) => item.isWorn).map((item) => item.id)),
+    () => deriveOrganizeHiddenReorderItemIds(items),
+    [items],
+  )
+  const wornItems = useMemo(
+    () => items.filter((item) => item.isWorn),
     [items],
   )
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
@@ -366,50 +383,53 @@ export default function OrganizePackPanel({
       ) : busy ? (
         <p className="text-sm text-gray-500">Loading pack organizer...</p>
       ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={packingCollisionDetection}
-          onDragStart={onDragStart}
-          onDragCancel={onDragCancel}
-          onDragEnd={onDragEnd}
-        >
-          <div className="space-y-3">
-            <DroppableUnassignedSection
-              location={null}
-              items={packingTree.unassignedItems}
-              locations={realLocations}
-              mobile={mobile}
-              movePending={itemDragPending}
-              containerCreationDisabled={locations.length >= 30 || locationCreationPending}
-              containerItemIds={containerItemIds}
-              onMove={requestMove}
-              onUseAsContainer={(item) => createItemContainer.mutate({
-                itemId: item.id,
-                name: item.gearItem.name,
-              })}
-            />
-            <SortableContext
-              items={packingTree.roots.map((node) =>
-                makeDnDId('packing-location', node.location.id),
-              )}
-              strategy={verticalListSortingStrategy}
-            >
-              {packingTree.roots.map((node) => renderLocationNode(node))}
-            </SortableContext>
-          </div>
-          <DragOverlay dropAnimation={null}>
-            {activePackingItem ? (
-              <div className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm shadow-lg">
-                {activePackingItem.gearItem.name}
-              </div>
-            ) : activeItem ? (
-              <div className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold shadow-lg">
-                {activeItem.name}
-              </div>
-            ) : null}
-          </DragOverlay>
-          <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
-        </DndContext>
+        <>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={packingCollisionDetection}
+            onDragStart={onDragStart}
+            onDragCancel={onDragCancel}
+            onDragEnd={onDragEnd}
+          >
+            <div className="space-y-3">
+              <DroppableUnassignedSection
+                location={null}
+                items={packingTree.unassignedItems}
+                locations={realLocations}
+                mobile={mobile}
+                movePending={itemDragPending}
+                containerCreationDisabled={locations.length >= 30 || locationCreationPending}
+                containerItemIds={containerItemIds}
+                onMove={requestMove}
+                onUseAsContainer={(item) => createItemContainer.mutate({
+                  itemId: item.id,
+                  name: item.gearItem.name,
+                })}
+              />
+              <SortableContext
+                items={packingTree.roots.map((node) =>
+                  makeDnDId('packing-location', node.location.id),
+                )}
+                strategy={verticalListSortingStrategy}
+              >
+                {packingTree.roots.map((node) => renderLocationNode(node))}
+              </SortableContext>
+            </div>
+            <DragOverlay dropAnimation={null}>
+              {activePackingItem ? (
+                <div className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm shadow-lg">
+                  {activePackingItem.gearItem.name}
+                </div>
+              ) : activeItem ? (
+                <div className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold shadow-lg">
+                  {activeItem.name}
+                </div>
+              ) : null}
+            </DragOverlay>
+            <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
+          </DndContext>
+          <OrganizeWornSection items={wornItems} />
+        </>
       )}
 
       {deleteTarget ? (
@@ -431,6 +451,30 @@ export default function OrganizePackPanel({
         />
       ) : null}
     </div>
+  )
+}
+
+function OrganizeWornSection({ items }: { items: ListItemWithGear[] }) {
+  if (items.length === 0) return null
+
+  return (
+    <section className={FLAT_TABLE_SURFACE} aria-label="Worn">
+      <div className="flex min-h-10 items-center gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2">
+        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900">Worn</h2>
+        <span className={FLAT_TABLE_META_TEXT}>
+          {items.length} {items.length === 1 ? 'item' : 'items'}
+        </span>
+      </div>
+      {items.map((item) => (
+        <div
+          key={item.id}
+          className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_ROW_PADDING} ${FLAT_TABLE_BODY_TEXT} gap-2 bg-white`}
+        >
+          <span className="min-w-0 flex-1 truncate text-gray-900">{item.gearItem.name}</span>
+          {item.quantity > 1 ? <span className="text-gray-500">x{item.quantity}</span> : null}
+        </div>
+      ))}
+    </section>
   )
 }
 

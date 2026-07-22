@@ -125,17 +125,13 @@ export type GroupProps = {
    *  list. Header counts and the "complete" affordance still reflect the full
    *  items array. Authed pack-mode only; share view never sets this. */
   showUnpackedOnly?: boolean
-  /** Pack mode + Group Worn: hide is_worn items from this category's render
-   *  (they appear in the trailing Worn section instead). Same shape as
-   *  showUnpackedOnly — filter at the leaf so the parent doesn't have to
-   *  produce a fresh items array per group every time the toggle flips,
-   *  which would defeat React.memo's shallow compare. */
-  hideWorn?: boolean
+  /** The one section allowed to render worn rows. Every ordinary category or
+   *  packing-location section filters them into the trailing Worn section. */
+  wornSection?: boolean
   /** Footer subtotal for this section, supplied by the parent.
    *
    *  Deliberately NOT computed here. This section used to sum its own rows,
-   *  which put consumable weight into the subtotal, and worn weight too
-   *  whenever `hideWorn` happened to be off - so the subtotals never summed to
+   *  which put consumable and worn weight into the subtotal, so the subtotals never summed to
    *  the summary panel's Base weight, and flipping an unrelated display toggle
    *  silently changed what the number meant. The parents already hold the
    *  canonical computeWeightBreakdown result; they pass the answer down
@@ -205,7 +201,7 @@ function CategoryGroup({
   renderRows,
   reorderPending = false,
   showUnpackedOnly = false,
-  hideWorn = false,
+  wornSection = false,
   subtotalGrams,
   subtotalLabel,
   onUpdate,
@@ -237,14 +233,10 @@ function CategoryGroup({
   // onto the same 'uncategorized' id and duplicate it in the document.
   const regionId = `cat-region-${regionKey ?? categoryId ?? 'uncategorized'}`
   // sectionItems = the items that BELONG to this category section. When
-  // hideWorn is on (list.group_worn enabled, in any mode including the
-  // share view), worn items belong to the trailing Worn section instead,
-  // so they're excluded here for the pack-mode total, footer totals, AND
-  // the visible row list. Without this split, pack mode's header would
-  // show "1 / 5" while only 3 non-worn rows render, and the footer total
-  // would include weight the user can't see in this section — double-counted
-  // against the same rows showing in the trailing Worn section.
-  const sectionItems = hideWorn ? items.filter((i) => !i.isWorn) : items
+  // Worn items always belong to the trailing Worn section, so ordinary
+  // sections exclude them from the pack count, footer totals, and rows. The
+  // Worn section opts into its own rows explicitly.
+  const sectionItems = wornSection ? items : items.filter((i) => !i.isWorn)
   // Only displayed in pack-mode header. Gating the read on packMode means
   // the share view (which never enters pack mode) doesn't pull is_packed
   // off each item; that field is excluded from the public read path.
