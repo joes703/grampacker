@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import AppShell from './AppShell'
 
@@ -26,5 +26,16 @@ describe('AppShell', () => {
       'lg:h-7',
       'lg:w-7',
     )
+  })
+
+  it('does not offer the parked Food workspace in primary navigation', () => {
+    render(<AppShell />, { wrapper: MemoryRouter })
+
+    expect(screen.queryByRole('link', { name: 'Food' })).not.toBeInTheDocument()
+    expect(
+      within(screen.getByRole('navigation', { name: 'Primary' }))
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Gear', 'Lists'])
   })
 })

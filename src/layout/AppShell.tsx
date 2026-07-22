@@ -6,6 +6,7 @@ import { MobilePrimaryNavProvider } from './mobile-primary-nav-context'
 import { SidebarDrawerProvider } from './sidebar-drawer-context'
 import MobilePrimaryNav from './MobilePrimaryNav'
 import { useSignOut } from './use-sign-out'
+import { FOOD_PLANNING_ENABLED } from '../lib/product-features'
 
 // Session-gated layout shell: slim top header (brand, desktop nav links,
 // settings, sign out) plus the mobile primary nav. Route components own their
@@ -45,16 +46,18 @@ export default function AppShell() {
                 >
                   Lists
                 </Link>
-                <Link
-                  to="/food"
-                  className={`text-sm font-medium ${
-                    pathname === '/food' || pathname.startsWith('/food/')
-                      ? 'text-blue-600'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Food
-                </Link>
+                {FOOD_PLANNING_ENABLED && (
+                  <Link
+                    to="/food"
+                    className={`text-sm font-medium ${
+                      pathname === '/food' || pathname.startsWith('/food/')
+                        ? 'text-blue-600'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    Food
+                  </Link>
+                )}
               </nav>
             </div>
             <div className="flex items-center gap-3">

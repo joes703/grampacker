@@ -3,7 +3,7 @@ import MobileBottomBar from '../components/MobileBottomBar'
 import { useIsMobilePrimaryNavSuppressed } from './mobile-primary-nav-context'
 import { buildMobileDestinationItems } from './mobile-nav-destinations'
 
-// Always-on mobile primary nav (Gear, Lists, Food). Pages with
+// Always-on mobile primary nav. Pages with
 // their own page-specific bar (List Detail, Gear, Lists) call
 // useSuppressMobilePrimaryNav() to register themselves with
 // MobilePrimaryNavProvider so this fallback steps aside. Suppression is

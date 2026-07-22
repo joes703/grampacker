@@ -177,71 +177,38 @@ describe('SharePage read-only public sharing', () => {
   })
 })
 
-// Slice 5 (design 7): the share renders the attached plan as ONE derived
-// Food row - a weight, nothing else. Presence is driven by `food` being
-// non-null, NOT by the weight: a zero-gram plan still shows its row, and a
-// food-only list must never claim to be empty.
-describe('SharePage food weight', () => {
-  it('renders no Food row when no plan is attached', async () => {
-    vi.mocked(fetchSharedList).mockResolvedValue(share({ items: [tentItem] }))
+// Food data stays on the wire while the workspace is parked so no stored data
+// is destroyed. The public product must nevertheless treat that payload as
+// dormant: no row, estimate, or weight contribution.
+describe('SharePage parked food data', () => {
+  it('ignores an attached plan without deleting its payload', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue(
+      share({
+        categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
+        items: [tentItem], // 1200 g of gear
+        food: { weightGrams: 500, incomplete: true },
+      }),
+    )
     renderShareView()
 
-    expect(await screen.findByText('Tent')).toBeTruthy()
+    expect(await screen.findByText('Total pack weight')).toBeTruthy()
+    expect(screen.getAllByText('1200 g').length).toBeGreaterThan(0)
+    expect(screen.queryByText('1700 g')).toBeNull()
     expect(screen.queryByText('Food')).toBeNull()
+    expect(screen.queryByText(/could not be weighed/)).toBeNull()
   })
 
-  it('renders a food-only share with the weight summary, not the empty state', async () => {
+  it('treats a food-only share as an empty gear list', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue(
       share({ food: { weightGrams: 6000, incomplete: false } }),
     )
     renderShareView()
 
-    // Header + row label, mirroring the owner page's Food section.
-    expect(await screen.findAllByText('Food')).toHaveLength(2)
-    expect(screen.getByLabelText('6000 g')).toBeTruthy()
-    expect(screen.getByText('Weight summary')).toBeTruthy()
-    // The shipped bug this slice fixes: zero gear rows used to render
-    // "empty" even with kilograms of food attached.
     expect(
-      screen.queryByText('No gear items have been added to this shared list yet.'),
-    ).toBeNull()
-  })
-
-  it('composes the food weight into the pack totals', async () => {
-    vi.mocked(fetchSharedList).mockResolvedValue(
-      share({
-        categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
-        items: [tentItem], // 1200 g of gear
-        food: { weightGrams: 500, incomplete: false },
-      }),
-    )
-    renderShareView()
-
-    // 1200 gear + 500 food: food moves consumable + total only (design 5.3).
-    expect(await screen.findByText('Total pack weight')).toBeTruthy()
-    expect(screen.getByText('1700 g')).toBeTruthy()
-  })
-
-  it('marks an incomplete projection as an estimate on the row and the summary', async () => {
-    vi.mocked(fetchSharedList).mockResolvedValue(
-      share({ food: { weightGrams: 120, incomplete: true } }),
-    )
-    renderShareView()
-
-    expect(await screen.findByText('Consumable · Estimate')).toBeTruthy()
-    // The undercount note travels with the numbers (design 5.4) - same copy
-    // as the owner's weight summary.
-    expect(screen.getByText(/could not be weighed/)).toBeTruthy()
-  })
-
-  it('renders a zero-weight Food row when the attached plan projects to zero', async () => {
-    vi.mocked(fetchSharedList).mockResolvedValue(
-      share({ food: { weightGrams: 0, incomplete: false } }),
-    )
-    renderShareView()
-
-    expect(await screen.findAllByText('Food')).toHaveLength(2)
-    expect(screen.getByLabelText('0 g')).toBeTruthy()
+      await screen.findByText('No gear items have been added to this shared list yet.'),
+    ).toBeTruthy()
+    expect(screen.queryByText('Weight summary')).toBeNull()
+    expect(screen.queryByText('Food')).toBeNull()
   })
 })
 

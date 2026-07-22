@@ -30,6 +30,7 @@ import {
   FLAT_TABLE_SURFACE,
   PANEL_EMPTY_TEXT,
 } from '../components/flat-table-styles'
+import { FOOD_PLANNING_ENABLED } from '../lib/product-features'
 
 // Notes are rendered as Markdown on the public share view (typing markdown
 // in the authed NotesEditor textarea is the only authoring path). Lazy so
@@ -45,13 +46,9 @@ const MarkdownContent = lazy(() => import('../components/MarkdownContent'))
 // downstream components see valid wide types, and the corresponding UI
 // (pack mode, owner-only affordances) doesn't render here.
 //
-// Food (slice 5, design 7): the attached plan arrives as ONE nullable object
-// - a server-projected weight + the incomplete flag - and renders as a
-// derived, read-only Food row plus a bump to consumable/total. Weight only:
-// no names, no meals, no days. The old build's Gear/Food tab strip and
-// is_food_shared gate are deliberately NOT ported: if a plan is attached its
-// weight is in the total, because a headline pack weight that quietly
-// excluded food would be a lie.
+// The DTO still carries its narrow food projection while Food is parked. The
+// product flag below makes it dormant without changing the locked public wire
+// shape or deleting the owner's stored plan.
 export default function SharePage() {
   const { slug } = useParams<{ slug: string }>()
   // Share-scoped unit, held locally and persisted under its own key. Lazy
@@ -113,11 +110,12 @@ export default function SharePage() {
   }
 
   const { list, items, categories, food } = share
+  const activeFood = FOOD_PLANNING_ENABLED ? food : null
 
-  // Presence of the food OBJECT - never its weight - drives every food
-  // affordance below: a zero-gram attached plan still gets its row, and a
-  // food-only list is not empty (design 7's shipped-bug callout).
-  const hasFood = food !== null
+  // When the workspace is enabled, presence of the active object - never its
+  // weight - drives every food affordance. While parked, activeFood is null
+  // even though the preserved DTO field may still contain a projection.
+  const hasFood = activeFood !== null
 
   // The narrow -> wide boundary. gear status is filled with 'active' so
   // ItemRow renders no status badge - equivalent to "not shown" (status
@@ -158,17 +156,15 @@ export default function SharePage() {
     createdAt: '',
   }))
 
-  // Same composition as the owner's page: food moves consumable + total only
-  // (design 5.3), and weightGrams is already rounded once server-side (5.6) -
-  // hand it straight through, never re-round.
+  // Same composition as the owner's page when enabled: food moves consumable
+  // + total only (design 5.3). A parked projection contributes zero.
   const weightBreakdown = withProjectedFood(
     computeWeightBreakdown(itemsForRender, categoriesForRender),
-    food?.weightGrams ?? 0,
+    activeFood?.weightGrams ?? 0,
   )
 
-  // The summary earns its panel whenever there is anything to report: gear
-  // rows, or an attached plan (even one projecting to zero - the zero, and
-  // the Estimate note when incomplete, are the report).
+  // The summary earns its panel whenever there is active product data to
+  // report. Preserved-but-parked food does not create an empty summary.
   const showWeightSummary = items.length > 0 || hasFood
 
   // Group items by category, ordered by category.sortOrder; uncategorized
@@ -226,7 +222,7 @@ export default function SharePage() {
           {showWeightSummary && (
             <PanelCard title="Weight summary">
               <WeightTable items={itemsForRender} categories={categoriesForRender} breakdown={weightBreakdown} />
-              {food?.incomplete && <IncompleteFoodWeightNote />}
+              {activeFood?.incomplete && <IncompleteFoodWeightNote />}
             </PanelCard>
           )}
         </div>
@@ -279,7 +275,7 @@ export default function SharePage() {
             read-only sibling. A weight and the Consumable/Estimate meta -
             no plan name (not on the wire), no link, no menu. Its own
             surface card so it stacks with the category groups above. */}
-        {food && (
+        {activeFood && (
           <section
             aria-labelledby="share-food-heading"
             className={`mt-3 ${FLAT_TABLE_SURFACE}`}
@@ -294,10 +290,10 @@ export default function SharePage() {
                 <span className={`block truncate ${FLAT_TABLE_BODY_TEXT}`}>Food</span>
                 <span className={`block ${FLAT_TABLE_META_TEXT}`}>
                   Consumable
-                  {food.incomplete && ' · Estimate'}
+                  {activeFood.incomplete && ' · Estimate'}
                 </span>
               </span>
-              <ItemWeightValue grams={food.weightGrams} unit={weightUnit} />
+              <ItemWeightValue grams={activeFood.weightGrams} unit={weightUnit} />
             </div>
           </section>
         )}

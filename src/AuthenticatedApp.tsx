@@ -8,6 +8,7 @@ import FoodPlanEditor from './food/FoodPlanEditor'
 import SettingsPage from './settings/SettingsPage'
 import ListsPage from './lists/ListsPage'
 import ListDetailPage from './lists/ListDetailPage'
+import { FOOD_PLANNING_ENABLED } from './lib/product-features'
 
 // Everything behind the session gate (App.tsx imports this module and nothing
 // else from here), as one lazy boundary rather than one per page.
@@ -38,11 +39,18 @@ export default function AuthenticatedApp() {
             empty state for a brand-new account). See RootRedirect. */}
         <Route index element={<RootRedirect />} />
         <Route path="gear" element={<GearLibraryPage />} />
-        <Route path="food" element={<FoodLibraryPage />} />
-        {/* Plans live under the /food home beside the library (FoodTabs). The
-            index lists plans; :id opens the editor for one plan graph. */}
-        <Route path="food/plans" element={<FoodPlansPage />} />
-        <Route path="food/plans/:id" element={<FoodPlanEditor />} />
+        {FOOD_PLANNING_ENABLED ? (
+          <>
+            <Route path="food" element={<FoodLibraryPage />} />
+            {/* Plans live under the /food home beside the library (FoodTabs).
+                The index lists plans; :id opens one plan graph. */}
+            <Route path="food/plans" element={<FoodPlansPage />} />
+            <Route path="food/plans/:id" element={<FoodPlanEditor />} />
+          </>
+        ) : (
+          // Preserve old bookmarks without exposing a half-disabled editor.
+          <Route path="food/*" element={<Navigate to="/lists" replace />} />
+        )}
         <Route path="settings" element={<SettingsPage />} />
         {/* Pack and Organize are URL segments of the same detail page (see
             ListDetailPage's mode derivation + legacy redirects). */}

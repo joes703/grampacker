@@ -139,6 +139,7 @@ import {
 import { orderPackGroups, selectPackGroupingState } from './packing-grouping'
 import { usePackingCollapsed } from './packing-collapse'
 import { buildPackingTree, type PackingTreeLocation } from './packing-tree'
+import { FOOD_PLANNING_ENABLED } from '../lib/product-features'
 
 // TRANSPLANT NOTE (print): the old page rendered PrintListHeader above the
 // grid (a print-only document header) and carried print:* utility classes
@@ -365,14 +366,14 @@ function ListDetailInner({
   useDocumentTitle(list?.name ?? 'Lists')
 
   // The attached food plan's weight, derived from the plan document + the food
-  // library. null when nothing is attached (the common case), which is also what
-  // the list resolving to undefined means - the hook stays disabled either way.
+  // library. Passing null while Food is parked keeps preserved links dormant
+  // without violating hook ordering or touching stored data.
   const { projection: foodProjection, isError: foodProjectionError } =
-    useFoodProjection(list?.foodPlanId ?? null)
+    useFoodProjection(FOOD_PLANNING_ENABLED ? (list?.foodPlanId ?? null) : null)
   // The list ROW is the authority on whether food is part of this trip. The
   // projection is only its weight, and it is absent while the plan loads or if
   // the fetch fails - moments when the food has not gone anywhere.
-  const hasFoodPlan = list?.foodPlanId != null
+  const hasFoodPlan = FOOD_PLANNING_ENABLED && list?.foodPlanId != null
   const incompleteFood = foodProjection?.incomplete ?? false
 
   // Which half of the library panel is showing. Gear is the default: adding gear
@@ -388,7 +389,7 @@ function ListDetailInner({
   } = useQuery({
     queryKey: queryKeys.foodPlans(),
     queryFn: fetchFoodPlans,
-    enabled: libraryTab === 'food',
+    enabled: FOOD_PLANNING_ENABLED && libraryTab === 'food',
   })
   const { attachMut, detachMut, duplicateMut, busy: foodLinkBusy } =
     useFoodPlanLink()
@@ -402,7 +403,7 @@ function ListDetailInner({
   )
   // Duplicate & attach (a plan already backing another list). The CAS
   // expectation is THIS list's current link as this render observed it.
-  const listFoodPlanId = list?.foodPlanId ?? null
+  const listFoodPlanId = FOOD_PLANNING_ENABLED ? (list?.foodPlanId ?? null) : null
 
   // Pack-mode food checklist (design 8, slice 4): rows + totals + the CAS
   // toggle, with its own query subscriptions (colocation - see the hook).
@@ -774,10 +775,8 @@ function ListDetailInner({
     [],
   )
 
-  // Defined ONCE and mounted by both the desktop aside and the mobile drawer.
-  // They rendered the same panel independently before; letting the Food half
-  // exist in only one of them would leave phone users able to see a plan's
-  // weight and remove it, but never attach one.
+  // Defined once and mounted by both the desktop aside and mobile drawer. The
+  // feature gate removes the selector and leaves the Gear pane active in both.
   const libraryPane = (
     <>
       {/* The panel's Gear | Food toggle (design 8). Two different verbs sharing
@@ -785,9 +784,11 @@ function ListDetailInner({
           The toggle lives out here rather than inside LibraryPanel because that
           component is memoized on reference-stable props and knows only about
           gear. */}
-      <LibraryTabs tab={libraryTab} onChange={setLibraryTab} />
+      {FOOD_PLANNING_ENABLED && (
+        <LibraryTabs tab={libraryTab} onChange={setLibraryTab} />
+      )}
       <div className="flex-1 min-h-0 overflow-hidden">
-        {libraryTab === 'gear' ? (
+        {!FOOD_PLANNING_ENABLED || libraryTab === 'gear' ? (
           <LibraryPanel
             gearItems={gearItems}
             categories={categories}
@@ -1017,7 +1018,7 @@ function ListDetailInner({
             <ListDetailStatus title="Loading list details..." busy />
           ) : (
             <>
-              {/* Pack-mode progress bar. Renders for a food-only list too:
+              {/* Pack-mode progress bar. When Food is enabled it renders for a food-only list too:
                   a list with no gear but an attached plan still has packing
                   to track. With a plan attached it waits for foodPack.isReady
                   (unless the food side errored - then gear-only totals plus
@@ -1102,7 +1103,7 @@ function ListDetailInner({
               {/* Food, between the summary and the gear groups. Edit mode
                   renders the derived Food row; pack mode expands it into the
                   per-food checklist (FoodPackSection). */}
-              {mode === 'pack' && foodPack.isError && (
+              {FOOD_PLANNING_ENABLED && mode === 'pack' && foodPack.isError && (
                 <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                   Couldn&apos;t load this list&apos;s food checklist. Gear packing
                   still works.
@@ -1118,7 +1119,7 @@ function ListDetailInner({
                     Loading food checklist...
                   </p>
                 )}
-              {mode === 'pack' && (
+              {FOOD_PLANNING_ENABLED && mode === 'pack' && (
                 <FoodPackSection
                   rows={foodPack.rows}
                   weightUnit={weightUnit}

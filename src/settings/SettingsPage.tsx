@@ -7,6 +7,7 @@ import PasskeySection from './PasskeySection'
 import DefaultTargetsSection from './DefaultTargetsSection'
 import DownloadAllData from './DownloadAllData'
 import DeleteAccountSection from './DeleteAccountSection'
+import { FOOD_PLANNING_ENABLED } from '../lib/product-features'
 
 // Account/settings hub, reached from the header cog. Restores the old
 // app's /settings surface: the new app has no home page (/ redirects to
@@ -41,17 +42,19 @@ export default function SettingsPage() {
         <PasskeySection />
       </Section>
 
-      <Section
-        title="Default nutrition targets"
-        subtitle="Copied into each new food plan; existing plans are not changed"
-        icon={<Goal size={16} />}
-      >
-        <DefaultTargetsSection />
-      </Section>
+      {FOOD_PLANNING_ENABLED && (
+        <Section
+          title="Default nutrition targets"
+          subtitle="Copied into each new food plan; existing plans are not changed"
+          icon={<Goal size={16} />}
+        >
+          <DefaultTargetsSection />
+        </Section>
+      )}
 
       <Section
         title="Weight units"
-        subtitle="Applies to every list, your gear library, and food. Saved on this device"
+        subtitle="Applies to every list and your gear library. Saved on this device"
         icon={<Scale size={16} />}
       >
         <UnitSegmentedControl idPrefix="settings" />

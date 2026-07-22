@@ -25,9 +25,9 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('heading', { name: 'Passkeys', level: 2 })).toBeInTheDocument()
     expect(screen.getByText('passkey-section')).toBeInTheDocument()
     expect(
-      screen.getByRole('heading', { name: 'Default nutrition targets', level: 2 }),
-    ).toBeInTheDocument()
-    expect(screen.getByText('default-targets-section')).toBeInTheDocument()
+      screen.queryByRole('heading', { name: 'Default nutrition targets', level: 2 }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText('default-targets-section')).not.toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: 'Download all data', level: 2 }),
     ).toBeInTheDocument()
