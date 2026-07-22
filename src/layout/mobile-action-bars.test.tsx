@@ -51,19 +51,19 @@ function labels(name: string): string[] {
 describe('mobile action-bar contracts', () => {
   it('shows only working destinations on routes without page actions', () => {
     render(<MobilePrimaryNav />, { wrapper: wrapper('/settings') })
-    expect(labels('Primary navigation')).toEqual(['Gear', 'Lists', 'Food'])
+    expect(labels('Primary navigation')).toEqual(['Gear', 'Lists'])
     expect(screen.queryByLabelText(/no action/i)).toBeNull()
   })
 
   it('does not reserve a future Options slot on Plans', () => {
     render(<MobilePlanActionBar onNewPlan={vi.fn()} />, { wrapper: wrapper('/food/plans') })
-    expect(labels('Plans navigation and actions')).toEqual(['Gear', 'Lists', 'Food', 'Add'])
+    expect(labels('Plans navigation and actions')).toEqual(['Gear', 'Lists', 'Add'])
   })
 
   it.each([
-    ['edit', ['Gear', 'Lists', 'Food', 'Add', 'Options']],
-    ['pack', ['Gear', 'Lists', 'Food', 'Add']],
-    ['organize', ['Gear', 'Lists', 'Food']],
+    ['edit', ['Gear', 'Lists', 'Add', 'Options']],
+    ['pack', ['Gear', 'Lists', 'Add']],
+    ['organize', ['Gear', 'Lists']],
   ] as const)('renders the deliberate %s list-mode bar', (mode, expected) => {
     render(<MobileListActionBar list={list} mode={mode} />, {
       wrapper: wrapper(`/lists/${list.id}`),

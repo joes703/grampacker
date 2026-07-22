@@ -1,7 +1,8 @@
 import { Backpack, ListChecks, UtensilsCrossed } from 'lucide-react'
 import type { MobileBottomBarItem } from '../components/MobileBottomBar'
+import { FOOD_PLANNING_ENABLED } from '../lib/product-features'
 
-// Shared "destination" items (Gear + Lists + Food) for the mobile bottom
+// Shared destination items for the mobile bottom
 // bar. Every mobile bar emits the same first three slots so users see
 // consistent geography across the app; page-specific bars may append actions,
 // producing deliberate 3-, 4-, or 5-slot layouts.
@@ -10,12 +11,10 @@ import type { MobileBottomBarItem } from '../components/MobileBottomBar'
 //   - Gear active on /gear
 //   - Lists active on /lists and every list-detail mode — the slot is a
 //     destination for the whole lists workspace, so detail pages keep it lit.
-//   - Food active on /food and any /food/... (the food workspace, so a
-//     future plan editor keeps it lit)
-//
-// Order is Gear, Lists, Food and must match AppShell's desktop header links.
+// Food is appended only while its product workspace is enabled. Order must
+// match AppShell's desktop header links.
 export function buildMobileDestinationItems(pathname: string): MobileBottomBarItem[] {
-  return [
+  const items: MobileBottomBarItem[] = [
     {
       type: 'link',
       to: '/gear',
@@ -32,13 +31,18 @@ export function buildMobileDestinationItems(pathname: string): MobileBottomBarIt
       ariaLabel: 'Lists',
       active: pathname === '/lists' || pathname.startsWith('/lists/'),
     },
-    {
+  ]
+
+  if (FOOD_PLANNING_ENABLED) {
+    items.push({
       type: 'link',
       to: '/food',
       label: 'Food',
       icon: <UtensilsCrossed size={18} />,
       ariaLabel: 'Food',
       active: pathname === '/food' || pathname.startsWith('/food/'),
-    },
-  ]
+    })
+  }
+
+  return items
 }
