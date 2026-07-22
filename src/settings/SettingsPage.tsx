@@ -1,6 +1,7 @@
 import { Download, Goal, KeyRound, Scale, TriangleAlert } from 'lucide-react'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import { TABLE_RADIUS, TABLE_SURFACE_BG, TABLE_STRONG_DIVIDER } from '../components/flat-table-styles'
+import { passkeysSupported } from '../lib/auth-client'
 import { useDocumentTitle } from '../lib/use-document-title'
 import PasskeySection from './PasskeySection'
 import DefaultTargetsSection from './DefaultTargetsSection'
@@ -32,7 +33,9 @@ export default function SettingsPage() {
 
       <Section
         title="Passkeys"
-        subtitle="Your passkeys are how you sign in. Add one per device you use"
+        subtitle={passkeysSupported()
+          ? 'Your passkeys are how you sign in. Add one per device you use'
+          : 'Passkey management is unavailable in this browser'}
         icon={<KeyRound size={16} />}
       >
         <PasskeySection />
