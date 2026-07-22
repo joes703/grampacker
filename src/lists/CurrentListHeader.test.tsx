@@ -47,4 +47,13 @@ describe('CurrentListHeader', () => {
     expect(draftButton.parentElement).toBe(titleGroup)
     expect(renameButton.parentElement).not.toBe(titleGroup)
   })
+
+  it('keeps the rename entry point visible and touch-safe below lg', () => {
+    render(<CurrentListHeader list={list} />)
+
+    const renameButton = screen.getByRole('button', { name: 'Rename list' })
+    expect(renameButton).toHaveClass('h-10', 'w-10', 'lg:h-7', 'lg:w-7')
+    expect(renameButton).toHaveClass('opacity-100', 'lg:opacity-0', 'lg:group-hover:opacity-100')
+    expect(renameButton.className).not.toContain('md:opacity-0')
+  })
 })
