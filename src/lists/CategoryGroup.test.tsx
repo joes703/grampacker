@@ -203,7 +203,7 @@ describe('CategoryGroup footer subtotal', () => {
     expect(screen.getAllByText(/Consumable/).length).toBeGreaterThan(0)
   })
 
-  it('keeps Base and Consumable label-value pairs on one shared baseline', () => {
+  it('uses one line box and explicit font roles for every footer metric', () => {
     render(
       <CategoryGroup
         name="Kitchen"
@@ -224,8 +224,13 @@ describe('CategoryGroup footer subtotal', () => {
     if (!basePair || !consumablePair) throw new Error('expected category footer label-value pairs')
 
     expect(totals).toHaveClass('flex-nowrap', 'items-baseline')
-    expect(basePair).toHaveClass('inline-flex', 'items-baseline')
-    expect(consumablePair).toHaveClass('inline-flex', 'items-baseline')
+    expect(totals.parentElement).not.toHaveClass('font-mono', 'font-semibold')
+    expect(basePair).toHaveClass('text-xs', 'leading-4')
+    expect(consumablePair).toHaveClass('text-xs', 'leading-4')
+    expect(within(basePair).getByText('Base')).toHaveClass('font-sans')
+    expect(within(consumablePair).getByText('Consumable')).toHaveClass('font-sans')
+    expect(within(basePair).getByText('1352 g')).toHaveClass('font-mono', 'text-xs', 'leading-4')
+    expect(within(consumablePair).getByText('110 g')).toHaveClass('font-mono', 'text-xs', 'leading-4')
   })
 
   it('keeps full gram precision when converting category footers to ounces', () => {

@@ -13,7 +13,6 @@ import {
   FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_HEADER_TITLE_MUTED,
-  FLAT_TABLE_META_TEXT,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_SURFACE,
   MOBILE_ROW_HEIGHT,
@@ -499,7 +498,7 @@ function CategoryGroup({
               <div className="hidden lg:contents">
                 <div className="shrink-0 w-7" />
                 <div className="shrink-0 w-7" />
-                <div className={`shrink-0 min-w-[9.375rem] text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
+                <div className="shrink-0 min-w-[9.375rem] text-right text-gray-700">
                   <CategoryFooterWeights
                     baseGrams={baseSubtotalGrams}
                     consumableGrams={consumableSubtotalGrams}
@@ -511,7 +510,7 @@ function CategoryGroup({
               </div>
               <div className="lg:hidden flex items-center gap-2">
                 <div className="shrink-0 w-6" />
-                <div className={`shrink-0 min-w-[7.5rem] text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}>
+                <div className="shrink-0 min-w-[7.5rem] text-right text-gray-700">
                   <CategoryFooterWeights
                     baseGrams={baseSubtotalGrams}
                     consumableGrams={consumableSubtotalGrams}
@@ -542,10 +541,7 @@ function CategoryFooterWeights({
 }) {
   if (wornGrams !== undefined) {
     return (
-      <span className="inline-flex items-baseline gap-x-1 whitespace-nowrap">
-        <span className={`font-normal ${FLAT_TABLE_META_TEXT}`}>Worn</span>
-        <CategoryFooterWeightValue grams={wornGrams} weightUnit={weightUnit} />
-      </span>
+      <CategoryFooterMetric label="Worn" grams={wornGrams} weightUnit={weightUnit} />
     )
   }
 
@@ -561,11 +557,36 @@ function CategoryFooterWeights({
   return (
     <span className="inline-flex flex-nowrap items-baseline justify-end gap-x-3">
       {totals.map((total) => (
-        <span key={total.label} className="inline-flex items-baseline gap-x-1 whitespace-nowrap">
-          <span className={`font-normal ${FLAT_TABLE_META_TEXT}`}>{total.label}</span>
-          <CategoryFooterWeightValue grams={total.grams} weightUnit={weightUnit} />
-        </span>
+        <CategoryFooterMetric
+          key={total.label}
+          label={total.label}
+          grams={total.grams}
+          weightUnit={weightUnit}
+        />
       ))}
+    </span>
+  )
+}
+
+function CategoryFooterMetric({
+  label,
+  grams,
+  weightUnit,
+}: {
+  label: string
+  grams: number
+  weightUnit: WeightUnit
+}) {
+  // Keep label and value in one fixed line box. Applying numeric typography
+  // to the outer footer cell makes the label inherit monospace, while the
+  // responsive meta token bumps only the label to 13px on desktop. That
+  // combination looks vertically staggered even when flex baselines agree.
+  return (
+    <span className="whitespace-nowrap text-xs leading-4">
+      <span className="font-sans font-normal text-gray-500">{label}</span>{' '}
+      <span className={`${FLAT_TABLE_NUMERIC_TEXT} leading-4 font-semibold text-gray-700`}>
+        <CategoryFooterWeightValue grams={grams} weightUnit={weightUnit} />
+      </span>
     </span>
   )
 }
