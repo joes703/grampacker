@@ -542,8 +542,8 @@ function CategoryFooterWeights({
 }) {
   if (wornGrams !== undefined) {
     return (
-      <span className="whitespace-nowrap">
-        <span className={`mr-1 font-normal ${FLAT_TABLE_META_TEXT}`}>Worn</span>
+      <span className="inline-flex items-baseline gap-x-1 whitespace-nowrap">
+        <span className={`font-normal ${FLAT_TABLE_META_TEXT}`}>Worn</span>
         <CategoryFooterWeightValue grams={wornGrams} weightUnit={weightUnit} />
       </span>
     )
@@ -559,10 +559,10 @@ function CategoryFooterWeights({
   ].filter((total): total is { label: string; grams: number } => total !== null)
 
   return (
-    <span className="inline-flex flex-wrap justify-end gap-x-3">
+    <span className="inline-flex flex-nowrap items-baseline justify-end gap-x-3">
       {totals.map((total) => (
-        <span key={total.label} className="whitespace-nowrap">
-          <span className={`mr-1 font-normal ${FLAT_TABLE_META_TEXT}`}>{total.label}</span>
+        <span key={total.label} className="inline-flex items-baseline gap-x-1 whitespace-nowrap">
+          <span className={`font-normal ${FLAT_TABLE_META_TEXT}`}>{total.label}</span>
           <CategoryFooterWeightValue grams={total.grams} weightUnit={weightUnit} />
         </span>
       ))}

@@ -203,6 +203,31 @@ describe('CategoryGroup footer subtotal', () => {
     expect(screen.getAllByText(/Consumable/).length).toBeGreaterThan(0)
   })
 
+  it('keeps Base and Consumable label-value pairs on one shared baseline', () => {
+    render(
+      <CategoryGroup
+        name="Kitchen"
+        categoryId="cat-kitchen"
+        items={[itemNamed('a', 'Pot'), consumable('b', 'Fuel')]}
+        weightUnit="g"
+        baseSubtotalGrams={1352}
+        consumableSubtotalGrams={110}
+      />,
+    )
+
+    const footer = document.querySelector<HTMLElement>('.print\\:flex')
+    if (!footer) throw new Error('expected category footer')
+    const totals = footer.querySelector<HTMLElement>('.inline-flex.justify-end')
+    if (!totals) throw new Error('expected category footer totals')
+    const basePair = within(totals).getByText('Base').parentElement
+    const consumablePair = within(totals).getByText('Consumable').parentElement
+    if (!basePair || !consumablePair) throw new Error('expected category footer label-value pairs')
+
+    expect(totals).toHaveClass('flex-nowrap', 'items-baseline')
+    expect(basePair).toHaveClass('inline-flex', 'items-baseline')
+    expect(consumablePair).toHaveClass('inline-flex', 'items-baseline')
+  })
+
   it('keeps full gram precision when converting category footers to ounces', () => {
     render(
       <CategoryGroup
