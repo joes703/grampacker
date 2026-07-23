@@ -215,9 +215,9 @@ describe('CategoryGroup footer subtotal', () => {
       />,
     )
 
-    const footer = document.querySelector('.print\\:flex')
+    const footer = document.querySelector<HTMLElement>('.print\\:flex')
     if (!footer) throw new Error('expected category footer')
-    const totals = footer.querySelector('.inline-flex.justify-end')
+    const totals = footer.querySelector<HTMLElement>('.inline-flex.justify-end')
     if (!totals) throw new Error('expected category footer totals')
     const basePair = within(totals).getByText('Base').parentElement
     const consumablePair = within(totals).getByText('Consumable').parentElement
