@@ -145,8 +145,8 @@ type GroupPropsBase = {
    *
    *  Category footers render each positive bucket with its label. Zero-value
    *  buckets are omitted instead of showing Base 0 or Consumable 0. The Worn
-   *  pseudo-section keeps the legacy bare `subtotalGrams`: its number is the
-   *  canonical list-level worn total, and "Worn Worn 550 g" is noise. */
+   *  pseudo-section keeps the legacy `subtotalGrams` input but labels its
+   *  canonical list-level total explicitly in the footer. */
   baseSubtotalGrams?: number
   consumableSubtotalGrams?: number
   subtotalGrams?: number
@@ -541,7 +541,12 @@ function CategoryFooterWeights({
   weightUnit: WeightUnit
 }) {
   if (wornGrams !== undefined) {
-    return <TotalWeightValue grams={wornGrams} unit={weightUnit} />
+    return (
+      <span className="whitespace-nowrap">
+        <span className={`mr-1 font-normal ${FLAT_TABLE_META_TEXT}`}>Worn</span>
+        <CategoryFooterWeightValue grams={wornGrams} weightUnit={weightUnit} />
+      </span>
+    )
   }
 
   const totals = [
@@ -558,11 +563,24 @@ function CategoryFooterWeights({
       {totals.map((total) => (
         <span key={total.label} className="whitespace-nowrap">
           <span className={`mr-1 font-normal ${FLAT_TABLE_META_TEXT}`}>{total.label}</span>
-          <TotalWeightValue grams={total.grams} unit={weightUnit} />
+          <CategoryFooterWeightValue grams={total.grams} weightUnit={weightUnit} />
         </span>
       ))}
     </span>
   )
+}
+
+function CategoryFooterWeightValue({
+  grams,
+  weightUnit,
+}: {
+  grams: number
+  weightUnit: WeightUnit
+}) {
+  // Category gram totals are display-rounded only. Ounce output still converts
+  // the full aggregate so changing units does not compound the rounding.
+  const displayGrams = weightUnit === 'g' ? Math.round(grams) : grams
+  return <TotalWeightValue grams={displayGrams} unit={weightUnit} />
 }
 
 export default memo(CategoryGroup)

@@ -163,7 +163,9 @@ describe('SharePage read-only public sharing', () => {
     )
     renderShareView()
 
-    expect(await screen.findByText('Worn')).toBeTruthy()
+    const wornItem = await screen.findByText('Rain jacket')
+    const wornSection = wornItem.closest('.overflow-hidden')
+    expect(wornSection?.textContent).toContain('Worn')
     expect(screen.getAllByText('Rain jacket')).toHaveLength(1)
   })
 
@@ -299,12 +301,11 @@ describe('SharePage category subtotals', () => {
     )
     renderShareView()
 
-    expect(await screen.findByText('Worn')).toBeTruthy()
+    const wornItem = await screen.findByText('Jacket')
     expect(screen.getAllByText('550 g').length).toBeGreaterThan(0)
     // 80 g still appears (it is Uncategorized's own legitimate subtotal), so
     // assert the Worn section specifically does not contain it.
-    const wornHeading = screen.getByText('Worn')
-    const wornSection = wornHeading.closest('div')?.parentElement
+    const wornSection = wornItem.closest('.overflow-hidden')
     expect(wornSection?.textContent).toContain('550 g')
     expect(wornSection?.textContent).not.toContain('80 g')
   })

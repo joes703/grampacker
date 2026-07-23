@@ -176,12 +176,14 @@ describe('CategoryGroup footer subtotal', () => {
         categoryId="cat-1"
         items={[itemNamed('a', 'Tarp'), consumable('b', 'Gas')]}
         weightUnit="g"
-        baseSubtotalGrams={777}
-        consumableSubtotalGrams={333}
+        baseSubtotalGrams={777.4}
+        consumableSubtotalGrams={333.6}
       />,
     )
     expect(screen.getAllByText('777 g').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('333 g').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('334 g').length).toBeGreaterThan(0)
+    expect(screen.queryByText('777.4 g')).toBeNull()
+    expect(screen.queryByText('333.6 g')).toBeNull()
     // 200 g is what summing the two rows would produce.
     expect(screen.queryByText('200 g')).toBeNull()
   })
@@ -199,6 +201,22 @@ describe('CategoryGroup footer subtotal', () => {
     )
     expect(screen.getAllByText(/Base/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Consumable/).length).toBeGreaterThan(0)
+  })
+
+  it('keeps full gram precision when converting category footers to ounces', () => {
+    render(
+      <CategoryGroup
+        name="Shelter"
+        categoryId="cat-1"
+        items={[itemNamed('a', 'Tarp')]}
+        weightUnit="oz"
+        baseSubtotalGrams={4.3}
+      />,
+    )
+    // 4.3 g displays as 0.2 oz. Rounding the source to 4 g first would show
+    // 0.1 oz, so this pins the rounding to gram presentation only.
+    expect(screen.getAllByLabelText('0.2 oz')).toHaveLength(2)
+    expect(screen.queryByLabelText('0.1 oz')).toBeNull()
   })
 
   it('omits Base when the category is consumable-only', () => {
@@ -231,25 +249,23 @@ describe('CategoryGroup footer subtotal', () => {
     expect(screen.queryByText(/Consumable/)).toBeNull()
   })
 
-  it('renders a bare value when given no label, and never mislabels it Base', () => {
-    // The Worn pseudo-section. Calling it "Base" would be flatly wrong - worn
-    // weight is excluded from base by definition - and repeating "Worn" beside
-    // a section already titled Worn is noise.
+  it('prepends Worn to its rounded footer weight without mislabeling it Base', () => {
     render(
       <CategoryGroup
         name="Worn"
         regionKey="worn"
         items={[itemNamed('a', 'Jacket')]}
         weightUnit="g"
-        subtotalGrams={777}
+        subtotalGrams={777.4}
         wornSection
       />,
     )
-    expect(screen.getAllByText('777 g').length).toBeGreaterThan(0)
+    const footer = document.querySelector<HTMLElement>('.print\\:flex')
+    expect(footer).not.toBeNull()
+    expect(within(footer!).getAllByText('Worn')).toHaveLength(2)
+    expect(within(footer!).getAllByText('777 g')).toHaveLength(2)
+    expect(screen.queryByText('777.4 g')).toBeNull()
     expect(screen.queryByText(/Base/)).toBeNull()
-    // The section title must remain the only "Worn" in the subtree, so callers
-    // asserting on it are not made ambiguous by a duplicate label.
-    expect(screen.getAllByText('Worn')).toHaveLength(1)
   })
 
   it('renders no subtotal when the parent supplies none', () => {

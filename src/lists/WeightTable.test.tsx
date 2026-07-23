@@ -75,23 +75,24 @@ describe('WeightTable', () => {
     expect(screen.queryByText(/Worn/)).not.toBeInTheDocument()
   })
 
-  it('renders summed fractional weights without float noise', () => {
-    // Three 0.1 g items sum to 0.30000000000000004 in IEEE-754. Every row here
-    // is an aggregate, so this is the path where raw interpolation shows.
+  it('rounds aggregate gram values to whole grams', () => {
+    // Three 100.1 g items sum to a fractional aggregate. The table keeps the
+    // underlying breakdown precise but presents its gram column as whole grams.
     render(
       <WeightTable
         items={[
-          listItem({ id: '1', categoryId: shelter.id, weightGrams: 0.1 }),
-          listItem({ id: '2', categoryId: shelter.id, weightGrams: 0.1 }),
-          listItem({ id: '3', categoryId: shelter.id, weightGrams: 0.1 }),
+          listItem({ id: '1', categoryId: shelter.id, weightGrams: 100.1 }),
+          listItem({ id: '2', categoryId: shelter.id, weightGrams: 100.1 }),
+          listItem({ id: '3', categoryId: shelter.id, weightGrams: 100.1 }),
         ]}
         categories={[shelter]}
       />,
     )
 
-    expect(within(rowFor('Shelter')).getByText('0.3 g')).toBeInTheDocument()
-    expect(within(rowFor('Base weight')).getByText('0.3 g')).toBeInTheDocument()
-    expect(within(rowFor('Total pack weight')).getByText('0.3 g')).toBeInTheDocument()
+    expect(within(rowFor('Shelter')).getByText('300 g')).toBeInTheDocument()
+    expect(within(rowFor('Base weight')).getByText('300 g')).toBeInTheDocument()
+    expect(within(rowFor('Total pack weight')).getByText('300 g')).toBeInTheDocument()
+    expect(screen.queryByText('300.3 g')).not.toBeInTheDocument()
   })
 
   it('shows the Consumables and Worn rows only when those weights are present', () => {
