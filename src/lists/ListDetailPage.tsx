@@ -158,6 +158,9 @@ import { FOOD_PLANNING_ENABLED } from '../lib/product-features'
 const EMPTY_LIST_ITEMS: ListItemWithGear[] = []
 const EMPTY_GEAR_ITEMS: GearItem[] = []
 const EMPTY_CATEGORIES: Category[] = []
+// Edit mode has no pack filters, so nothing is ever hidden there. Module-level
+// so the reorder planner isn't handed a fresh Set on every drag tick.
+const EMPTY_HIDDEN_ITEM_IDS: ReadonlySet<string> = new Set<string>()
 
 // Every transient dialog/modal/inline-form on this page lives in one
 // discriminated union, set/cleared atomically. `null` is the closed state
@@ -222,28 +225,50 @@ export function derivePackReorderExclusions(
   return excludedItemIds
 }
 
+// Rows the pack-mode filters have hidden. A hidden row must be neither a
+// reorder source nor a reorder neighbour: the sort slots are computed from the
+// rows the user can actually see, so counting an invisible row would drop the
+// dragged row somewhere other than where it was released.
+//
+// Takes the same predicate shape CategoryGroup renders with, so the two cannot
+// disagree about what "hidden" means.
+export function deriveFilteredItemIds(
+  items: ListItemWithGear[],
+  { showUnpackedOnly, showUnreadyOnly }: {
+    showUnpackedOnly: boolean
+    showUnreadyOnly: boolean
+  },
+): Set<string> {
+  const hidden = new Set<string>()
+  if (!showUnpackedOnly && !showUnreadyOnly) return hidden
+  for (const item of items) {
+    const visible =
+      (!showUnpackedOnly || !item.isPacked) && (!showUnreadyOnly || !item.isReady)
+    if (!visible) hidden.add(item.id)
+  }
+  return hidden
+}
+
 export function planListItemReorder({
   activeId,
   overId,
   items,
   groupingKind,
   locations,
-  hidePackedItems,
+  hiddenItemIds,
 }: {
   activeId: string
   overId: string | undefined
   items: ListItemWithGear[]
   groupingKind: 'category' | 'location'
   locations: PackingLocation[]
-  hidePackedItems: boolean
+  // Rows currently filtered out of the rendered list (see
+  // deriveFilteredItemIds). Empty set = nothing hidden.
+  hiddenItemIds: ReadonlySet<string>
 }): { id: string; sortOrder: number }[] | null {
   if (groupingKind === 'location') {
     const excludedItemIds = derivePackReorderExclusions(items, locations)
-    if (hidePackedItems) {
-      for (const item of items) {
-        if (item.isPacked) excludedItemIds.add(item.id)
-      }
-    }
+    for (const itemId of hiddenItemIds) excludedItemIds.add(itemId)
     return planPackingItemReorder(
       activeId,
       overId,
@@ -260,13 +285,12 @@ export function planListItemReorder({
   const activeItem = items.find((item) => item.id === active.id)
   const overItem = items.find((item) => item.id === over.id)
   if (!activeItem || !overItem) return null
-  if (hidePackedItems && (activeItem.isPacked || overItem.isPacked)) return null
+  if (hiddenItemIds.has(activeItem.id) || hiddenItemIds.has(overItem.id)) return null
   const categoryId = activeItem.gearItem.categoryId
   if (overItem.gearItem.categoryId !== categoryId) return null
 
   const categoryItems = items.filter((item) =>
-    item.gearItem.categoryId === categoryId &&
-    (!hidePackedItems || !item.isPacked),
+    item.gearItem.categoryId === categoryId && !hiddenItemIds.has(item.id),
   )
   const oldIndex = categoryItems.findIndex((item) => item.id === active.id)
   const newIndex = categoryItems.findIndex((item) => item.id === over.id)
@@ -335,6 +359,12 @@ function ListDetailInner({
   // full items array. Lifted here because both PackingProgress (the toggle)
   // and CategoryGroup (the filter consumer) live as children of this page.
   const [showUnpackedOnly, setShowUnpackedOnly] = useState(false)
+  // Peer of showUnpackedOnly for the ready column: "what still needs prepping".
+  // Independent, not a mode switch - with both on you see only the rows that
+  // are neither packed nor ready. Deliberately NOT persisted, same as its
+  // sibling: a filter that survives a reload hides items from a user who has
+  // forgotten they turned it on.
+  const [showUnreadyOnly, setShowUnreadyOnly] = useState(false)
   const {
     collapsed: packingCollapsed,
     toggle: togglePackingCollapsed,
@@ -619,7 +649,9 @@ function ListDetailInner({
       items: listItems,
       groupingKind: grouping.kind,
       locations: locationsQuery.data ?? [],
-      hidePackedItems: mode === 'pack' && showUnpackedOnly,
+      hiddenItemIds: mode === 'pack'
+        ? deriveFilteredItemIds(listItems, { showUnpackedOnly, showUnreadyOnly })
+        : EMPTY_HIDDEN_ITEM_IDS,
     })
     if (updates) reorderItemsMut.mutate(updates)
   }
@@ -852,6 +884,7 @@ function ListDetailInner({
       // library in the authenticated chunk. See SortableCategoryRows.tsx.
       renderRows: sortableRows,
       showUnpackedOnly,
+      showUnreadyOnly,
       onUpdate: (itemId: string, patch: ListItemPatch) => updateItem.mutate({ itemId, patch }),
       onDelete: (itemId: string) => {
         const li = listItemsRef.current.find((item) => item.id === itemId)
@@ -879,7 +912,7 @@ function ListDetailInner({
         updateGearItem.mutate({ id: gearId, patch: { status } }),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above re: mutation refs
-    [mode, weightUnit, isBelowLg, showUnpackedOnly],
+    [mode, weightUnit, isBelowLg, showUnpackedOnly, showUnreadyOnly],
   )
 
   function renderPackingLocationNode(
@@ -1036,6 +1069,8 @@ function ListDetailInner({
                     onReset={resetPacked}
                     showUnpackedOnly={showUnpackedOnly}
                     onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
+                    showUnreadyOnly={showUnreadyOnly}
+                    onToggleShowUnreadyOnly={() => setShowUnreadyOnly((v) => !v)}
                     readyChecks={{
                       ready: listItems.filter((i) => i.isReady).length,
                       total: listItems.length,

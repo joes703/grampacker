@@ -118,10 +118,21 @@ type GroupPropsBase = {
    *  to each SortableItemRow as `disabled` to prevent overlapping reorders
    *  from racing. Sortable-only; share view doesn't set this. */
   reorderPending?: boolean
-  /** Pack mode filter: when true, hide already-packed items from the rendered
-   *  list. Header counts and the "complete" affordance still reflect the full
-   *  items array. Authed pack-mode only; share view never sets this. */
+  /** Pack mode filters: hide already-packed / already-ready items from the
+   *  rendered list. Independent of each other - a row renders only if it
+   *  passes BOTH - because "what's left to pack" and "what's left to prep"
+   *  are different questions and a packer asks them separately. Header counts
+   *  and the "complete" affordance still reflect the full items array.
+   *  Authed pack-mode only; share view never sets these.
+   *
+   *  Neither filter touches `containerItem`. That row is the section's
+   *  HEADER, not a member of it: hiding it would take the location, its
+   *  contents, its actions and its droppable surface with it. A packed
+   *  container therefore stays on screen while its filtered-out contents
+   *  disappear, which is the intended reading - the container is still where
+   *  the remaining work lives. */
   showUnpackedOnly?: boolean
+  showUnreadyOnly?: boolean
   /** The one section allowed to render worn rows. Every ordinary category or
    *  packing-location section filters them into the trailing Worn section. */
   wornSection?: boolean
@@ -215,6 +226,7 @@ function CategoryGroup({
   renderRows,
   reorderPending = false,
   showUnpackedOnly = false,
+  showUnreadyOnly = false,
   wornSection = false,
   baseSubtotalGrams,
   consumableSubtotalGrams,
@@ -261,11 +273,18 @@ function CategoryGroup({
   const showKebabSlot = !packMode && Boolean(onDelete)
   // "Complete" = pack mode, has section items, every section item packed.
   const complete = packMode && progressItems.length > 0 && packedCount === progressItems.length
-  // When the unpacked-only filter is on, hide packed items from the
-  // rendered rows. Applied AFTER the section split so packed-but-worn
-  // items don't sneak through.
-  const visibleItems = packMode && showUnpackedOnly
-    ? sectionItems.filter((i) => !i.isPacked)
+  // Filters hide finished rows from the rendered list. Applied AFTER the
+  // section split so packed-but-worn items don't sneak through.
+  //
+  // The two filters are ANDed, not ORed: with both on you see only rows that
+  // are neither packed nor ready - the rows with everything still to do. OR
+  // would make turning on a second filter show MORE rows, which is not what a
+  // filter switch means.
+  const filtering = packMode && (showUnpackedOnly || showUnreadyOnly)
+  const visibleItems = filtering
+    ? sectionItems.filter(
+        (i) => (!showUnpackedOnly || !i.isPacked) && (!showUnreadyOnly || !i.isReady),
+      )
     : sectionItems
 
   // Per-row props builder — same shape for SortableItemRow and ItemRow.
