@@ -128,7 +128,7 @@ import EmptyListCell from './EmptyListCell'
 import PackingProgress from './PackingProgress'
 import { useListResetActions } from './use-list-reset-actions'
 import { useListItemActions } from './use-list-item-actions'
-import { findBackedLocation, useListItemRemoval } from './use-list-item-removal'
+import { resolveRemovalPlan, useListItemRemoval } from './use-list-item-removal'
 import { useListGearActions } from './use-list-gear-actions'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
@@ -672,6 +672,10 @@ function ListDetailInner({
   // so reading it through a [] -deps useCallback closure is stale; a ref is
   // the stable handle.
   const addingNewItemRef = useRef(false)
+  // Item ids whose removal preflight (the container check) is in flight. See
+  // requestRemoveListItem: the preflight can await a fetch, during which the
+  // row stays on screen and clickable.
+  const removalPreflightRef = useRef(new Set<string>())
 
   // Split mouse vs touch so each gets the activation that fits its input.
   // MouseSensor: 5px drag threshold from the hover grip handle (desktop).
@@ -971,6 +975,15 @@ function ListDetailInner({
   // Removal + Undo. Owns the "does this destroy more than the row?" rule, the
   // Undo toast and the restore mutation; the page keeps only the container
   // confirm, which needs page-level dialog state.
+  //
+  // KNOWN GAP: onRemoved is a per-call mutate callback, and TanStack drops
+  // those once the calling observer unsubscribes. Navigate to another list
+  // before the DELETE settles and the removal still succeeds but never offers
+  // its Undo. Closing it means moving the delete's success handling onto the
+  // mutation itself, which lives in useListItemActions and is shared with the
+  // container-confirm path that deliberately offers no Undo - so it is a
+  // restructure, not a tweak. The restore side already avoids this: its
+  // toasts are mutation-level.
   const { removeWithUndo } = useListItemRemoval(
     listId,
     (itemId, onRemoved) => deleteItem.mutate(itemId, { onSuccess: onRemoved }),
@@ -993,46 +1006,47 @@ function ListDetailInner({
   // The rule: remove immediately and offer Undo, UNLESS the row backs a
   // packing location - that removal destroys structure beyond the row and
   // cannot be undone, so it asks first.
-  // Routed through ensureQueryData rather than reading the render's locations
-  // array, and this is load-bearing. "Backs a container" lives only on the
-  // location row, and the locations query is NOT part of detailDataLoading -
-  // rows render, and are removable, while it is still in flight. Reading an
-  // empty array in that window would answer "not a container" for an item
-  // that is one, skip the confirm, and cascade a location away with no
-  // warning and no undo. ensureQueryData returns cached data immediately once
-  // loaded (so the common path is unchanged) and awaits the in-flight fetch
-  // when it is not.
+  // Resolves the locations query before deciding, rather than reading the
+  // render's array. This is load-bearing. "Backs a container" lives only on
+  // the location row, and the locations query is NOT part of
+  // detailDataLoading - rows render, and are removable, while it is still in
+  // flight. Reading an empty array in that window would answer "not a
+  // container" for an item that is one, skip the confirm, and cascade a
+  // location away with no warning and no undo.
   //
-  // The async body is wrapped and fully caught: an escaping rejection here
-  // would be the fire-and-forget AGENTS.md prohibits.
+  // The decision itself lives in resolveRemovalPlan (see it for why it
+  // fetches rather than reading the cache); this keeps only the page-level
+  // parts: the duplicate guard and the dialog state. resolveRemovalPlan
+  // never rejects - it turns a failed lookup into a confirm - so nothing
+  // escapes this discarded IIFE as an unhandled rejection.
   const requestRemoveListItem = useCallback(
     (li: ListItemWithGear, returnDialog?: DialogState) => {
+      // Awaiting a fetch leaves the row on screen and clickable, so the same
+      // item can be queued for removal twice - two DELETEs, the second a 404,
+      // and the toast wiring of the first disturbed. The synchronous path
+      // this replaced was self-limiting because the optimistic delete removed
+      // the row before a second click could land.
+      if (removalPreflightRef.current.has(li.id)) return
+      removalPreflightRef.current.add(li.id)
       void (async () => {
-        let locations: PackingLocation[]
         try {
-          locations = await qc.ensureQueryData({
-            queryKey: queryKeys.packingLocations(listId),
-            queryFn: () => fetchPackingLocations(listId),
-          })
-        } catch {
-          // Could not prove the row is safe to remove silently, so ask.
-          setDialog({ type: 'remove-container-item', item: li, location: null, returnDialog })
-          return
+          const plan = await resolveRemovalPlan(qc, listId, li.id)
+          if (plan.kind === 'confirm') {
+            setDialog({
+              type: 'remove-container-item',
+              item: li,
+              location: plan.location,
+              returnDialog,
+            })
+            return
+          }
+          removeWithUndo(li)
+        } finally {
+          removalPreflightRef.current.delete(li.id)
         }
-        const backedLocation = findBackedLocation(li.id, locations)
-        if (backedLocation) {
-          setDialog({
-            type: 'remove-container-item',
-            item: li,
-            location: backedLocation,
-            returnDialog,
-          })
-          return
-        }
-        removeWithUndo(li)
       })()
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- qc and setDialog are stable; removeWithUndo is stable; listId is fixed for this component instance (keyed by list)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- qc and setDialog are stable; removeWithUndo is stable; refs are stable; listId is fixed for this component instance (keyed by list)
     [],
   )
 
@@ -1506,8 +1520,16 @@ function ListDetailInner({
                   // looks like (useReorderable defaults items to []), so
                   // without this a list that already has locations would be
                   // told it has none - and its three starter buttons would
-                  // cheerfully create a duplicate. Only claim emptiness once
-                  // the query has actually answered.
+                  // cheerfully create a duplicate.
+                  //
+                  // Scope, honestly: this covers the cold-load and
+                  // first-load-failure cases. It does NOT cover a stale
+                  // cached [] - status stays 'success' through a background
+                  // refetch - so a tab holding a stale empty result while
+                  // another device added a location can still show the nudge
+                  // until the refetch lands. Left as-is because the outcome
+                  // there is one extra, visible, deletable location, not the
+                  // irreversible cascade the removal path guards against.
                   locationsResolved={packingLocationsResolved}
                   creationPending={locationCreationPending}
                   draft={newLocationName}

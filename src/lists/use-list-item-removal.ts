@@ -1,7 +1,8 @@
 import { useCallback } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import {
   addListItem,
+  fetchPackingLocations,
   queryKeys,
   updateListItem,
   type ListItemPatch,
@@ -96,6 +97,46 @@ export function findBackedLocation(
   locations: PackingLocation[],
 ): PackingLocation | null {
   return locations.find((location) => location.containerListItemId === itemId) ?? null
+}
+
+// Decide how a removal must proceed. Exported and pure-ish (its only side
+// effect is the fetch) so the rule can be tested without mounting the page.
+//
+// fetchQuery, NOT ensureQueryData. ensureQueryData returns whatever is cached
+// the moment it is defined - stale, or left over from a failed refetch - and
+// its revalidateIfStale option only starts a background prefetch while still
+// handing back the old value. A tab holding a stale empty result would keep
+// answering "not a container" after another device promoted the row to one,
+// and cascade it away unwarned. fetchQuery honors staleTime: fresh cache
+// returns with no request (so the everyday path stays instant), stale or
+// absent fetches, and a failure throws rather than silently resolving.
+//
+// Throwing is meaningful here: if we cannot establish the answer we must not
+// assume the safe-looking one, so the caller turns a rejection into a confirm.
+export type RemovalPlan =
+  | { kind: 'undo' }
+  | { kind: 'confirm'; location: PackingLocation | null }
+
+export async function resolveRemovalPlan(
+  qc: QueryClient,
+  listId: string,
+  itemId: string,
+): Promise<RemovalPlan> {
+  let locations: PackingLocation[]
+  try {
+    locations = await qc.fetchQuery({
+      queryKey: queryKeys.packingLocations(listId),
+      queryFn: () => fetchPackingLocations(listId),
+    })
+  } catch {
+    // Could not prove the row is safe to remove silently, so ask - without
+    // claiming a container we never saw.
+    return { kind: 'confirm', location: null }
+  }
+  const backedLocation = findBackedLocation(itemId, locations)
+  return backedLocation
+    ? { kind: 'confirm', location: backedLocation }
+    : { kind: 'undo' }
 }
 
 // `removeItem` is the page's delete mutation, passed as a plain callback so

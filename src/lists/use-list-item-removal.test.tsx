@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
     packingLocations: (id: string) => ['packing-locations', id] as const,
   },
   addListItem: vi.fn<(listId: string, gearItemId: string) => Promise<{ id: string }>>(),
+  fetchPackingLocations: vi.fn<(listId: string) => Promise<unknown[]>>(),
   updateListItem: vi.fn<(listId: string, itemId: string, patch: unknown) => Promise<void>>(),
 }))
 const toast = vi.hoisted(() => ({
@@ -24,10 +25,11 @@ vi.mock('../lib/queries', () => ({
   queryKeys: h.queryKeys,
   addListItem: h.addListItem,
   updateListItem: h.updateListItem,
+  fetchPackingLocations: h.fetchPackingLocations,
 }))
 vi.mock('../lib/toast', () => ({ showToast: toast.showToast }))
 
-import { useListItemRemoval } from './use-list-item-removal'
+import { resolveRemovalPlan, useListItemRemoval } from './use-list-item-removal'
 
 const LIST_ID = 'list-1'
 
@@ -107,6 +109,76 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks()
+})
+
+describe('resolveRemovalPlan', () => {
+  const container = { id: 'loc-1', name: 'Bear canister', sortOrder: 0, containerListItemId: 'li-1' }
+
+  function client() {
+    return new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+  }
+
+  it('plans an undoable removal for an ordinary row', async () => {
+    h.fetchPackingLocations.mockResolvedValue([
+      { id: 'loc-1', name: 'Main pack', sortOrder: 0, containerListItemId: null },
+    ])
+    await expect(resolveRemovalPlan(client(), LIST_ID, 'li-1')).resolves.toEqual({ kind: 'undo' })
+  })
+
+  it('plans a confirm for a row that backs a container', async () => {
+    h.fetchPackingLocations.mockResolvedValue([container])
+    await expect(resolveRemovalPlan(client(), LIST_ID, 'li-1')).resolves.toEqual({
+      kind: 'confirm',
+      location: container,
+    })
+  })
+
+  it('confirms rather than assuming safety when the lookup fails', async () => {
+    // The whole point: if we cannot establish whether this row backs a
+    // container, we must not pick the answer that skips the warning. It
+    // confirms WITHOUT naming a container, because we never saw one.
+    h.fetchPackingLocations.mockRejectedValue(new Error('offline'))
+    await expect(resolveRemovalPlan(client(), LIST_ID, 'li-1')).resolves.toEqual({
+      kind: 'confirm',
+      location: null,
+    })
+  })
+
+  it('never rejects, so the caller cannot leak an unhandled rejection', async () => {
+    h.fetchPackingLocations.mockRejectedValue(new Error('offline'))
+    await expect(resolveRemovalPlan(client(), LIST_ID, 'li-1')).resolves.toBeTruthy()
+  })
+
+  it('refetches a STALE cached result instead of trusting it', async () => {
+    // The defect this closes: ensureQueryData hands back whatever is cached
+    // the moment it is defined, so a tab holding a stale empty result kept
+    // answering "not a container" after another device promoted the row to
+    // one - and cascaded it away unwarned. fetchQuery honors staleTime, and
+    // staleTime is 0 here, so the cached [] must not be trusted.
+    const qc = client()
+    qc.setQueryData(['packing-locations', LIST_ID], [])
+    h.fetchPackingLocations.mockResolvedValue([container])
+
+    await expect(resolveRemovalPlan(qc, LIST_ID, 'li-1')).resolves.toEqual({
+      kind: 'confirm',
+      location: container,
+    })
+    expect(h.fetchPackingLocations).toHaveBeenCalled()
+  })
+
+  it('trusts a cached result that is still fresh, with no request', async () => {
+    // The other half of the trade: the everyday removal must not pay for a
+    // round-trip when the page already has current data.
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+    })
+    qc.setQueryData(['packing-locations', LIST_ID], [])
+
+    await expect(resolveRemovalPlan(qc, LIST_ID, 'li-1')).resolves.toEqual({ kind: 'undo' })
+    expect(h.fetchPackingLocations).not.toHaveBeenCalled()
+  })
 })
 
 describe('useListItemRemoval', () => {

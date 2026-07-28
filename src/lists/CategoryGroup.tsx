@@ -307,12 +307,23 @@ function CategoryGroup({
   // are neither packed nor ready - the rows with everything still to do. OR
   // would make turning on a second filter show MORE rows, which is not what a
   // filter switch means.
-  // Copy for a genuinely empty pack section. Unassigned is the odd one out:
-  // "no items here" reads as a problem, when an empty Unassigned bucket is
-  // exactly what a fully organized list looks like.
-  const emptySectionLabel = categoryId === null && regionKey === 'packing-unassigned'
+  // Copy for a genuinely empty pack section, and it has to name the right
+  // thing. Pack groups by packing location, but falls back to CATEGORY
+  // grouping while a list has no locations (selectPackGrouping), so "no items
+  // in this location" would be describing a category - and a category can go
+  // empty for a mundane reason, e.g. everything in it is worn and has moved
+  // to the trailing Worn section.
+  //
+  // Location sections pass a regionKey and no categoryId; category sections
+  // pass a categoryId (null for Uncategorized). Unassigned is the odd one
+  // out both ways: "no items here" frames a fully organized list as a
+  // problem, when an empty Unassigned bucket is exactly what finishing looks
+  // like.
+  const emptySectionLabel = regionKey === 'packing-unassigned'
     ? 'Everything has a location.'
-    : 'No items in this location.'
+    : categoryId === undefined
+      ? 'No items in this location.'
+      : 'No items in this category.'
   const filtering = packMode && (showUnpackedOnly || showUnreadyOnly)
   const visibleItems = filtering
     ? sectionItems.filter(

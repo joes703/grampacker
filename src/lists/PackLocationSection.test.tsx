@@ -202,6 +202,31 @@ describe('PackLocationSection', () => {
   })
 })
 
+// The retired OrganizePackPanel.test.tsx captured DndContext's
+// collisionDetection prop through a module mock and asserted the packing
+// filter was wired. Deleting that file dropped the assertion; the detector
+// itself is covered in packing-dnd.test.ts, but nothing checked that the PAGE
+// still reaches for it.
+//
+// This is a SOURCE-level guard, not a behavioral one - the same shape
+// list-unit-control.test.tsx uses. It cannot prove the runtime wiring, only
+// that the page has not quietly dropped it back to plain closestCenter for
+// location grouping, which is the regression that would silently let a
+// section be dropped onto a cousin.
+describe('pack collision wiring', () => {
+  it('selects the packing collision filter for location grouping', () => {
+    const sources = import.meta.glob('./ListDetailPage.tsx', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    }) as Record<string, string>
+    const src = Object.values(sources)[0]!
+
+    expect(src).toContain("grouping.kind === 'location' ? packingCollisionDetection : closestCenter")
+    expect(src).toContain('isPackingCollisionTarget')
+  })
+})
+
 describe('renderRows seams', () => {
   function idsFor(render: typeof sortableRows): string[] {
     const captured: string[] = []

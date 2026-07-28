@@ -510,6 +510,24 @@ describe('CategoryGroup footer subtotal', () => {
       expect(screen.getByText('No items in this location.')).toBeInTheDocument()
     })
 
+    it('calls an empty CATEGORY a category, not a location', () => {
+      // Pack falls back to category grouping while a list has no packing
+      // locations, so this copy has to name the right thing. A category can
+      // also go empty for a mundane reason - everything in it is worn, and
+      // worn rows move to the trailing Worn section.
+      render(
+        <CategoryGroup
+          name="Clothing"
+          categoryId="cat-1"
+          items={[{ ...itemNamed('hat', 'Sun hat'), isWorn: true }]}
+          weightUnit="g"
+          packMode
+        />,
+      )
+      expect(screen.getByText('No items in this category.')).toBeInTheDocument()
+      expect(screen.queryByText('No items in this location.')).toBeNull()
+    })
+
     it('reads an empty Unassigned bucket as success, not as a gap', () => {
       // "No items here" would frame a fully organized list as a problem.
       render(
