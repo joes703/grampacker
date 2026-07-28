@@ -123,6 +123,7 @@ import EmptyListCell from './EmptyListCell'
 import PackingProgress from './PackingProgress'
 import { useListResetActions } from './use-list-reset-actions'
 import { useListItemActions } from './use-list-item-actions'
+import { findBackedLocation, useListItemRemoval } from './use-list-item-removal'
 import { useListGearActions } from './use-list-gear-actions'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
@@ -161,6 +162,7 @@ const EMPTY_CATEGORIES: Category[] = []
 // Edit mode has no pack filters, so nothing is ever hidden there. Module-level
 // so the reorder planner isn't handed a fresh Set on every drag tick.
 const EMPTY_HIDDEN_ITEM_IDS: ReadonlySet<string> = new Set<string>()
+const EMPTY_PACKING_LOCATIONS: PackingLocation[] = []
 
 // Every transient dialog/modal/inline-form on this page lives in one
 // discriminated union, set/cleared atomically. `null` is the closed state
@@ -175,40 +177,16 @@ type DialogState =
   // dropping all the way to the page. Omitted (undefined) for deletes
   // launched directly from the row kebab.
   | { type: 'delete-gear'; candidate: GearItem; returnDialog?: DialogState }
-  | { type: 'remove-list-item'; item: ListItemWithGear; returnDialog?: DialogState }
-
-// Does this membership row carry state the user actually entered?
-//
-// Removing an item from a list is not destructive to the GEAR - it stays in
-// the inventory - so confirming every removal is pure friction, and that
-// friction lands hardest exactly when curating a list in bulk. But the
-// membership row itself holds things the user typed or toggled: a quantity,
-// the worn/consumable flags, and pack/ready progress. Dropping those silently
-// on a stray tap IS a loss, and there is no undo affordance to catch it.
-//
-// So the confirm is a dirty-state confirm, the same shape as "discard unsaved
-// changes?" - it appears only when there is something to lose. A freshly
-// added, untouched item removes instantly.
-//
-// sortOrder is EXCLUDED on purpose, and it is the one real judgment call here.
-// It is user-modifiable (dragging a row rewrites it), so removing a row the
-// user positioned does lose that position. But sortOrder is also server-
-// assigned on add, and the row carries no provenance bit saying which of the
-// two put it there - so treating a non-default sortOrder as "dirty" would mark
-// nearly every item on a reordered list dirty and hand the friction straight
-// back. A confirm would not preserve the position either; it only asks. The
-// deliberate trade is: position loss on removal is accepted silently, the
-// fields the user explicitly set are not. Revisit if rows ever gain undo.
-export function hasListItemEdits(item: ListItemWithGear): boolean {
-  return (
-    item.quantity !== 1 ||
-    item.isWorn ||
-    item.isConsumable ||
-    item.isPacked ||
-    item.isReady ||
-    item.packingLocationId !== null
-  )
-}
+  // The ONLY removal that still asks. A list item that backs a packing
+  // location cascades that location away and orphans its contents, which Undo
+  // cannot rebuild - see use-list-item-removal.ts for why. Every other
+  // removal is immediate with an Undo toast.
+  | {
+      type: 'remove-container-item'
+      item: ListItemWithGear
+      location: PackingLocation
+      returnDialog?: DialogState
+    }
 
 export function derivePackReorderExclusions(
   items: ListItemWithGear[],
@@ -532,11 +510,18 @@ function ListDetailInner({
     queryFn: fetchCategories,
   })
   const categories = categoriesQuery.data ?? EMPTY_CATEGORIES
+  // Enabled in BOTH modes, not just pack. Pack mode needs it to group by
+  // location; edit mode needs it to answer "does this row back a container?"
+  // before removing it, and removal is reachable from every view (picker
+  // unpick, row kebab, mobile swipe, edit dialog). That relationship lives
+  // only on the location row - a list item records where it sits, never what
+  // it contains - so without this query the edit-mode removal path is blind
+  // to the cascade it is about to trigger. Capped at 30 rows per list.
   const locationsQuery = useQuery({
     queryKey: queryKeys.packingLocations(listId),
     queryFn: () => fetchPackingLocations(listId),
-    enabled: mode === 'pack',
   })
+  const packingLocations = locationsQuery.data ?? EMPTY_PACKING_LOCATIONS
   const packingGroupingState = selectPackGroupingState(categories, locationsQuery)
   const grouping = mode === 'pack'
     ? packingGroupingState.grouping
@@ -758,6 +743,19 @@ function ListDetailInner({
   // concurrent rendering.
   const gearItemsRef = useLatestRef(gearItems)
   const listItemsRef = useLatestRef(listItems)
+  // Read at click time by requestRemoveListItem to decide whether a removal
+  // needs the container confirm. Same rationale as the two refs above: the
+  // removal handler must stay reference-stable, and the locations array
+  // changes on every packing write.
+  const packingLocationsRef = useLatestRef(packingLocations)
+
+  // Removal + Undo. Owns the "does this destroy more than the row?" rule, the
+  // Undo toast and the restore mutation; the page keeps only the container
+  // confirm, which needs page-level dialog state.
+  const { removeWithUndo } = useListItemRemoval(
+    listId,
+    (itemId, onRemoved) => deleteItem.mutate(itemId, { onSuccess: onRemoved }),
+  )
 
   // Stable callbacks for LibraryPanel. Inline arrows would mint fresh
   // references on every parent render and defeat LibraryPanel's React.memo
@@ -771,16 +769,26 @@ function ListDetailInner({
   )
   // Every remove-from-list path funnels through here: the picker's unpick
   // toggle, the row kebab, the mobile swipe, and the edit dialog. One function
-  // so the confirm rule cannot drift between them.
+  // so the rule cannot drift between them.
+  //
+  // The rule: remove immediately and offer Undo, UNLESS the row backs a
+  // packing location - that removal destroys structure beyond the row and
+  // cannot be undone, so it asks first.
   const requestRemoveListItem = useCallback(
     (li: ListItemWithGear, returnDialog?: DialogState) => {
-      if (!hasListItemEdits(li)) {
-        deleteItem.mutate(li.id)
+      const backedLocation = findBackedLocation(li.id, packingLocationsRef.current)
+      if (backedLocation) {
+        setDialog({
+          type: 'remove-container-item',
+          item: li,
+          location: backedLocation,
+          returnDialog,
+        })
         return
       }
-      setDialog({ type: 'remove-list-item', item: li, returnDialog })
+      removeWithUndo(li)
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deleteItem is a TanStack mutation result; .mutate is stable, the wrapper is not; setDialog is stable
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- packingLocationsRef is a ref (always stable); removeWithUndo and setDialog are stable
     [],
   )
 
@@ -1413,13 +1421,17 @@ function ListDetailInner({
       )}
 
 
-      {/* Remove-from-list confirm (reached from row kebab, mobile swipe,
-          gear picker remove, or the edit dialog). This removes only this
-          list item; the gear item stays in inventory. */}
-      {dialog?.type === 'remove-list-item' && (
+      {/* The one removal that still asks. Ordinary removals are immediate
+          with an Undo toast; this row backs a packing location, so removing
+          it cascades that location away and drops everything inside it to
+          Unassigned. Undo cannot rebuild that (see use-list-item-removal.ts),
+          so the dialog names the consequence instead of asking in the
+          abstract. Still no Undo offered afterwards - the confirm IS the
+          safeguard here. */}
+      {dialog?.type === 'remove-container-item' && (
         <ConfirmDialog
-          title="Remove from list"
-          message={`Remove "${dialog.item.gearItem.name}" from this list? It will stay in your gear library.`}
+          title="Remove container from list"
+          message={`"${dialog.item.gearItem.name}" is being used as a packing container. Removing it from this list also deletes the "${dialog.location.name}" container, and anything packed inside it moves to Unassigned. This can't be undone. The gear item stays in your library.`}
           confirmLabel="Remove"
           dangerous
           onCancel={() => setDialog(dialog.returnDialog ?? null)}

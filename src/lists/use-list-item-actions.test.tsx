@@ -30,6 +30,7 @@ const h = vi.hoisted(() => ({
   queryKeys: {
     gearItems: () => ['gear-items'] as const,
     listItems: (id: string) => ['list-items', id] as const,
+    packingLocations: (id: string) => ['packing-locations', id] as const,
   },
   addListItem: vi.fn<(listId: string, gearItemId: string) => Promise<unknown>>(),
   quickAddListItem: vi.fn<(listId: string, input: Record<string, unknown>) => Promise<void>>(),
@@ -277,6 +278,20 @@ describe('useListItemActions', () => {
       await waitFor(() => expect(h.deleteListItem).toHaveBeenCalledWith(LIST_ID, 'a'))
       expect(h.makeOptimisticDelete).toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: ['list-items', LIST_ID] }),
+      )
+    })
+
+    it('also invalidates packing locations, which the delete can cascade', async () => {
+      // A list item can BACK a packing location, and that FK is ON DELETE
+      // CASCADE, so this delete can remove a location row the client never
+      // touched. Without the second key the pack view kept rendering a
+      // section whose backing item was gone.
+      setup()
+
+      expect(h.makeOptimisticDelete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          invalidateKeys: [['packing-locations', LIST_ID]],
+        }),
       )
     })
   })

@@ -55,6 +55,23 @@ function ToastCard({ toast }: { toast: ToastModel }) {
     >
       <span className={`mt-0.5 shrink-0 ${variant.icon}`}>{variant.Icon}</span>
       <p className="flex-1 min-w-0 text-sm text-gray-900">{toast.message}</p>
+      {toast.action && (
+        // Dismiss BEFORE invoking, so a slow action cannot be fired twice by
+        // an impatient second click - the card is gone by the time onAction
+        // starts. onAction is synchronous by contract (see lib/toast.ts): it
+        // owns its own error handling, and nothing is awaited here.
+        <button
+          type="button"
+          onClick={() => {
+            const { onAction } = toast.action!
+            dismissToast(toast.id)
+            onAction()
+          }}
+          className="shrink-0 rounded px-1.5 py-0.5 text-sm font-semibold text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => dismissToast(toast.id)}

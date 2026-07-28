@@ -141,12 +141,20 @@ export function useListItemActions(
     },
   })
 
+  // invalidateKeys covers a cascade the client cannot see locally: a list item
+  // can BACK a packing location, and packing_locations.container_list_item_id
+  // is ON DELETE CASCADE, so deleting such a row deletes the location server-
+  // side (and SET NULLs its contents' packing_location_id). Without the second
+  // invalidation the packing-locations cache kept serving a location whose
+  // backing row no longer exists, and the pack view rendered a ghost section
+  // until something else happened to refetch it.
   const deleteItem = useMutation({
     mutationFn: (itemId: string) => deleteListItem(listId, itemId),
     ...makeOptimisticDelete<ListItemWithGear, string>({
       qc,
       queryKey: queryKeys.listItems(listId),
       id: (itemId) => itemId,
+      invalidateKeys: [queryKeys.packingLocations(listId)],
     }),
   })
 
