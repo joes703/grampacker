@@ -160,4 +160,17 @@ describe('findBackedLocation', () => {
   it('returns null when the list has no locations at all', () => {
     expect(findBackedLocation('li-canister', [])).toBeNull()
   })
+
+  it('cannot distinguish "no locations" from "locations not loaded yet"', () => {
+    // This is the whole reason ListDetailPage resolves the locations query via
+    // ensureQueryData before deciding, instead of reading the render's array.
+    // An empty array is the loading state AND the genuinely-empty state, and
+    // this predicate answers "not a container" to both. The locations query is
+    // not part of detailDataLoading, so rows are removable while it is still
+    // in flight - and answering "not a container" there would skip the confirm
+    // and cascade a location away with no warning and no undo.
+    const notLoadedYet: PackingLocation[] = []
+    expect(findBackedLocation('li-canister', notLoadedYet)).toBeNull()
+    expect(findBackedLocation('li-canister', locations)).not.toBeNull()
+  })
 })

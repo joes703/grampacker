@@ -473,6 +473,72 @@ describe('CategoryGroup footer subtotal', () => {
       expect(screen.getByText('2 / 4')).toBeInTheDocument()
     })
 
+    it('says a section is empty because of the filters, not just blank', () => {
+      // The dangerous ambiguity: a bare header with nothing under it reads
+      // the same whether the location is genuinely empty or a filter is
+      // hiding everything in it. A packer scanning for what is left would
+      // read the second as "done here".
+      renderFiltered({ showUnpackedOnly: true, showUnreadyOnly: true })
+      expect(screen.queryByText('Stakes')).toBeInTheDocument()
+
+      cleanup()
+      render(
+        <CategoryGroup
+          name="Kitchen"
+          categoryId="cat-1"
+          items={[packed, ready, both]}
+          weightUnit="g"
+          packMode
+          readyChecksEnabled
+          showUnpackedOnly
+          showUnreadyOnly
+        />,
+      )
+      expect(screen.getByText('All 3 items here are hidden by the filters above.')).toBeInTheDocument()
+    })
+
+    it('distinguishes a genuinely empty location from a filtered-empty one', () => {
+      render(
+        <CategoryGroup
+          name="Top lid"
+          regionKey="loc-1"
+          items={[]}
+          weightUnit="g"
+          packMode
+        />,
+      )
+      expect(screen.getByText('No items in this location.')).toBeInTheDocument()
+    })
+
+    it('reads an empty Unassigned bucket as success, not as a gap', () => {
+      // "No items here" would frame a fully organized list as a problem.
+      render(
+        <CategoryGroup
+          name="Unassigned"
+          categoryId={null}
+          regionKey="packing-unassigned"
+          items={[]}
+          weightUnit="g"
+          packMode
+        />,
+      )
+      expect(screen.getByText('Everything has a location.')).toBeInTheDocument()
+    })
+
+    it('leaves empty edit-mode categories alone', () => {
+      // Only pack sections explain themselves; an empty category in edit mode
+      // is self-evident from the add-item row beneath it.
+      render(
+        <CategoryGroup
+          name="Shelter"
+          categoryId="cat-1"
+          items={[]}
+          weightUnit="g"
+        />,
+      )
+      expect(screen.queryByText('No items in this location.')).toBeNull()
+    })
+
     it('never filters away the container header row', () => {
       // The container item is the section's HEADER, not a member of it.
       // Hiding it would take the location, its contents, its actions and its

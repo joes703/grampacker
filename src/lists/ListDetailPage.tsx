@@ -199,10 +199,15 @@ type DialogState =
   // location cascades that location away and orphans its contents, which Undo
   // cannot rebuild - see use-list-item-removal.ts for why. Every other
   // removal is immediate with an Undo toast.
+  //
+  // `location` is null in the fail-safe case: the packing-locations fetch
+  // failed, so we could not PROVE the row is safe to remove silently. Asking
+  // without being able to name a container is worse copy than the normal
+  // path, and better than an un-undoable cascade nobody was warned about.
   | {
       type: 'remove-container-item'
       item: ListItemWithGear
-      location: PackingLocation
+      location: PackingLocation | null
       returnDialog?: DialogState
     }
 
@@ -566,6 +571,11 @@ function ListDetailInner({
     mutationFn: (updates) => reorderPackingLocations(listId, updates),
     dndKind: 'packing-location',
   })
+  // useReorderable collapses "loading", "failed" and "genuinely empty" into
+  // one empty array. Anything that would tell the user this list HAS no
+  // locations needs to know the difference, so ask the cache directly.
+  const packingLocationsResolved =
+    qc.getQueryState(queryKeys.packingLocations(listId))?.status === 'success'
   const packingGroupingState = selectPackGroupingState(categories, {
     data: packingLocations,
     isError: packingLocationsError,
@@ -855,14 +865,24 @@ function ListDetailInner({
   // below the handlers is safe.
   //
   // Deliberately NOT hand-memoized, unlike most derived values on this page.
-  // These form a dependency chain rooted in useReorderable's items array, and
-  // the React Compiler cannot prove that array is not mutated downstream - so
-  // a useMemo over it trips react-hooks/preserve-manual-memoization and, worse,
-  // makes the compiler skip optimizing this ENTIRE component, costing far more
-  // than the memos save. Plain consts let the compiler memoize them itself,
-  // which it does correctly. The work here is a handful of passes over at most
-  // 30 locations; the expensive derivations above (packingTree, weightBreakdown)
-  // keep their explicit memos because the compiler accepts those.
+  //
+  // These form a dependency chain rooted in useReorderable's items array,
+  // which the compiler analysis in eslint-plugin-react-hooks cannot prove is
+  // unmutated downstream - so a useMemo over any of them fails
+  // react-hooks/preserve-manual-memoization and lint (the real gate) goes red.
+  //
+  // Be precise about what that costs, because the obvious reading is wrong:
+  // this repo runs the compiler's LINT rules but not its transform (plain
+  // `react()` in vite.config.ts, no babel-plugin-react-compiler in
+  // package.json). So nothing memoizes these for us - they genuinely
+  // recompute every render. That is affordable on its own terms: a handful of
+  // linear passes over at most 30 locations and 300 items, well under a
+  // millisecond. What it does cost is memo stability downstream; see
+  // renderPackRowAction below for the part that actually matters.
+  //
+  // The expensive derivations above (packingTree, weightBreakdown) keep their
+  // explicit memos - the rule accepts those, because their inputs are query
+  // data the analysis can follow.
 
   // temp- ids are optimistic rows the server has not confirmed. They are not
   // valid drop destinations: a move would name a location that does not exist.
@@ -948,12 +968,6 @@ function ListDetailInner({
   // concurrent rendering.
   const gearItemsRef = useLatestRef(gearItems)
   const listItemsRef = useLatestRef(listItems)
-  // Read at click time by requestRemoveListItem to decide whether a removal
-  // needs the container confirm. Same rationale as the two refs above: the
-  // removal handler must stay reference-stable, and the locations array
-  // changes on every packing write.
-  const packingLocationsRef = useLatestRef(packingLocations)
-
   // Removal + Undo. Owns the "does this destroy more than the row?" rule, the
   // Undo toast and the restore mutation; the page keeps only the container
   // confirm, which needs page-level dialog state.
@@ -979,21 +993,46 @@ function ListDetailInner({
   // The rule: remove immediately and offer Undo, UNLESS the row backs a
   // packing location - that removal destroys structure beyond the row and
   // cannot be undone, so it asks first.
+  // Routed through ensureQueryData rather than reading the render's locations
+  // array, and this is load-bearing. "Backs a container" lives only on the
+  // location row, and the locations query is NOT part of detailDataLoading -
+  // rows render, and are removable, while it is still in flight. Reading an
+  // empty array in that window would answer "not a container" for an item
+  // that is one, skip the confirm, and cascade a location away with no
+  // warning and no undo. ensureQueryData returns cached data immediately once
+  // loaded (so the common path is unchanged) and awaits the in-flight fetch
+  // when it is not.
+  //
+  // The async body is wrapped and fully caught: an escaping rejection here
+  // would be the fire-and-forget AGENTS.md prohibits.
   const requestRemoveListItem = useCallback(
     (li: ListItemWithGear, returnDialog?: DialogState) => {
-      const backedLocation = findBackedLocation(li.id, packingLocationsRef.current)
-      if (backedLocation) {
-        setDialog({
-          type: 'remove-container-item',
-          item: li,
-          location: backedLocation,
-          returnDialog,
-        })
-        return
-      }
-      removeWithUndo(li)
+      void (async () => {
+        let locations: PackingLocation[]
+        try {
+          locations = await qc.ensureQueryData({
+            queryKey: queryKeys.packingLocations(listId),
+            queryFn: () => fetchPackingLocations(listId),
+          })
+        } catch {
+          // Could not prove the row is safe to remove silently, so ask.
+          setDialog({ type: 'remove-container-item', item: li, location: null, returnDialog })
+          return
+        }
+        const backedLocation = findBackedLocation(li.id, locations)
+        if (backedLocation) {
+          setDialog({
+            type: 'remove-container-item',
+            item: li,
+            location: backedLocation,
+            returnDialog,
+          })
+          return
+        }
+        removeWithUndo(li)
+      })()
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- packingLocationsRef is a ref (always stable); removeWithUndo and setDialog are stable
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- qc and setDialog are stable; removeWithUndo is stable; listId is fixed for this component instance (keyed by list)
     [],
   )
 
@@ -1141,10 +1180,22 @@ function ListDetailInner({
   // memoized precisely to keep unrelated sections from re-rendering.
   //
   // A plain function, not a useCallback: its inputs are the un-memoized
-  // packing derivations above, so a memo could never hit, and pretending
-  // otherwise would just be a misleading dependency array. Pack sections
-  // therefore re-render with the page, which is what the Organize view this
-  // replaced did too.
+  // packing derivations above, so a memo could never hit and the dependency
+  // array would only mislead.
+  //
+  // KNOWN TRADE, stated plainly because the surrounding architecture works
+  // hard at the opposite: passing a fresh function here defeats
+  // CategoryGroup's React.memo for pack sections, so a checkbox tick
+  // re-renders every location section rather than the one that changed. That
+  // is the render cost CategoryGroup's prop-stability comments were written
+  // to avoid, and the Organize view this replaced was equally unstable - but
+  // Organize was not the view you tick 300 checkboxes in, and Pack is.
+  //
+  // Not fixed here because the fix is not small: the menu needs locations,
+  // in-flight mutation state, container exclusions and the breakpoint, so
+  // making it stable means either a context or per-row query subscriptions,
+  // each with its own cost. Worth profiling a 300-item / 30-location list
+  // before choosing. Filed as a follow-up rather than guessed at.
   const renderPackRowAction = (item: ListItemWithGear) => (
     <MoveToLocationMenu
       itemId={item.id}
@@ -1450,6 +1501,14 @@ function ListDetailInner({
               {mode === 'pack' && (
                 <PackLocationControls
                   locations={packingLocations}
+                  // The empty-state nudge must not fire on a guess. An empty
+                  // locations array is ALSO what a pending or failed query
+                  // looks like (useReorderable defaults items to []), so
+                  // without this a list that already has locations would be
+                  // told it has none - and its three starter buttons would
+                  // cheerfully create a duplicate. Only claim emptiness once
+                  // the query has actually answered.
+                  locationsResolved={packingLocationsResolved}
                   creationPending={locationCreationPending}
                   draft={newLocationName}
                   onDraftChange={setNewLocationName}
@@ -1755,8 +1814,14 @@ function ListDetailInner({
           safeguard here. */}
       {dialog?.type === 'remove-container-item' && (
         <ConfirmDialog
-          title="Remove container from list"
-          message={`"${dialog.item.gearItem.name}" is being used as a packing container. Removing it from this list also deletes the "${dialog.location.name}" container, and anything packed inside it moves to Unassigned. This can't be undone. The gear item stays in your library.`}
+          title={dialog.location ? 'Remove container from list' : 'Remove from list'}
+          message={dialog.location
+            ? `"${dialog.item.gearItem.name}" is being used as a packing container. Removing it from this list also deletes the "${dialog.location.name}" container, and anything packed inside it moves to Unassigned. This can't be undone. The gear item stays in your library.`
+            // Fail-safe wording: we could not load this list's packing
+            // locations, so we cannot say whether this row backs a container.
+            // Claiming it does would be a guess; saying nothing would hide a
+            // cascade that cannot be undone.
+            : `Couldn't check whether "${dialog.item.gearItem.name}" is being used as a packing container. If it is, removing it also deletes that container and moves its contents to Unassigned, and that can't be undone. The gear item stays in your library.`}
           confirmLabel="Remove"
           dangerous
           onCancel={() => setDialog(dialog.returnDialog ?? null)}
@@ -1831,12 +1896,16 @@ function ListDetailInner({
 // this is the on-ramp from one to the other.
 function PackLocationControls({
   locations,
+  locationsResolved,
   creationPending,
   draft,
   onDraftChange,
   onCreate,
 }: {
   locations: PackingLocation[]
+  /** Has the locations query actually answered? An empty array alone cannot
+   *  tell "this list has no locations" from "we haven't loaded them yet". */
+  locationsResolved: boolean
   creationPending: boolean
   draft: string
   onDraftChange: (value: string) => void
@@ -1882,7 +1951,7 @@ function PackLocationControls({
         </p>
       ) : null}
 
-      {locations.length === 0 ? (
+      {locationsResolved && locations.length === 0 ? (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
           <h2 className="text-sm font-semibold text-blue-950">Start with where your gear lives</h2>
           <p className="mt-1 text-sm text-blue-900">

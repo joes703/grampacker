@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   addListItem,
@@ -107,9 +107,6 @@ export function useListItemRemoval(
 ) {
   const qc = useQueryClient()
   const removeItemRef = useLatestRef(removeItem)
-  // The toast can outlive the row it describes, and it dismisses itself on
-  // click, so this only guards a pathological double-fire.
-  const undoingRef = useRef(false)
 
   // Restores through a real mutation, never the raw request helpers: those
   // are plain fetch wrappers with no cache behavior at all, so a successful
@@ -140,38 +137,50 @@ export function useListItemRemoval(
         return { fieldsRestored: false }
       }
     },
+    // Feedback lives on the MUTATION, not on per-call mutate callbacks.
+    //
+    // An Undo toast outlives the page that created it: switching lists
+    // unmounts this hook (ListDetailPage is keyed by list id), and TanStack
+    // does not run per-call `mutate` callbacks once the calling observer has
+    // unsubscribed - only the mutation's own do. Putting the toasts here is
+    // what keeps a restore that lands after navigation from failing silently.
+    // The toast store is module-level, so showing one from an unmounted
+    // hook's callback is fine.
+    onSuccess: ({ fieldsRestored }, removal) => {
+      if (!fieldsRestored) {
+        // The row IS back, just pristine. Different outcome, different
+        // wording - reporting it as a failure would send the user looking
+        // for a row that is on screen.
+        showToast(
+          `"${removal.name}" is back, but its quantity and flags couldn't be restored.`,
+          { type: 'error' },
+        )
+      }
+    },
+    onError: (_error, removal) => {
+      // Every reason this fails is real and outside our control: the gear was
+      // deleted from inventory in the meantime, or another client refilled
+      // the 300-item cap. Say so and CONSUME the rejection - useMutation
+      // absorbs it, so nothing escapes as an unhandled promise.
+      showToast(`Couldn't put "${removal.name}" back. Try adding it again.`, {
+        type: 'error',
+      })
+    },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
       void qc.invalidateQueries({ queryKey: queryKeys.packingLocations(listId) })
     },
   })
 
+  // No in-flight guard, deliberately. There used to be one shared boolean
+  // here, and it was wrong in both directions: the toast already dismisses
+  // itself BEFORE invoking its action (Toast.tsx), so the same Undo cannot
+  // fire twice, while a hook-wide flag meant undoing one removal silently
+  // discarded the Undo click on a DIFFERENT removal whose request overlapped
+  // it. Remove two items, undo both quickly, and the second one stayed
+  // deleted. Independent removals are independent restores.
   const requestUndo = useCallback((removal: ListItemRemoval) => {
-    if (undoingRef.current) return
-    undoingRef.current = true
-    undoRemoval.mutate(removal, {
-      onSuccess: ({ fieldsRestored }) => {
-        if (!fieldsRestored) {
-          showToast(
-            `"${removal.name}" is back, but its quantity and flags couldn't be restored.`,
-            { type: 'error' },
-          )
-        }
-      },
-      onError: () => {
-        // Every reason this fails is real and outside our control: the gear
-        // was deleted from inventory in the meantime, or another client
-        // refilled the 300-item cap. Say so and CONSUME the rejection - an
-        // uncaught one here is exactly the fire-and-forget the toast action
-        // contract forbids.
-        showToast(`Couldn't put "${removal.name}" back. Try adding it again.`, {
-          type: 'error',
-        })
-      },
-      onSettled: () => {
-        undoingRef.current = false
-      },
-    })
+    undoRemoval.mutate(removal)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- undoRemoval is a TanStack mutation result; .mutate is stable, the wrapper is not
   }, [])
 

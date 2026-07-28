@@ -223,15 +223,25 @@ describe('useListItemRemoval', () => {
     )
   })
 
-  it('ignores a second undo while the first is still in flight', async () => {
+  it('restores two overlapping removals independently', async () => {
+    // Regression: a single hook-wide in-flight boolean used to guard this.
+    // Remove two items, undo the first, then undo the second while the first
+    // request is still pending, and the second Undo was silently discarded -
+    // the toast had already dismissed itself, so the click looked handled and
+    // the item stayed deleted. Independent removals are independent restores.
     const { result, settleDelete } = setup()
 
-    result.current.removeWithUndo(item())
+    result.current.removeWithUndo(item({ id: 'li-1', gearItemId: 'gear-1' }))
     settleDelete()
-    undoFromToast()
-    undoFromToast()
+    result.current.removeWithUndo(item({ id: 'li-2', gearItemId: 'gear-2' }))
+    settleDelete()
 
-    await waitFor(() => expect(h.addListItem).toHaveBeenCalled())
-    expect(h.addListItem).toHaveBeenCalledTimes(1)
+    for (const call of toast.showToast.mock.calls) {
+      call[1]?.action?.onAction()
+    }
+
+    await waitFor(() => expect(h.addListItem).toHaveBeenCalledTimes(2))
+    expect(h.addListItem).toHaveBeenCalledWith(LIST_ID, 'gear-1')
+    expect(h.addListItem).toHaveBeenCalledWith(LIST_ID, 'gear-2')
   })
 })

@@ -307,6 +307,12 @@ function CategoryGroup({
   // are neither packed nor ready - the rows with everything still to do. OR
   // would make turning on a second filter show MORE rows, which is not what a
   // filter switch means.
+  // Copy for a genuinely empty pack section. Unassigned is the odd one out:
+  // "no items here" reads as a problem, when an empty Unassigned bucket is
+  // exactly what a fully organized list looks like.
+  const emptySectionLabel = categoryId === null && regionKey === 'packing-unassigned'
+    ? 'Everything has a location.'
+    : 'No items in this location.'
   const filtering = packMode && (showUnpackedOnly || showUnreadyOnly)
   const visibleItems = filtering
     ? sectionItems.filter(
@@ -513,6 +519,22 @@ function CategoryGroup({
           {renderRows
             ? renderRows(visibleItems, rowPropsFor)
             : visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}
+          {/* An empty pack section says WHY it is empty. Without this a
+              section can render as a bare header with nothing under it, and
+              the two reasons look identical: the location genuinely holds
+              nothing, or a filter is hiding everything in it. The second is
+              the dangerous one - a packer scanning for what is left could
+              read a filtered-empty section as "done here". (The retired
+              Organize view carried this line; the filters make it matter
+              more, not less.) Only pack sections: an empty CATEGORY in edit
+              mode is self-evident from the add-item row beneath it. */}
+          {packMode && visibleItems.length === 0 && !children && (
+            <p className="px-3 py-3 text-sm text-gray-500">
+              {sectionItems.length === 0
+                ? emptySectionLabel
+                : `All ${sectionItems.length} ${sectionItems.length === 1 ? 'item' : 'items'} here are hidden by the filters above.`}
+            </p>
+          )}
           {children}
 
           {/* Draft row when adding — full editable item row */}
