@@ -128,7 +128,7 @@ import EmptyListCell from './EmptyListCell'
 import PackingProgress from './PackingProgress'
 import { useListResetActions } from './use-list-reset-actions'
 import { useListItemActions } from './use-list-item-actions'
-import { resolveRemovalPlan, useListItemRemoval } from './use-list-item-removal'
+import { resolveRemovalPlan } from './list-item-removal'
 import { useListGearActions } from './use-list-gear-actions'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
@@ -195,15 +195,16 @@ type DialogState =
   // dropping all the way to the page. Omitted (undefined) for deletes
   // launched directly from the row kebab.
   | { type: 'delete-gear'; candidate: GearItem; returnDialog?: DialogState }
-  // The ONLY removal that still asks. A list item that backs a packing
-  // location cascades that location away and orphans its contents, which Undo
-  // cannot rebuild - see use-list-item-removal.ts for why. Every other
-  // removal is immediate with an Undo toast.
+  // The ONLY removal that asks. A list item can be USED AS a packing
+  // container, and removing it removes that container too, moving its
+  // contents to Unassigned - intended, but more than the row that was
+  // clicked. Every other removal goes straight through. See
+  // list-item-removal.ts for the rule.
   //
-  // `location` is null in the fail-safe case: the packing-locations fetch
-  // failed, so we could not PROVE the row is safe to remove silently. Asking
-  // without being able to name a container is worse copy than the normal
-  // path, and better than an un-undoable cascade nobody was warned about.
+  // `location` is null in the fail-safe case: the packing-locations lookup
+  // failed, so we could not establish whether this row is a container. Asking
+  // without being able to name one is worse copy than the normal path, and
+  // better than removing a container unannounced.
   | {
       type: 'remove-container-item'
       item: ListItemWithGear
@@ -972,22 +973,6 @@ function ListDetailInner({
   // concurrent rendering.
   const gearItemsRef = useLatestRef(gearItems)
   const listItemsRef = useLatestRef(listItems)
-  // Removal + Undo. Owns the "does this destroy more than the row?" rule, the
-  // Undo toast and the restore mutation; the page keeps only the container
-  // confirm, which needs page-level dialog state.
-  //
-  // KNOWN GAP: onRemoved is a per-call mutate callback, and TanStack drops
-  // those once the calling observer unsubscribes. Navigate to another list
-  // before the DELETE settles and the removal still succeeds but never offers
-  // its Undo. Closing it means moving the delete's success handling onto the
-  // mutation itself, which lives in useListItemActions and is shared with the
-  // container-confirm path that deliberately offers no Undo - so it is a
-  // restructure, not a tweak. The restore side already avoids this: its
-  // toasts are mutation-level.
-  const { removeWithUndo } = useListItemRemoval(
-    listId,
-    (itemId, onRemoved) => deleteItem.mutate(itemId, { onSuccess: onRemoved }),
-  )
 
   // Stable callbacks for LibraryPanel. Inline arrows would mint fresh
   // references on every parent render and defeat LibraryPanel's React.memo
@@ -1003,29 +988,26 @@ function ListDetailInner({
   // toggle, the row kebab, the mobile swipe, and the edit dialog. One function
   // so the rule cannot drift between them.
   //
-  // The rule: remove immediately and offer Undo, UNLESS the row backs a
-  // packing location - that removal destroys structure beyond the row and
-  // cannot be undone, so it asks first.
-  // Resolves the locations query before deciding, rather than reading the
-  // render's array. This is load-bearing. "Backs a container" lives only on
-  // the location row, and the locations query is NOT part of
-  // detailDataLoading - rows render, and are removable, while it is still in
-  // flight. Reading an empty array in that window would answer "not a
-  // container" for an item that is one, skip the confirm, and cascade a
-  // location away with no warning and no undo.
+  // The rule (see list-item-removal.ts): remove immediately, UNLESS the row is
+  // being used as a packing container - that also removes the container and
+  // moves its contents to Unassigned, which is intended but is a bigger change
+  // than the row that was clicked, so it gets named first.
   //
-  // The decision itself lives in resolveRemovalPlan (see it for why it
-  // fetches rather than reading the cache); this keeps only the page-level
-  // parts: the duplicate guard and the dialog state. resolveRemovalPlan
-  // never rejects - it turns a failed lookup into a confirm - so nothing
+  // The decision resolves the locations query rather than reading the
+  // render's array, and that is load-bearing: the locations query is NOT part
+  // of detailDataLoading, so rows render - and are removable - while it is
+  // still in flight. An empty array in that window would answer "not a
+  // container" for an item that is one, and remove the container with no
+  // dialog. resolveRemovalPlan owns that (see it for why it fetches); this
+  // keeps only the page-level parts, the duplicate guard and the dialog
+  // state. It never rejects - a failed lookup becomes a confirm - so nothing
   // escapes this discarded IIFE as an unhandled rejection.
   const requestRemoveListItem = useCallback(
     (li: ListItemWithGear, returnDialog?: DialogState) => {
-      // Awaiting a fetch leaves the row on screen and clickable, so the same
-      // item can be queued for removal twice - two DELETEs, the second a 404,
-      // and the toast wiring of the first disturbed. The synchronous path
-      // this replaced was self-limiting because the optimistic delete removed
-      // the row before a second click could land.
+      // Awaiting a lookup leaves the row on screen and clickable, so the same
+      // item can be queued for removal twice - two DELETEs, the second a 404.
+      // The synchronous path this replaced was self-limiting because the
+      // optimistic delete removed the row before a second click could land.
       if (removalPreflightRef.current.has(li.id)) return
       removalPreflightRef.current.add(li.id)
       void (async () => {
@@ -1040,13 +1022,13 @@ function ListDetailInner({
             })
             return
           }
-          removeWithUndo(li)
+          deleteItem.mutate(li.id)
         } finally {
           removalPreflightRef.current.delete(li.id)
         }
       })()
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- qc and setDialog are stable; removeWithUndo is stable; refs are stable; listId is fixed for this component instance (keyed by list)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- qc and setDialog are stable; deleteItem is a TanStack mutation result (.mutate is stable, the wrapper is not); refs are stable; listId is fixed for this component instance (keyed by list)
     [],
   )
 
@@ -1828,22 +1810,28 @@ function ListDetailInner({
 
 
       {/* The one removal that still asks. Ordinary removals are immediate
-          with an Undo toast; this row backs a packing location, so removing
-          it cascades that location away and drops everything inside it to
-          Unassigned. Undo cannot rebuild that (see use-list-item-removal.ts),
-          so the dialog names the consequence instead of asking in the
-          abstract. Still no Undo offered afterwards - the confirm IS the
-          safeguard here. */}
+          without a dialog; this row is being USED AS a packing container, so
+          removing it also removes that container and moves its contents to
+          Unassigned. That is intended behavior - gear-backed containers
+          cannot outlive their gear - but it changes more than the row that
+          was clicked, so it gets named first rather than happening
+          silently. See list-item-removal.ts for the rule. */}
       {dialog?.type === 'remove-container-item' && (
         <ConfirmDialog
           title={dialog.location ? 'Remove container from list' : 'Remove from list'}
+          // Descriptive, not alarming. Losing the container along with the
+          // gear is the intended outcome - a container that IS a piece of
+          // gear cannot outlive it - and its contents going to Unassigned is
+          // where they belong. The dialog exists because that is a bigger
+          // change than the row the user clicked, not because it is a
+          // mistake.
           message={dialog.location
-            ? `"${dialog.item.gearItem.name}" is being used as a packing container. Removing it from this list also deletes the "${dialog.location.name}" container, and anything packed inside it moves to Unassigned. This can't be undone. The gear item stays in your library.`
+            ? `"${dialog.item.gearItem.name}" is being used as a packing container. Removing it from this list also removes the "${dialog.location.name}" container, and anything packed inside it moves to Unassigned. The gear item stays in your library.`
             // Fail-safe wording: we could not load this list's packing
-            // locations, so we cannot say whether this row backs a container.
-            // Claiming it does would be a guess; saying nothing would hide a
-            // cascade that cannot be undone.
-            : `Couldn't check whether "${dialog.item.gearItem.name}" is being used as a packing container. If it is, removing it also deletes that container and moves its contents to Unassigned, and that can't be undone. The gear item stays in your library.`}
+            // locations, so we cannot say whether this row is a container.
+            // Claiming it is would be a guess; saying nothing would spring
+            // the container removal on the user unannounced.
+            : `Couldn't check whether "${dialog.item.gearItem.name}" is being used as a packing container. If it is, removing it also removes that container and moves its contents to Unassigned. The gear item stays in your library.`}
           confirmLabel="Remove"
           dangerous
           onCancel={() => setDialog(dialog.returnDialog ?? null)}
