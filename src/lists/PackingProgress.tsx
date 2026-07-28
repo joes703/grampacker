@@ -17,23 +17,21 @@ type Props = {
   onReset: () => void
   showUnpackedOnly: boolean
   onToggleShowUnpackedOnly: () => void
-  // Ready Checks block. The "Add ready checks" toggle lives inline at the
-  // top of this panel — it's the only place pack-mode options live now
-  // that List options is hidden in pack mode. `enabled` still drives the
-  // second progress bar + Reset Ready button; toggling persists via
-  // `onToggleEnabled` (writes ready_checks_enabled on the lists row).
+  // Ready Checks block. Ready checks are ALWAYS on now: there is no
+  // per-list opt-in, so the second progress bar and the Reset ready button
+  // render unconditionally. The `ready_checks_enabled` column still exists
+  // and is still copied by list duplication, but nothing reads it - see the
+  // note in ListDetailPage where readyChecksEnabled is pinned true.
   // Prop is required because PackingProgress only renders for the owner
-  // in pack mode — the share view (which never wires reset/toggle) does
-  // not render this component.
+  // in pack mode — the share view (which never wires reset) does not
+  // render this component.
   readyChecks: {
     ready: number
     // Gear-only denominator. Ready checks never cover food, so dividing by
     // the combined `total` above would make the ready bar uncompletable on
     // any list with a food plan.
     total: number
-    enabled: boolean
     onResetReady: () => void
-    onToggleEnabled: () => void
   }
 }
 
@@ -52,40 +50,22 @@ export default function PackingProgress({
   const readyCount = readyChecks.ready
   const readyTotal = readyChecks.total
   const readyPct = readyTotal === 0 ? 0 : Math.round((readyCount / readyTotal) * 100)
-  const readyDone = readyChecks.enabled && readyCount === readyTotal && readyTotal > 0
+  const readyDone = readyCount === readyTotal && readyTotal > 0
 
   return (
     <div className={`${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} p-4`}>
-      {/* Pack-mode controls. Compact inline cluster of label-and-switch
-          pairs (each label sits adjacent to its switch so they read as
-          one control), gap-x-5 between clusters, flex-wrap so mobile
-          stacks the two when the panel is narrow. The cluster is anchored
-          left, not stretched edge-to-edge — the switches were never meant
-          to fight each other across a wide desktop panel.
-          Show unpacked only: local view state.
-          Add ready checks: persists ready_checks_enabled. This is the
-          only surface that toggles this setting now that List options
-          is suppressed in pack mode. */}
+      {/* Pack-mode controls. One label-and-switch pair now that ready checks
+          are always on; the pair sits inside a flex cluster so the label
+          reads as adjacent to its control. ToggleSwitch renders a <button>
+          (not an <input>), so wrapping in a <label> would be semantically
+          wrong. The switch already carries its own ariaLabel. */}
       <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-2 print:hidden">
-        {/* Each label-and-switch pair sits inside a flex cluster so the
-            label reads as adjacent to its control. ToggleSwitch renders
-            a <button> (not an <input>), so wrapping in a <label> would
-            be semantically wrong. The switch already carries its own
-            ariaLabel. */}
         <div className="flex items-center gap-2">
           <span className={PANEL_TOGGLE_LABEL}>Show unpacked only</span>
           <ToggleSwitch
             checked={showUnpackedOnly}
             onChange={onToggleShowUnpackedOnly}
             ariaLabel="Show unpacked only"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={PANEL_TOGGLE_LABEL}>Add ready checks</span>
-          <ToggleSwitch
-            checked={readyChecks.enabled}
-            onChange={readyChecks.onToggleEnabled}
-            ariaLabel="Add ready checks"
           />
         </div>
       </div>
@@ -119,36 +99,36 @@ export default function PackingProgress({
         />
       </div>
 
-      {readyChecks.enabled && (
-        <div className="mt-3">
-          <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
-            <span className="text-sm font-medium tabular-nums text-gray-700">
-              {readyCount} / {readyTotal} ready
-            </span>
-            <div className="flex items-center gap-2 flex-wrap">
-              {readyDone && (
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                  All ready!
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => setConfirmingResetReady(true)}
-                disabled={readyCount === 0}
-                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <RotateCcw size={12} /> Reset ready
-              </button>
-            </div>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-            <div
-              className={`h-2 rounded-full transition-all ${readyDone ? 'bg-green-500' : 'bg-amber-500'}`}
-              style={{ width: `${readyPct}%` }}
-            />
+      {/* Ready bar — unconditional. Ready checks used to be a per-list opt-in
+          whose toggle lived above; they are now simply part of pack mode. */}
+      <div className="mt-3">
+        <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+          <span className="text-sm font-medium tabular-nums text-gray-700">
+            {readyCount} / {readyTotal} ready
+          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            {readyDone && (
+              <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                All ready!
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setConfirmingResetReady(true)}
+              disabled={readyCount === 0}
+              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <RotateCcw size={12} /> Reset ready
+            </button>
           </div>
         </div>
-      )}
+        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+          <div
+            className={`h-2 rounded-full transition-all ${readyDone ? 'bg-green-500' : 'bg-amber-500'}`}
+            style={{ width: `${readyPct}%` }}
+          />
+        </div>
+      </div>
 
       {confirmingReset && (
         // Reset is recoverable (just clears is_packed flags), so the confirm

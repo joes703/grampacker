@@ -22,14 +22,48 @@ describe('PackingProgress', () => {
         readyChecks={{
           ready: 3,
           total: 3,
-          enabled: true,
           onResetReady: () => {},
-          onToggleEnabled: () => {},
         }}
       />,
     )
     expect(screen.getByText('2 / 5 packed')).toBeTruthy()
     expect(screen.getByText('3 / 3 ready')).toBeTruthy()
     expect(screen.getByText('All ready!')).toBeTruthy()
+  })
+
+  // Ready checks used to be a per-list opt-in whose switch lived at the top of
+  // this panel, so the ready bar rendered only when the list had opted in.
+  // They are unconditional now. Both halves are pinned: the bar always shows,
+  // and the switch is gone rather than merely defaulted on - a defaulted-on
+  // switch would still let a stray tap take the ready column away.
+  it('shows the ready bar without any opt-in', () => {
+    render(
+      <PackingProgress
+        total={3}
+        packed={0}
+        onReset={() => {}}
+        showUnpackedOnly={false}
+        onToggleShowUnpackedOnly={() => {}}
+        readyChecks={{ ready: 0, total: 3, onResetReady: () => {} }}
+      />,
+    )
+    expect(screen.getByText('0 / 3 ready')).toBeTruthy()
+    expect(screen.queryByRole('switch', { name: 'Add ready checks' })).toBeNull()
+  })
+
+  it('keeps the unpacked-only switch', () => {
+    // The other switch in that cluster must survive the removal of the ready
+    // one - they lived in the same flex row.
+    render(
+      <PackingProgress
+        total={3}
+        packed={0}
+        onReset={() => {}}
+        showUnpackedOnly={false}
+        onToggleShowUnpackedOnly={() => {}}
+        readyChecks={{ ready: 0, total: 3, onResetReady: () => {} }}
+      />,
+    )
+    expect(screen.getByRole('switch', { name: 'Show unpacked only' })).toBeTruthy()
   })
 })

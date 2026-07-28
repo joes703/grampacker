@@ -124,7 +124,6 @@ import PackingProgress from './PackingProgress'
 import { useListResetActions } from './use-list-reset-actions'
 import { useListItemActions } from './use-list-item-actions'
 import { useListGearActions } from './use-list-gear-actions'
-import { useListFlagToggle } from './use-list-flag-toggle'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
 import CategoryGroup from './CategoryGroup'
@@ -568,18 +567,6 @@ function ListDetailInner({
     }),
   })
 
-  // Toggling the per-list "Add ready checks" flag. The control lives inline
-  // at the top of PackingProgress now that List options is hidden in pack
-  // mode; ListSettingsPanel used to own this mutation but the panel itself
-  // never renders in pack mode, so it lives up here next to notesMut /
-  // reorder paths. Routed through useListFlagToggle (absolute target +
-  // synchronous in-flight ref) so rapid double-toggles can't send a stale
-  // or duplicate PATCH; see the hook for the races the naive flip carries.
-  const readyChecksToggle = useListFlagToggle({
-    read: (target) => target.readyChecksEnabled,
-    patch: (readyChecksEnabled) => ({ readyChecksEnabled }),
-  })
-
   // Guards against the inline Quick Add row firing twice when the user
   // commits the same draft rapidly (Enter then blur, or two Enter presses).
   // Each press fires a fresh quick-add request; without a gate the second
@@ -843,7 +830,21 @@ function ListDetailInner({
   const sharedGroupProps = useMemo(
     () => ({
       packMode: mode === 'pack',
-      readyChecksEnabled: list?.readyChecksEnabled ?? false,
+      // Ready checks are always on. This used to read list.readyChecksEnabled,
+      // a per-list opt-in toggled from PackingProgress. The toggle was pure
+      // friction - a checklist either has a prep step or you ignore the
+      // column - so the feature is now unconditional and the flag is pinned
+      // true here rather than threaded through every consumer.
+      //
+      // The lists.ready_checks_enabled column stays: dropping it means a
+      // SQLite table rebuild, and a rebuild of `lists` cascade-deletes
+      // list_items (AGENTS.md). It is inert compatibility data now - list
+      // duplication still copies it, nothing reads it. is_ready on each item
+      // was always persisted independently of this flag, so a list that had
+      // ready checks on, collected some ticks, then turned them off gets
+      // those ticks back rather than a reset - which is the honest outcome:
+      // the data was never deleted, only hidden.
+      readyChecksEnabled: true,
       weightUnit,
       isBelowLg,
       // Injects the drag rendering. CategoryGroup itself has no @dnd-kit import
@@ -878,7 +879,7 @@ function ListDetailInner({
         updateGearItem.mutate({ id: gearId, patch: { status } }),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above re: mutation refs
-    [mode, list?.readyChecksEnabled, weightUnit, isBelowLg, showUnpackedOnly],
+    [mode, weightUnit, isBelowLg, showUnpackedOnly],
   )
 
   function renderPackingLocationNode(
@@ -1038,9 +1039,7 @@ function ListDetailInner({
                     readyChecks={{
                       ready: listItems.filter((i) => i.isReady).length,
                       total: listItems.length,
-                      enabled: list.readyChecksEnabled,
                       onResetReady: resetReady,
-                      onToggleEnabled: () => readyChecksToggle.toggle(list),
                     }}
                   />
                 </div>
