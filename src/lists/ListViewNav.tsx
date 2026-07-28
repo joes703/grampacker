@@ -4,11 +4,10 @@ import { persistedListPath } from './list-detail-mode'
 
 const VIEWS: { mode: ListDetailMode; label: string }[] = [
   { mode: 'edit', label: 'List' },
-  { mode: 'organize', label: 'Organize' },
   { mode: 'pack', label: 'Pack' },
 ]
 
-// These are three peer URL destinations, not two on/off toggles. Links keep
+// These are peer URL destinations, not on/off toggles. Links keep
 // every view one activation away, preserve browser navigation, and expose the
 // selected destination with aria-current instead of claiming binary state.
 export default function ListViewNav({

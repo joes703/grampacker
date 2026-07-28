@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Pencil } from 'lucide-react'
+import { Pencil, Plus } from 'lucide-react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -11,15 +11,17 @@ import {
   TouchSensor,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
 import {
   arrayMove,
+  SortableContext,
   sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 const ListSidebarDrawer = lazy(() => import('./ListSidebarDrawer'))
-const OrganizePackPanel = lazy(() => import('./OrganizePackPanel'))
 import {
   queryKeys,
   fetchLists,
@@ -29,7 +31,9 @@ import {
   fetchPackingLocations,
   fetchFoodPlans,
   updateList,
+  updateListItem,
   reorderListItems,
+  reorderPackingLocations,
   makeOptimisticReorder,
   makeOptimisticUpdate,
   type ListItemPatch,
@@ -37,6 +41,7 @@ import {
 import type { Category, GearItem, ListItemWithGear, List, PackingLocation } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
+import { useReorderable } from '../lib/use-reorderable'
 import { useLatestRef } from '../lib/use-latest-ref'
 import {
   writeLastListPath,
@@ -44,7 +49,7 @@ import {
   clearLastListPath,
   getListIdFromListPath,
 } from '../lib/last-list-path'
-import { parseDnDId } from '../lib/dnd-ids'
+import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
 import { assignSortOrderSlots } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
@@ -128,7 +133,7 @@ import { useListGearActions } from './use-list-gear-actions'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
 import CategoryGroup from './CategoryGroup'
-import { sortableRows } from './SortableCategoryRows'
+import { packingSortableRows, sortableRows } from './SortableCategoryRows'
 import PanelCard from './PanelCard'
 import ItemRow from './ItemRow'
 import GearItemDialog from '../components/gear/GearItemDialog'
@@ -137,14 +142,27 @@ import { useDocumentTitle } from '../lib/use-document-title'
 import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
 import {
   deriveListMode,
+  isLegacyOrganizePath,
   listDocumentTitle,
   persistedListPath,
   type ListDetailMode,
 } from './list-detail-mode'
 import { orderPackGroups, selectPackGroupingState } from './packing-grouping'
 import { usePackingCollapsed } from './packing-collapse'
-import { buildPackingTree, type PackingTreeLocation } from './packing-tree'
+import {
+  buildContainerMoveExclusions,
+  buildPackingTree,
+  buildSiblingLocationIdsById,
+  deriveWornReorderExclusions,
+  type PackingTreeLocation,
+} from './packing-tree'
+import { usePackingLocationActions } from './use-packing-location-actions'
+import { isPackingCollisionTarget, planPackingItemDragEnd } from './packing-dnd'
+import MoveToLocationMenu from './MoveToLocationMenu'
+import { PackLocationSection } from './PackLocationSection'
+import { DroppableUnassignedSection } from './SortablePackSection'
 import { FOOD_PLANNING_ENABLED } from '../lib/product-features'
+import { PACKING_LOCATION_CAP } from '../lib/caps'
 
 // TRANSPLANT NOTE (print): the old page rendered PrintListHeader above the
 // grid (a print-only document header) and carried print:* utility classes
@@ -162,7 +180,7 @@ const EMPTY_CATEGORIES: Category[] = []
 // Edit mode has no pack filters, so nothing is ever hidden there. Module-level
 // so the reorder planner isn't handed a fresh Set on every drag tick.
 const EMPTY_HIDDEN_ITEM_IDS: ReadonlySet<string> = new Set<string>()
-const EMPTY_PACKING_LOCATIONS: PackingLocation[] = []
+const EMPTY_EXCLUSIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map()
 
 // Every transient dialog/modal/inline-form on this page lives in one
 // discriminated union, set/cleared atomically. `null` is the closed state
@@ -326,7 +344,11 @@ function ListDetailInner({
   const location = useLocation()
   const navigate = useNavigate()
   const legacyPackMode = location.pathname === `/lists/${listId}` && new URLSearchParams(location.search).get('mode') === 'pack'
-  const legacyOrganizeMode = location.pathname === `/lists/${listId}/pack/organize`
+  // Organize was merged into Pack. Both retired URL shapes still resolve (via
+  // deriveListMode) and get rewritten to /pack below, so old bookmarks and
+  // home-screen shortcuts land in the view that replaced them rather than on
+  // a dead route.
+  const legacyOrganizeMode = isLegacyOrganizePath(location.pathname, listId)
   const mode: ListDetailMode = deriveListMode(location.pathname, location.search, listId)
   const { weightUnit } = useWeightUnit()
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
@@ -364,6 +386,12 @@ function ListDetailInner({
   // switching gear items naturally discards the error: no separate state to
   // keep in sync.
   const [dialog, setDialog] = useState<DialogState | null>(null)
+  // Packing-location admin state, lifted from the retired OrganizePackPanel.
+  // Which section is renaming (by id, so switching sections cannot leak a
+  // half-typed name), the pending location delete, and the new-location draft.
+  const [renamingLocationId, setRenamingLocationId] = useState<string | null>(null)
+  const [deleteLocationTarget, setDeleteLocationTarget] = useState<PackingLocation | null>(null)
+  const [newLocationName, setNewLocationName] = useState('')
 
   const list = lists.find((l) => l.id === listId)
   // Inner overrides the wrapper's "Lists" default with the list name once
@@ -441,10 +469,8 @@ function ListDetailInner({
 
 
   useEffect(() => {
-    if (legacyPackMode) {
+    if (legacyPackMode || legacyOrganizeMode) {
       void navigate(`/lists/${listId}/pack`, { replace: true })
-    } else if (legacyOrganizeMode) {
-      void navigate(`/lists/${listId}/organize`, { replace: true })
     }
   }, [legacyOrganizeMode, legacyPackMode, listId, navigate])
 
@@ -510,19 +536,40 @@ function ListDetailInner({
     queryFn: fetchCategories,
   })
   const categories = categoriesQuery.data ?? EMPTY_CATEGORIES
-  // Enabled in BOTH modes, not just pack. Pack mode needs it to group by
-  // location; edit mode needs it to answer "does this row back a container?"
-  // before removing it, and removal is reachable from every view (picker
-  // unpick, row kebab, mobile swipe, edit dialog). That relationship lives
-  // only on the location row - a list item records where it sits, never what
-  // it contains - so without this query the edit-mode removal path is blind
-  // to the cascade it is about to trigger. Capped at 30 rows per list.
-  const locationsQuery = useQuery({
+  // Packing locations, and their reorder state machine.
+  //
+  // Subscribed in BOTH modes, not just pack. Pack mode needs it to group by
+  // location and to reorder sections; edit mode needs it to answer "does this
+  // row back a container?" before removing it, and removal is reachable from
+  // every view (picker unpick, row kebab, mobile swipe, edit dialog). That
+  // relationship lives only on the location row - a list item records where it
+  // sits, never what it contains - so without this the edit-mode removal path
+  // is blind to the cascade it is about to trigger. Capped at 30 rows/list.
+  //
+  // useReorderable rather than a bare useQuery because THIS component renders
+  // the location SortableContext, and the hook's own useQuery subscription is
+  // what keeps the optimistic reorder write and the drop animation in one
+  // commit - see the hook's file comment for the race it structurally
+  // prevents. It self-gates on dndKind, so its handleDragEnd can sit
+  // alongside the item handler under one DndContext without cross-fire.
+  const {
+    items: packingLocations,
+    isError: packingLocationsError,
+    activeItem: activeLocation,
+    reorderPending: locationReorderPending,
+    handleDragStart: handleLocationDragStart,
+    handleDragCancel: handleLocationDragCancel,
+    handleDragEnd: handleLocationDragEnd,
+  } = useReorderable<PackingLocation>({
     queryKey: queryKeys.packingLocations(listId),
     queryFn: () => fetchPackingLocations(listId),
+    mutationFn: (updates) => reorderPackingLocations(listId, updates),
+    dndKind: 'packing-location',
   })
-  const packingLocations = locationsQuery.data ?? EMPTY_PACKING_LOCATIONS
-  const packingGroupingState = selectPackGroupingState(categories, locationsQuery)
+  const packingGroupingState = selectPackGroupingState(categories, {
+    data: packingLocations,
+    isError: packingLocationsError,
+  })
   const grouping = mode === 'pack'
     ? packingGroupingState.grouping
     : { kind: 'category' as const, groups: categories }
@@ -568,6 +615,31 @@ function ListDetailInner({
     ...makeOptimisticReorder<ListItemWithGear>(qc, queryKeys.listItems(listId)),
   })
 
+  // Packing-location admin (create / rename / delete / promote an item to a
+  // container), lifted from the retired OrganizePackPanel unchanged.
+  const { createLocation, createItemContainer, renameLocation, removeLocation } =
+    usePackingLocationActions(listId, packingLocations)
+  const locationCreationPending =
+    createLocation.isPending || createItemContainer.isPending
+
+  // Moving an item between packing locations. Also lifted from the organizer:
+  // it is the write behind both a cross-location drag and the row menu.
+  const moveItemMut = useMutation({
+    mutationFn: ({ itemId, locationId }: { itemId: string; locationId: string | null }) =>
+      updateListItem(listId, itemId, { packingLocationId: locationId }),
+    ...makeOptimisticUpdate<
+      ListItemWithGear,
+      { itemId: string; locationId: string | null }
+    >({
+      qc,
+      queryKey: queryKeys.listItems(listId),
+      id: ({ itemId }) => itemId,
+      apply: (item, { locationId }) => ({ ...item, packingLocationId: locationId }),
+    }),
+  })
+  const itemDragPending =
+    moveItemMut.isPending || reorderItemsMut.isPending || locationCreationPending
+
   const notesMut = useMutation({
     mutationFn: (description: string) => updateList(listId, { description: description || null }),
     ...makeOptimisticUpdate<List, string>({
@@ -605,38 +677,115 @@ function ListDetailInner({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  // Active drag id (always an item id on this page — categories are not
-  // reorderable here; that's /gear-only). The DragOverlay below uses it to
-  // render an item-row clone during item drag.
+  // Active drag id. Three kinds share this one DndContext now:
+  //   item:             a row in category grouping (reorder within category)
+  //   packing-item:     a row in location grouping (reorder OR move between
+  //                     locations), and the backing item of a container
+  //   packing-location: a section (reorder among siblings)
+  // The DragOverlay below branches on the parsed kind.
   const [activeId, setActiveId] = useState<string | null>(null)
+  // Screen-reader narration for packing drags. Pointer users see the row
+  // move; without this, a keyboard user gets no confirmation that a drop
+  // changed anything.
+  const [announcement, setAnnouncement] = useState('')
 
   function handleDragStart(e: DragStartEvent) {
     setActiveId(String(e.active.id))
+    handleLocationDragStart(e)
+    const parsed = parseDnDId(String(e.active.id))
+    if (parsed?.kind !== 'packing-item') return
+    const item = listItemsById.get(parsed.id)
+    if (item) {
+      setAnnouncement(
+        `Dragging ${item.gearItem.name}. Reorder it here or choose another packing location.`,
+      )
+    }
   }
 
   function handleDragCancel() {
     setActiveId(null)
+    handleLocationDragCancel()
+    setAnnouncement('Move cancelled.')
   }
 
-  // Single page-level drag handler. Items reorder within their rendered
-  // category or packing location; cross-group drops are deliberately rejected
-  // here. Organize Mode owns moving gear between packing locations, while
-  // category changes happen in the item edit modal.
+  function requestMove(itemId: string, locationId: string | null) {
+    const item = listItemsById.get(itemId)
+    const destination = locationId === null
+      ? 'Unassigned'
+      : realLocations.find((location) => location.id === locationId)?.name
+    if (item && destination) setAnnouncement(`Moving ${item.gearItem.name} to ${destination}.`)
+    moveItemMut.mutate({ itemId, locationId }, {
+      onSuccess: () => {
+        if (item && destination) setAnnouncement(`Moved ${item.gearItem.name} to ${destination}.`)
+      },
+      onError: () => {
+        if (item) setAnnouncement(`Could not move ${item.gearItem.name}.`)
+      },
+    })
+  }
+
+  // Single page-level drag handler over three id kinds.
+  //
+  // Order matters. locationReorder.handleDragEnd runs FIRST and strictly
+  // self-gates on the packing-location kind, so it no-ops for item drags and
+  // the item planners below never see a section drag. That gating is why a
+  // section reorder cannot be routed through planPackingItemDragEnd, which
+  // only understands a packing-item as the active id: dropping a section
+  // would animate and write nothing at all.
+  //
+  // Category grouping keeps the plain within-category reorder. Location
+  // grouping gets the packing planner, which returns EITHER a reorder or a
+  // cross-location move from the same gesture.
   function handleDragEnd(e: DragEndEvent) {
     setActiveId(null)
+    handleLocationDragEnd(e)
+
     const { active, over } = e
+    const draggedId = String(active.id)
+    const overId = over ? String(over.id) : undefined
+    const activeParsed = parseDnDId(draggedId)
+
+    if (activeParsed?.kind === 'packing-item') {
+      const draggedItem = listItemsById.get(activeParsed.id)
+      const plan = planPackingItemDragEnd(
+        draggedId,
+        overId,
+        listItems,
+        realLocationIds,
+        containerItemIdByLocation,
+        containerMoveExclusions,
+        packingReorderExclusions,
+      )
+      if (plan?.kind === 'reorder') {
+        if (draggedItem) setAnnouncement(`Reordering ${draggedItem.gearItem.name}.`)
+        reorderItemsMut.mutate(plan.updates, {
+          onSuccess: () => {
+            if (draggedItem) setAnnouncement(`Reordered ${draggedItem.gearItem.name}.`)
+          },
+          onError: () => {
+            if (draggedItem) setAnnouncement(`Could not reorder ${draggedItem.gearItem.name}.`)
+          },
+        })
+        return
+      }
+      if (!plan) {
+        setAnnouncement('Move cancelled.')
+        return
+      }
+      requestMove(plan.itemId, plan.locationId)
+      return
+    }
+
     if (!over) return
     if (active.id === over.id) return
 
     const updates = planListItemReorder({
-      activeId: String(active.id),
+      activeId: draggedId,
       overId: String(over.id),
       items: listItems,
       groupingKind: grouping.kind,
-      locations: locationsQuery.data ?? [],
-      hiddenItemIds: mode === 'pack'
-        ? deriveFilteredItemIds(listItems, { showUnpackedOnly, showUnreadyOnly })
-        : EMPTY_HIDDEN_ITEM_IDS,
+      locations: packingLocations,
+      hiddenItemIds: mode === 'pack' ? packFilteredItemIds : EMPTY_HIDDEN_ITEM_IDS,
     })
     if (updates) reorderItemsMut.mutate(updates)
   }
@@ -683,22 +832,78 @@ function ListDetailInner({
   const grouped = useGroupedListItems(listItems, grouping)
   const orderedPackGroups = orderPackGroups(grouped, grouping.kind)
   const packingTree = useMemo(
-    () => mode === 'pack' && locationsQuery.data && locationsQuery.data.length > 0
-      ? buildPackingTree(listItems, locationsQuery.data, {
+    () => mode === 'pack' && packingLocations.length > 0
+      ? buildPackingTree(listItems, packingLocations, {
           includeItem: (item) => !item.isWorn,
         })
       : null,
-    [listItems, locationsQuery.data, mode],
+    [listItems, packingLocations, mode],
   )
   const packingCollapseHandlers = useMemo(
     () => new Map(
-      (locationsQuery.data ?? []).map((packingLocation) => [
+      packingLocations.map((packingLocation) => [
         packingLocation.id,
         () => togglePackingCollapsed(packingLocation.id),
       ]),
     ),
-    [locationsQuery.data, togglePackingCollapsed],
+    [packingLocations, togglePackingCollapsed],
   )
+
+  // ── Packing drag derivations ───────────────────────────────────────────────
+  // All lifted from the retired OrganizePackPanel. Read by handleDragEnd and
+  // the collision filter, both of which run after commit, so declaring them
+  // below the handlers is safe.
+  //
+  // Deliberately NOT hand-memoized, unlike most derived values on this page.
+  // These form a dependency chain rooted in useReorderable's items array, and
+  // the React Compiler cannot prove that array is not mutated downstream - so
+  // a useMemo over it trips react-hooks/preserve-manual-memoization and, worse,
+  // makes the compiler skip optimizing this ENTIRE component, costing far more
+  // than the memos save. Plain consts let the compiler memoize them itself,
+  // which it does correctly. The work here is a handful of passes over at most
+  // 30 locations; the expensive derivations above (packingTree, weightBreakdown)
+  // keep their explicit memos because the compiler accepts those.
+
+  // temp- ids are optimistic rows the server has not confirmed. They are not
+  // valid drop destinations: a move would name a location that does not exist.
+  const realLocations = packingLocations.filter(
+    (location) => !location.id.startsWith('temp-'),
+  )
+  const realLocationIds = new Set(realLocations.map((location) => location.id))
+  const containerItemIdByLocation = new Map(realLocations.flatMap((location) =>
+    location.containerListItemId === null
+      ? []
+      : [[location.id, location.containerListItemId] as const],
+  ))
+  const containerMoveExclusions = packingTree
+    ? buildContainerMoveExclusions(packingTree)
+    : EMPTY_EXCLUSIONS
+  const siblingLocationIdsById = buildSiblingLocationIdsById(packingTree?.roots ?? [])
+  // Rows filtered out of the rendered list by the pack filters.
+  const packFilteredItemIds = mode === 'pack'
+    ? deriveFilteredItemIds(listItems, { showUnpackedOnly, showUnreadyOnly })
+    : EMPTY_HIDDEN_ITEM_IDS
+  // Everything the packing planner must not reorder against: worn rows (they
+  // live in their own trailing section, not inside any location) plus
+  // whatever the filters are currently hiding.
+  const packingReorderExclusions = new Set([
+    ...deriveWornReorderExclusions(listItems),
+    ...packFilteredItemIds,
+  ])
+
+  // Location drags are constrained to siblings; item drags may target any
+  // item or location. Without this filter, closestCenter would happily
+  // reparent a section onto a cousin.
+  const packingCollisionDetection: CollisionDetection = (args) => closestCenter({
+    ...args,
+    droppableContainers: args.droppableContainers.filter((container) =>
+      isPackingCollisionTarget(
+        String(args.active.id),
+        String(container.id),
+        siblingLocationIdsById,
+      ),
+    ),
+  })
   const toggleUnassignedCollapse = useCallback(
     () => togglePackingCollapsed('__unassigned__'),
     [togglePackingCollapsed],
@@ -890,7 +1095,10 @@ function ListDetailInner({
       // Injects the drag rendering. CategoryGroup itself has no @dnd-kit import
       // (it is on the public share view's path); this is the seam that keeps the
       // library in the authenticated chunk. See SortableCategoryRows.tsx.
-      renderRows: sortableRows,
+      // Location grouping needs `packing-item:` ids so the packing planner
+      // (reorder OR cross-location move) sees the drag; category grouping
+      // keeps `item:`, whose planner only reorders within a category.
+      renderRows: grouping.kind === 'location' ? packingSortableRows : sortableRows,
       showUnpackedOnly,
       showUnreadyOnly,
       onUpdate: (itemId: string, patch: ListItemPatch) => updateItem.mutate({ itemId, patch }),
@@ -920,7 +1128,42 @@ function ListDetailInner({
         updateGearItem.mutate({ id: gearId, patch: { status } }),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above re: mutation refs
-    [mode, weightUnit, isBelowLg, showUnpackedOnly, showUnreadyOnly],
+    [mode, grouping.kind, weightUnit, isBelowLg, showUnpackedOnly, showUnreadyOnly],
+  )
+
+  // The per-row packing menu: move this item to another location, or promote
+  // it to a container. This is the keyboard- and touch-reachable equivalent of
+  // dragging a row between sections, and the ONLY route to those actions for
+  // anyone not using a pointer.
+  //
+  // Not folded into sharedGroupProps on purpose: it depends on the locations
+  // array, which changes on every packing write, and sharedGroupProps is
+  // memoized precisely to keep unrelated sections from re-rendering.
+  //
+  // A plain function, not a useCallback: its inputs are the un-memoized
+  // packing derivations above, so a memo could never hit, and pretending
+  // otherwise would just be a misleading dependency array. Pack sections
+  // therefore re-render with the page, which is what the Organize view this
+  // replaced did too.
+  const renderPackRowAction = (item: ListItemWithGear) => (
+    <MoveToLocationMenu
+      itemId={item.id}
+      itemName={item.gearItem.name}
+      currentLocationId={item.packingLocationId}
+      locations={realLocations}
+      mobile={isBelowLg}
+      disabled={itemDragPending}
+      containerCreationDisabled={
+        packingLocations.length >= PACKING_LOCATION_CAP || locationCreationPending
+      }
+      isContainer={false}
+      excludedLocationIds={containerMoveExclusions.get(item.id)}
+      onMove={(locationId) => requestMove(item.id, locationId)}
+      onUseAsContainer={() => createItemContainer.mutate({
+        itemId: item.id,
+        name: item.gearItem.name,
+      })}
+    />
   )
 
   function renderPackingLocationNode(
@@ -928,25 +1171,58 @@ function ListDetailInner({
     depth = 0,
   ): ReactNode {
     const location = node.location
+    const containerItem = node.containerItem
     return (
-      <div
+      <PackLocationSection
         key={location.id}
-        className={depth === 0 ? '' : 'ml-3 border-l border-gray-200 pl-3 pt-2'}
+        node={node}
+        depth={depth}
+        groupProps={sharedGroupProps}
+        collapsed={packingCollapsed.has(location.id)}
+        onCollapsedChange={packingCollapseHandlers.get(location.id)}
+        renderRowAction={renderPackRowAction}
+        containerAction={containerItem ? (
+          <MoveToLocationMenu
+            itemId={containerItem.id}
+            itemName={containerItem.gearItem.name}
+            currentLocationId={containerItem.packingLocationId}
+            locations={realLocations}
+            mobile={isBelowLg}
+            disabled={itemDragPending}
+            containerCreationDisabled={
+              packingLocations.length >= PACKING_LOCATION_CAP || locationCreationPending
+            }
+            isContainer
+            excludedLocationIds={containerMoveExclusions.get(containerItem.id)}
+            onMove={(locationId) => requestMove(containerItem.id, locationId)}
+            onStopUsingAsContainer={() => setDeleteLocationTarget(location)}
+          />
+        ) : undefined}
+        itemReorderPending={reorderItemsMut.isPending}
+        locationReorderPending={locationReorderPending || locationCreationPending}
+        movePending={itemDragPending}
+        renaming={renamingLocationId === location.id}
+        onStartRename={() => setRenamingLocationId(location.id)}
+        onCancelRename={() => setRenamingLocationId(null)}
+        onRename={(name) => renameLocation.mutate({ id: location.id, name })}
+        onDelete={() => setDeleteLocationTarget(location)}
       >
-        <CategoryGroup
-          name={node.containerItem?.gearItem.name ?? location.name}
-          regionKey={location.id}
-          containerItem={node.containerItem}
-          collapsed={packingCollapsed.has(location.id)}
-          onCollapsedChange={packingCollapseHandlers.get(location.id)}
-          items={node.items}
-          packProgressItems={node.packProgressItems}
-          {...sharedGroupProps}
-          reorderPending={reorderItemsMut.isPending}
-        >
-          {node.children.map((child) => renderPackingLocationNode(child, depth + 1))}
-        </CategoryGroup>
-      </div>
+        {/* Nested containers get their OWN SortableContext. Sorting is
+            scoped to a set of siblings, so without a context per level a
+            nested section resolves against the root list, the strategy's
+            auto-shift computes against the wrong neighbours, and a nested
+            reorder produces no usable drop. */}
+        {node.children.length > 0 && (
+          <SortableContext
+            items={node.children.map((child) =>
+              makeDnDId('packing-location', child.location.id),
+            )}
+            strategy={verticalListSortingStrategy}
+          >
+            {node.children.map((child) => renderPackingLocationNode(child, depth + 1))}
+          </SortableContext>
+        )}
+      </PackLocationSection>
     )
   }
 
@@ -982,19 +1258,6 @@ function ListDetailInner({
           Back to lists
         </Link>
       </div>
-    )
-  }
-
-  if (mode === 'organize') {
-    return (
-      <>
-        <Suspense fallback={<ListDetailStatus title="Loading pack organizer..." busy />}>
-          <OrganizePackPanel
-            list={list}
-          />
-        </Suspense>
-        <MobileListActionBar list={list} mode="organize" />
-      </>
     )
   }
 
@@ -1179,6 +1442,24 @@ function ListDetailInner({
                 />
               )}
 
+              {/* Packing-location admin, lifted from the retired Organize
+                  view. Pack mode is the organizer now, so building the
+                  structure and filling it happen in one place instead of
+                  across two tabs. Edit mode never shows this: locations are a
+                  packing concern. */}
+              {mode === 'pack' && (
+                <PackLocationControls
+                  locations={packingLocations}
+                  creationPending={locationCreationPending}
+                  draft={newLocationName}
+                  onDraftChange={setNewLocationName}
+                  onCreate={(name) => {
+                    createLocation.mutate(name)
+                    setNewLocationName('')
+                  }}
+                />
+              )}
+
               {/* Items grouped by category */}
               {listItems.length === 0 ? (
                 // A list with a plan but no gear is not empty - it has food. This
@@ -1190,11 +1471,23 @@ function ListDetailInner({
                 const activeParsed = activeId ? parseDnDId(activeId) : null
                 const activeItem =
                   activeParsed?.kind === 'item' ? (listItemsById.get(activeParsed.id) ?? null) : null
+                const activePackingItem =
+                  activeParsed?.kind === 'packing-item'
+                    ? (listItemsById.get(activeParsed.id) ?? null)
+                    : null
                 return (
                   <div className="flex flex-col gap-3">
                     <DndContext
                       sensors={sensors}
-                      collisionDetection={closestCenter}
+                      // Location grouping needs the packing filter: it keeps a
+                      // section drag from landing on a cousin (which would
+                      // silently reparent it) and keeps an item drag from
+                      // colliding with things it can never be dropped on.
+                      // Category grouping has one kind of target and needs no
+                      // filtering.
+                      collisionDetection={
+                        grouping.kind === 'location' ? packingCollisionDetection : closestCenter
+                      }
                       onDragStart={handleDragStart}
                       onDragEnd={handleDragEnd}
                       onDragCancel={handleDragCancel}
@@ -1210,18 +1503,32 @@ function ListDetailInner({
                       )}
                       {grouping.kind === 'location' && packingTree ? (
                         <>
-                          <CategoryGroup
-                            key="__unassigned__"
-                            name="Unassigned"
-                            categoryId={null}
-                            regionKey="packing-unassigned"
-                            collapsed={packingCollapsed.has('__unassigned__')}
-                            onCollapsedChange={toggleUnassignedCollapse}
-                            items={packingTree.unassignedItems}
-                            {...sharedGroupProps}
-                            reorderPending={reorderItemsMut.isPending}
-                          />
-                          {packingTree.roots.map((node) => renderPackingLocationNode(node))}
+                          {/* Unassigned is a drop target but not sortable: it
+                              is not a location row and has no sortOrder.
+                              Dragging a row here is how you take it back out
+                              of a container. */}
+                          <DroppableUnassignedSection>
+                            <CategoryGroup
+                              key="__unassigned__"
+                              name="Unassigned"
+                              categoryId={null}
+                              regionKey="packing-unassigned"
+                              collapsed={packingCollapsed.has('__unassigned__')}
+                              onCollapsedChange={toggleUnassignedCollapse}
+                              items={packingTree.unassignedItems}
+                              {...sharedGroupProps}
+                              renderRowAction={renderPackRowAction}
+                              reorderPending={reorderItemsMut.isPending}
+                            />
+                          </DroppableUnassignedSection>
+                          <SortableContext
+                            items={packingTree.roots.map((node) =>
+                              makeDnDId('packing-location', node.location.id),
+                            )}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            {packingTree.roots.map((node) => renderPackingLocationNode(node))}
+                          </SortableContext>
                         </>
                       ) : orderedPackGroups.map((group) => {
                           const definition = group.group
@@ -1257,8 +1564,26 @@ function ListDetailInner({
                       <DragOverlay dropAnimation={null}>
                         {activeItem ? (
                           <ItemRow item={activeItem} weightUnit={weightUnit} isBelowLg={isBelowLg} />
+                        ) : activePackingItem ? (
+                          // Location grouping drags a `packing-item:`, and the
+                          // full ItemRow clone is too heavy to read mid-drag
+                          // when the target is another section rather than a
+                          // slot. A name chip is the whole payload.
+                          <div className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm shadow-lg">
+                            {activePackingItem.gearItem.name}
+                          </div>
+                        ) : activeLocation ? (
+                          <div className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold shadow-lg">
+                            {activeLocation.name}
+                          </div>
                         ) : null}
                       </DragOverlay>
+                      {/* Packing drags have no visible result for a screen
+                          reader otherwise: the row simply stops being where
+                          it was. */}
+                      <div className="sr-only" aria-live="polite" aria-atomic="true">
+                        {announcement}
+                      </div>
                     </DndContext>
 
                     {/* Worn section — visible in both normal and pack mode when
@@ -1464,6 +1789,30 @@ function ListDetailInner({
         />
       )}
 
+      {/* Delete a packing location / stop using an item as a container.
+          Lifted from the retired Organize view. Deleting a location does not
+          touch the gear in it - its items fall back to Unassigned - so this
+          is recoverable by re-creating the location, unlike removing the
+          backing ITEM (which is why that path has its own confirm). */}
+      {deleteLocationTarget && (
+        <ConfirmDialog
+          title={deleteLocationTarget.containerListItemId === null
+            ? 'Delete packing location'
+            : 'Stop using item as container'}
+          message={deleteLocationTarget.containerListItemId === null
+            ? `Delete "${deleteLocationTarget.name}"? Its items will move to Unassigned.`
+            : `Stop using "${deleteLocationTarget.name}" as a container? Its items will move to Unassigned.`}
+          confirmLabel={deleteLocationTarget.containerListItemId === null ? 'Delete' : 'Stop using'}
+          dangerous={deleteLocationTarget.containerListItemId === null}
+          onCancel={() => setDeleteLocationTarget(null)}
+          onConfirm={() => {
+            const target = deleteLocationTarget
+            setDeleteLocationTarget(null)
+            removeLocation.mutate(target.id)
+          }}
+        />
+      )}
+
       {/* Mobile-only bottom action bar. Gear / Lists / Add / Options
           in normal mode; Options is dropped in pack mode (pack-mode
           controls live inline in PackingProgress, and List options is
@@ -1472,6 +1821,88 @@ function ListDetailInner({
           itself, so desktop never renders it. */}
       <MobileListActionBar list={list} mode={mode} />
 
+    </div>
+  )
+}
+
+// Create a packing location, plus the first-run nudge. Lifted from the
+// retired OrganizePackPanel: a list with no locations groups by gear category
+// (selectPackGrouping), which is a fine checklist but not a packing plan, so
+// this is the on-ramp from one to the other.
+function PackLocationControls({
+  locations,
+  creationPending,
+  draft,
+  onDraftChange,
+  onCreate,
+}: {
+  locations: PackingLocation[]
+  creationPending: boolean
+  draft: string
+  onDraftChange: (value: string) => void
+  onCreate: (name: string) => void
+}) {
+  const trimmed = draft.trim()
+  const atCap = locations.length >= PACKING_LOCATION_CAP
+  // noValidate makes maxLength inert for SUBMIT purposes (AGENTS.md), so the
+  // length check is manual here and the server is the real gate.
+  const canSubmit = Boolean(trimmed) && trimmed.length <= 60 && !atCap && !creationPending
+
+  return (
+    <div className="space-y-3 print:hidden">
+      <form
+        noValidate
+        className="flex gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (!canSubmit) return
+          onCreate(trimmed)
+        }}
+      >
+        <label className="sr-only" htmlFor="new-packing-location">New packing location</label>
+        <input
+          id="new-packing-location"
+          value={draft}
+          maxLength={60}
+          onChange={(event) => onDraftChange(event.target.value)}
+          placeholder="Add a location, e.g. Main pack"
+          className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+        />
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Plus size={15} /> Add
+        </button>
+      </form>
+      {atCap ? (
+        <p className="text-sm text-amber-800">
+          This list has the maximum of {PACKING_LOCATION_CAP} packing locations.
+        </p>
+      ) : null}
+
+      {locations.length === 0 ? (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <h2 className="text-sm font-semibold text-blue-950">Start with where your gear lives</h2>
+          <p className="mt-1 text-sm text-blue-900">
+            Add one or more pack locations. Your checklist will switch from gear categories to these locations.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {['Main pack', 'Top lid', 'Hip belt pockets'].map((name) => (
+              <button
+                key={name}
+                type="button"
+                disabled={creationPending}
+                onClick={() => onCreate(name)}
+                className="rounded-md border border-blue-300 bg-white px-2.5 py-1.5 text-sm font-medium text-blue-800 hover:bg-blue-100 disabled:opacity-50"
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

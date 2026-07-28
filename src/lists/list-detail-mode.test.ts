@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   deriveListMode,
+  isLegacyOrganizePath,
   listDocumentTitle,
   persistedListPath,
 } from './list-detail-mode'
@@ -11,8 +12,12 @@ describe('deriveListMode', () => {
   it.each([
     [`/lists/${LIST_ID}`, '', 'edit'],
     [`/lists/${LIST_ID}/pack`, '', 'pack'],
-    [`/lists/${LIST_ID}/organize`, '', 'organize'],
-    [`/lists/${LIST_ID}/pack/organize`, '', 'organize'],
+    // Organize merged INTO Pack, so its retired URLs resolve to Pack rather
+    // than falling through to Edit. Falling through would silently drop a
+    // returning bookmark into the wrong view instead of the one that
+    // replaced Organize.
+    [`/lists/${LIST_ID}/organize`, '', 'pack'],
+    [`/lists/${LIST_ID}/pack/organize`, '', 'pack'],
     [`/lists/${LIST_ID}`, '?mode=pack', 'pack'],
     [`/lists/${LIST_ID}`, '?mode=PACK', 'edit'],
   ] as const)('%s%s -> %s', (pathname, search, expected) => {
@@ -20,11 +25,23 @@ describe('deriveListMode', () => {
   })
 })
 
+describe('isLegacyOrganizePath', () => {
+  it.each([
+    [`/lists/${LIST_ID}/organize`, true],
+    [`/lists/${LIST_ID}/pack/organize`, true],
+    [`/lists/${LIST_ID}/pack`, false],
+    [`/lists/${LIST_ID}`, false],
+    // Belongs to a different list, so this page must not rewrite the URL.
+    ['/lists/other-list/organize', false],
+  ] as const)('%s -> %s', (pathname, expected) => {
+    expect(isLegacyOrganizePath(pathname, LIST_ID)).toBe(expected)
+  })
+})
+
 describe('persistedListPath', () => {
   it.each([
     ['edit', `/lists/${LIST_ID}`],
     ['pack', `/lists/${LIST_ID}/pack`],
-    ['organize', `/lists/${LIST_ID}/organize`],
   ] as const)('persists %s mode', (mode, expected) => {
     expect(persistedListPath(LIST_ID, mode)).toBe(expected)
   })
@@ -33,7 +50,6 @@ describe('persistedListPath', () => {
 describe('listDocumentTitle', () => {
   it.each([
     ['edit', 'Weekend Trip - List'],
-    ['organize', 'Weekend Trip - Organize'],
     ['pack', 'Weekend Trip - Pack'],
   ] as const)('names the %s browser view', (mode, expected) => {
     expect(listDocumentTitle('Weekend Trip', mode)).toBe(expected)

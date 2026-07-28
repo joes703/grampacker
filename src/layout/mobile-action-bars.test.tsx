@@ -60,10 +60,11 @@ describe('mobile action-bar contracts', () => {
     expect(labels('Plans navigation and actions')).toEqual(['Gear', 'Lists', 'Add'])
   })
 
+  // Organize used to be a third mode here with only the stable destinations
+  // (no Add, no Options). It merged into Pack, which keeps Add.
   it.each([
     ['edit', ['Gear', 'Lists', 'Add', 'Options']],
     ['pack', ['Gear', 'Lists', 'Add']],
-    ['organize', ['Gear', 'Lists']],
   ] as const)('renders the deliberate %s list-mode bar', (mode, expected) => {
     render(<MobileListActionBar list={list} mode={mode} />, {
       wrapper: wrapper(`/lists/${list.id}`),

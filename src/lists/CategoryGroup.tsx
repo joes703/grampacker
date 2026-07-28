@@ -133,6 +133,29 @@ type GroupPropsBase = {
    *  the remaining work lives. */
   showUnpackedOnly?: boolean
   showUnreadyOnly?: boolean
+  /** Header chrome, INJECTED as ReactNode rather than built here.
+   *
+   *  Pack mode is now also the organizer: a packing-location section can be
+   *  dragged to reorder, dropped into, renamed and deleted. All of that needs
+   *  @dnd-kit and authenticated-only components, and this module renders on
+   *  the PUBLIC share view - so it arrives as opaque nodes, the same seam
+   *  `renderRows` uses. A prop is something the bundler can see through; a
+   *  boolean would not be.
+   *
+   *  headerLeading sits before the collapse chevron (the drag grip).
+   *  headerAction sits at the end of the header row (nest handle, kebab). */
+  headerLeading?: ReactNode
+  headerAction?: ReactNode
+  /** Replaces the rendered title text. `name` is still required and still
+   *  supplies every accessible label ("Collapse {name}"), so a section stays
+   *  announceable while its title is an editing input. Used by pack mode's
+   *  rename-in-place on a packing location. */
+  titleContent?: ReactNode
+  /** Per-row trailing control, same injection rationale as the header slots.
+   *  Pack rows use it for the "move to location" menu, which is the
+   *  keyboard- and touch-reachable equivalent of dragging a row between
+   *  sections. Called per rendered row. */
+  renderRowAction?: (item: ListItemWithGear) => ReactNode
   /** The one section allowed to render worn rows. Every ordinary category or
    *  packing-location section filters them into the trailing Worn section. */
   wornSection?: boolean
@@ -227,6 +250,10 @@ function CategoryGroup({
   reorderPending = false,
   showUnpackedOnly = false,
   showUnreadyOnly = false,
+  headerLeading,
+  headerAction,
+  titleContent,
+  renderRowAction,
   wornSection = false,
   baseSubtotalGrams,
   consumableSubtotalGrams,
@@ -307,6 +334,7 @@ function CategoryGroup({
       onDeleteGearItem: onDeleteGearItem ? () => onDeleteGearItem(gearId) : undefined,
       onSetGearStatus: onSetGearStatus ? (s: GearStatus) => onSetGearStatus(gearId, s) : undefined,
       onDelete: onDelete ? () => onDelete(item.id) : undefined,
+      rowAction: renderRowAction?.(item),
     }
   }
 
@@ -334,6 +362,7 @@ function CategoryGroup({
         // border-b would double with the card's bottom border. Drop it.
         collapsed ? 'border-b-0' : ''
       }`}>
+        {headerLeading}
         {collapsible ? (
           // Chevron is the only interactive collapse target. Mobile mistaps
           // (tapping near the first row but landing on the header) used to
@@ -396,9 +425,13 @@ function CategoryGroup({
             ) : (
               /* Static label area - explicitly NOT a button, no hover state.
                  Chevron is the obvious affordance; the name remains
-                 read-only here (rename happens via the modal, not by tapping
-                 the header). */
-              <span className={`truncate ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
+                 read-only here (rename happens via the section menu or the
+                 modal, not by tapping the header). titleContent is the one
+                 override, used while a packing location is being renamed in
+                 place. */
+              titleContent ?? (
+                <span className={`truncate ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
+              )
             )}
             {packMode && (
               /* Pack progress only. Edit mode shows no count: the rows are
@@ -465,6 +498,7 @@ function CategoryGroup({
             </div>
           </>
         )}
+        {headerAction}
       </div>
 
       {/* Items + footer (footer is the row's "total" line, lined up under Weight) */}

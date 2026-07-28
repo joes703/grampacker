@@ -21,12 +21,28 @@ import ItemRow, { type ItemRowProps } from './ItemRow'
 // Sortable wrapper for the authenticated list view. Calls useSortable, wires
 // the row's outer ref + transform style + drag-handle button, and forwards
 // everything else to ItemRow. Must be rendered inside a SortableContext.
-// Drag is disabled in pack mode (structural changes inert while checking
-// off items) and while a previous reorder mutation is in flight (prevents
+// Drag is disabled while a previous reorder mutation is in flight (prevents
 // the rollback-clobber race when two reorders overlap).
-export default function SortableItemRow(
-  props: Omit<ItemRowProps, 'dragHandle' | 'outerRef' | 'outerStyle'>,
-) {
+//
+// Pack mode USED to disable drag entirely, on the reasoning that structural
+// changes were inert while checking items off - true only because arranging
+// happened in a separate Organize view. Pack is that view now, so pack rows
+// drag like any other. Note there were two independent pack gates here (the
+// `disabled` flag AND the handle being withheld); both are gone, because
+// removing one without the other leaves rows registered as sortable with no
+// activator to start a drag from.
+//
+// `dndKind` picks the id namespace. Category grouping keeps `item:`, whose
+// planner reorders within a category. Location grouping uses `packing-item:`,
+// which the packing planner understands - it can reorder within a location
+// AND move a row between locations, and it shares that id space with the
+// `packing-location:` drop targets. Same row component, two drag contracts.
+export default function SortableItemRow({
+  dndKind = 'item',
+  ...props
+}: Omit<ItemRowProps, 'dragHandle' | 'outerRef' | 'outerStyle'> & {
+  dndKind?: 'item' | 'packing-item'
+}) {
   const {
     attributes,
     listeners,
@@ -36,8 +52,8 @@ export default function SortableItemRow(
     transition,
     isDragging,
   } = useSortable({
-    id: makeDnDId('item', props.item.id),
-    disabled: props.packMode || props.reorderPending,
+    id: makeDnDId(dndKind, props.item.id),
+    disabled: props.reorderPending,
   })
 
   const sortableStyle: React.CSSProperties = {
@@ -50,21 +66,29 @@ export default function SortableItemRow(
   // the outside-left gutter, but flat table surfaces intentionally use
   // overflow-hidden for rounded corners, which clips out-of-surface handles.
   // On touch, keeping listeners on the grip preserves ordinary row scrolling;
-  // the page-level TouchSensor still supplies delayed activation. Pack mode
-  // disables drag entirely.
-  const handle =
-    props.packMode ? undefined : (
-      <RowIconButton
-        touchSafe
-        ref={asButtonRef(setActivatorNodeRef)}
-        {...listeners}
-        {...attributes}
-        variant="dragHandle"
-        ariaLabel={`Reorder ${props.item.gearItem.name}`}
-        icon={<GripVertical size={14} />}
-        className={props.isBelowLg ? '' : 'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity'}
-      />
-    )
+  // the page-level TouchSensor still supplies delayed activation.
+  //
+  // The grip stays visible in pack mode rather than fading in on hover: a
+  // pack row's grip also MOVES the row between locations, so it is a primary
+  // affordance there, not a power-user shortcut. The label says both.
+  const packing = dndKind === 'packing-item'
+  const handle = (
+    <RowIconButton
+      touchSafe
+      ref={asButtonRef(setActivatorNodeRef)}
+      {...listeners}
+      {...attributes}
+      disabled={props.reorderPending}
+      variant="dragHandle"
+      ariaLabel={
+        packing
+          ? `Reorder or move ${props.item.gearItem.name}`
+          : `Reorder ${props.item.gearItem.name}`
+      }
+      icon={<GripVertical size={14} />}
+      className={props.isBelowLg || packing ? '' : 'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity'}
+    />
+  )
 
   return (
     <ItemRow

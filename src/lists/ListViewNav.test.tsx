@@ -9,7 +9,6 @@ afterEach(cleanup)
 describe('ListViewNav', () => {
   it.each([
     ['edit', 'List'],
-    ['organize', 'Organize'],
     ['pack', 'Pack'],
   ] as const)('offers direct links with %s marked current', (mode, currentLabel) => {
     render(
@@ -20,10 +19,11 @@ describe('ListViewNav', () => {
 
     const nav = screen.getByRole('navigation', { name: 'List views' })
     const links = screen.getAllByRole('link')
-    expect(links.map((link) => link.textContent)).toEqual(['List', 'Organize', 'Pack'])
+    // Two destinations since Organize merged into Pack. Nothing links to
+    // /organize any more; the retired URLs live on only as redirects.
+    expect(links.map((link) => link.textContent)).toEqual(['List', 'Pack'])
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       '/lists/list-1',
-      '/lists/list-1/organize',
       '/lists/list-1/pack',
     ])
     expect(nav).toContainElement(

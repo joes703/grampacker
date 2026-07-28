@@ -50,21 +50,19 @@ describe('list unit control placement', () => {
     expect(src.match(/<ListDocumentToolbar/g)).toHaveLength(1)
   })
 
-  it('hides the unit control in Pack and Organize', () => {
-    const { rerender } = render(
+  it('hides the unit control and list options in Pack', () => {
+    render(
       <ListDocumentToolbar list={list} mode="pack" />,
       { wrapper: MemoryRouter },
     )
     expect(screen.queryByRole('radiogroup', { name: 'Weight units' })).toBeNull()
     expect(screen.queryByText('list-settings-button')).toBeNull()
-
-    rerender(
-      <ListDocumentToolbar list={list} mode="organize" />,
-    )
-    expect(screen.queryByRole('radiogroup', { name: 'Weight units' })).toBeNull()
   })
 
-  it('offers List, Organize, and Pack as peer views in every list mode', () => {
+  it('offers List and Pack as peer views in every list mode', () => {
+    // Organize was a third peer here. It merged into Pack, so the nav is two
+    // destinations and nothing links to /organize any more - the retired URLs
+    // survive only as redirects (see list-detail-mode).
     const { rerender } = render(
       <ListDocumentToolbar
         list={list}
@@ -74,27 +72,15 @@ describe('list unit control placement', () => {
     )
     expect(screen.getByRole('navigation', { name: 'List views' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'List', current: 'page' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Organize' })).not.toHaveAttribute('aria-current')
     expect(screen.getByRole('link', { name: 'Pack' })).not.toHaveAttribute('aria-current')
+    expect(screen.queryByRole('link', { name: 'Organize' })).toBeNull()
 
     rerender(
       <ListDocumentToolbar
         list={list}
-        mode="organize"
+        mode="pack"
       />,
     )
-    expect(screen.getByRole('link', { name: 'Organize', current: 'page' })).toBeInTheDocument()
-  })
-
-  it('uses the same document header in Organize instead of replacing identity', () => {
-    const sources = import.meta.glob('./OrganizePackPanel.tsx', {
-      query: '?raw',
-      import: 'default',
-      eager: true,
-    }) as Record<string, string>
-    const src = Object.values(sources)[0]!
-
-    expect(src).toContain('<ListDocumentToolbar')
-    expect(src).not.toContain('<h1')
+    expect(screen.getByRole('link', { name: 'Pack', current: 'page' })).toBeInTheDocument()
   })
 })

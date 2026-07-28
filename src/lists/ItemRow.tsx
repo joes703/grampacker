@@ -95,6 +95,13 @@ export type ItemRowProps = {
   // status sub-menu. Omitted on the share view, which can't mutate.
   onSetGearStatus?: (status: GearStatus) => void
   dragHandle?: ReactNode
+  // Trailing control on a PACK-mode row, injected as an opaque node (see the
+  // matching note in CategoryGroup). Pack mode is now also the organizer, so
+  // a row carries a "move to location" menu - the keyboard- and
+  // touch-reachable equivalent of dragging it into another section. Injected
+  // rather than built here because this module renders on the public share
+  // view and must not import the authenticated packing components.
+  rowAction?: ReactNode
   outerRef?: (el: HTMLElement | null) => void
   outerStyle?: React.CSSProperties
 }
@@ -114,6 +121,7 @@ export default function ItemRow({
   onDeleteGearItem,
   onSetGearStatus,
   dragHandle,
+  rowAction,
   outerRef,
   outerStyle,
 }: ItemRowProps) {
@@ -191,6 +199,12 @@ export default function ItemRow({
           item.isPacked ? 'bg-gray-50 print:bg-transparent' : 'bg-white'
         }`}
       >
+        {/* Drag grip leads the row, matching the organizer row this replaced.
+            Pack mode used to render none: structural changes were considered
+            inert while checking items off, so reordering and moving between
+            locations lived in a separate Organize view. Pack IS that view
+            now. */}
+        {dragHandle}
         {/* Ready checkbox sits OUTSIDE the wrapping label below so that
             clicking the row's name still toggles Packed (the muscle-memory
             destination). With implicit label association, the browser
@@ -278,6 +292,9 @@ export default function ItemRow({
         <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
           {item.quantity}
         </span>
+        {/* Packing menu (move to location / use as container). print:hidden
+            is applied by the injected control itself. */}
+        {rowAction}
       </div>
     )
   }

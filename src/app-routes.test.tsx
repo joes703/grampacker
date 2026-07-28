@@ -99,7 +99,10 @@ describe('the authenticated area (lazy chunk, relative paths under the splat)', 
     expect(await screen.findByTestId('detail')).toHaveTextContent('abc123')
   })
 
-  it('renders organize mode as a peer segment of the same detail page', async () => {
+  it('still resolves the retired organize URL to the detail page', async () => {
+    // Organize merged into Pack. The route stays mounted so an old bookmark
+    // reaches the page (which then rewrites the URL to /pack) instead of
+    // falling through to the catch-all and bouncing the user home.
     renderAt('/lists/abc123/organize', SIGNED_IN)
     expect(await screen.findByTestId('detail')).toHaveTextContent('abc123')
   })

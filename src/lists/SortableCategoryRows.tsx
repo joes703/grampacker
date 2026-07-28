@@ -15,16 +15,30 @@ import type { RenderRows } from './CategoryGroup'
 // ListDetailPage imports this module, so @dnd-kit lands in the authenticated
 // chunk and nowhere else.
 //
-// Per-category SortableContext: items reorder within their own category only.
-// Registering the item ids here is what makes each row's useSortable resolve
-// against the right items list, so the strategy's auto-shift works.
-export const sortableRows: RenderRows = (items, rowPropsFor) => (
-  <SortableContext
-    items={items.map((i) => makeDnDId('item', i.id))}
-    strategy={verticalListSortingStrategy}
-  >
-    {items.map((item) => (
-      <SortableItemRow key={item.id} {...rowPropsFor(item)} />
-    ))}
-  </SortableContext>
-)
+// Two id namespaces, one component:
+//
+//   sortableRows        - `item:` ids. Category grouping. Rows reorder within
+//                         their own category and nowhere else.
+//   packingSortableRows - `packing-item:` ids. Location grouping in pack mode.
+//                         Rows reorder within their location AND drop onto
+//                         other locations, so they share an id space with the
+//                         `packing-location:` targets the sections register.
+//
+// The kind has to reach BOTH the SortableContext registration and each row's
+// useSortable, or dnd-kit resolves a row against a context it is not in and
+// the strategy's auto-shift silently stops working.
+function makeSortableRows(dndKind: 'item' | 'packing-item'): RenderRows {
+  return (items, rowPropsFor) => (
+    <SortableContext
+      items={items.map((i) => makeDnDId(dndKind, i.id))}
+      strategy={verticalListSortingStrategy}
+    >
+      {items.map((item) => (
+        <SortableItemRow key={item.id} dndKind={dndKind} {...rowPropsFor(item)} />
+      ))}
+    </SortableContext>
+  )
+}
+
+export const sortableRows = makeSortableRows('item')
+export const packingSortableRows = makeSortableRows('packing-item')

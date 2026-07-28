@@ -52,13 +52,16 @@ export default function AuthenticatedApp() {
           <Route path="food/*" element={<Navigate to="/lists" replace />} />
         )}
         <Route path="settings" element={<SettingsPage />} />
-        {/* Pack and Organize are URL segments of the same detail page (see
-            ListDetailPage's mode derivation + legacy redirects). */}
+        {/* Pack is a URL segment of the same detail page (see
+            ListDetailPage's mode derivation). The two /organize routes are
+            RETIRED - Organize merged into Pack - but stay mounted so old
+            bookmarks and home-screen shortcuts resolve; the page rewrites
+            them to /pack rather than 404ing. */}
         <Route path="lists" element={<ListsPage />} />
         <Route path="lists/:id" element={<ListDetailPage />} />
         <Route path="lists/:id/pack" element={<ListDetailPage />} />
         <Route path="lists/:id/organize" element={<ListDetailPage />} />
-        {/* Compatibility route for Organize's original nesting under Pack. */}
+        {/* Organize's original nesting under Pack, kept for the same reason. */}
         <Route path="lists/:id/pack/organize" element={<ListDetailPage />} />
       </Route>
       {/* Unknown path under the gate: send them home rather than showing a
