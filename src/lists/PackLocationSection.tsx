@@ -27,8 +27,6 @@ export type PackSectionProps = {
   node: PackingTreeLocation
   depth: number
   groupProps: Omit<ComponentProps<typeof CategoryGroup>, 'name' | 'items'>
-  collapsed: boolean
-  onCollapsedChange?: (collapsed: boolean) => void
   /** Forwarded to CategoryGroup unchanged - see its declaration for what
    *  `cohort` is and why the row menu needs it. */
   renderRowAction?: (
@@ -70,8 +68,6 @@ function PackPlainSection({
   node,
   depth,
   groupProps,
-  collapsed,
-  onCollapsedChange,
   renderRowAction,
   itemReorderPending,
   locationReorderPending,
@@ -110,8 +106,6 @@ function PackPlainSection({
           {...groupProps}
           name={location.name}
           regionKey={location.id}
-          collapsed={collapsed}
-          onCollapsedChange={onCollapsedChange}
           items={node.items}
           packProgressItems={node.packProgressItems}
           reorderPending={itemReorderPending}
@@ -144,8 +138,6 @@ function PackContainerSection({
   node,
   depth,
   groupProps,
-  collapsed,
-  onCollapsedChange,
   renderRowAction,
   containerAction,
   itemReorderPending,
@@ -176,8 +168,6 @@ function PackContainerSection({
           name={sectionTitle(node)}
           regionKey={location.id}
           containerItem={containerItem}
-          collapsed={collapsed}
-          onCollapsedChange={onCollapsedChange}
           items={node.items}
           packProgressItems={node.packProgressItems}
           reorderPending={itemReorderPending}

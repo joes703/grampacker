@@ -1,5 +1,5 @@
 import { memo, useState, type ReactNode } from 'react'
-import { Check, ChevronDown, ChevronRight, Package, Plus } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import type { ListItemPatch } from '../lib/queries'
@@ -9,7 +9,6 @@ import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
   FLAT_TABLE_HEADER,
-  FLAT_TABLE_HEADER_COUNT,
   FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_HEADER_TITLE_MUTED,
@@ -409,26 +408,37 @@ function CategoryGroup({
       }`}>
         {headerLeading}
         {collapsible ? (
-          // Chevron is the only interactive collapse target. Mobile mistaps
-          // (tapping near the first row but landing on the header) used to
-          // collapse the whole section because the entire header strip was
-          // one button. Splitting into chevron-button + static label moves
-          // that risk to a 40px-square explicit affordance.
           <div className="flex flex-1 min-w-0 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={toggleCollapsed}
-              aria-expanded={!collapsed}
-              aria-controls={regionId}
-              aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
-              className={`${ROW_LEADING_CONTROL_TARGET} text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0 print:hidden`}
-            >
-              {collapsed ? (
-                <ChevronRight size={14} />
-              ) : (
-                <ChevronDown size={14} />
-              )}
-            </button>
+            {/* Chevron is the only interactive collapse target. Mobile mistaps
+                (tapping near the first row but landing on the header) used to
+                collapse the whole section because the entire header strip was
+                one button. Splitting into chevron-button + static label moves
+                that risk to a 40px-square explicit affordance.
+
+                NOT in pack mode. Pack's header carries the container's Ready
+                and Packed checkboxes, and those have to sit in the same
+                columns as every row's below them. A chevron ahead of them
+                occupies the rows' leading control column - the drag grip's
+                column - and pushes the header's checkboxes one control to the
+                right of the ones they label. Alignment down the checkbox
+                columns is the whole point of a checklist, so the collapse
+                affordance loses. */}
+            {!packMode && (
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                aria-expanded={!collapsed}
+                aria-controls={regionId}
+                aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
+                className={`${ROW_LEADING_CONTROL_TARGET} text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0 print:hidden`}
+              >
+                {collapsed ? (
+                  <ChevronRight size={14} />
+                ) : (
+                  <ChevronDown size={14} />
+                )}
+              </button>
+            )}
             {packMode && containerItem ? (
               <>
                 {readyChecksEnabled && (
@@ -457,7 +467,6 @@ function CategoryGroup({
                     aria-hidden="true"
                     className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
                   />
-                  <Package size={14} className="shrink-0 text-blue-600 print:hidden" />
                   <span className={`truncate ${
                     containerItem.isPacked
                       ? `${FLAT_TABLE_HEADER_TITLE_MUTED} line-through print:text-gray-900 print:no-underline`
@@ -477,16 +486,6 @@ function CategoryGroup({
               titleContent ?? (
                 <span className={`truncate ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
               )
-            )}
-            {packMode && (
-              /* Pack progress only. Edit mode shows no count: the rows are
-                 right there to be counted, and the number added noise to
-                 every header. Kept print:hidden because a digital packed
-                 count is meaningless on a paper checklist where every box
-                 prints empty. */
-              <span className={`shrink-0 print:hidden ${FLAT_TABLE_HEADER_COUNT}`}>
-                {packedCount} / {progressItems.length}
-              </span>
             )}
             {complete && (
               <Check size={14} className="shrink-0 text-green-600 print:hidden" aria-label="All packed" />

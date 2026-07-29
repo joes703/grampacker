@@ -148,7 +148,6 @@ import {
   type ListDetailMode,
 } from './list-detail-mode'
 import { orderPackGroups, selectPackGroupingState } from './packing-grouping'
-import { usePackingCollapsed } from './packing-collapse'
 import {
   buildContainerMoveExclusions,
   buildPackingTree,
@@ -373,10 +372,6 @@ function ListDetailInner({
   // sibling: a filter that survives a reload hides items from a user who has
   // forgotten they turned it on.
   const [showUnreadyOnly, setShowUnreadyOnly] = useState(false)
-  const {
-    collapsed: packingCollapsed,
-    toggle: togglePackingCollapsed,
-  } = usePackingCollapsed(listId)
   // Notes panel edit mode. Lifted here so PanelCard.headerAction can
   // render the pencil button conditionally (read mode only) without
   // exposing NotesEditor's internal state up through a callback.
@@ -897,15 +892,6 @@ function ListDetailInner({
       : null,
     [listItems, packingLocations, mode],
   )
-  const packingCollapseHandlers = useMemo(
-    () => new Map(
-      packingLocations.map((packingLocation) => [
-        packingLocation.id,
-        () => togglePackingCollapsed(packingLocation.id),
-      ]),
-    ),
-    [packingLocations, togglePackingCollapsed],
-  )
 
   // ── Packing drag derivations ───────────────────────────────────────────────
   // All lifted from the retired OrganizePackPanel. Read by handleDragEnd and
@@ -1015,10 +1001,6 @@ function ListDetailInner({
       ),
     ),
   })
-  const toggleUnassignedCollapse = useCallback(
-    () => togglePackingCollapsed('__unassigned__'),
-    [togglePackingCollapsed],
-  )
   // Food composes into the gear breakdown here, at the page level, so the
   // mobile strip and the desktop table are handed ONE number and cannot
   // disagree about what the pack weighs. Food moves consumable + total only
@@ -1330,8 +1312,6 @@ function ListDetailInner({
         node={node}
         depth={depth}
         groupProps={sharedGroupProps}
-        collapsed={packingCollapsed.has(location.id)}
-        onCollapsedChange={packingCollapseHandlers.get(location.id)}
         renderRowAction={renderPackRowAction}
         containerAction={containerItem ? (
           <MoveToLocationMenu
@@ -1682,8 +1662,6 @@ function ListDetailInner({
                               name="Unassigned"
                               categoryId={null}
                               regionKey="packing-unassigned"
-                              collapsed={packingCollapsed.has('__unassigned__')}
-                              onCollapsedChange={toggleUnassignedCollapse}
                               items={packingTree.unassignedItems}
                               {...sharedGroupProps}
                               renderRowAction={renderPackRowAction}
