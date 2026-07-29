@@ -1,7 +1,7 @@
 import { GripVertical } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import { ROW_LEADING_CONTROL_TARGET } from '../components/flat-table-styles'
 import { asButtonRef } from '../lib/dnd'
 import { makeDnDId } from '../lib/dnd-ids'
 
@@ -59,7 +59,10 @@ export function useListCardSortable({
     opacity: isDragging ? 0.4 : 1,
   }
 
-  // ROW_CONTROL_TARGET = 40px touch / 28px pointer (see flat-table-styles).
+  // ROW_LEADING_CONTROL_TARGET = 40px touch / 28x20px pointer (see
+  // flat-table-styles). Every leading grip in the app reads this one token, so
+  // a list-card grip opens the same gutter as a gear-row or checklist-row grip
+  // instead of drifting back to the wider square box.
   // `touch-none` keeps a drag that starts on the grip from racing the
   // browser's scroll on touch devices; because the grip is a dedicated
   // target (not the whole card) this doesn't cost normal list scrolling.
@@ -71,7 +74,7 @@ export function useListCardSortable({
       {...listeners}
       {...attributes}
       aria-label={`Reorder ${listName}`}
-      className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing`}
+      className={`${ROW_LEADING_CONTROL_TARGET} shrink-0 text-gray-500 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing`}
     >
       <GripVertical size={gripIconSize} />
     </button>

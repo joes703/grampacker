@@ -199,6 +199,29 @@ describe('PackLocationSection', () => {
       })
       expect(screen.getByRole('button', { name: 'container menu' })).toBeInTheDocument()
     })
+
+    it('stays item-backed when its backing row is filtered out of the tree', async () => {
+      // A WORN container item is extracted into the Worn section, so
+      // buildPackingTree resolves containerItem to null (packing-tree.ts's
+      // includeItem branch) and the plain component renders instead. The
+      // LOCATION is still item-backed: its name belongs to the gear item and
+      // the server rejects a rename. Offering Rename here sends the user into
+      // a guaranteed failure, so the menu must read the location's
+      // containerListItemId rather than whether the row happens to be shown.
+      const user = userEvent.setup()
+      const onDelete = vi.fn()
+      renderSection({
+        node: node(location('loc-2', 'Bear canister', 'canister'), [], null),
+        onDelete,
+      })
+
+      await user.click(screen.getByRole('button', { name: 'Bear canister options' }))
+      expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Delete location' })).toBeNull()
+
+      await user.click(screen.getByRole('button', { name: 'Stop using as container' }))
+      expect(onDelete).toHaveBeenCalledTimes(1)
+    })
   })
 })
 

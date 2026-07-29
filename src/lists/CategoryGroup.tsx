@@ -16,7 +16,7 @@ import {
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_SURFACE,
   MOBILE_ROW_HEIGHT,
-  ROW_CONTROL_TARGET,
+  ROW_LEADING_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ItemRow, { type ItemRowProps } from './ItemRow'
 import AddItemRow from './AddItemRow'
@@ -392,7 +392,7 @@ function CategoryGroup({
               aria-expanded={!collapsed}
               aria-controls={regionId}
               aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
-              className={`${ROW_CONTROL_TARGET} text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0 print:hidden`}
+              className={`${ROW_LEADING_CONTROL_TARGET} text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0 print:hidden`}
             >
               {collapsed ? (
                 <ChevronRight size={14} />

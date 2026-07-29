@@ -1,5 +1,5 @@
 import { type ButtonHTMLAttributes, type ReactNode, type Ref } from 'react'
-import { ROW_CONTROL_TARGET, ROW_DRAG_HANDLE_TARGET } from './flat-table-styles'
+import { ROW_CONTROL_TARGET, ROW_LEADING_CONTROL_TARGET } from './flat-table-styles'
 
 // Single shared component for the small icon buttons that live inside a row
 // (item-row toggles, kebabs, drag handles, gear-row edit/delete, category-
@@ -40,10 +40,11 @@ const BASE = 'shrink-0 w-7 h-6 inline-flex items-center justify-center rounded'
 const TOUCH_BASE = `shrink-0 ${ROW_CONTROL_TARGET}`
 // Drag handles keep the touch box on mobile but narrow on desktop: the grip
 // glyph is a ~6px column of dots, so a square box strands visible dead space
-// either side of it. Derived from the variant rather than a new prop - every
-// dragHandle wants this and nothing else does, so a prop would only create a
-// way to get it wrong.
-const TOUCH_BASE_DRAG = `shrink-0 ${ROW_DRAG_HANDLE_TARGET}`
+// either side of it. The same narrow box is what section-header collapse
+// chevrons use, because the two share the leading column. Derived from the
+// variant rather than a new prop - every dragHandle wants this and nothing
+// else does, so a prop would only create a way to get it wrong.
+const TOUCH_BASE_DRAG = `shrink-0 ${ROW_LEADING_CONTROL_TARGET}`
 
 const VARIANT_CLASSES: Record<Variant, string> = {
   default: 'text-gray-500 hover:text-gray-700 hover:bg-gray-100',

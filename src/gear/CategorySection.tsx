@@ -22,7 +22,7 @@ import {
   FLAT_TABLE_SURFACE,
   INLINE_EDIT_FOCUS_RING,
   POPOVER_SURFACE,
-  ROW_CONTROL_TARGET,
+  ROW_LEADING_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 
 type CategorySectionProps = {
@@ -137,15 +137,19 @@ function CategorySectionInner(
             comfortable target on phone hardware) and tightened on desktop
             where mouse precision is higher. The chevron is the only
             collapse affordance; the name button next to it triggers
-            rename, not collapse, so the two intents stay separate. */}
+            rename, not collapse, so the two intents stay separate.
+            ROW_LEADING_CONTROL_TARGET, not ROW_CONTROL_TARGET: this box has
+            to stay the same width as GearItemRow's grip or the alignment
+            documented above stops holding. Glyph is 14px to match the
+            narrower desktop box (and CategoryGroup's chevron). */}
         <button
           onClick={() => onToggleCollapse(collapseKey)}
           aria-expanded={!collapsed}
           aria-controls={regionId}
           aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
-          className={`${ROW_CONTROL_TARGET} text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0`}
+          className={`${ROW_LEADING_CONTROL_TARGET} text-gray-500 hover:text-gray-800 hover:bg-gray-200/60 shrink-0`}
         >
-          {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+          {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
         </button>
 
         {/* Category name / rename input */}

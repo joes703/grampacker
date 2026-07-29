@@ -108,6 +108,25 @@ describe('gear category header alignment contract', () => {
     expect(rail!.nextElementSibling).toBeNull()
   })
 
+  it('sizes the chevron and the row grip from the same leading-column token', () => {
+    // DOM order alone does not produce alignment - the two leading boxes also
+    // have to be the same WIDTH. When the desktop grip narrowed to 20px and
+    // the chevron stayed at 28px, every item name sat 8px left of the category
+    // title and all three order assertions above still passed. Comparing the
+    // rendered classes is the part jsdom can actually check.
+    renderSection()
+    const chevron = screen.getByRole('button', { name: /Collapse Shelter/ })
+    const grip = screen.getByRole('button', { name: 'Reorder Tarp' })
+
+    const widths = (el: Element) =>
+      el.className.split(/\s+/).filter((c) => /(^|:)[wh]-/.test(c)).sort()
+    // Pinned to the exact set, not just chevron === grip: two controls that
+    // both lost their sizing classes would compare equal to each other and
+    // pass while rendering nothing.
+    expect(widths(chevron)).toEqual(['h-10', 'lg:h-7', 'lg:w-5', 'w-10'])
+    expect(widths(grip)).toEqual(widths(chevron))
+  })
+
   it('renders no grip and no leading placeholder for Uncategorized', () => {
     render(
       <StaticCategorySection

@@ -84,6 +84,14 @@ function PackPlainSection({
   // An optimistic location has no server row yet, so rename and delete have
   // nothing to address.
   const confirmed = !location.id.startsWith('temp-')
+  // A location can be item-backed while its backing ROW is out of view: a worn
+  // container item is extracted into the Worn section, so buildPackingTree
+  // resolves containerItem to null and this plain component renders instead of
+  // PackContainerSection. The location is still item-backed - its name is the
+  // gear item's, and the server rejects a rename - so the menu must be driven
+  // by the structural fact on the location, never by whether the row happens to
+  // be rendered.
+  const itemBacked = location.containerListItemId !== null
 
   return (
     <div className={nestClass(depth)}>
@@ -113,7 +121,7 @@ function PackPlainSection({
           headerAction={confirmed ? (
             <PackSectionMenu
               title={location.name}
-              itemBacked={false}
+              itemBacked={itemBacked}
               onRename={onStartRename}
               onDelete={onDelete}
             />
