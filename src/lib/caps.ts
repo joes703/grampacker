@@ -20,7 +20,7 @@
 // mirror them) and re-exported here so UI call sites keep the single
 // lib/caps import the old repo established. FOOD_ITEM_CAP follows the same
 // convention (defined in shared/food.ts, the 0007 trigger mirrors it).
-export { LIST_CAP, LIST_ITEM_CAP } from '../../shared/lists'
+export { LIST_CAP, LIST_ITEM_CAP, PACKING_LOCATION_CAP } from '../../shared/lists'
 export { FOOD_ITEM_CAP } from '../../shared/food'
 export {
   FOOD_PLAN_CAP,

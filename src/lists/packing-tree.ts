@@ -119,6 +119,38 @@ export function buildPackingTree(
   return { roots, unassignedItems }
 }
 
+// Rows that must not participate in packing REORDER. Worn items are extracted
+// into their own trailing section and never render inside a location, so a
+// reorder that counted them would compute slots against rows the user cannot
+// see. (Moved here from OrganizePackPanel when Organize merged into Pack; the
+// tree module is where the rest of the packing-layout derivations live.)
+export function deriveWornReorderExclusions(
+  items: ListItemWithGear[],
+): Set<string> {
+  return new Set(items.filter((item) => item.isWorn).map((item) => item.id))
+}
+
+// Which locations share a parent, keyed by location id. Location drags are
+// constrained to siblings: dropping a section onto a cousin would silently
+// reparent it, and the collision filter is where that is prevented rather
+// than being caught after the fact in the planner.
+export function buildSiblingLocationIdsById(
+  roots: PackingTreeLocation[],
+): Map<string, ReadonlySet<string>> {
+  const siblingIdsById = new Map<string, ReadonlySet<string>>()
+
+  function visit(siblings: PackingTreeLocation[]) {
+    const siblingIds = new Set(siblings.map((node) => node.location.id))
+    for (const node of siblings) {
+      siblingIdsById.set(node.location.id, siblingIds)
+      visit(node.children)
+    }
+  }
+
+  visit(roots)
+  return siblingIdsById
+}
+
 export function buildContainerMoveExclusions(
   tree: PackingTree,
 ): Map<string, Set<string>> {

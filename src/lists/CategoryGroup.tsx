@@ -117,10 +117,44 @@ type GroupPropsBase = {
    *  to each SortableItemRow as `disabled` to prevent overlapping reorders
    *  from racing. Sortable-only; share view doesn't set this. */
   reorderPending?: boolean
-  /** Pack mode filter: when true, hide already-packed items from the rendered
-   *  list. Header counts and the "complete" affordance still reflect the full
-   *  items array. Authed pack-mode only; share view never sets this. */
+  /** Pack mode filters: hide already-packed / already-ready items from the
+   *  rendered list. Independent of each other - a row renders only if it
+   *  passes BOTH - because "what's left to pack" and "what's left to prep"
+   *  are different questions and a packer asks them separately. Header counts
+   *  and the "complete" affordance still reflect the full items array.
+   *  Authed pack-mode only; share view never sets these.
+   *
+   *  Neither filter touches `containerItem`. That row is the section's
+   *  HEADER, not a member of it: hiding it would take the location, its
+   *  contents, its actions and its droppable surface with it. A packed
+   *  container therefore stays on screen while its filtered-out contents
+   *  disappear, which is the intended reading - the container is still where
+   *  the remaining work lives. */
   showUnpackedOnly?: boolean
+  showUnreadyOnly?: boolean
+  /** Header chrome, INJECTED as ReactNode rather than built here.
+   *
+   *  Pack mode is now also the organizer: a packing-location section can be
+   *  dragged to reorder, dropped into, renamed and deleted. All of that needs
+   *  @dnd-kit and authenticated-only components, and this module renders on
+   *  the PUBLIC share view - so it arrives as opaque nodes, the same seam
+   *  `renderRows` uses. A prop is something the bundler can see through; a
+   *  boolean would not be.
+   *
+   *  headerLeading sits before the collapse chevron (the drag grip).
+   *  headerAction sits at the end of the header row (nest handle, kebab). */
+  headerLeading?: ReactNode
+  headerAction?: ReactNode
+  /** Replaces the rendered title text. `name` is still required and still
+   *  supplies every accessible label ("Collapse {name}"), so a section stays
+   *  announceable while its title is an editing input. Used by pack mode's
+   *  rename-in-place on a packing location. */
+  titleContent?: ReactNode
+  /** Per-row trailing control, same injection rationale as the header slots.
+   *  Pack rows use it for the "move to location" menu, which is the
+   *  keyboard- and touch-reachable equivalent of dragging a row between
+   *  sections. Called per rendered row. */
+  renderRowAction?: (item: ListItemWithGear) => ReactNode
   /** The one section allowed to render worn rows. Every ordinary category or
    *  packing-location section filters them into the trailing Worn section. */
   wornSection?: boolean
@@ -214,6 +248,11 @@ function CategoryGroup({
   renderRows,
   reorderPending = false,
   showUnpackedOnly = false,
+  showUnreadyOnly = false,
+  headerLeading,
+  headerAction,
+  titleContent,
+  renderRowAction,
   wornSection = false,
   baseSubtotalGrams,
   consumableSubtotalGrams,
@@ -260,11 +299,35 @@ function CategoryGroup({
   const showKebabSlot = !packMode && Boolean(onDelete)
   // "Complete" = pack mode, has section items, every section item packed.
   const complete = packMode && progressItems.length > 0 && packedCount === progressItems.length
-  // When the unpacked-only filter is on, hide packed items from the
-  // rendered rows. Applied AFTER the section split so packed-but-worn
-  // items don't sneak through.
-  const visibleItems = packMode && showUnpackedOnly
-    ? sectionItems.filter((i) => !i.isPacked)
+  // Filters hide finished rows from the rendered list. Applied AFTER the
+  // section split so packed-but-worn items don't sneak through.
+  //
+  // The two filters are ANDed, not ORed: with both on you see only rows that
+  // are neither packed nor ready - the rows with everything still to do. OR
+  // would make turning on a second filter show MORE rows, which is not what a
+  // filter switch means.
+  // Copy for a genuinely empty pack section, and it has to name the right
+  // thing. Pack groups by packing location, but falls back to CATEGORY
+  // grouping while a list has no locations (selectPackGrouping), so "no items
+  // in this location" would be describing a category - and a category can go
+  // empty for a mundane reason, e.g. everything in it is worn and has moved
+  // to the trailing Worn section.
+  //
+  // Location sections pass a regionKey and no categoryId; category sections
+  // pass a categoryId (null for Uncategorized). Unassigned is the odd one
+  // out both ways: "no items here" frames a fully organized list as a
+  // problem, when an empty Unassigned bucket is exactly what finishing looks
+  // like.
+  const emptySectionLabel = regionKey === 'packing-unassigned'
+    ? 'Everything has a location.'
+    : categoryId === undefined
+      ? 'No items in this location.'
+      : 'No items in this category.'
+  const filtering = packMode && (showUnpackedOnly || showUnreadyOnly)
+  const visibleItems = filtering
+    ? sectionItems.filter(
+        (i) => (!showUnpackedOnly || !i.isPacked) && (!showUnreadyOnly || !i.isReady),
+      )
     : sectionItems
 
   // Per-row props builder — same shape for SortableItemRow and ItemRow.
@@ -287,6 +350,7 @@ function CategoryGroup({
       onDeleteGearItem: onDeleteGearItem ? () => onDeleteGearItem(gearId) : undefined,
       onSetGearStatus: onSetGearStatus ? (s: GearStatus) => onSetGearStatus(gearId, s) : undefined,
       onDelete: onDelete ? () => onDelete(item.id) : undefined,
+      rowAction: renderRowAction?.(item),
     }
   }
 
@@ -314,6 +378,7 @@ function CategoryGroup({
         // border-b would double with the card's bottom border. Drop it.
         collapsed ? 'border-b-0' : ''
       }`}>
+        {headerLeading}
         {collapsible ? (
           // Chevron is the only interactive collapse target. Mobile mistaps
           // (tapping near the first row but landing on the header) used to
@@ -376,9 +441,13 @@ function CategoryGroup({
             ) : (
               /* Static label area - explicitly NOT a button, no hover state.
                  Chevron is the obvious affordance; the name remains
-                 read-only here (rename happens via the modal, not by tapping
-                 the header). */
-              <span className={`truncate ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
+                 read-only here (rename happens via the section menu or the
+                 modal, not by tapping the header). titleContent is the one
+                 override, used while a packing location is being renamed in
+                 place. */
+              titleContent ?? (
+                <span className={`truncate ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
+              )
             )}
             {packMode && (
               /* Pack progress only. Edit mode shows no count: the rows are
@@ -445,6 +514,7 @@ function CategoryGroup({
             </div>
           </>
         )}
+        {headerAction}
       </div>
 
       {/* Items + footer (footer is the row's "total" line, lined up under Weight) */}
@@ -459,6 +529,22 @@ function CategoryGroup({
           {renderRows
             ? renderRows(visibleItems, rowPropsFor)
             : visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}
+          {/* An empty pack section says WHY it is empty. Without this a
+              section can render as a bare header with nothing under it, and
+              the two reasons look identical: the location genuinely holds
+              nothing, or a filter is hiding everything in it. The second is
+              the dangerous one - a packer scanning for what is left could
+              read a filtered-empty section as "done here". (The retired
+              Organize view carried this line; the filters make it matter
+              more, not less.) Only pack sections: an empty CATEGORY in edit
+              mode is self-evident from the add-item row beneath it. */}
+          {packMode && visibleItems.length === 0 && !children && (
+            <p className="px-3 py-3 text-sm text-gray-500">
+              {sectionItems.length === 0
+                ? emptySectionLabel
+                : `All ${sectionItems.length} ${sectionItems.length === 1 ? 'item' : 'items'} here are hidden by the filters above.`}
+            </p>
+          )}
           {children}
 
           {/* Draft row when adding — full editable item row */}

@@ -1,0 +1,290 @@
+import { useCallback, useState, type ReactNode } from 'react'
+import { useDraggable, useDroppable } from '@dnd-kit/core'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { GripVertical, MoreVertical, PackageOpen, Pencil, Trash2 } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import type { ListItemWithGear, PackingLocation } from '../lib/types'
+import { makeDnDId } from '../lib/dnd-ids'
+import { asButtonRef } from '../lib/dnd'
+import { useAnchoredMenu } from '../lib/use-anchored-menu'
+import RowIconButton from '../components/RowIconButton'
+import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
+import { POPOVER_SURFACE } from '../components/flat-table-styles'
+
+// The drag + admin chrome for a packing-location section in pack mode.
+//
+// Same seam as SortableCategoryRows: CategoryGroup renders on the PUBLIC share
+// view, so it must not import @dnd-kit or any authenticated component. This
+// module owns both and hands CategoryGroup opaque ReactNodes through its
+// headerLeading / headerAction props. Only ListDetailPage imports this file.
+//
+// This replaces OrganizePackPanel's SortableLocationSection and
+// SortableItemContainerSection, which wrapped a LocationSection. The wiring is
+// the same; the thing being wrapped is now the checklist section, because
+// arranging and packing are one view.
+
+/** A location section's header controls, or null for the sections that have
+ *  none (Unassigned, and optimistic rows the server has not confirmed). */
+export type PackSectionChrome = {
+  headerLeading?: ReactNode
+  headerAction?: ReactNode
+  setNodeRef: (node: HTMLElement | null) => void
+  style: React.CSSProperties
+  isOver: boolean
+}
+
+// A location section that is NOT backed by an item. One identity: the section
+// itself, which reorders among its siblings and accepts item drops.
+export function useSortableLocationSection({
+  location,
+  reorderPending,
+}: {
+  location: PackingLocation
+  reorderPending: boolean
+}) {
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+  } = useSortable({
+    id: makeDnDId('packing-location', location.id),
+    // A temp- id is an optimistic row the server has not confirmed. Dragging
+    // it would address a location that does not exist yet.
+    disabled: reorderPending || location.id.startsWith('temp-'),
+  })
+
+  return {
+    setNodeRef,
+    isOver,
+    style: {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.4 : 1,
+    },
+    dragHandle: (
+      <RowIconButton
+        touchSafe
+        ref={asButtonRef(setActivatorNodeRef)}
+        {...listeners}
+        {...attributes}
+        disabled={reorderPending}
+        variant="dragHandle"
+        ariaLabel={`Drag ${location.name} to reorder`}
+        icon={<GripVertical size={14} />}
+      />
+    ),
+  }
+}
+
+// A location BACKED by a list item ("use as container"). Two identities on one
+// node, and both are load-bearing:
+//
+//   packing-location:<id>  - reorder this section among its siblings, and be a
+//                            drop target for items.
+//   packing-item:<itemId>  - drag the BACKING ITEM into another container,
+//                            which is how containers nest.
+//
+// Collapsing this to the section identity alone would silently remove
+// nesting: the backing item would no longer be a drag source, and
+// buildContainerMoveExclusions - which exists to stop a container being
+// dropped into its own subtree - would have nothing to constrain.
+export function useSortableContainerSection({
+  location,
+  containerItem,
+  reorderPending,
+  movePending,
+}: {
+  location: PackingLocation
+  containerItem: ListItemWithGear
+  reorderPending: boolean
+  movePending: boolean
+}) {
+  const {
+    attributes: reorderAttributes,
+    listeners: reorderListeners,
+    setActivatorNodeRef: setReorderActivatorNodeRef,
+    setNodeRef: setSortableNodeRef,
+    transform: reorderTransform,
+    transition,
+    isDragging: isReordering,
+    isOver,
+  } = useSortable({
+    id: makeDnDId('packing-location', location.id),
+    disabled: reorderPending || location.id.startsWith('temp-'),
+  })
+  const {
+    attributes: nestingAttributes,
+    listeners: nestingListeners,
+    setActivatorNodeRef: setNestingActivatorNodeRef,
+    setNodeRef: setNestingNodeRef,
+    transform: nestingTransform,
+    isDragging: isNesting,
+  } = useDraggable({
+    id: makeDnDId('packing-item', containerItem.id),
+    disabled: movePending,
+  })
+  const setNodeRef = useCallback((node: HTMLElement | null) => {
+    setSortableNodeRef(node)
+    setNestingNodeRef(node)
+  }, [setNestingNodeRef, setSortableNodeRef])
+
+  return {
+    setNodeRef,
+    isOver,
+    style: {
+      // Whichever drag is active owns the transform; they share a node.
+      transform: CSS.Transform.toString(isNesting ? nestingTransform : reorderTransform),
+      transition: isNesting ? undefined : transition,
+      opacity: isNesting || isReordering ? 0.35 : 1,
+    },
+    dragHandle: (
+      <RowIconButton
+        touchSafe
+        ref={asButtonRef(setReorderActivatorNodeRef)}
+        {...reorderListeners}
+        {...reorderAttributes}
+        disabled={reorderPending}
+        variant="dragHandle"
+        ariaLabel={`Reorder ${containerItem.gearItem.name}`}
+        icon={<GripVertical size={14} />}
+      />
+    ),
+    nestHandle: (
+      <RowIconButton
+        touchSafe
+        ref={asButtonRef(setNestingActivatorNodeRef)}
+        {...nestingListeners}
+        {...nestingAttributes}
+        disabled={movePending}
+        ariaLabel={`Move ${containerItem.gearItem.name} into another container`}
+        title="Move into another container"
+        icon={<PackageOpen size={14} />}
+      />
+    ),
+  }
+}
+
+// Rename / Delete for a plain location, Stop-using-as-container for an
+// item-backed one. Lifted from LocationSection's header menu so the merged
+// pack section keeps the same actions in the same place.
+export function PackSectionMenu({
+  title,
+  itemBacked,
+  onRename,
+  onDelete,
+}: {
+  title: string
+  itemBacked: boolean
+  onRename: () => void
+  onDelete: () => void
+}) {
+  const { open, openMenu, close, triggerRef, menuRef, menuPos } =
+    useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
+
+  return (
+    <>
+      <RowIconButton
+        touchSafe
+        ref={triggerRef}
+        onClick={() => open ? close() : openMenu()}
+        ariaLabel={`${title} options`}
+        icon={<MoreVertical size={14} />}
+      />
+      {open && menuPos && 'left' in menuPos && createPortal(
+        <div
+          ref={menuRef}
+          role="group"
+          aria-label={`${title} actions`}
+          className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
+          style={{ top: menuPos.top, left: menuPos.left }}
+        >
+          {itemBacked ? (
+            <RowMenuItem icon={<PackageOpen size={13} />} onClick={() => {
+              close()
+              onDelete()
+            }}>
+              Stop using as container
+            </RowMenuItem>
+          ) : (
+            <>
+              <RowMenuItem icon={<Pencil size={13} />} onClick={() => {
+                close()
+                onRename()
+              }}>
+                Rename
+              </RowMenuItem>
+              <RowMenuSeparator />
+              <RowMenuItem icon={<Trash2 size={13} />} tone="danger" onClick={() => {
+                close()
+                onDelete()
+              }}>
+                Delete location
+              </RowMenuItem>
+            </>
+          )}
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
+// Rename-in-place for a packing location, lifted from LocationSection's header.
+// Self-contained draft state: the page owns only WHICH section is renaming, so
+// switching sections cannot leak a half-typed name between them (the caller
+// keys this by location id).
+export function PackSectionRenameInput({
+  name,
+  onRename,
+  onCancel,
+}: {
+  name: string
+  onRename: (name: string) => void
+  onCancel: () => void
+}) {
+  const [draft, setDraft] = useState(name)
+
+  function commit() {
+    const next = draft.trim()
+    // maxLength caps the upper bound; an empty or unchanged name is simply
+    // not a rename, so it closes without a write.
+    if (next && next !== name) onRename(next)
+    onCancel()
+  }
+
+  return (
+    <input
+      autoFocus
+      value={draft}
+      maxLength={60}
+      aria-label="Packing location name"
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') commit()
+        if (event.key === 'Escape') onCancel()
+      }}
+      className="min-w-0 flex-1 rounded border border-blue-400 bg-white px-2 py-1 text-sm font-semibold text-gray-900"
+    />
+  )
+}
+
+// The Unassigned bucket. Not sortable (it is not a location row and has no
+// sortOrder) but it IS a drop target - dragging a row here is how you take it
+// out of a container.
+export function DroppableUnassignedSection({ children }: { children: ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: makeDnDId('packing-location', 'unassigned'),
+  })
+  return (
+    <div ref={setNodeRef} className={isOver ? 'rounded-lg ring-2 ring-blue-400' : ''}>
+      {children}
+    </div>
+  )
+}

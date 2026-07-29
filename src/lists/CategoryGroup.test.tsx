@@ -411,6 +411,183 @@ describe('CategoryGroup footer subtotal', () => {
     expect(within(backpackHeader).queryByLabelText('All packed')).toBeNull()
   })
 
+  // Pack mode has two independent filters. They are ANDed: with both on, a row
+  // survives only if it is neither packed nor ready. ORing them would make
+  // turning on a second filter show MORE rows, which inverts what a filter
+  // switch means, and no assertion on a single filter alone can catch it.
+  describe('pack filters', () => {
+    const plain = itemNamed('plain', 'Stakes')
+    const packed = { ...itemNamed('packed', 'Tarp'), isPacked: true }
+    const ready = { ...itemNamed('ready', 'Stove'), isReady: true }
+    const both = { ...itemNamed('both', 'Pot'), isPacked: true, isReady: true }
+    const all = [plain, packed, ready, both]
+
+    function renderFiltered(filters: {
+      showUnpackedOnly?: boolean
+      showUnreadyOnly?: boolean
+    }) {
+      render(
+        <CategoryGroup
+          name="Kitchen"
+          categoryId="cat-1"
+          items={all}
+          weightUnit="g"
+          packMode
+          readyChecksEnabled
+          {...filters}
+        />,
+      )
+    }
+
+    it('shows every row with both filters off', () => {
+      renderFiltered({})
+      for (const name of ['Stakes', 'Tarp', 'Stove', 'Pot']) {
+        expect(screen.getByText(name)).toBeInTheDocument()
+      }
+    })
+
+    it('hides packed rows for the unpacked-only filter, regardless of ready', () => {
+      renderFiltered({ showUnpackedOnly: true })
+      expect(screen.getByText('Stakes')).toBeInTheDocument()
+      expect(screen.getByText('Stove')).toBeInTheDocument()
+      expect(screen.queryByText('Tarp')).toBeNull()
+      expect(screen.queryByText('Pot')).toBeNull()
+    })
+
+    it('hides ready rows for the un-ready filter, regardless of packed', () => {
+      renderFiltered({ showUnreadyOnly: true })
+      expect(screen.getByText('Stakes')).toBeInTheDocument()
+      expect(screen.getByText('Tarp')).toBeInTheDocument()
+      expect(screen.queryByText('Stove')).toBeNull()
+      expect(screen.queryByText('Pot')).toBeNull()
+    })
+
+    it('shows only rows that pass BOTH filters when both are on', () => {
+      renderFiltered({ showUnpackedOnly: true, showUnreadyOnly: true })
+      expect(screen.getByText('Stakes')).toBeInTheDocument()
+      expect(screen.queryByText('Tarp')).toBeNull()
+      expect(screen.queryByText('Stove')).toBeNull()
+      expect(screen.queryByText('Pot')).toBeNull()
+    })
+
+    it('keeps the header count on the unfiltered set', () => {
+      // The filter is a view of the section, not a redefinition of it. If the
+      // count followed the filter, turning on "unpacked only" would report
+      // 0 / 2 packed and the number would stop meaning anything.
+      renderFiltered({ showUnpackedOnly: true })
+      expect(screen.getByText('2 / 4')).toBeInTheDocument()
+    })
+
+    it('says a section is empty because of the filters, not just blank', () => {
+      // The dangerous ambiguity: a bare header with nothing under it reads
+      // the same whether the location is genuinely empty or a filter is
+      // hiding everything in it. A packer scanning for what is left would
+      // read the second as "done here".
+      renderFiltered({ showUnpackedOnly: true, showUnreadyOnly: true })
+      expect(screen.queryByText('Stakes')).toBeInTheDocument()
+
+      cleanup()
+      render(
+        <CategoryGroup
+          name="Kitchen"
+          categoryId="cat-1"
+          items={[packed, ready, both]}
+          weightUnit="g"
+          packMode
+          readyChecksEnabled
+          showUnpackedOnly
+          showUnreadyOnly
+        />,
+      )
+      expect(screen.getByText('All 3 items here are hidden by the filters above.')).toBeInTheDocument()
+    })
+
+    it('distinguishes a genuinely empty location from a filtered-empty one', () => {
+      render(
+        <CategoryGroup
+          name="Top lid"
+          regionKey="loc-1"
+          items={[]}
+          weightUnit="g"
+          packMode
+        />,
+      )
+      expect(screen.getByText('No items in this location.')).toBeInTheDocument()
+    })
+
+    it('calls an empty CATEGORY a category, not a location', () => {
+      // Pack falls back to category grouping while a list has no packing
+      // locations, so this copy has to name the right thing. A category can
+      // also go empty for a mundane reason - everything in it is worn, and
+      // worn rows move to the trailing Worn section.
+      render(
+        <CategoryGroup
+          name="Clothing"
+          categoryId="cat-1"
+          items={[{ ...itemNamed('hat', 'Sun hat'), isWorn: true }]}
+          weightUnit="g"
+          packMode
+        />,
+      )
+      expect(screen.getByText('No items in this category.')).toBeInTheDocument()
+      expect(screen.queryByText('No items in this location.')).toBeNull()
+    })
+
+    it('reads an empty Unassigned bucket as success, not as a gap', () => {
+      // "No items here" would frame a fully organized list as a problem.
+      render(
+        <CategoryGroup
+          name="Unassigned"
+          categoryId={null}
+          regionKey="packing-unassigned"
+          items={[]}
+          weightUnit="g"
+          packMode
+        />,
+      )
+      expect(screen.getByText('Everything has a location.')).toBeInTheDocument()
+    })
+
+    it('leaves empty edit-mode categories alone', () => {
+      // Only pack sections explain themselves; an empty category in edit mode
+      // is self-evident from the add-item row beneath it.
+      render(
+        <CategoryGroup
+          name="Shelter"
+          categoryId="cat-1"
+          items={[]}
+          weightUnit="g"
+        />,
+      )
+      expect(screen.queryByText('No items in this location.')).toBeNull()
+    })
+
+    it('never filters away the container header row', () => {
+      // The container item is the section's HEADER, not a member of it.
+      // Hiding it would take the location, its contents, its actions and its
+      // droppable surface with it - so a packed, ready container stays put
+      // while its own filtered contents disappear.
+      const container = { ...itemNamed('pack', 'Backpack'), isPacked: true, isReady: true }
+      const packedChild = { ...itemNamed('bag', 'Sleeping bag'), isPacked: true }
+      render(
+        <CategoryGroup
+          name="Backpack"
+          regionKey="loc-pack"
+          containerItem={container}
+          items={[packedChild]}
+          weightUnit="g"
+          packMode
+          readyChecksEnabled
+          showUnpackedOnly
+          showUnreadyOnly
+        />,
+      )
+
+      expect(screen.getByText('Backpack')).toBeInTheDocument()
+      expect(screen.queryByText('Sleeping bag')).toBeNull()
+    })
+  })
+
   it('renders no subtotal in pack mode, not even an unlabelled one', () => {
     // The footer is !packMode-gated. Pack mode deliberately keeps counts on
     // full section membership; a packed/unpacked-dependent weight would be a

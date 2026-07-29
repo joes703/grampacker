@@ -17,24 +17,107 @@ type Props = {
   onReset: () => void
   showUnpackedOnly: boolean
   onToggleShowUnpackedOnly: () => void
-  // Ready Checks block. The "Add ready checks" toggle lives inline at the
-  // top of this panel — it's the only place pack-mode options live now
-  // that List options is hidden in pack mode. `enabled` still drives the
-  // second progress bar + Reset Ready button; toggling persists via
-  // `onToggleEnabled` (writes ready_checks_enabled on the lists row).
+  showUnreadyOnly: boolean
+  onToggleShowUnreadyOnly: () => void
+  // Ready Checks block. Ready checks are ALWAYS on now: there is no
+  // per-list opt-in, so the second progress bar and the Reset ready button
+  // render unconditionally. The `ready_checks_enabled` column still exists
+  // and is still copied by list duplication, but nothing reads it - see the
+  // note in ListDetailPage where readyChecksEnabled is pinned true.
   // Prop is required because PackingProgress only renders for the owner
-  // in pack mode — the share view (which never wires reset/toggle) does
-  // not render this component.
+  // in pack mode — the share view (which never wires reset) does not
+  // render this component.
   readyChecks: {
     ready: number
     // Gear-only denominator. Ready checks never cover food, so dividing by
     // the combined `total` above would make the ready bar uncompletable on
     // any list with a food plan.
     total: number
-    enabled: boolean
     onResetReady: () => void
-    onToggleEnabled: () => void
   }
+}
+
+// One progress metric: its filter switch, its count, its reset, its bar.
+//
+// The two metrics used to be laid out as a shared cluster of switches at the
+// top of the panel and then two bars below, which left neither switch visibly
+// attached to the thing it filtered. Each switch now sits on the same line as
+// its own bar, immediately left of it, so "this control hides rows from THIS
+// metric" is readable without inference.
+//
+// The visible label IS the accessible name (not a shortened caption beside a
+// differently-worded aria-label): a mismatch there breaks speech control, and
+// the name is what a user reads aloud to activate it.
+function ProgressBlock({
+  countLabel,
+  doneLabel,
+  resetLabel,
+  done,
+  pct,
+  count,
+  barClass,
+  filterLabel,
+  filterChecked,
+  onFilterChange,
+  onReset,
+}: {
+  countLabel: string
+  doneLabel: string
+  resetLabel: string
+  done: boolean
+  pct: number
+  count: number
+  barClass: string
+  filterLabel: string
+  filterChecked: boolean
+  onFilterChange: () => void
+  onReset: () => void
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
+        <span className="text-sm font-medium tabular-nums text-gray-700">
+          {countLabel}
+        </span>
+        <div className="flex items-center gap-2 flex-wrap">
+          {done && (
+            <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+              {doneLabel}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onReset}
+            disabled={count === 0}
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <RotateCcw size={12} /> {resetLabel}
+          </button>
+        </div>
+      </div>
+      {/* Switch and bar on one line, switch first. flex-wrap so a narrow
+          panel drops the bar to its own line rather than crushing it; the
+          bar keeps a min-width so it never degrades to a sliver first.
+          The switch pair is print:hidden - a paper checklist has no
+          filters - but the bar itself prints. */}
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex shrink-0 items-center gap-2 print:hidden">
+          <ToggleSwitch
+            checked={filterChecked}
+            onChange={onFilterChange}
+            ariaLabel={filterLabel}
+          />
+          <span className={PANEL_TOGGLE_LABEL}>{filterLabel}</span>
+        </div>
+        <div className="h-2 min-w-40 flex-1 overflow-hidden rounded-full bg-gray-200">
+          <div
+            className={`h-2 rounded-full transition-all ${barClass}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function PackingProgress({
@@ -43,6 +126,8 @@ export default function PackingProgress({
   onReset,
   showUnpackedOnly,
   onToggleShowUnpackedOnly,
+  showUnreadyOnly,
+  onToggleShowUnreadyOnly,
   readyChecks,
 }: Props) {
   const pct = total === 0 ? 0 : Math.round((packed / total) * 100)
@@ -52,103 +137,37 @@ export default function PackingProgress({
   const readyCount = readyChecks.ready
   const readyTotal = readyChecks.total
   const readyPct = readyTotal === 0 ? 0 : Math.round((readyCount / readyTotal) * 100)
-  const readyDone = readyChecks.enabled && readyCount === readyTotal && readyTotal > 0
+  const readyDone = readyCount === readyTotal && readyTotal > 0
 
   return (
-    <div className={`${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} p-4`}>
-      {/* Pack-mode controls. Compact inline cluster of label-and-switch
-          pairs (each label sits adjacent to its switch so they read as
-          one control), gap-x-5 between clusters, flex-wrap so mobile
-          stacks the two when the panel is narrow. The cluster is anchored
-          left, not stretched edge-to-edge — the switches were never meant
-          to fight each other across a wide desktop panel.
-          Show unpacked only: local view state.
-          Add ready checks: persists ready_checks_enabled. This is the
-          only surface that toggles this setting now that List options
-          is suppressed in pack mode. */}
-      <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-2 print:hidden">
-        {/* Each label-and-switch pair sits inside a flex cluster so the
-            label reads as adjacent to its control. ToggleSwitch renders
-            a <button> (not an <input>), so wrapping in a <label> would
-            be semantically wrong. The switch already carries its own
-            ariaLabel. */}
-        <div className="flex items-center gap-2">
-          <span className={PANEL_TOGGLE_LABEL}>Show unpacked only</span>
-          <ToggleSwitch
-            checked={showUnpackedOnly}
-            onChange={onToggleShowUnpackedOnly}
-            ariaLabel="Show unpacked only"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={PANEL_TOGGLE_LABEL}>Add ready checks</span>
-          <ToggleSwitch
-            checked={readyChecks.enabled}
-            onChange={readyChecks.onToggleEnabled}
-            ariaLabel="Add ready checks"
-          />
-        </div>
-      </div>
+    <div className={`${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} space-y-3 p-4`}>
+      <ProgressBlock
+        countLabel={`${packed} / ${total} packed`}
+        doneLabel="All packed!"
+        resetLabel="Reset packed"
+        done={done}
+        pct={pct}
+        count={packed}
+        barClass={done ? 'bg-green-500' : 'bg-blue-500'}
+        filterLabel="Show unpacked only"
+        filterChecked={showUnpackedOnly}
+        onFilterChange={onToggleShowUnpackedOnly}
+        onReset={() => setConfirmingReset(true)}
+      />
 
-      {/* Packed header — count on the left, "All packed!" chip + Reset
-          packed on the right. */}
-      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-        <span className="text-sm font-medium tabular-nums text-gray-700">
-          {packed} / {total} packed
-        </span>
-        <div className="flex items-center gap-2 flex-wrap">
-          {done && (
-            <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-              All packed!
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => setConfirmingReset(true)}
-            disabled={packed === 0}
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <RotateCcw size={12} /> Reset packed
-          </button>
-        </div>
-      </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-        <div
-          className={`h-2 rounded-full transition-all ${done ? 'bg-green-500' : 'bg-blue-500'}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-
-      {readyChecks.enabled && (
-        <div className="mt-3">
-          <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
-            <span className="text-sm font-medium tabular-nums text-gray-700">
-              {readyCount} / {readyTotal} ready
-            </span>
-            <div className="flex items-center gap-2 flex-wrap">
-              {readyDone && (
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                  All ready!
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => setConfirmingResetReady(true)}
-                disabled={readyCount === 0}
-                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <RotateCcw size={12} /> Reset ready
-              </button>
-            </div>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-            <div
-              className={`h-2 rounded-full transition-all ${readyDone ? 'bg-green-500' : 'bg-amber-500'}`}
-              style={{ width: `${readyPct}%` }}
-            />
-          </div>
-        </div>
-      )}
+      <ProgressBlock
+        countLabel={`${readyCount} / ${readyTotal} ready`}
+        doneLabel="All ready!"
+        resetLabel="Reset ready"
+        done={readyDone}
+        pct={readyPct}
+        count={readyCount}
+        barClass={readyDone ? 'bg-green-500' : 'bg-amber-500'}
+        filterLabel="Show un-ready only"
+        filterChecked={showUnreadyOnly}
+        onFilterChange={onToggleShowUnreadyOnly}
+        onReset={() => setConfirmingResetReady(true)}
+      />
 
       {confirmingReset && (
         // Reset is recoverable (just clears is_packed flags), so the confirm

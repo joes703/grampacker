@@ -32,9 +32,14 @@ describe('readLastListPath', () => {
     expect(readLastListPath()).toBe(PACK_PATH)
   })
 
-  it('returns a valid organize-mode path round-tripped through write', () => {
-    writeLastListPath(ORGANIZE_PATH)
-    expect(readLastListPath()).toBe(ORGANIZE_PATH)
+  it('migrates a stored organize path to the pack route', () => {
+    // Organize merged into Pack. A stored organize path must NOT simply fail
+    // validation: readLastListPath would return null, RootRedirect would skip
+    // its fast path, and the user would land on whichever list was updated
+    // most recently, in the wrong view. So it migrates, like ?mode=pack does.
+    localStorage.setItem('lastListPath', ORGANIZE_PATH)
+    expect(readLastListPath()).toBe(PACK_PATH)
+    expect(localStorage.getItem('lastListPath')).toBe(PACK_PATH)
   })
 
   it('returns null when localStorage holds a tampered/invalid value', () => {
@@ -48,9 +53,11 @@ describe('readLastListPath', () => {
     expect(readLastListPath()).toBeNull()
   })
 
-  it('rejects the legacy nested organize route from storage', () => {
+  it('migrates the nested organize route too', () => {
+    // Both retired shapes shipped, so both have to survive the merge.
     localStorage.setItem('lastListPath', `${PACK_PATH}/organize`)
-    expect(readLastListPath()).toBeNull()
+    expect(readLastListPath()).toBe(PACK_PATH)
+    expect(localStorage.getItem('lastListPath')).toBe(PACK_PATH)
   })
 
   it('migrates the legacy pack-mode query path to the pack route', () => {
@@ -76,9 +83,11 @@ describe('writeLastListPath', () => {
     expect(localStorage.getItem('lastListPath')).toBe(PACK_PATH)
   })
 
-  it('stores a valid organize-mode path', () => {
+  it('refuses to store an organize path now that the view is gone', () => {
+    // Reading migrates an OLD value; writing a new one must not resurrect the
+    // dead route. Nothing in the app produces this path any more.
     writeLastListPath(ORGANIZE_PATH)
-    expect(localStorage.getItem('lastListPath')).toBe(ORGANIZE_PATH)
+    expect(localStorage.getItem('lastListPath')).toBeNull()
   })
 
   it('no-ops on an arbitrary path (does not store)', () => {
@@ -131,8 +140,13 @@ describe('getListIdFromListPath', () => {
     expect(getListIdFromListPath(PACK_PATH)).toBe(UUID)
   })
 
-  it('extracts the UUID from an organize-mode path', () => {
-    expect(getListIdFromListPath(ORGANIZE_PATH)).toBe(UUID)
+  it('does not extract a UUID from a retired organize path', () => {
+    // This helper drives ListDetailPage's cache self-heal, which compares the
+    // STORED path against the current route. Stored paths are migrated to
+    // /pack on read, so an organize path never reaches it - and treating one
+    // as valid here would let the self-heal match (and then clear) a cache
+    // entry it should never have seen.
+    expect(getListIdFromListPath(ORGANIZE_PATH)).toBeNull()
   })
 
   it('returns null for an invalid path', () => {

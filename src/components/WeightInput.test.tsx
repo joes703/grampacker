@@ -107,6 +107,72 @@ describe('WeightInput', () => {
     expect(onChange).toHaveBeenLastCalledWith(297.7)
   })
 
+  // A zero weight renders blank. New gear starts at 0 g, and the field used to
+  // open pre-filled with a literal "0": putting the caret at the start and
+  // typing a weight silently appended the zero, so 500 became 5000. Nothing
+  // downstream can catch a 10x weight - it is a plausible number - so the fix
+  // has to be at the input.
+  it('renders a zero weight as an empty field in grams', () => {
+    const { getByLabelText } = render(<ControlledWeightInput initialGrams={0} />)
+
+    expect((getByLabelText('Weight') as HTMLInputElement).value).toBe('')
+  })
+
+  it('renders a zero weight as an empty field in ounces too', () => {
+    // The oz path formatted 0 as "0.0", which carries the same trap: typing
+    // ahead of it yields 500.0 oz.
+    localStorage.setItem('weightUnit', 'oz')
+    const { getByLabelText } = render(<ControlledWeightInput initialGrams={0} />)
+
+    expect((getByLabelText('Weight') as HTMLInputElement).value).toBe('')
+  })
+
+  it('takes a weight typed into an untouched zero field at face value', async () => {
+    // The reported bug, pinned end to end: no clear() first, because the whole
+    // point is that the user should not have to clear anything.
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const { getByLabelText } = render(
+      <ControlledWeightInput initialGrams={0} onChangeSpy={onChange} />,
+    )
+
+    const input = getByLabelText('Weight')
+    await user.type(input, '500')
+
+    expect((input as HTMLInputElement).value).toBe('500')
+    expect(onChange).toHaveBeenLastCalledWith(500)
+  })
+
+  it('keeps a zero blank across a unit toggle', async () => {
+    // toggleUnit formats lastEmitted rather than the draft, so this is the
+    // path that would reintroduce a literal "0.0" if formatDraft forgot the
+    // zero case in one unit.
+    const user = userEvent.setup()
+    const { getByLabelText, getByRole } = render(<ControlledWeightInput initialGrams={0} />)
+
+    await user.click(getByRole('button', { name: 'Entering grams, switch to ounces' }))
+    expect((getByLabelText('Weight') as HTMLInputElement).value).toBe('')
+
+    await user.click(getByRole('button', { name: 'Entering ounces, switch to grams' }))
+    expect((getByLabelText('Weight') as HTMLInputElement).value).toBe('')
+  })
+
+  it('treats clearing a weight as zero and leaves the field blank', async () => {
+    // Clearing emits 0, which formats back to '' - the emit must not bounce
+    // through the external-sync effect and repopulate the field with "0".
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const { getByLabelText } = render(
+      <ControlledWeightInput initialGrams={250} onChangeSpy={onChange} />,
+    )
+
+    const input = getByLabelText('Weight')
+    await user.clear(input)
+
+    expect(onChange).toHaveBeenLastCalledWith(0)
+    expect((input as HTMLInputElement).value).toBe('')
+  })
+
   it('honors an oz display preference when first mounted', async () => {
     localStorage.setItem('weightUnit', 'oz')
     const user = userEvent.setup()

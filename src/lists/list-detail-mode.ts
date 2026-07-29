@@ -1,9 +1,24 @@
-export type ListDetailMode = 'edit' | 'pack' | 'organize'
+// Two views of a list, not three. Organize used to be a peer view where you
+// built packing locations and dragged gear into them, while Pack was where you
+// checked things off - so arranging and packing meant switching views for
+// every correction. Pack absorbed Organize: it is the location-organized
+// checklist, and you rearrange in place.
+//
+// The old /organize URLs still resolve (bookmarks, home-screen shortcuts, a
+// stored last-list path) - they derive to 'pack' here and ListDetailPage
+// rewrites the address bar, so the merge is invisible to anyone returning to
+// an old link.
+export type ListDetailMode = 'edit' | 'pack'
 
 const LIST_VIEW_LABELS: Record<ListDetailMode, string> = {
   edit: 'List',
-  organize: 'Organize',
   pack: 'Pack',
+}
+
+/** The retired Organize URLs, in both shapes that ever shipped. */
+export function isLegacyOrganizePath(pathname: string, listId: string): boolean {
+  const base = `/lists/${listId}`
+  return pathname === `${base}/organize` || pathname === `${base}/pack/organize`
 }
 
 export function deriveListMode(
@@ -12,10 +27,9 @@ export function deriveListMode(
   listId: string,
 ): ListDetailMode {
   const base = `/lists/${listId}`
-  if (
-    pathname === `${base}/organize` ||
-    pathname === `${base}/pack/organize`
-  ) return 'organize'
+  // Organize resolves to Pack rather than to a dead route: the view it named
+  // is now part of Pack, so that is where an old link should land.
+  if (isLegacyOrganizePath(pathname, listId)) return 'pack'
   const legacyPackMode =
     pathname === base && new URLSearchParams(search).get('mode') === 'pack'
   if (pathname === `${base}/pack` || legacyPackMode) return 'pack'
@@ -24,9 +38,7 @@ export function deriveListMode(
 
 export function persistedListPath(listId: string, mode: ListDetailMode): string {
   const base = `/lists/${listId}`
-  if (mode === 'pack') return `${base}/pack`
-  if (mode === 'organize') return `${base}/organize`
-  return base
+  return mode === 'pack' ? `${base}/pack` : base
 }
 
 export function listDocumentTitle(name: string, mode: ListDetailMode): string {

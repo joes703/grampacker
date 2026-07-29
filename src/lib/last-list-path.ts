@@ -1,7 +1,7 @@
 // Stores the path of the last-visited list (including list modes) so
 // the nav's Lists shortcut can return the user to their workspace. Pack
-// and Organize are URL state; this helper just makes
-// the shortcut honor the full path rather than only the list id.
+// is URL state; this helper just makes the shortcut honor the full path
+// rather than only the list id.
 //
 // TRANSPLANT NOTE: the old repo's primary consumer was RootRedirect
 // (/ -> last list); that redirect is a deferred slice here (/ stays
@@ -12,7 +12,7 @@
 // not-found handling make that safe.
 //
 // Validation is intentionally strict: only `/lists/<uuid>` with an
-// optional exact `/pack` or `/organize`. The helper refuses to store anything
+// optional exact `/pack`. The helper refuses to store anything
 // else, so a malformed value can never make it past write-time and
 // any tampered localStorage entry that doesn't match the regex is
 // treated as a miss on read. If a future list-detail URL state needs
@@ -22,7 +22,15 @@
 const KEY = 'lastListPath'
 const LEGACY_KEY = 'lastListId'
 const LIST_PATH_RE =
-  /^\/lists\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\/(?:pack|organize))?$/i
+  /^\/lists\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\/pack)?$/i
+// Organize was merged into Pack. A stored /organize path must NOT simply stop
+// matching: readLastListPath would return null, RootRedirect would skip its
+// fast path, and the user would land on whichever list was updated most
+// recently, in the wrong view. So the shape is still recognized here and
+// rewritten to /pack on read - the same one-shot migration the legacy
+// ?mode=pack value gets below.
+const LEGACY_ORGANIZE_PATH_RE =
+  /^\/lists\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/pack)?\/organize$/i
 const LEGACY_PACK_PATH_RE =
   /^\/lists\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\?mode=pack$/i
 const UUID_RE =
@@ -41,6 +49,21 @@ export function readLastListPath(): string | null {
   try {
     const raw = localStorage.getItem(KEY)
     if (raw && LIST_PATH_RE.test(raw)) return raw
+
+    // Organize -> Pack. Covers both retired shapes (/organize and
+    // /pack/organize) so a user whose last view was Organize returns to the
+    // right LIST, in the view that replaced it.
+    const legacyOrganizeId = raw?.match(LEGACY_ORGANIZE_PATH_RE)?.[1]
+    if (legacyOrganizeId) {
+      const path = `/lists/${legacyOrganizeId}/pack`
+      try {
+        localStorage.setItem(KEY, path)
+      } catch {
+        // best-effort migration; stale value may linger on quota errors.
+      }
+      return path
+    }
+
     const legacyPack = raw?.match(LEGACY_PACK_PATH_RE)
     const legacyPackId = legacyPack?.[1]
     if (legacyPackId) {
