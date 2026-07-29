@@ -279,6 +279,31 @@ export function createListItemsRepo(db: Db, userId: string) {
       if (patch.isReady !== undefined) set.isReady = patch.isReady
       if (patch.packingLocationId !== undefined) {
         set.packingLocationId = patch.packingLocationId
+        // A move also rebases the rank, using the same expression `add` uses.
+        // sortOrder is ONE list-wide sequence that pack mode reads per
+        // location, so a move that changed only the assignment left the row
+        // holding its old global rank - and it then surfaced at an arbitrary
+        // depth of its new location, wherever that number happened to fall.
+        // Sending it to the end makes the outcome statable in one sentence:
+        // a moved item lands last, exactly like a newly added one, in Pack
+        // and in List view alike. The cost is that a pack-mode move now
+        // perturbs List-view position; pack REORDER still does not, because
+        // assignSortOrderSlots only permutes ranks the moved set already
+        // held.
+        //
+        // The "did the location actually change?" test lives INSIDE the
+        // statement rather than being decided from the `current` row read
+        // above. That read happens in a separate query, so comparing against
+        // it would decide on state that another write could already have
+        // moved on from - and a re-assignment to the location an item is
+        // ALREADY in would then walk it to the bottom of its own bag. `IS`
+        // rather than `=` because the target may be null (Unassigned), and
+        // `=` is never true against null in SQL.
+        set.sortOrder = sql`case
+          when ${listItems.packingLocationId} is ${patch.packingLocationId}
+          then ${listItems.sortOrder}
+          else ${nextItemSortOrder(listId)}
+        end`
       }
       // A real assignment is accepted only when the target location belongs
       // to this same list and user. The aliases are hand-written because

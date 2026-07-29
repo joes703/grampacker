@@ -6,6 +6,7 @@ import {
   groupGearItemsByCategory,
   groupByCategory,
   assignSortOrderSlots,
+  nextMoveSortOrder,
 } from './grouping'
 import type { Category, GearItem, GearStatus, ListItemWithGear } from './types'
 import type { PackingLocation } from './types'
@@ -592,5 +593,37 @@ describe('assignSortOrderSlots', () => {
     // Stronger: confirm the extras are not on the output objects.
     expect(result[0]).not.toHaveProperty('name')
     expect(result[0]).not.toHaveProperty('extra')
+  })
+})
+
+// nextMoveSortOrder is the CLIENT mirror of the server's nextItemSortOrder.
+// It exists so an optimistic move puts the row where the refetch will
+// confirm it, rather than at its old rank followed by a visible jump. The
+// two must agree on every case, including the empty one.
+describe('nextMoveSortOrder', () => {
+  it('returns one past the highest rank in the list', () => {
+    expect(nextMoveSortOrder([
+      { sortOrder: 3 },
+      { sortOrder: 11 },
+      { sortOrder: 7 },
+    ])).toBe(12)
+  })
+
+  it('matches SQL coalesce(max + 1, 0) on an empty list', () => {
+    expect(nextMoveSortOrder([])).toBe(0)
+  })
+
+  it('does not assume ranks are dense, sorted, or unique', () => {
+    // Real data is none of these: imports preserve gaps and nothing
+    // constrains (packing_location_id, sort_order) to be unique.
+    expect(nextMoveSortOrder([
+      { sortOrder: 50 },
+      { sortOrder: 0 },
+      { sortOrder: 50 },
+    ])).toBe(51)
+  })
+
+  it('still exceeds every rank when they are negative', () => {
+    expect(nextMoveSortOrder([{ sortOrder: -5 }, { sortOrder: -2 }])).toBe(-1)
   })
 })

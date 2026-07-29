@@ -279,12 +279,17 @@ describe('GET /api/shares/:slug', () => {
     expect(body.categories.map((c) => c.name)).toEqual(['Zeta', 'Alpha'])
 
     expect(body.items).toHaveLength(3)
+    // sortOrder order, and Tarp is LAST despite being added first: the PATCH
+    // above assigned it a packing location, and assigning one is a move, which
+    // rebases the row's rank to the end of the list (repo `nextItemSortOrder`).
+    // sortOrder is one list-wide sequence, so a pack-mode move is visible here
+    // too - including on the public share, which is what this asserts.
     expect(body.items.map((i) => i.gear.name)).toEqual([
-      'Tarp',
       'Pot',
       'Uncategorized thing',
+      'Tarp',
     ])
-    const tarp = body.items[0]!
+    const tarp = body.items.find((i) => i.gear.name === 'Tarp')!
     expect(tarp).toMatchObject({
       gearItemId: tarpId,
       quantity: 2,
@@ -297,12 +302,17 @@ describe('GET /api/shares/:slug', () => {
         categoryId: zetaId,
       },
     })
-    expect(body.items[2]!.gear.categoryId).toBeNull()
+    expect(
+      body.items.find((i) => i.gear.name === 'Uncategorized thing')!.gear.categoryId,
+    ).toBeNull()
 
     // Asserted on RAW json, not the parsed DTO: zod would happily coerce a
     // truncated 250 into a valid number and the schema check would still pass.
-    const rawItems = (raw as { items: { gear: { weightGrams: number } }[] }).items
-    expect(rawItems[0]!.gear.weightGrams).toBe(250.5)
+    // Found by name rather than index: these assertions are about the payload,
+    // not the ordering, and pinning them to a position made an unrelated
+    // ordering change look like a precision failure.
+    const rawItems = (raw as { items: { gear: { name: string; weightGrams: number } }[] }).items
+    expect(rawItems.find((i) => i.gear.name === 'Tarp')!.gear.weightGrams).toBe(250.5)
 
     // The leak guard: nothing private at any depth, and the list object
     // exposes neither its id nor its slug (the viewer already has the
