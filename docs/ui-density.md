@@ -32,6 +32,7 @@ unchanged whenever desktop is tuned**.
 | Row height | 44px (`min-h-11`) | 28px (`lg:min-h-7`) |
 | Header height | 44px (`min-h-11`) | 32px (`lg:min-h-8`) |
 | Row control target | 40px (`h-10 w-10`) | 28px (`lg:h-7 lg:w-7`) |
+| Leading control target | 40px (`h-10 w-10`) | 28x20px (`lg:h-7 lg:w-5`) |
 | Row padding | `px-2 py-2` | `lg:px-3 lg:py-0` |
 | Header padding | `px-3 py-0` | `px-3 py-0` |
 | Body text | 14px (`text-sm`) | 13px (`lg:text-[13px]`) |
@@ -39,6 +40,24 @@ unchanged whenever desktop is tuned**.
 The desktop header is deliberately 4px taller than the desktop row so the
 section divider still reads as a distinct strip without bulking into a
 card-like band.
+
+The LEADING control column is the one that is not square on desktop, and the
+reason is the glyph rather than the gesture. A kebab fills its box, so 28x28
+reads as a tight control; `GripVertical` draws two thin columns of dots about
+6px wide, so the same box strands ~11px of visible dead space either side and
+every draggable row opens with a wide empty gutter. Only the width comes in -
+the 28px height is the desktop row height, so it costs nothing - and mobile
+keeps the full 40px square, which a thumb needs.
+
+Two controls share that column and must stay the same width: a section
+header's collapse chevron and a row's drag grip (see "Reserved space" below).
+Narrowing the grip alone shifts every item name 8px left of the category title
+above it. They therefore read one token,
+`ROW_LEADING_CONTROL_TARGET` - a single width cannot fall out of sync with
+itself - and the chevron glyph is 14px so it still breathes inside the
+narrower box. `CategorySection.alignment.test.tsx` asserts the two rendered
+boxes carry identical sizing classes; DOM-order assertions alone cannot see
+this regression.
 
 13px (`lg:text-[13px]`) is a deliberate tier between Tailwind's `text-xs`
 (12px) and `text-sm` (14px). It gives denser desktop scanning without the eye
@@ -75,7 +94,8 @@ the control lives and whether it can be touched**, not by what the icon is.
 
 | Control | Token | Size |
 |---|---|---|
-| Chevron, kebab, drag handle, or action icon in a row or section header | `ROW_CONTROL_TARGET` (or `RowIconButton touchSafe`) | 40px touch / 28px pointer |
+| **Leading** control of a row or section header: a drag grip, or the collapse chevron that shares its column | `ROW_LEADING_CONTROL_TARGET` (or `RowIconButton touchSafe variant="dragHandle"`) | 40px touch / 28x20px pointer |
+| Kebab or action icon elsewhere in a row or section header | `ROW_CONTROL_TARGET` (or `RowIconButton touchSafe`) | 40px touch / 28px pointer |
 | Compact inline icon button in a surface that renders **only** at `lg+` | `RowIconButton` | 28x24, no touch box |
 | Modal / drawer close button | `ROW_CONTROL_TARGET` | 40px touch / 28px pointer |
 | Full-width disclosure button where the chevron is inline content | neither | the whole row is the hit area |
@@ -84,9 +104,14 @@ the control lives and whether it can be touched**, not by what the icon is.
 
 `RowIconButton` defaults to the narrow desktop-only target. Callers that can
 render below `lg` set `touchSafe`, which makes the component consume
-`ROW_CONTROL_TARGET`; callers whose containing surface provably cannot render
+`ROW_CONTROL_TARGET` - or `ROW_LEADING_CONTROL_TARGET` when the caller also
+sets `variant="dragHandle"`, since every grip wants the narrow leading box and
+nothing else does. Callers whose containing surface provably cannot render
 below `lg` retain the compact default. Modal and drawer close buttons consume
-`ROW_CONTROL_TARGET` directly.
+`ROW_CONTROL_TARGET` directly. Section-header collapse chevrons consume
+`ROW_LEADING_CONTROL_TARGET` directly, because they sit in the grip's column.
+A chevron that leads nothing - the gear picker's standalone disclosure - stays
+square; the token is about the shared column, not about chevrons.
 
 Panel header actions are genuinely a third case. `PanelCard`'s header is
 `py-2` and documents `headerAction` as compact and baseline-aligned; a 40px

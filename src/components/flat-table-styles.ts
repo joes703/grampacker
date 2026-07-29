@@ -62,6 +62,31 @@ export const DESKTOP_HEADER_HEIGHT = 'lg:min-h-8'
 export const MOBILE_ROW_CONTROL_TARGET = 'h-10 w-10'
 export const DESKTOP_ROW_CONTROL_TARGET = 'lg:h-7 lg:w-7'
 
+// The LEADING control column - narrower on desktop than the square target
+// above, and only on desktop.
+//
+// Two controls share this slot and must stay the same width: a section
+// header's collapse chevron and a row's drag grip. They sit in the same
+// column, ahead of the same gap, so the header title and the item names line
+// up only while the two boxes agree. They have drifted before (see the
+// comment in gear/CategorySection.tsx about the grip that used to lead the
+// header), which is why this is ONE token rather than two that happen to
+// match - a single width cannot fall out of sync with itself.
+//
+// 28px was right when the slot held a chevron alone, but GripVertical draws
+// two thin columns of dots about 6px wide, so a 28px box leaves ~11px of
+// visible dead space either side and the row gains a wide empty gutter before
+// its first real content. 20px still clears WCAG 2.5.8 via the spacing
+// exception (the gap to the next control exceeds the 24px circle overlap),
+// and a 14px chevron keeps 3px of breathing room inside it. Height stays 28px
+// (it is the desktop row height, so vertical size is free); only the width
+// comes in, which is the axis actually wasting space.
+//
+// Mobile is untouched at 40x40 - the density doc's standing rule is that
+// tuning desktop must never move touch sizing, and a grip is exactly the kind
+// of control a thumb needs room for.
+export const DESKTOP_ROW_LEADING_TARGET = 'lg:h-7 lg:w-5'
+
 // Canonical row padding for main list/item rows. Mobile px-2 + py-2 gives
 // breathing room around touch-sized controls; desktop px-3 + py-0 lets
 // min-h-7 set the height and items-center handle vertical centering, so the
@@ -124,11 +149,17 @@ export const FLAT_TABLE_EYEBROW =
 export const FLAT_TABLE_ROW =
   `flex ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} items-center border-b ${TABLE_DIVIDER}`
 
-// Explicit chevron / kebab / drag-handle target inside a row or header.
-// Heights flow from the density tokens above (40px touch, 28px pointer).
-// Compose color + hover + `shrink-0` at the call site.
+// Explicit kebab / toggle target inside a row or header. Heights flow from
+// the density tokens above (40px touch, 28px pointer). Compose color + hover
+// + `shrink-0` at the call site.
 export const ROW_CONTROL_TARGET =
   `inline-flex ${MOBILE_ROW_CONTROL_TARGET} ${DESKTOP_ROW_CONTROL_TARGET} items-center justify-center rounded`
+
+// Same box, narrowed on desktop, for the LEADING column only: a header's
+// collapse chevron and a row's drag grip. Both, or they fall out of column.
+// See DESKTOP_ROW_LEADING_TARGET.
+export const ROW_LEADING_CONTROL_TARGET =
+  `inline-flex ${MOBILE_ROW_CONTROL_TARGET} ${DESKTOP_ROW_LEADING_TARGET} items-center justify-center rounded`
 
 // ---------------------------------------------------------------------------
 // Body typography tokens

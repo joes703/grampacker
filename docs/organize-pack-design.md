@@ -30,6 +30,21 @@ Status: rev 6 implementation baseline; shipped 2026-07-20.
 > Name-only locations remain supported for physical places that are not gear
 > items.
 
+> **Organize/Pack merge amendment (2026-07-29, PR #124):** Organize is no
+> longer a mode. Pack is the single location-organized view: it both arranges
+> and checks off, and it carries the section chrome Organize used to own.
+> `/lists/:id/organize` and `/lists/:id/pack/organize` redirect to
+> `/lists/:id/pack`, and a stored `/organize` path migrates on read.
+> Consequently `OrganizePackPanel.tsx`, `LocationSection.tsx` and
+> `PackingItemRow.tsx` **no longer exist**; every reference to them below is
+> historical. Their replacements invert the rev-5 decision recorded at "rev 5:
+> `LocationSection` renders its own header": a packing-location section IS a
+> `CategoryGroup` now, and its drag/admin chrome arrives through the
+> `headerLeading` / `headerAction` / `titleContent` / `renderRowAction`
+> ReactNode seams, which is what keeps `@dnd-kit` and authenticated modules
+> off the public share path. The chrome itself lives in
+> `SortablePackSection.tsx` and `PackLocationSection.tsx`.
+
 Five GATE 1 adversarial passes drove this from BLOCK to clean. The rev-5 review
 confirmed **M5 fixed (all nine literal POST_CHECKS verified to pass against the
 real harness and fixtures), the count seam fixed, and zero regressions across the
