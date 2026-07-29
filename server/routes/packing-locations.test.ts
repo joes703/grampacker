@@ -16,6 +16,7 @@ type ItemBody = {
   quantity: number
   isWorn: boolean
   packingLocationId: string | null
+  sortOrder: number
 }
 type LocationBody = {
   id: string
@@ -559,6 +560,104 @@ describe('packing location CRUD, assignment, and integrity', () => {
       { packingLocationId: location.id },
     )
     expect(gone.status).toBe(404)
+  })
+
+  it('sends a moved item to the bottom, and leaves rank alone when the location does not change', async () => {
+    // sortOrder is ONE list-wide sequence that pack mode reads per location.
+    // A move used to change the assignment and nothing else, so the row kept
+    // whatever global rank it already had and surfaced at an arbitrary depth
+    // of its new location. Rebasing to max+1 is what makes "it went to the
+    // bottom of that bag" true.
+    const { cookie } = await signUpVerifiedUser('packing-move-rank@example.com', 'O')
+    const list = await createList(cookie, 'Trip')
+    const location = await createLocation(cookie, list.id, 'Main')
+
+    const first = await addItem(cookie, list.id, await createGear(cookie, 'Tarp'))
+    const second = await addItem(cookie, list.id, await createGear(cookie, 'Stove'))
+    const third = await addItem(cookie, list.id, await createGear(cookie, 'Bag'))
+    // The FIRST item is the interesting one: it holds the lowest rank, so
+    // without a rebase it would land at the TOP of the destination.
+    expect(first.sortOrder).toBeLessThan(third.sortOrder)
+
+    const moved = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${list.id}/items/${first.id}`,
+      { packingLocationId: location.id },
+    )
+    expect(moved.status).toBe(200)
+    const movedBody = (await moved.json()) as ItemBody
+    expect(movedBody.packingLocationId).toBe(location.id)
+    // Exactly max+1, not merely "greater": the rank has to be statable, and
+    // a looser assertion would pass for any runaway value.
+    expect(movedBody.sortOrder).toBe(third.sortOrder + 1)
+
+    // Move a second item in: it must land BELOW the one already there.
+    const after = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${list.id}/items/${second.id}`,
+      { packingLocationId: location.id },
+    )
+    expect(((await after.json()) as ItemBody).sortOrder).toBeGreaterThan(movedBody.sortOrder)
+
+    // A PATCH that names the SAME location is not a move. Rebasing there
+    // would walk an item to the bottom of its own bag on any repeated write.
+    const same = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${list.id}/items/${first.id}`,
+      { packingLocationId: location.id },
+    )
+    expect(((await same.json()) as ItemBody).sortOrder).toBe(movedBody.sortOrder)
+
+    // Neither is a patch that leaves the assignment out entirely.
+    const unrelated = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${list.id}/items/${first.id}`,
+      { quantity: 3 },
+    )
+    expect(((await unrelated.json()) as ItemBody).sortOrder).toBe(movedBody.sortOrder)
+
+    // A REJECTED move must not move the rank either. The rebase rides in the
+    // same UPDATE as the assignment, so a gate that blocks one has to block
+    // both - if it ever stopped doing so, an item would drift to the bottom
+    // every time someone tried an invalid destination.
+    const otherList = await createList(cookie, 'Other')
+    const foreign = await createLocation(cookie, otherList.id, 'Foreign')
+    const rejected = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${list.id}/items/${first.id}`,
+      { packingLocationId: foreign.id },
+    )
+    expect(rejected.status).toBe(400)
+    const afterReject = (await getItems(cookie, list.id)).find((i) => i.id === first.id)
+    expect(afterReject?.packingLocationId).toBe(location.id)
+    expect(afterReject?.sortOrder).toBe(movedBody.sortOrder)
+
+    // Unassigning is a move too - back to the bottom of Unassigned.
+    const unassigned = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${list.id}/items/${first.id}`,
+      { packingLocationId: null },
+    )
+    const unassignedBody = (await unassigned.json()) as ItemBody
+    expect(unassignedBody.packingLocationId).toBeNull()
+    expect(unassignedBody.sortOrder).toBeGreaterThan(movedBody.sortOrder)
+
+    // ...and null when ALREADY unassigned is not a move. Without the
+    // location comparison living inside the UPDATE, this is the case that
+    // walks an item down its own list on every repeated write.
+    const nullAgain = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${list.id}/items/${first.id}`,
+      { packingLocationId: null },
+    )
+    expect(((await nullAgain.json()) as ItemBody).sortOrder).toBe(unassignedBody.sortOrder)
   })
 
   it('deleting a location unassigns three items without deleting them; deleting an empty location is 204', async () => {

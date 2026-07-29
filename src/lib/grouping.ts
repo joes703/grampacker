@@ -257,3 +257,19 @@ export function assignSortOrderSlots<T extends { id: string; sortOrder: number }
   // construction, so slots[idx] is always defined for every idx in the map.
   return reorderedItems.map((i, idx) => ({ id: i.id, sortOrder: slots[idx]! }))
 }
+
+// The rank a MOVED item takes: one past the highest in the list, which lands
+// it at the bottom of whatever location it was moved into. Unlike
+// assignSortOrderSlots this mints a NEW value rather than permuting existing
+// ones, because a move has no set of ranks to redistribute - the item is
+// arriving from somewhere else.
+//
+// This must stay identical to the server's `nextItemSortOrder`
+// (server/repos/list-items.ts), which is the authority; the client computes it
+// only so the optimistic row appears where the refetch will confirm it. The
+// empty-list case is 0 on both sides, matching SQL's
+// `coalesce(max(sort_order) + 1, 0)`.
+export function nextMoveSortOrder(items: readonly { sortOrder: number }[]): number {
+  if (items.length === 0) return 0
+  return Math.max(...items.map((item) => item.sortOrder)) + 1
+}

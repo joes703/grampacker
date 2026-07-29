@@ -50,7 +50,7 @@ import {
   getListIdFromListPath,
 } from '../lib/last-list-path'
 import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
-import { assignSortOrderSlots } from '../lib/grouping'
+import { assignSortOrderSlots, nextMoveSortOrder } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
 import {
@@ -635,17 +635,29 @@ function ListDetailInner({
 
   // Moving an item between packing locations. Also lifted from the organizer:
   // it is the write behind both a cross-location drag and the row menu.
+  type MoveItemVars = {
+    itemId: string
+    locationId: string | null
+    nextSortOrder: number
+  }
   const moveItemMut = useMutation({
-    mutationFn: ({ itemId, locationId }: { itemId: string; locationId: string | null }) =>
+    mutationFn: ({ itemId, locationId }: MoveItemVars) =>
       updateListItem(listId, itemId, { packingLocationId: locationId }),
-    ...makeOptimisticUpdate<
-      ListItemWithGear,
-      { itemId: string; locationId: string | null }
-    >({
+    ...makeOptimisticUpdate<ListItemWithGear, MoveItemVars>({
       qc,
       queryKey: queryKeys.listItems(listId),
       id: ({ itemId }) => itemId,
-      apply: (item, { locationId }) => ({ ...item, packingLocationId: locationId }),
+      // nextSortOrder mirrors the rank the server assigns a move (repo
+      // `nextItemSortOrder`). Applying only the assignment would park the row
+      // at its OLD rank until the refetch landed, so it would appear at some
+      // arbitrary depth of its new location and then visibly jump to the
+      // bottom a moment later. The caller computes it, because `apply` only
+      // ever sees the one row and the rank depends on all of them.
+      apply: (item, { locationId, nextSortOrder }) => ({
+        ...item,
+        packingLocationId: locationId,
+        sortOrder: nextSortOrder,
+      }),
     }),
   })
   const itemDragPending =
@@ -729,7 +741,7 @@ function ListDetailInner({
       ? 'Unassigned'
       : realLocations.find((location) => location.id === locationId)?.name
     if (item && destination) setAnnouncement(`Moving ${item.gearItem.name} to ${destination}.`)
-    moveItemMut.mutate({ itemId, locationId }, {
+    moveItemMut.mutate({ itemId, locationId, nextSortOrder: nextMoveSortOrder(listItems) }, {
       onSuccess: () => {
         if (item && destination) setAnnouncement(`Moved ${item.gearItem.name} to ${destination}.`)
       },
