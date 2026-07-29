@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from 'react'
 import type { ListItemWithGear } from '../lib/types'
-import CategoryGroup from './CategoryGroup'
+import CategoryGroup, { type SectionIdentity } from './CategoryGroup'
 import type { PackingTreeLocation } from './packing-tree'
 import {
   PackSectionMenu,
@@ -29,7 +29,13 @@ export type PackSectionProps = {
   groupProps: Omit<ComponentProps<typeof CategoryGroup>, 'name' | 'items'>
   collapsed: boolean
   onCollapsedChange?: (collapsed: boolean) => void
-  renderRowAction?: (item: ListItemWithGear) => ReactNode
+  /** Forwarded to CategoryGroup unchanged - see its declaration for what
+   *  `cohort` is and why the row menu needs it. */
+  renderRowAction?: (
+    item: ListItemWithGear,
+    cohort: ListItemWithGear[],
+    section: SectionIdentity,
+  ) => ReactNode
   containerAction?: ReactNode
   itemReorderPending: boolean
   locationReorderPending: boolean

@@ -64,9 +64,24 @@ import { ConsumableIcon, WornIcon } from './list-item-flags'
 // SortableItemRow without either side re-deriving the shape.
 export type RowProps = Omit<ItemRowProps, 'dragHandle' | 'outerRef' | 'outerStyle'>
 
+/**
+ * Which section is rendering, for injected renderers that need to label or
+ * identify it. Plain data: the seam stays something the bundler can see
+ * through, which is what keeps @dnd-kit off the public share path.
+ *
+ * `name` labels controls for a screen reader ("...at the end of Main pack").
+ * `key` is the section's IDENTITY - the packing location id, or the sentinel
+ * for the Unassigned and Worn buckets. Reorder mode binds to it so a row that
+ * gets rehomed mid-placement (moved from another tab, or orphaned into
+ * Unassigned when its location is deleted) ends the mode instead of quietly
+ * continuing against a different bag's cohort.
+ */
+export type SectionIdentity = { key: string; name: string }
+
 export type RenderRows = (
   items: ListItemWithGear[],
   rowPropsFor: (item: ListItemWithGear) => RowProps,
+  section: SectionIdentity,
 ) => ReactNode
 
 type GroupPropsBase = {
@@ -153,8 +168,20 @@ type GroupPropsBase = {
   /** Per-row trailing control, same injection rationale as the header slots.
    *  Pack rows use it for the "move to location" menu, which is the
    *  keyboard- and touch-reachable equivalent of dragging a row between
-   *  sections. Called per rendered row. */
-  renderRowAction?: (item: ListItemWithGear) => ReactNode
+   *  sections. Called per rendered row.
+   *
+   *  `cohort` is the rows this section actually rendered, AFTER filtering -
+   *  the same array the reorder slots work against. The menu needs it to know
+   *  whether reordering this row could change anything: in a section showing
+   *  one row there is nowhere to put it, and offering the action anyway opens
+   *  a mode with no controls in it. Passing the array rather than a boolean
+   *  keeps the decision with the caller, which is the side that knows what
+   *  reorder means. */
+  renderRowAction?: (
+    item: ListItemWithGear,
+    cohort: ListItemWithGear[],
+    section: SectionIdentity,
+  ) => ReactNode
   /** The one section allowed to render worn rows. Every ordinary category or
    *  packing-location section filters them into the trailing Worn section. */
   wornSection?: boolean
@@ -284,7 +311,9 @@ function CategoryGroup({
   // no category of their own (the Worn pseudo-section) pass an explicit
   // regionKey, because categoryId-less sections would otherwise all collapse
   // onto the same 'uncategorized' id and duplicate it in the document.
-  const regionId = `cat-region-${regionKey ?? categoryId ?? 'uncategorized'}`
+  const sectionKey = regionKey ?? categoryId ?? 'uncategorized'
+  const regionId = `cat-region-${sectionKey}`
+  const section: SectionIdentity = { key: sectionKey, name }
   // sectionItems = the items that BELONG to this category section. When
   // Worn items always belong to the trailing Worn section, so ordinary
   // sections exclude them from the pack count, footer totals, and rows. The
@@ -350,7 +379,7 @@ function CategoryGroup({
       onDeleteGearItem: onDeleteGearItem ? () => onDeleteGearItem(gearId) : undefined,
       onSetGearStatus: onSetGearStatus ? (s: GearStatus) => onSetGearStatus(gearId, s) : undefined,
       onDelete: onDelete ? () => onDelete(item.id) : undefined,
-      rowAction: renderRowAction?.(item),
+      rowAction: renderRowAction?.(item, visibleItems, section),
     }
   }
 
@@ -527,7 +556,7 @@ function CategoryGroup({
         // referenced by nothing.
         <div id={collapsible ? regionId : undefined}>
           {renderRows
-            ? renderRows(visibleItems, rowPropsFor)
+            ? renderRows(visibleItems, rowPropsFor, section)
             : visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}
           {/* An empty pack section says WHY it is empty. Without this a
               section can render as a bare header with nothing under it, and

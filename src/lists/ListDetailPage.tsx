@@ -132,7 +132,7 @@ import { resolveRemovalPlan } from './list-item-removal'
 import { useListGearActions } from './use-list-gear-actions'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
-import CategoryGroup from './CategoryGroup'
+import CategoryGroup, { type SectionIdentity } from './CategoryGroup'
 import { packingSortableRows, sortableRows } from './SortableCategoryRows'
 import PanelCard from './PanelCard'
 import ItemRow from './ItemRow'
@@ -160,6 +160,8 @@ import { usePackingLocationActions } from './use-packing-location-actions'
 import { isPackingCollisionTarget, planPackingItemDragEnd } from './packing-dnd'
 import MoveToLocationMenu from './MoveToLocationMenu'
 import { PackLocationSection } from './PackLocationSection'
+import { PlacementProvider, usePlacement } from './placement-context'
+import { planPlacementWithinLocation } from './placement-plan'
 import { DroppableUnassignedSection } from './SortablePackSection'
 import { FOOD_PLANNING_ENABLED } from '../lib/product-features'
 import { PACKING_LOCATION_CAP } from '../lib/caps'
@@ -716,8 +718,37 @@ function ListDetailInner({
   // changed anything.
   const [announcement, setAnnouncement] = useState('')
 
+  // Click-to-place. The plan is computed against the array the SECTION
+  // rendered, handed back by the slot that was activated - never rebuilt from
+  // a location id here, because the displayed cohort and a raw
+  // packingLocationId scan diverge while a location delete is still
+  // optimistic.
+  const { placement, actions: placementActions } = usePlacement(
+    (itemId, insertIndex, eligibleItems) => {
+      const updates = planPlacementWithinLocation(itemId, insertIndex, eligibleItems)
+      if (!updates) return
+      const moved = listItemsById.get(itemId)
+      if (moved) setAnnouncement(`Moving ${moved.gearItem.name}.`)
+      reorderItemsMut.mutate(updates, {
+        onSuccess: () => {
+          if (moved) setAnnouncement(`Moved ${moved.gearItem.name}.`)
+        },
+        onError: () => {
+          if (moved) setAnnouncement(`Could not move ${moved.gearItem.name}.`)
+        },
+      })
+    },
+  )
+
   function handleDragStart(e: DragStartEvent) {
     setActiveId(String(e.active.id))
+    // A drag and a placement are two answers to the same question. Starting
+    // one closes the other rather than leaving both offering targets.
+    //
+    // WITHOUT returning focus: a keyboard drag reads its keystrokes from the
+    // focused drag handle, so sending focus back to the kebab here would
+    // strand the drag that just started.
+    placementActions.cancel({ returnFocus: false })
     handleLocationDragStart(e)
     const parsed = parseDnDId(String(e.active.id))
     if (parsed?.kind !== 'packing-item') return
@@ -927,6 +958,49 @@ function ListDetailInner({
     ...deriveWornReorderExclusions(listItems),
     ...packFilteredItemIds,
   ])
+
+  // Placement is a MODE, and a mode that outlives its subject acts on the
+  // wrong thing. ListDetailInner is keyed only by list id, so switching to
+  // List view does not remount it, and collapsing a section merely stops
+  // rendering its rows - without this the mode could go invisible and come
+  // back later against a changed list.
+  //
+  // The slots themselves already fail safe: each one only renders when the
+  // placing row is present in the array ITS OWN section rendered, so a row
+  // that is filtered away, removed, or moved elsewhere simply stops offering
+  // slots. This clears the state behind that, for the cases where it would
+  // otherwise linger.
+  //
+  // This check is deliberately NOT exhaustive. Everything it cannot see -
+  // the section collapsing, the row being promoted to a container, another
+  // tab moving it into a collapsed bag, its location being optimistically
+  // deleted - shows up as "no usable slots are mounted any more", which
+  // PlacementProvider watches directly. Adding a predicate here per case
+  // would be a second, partial copy of a question the slots can answer
+  // exactly.
+  const placingItemId = placement?.itemId
+  const placementCancel = placementActions.cancel
+  const placingStillEligible =
+    placingItemId === undefined ||
+    (grouping.kind === 'location' &&
+      mode === 'pack' &&
+      listItemsById.has(placingItemId) &&
+      !packFilteredItemIds.has(placingItemId) &&
+      !packingReorderExclusions.has(placingItemId))
+  useEffect(() => {
+    if (!placingStillEligible) placementCancel()
+  }, [placingStillEligible, placementCancel])
+
+  // Escape closes the mode from anywhere, which is the documented way out of
+  // it. Registered only while placing so it cannot shadow anything else.
+  useEffect(() => {
+    if (placingItemId === undefined) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') placementCancel()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [placingItemId, placementCancel])
 
   // Location drags are constrained to siblings; item drags may target any
   // item or location. Without this filter, closestCenter would happily
@@ -1204,7 +1278,11 @@ function ListDetailInner({
   // making it stable means either a context or per-row query subscriptions,
   // each with its own cost. Worth profiling a 300-item / 30-location list
   // before choosing. Filed as a follow-up rather than guessed at.
-  const renderPackRowAction = (item: ListItemWithGear) => (
+  const renderPackRowAction = (
+    item: ListItemWithGear,
+    cohort: ListItemWithGear[],
+    section: SectionIdentity,
+  ) => (
     <MoveToLocationMenu
       itemId={item.id}
       itemName={item.gearItem.name}
@@ -1218,6 +1296,21 @@ function ListDetailInner({
       isContainer={false}
       excludedLocationIds={containerMoveExclusions.get(item.id)}
       onMove={(locationId) => requestMove(item.id, locationId)}
+      // Click-to-place, the non-drag path for reorder. Withheld while a
+      // reorder is already in flight, and withheld entirely in category
+      // grouping - the insertion slots only render for packing rows, so the
+      // action would open a mode with nothing in it.
+      //
+      // Also withheld when this section rendered fewer than two rows. Every
+      // insertion point in a one-row section is a no-op, so the mode would
+      // open with no slots and no way out but Escape. `cohort` is post-filter,
+      // which is the right test: a bag of ten rows showing one is just as
+      // unreorderable as a bag holding one.
+      onStartReorder={
+        grouping.kind === 'location' && !reorderItemsMut.isPending && cohort.length > 1
+          ? (origin: HTMLElement | null) => placementActions.start(item, section, origin)
+          : undefined
+      }
       onUseAsContainer={() => createItemContainer.mutate({
         itemId: item.id,
         name: item.gearItem.name,
@@ -1552,6 +1645,7 @@ function ListDetailInner({
                     : null
                 return (
                   <div className="flex flex-col gap-3">
+                    <PlacementProvider placement={placement} actions={placementActions}>
                     <DndContext
                       sensors={sensors}
                       // Location grouping needs the packing filter: it keeps a
@@ -1660,6 +1754,7 @@ function ListDetailInner({
                         {announcement}
                       </div>
                     </DndContext>
+                    </PlacementProvider>
 
                     {/* Worn section — visible in both normal and pack mode when
                         at least one worn item exists.
