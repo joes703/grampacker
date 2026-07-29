@@ -341,9 +341,12 @@ describe('CategoryGroup footer subtotal', () => {
     expect(header.textContent).not.toMatch(/\d/)
   })
 
-  it('still renders packed / total in pack mode', () => {
+  it('marks a pack section complete only when every row is packed', () => {
+    // The packed/total count used to live in the header and was removed - it
+    // cost mobile width for a number the progress bars already carry. The
+    // packed tally still drives the "All packed" mark, so that is what pins it.
     const packed = { ...itemNamed('a', 'Tarp'), isPacked: true }
-    render(
+    const { rerender } = render(
       <CategoryGroup
         name="Shelter"
         categoryId="cat-1"
@@ -352,7 +355,18 @@ describe('CategoryGroup footer subtotal', () => {
         packMode
       />,
     )
-    expect(screen.getByText('1 / 2')).toBeInTheDocument()
+    expect(screen.queryByLabelText('All packed')).toBeNull()
+
+    rerender(
+      <CategoryGroup
+        name="Shelter"
+        categoryId="cat-1"
+        items={[packed, { ...itemNamed('b', 'Stakes'), isPacked: true }]}
+        weightUnit="g"
+        packMode
+      />,
+    )
+    expect(screen.getByLabelText('All packed')).toBeInTheDocument()
   })
 
   it('renders an item-backed location as the checklist header, not a duplicate row', () => {
@@ -375,7 +389,6 @@ describe('CategoryGroup footer subtotal', () => {
     expect(screen.getByRole('checkbox', { name: 'Mark Backpack ready' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Backpack' }))
     expect(onUpdate).toHaveBeenCalledWith('pack', { isPacked: true })
-    expect(screen.getByText('0 / 2')).toBeInTheDocument()
   })
 
   it('includes nested container contents in the parent pack progress', () => {
@@ -404,11 +417,41 @@ describe('CategoryGroup footer subtotal', () => {
       </CategoryGroup>,
     )
 
-    const backpackHeader = screen
-      .getByRole('button', { name: 'Collapse Backpack' })
-      .parentElement!
-    expect(within(backpackHeader).getByText('1 / 3')).toBeInTheDocument()
-    expect(within(backpackHeader).queryByLabelText('All packed')).toBeNull()
+    // packProgressItems is what makes a parent section account for rows that
+    // render inside a NESTED section. Only 1 of the 3 is packed, so the parent
+    // must not claim completion - which is the assertion that would break if
+    // the parent went back to counting only its own direct rows.
+    expect(screen.queryByLabelText('All packed')).toBeNull()
+
+    // ...and it does claim completion once all three are. packProgressItems
+    // only type-checks alongside nested children, which is the arrangement it
+    // exists for, so the nested section comes along.
+    cleanup()
+    const packedCanister = { ...canister, isPacked: true }
+    const packedFood = { ...food, isPacked: true }
+    render(
+      <CategoryGroup
+        name="Backpack"
+        regionKey="loc-pack"
+        containerItem={backpack}
+        items={[]}
+        weightUnit="g"
+        packMode
+        packProgressItems={[backpack, packedCanister, packedFood]}
+      >
+        <CategoryGroup
+          name="Bear canister"
+          regionKey="loc-canister"
+          containerItem={packedCanister}
+          items={[packedFood]}
+          weightUnit="g"
+          packMode
+        />
+      </CategoryGroup>,
+    )
+    // Both sections are complete, so both mark it - the parent is the one under
+    // test and it can only know that from packProgressItems.
+    expect(screen.getAllByLabelText('All packed')).toHaveLength(2)
   })
 
   // Pack mode has two independent filters. They are ANDed: with both on, a row
@@ -516,12 +559,12 @@ describe('CategoryGroup footer subtotal', () => {
       expect(cohorts[0]).toEqual(['Stakes', 'Tarp', 'Stove', 'Pot'])
     })
 
-    it('keeps the header count on the unfiltered set', () => {
-      // The filter is a view of the section, not a redefinition of it. If the
-      // count followed the filter, turning on "unpacked only" would report
-      // 0 / 2 packed and the number would stop meaning anything.
+    it('judges completeness on the unfiltered set', () => {
+      // The filter is a view of the section, not a redefinition of it. If
+      // progress followed the filter, "unpacked only" would hide every packed
+      // row and the section would report itself complete with work left in it.
       renderFiltered({ showUnpackedOnly: true })
-      expect(screen.getByText('2 / 4')).toBeInTheDocument()
+      expect(screen.queryByLabelText('All packed')).toBeNull()
     })
 
     it('says a section is empty because of the filters, not just blank', () => {

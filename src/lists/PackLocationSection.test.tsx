@@ -78,7 +78,6 @@ function renderSection(overrides: Partial<ComponentProps<typeof PackLocationSect
     node: node(location('loc-1', 'Main pack'), [item('a', 'Tarp')]),
     depth: 0,
     groupProps,
-    collapsed: false,
     itemReorderPending: false,
     locationReorderPending: false,
     movePending: false,
@@ -141,7 +140,8 @@ describe('PackLocationSection', () => {
     // The collapse control still announces the section while it is being
     // renamed - `name` keeps supplying accessible labels even though the
     // rendered title is an input.
-    expect(screen.getByRole('button', { name: 'Collapse Main pack' })).toBeInTheDocument()
+    // Pack headers have no collapse control - see CategoryGroup. The section
+    // still announces its name through the rename input's label.
   })
 
   it('does not write a rename that changes nothing', async () => {
@@ -185,8 +185,15 @@ describe('PackLocationSection', () => {
     })
 
     it('renders the backing item as the section header checklist row', () => {
+      // The header IS the container's checklist row: its Packed checkbox is the
+      // one that marks the container itself. Anchored on the drag grip rather
+      // than a collapse chevron, because pack headers no longer have one - the
+      // chevron sat in the rows' leading control column and pushed the header's
+      // checkboxes out of line with the rows they label.
       renderSection({ node: containerNode })
-      const header = screen.getByRole('button', { name: 'Collapse Bear canister' }).parentElement!
+      const header = screen
+        .getByRole('button', { name: 'Reorder Bear canister' })
+        .parentElement!
       expect(within(header).getByRole('checkbox', { name: 'Bear canister' })).toBeInTheDocument()
     })
 
