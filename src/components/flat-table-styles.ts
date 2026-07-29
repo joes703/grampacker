@@ -62,6 +62,22 @@ export const DESKTOP_HEADER_HEIGHT = 'lg:min-h-8'
 export const MOBILE_ROW_CONTROL_TARGET = 'h-10 w-10'
 export const DESKTOP_ROW_CONTROL_TARGET = 'lg:h-7 lg:w-7'
 
+// Drag handles get a NARROWER desktop box than other row controls, and only
+// on desktop.
+//
+// The square target above is right for a chevron or a kebab: those glyphs
+// fill their box, so 28x28 reads as a tight control. GripVertical does not -
+// it draws two thin columns of dots about 6px wide, so the same 28px box
+// leaves ~11px of visible dead space either side of the glyph and the row
+// gains a wide empty gutter before its first real content. Height stays 28px
+// (it is the desktop row height, so vertical size is free) and only the width
+// comes in, which is the axis actually wasting space.
+//
+// Mobile is untouched at 40x40 - the density doc's standing rule is that
+// tuning desktop must never move touch sizing, and a grip is exactly the kind
+// of control a thumb needs room for.
+export const DESKTOP_DRAG_HANDLE_TARGET = 'lg:h-7 lg:w-5'
+
 // Canonical row padding for main list/item rows. Mobile px-2 + py-2 gives
 // breathing room around touch-sized controls; desktop px-3 + py-0 lets
 // min-h-7 set the height and items-center handle vertical centering, so the
@@ -129,6 +145,11 @@ export const FLAT_TABLE_ROW =
 // Compose color + hover + `shrink-0` at the call site.
 export const ROW_CONTROL_TARGET =
   `inline-flex ${MOBILE_ROW_CONTROL_TARGET} ${DESKTOP_ROW_CONTROL_TARGET} items-center justify-center rounded`
+
+// Same box, narrowed on desktop for the grip glyph. See
+// DESKTOP_DRAG_HANDLE_TARGET for why drag handles are the exception.
+export const ROW_DRAG_HANDLE_TARGET =
+  `inline-flex ${MOBILE_ROW_CONTROL_TARGET} ${DESKTOP_DRAG_HANDLE_TARGET} items-center justify-center rounded`
 
 // ---------------------------------------------------------------------------
 // Body typography tokens

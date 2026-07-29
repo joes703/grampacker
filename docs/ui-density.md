@@ -32,6 +32,7 @@ unchanged whenever desktop is tuned**.
 | Row height | 44px (`min-h-11`) | 28px (`lg:min-h-7`) |
 | Header height | 44px (`min-h-11`) | 32px (`lg:min-h-8`) |
 | Row control target | 40px (`h-10 w-10`) | 28px (`lg:h-7 lg:w-7`) |
+| Drag handle target | 40px (`h-10 w-10`) | 28x20px (`lg:h-7 lg:w-5`) |
 | Row padding | `px-2 py-2` | `lg:px-3 lg:py-0` |
 | Header padding | `px-3 py-0` | `px-3 py-0` |
 | Body text | 14px (`text-sm`) | 13px (`lg:text-[13px]`) |
@@ -39,6 +40,14 @@ unchanged whenever desktop is tuned**.
 The desktop header is deliberately 4px taller than the desktop row so the
 section divider still reads as a distinct strip without bulking into a
 card-like band.
+
+The drag handle is the one control that is not square on desktop, and the
+reason is the glyph rather than the gesture. A chevron or a kebab fills its
+box, so 28x28 reads as a tight control; `GripVertical` draws two thin columns
+of dots about 6px wide, so the same box strands ~11px of visible dead space
+either side and every draggable row opens with a wide empty gutter. Only the
+width comes in - the 28px height is the desktop row height, so it costs
+nothing - and mobile keeps the full 40px square, which a thumb needs.
 
 13px (`lg:text-[13px]`) is a deliberate tier between Tailwind's `text-xs`
 (12px) and `text-sm` (14px). It gives denser desktop scanning without the eye
