@@ -257,7 +257,7 @@ describe('renderRows seams', () => {
       item: i,
       weightUnit: 'g' as const,
       isBelowLg: false,
-    }))
+    }), { key: 'loc-1', name: 'Main pack' })
     // The SortableContext's `items` prop is the registration the row's
     // useSortable resolves against; a mismatch between the two is exactly the
     // bug this pins, and it is invisible at runtime until a drag does nothing.

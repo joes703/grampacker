@@ -470,6 +470,52 @@ describe('CategoryGroup footer subtotal', () => {
       expect(screen.queryByText('Pot')).toBeNull()
     })
 
+    // The row menu decides whether to offer click-to-place from this array.
+    // If it were the UNFILTERED set, a bag showing one row would still offer
+    // "Reorder in this bag" and open a mode whose every insertion point is a
+    // no-op - a live mode with no controls in it.
+    it('hands the row action the rows that survived filtering, not all of them', () => {
+      const cohorts: number[] = []
+      render(
+        <CategoryGroup
+          name="Kitchen"
+          categoryId="cat-1"
+          items={all}
+          weightUnit="g"
+          packMode
+          readyChecksEnabled
+          showUnpackedOnly
+          showUnreadyOnly
+          renderRowAction={(_item, cohort) => {
+            cohorts.push(cohort.length)
+            return null
+          }}
+        />,
+      )
+      // Stakes is the only row left of four, and every call agrees on that.
+      expect(cohorts).toEqual([1])
+    })
+
+    it('hands the row action every row when nothing is filtered', () => {
+      const cohorts: string[][] = []
+      render(
+        <CategoryGroup
+          name="Kitchen"
+          categoryId="cat-1"
+          items={all}
+          weightUnit="g"
+          packMode
+          readyChecksEnabled
+          renderRowAction={(_item, cohort) => {
+            cohorts.push(cohort.map((i) => i.gearItem.name))
+            return null
+          }}
+        />,
+      )
+      expect(cohorts).toHaveLength(4)
+      expect(cohorts[0]).toEqual(['Stakes', 'Tarp', 'Stove', 'Pot'])
+    })
+
     it('keeps the header count on the unfiltered set', () => {
       // The filter is a view of the section, not a redefinition of it. If the
       // count followed the filter, turning on "unpacked only" would report

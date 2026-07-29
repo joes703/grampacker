@@ -5,6 +5,7 @@ import { asButtonRef } from '../lib/dnd'
 import { makeDnDId } from '../lib/dnd-ids'
 import RowIconButton from '../components/RowIconButton'
 import ItemRow, { type ItemRowProps } from './ItemRow'
+import { useIsPlacing } from './placement-context'
 
 // This lived inside ItemRow.tsx, which meant every module that rendered a row
 // imported @dnd-kit - including SharePage, the PUBLIC, READ-ONLY share view,
@@ -56,10 +57,25 @@ export default function SortableItemRow({
     disabled: props.reorderPending,
   })
 
+  // Click-to-place marks the row it is moving, so the insertion slots are not
+  // floating next to an unidentified row. Read from context rather than passed
+  // down - the section above this is memoized and bails out, and the prop
+  // would have to come through CategoryGroup, which is on the share path.
+  //
+  // A TINT, not the 0.4 opacity dragging uses. A dragging row is inert and
+  // under the cursor for a moment; a placing row stays put, stays interactive,
+  // and keeps its checkboxes and menu operable. Fading all of that to 40%
+  // would take the row's lightest text below its contrast floor while the user
+  // is still expected to read and use it.
+  const isPlacing = useIsPlacing(props.item.id)
   const sortableStyle: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
+    // Tailwind blue-50 / blue-400, matching the slots and the mode banner.
+    ...(isPlacing
+      ? { backgroundColor: '#eff6ff', boxShadow: 'inset 3px 0 0 0 #60a5fa' }
+      : null),
   }
 
   // Every viewport drives reorder from a dedicated in-row grip. This used to sit in
