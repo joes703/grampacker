@@ -67,7 +67,6 @@ function list(over: Partial<List> = {}): List {
     name: 'Weekend trip',
     description: null,
     slug: 'weekend-trip',
-    foodPlanId: null,
     isShared: false,
     sortOrder: 0,
     groupWorn: false,

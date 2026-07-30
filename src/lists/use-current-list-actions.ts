@@ -46,10 +46,8 @@ export function useCurrentListActions() {
     ...makeOptimisticUpdate<List, { id: string; name: string }>({
       qc,
       queryKey: queryKeys.lists(),
-      // The list's name is denormalized into the food-plan caches when this
       // list holds a plan: the summaries' usedByListName and a document's
       // usedByList.name (the editor breadcrumb) both say it.
-      invalidateKeys: [queryKeys.foodPlans(), queryKeys.foodPlanAll()],
       id: ({ id }) => id,
       apply: (item, { name }) => ({
         ...item,
@@ -113,31 +111,20 @@ export function useCurrentListActions() {
 
   // Non-optimistic: the server performs the deep copy (fresh slug,
   // isShared/isDraft reset) and returns the new row; invalidate + navigate.
-  // When the source has a food plan, the server also deep-copies the PLAN
-  // (one plan per trip - a shared pointer would violate the unique index), so
-  // the ['food-plans'] summaries gained a card and a plan document's
-  // usedByList gained a holder - invalidate both alongside ['lists'].
   const duplicateMut = useMutation({
     mutationFn: (target: List) => duplicateList(target.id),
     meta: { errorToast: "Couldn't duplicate that list. Please try again." },
     onSuccess: (created) => {
       void qc.invalidateQueries({ queryKey: queryKeys.lists() })
-      void qc.invalidateQueries({ queryKey: queryKeys.foodPlans() })
-      void qc.invalidateQueries({ queryKey: queryKeys.foodPlanAll() })
       void navigate(`/lists/${created.id}`)
     },
   })
 
-  // Deleting a list that pointed at a plan frees that plan: its document's
-  // usedByList goes null and the summaries' usedByList* go null, so both
-  // food-plan caches are stale about who uses it (a stale "In use by" row
-  // would offer Duplicate & attach where a plain attach is now possible).
   const deleteListMut = useMutation({
     mutationFn: deleteList,
     ...makeOptimisticDelete<List, string>({
       qc,
       queryKey: queryKeys.lists(),
-      invalidateKeys: [queryKeys.foodPlanAll(), queryKeys.foodPlans()],
       id: (id) => id,
     }),
   })

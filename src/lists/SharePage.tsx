@@ -15,26 +15,16 @@ import {
   baseGramsForCategory,
   computeWeightBreakdown,
   consumableGramsForCategory,
-  withProjectedFood,
 } from '../lib/weight-breakdown'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
 import CategoryGroup from './CategoryGroup'
 import DraftBanner from './DraftBanner'
-import { IncompleteFoodWeightNote } from './WeightSummary'
 import { UnitSegmentedControlView } from '../components/UnitSegmentedControl'
-import ItemWeightValue from '../components/ItemWeightValue'
 import {
-  FLAT_TABLE_BODY_TEXT,
-  FLAT_TABLE_HEADER,
-  FLAT_TABLE_HEADER_PADDING,
-  FLAT_TABLE_HEADER_TITLE,
-  FLAT_TABLE_META_TEXT,
-  FLAT_TABLE_ROW,
   FLAT_TABLE_SURFACE,
   PANEL_EMPTY_TEXT,
 } from '../components/flat-table-styles'
-import { FOOD_PLANNING_ENABLED } from '../lib/product-features'
 
 // Notes are rendered as Markdown on the public share view (typing markdown
 // in the authed NotesEditor textarea is the only authoring path). Lazy so
@@ -50,7 +40,6 @@ const MarkdownContent = lazy(() => import('../components/MarkdownContent'))
 // downstream components see valid wide types, and the corresponding UI
 // (pack mode, owner-only affordances) doesn't render here.
 //
-// The DTO still carries its narrow food projection while Food is parked. The
 // product flag below makes it dormant without changing the locked public wire
 // shape or deleting the owner's stored plan.
 export default function SharePage() {
@@ -113,13 +102,7 @@ export default function SharePage() {
     )
   }
 
-  const { list, items, categories, food } = share
-  const activeFood = FOOD_PLANNING_ENABLED ? food : null
-
-  // When the workspace is enabled, presence of the active object - never its
-  // weight - drives every food affordance. While parked, activeFood is null
-  // even though the preserved DTO field may still contain a projection.
-  const hasFood = activeFood !== null
+  const { list, items, categories } = share
 
   // The narrow -> wide boundary. gear status is filled with 'active' so
   // ItemRow renders no status badge - equivalent to "not shown" (status
@@ -160,16 +143,9 @@ export default function SharePage() {
     createdAt: '',
   }))
 
-  // Same composition as the owner's page when enabled: food moves consumable
-  // + total only (design 5.3). A parked projection contributes zero.
-  const weightBreakdown = withProjectedFood(
-    computeWeightBreakdown(itemsForRender, categoriesForRender),
-    activeFood?.weightGrams ?? 0,
-  )
+  const weightBreakdown = computeWeightBreakdown(itemsForRender, categoriesForRender)
 
-  // The summary earns its panel whenever there is active product data to
-  // report. Preserved-but-parked food does not create an empty summary.
-  const showWeightSummary = items.length > 0 || hasFood
+  const showWeightSummary = items.length > 0
 
   // Group items by category, ordered by category.sortOrder; uncategorized
   // last. Read-only view - no `prior` stability arg (renders once per
@@ -194,7 +170,7 @@ export default function SharePage() {
             This page is anonymous and may be opened by anyone, including on a
             borrowed browser; it used to write the same key the signed-in app
             reads, so a stranger picking oz here silently reconfigured that
-            device's own gear/lists/food views. The choice still persists on
+            device's own gear and lists views. The choice still persists on
             this device - it just no longer reaches into the app. */}
         <div className="mb-6 flex flex-wrap items-center gap-3">
           <h1 className="flex-1 min-w-0 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
@@ -222,14 +198,11 @@ export default function SharePage() {
           {showWeightSummary && (
             <PanelCard title="Weight summary">
               <WeightTable items={itemsForRender} categories={categoriesForRender} breakdown={weightBreakdown} />
-              {activeFood?.incomplete && <IncompleteFoodWeightNote />}
             </PanelCard>
           )}
         </div>
 
-        {/* Empty only when there is truly nothing: no gear rows AND no
-            attached plan. A food-only list carries real weight. */}
-        {items.length === 0 && !hasFood && (
+        {items.length === 0 && (
           <div className={`px-3 py-4 ${FLAT_TABLE_SURFACE}`}>
             <p className={PANEL_EMPTY_TEXT}>No gear items have been added to this shared list yet.</p>
           </div>
@@ -271,32 +244,6 @@ export default function SharePage() {
           </div>
         )}
 
-        {/* The derived Food row (design 7): the owner-page FoodRow's
-            read-only sibling. A weight and the Consumable/Estimate meta -
-            no plan name (not on the wire), no link, no menu. Its own
-            surface card so it stacks with the category groups above. */}
-        {activeFood && (
-          <section
-            aria-labelledby="share-food-heading"
-            className={`mt-3 ${FLAT_TABLE_SURFACE}`}
-          >
-            <div className={`${FLAT_TABLE_HEADER} ${FLAT_TABLE_HEADER_PADDING}`}>
-              <h3 id="share-food-heading" className={FLAT_TABLE_HEADER_TITLE}>
-                Food
-              </h3>
-            </div>
-            <div className={`${FLAT_TABLE_ROW} flex items-center gap-2`}>
-              <span className="flex-1 min-w-0">
-                <span className={`block truncate ${FLAT_TABLE_BODY_TEXT}`}>Food</span>
-                <span className={`block ${FLAT_TABLE_META_TEXT}`}>
-                  Consumable
-                  {activeFood.incomplete && ' · Estimate'}
-                </span>
-              </span>
-              <ItemWeightValue grams={activeFood.weightGrams} unit={weightUnit} />
-            </div>
-          </section>
-        )}
 
         {/* The old repo linked to /about here; that page doesn't exist on
             this stack (yet), so the footer credit points home instead. */}

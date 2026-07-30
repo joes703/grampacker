@@ -3,7 +3,6 @@
 // source of truth, camelCase end-to-end. The aliases keep the transplanted
 // components' import path stable. Grows per transplanted slice.
 export type { Category } from './queries/categories'
-export type { FoodItem } from './queries/food'
 export type { GearItem } from './queries/gear'
 export type { GearStatus } from '../../shared/gear'
 export type { List } from './queries/lists'

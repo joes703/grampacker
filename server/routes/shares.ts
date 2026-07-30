@@ -1,8 +1,4 @@
 import { Hono } from 'hono'
-import {
-  projectFoodGrams,
-  roundProjectedGrams,
-} from '../../shared/food-projection'
 import type { SharedListResponse } from '../../shared/lists'
 import {
   attachPublicShares,
@@ -58,22 +54,7 @@ function toSharedListResponse(share: PublicShare): SharedListResponse {
         categoryId: row.gearCategoryId,
       },
     })),
-    food: toPublicFood(share.foodEntries),
   }
-}
-
-// The attached plan collapsed to ONE weight (design 7): the same canonical
-// projection the owner's views use (5.1 - no SQL re-derivation), summed at
-// full precision and rounded exactly once here, at the wire boundary
-// (5.6), so the share cannot disagree with the owner's total by a gram.
-// null (no plan attached) passes through; a zero-entry plan folds to
-// { weightGrams: 0, incomplete: false } - present, honestly zero.
-function toPublicFood(
-  entries: PublicShare['foodEntries'],
-): SharedListResponse['food'] {
-  if (entries === null) return null
-  const { grams, incomplete } = projectFoodGrams(entries)
-  return { weightGrams: roundProjectedGrams(grams), incomplete }
 }
 
 shareRoutes.get('/:slug', async (c) => {

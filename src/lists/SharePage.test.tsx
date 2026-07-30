@@ -42,7 +42,6 @@ function share(over: {
   list?: Partial<SharedListResponse['list']>
   categories?: SharedListResponse['categories']
   items?: SharedListResponse['items']
-  food?: SharedListResponse['food']
 } = {}): SharedListResponse {
   return {
     list: {
@@ -54,8 +53,6 @@ function share(over: {
     },
     categories: over.categories ?? [],
     items: over.items ?? [],
-    // No plan attached is the common case; food-weight tests opt in.
-    food: over.food ?? null,
   }
 }
 
@@ -180,41 +177,6 @@ describe('SharePage read-only public sharing', () => {
   })
 })
 
-// Food data stays on the wire while the workspace is parked so no stored data
-// is destroyed. The public product must nevertheless treat that payload as
-// dormant: no row, estimate, or weight contribution.
-describe('SharePage parked food data', () => {
-  it('ignores an attached plan without deleting its payload', async () => {
-    vi.mocked(fetchSharedList).mockResolvedValue(
-      share({
-        categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
-        items: [tentItem], // 1200 g of gear
-        food: { weightGrams: 500, incomplete: true },
-      }),
-    )
-    renderShareView()
-
-    expect(await screen.findByText('Total pack weight')).toBeTruthy()
-    expect(screen.getAllByText('1200 g').length).toBeGreaterThan(0)
-    expect(screen.queryByText('1700 g')).toBeNull()
-    expect(screen.queryByText('Food')).toBeNull()
-    expect(screen.queryByText(/could not be weighed/)).toBeNull()
-  })
-
-  it('treats a food-only share as an empty gear list', async () => {
-    vi.mocked(fetchSharedList).mockResolvedValue(
-      share({ food: { weightGrams: 6000, incomplete: false } }),
-    )
-    renderShareView()
-
-    expect(
-      await screen.findByText('No gear items have been added to this shared list yet.'),
-    ).toBeTruthy()
-    expect(screen.queryByText('Weight summary')).toBeNull()
-    expect(screen.queryByText('Food')).toBeNull()
-  })
-})
-
 describe('SharePage error and not-found states', () => {
   it('shows "Couldn\'t load list" when the fetch rejects', async () => {
     // retry:false (set in renderShareView) means the rejection surfaces on
@@ -240,7 +202,7 @@ describe('SharePage error and not-found states', () => {
 // the PARENT hands each section the right number. The failure modes are all
 // silent and plausible-looking: passing a null category lookup to the Worn
 // section (which would show Uncategorized's base), passing the wrong category
-// id, or letting attached food weight leak into a category subtotal.
+// id.
 describe('SharePage category subtotals', () => {
   const shelterBase: SharedListResponse['items'][number] = {
     id: 'i-base', gearItemId: 'g-base', quantity: 1, isWorn: false, isConsumable: false, sortOrder: 0,
@@ -309,28 +271,6 @@ describe('SharePage category subtotals', () => {
     const wornSection = wornItem.closest('.overflow-hidden')
     expect(wornSection?.textContent).toContain('550 g')
     expect(wornSection?.textContent).not.toContain('80 g')
-  })
-
-  it('keeps attached food weight out of every category subtotal', async () => {
-    vi.mocked(fetchSharedList).mockResolvedValue(
-      share({
-        categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
-        items: [shelterBase],
-        // Food is always consumable: it may move consumable + pack total, and
-        // must never move a category's base subtotal.
-        food: { weightGrams: 3000, incomplete: false },
-      }),
-    )
-    renderShareView()
-
-    expect((await screen.findAllByText('Shelter')).length).toBeGreaterThan(0)
-    expect(screen.getAllByText('1200 g').length).toBeGreaterThan(0)
-    // 4200 g = base + food. It may appear as the pack total, but never as a
-    // category subtotal, so scope the check to the section footers.
-    const footers = [...document.querySelectorAll('.print\\:flex')]
-      .map((f) => f.textContent ?? '')
-    expect(footers.some((t) => t.includes('1200 g'))).toBe(true)
-    expect(footers.some((t) => t.includes('4200 g'))).toBe(false)
   })
 })
 

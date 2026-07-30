@@ -17,11 +17,3 @@ export { gearItemsToCsv, parseGearCsv } from './gear'
 export type { GearCsvRow } from './gear'
 export { listItemsToCsv, parseListCsv, nameFromCsvFilename } from './list'
 export type { ListCsvRow } from './list'
-export {
-  foodItemsToCsv,
-  parseFoodCsv,
-  FOOD_CSV_HEADERS,
-  FOOD_CSV_HEADER,
-  FOOD_SAMPLE_CSV,
-} from './food'
-export type { FoodCsvItem, FoodImportRow } from './food'

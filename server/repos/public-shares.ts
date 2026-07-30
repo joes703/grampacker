@@ -2,13 +2,10 @@ import { and, asc, eq } from 'drizzle-orm'
 import type { Db } from '../db'
 import {
   categories,
-  foodItems,
-  foodPlanEntries,
   gearItems,
   listItems,
   lists,
 } from '../db/schema'
-import type { ProjectionEntry } from '../../shared/food-projection'
 
 // Anonymous read access for the public share surface (/api/shares/:slug).
 // Deliberately NOT part of reposForUser: there is no user. This is the
@@ -52,13 +49,6 @@ export type PublicShare = {
   list: PublicListRow
   categories: PublicCategoryRow[]
   items: PublicListItemRow[]
-  // The attached plan's entries pre-joined to their food's projection inputs
-  // (design 5.2), for the route to fold into ONE weight via the canonical
-  // shared/food-projection.ts. null = no plan attached - presence is encoded
-  // here so the route can tell it apart from an attached plan with zero
-  // entries (design 7). Never handed out raw: basis/amount/serving data must
-  // not reach the wire.
-  foodEntries: ProjectionEntry[] | null
 }
 
 export function createPublicSharesRepo(db: Db) {
@@ -78,9 +68,6 @@ export function createPublicSharesRepo(db: Db) {
           description: lists.description,
           groupWorn: lists.groupWorn,
           isDraft: lists.isDraft,
-          // Repo-internal: encodes food presence (null vs zero-entry plan)
-          // and never leaves this function - the return strips it below.
-          foodPlanId: lists.foodPlanId,
         })
         .from(lists)
         .where(shareGate)
@@ -123,40 +110,18 @@ export function createPublicSharesRepo(db: Db) {
         .where(shareGate)
         .orderBy(asc(categories.sortOrder), asc(categories.name))
 
-      // The attached plan's entries with each food's projection inputs
-      // (design 5.2/7). Resolved through the lists join on food_plan_id with
-      // the same share gate - one bound-param pair regardless of plan size
-      // (no inArray; D1 caps bound params at 100), zero rows when no plan is
-      // attached OR the plan is empty (the list row's foodPlanId
-      // disambiguates those two below), and self-gated so an unshare cannot
-      // interleave. Order is irrelevant: projection is a commutative fold.
-      const foodEntriesQuery = db
-        .select({
-          basis: foodPlanEntries.basis,
-          amount: foodPlanEntries.amount,
-          servingWeightGrams: foodItems.servingWeightGrams,
-          servingsPerPackage: foodItems.servingsPerPackage,
-        })
-        .from(foodPlanEntries)
-        .innerJoin(foodItems, eq(foodItems.id, foodPlanEntries.foodItemId))
-        .innerJoin(lists, eq(lists.foodPlanId, foodPlanEntries.foodPlanId))
-        .where(shareGate)
-
-      const [listRows, itemRows, categoryRows, foodEntryRows] = await db.batch([
+      const [listRows, itemRows, categoryRows] = await db.batch([
         listQuery,
         itemsQuery,
         categoriesQuery,
-        foodEntriesQuery,
       ])
 
       const list = listRows[0]
       if (!list) return null
-      const { foodPlanId, ...publicList } = list
       return {
-        list: publicList,
+        list,
         categories: categoryRows,
         items: itemRows,
-        foodEntries: foodPlanId === null ? null : foodEntryRows,
       }
     },
   }

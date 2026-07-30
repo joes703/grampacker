@@ -1,17 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { FOOD_CSV_HEADER, foodItemsToCsv, gearItemsToCsv, listItemsToCsv } from '../csv'
-import type { Category, FoodItem, GearItem, List, ListItemWithGear } from '../types'
-import type { FoodPlanDocument, TargetDefault } from '../queries'
+import { gearItemsToCsv, listItemsToCsv } from '../csv'
+import type { Category, GearItem, List, ListItemWithGear } from '../types'
 import { buildTakeoutFiles, exportTimestamp } from './takeout-files'
-
-// No foods / no plans - spread into the gear-focused tests so their
-// assertions stay about gear and lists.
-const noFood = {
-  foodItems: [] as FoodItem[],
-  foodPlans: [] as FoodPlanDocument[],
-  targetDefaults: [] as TargetDefault[],
-  packingLocationsByListId: new Map(),
-}
 
 function makeCategory(over: Partial<Category> & { id: string; name: string }): Category {
   return {
@@ -64,7 +54,6 @@ function makeList(over: Partial<List> & { id: string; name: string }): List {
     name: over.name,
     description: over.description ?? null,
     slug: over.slug ?? `slug-${over.id}`,
-    foodPlanId: over.foodPlanId ?? null,
     isShared: over.isShared ?? false,
     groupWorn: over.groupWorn ?? false,
     readyChecksEnabled: over.readyChecksEnabled ?? false,
@@ -85,76 +74,18 @@ const gearItems: GearItem[] = [
   makeGear({ id: 'g-2', name: 'Stove', categoryId: 'cat-kitchen', weightGrams: 100 }),
 ]
 
+// Spread into the tests that do not exercise packing, so their expectations
+// stay about the files rather than the packing snapshot's inputs.
+const noPacking = { packingLocationsByListId: new Map() }
+
 describe('buildTakeoutFiles', () => {
   it('always emits the library files, matching their standalone exports', () => {
-    const files = buildTakeoutFiles({ categories, gearItems, lists: [], allItems: [], ...noFood })
-    // The bundle shape is stable: both library files and the json envelope
-    // are present even with zero foods and zero plans.
+    const files = buildTakeoutFiles({ categories, gearItems, lists: [], allItems: [], ...noPacking })
     expect(Object.keys(files).sort()).toEqual([
-      'food-data.json',
-      'food-library.csv',
       'gear-library.csv',
       'packing.json',
     ])
     expect(files['gear-library.csv']).toBe(gearItemsToCsv(gearItems, categories))
-    // Header-only, never a zero-byte file, so the bundle shape is stable.
-    expect(files['food-library.csv']).toBe(FOOD_CSV_HEADER)
-    expect(JSON.parse(files['food-data.json'] ?? '')).toEqual({
-      version: 4,
-      foodItems: [],
-      foodPlans: [],
-      targetDefaults: [],
-    })
-  })
-
-  it('emits food-library.csv and a version-4 food-data.json with plan graphs + defaults', () => {
-    const foodItems: FoodItem[] = [
-      {
-        id: 'f-1', name: 'Oats', brand: 'Quaker', servingDescription: '1 packet',
-        servingWeightGrams: 43, caloriesPerServing: 150, servingsPerPackage: 1,
-        fatGrams: 3, saturatedFatGrams: 0.5, carbsGrams: 27, fiberGrams: 3,
-        sugarGrams: 12, proteinGrams: 4, sodiumMg: 0, potassiumMg: null,
-        notes: null, sortOrder: 0,
-        createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
-      },
-    ]
-    const foodPlans: FoodPlanDocument[] = [
-      {
-        id: 'p-1', name: 'JMT week 1', sortOrder: 0,
-        createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
-        meals: [{ id: 'm-1', name: 'Breakfast', anchorRole: 'breakfast', isDefault: true, sortOrder: 0 }],
-        days: [{ id: 'd-1', dayTypeOverride: null, sortOrder: 0 }],
-        dayMeals: [{ id: 'dm-1', dayId: 'd-1', mealId: 'm-1' }],
-        entries: [{ id: 'e-1', dayMealId: 'dm-1', isExtra: false, foodItemId: 'f-1', basis: 'servings', amount: 2, sortOrder: 0 }],
-        dailyTargets: [
-          { id: 'dt-1', metric: 'calories', mode: 'min', targetMin: 2500, targetMax: null },
-        ],
-        mealTargets: [
-          { id: 'mt-1', mealId: 'm-1', metric: 'fat_pct', mode: 'max', targetMin: null, targetMax: 35 },
-        ],
-        usedByList: { id: 'l-1', name: 'JMT' },
-      },
-    ]
-    const targetDefaults: TargetDefault[] = [
-      { id: 'td-1', metric: 'protein', mode: 'min', targetMin: 120, targetMax: null },
-    ]
-    const files = buildTakeoutFiles({
-      categories,
-      gearItems,
-      lists: [],
-      allItems: [],
-      packingLocationsByListId: new Map(),
-      foodItems,
-      foodPlans,
-      targetDefaults,
-    })
-    expect(files['food-library.csv']).toBe(foodItemsToCsv(foodItems))
-    expect(JSON.parse(files['food-data.json'] ?? '')).toEqual({
-      version: 4,
-      foodItems,
-      foodPlans,
-      targetDefaults,
-    })
   })
 
   it('emits one lists/<slug>.csv per list, grouping items by listId', () => {
@@ -170,12 +101,10 @@ describe('buildTakeoutFiles', () => {
       gearItems,
       lists,
       allItems: [itemB, itemA],
-      ...noFood,
+      ...noPacking,
     })
 
     expect(Object.keys(files).sort()).toEqual([
-      'food-data.json',
-      'food-library.csv',
       'gear-library.csv',
       'lists/thru-hike.csv',
       'lists/weekend-trip.csv',
@@ -192,7 +121,7 @@ describe('buildTakeoutFiles', () => {
       makeList({ id: 'l-2', name: 'trip!' }), // slugifies to the same base
       makeList({ id: 'l-3', name: 'TRIP' }),
     ]
-    const files = buildTakeoutFiles({ categories, gearItems, lists, allItems: [], ...noFood })
+    const files = buildTakeoutFiles({ categories, gearItems, lists, allItems: [], ...noPacking })
     const listFiles = Object.keys(files).filter((k) => k.startsWith('lists/'))
     expect(listFiles).toEqual(['lists/trip.csv', 'lists/trip-2.csv', 'lists/trip-3.csv'])
   })
@@ -202,14 +131,14 @@ describe('buildTakeoutFiles', () => {
       makeList({ id: 'l-1', name: '!!!' }),
       makeList({ id: 'l-2', name: '---' }),
     ]
-    const files = buildTakeoutFiles({ categories, gearItems, lists, allItems: [], ...noFood })
+    const files = buildTakeoutFiles({ categories, gearItems, lists, allItems: [], ...noPacking })
     const listFiles = Object.keys(files).filter((k) => k.startsWith('lists/'))
     expect(listFiles).toEqual(['lists/list.csv', 'lists/list-2.csv'])
   })
 
   it('emits a header-only CSV for a list with no items', () => {
     const lists = [makeList({ id: 'l-1', name: 'Empty' })]
-    const files = buildTakeoutFiles({ categories, gearItems, lists, allItems: [], ...noFood })
+    const files = buildTakeoutFiles({ categories, gearItems, lists, allItems: [], ...noPacking })
     expect(files['lists/empty.csv']).toBe(listItemsToCsv([], categories))
   })
 
@@ -246,7 +175,6 @@ describe('buildTakeoutFiles', () => {
       gearItems,
       lists,
       allItems: [assigned, unassigned],
-      ...noFood,
       packingLocationsByListId,
     })
     const packing = JSON.parse(files['packing.json'] ?? '') as {

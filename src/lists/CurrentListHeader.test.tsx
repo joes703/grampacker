@@ -20,7 +20,6 @@ const list: List = {
   name: 'Test List',
   description: null,
   slug: 'test-list',
-  foodPlanId: null,
   isShared: false,
   sortOrder: 0,
   groupWorn: false,

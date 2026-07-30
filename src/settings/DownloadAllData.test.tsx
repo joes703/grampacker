@@ -23,10 +23,6 @@ vi.mock('../lib/queries', async (importOriginal) => ({
   fetchLists: vi.fn(),
   fetchListItems: vi.fn(),
   fetchPackingLocations: vi.fn(),
-  fetchFoodItems: vi.fn(),
-  fetchFoodPlans: vi.fn(),
-  fetchFoodPlan: vi.fn(),
-  fetchTargetDefaults: vi.fn(),
 }))
 
 import {
@@ -35,15 +31,7 @@ import {
   fetchLists,
   fetchListItems,
   fetchPackingLocations,
-  fetchFoodItems,
-  fetchFoodPlans,
-  fetchFoodPlan,
-  fetchTargetDefaults,
-  type FoodPlanDocument,
-  type FoodPlanSummary,
-  type TargetDefault,
 } from '../lib/queries'
-import type { FoodItem } from '../lib/types'
 import DownloadAllData from './DownloadAllData'
 
 const categories: Category[] = [
@@ -58,12 +46,12 @@ const gearItems: GearItem[] = [
 ]
 const lists: List[] = [
   {
-    id: 'l-1', name: 'Weekend Trip', description: null, slug: 's1', foodPlanId: null, isShared: false,
+    id: 'l-1', name: 'Weekend Trip', description: null, slug: 's1', isShared: false,
     groupWorn: false, readyChecksEnabled: false, isDraft: false, sortOrder: 0,
     createdAt: '2024-01-01', updatedAt: '2024-01-01',
   },
   {
-    id: 'l-2', name: 'Thru Hike', description: null, slug: 's2', foodPlanId: null, isShared: false,
+    id: 'l-2', name: 'Thru Hike', description: null, slug: 's2', isShared: false,
     groupWorn: false, readyChecksEnabled: false, isDraft: false, sortOrder: 1,
     createdAt: '2024-01-01', updatedAt: '2024-01-01',
   },
@@ -77,34 +65,9 @@ function itemFor(listId: string, id: string): ListItemWithGear {
   }
 }
 
-const foodItems: FoodItem[] = [
-  {
-    id: 'f-1', name: 'Oats', brand: null, servingDescription: null,
-    servingWeightGrams: 43, caloriesPerServing: 150, servingsPerPackage: null,
-    fatGrams: null, saturatedFatGrams: null, carbsGrams: null, fiberGrams: null,
-    sugarGrams: null, proteinGrams: null, sodiumMg: null, potassiumMg: null,
-    notes: null, sortOrder: 0, createdAt: '2024-01-01', updatedAt: '2024-01-01',
-  },
-]
-const planSummaries: FoodPlanSummary[] = [
-  {
-    id: 'p-1', name: 'JMT week 1', sortOrder: 0, dayCount: 1, entryCount: 0,
-    usedByListId: null, usedByListName: null,
-    createdAt: '2024-01-01', updatedAt: '2024-01-01',
-  },
-]
-const targetDefaults: TargetDefault[] = [
-  { id: 'td-1', metric: 'protein', mode: 'min', targetMin: 120, targetMax: null },
-]
 const packingLocations: PackingLocation[] = [
   { id: 'loc-1', name: 'Main pack', sortOrder: 0, containerListItemId: null },
 ]
-const planDoc: FoodPlanDocument = {
-  id: 'p-1', name: 'JMT week 1', sortOrder: 0,
-  createdAt: '2024-01-01', updatedAt: '2024-01-01',
-  meals: [], days: [], dayMeals: [], entries: [],
-  dailyTargets: [], mealTargets: [], usedByList: null,
-}
 
 let clickedDownloadName: string | null = null
 
@@ -117,10 +80,6 @@ beforeEach(() => {
     Promise.resolve([itemFor(listId, `i-${listId}`)]),
   )
   vi.mocked(fetchPackingLocations).mockResolvedValue(packingLocations)
-  vi.mocked(fetchFoodItems).mockResolvedValue(foodItems)
-  vi.mocked(fetchFoodPlans).mockResolvedValue(planSummaries)
-  vi.mocked(fetchFoodPlan).mockResolvedValue(planDoc)
-  vi.mocked(fetchTargetDefaults).mockResolvedValue(targetDefaults)
   // jsdom implements neither of these object-URL helpers.
   URL.createObjectURL = vi.fn(() => 'blob:mock')
   URL.revokeObjectURL = vi.fn()
@@ -152,12 +111,10 @@ describe('DownloadAllData', () => {
 
     await waitFor(() => expect(zipSync).toHaveBeenCalledTimes(1))
 
-    // The file map handed to fflate carries both libraries, the food-data
-    // json snapshot, and one entry per list, keyed by slugified name.
+    // The file map handed to fflate carries the gear library, the packing
+    // snapshot, and one entry per list, keyed by slugified name.
     const files = zipSync.mock.calls[0]![0]
     expect(Object.keys(files).sort()).toEqual([
-      'food-data.json',
-      'food-library.csv',
       'gear-library.csv',
       'lists/thru-hike.csv',
       'lists/weekend-trip.csv',
@@ -175,16 +132,6 @@ describe('DownloadAllData', () => {
       'l-1',
       'l-2',
     ])
-    // Plan documents were fetched once per plan (same per-entity pattern).
-    expect(fetchFoodPlan).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(fetchFoodPlan).mock.calls[0]?.[0]).toBe('p-1')
-    // Target defaults ride in food-data.json (version 4).
-    expect(fetchTargetDefaults).toHaveBeenCalledTimes(1)
-    const foodDataRaw = new TextDecoder().decode(files['food-data.json'])
-    const foodData = JSON.parse(foodDataRaw) as { version: number; targetDefaults: unknown }
-    expect(foodData.version).toBe(4)
-    expect(foodData.targetDefaults).toEqual(targetDefaults)
-
     // A download fired with the export filename.
     expect(clickedDownloadName).toMatch(/^grampacker-export-.*\.zip$/)
   })

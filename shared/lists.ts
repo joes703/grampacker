@@ -36,10 +36,6 @@ export const listResponseSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   slug: z.string(), // server-minted, 6-char base62; share URLs later
-  // The attached food plan (a live reference), or null. The client resolves
-  // the plan's NAME from its own ['food-plans'] cache - the list row carries
-  // only the pointer, not a denormalized name that could drift.
-  foodPlanId: z.string().nullable(),
   isShared: z.boolean(),
   groupWorn: z.boolean(),
   readyChecksEnabled: z.boolean(),
@@ -73,49 +69,6 @@ export const updateListRequestSchema = z
     message: 'empty patch',
   })
 export type UpdateListRequest = z.infer<typeof updateListRequestSchema>
-
-// Attach a food plan to a list (PUT /api/lists/:id/food-plan). Detach is a
-// bodyless DELETE, so it needs no schema. The plan id is validated for
-// ownership server-side; a non-owned/unknown id is a 400 invalid_plan.
-export const attachFoodPlanRequestSchema = z
-  .object({ foodPlanId: idSchema })
-  .strict()
-export type AttachFoodPlanRequest = z.infer<typeof attachFoodPlanRequestSchema>
-
-// The food pack toggle (PUT /api/lists/:id/food-pack/:foodItemId), design 6
-// rule 3. expectedFoodPlanId is the plan link the client OBSERVED when it
-// rendered the checklist - the compare-and-swap value, and it is REQUIRED and
-// non-null: a checklist only exists under an attached plan, so there is no
-// legitimate null observation (unlike duplicate's expectedFoodPlanId, where
-// "I saw no plan" is a real state). Both directions carry it; an unpack
-// gated only on row existence would delete a checkmark made under a newer
-// plan.
-export const toggleFoodPackRequestSchema = z
-  .object({
-    packed: z.boolean(),
-    expectedFoodPlanId: idSchema,
-  })
-  .strict()
-export type ToggleFoodPackRequest = z.infer<typeof toggleFoodPackRequestSchema>
-
-// applied:false = the compare-and-swap lost (the plan link moved after the
-// client observed it). NOT an error: the click simply lost the race, and the
-// client rolls its optimistic tick back and refetches. Deliberately narrow -
-// never the whole pack set - because packing is the highest-frequency
-// mutation in the app (design 6).
-export const toggleFoodPackResponseSchema = z.object({
-  foodItemId: z.string(),
-  packed: z.boolean(),
-  applied: z.boolean(),
-})
-export type ToggleFoodPackResponse = z.infer<typeof toggleFoodPackResponseSchema>
-
-// GET /api/lists/:id/food-pack - the checklist's read. Ids only: row
-// presence in food_pack_state means packed, so the set IS the state.
-export const foodPackStateResponseSchema = z.object({
-  packedFoodItemIds: z.array(z.string()),
-})
-export type FoodPackStateResponse = z.infer<typeof foodPackStateResponseSchema>
 
 export const createListFromSelectionRequestSchema = z
   .object({
@@ -261,10 +214,6 @@ export type UpdatePackingLocationRequest = z.infer<
 //            (private inventory metadata; gearItemId on the item row is
 //            the row identity)
 //   - categories: userId, timestamps
-//   - food:  everything except the projected weight + incomplete flag
-//            (design 7: no plan id/name, no meals or days, no entries, no
-//            per-food nutrition; the two scalars below are the ONLY food
-//            data an anonymous reader can reach anywhere in the system)
 // groupWorn and isDraft are deliberately public: the share view honors the
 // owner's worn-grouping preference and shows the work-in-progress banner.
 export const publicListSchema = z.object({
@@ -292,33 +241,17 @@ export const publicListItemSchema = z.object({
   gear: z.object({
     name: z.string(),
     description: z.string().nullable(),
-    // Fractional: an individual gear weight carries tenths. Distinct from
-    // publicFoodSchema.weightGrams below, which stays integer because the food
-    // projection is rounded ONCE server-side before it is published.
+    // Fractional: an individual gear weight carries tenths.
     weightGrams: z.number(),
     categoryId: z.string().nullable(),
   }),
 })
 export type PublicListItem = z.infer<typeof publicListItemSchema>
 
-// The attached food plan, collapsed to its projected pack weight (design 7).
-// A nullable OBJECT, not two bare scalars: null means "no plan attached",
-// which `{ weightGrams: 0, incomplete: false }` - a real attached plan that
-// currently weighs nothing - must stay distinguishable from. weightGrams is
-// already rounded ONCE server-side (roundProjectedGrams); incomplete travels
-// with it so an unprojectable entry can never publish a silently
-// undercounted total.
-export const publicFoodSchema = z.object({
-  weightGrams: z.number().int(),
-  incomplete: z.boolean(),
-})
-export type PublicFood = z.infer<typeof publicFoodSchema>
-
 export const sharedListResponseSchema = z.object({
   list: publicListSchema,
   categories: z.array(publicCategorySchema),
   items: z.array(publicListItemSchema),
-  food: publicFoodSchema.nullable(),
 })
 export type SharedListResponse = z.infer<typeof sharedListResponseSchema>
 

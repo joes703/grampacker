@@ -3,7 +3,6 @@ import {
   baseGramsForCategory,
   computeWeightBreakdown,
   consumableGramsForCategory,
-  withProjectedFood,
 } from './weight-breakdown'
 import type { Category, ListItemWithGear } from './types'
 
@@ -127,61 +126,6 @@ describe('computeWeightBreakdown', () => {
   })
 })
 
-describe('withProjectedFood', () => {
-  function baseBreakdown() {
-    return computeWeightBreakdown(
-      [
-        listItem({ id: 'tent', categoryId: shelter.id, weightGrams: 1000 }),
-        listItem({ id: 'bar', categoryId: null, weightGrams: 50, isConsumable: true }),
-        listItem({ id: 'jacket', categoryId: null, weightGrams: 300, isWorn: true }),
-      ],
-      [shelter],
-    )
-  }
-
-  it('adds food to consumable and the pack total, and nothing else', () => {
-    const before = baseBreakdown()
-    const after = withProjectedFood(before, 800)
-
-    // Food is consumable by definition (design 5.3).
-    expect(after.consumableGrams).toBe(before.consumableGrams + 800)
-    expect(after.totalPackGrams).toBe(before.totalPackGrams + 800)
-
-    // Untouched: food is not gear, so it has no category and no base weight,
-    // and worn is excluded from the pack total entirely.
-    expect(after.baseGrams).toBe(before.baseGrams)
-    expect(after.wornGrams).toBe(before.wornGrams)
-    expect(after.catRows).toEqual(before.catRows)
-  })
-
-  it('never adds a category row for food', () => {
-    const after = withProjectedFood(baseBreakdown(), 800)
-    // Only the gear categories. Food has no category and cannot be an
-    // Uncategorized row either - it is not a list_items row at all.
-    expect(after.catRows.map((r) => r.name)).toEqual(['Shelter'])
-  })
-
-  it('returns the breakdown unchanged when no food projects', () => {
-    const before = baseBreakdown()
-    expect(withProjectedFood(before, 0)).toBe(before)
-  })
-
-  it('does not mutate the breakdown it is given', () => {
-    const before = baseBreakdown()
-    const snapshot = structuredClone(before)
-    withProjectedFood(before, 800)
-    expect(before).toEqual(snapshot)
-  })
-
-  it('carries a food-only list: no gear, food is the whole pack', () => {
-    const empty = computeWeightBreakdown([], [])
-    const after = withProjectedFood(empty, 1200)
-    expect(after.totalPackGrams).toBe(1200)
-    expect(after.consumableGrams).toBe(1200)
-    expect(after.baseGrams).toBe(0)
-    expect(after.catRows).toEqual([])
-  })
-})
 
 // baseGramsForCategory is the lookup that puts each rendered category section's
 // footer subtotal onto computeWeightBreakdown, instead of the section summing
@@ -243,13 +187,6 @@ describe('baseGramsForCategory', () => {
     expect(baseGramsForCategory(b, shelter.id)).toBe(50)
   })
 
-  it('is unaffected by projected food weight', () => {
-    // Food moves consumable + total only; no category subtotal may move.
-    const b = withProjectedFood(breakdown(), 1200)
-    expect(baseGramsForCategory(b, shelter.id)).toBe(400)
-    expect(baseGramsForCategory(b, null)).toBe(17)
-  })
-
   it('routes an orphan category id to Uncategorized, matching the grouper', () => {
     const b = computeWeightBreakdown(
       [
@@ -305,10 +242,4 @@ describe('consumableGramsForCategory', () => {
     expect(consumableGramsForCategory(result, shelter.id)).toBe(0)
   })
 
-  it('does not assign projected food to a gear category footer', () => {
-    const before = breakdown()
-    const after = withProjectedFood(before, 800)
-    expect(consumableGramsForCategory(after, shelter.id)).toBe(230)
-    expect(consumableGramsForCategory(after, null)).toBe(35)
-  })
 })

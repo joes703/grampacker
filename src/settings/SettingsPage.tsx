@@ -1,13 +1,11 @@
-import { Download, Goal, KeyRound, Scale, TriangleAlert } from 'lucide-react'
+import { Download, KeyRound, Scale, TriangleAlert } from 'lucide-react'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import { TABLE_RADIUS, TABLE_SURFACE_BG, TABLE_STRONG_DIVIDER } from '../components/flat-table-styles'
 import { passkeysSupported } from '../lib/auth-client'
 import { useDocumentTitle } from '../lib/use-document-title'
 import PasskeySection from './PasskeySection'
-import DefaultTargetsSection from './DefaultTargetsSection'
 import DownloadAllData from './DownloadAllData'
 import DeleteAccountSection from './DeleteAccountSection'
-import { FOOD_PLANNING_ENABLED } from '../lib/product-features'
 
 // Account/settings hub, reached from the header cog. Restores the old
 // app's /settings surface: the new app has no home page (/ redirects to
@@ -42,16 +40,6 @@ export default function SettingsPage() {
         <PasskeySection />
       </Section>
 
-      {FOOD_PLANNING_ENABLED && (
-        <Section
-          title="Default nutrition targets"
-          subtitle="Copied into each new food plan; existing plans are not changed"
-          icon={<Goal size={16} />}
-        >
-          <DefaultTargetsSection />
-        </Section>
-      )}
-
       <Section
         title="Weight units"
         subtitle="Applies to every list and your gear library. Saved on this device"
@@ -62,7 +50,7 @@ export default function SettingsPage() {
 
       <Section
         title="Download all data"
-        subtitle="A complete archive of your gear, lists, food library, plans, and settings"
+        subtitle="A complete archive of your gear, lists, and settings"
         icon={<Download size={16} />}
       >
         <DownloadAllData />

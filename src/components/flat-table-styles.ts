@@ -220,7 +220,7 @@ export const FLAT_TABLE_META_TEXT = 'text-xs lg:text-[13px]'
 export const FLAT_TABLE_QUANTITY_TEXT = 'text-xs lg:text-[13px] tabular-nums'
 
 // Size-neutral numeric value treatment. Compose this when a value display
-// already owns a deliberate size tier (for example the text-sm food UI).
+// already owns a deliberate size tier.
 // Keeping size out of this token lets migrations add mono alignment without
 // flattening the existing visual hierarchy.
 export const NUMERIC_VALUE_TEXT = 'font-mono tabular-nums'

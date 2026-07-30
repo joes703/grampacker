@@ -2,14 +2,12 @@ import { Hono } from 'hono'
 import { gearStatusSchema } from '../../shared/gear'
 import {
   addListItemRequestSchema,
-  attachFoodPlanRequestSchema,
   createListFromSelectionRequestSchema,
   createListRequestSchema,
   importListRequestSchema,
   quickAddListItemRequestSchema,
   reorderListItemsRequestSchema,
   reorderListsRequestSchema,
-  toggleFoodPackRequestSchema,
   updateListItemRequestSchema,
   updateListRequestSchema,
   type ListItemResponse,
@@ -36,12 +34,6 @@ import type { ListRow } from '../repos/lists'
 //                                                atomically, zero writes on
 //                                                any failure; 422 at caps
 //   POST   /api/lists/:id/duplicate            - session - own list or 404;
-//                                                carries food_plan_id over
-//   PUT    /api/lists/:id/food-plan            - session - own list or 404;
-//                                                attaches an OWNED plan (400 if
-//                                                the plan is not the caller's)
-//   DELETE /api/lists/:id/food-plan            - session - own list or 404;
-//                                                detaches (nulls food_plan_id)
 //   PATCH  /api/lists/:id                      - session - own list or 404;
 //                                                isShared patchable (the
 //                                                share/unshare toggle)
@@ -73,7 +65,6 @@ function toListResponse(row: ListRow): ListResponse {
     name: row.name,
     description: row.description,
     slug: row.slug,
-    foodPlanId: row.foodPlanId,
     isShared: row.isShared,
     groupWorn: row.groupWorn,
     readyChecksEnabled: row.readyChecksEnabled,
@@ -226,95 +217,15 @@ listRoutes.post('/import', async (c) => {
   return c.json(toListResponse(result.row), 201)
 })
 
-// Duplicating a list whose trip has a food plan also deep-copies that plan
-// (one plan per trip - the pointer cannot be shared), so BOTH caps can fire
-// and each gets its own truthful message.
 listRoutes.post('/:id/duplicate', async (c) => {
   const result = await c.get('repos').lists.duplicate(c.req.param('id'))
   if (!result.ok) {
     if (result.reason === 'not_found') {
       return c.json({ error: 'Not found' }, 404)
     }
-    if (result.reason === 'plan_cap_exceeded') {
-      return c.json({ error: 'Food plan limit reached (100 per user)' }, 422)
-    }
     return c.json({ error: 'List limit reached (100 per user)' }, 422)
   }
   return c.json(toListResponse(result.row), 201)
-})
-
-// Attach a food plan (a live reference on lists.food_plan_id). Returns the
-// updated list so the client refreshes its ['lists'] cache; the plan's name is
-// resolved client-side from ['food-plans']. invalid_plan (a non-owned/unknown
-// plan) is a 400, distinct from the 404 for a non-owned list. plan_in_use is
-// a 409: the plan already backs another list (one plan per trip), and the
-// client keys on the STATUS alone - the picker's answer is "Duplicate &
-// attach" via POST /api/food-plans/:id/duplicate.
-listRoutes.put('/:id/food-plan', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = attachFoodPlanRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
-  const result = await c
-    .get('repos')
-    .lists.attachFoodPlan(c.req.param('id'), parsed.data.foodPlanId)
-  if (!result.ok) {
-    if (result.reason === 'invalid_plan') {
-      return c.json({ error: 'Invalid food plan' }, 400)
-    }
-    if (result.reason === 'plan_in_use') {
-      return c.json(
-        { error: 'That food plan is already used by another list' },
-        409,
-      )
-    }
-    return c.json({ error: 'Not found' }, 404)
-  }
-  return c.json(toListResponse(result.row))
-})
-
-listRoutes.delete('/:id/food-plan', async (c) => {
-  const result = await c.get('repos').lists.detachFoodPlan(c.req.param('id'))
-  if (!result.ok) return c.json({ error: 'Not found' }, 404)
-  return c.json(toListResponse(result.row))
-})
-
-// The food packing checklist's state (design 6): ids of the packed foods on
-// this list. Row presence means packed, so the id set IS the state.
-listRoutes.get('/:id/food-pack', async (c) => {
-  const ids = await c.get('repos').lists.getFoodPackState(c.req.param('id'))
-  if (ids === null) return c.json({ error: 'Not found' }, 404)
-  return c.json({ packedFoodItemIds: ids })
-})
-
-// The pack toggle - the highest-frequency mutation in the app, and a
-// compare-and-swap on the plan link the client observed (design 6, rule 3).
-// A lost CAS is applied:false with zero rows written, NOT an error status:
-// the user switched plans and this click simply lost. The response never
-// carries the whole pack set; applied is all the client needs to roll its
-// optimistic tick back.
-listRoutes.put('/:id/food-pack/:foodItemId', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = toggleFoodPackRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
-  const foodItemId = c.req.param('foodItemId')
-  const result = await c
-    .get('repos')
-    .lists.toggleFoodPack(
-      c.req.param('id'),
-      foodItemId,
-      parsed.data.packed,
-      parsed.data.expectedFoodPlanId,
-    )
-  if (!result.ok) return c.json({ error: 'Not found' }, 404)
-  return c.json({ foodItemId, packed: parsed.data.packed, applied: result.applied })
-})
-
-// Reset packed, food side. Unconditional for the list: clearing is the same
-// end state rule 1 produces on relink, so there is no stale-plan hazard.
-listRoutes.delete('/:id/food-pack', async (c) => {
-  const ok = await c.get('repos').lists.resetFoodPack(c.req.param('id'))
-  if (!ok) return c.json({ error: 'Not found' }, 404)
-  return c.body(null, 204)
 })
 
 listRoutes.patch('/:id', async (c) => {

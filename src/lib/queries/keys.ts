@@ -5,7 +5,6 @@
 // shapes inline. Grows one entry per transplanted slice.
 export const queryKeys = {
   categories: () => ['categories'] as const,
-  foodItems: () => ['food-items'] as const,
   gearItems: () => ['gear-items'] as const,
   lists: () => ['lists'] as const,
   listItems: (listId: string) => ['list-items', listId] as const,
@@ -17,17 +16,11 @@ export const queryKeys = {
   // reads the slug from the URL (useParams types it string | undefined);
   // the query is disabled until it exists.
   sharedList: (slug: string | undefined) => ['shared-list', slug] as const,
-  // Partial-match prefix. Attaching/detaching a food plan changes what a share
+  // Partial-match prefix. Changing what a list contains changes what a share
   // reports without touching the slug, and the share cache has a 30s staleTime,
   // so the writer invalidates every share it might hold rather than resolving
   // which slug moved (design 5.5).
   sharedListAll: () => ['shared-list'] as const,
-  // Food plans. The index caches the summary list; each editor caches ONE plan
-  // document under its id (every plan mutation returns the fresh document, which
-  // is written straight back here - design 5.5). planId accepts undefined for
-  // the same reason as sharedList: FoodPlanEditor reads :id from the URL and the
-  // query is disabled until it exists.
-  foodPlans: () => ['food-plans'] as const,
   // Account-level default daily targets (Settings + takeout). Save is a full
   // replace returning the fresh set, written straight back here.
   targetDefaults: () => ['target-defaults'] as const,
@@ -40,18 +33,13 @@ export const queryKeys = {
   // under the plan it was made for. Relinking (which clears pack state
   // server-side, rule 1) then structurally cannot render the old plan's
   // cached ids as phantom pre-checks - the new link reads a fresh entry.
-  foodPackState: (listId: string, foodPlanId: string) =>
-    ['food-pack', listId, foodPlanId] as const,
   // Partial-match prefix: attach/detach/duplicate clear pack state
   // server-side (rule 1) from hooks that don't know which list's cache is
   // populated, so they invalidate the prefix (design 5.5 precedent).
-  foodPackStateAll: () => ['food-pack'] as const,
-  foodPlan: (planId: string | undefined) => ['food-plan', planId] as const,
   // Partial-match prefix over every cached plan document. The document carries
   // usedByList (the editor breadcrumb's data), which changes when a LIST
   // mutation moves a pointer - attach, detach, list delete/rename, list
   // duplicate. Those writers cannot know which plan documents are cached, so
   // they invalidate the prefix (design 5.5: coarse invalidation over
   // bookkeeping).
-  foodPlanAll: () => ['food-plan'] as const,
 }
