@@ -2,7 +2,6 @@ import { Navigate, Route, Routes } from 'react-router'
 import RootRedirect from './layout/RootRedirect'
 import AppShell from './layout/AppShell'
 import GearLibraryPage from './gear/GearLibraryPage'
-import SettingsPage from './settings/SettingsPage'
 import ListsPage from './lists/ListsPage'
 import ListDetailPage from './lists/ListDetailPage'
 
@@ -38,7 +37,8 @@ export default function AuthenticatedApp() {
         {/* Food planning was removed. Old bookmarks land on the lists page
             rather than a 404. */}
         <Route path="food/*" element={<Navigate to="/lists" replace />} />
-        <Route path="settings" element={<SettingsPage />} />
+        {/* Settings is a modal in AppShell now, not a route. A stale
+            bookmark falls through to the catch-all below. */}
         {/* Pack is a URL segment of the same detail page (see
             ListDetailPage's mode derivation). The two /organize routes are
             RETIRED - Organize merged into Pack - but stay mounted so old

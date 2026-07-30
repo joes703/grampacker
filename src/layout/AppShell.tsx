@@ -1,3 +1,4 @@
+import { Suspense, lazy, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 import { Settings } from 'lucide-react'
 import { authClient } from '../lib/auth-client'
@@ -6,6 +7,10 @@ import { MobilePrimaryNavProvider } from './mobile-primary-nav-context'
 import { SidebarDrawerProvider } from './sidebar-drawer-context'
 import MobilePrimaryNav from './MobilePrimaryNav'
 import { useSignOut } from './use-sign-out'
+// Lazy + mounted only while open. Settings pulls in passkeys, the data-export
+// zipper and react-query; the shell wraps every page, so importing that tree
+// eagerly would put it on the critical path of a view that rarely opens it.
+const SettingsModal = lazy(() => import('../settings/SettingsModal'))
 
 // Session-gated layout shell: slim top header (brand, desktop nav links,
 // settings, sign out) plus the mobile primary nav. Route components own their
@@ -15,6 +20,9 @@ export default function AppShell() {
   const { data: session } = authClient.useSession()
   const { pathname } = useLocation()
   const { signingOut, signOut } = useSignOut()
+  // Settings is a modal, not a route: four small sections you touch a few
+  // times a year do not justify leaving the list you are working on.
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   return (
     <SidebarDrawerProvider>
@@ -52,16 +60,17 @@ export default function AppShell() {
               {/* Settings lives in the header at every viewport because the
                   mode-specific bottom bars contain destinations and page
                   actions, not global account controls. */}
-              <Link
-                to="/settings"
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
                 aria-label="Settings"
-                aria-current={pathname === '/settings' ? 'page' : undefined}
+                aria-expanded={settingsOpen}
                 className={`${ROW_CONTROL_TARGET} shrink-0 hover:bg-gray-50 ${
-                  pathname === '/settings' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'
+                  settingsOpen ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
                 <Settings size={18} />
-              </Link>
+              </button>
               <button
                 type="button"
                 onClick={() => void signOut()}
@@ -77,6 +86,11 @@ export default function AppShell() {
           <Outlet />
         </main>
         <MobilePrimaryNav />
+        {settingsOpen && (
+          <Suspense fallback={null}>
+            <SettingsModal open onClose={() => setSettingsOpen(false)} />
+          </Suspense>
+        )}
       </div>
     </MobilePrimaryNavProvider>
     </SidebarDrawerProvider>
