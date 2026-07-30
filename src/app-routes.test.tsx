@@ -33,7 +33,6 @@ vi.mock('./layout/AppShell', () => ({
 }))
 vi.mock('./layout/RootRedirect', () => ({ default: () => <div data-testid="root-redirect" /> }))
 vi.mock('./gear/GearLibraryPage', () => ({ default: () => <div data-testid="gear" /> }))
-vi.mock('./settings/SettingsPage', () => ({ default: () => <div data-testid="settings" /> }))
 vi.mock('./lists/ListsPage', () => ({ default: () => <div data-testid="lists" /> }))
 vi.mock('./lists/ListDetailPage', () => ({
   default: function ListDetailStub() {
@@ -72,7 +71,6 @@ describe('the authenticated area (lazy chunk, relative paths under the splat)', 
   it.each([
     ['/', 'root-redirect'],
     ['/gear', 'gear'],
-    ['/settings', 'settings'],
     ['/lists', 'lists'],
   ])('renders %s inside the shell', async (path, testId) => {
     renderAt(path, SIGNED_IN)

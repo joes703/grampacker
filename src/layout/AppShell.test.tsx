@@ -4,10 +4,14 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import AppShell from './AppShell'
 
+// The settings modal is lazy and mounts only while open, so the shell's own
+// tests never pull that tree in - passkeysSupported is here so a future eager
+// import fails loudly rather than mysteriously.
 vi.mock('../lib/auth-client', () => ({
   authClient: {
     useSession: () => ({ data: { user: { email: 'hiker@example.com' } } }),
   },
+  passkeysSupported: () => false,
 }))
 
 vi.mock('./use-sign-out', () => ({
@@ -18,9 +22,11 @@ afterEach(cleanup)
 
 describe('AppShell', () => {
   it('keeps the all-viewport Settings entry point touch-safe below lg', () => {
+    // A button, not a link: settings opens over the page you are on instead of
+    // navigating away from it.
     render(<AppShell />, { wrapper: MemoryRouter })
 
-    expect(screen.getByRole('link', { name: 'Settings' })).toHaveClass(
+    expect(screen.getByRole('button', { name: 'Settings' })).toHaveClass(
       'h-10',
       'w-10',
       'lg:h-7',
