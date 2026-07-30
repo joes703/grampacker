@@ -58,6 +58,19 @@
 // probe) - the row-changed failure flips into an assertion that the rewrite
 // happened exactly as declared.
 //
+// Writing a migration that DELIBERATELY DROPS a column? Declare it in
+// DROPPED_COLUMNS, and any index or trigger that went with it in
+// DROPPED_SCHEMA_OBJECTS. Every OTHER column on that table is still compared
+// value-for-value, so the rebuild that removed it still has to preserve the
+// rest of the row.
+//
+// Writing a migration that DELIBERATELY DROPS a table? Declare it in
+// DROPPED_TABLES. Its fixture stays - the table has to hold rows for the drop
+// to be realistic, and a cascade from it into a surviving table is exactly the
+// kind of damage this script exists to catch - but the table itself is exempt
+// from the after-comparison, which would otherwise fail trying to read a table
+// that is supposed to be gone.
+//
 // Changing a column's declared TYPE? Declare it in EXPECTED_TYPE_CHANGES. Value
 // comparison ignores numeric formatting (1200 vs 1200.0), so the declared type
 // is the only thing standing between you and an accidental widening.
@@ -540,6 +553,35 @@ const EXPECTED_CHANGES = [
   },
 ]
 
+// Tables a migration is ALLOWED to drop. Keyed by the migration that drops
+// them, so the exemption applies only while that migration is new on the
+// branch; afterwards the table is gone from the base schema and needs no
+// fixture at all.
+const DROPPED_TABLES = [
+  { migration: '0016_remove-food-planning.sql', table: 'day_meals' },
+  { migration: '0016_remove-food-planning.sql', table: 'food_items' },
+  { migration: '0016_remove-food-planning.sql', table: 'food_pack_state' },
+  { migration: '0016_remove-food-planning.sql', table: 'food_plan_daily_targets' },
+  { migration: '0016_remove-food-planning.sql', table: 'food_plan_days' },
+  { migration: '0016_remove-food-planning.sql', table: 'food_plan_entries' },
+  { migration: '0016_remove-food-planning.sql', table: 'food_plan_target_defaults' },
+  { migration: '0016_remove-food-planning.sql', table: 'food_plans' },
+  { migration: '0016_remove-food-planning.sql', table: 'meal_targets' },
+  { migration: '0016_remove-food-planning.sql', table: 'meals' },
+]
+
+// Columns a migration is ALLOWED to drop, and the schema objects that go with
+// them. Indexes and triggers belonging to a DROPPED_TABLES entry are exempt
+// automatically (the table took them); this list is for objects on tables that
+// SURVIVE, where a silently vanished index would be a real regression.
+const DROPPED_COLUMNS = [
+  { migration: '0016_remove-food-planning.sql', table: 'lists', column: 'food_plan_id' },
+]
+
+const DROPPED_SCHEMA_OBJECTS = [
+  { migration: '0016_remove-food-planning.sql', object: 'index lists_food_plan_id_unique' },
+]
+
 // Column type changes a migration is ALLOWED to make. Anything not listed here
 // that changes type fails the run. Keep this tight: an unintended rebuild that
 // widens a column is exactly the silent corruption this script exists to catch,
@@ -791,10 +833,10 @@ const listTables = () =>
 // their numbering is not stable across a rebuild.
 const listSchemaObjects = () =>
   query(
-    "select m.type, m.name from sqlite_master m where m.type in ('trigger', 'index') " +
+    "select m.type, m.name, m.tbl_name from sqlite_master m where m.type in ('trigger', 'index') " +
       "and m.name not glob 'sqlite_*' and m.tbl_name not glob 'sqlite_*' " +
       "and m.tbl_name not glob '_cf_*' and m.tbl_name <> 'd1_migrations'",
-  ).map(({ type, name }) => `${type} ${name}`)
+  ).map(({ type, name, tbl_name }) => ({ label: `${type} ${name}`, table: tbl_name }))
 
 // Maps table -> Set of column names, as the schema actually stands right now.
 const describeColumns = () => {
@@ -1022,11 +1064,61 @@ const main = () => {
 
     // 4. Nothing may have been lost or corrupted - except the rewrites the
     // new migrations DECLARED, which must have happened exactly as declared.
-    const after = snapshot(seededColumns)
+    // Tables this branch declared it drops are read neither here nor below:
+    // they no longer exist, and every OTHER table's rows still get compared,
+    // which is what proves the drop did not cascade into surviving data.
+    const droppedTables = new Set(
+      DROPPED_TABLES.filter((d) => addedNames.has(d.migration)).map((d) => d.table),
+    )
+    // Declared-dropped columns come out of the compared column set. Quoting a
+    // column SQLite no longer has would silently read back as the column NAME
+    // (its double-quoted-string fallback), which reads as a corrupted value
+    // rather than an absent one.
+    const droppedColumns = new Map()
+    for (const d of DROPPED_COLUMNS) {
+      if (!addedNames.has(d.migration)) continue
+      if (!droppedColumns.has(d.table)) droppedColumns.set(d.table, new Set())
+      droppedColumns.get(d.table).add(d.column)
+    }
+    const survivingColumns = new Map(
+      [...seededColumns]
+        .filter(([table]) => !droppedTables.has(table))
+        .map(([table, cols]) => [
+          table,
+          cols.filter((col) => !droppedColumns.get(table)?.has(col)),
+        ]),
+    )
+    const stillPresent = new Set(listTables())
+    const notActuallyDropped = [...droppedTables].filter((t) => stillPresent.has(t))
+    if (notActuallyDropped.length > 0) {
+      throw new Error(
+        `DROPPED_TABLES names ${notActuallyDropped.join(', ')}, but the ` +
+          'migration left them in place. Either the drop did not run or the ' +
+          'declaration is stale.',
+      )
+    }
+
+    const after = snapshot(survivingColumns)
     const failures = []
-    const expected = applyExpectedChanges(before, addedNames)
+    const expected = new Map(
+      [...applyExpectedChanges(before, addedNames)].map(([table, rows]) => {
+        const gone = droppedColumns.get(table)
+        if (!gone) return [table, rows]
+        return [
+          table,
+          rows
+            .map((json) => {
+              const row = JSON.parse(json)
+              for (const col of gone) delete row[col]
+              return JSON.stringify(row)
+            })
+            .sort(),
+        ]
+      }),
+    )
 
     for (const [table, beforeRows] of expected) {
+      if (droppedTables.has(table)) continue
       const afterRows = after.get(table) ?? []
       if (afterRows.length !== beforeRows.length) {
         failures.push(
@@ -1076,9 +1168,18 @@ const main = () => {
       )
     }
 
-    // Triggers and indexes that a rebuild dropped and never put back.
-    const schemaAfter = new Set(listSchemaObjects())
-    const dropped = schemaBefore.filter((object) => !schemaAfter.has(object))
+    // Triggers and indexes that a rebuild dropped and never put back. Objects
+    // belonging to a declared-dropped TABLE went with it; objects on surviving
+    // tables must be declared one by one.
+    const schemaAfter = new Set(listSchemaObjects().map((o) => o.label))
+    const allowedGone = new Set(
+      DROPPED_SCHEMA_OBJECTS.filter((d) => addedNames.has(d.migration)).map((d) => d.object),
+    )
+    const dropped = schemaBefore
+      .filter((object) => !droppedTables.has(object.table))
+      .filter((object) => !allowedGone.has(object.label))
+      .map((object) => object.label)
+      .filter((label) => !schemaAfter.has(label))
     if (dropped.length > 0) {
       failures.push(
         `Dropped and never recreated: ${dropped.join(', ')}. ` +
