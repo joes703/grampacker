@@ -1,12 +1,9 @@
 import type { Db } from '../db'
 import { createCategoriesRepo } from './categories'
-import { createFoodItemsRepo } from './food-items'
-import { createFoodPlansRepo } from './food-plans'
 import { createGearItemsRepo } from './gear-items'
 import { createListItemsRepo } from './list-items'
 import { createListsRepo } from './lists'
 import { createPackingLocationsRepo } from './packing-locations'
-import { createTargetDefaultsRepo } from './target-defaults'
 import { createUsersRepo } from './users'
 
 // The ONLY constructor of user-scoped data access. The session middleware
@@ -18,13 +15,10 @@ export function reposForUser(db: Db, userId: string) {
   return {
     users: createUsersRepo(db, userId),
     categories: createCategoriesRepo(db, userId),
-    foodItems: createFoodItemsRepo(db, userId),
-    foodPlans: createFoodPlansRepo(db, userId),
     gearItems: createGearItemsRepo(db, userId),
     lists: createListsRepo(db, userId),
     listItems: createListItemsRepo(db, userId),
     packingLocations: createPackingLocationsRepo(db, userId),
-    targetDefaults: createTargetDefaultsRepo(db, userId),
   }
 }
 

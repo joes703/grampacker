@@ -103,7 +103,7 @@ export function UnitSegmentedControlView({
 
 // Store-bound half, for AUTHENTICATED surfaces only (Settings, list detail).
 // Writes through to the shared useWeightUnit store, so changing the unit here
-// propagates to lists, gear inventory and food immediately.
+// propagates to lists and gear inventory immediately.
 //
 // Do NOT render this on the public share view - that is precisely the bug this
 // split exists to prevent. Use UnitSegmentedControlView with the share-scoped

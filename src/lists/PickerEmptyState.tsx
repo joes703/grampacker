@@ -7,9 +7,9 @@ import {
 // zero matches or when the user has nothing to pick yet. Wording explains where
 // the thing lives instead of offering to create it here, and there is
 // deliberately NO nav link: the desktop primary nav and the mobile bottom bar
-// both already surface the Gear and Food destinations.
+// both already surface the Gear destination.
 //
-// Shared by the Gear and Food sides of the toggle so the two halves of one panel
+// Used by the gear picker so its empty states
 // cannot drift into different empty-state shapes.
 export default function PickerEmptyState({
   heading,

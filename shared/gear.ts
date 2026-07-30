@@ -22,7 +22,7 @@ const gearNameSchema = z.string().trim().min(1).max(256)
 // Empty string is not a valid description - clients send null to clear.
 const descriptionSchema = z.string().trim().min(1).max(2000)
 // Tenths of a gram, not whole grams: packing multiples of a small item makes
-// the fraction matter. One decimal is deliberately tighter than food's three -
+// the fraction matter. One decimal -
 // it is the precision the UI renders, so everything storable is displayable,
 // and a rejected value is a real signal rather than silent rounding. Widening
 // to more decimals later is backwards-compatible; narrowing is not.

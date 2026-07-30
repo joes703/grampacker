@@ -92,7 +92,7 @@ export function setWeightUnit(unit: WeightUnit): void {
 // The /r/:slug page is anonymous and may be opened by anyone, including on a
 // shared or borrowed browser. It used to drive WEIGHT_UNIT_KEY, the same key
 // the authenticated app reads, so a stranger toggling oz on someone's shared
-// list silently reconfigured that device's own gear/lists/food views. No
+// list silently reconfigured that device's own gear and lists views. No
 // account data was ever at risk (the share route is GET-only and there is no
 // server-side unit preference), but reconfiguring the owner's app from a public
 // page is still wrong.

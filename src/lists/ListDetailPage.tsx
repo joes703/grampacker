@@ -29,7 +29,6 @@ import {
   fetchGearItems,
   fetchCategories,
   fetchPackingLocations,
-  fetchFoodPlans,
   updateList,
   updateListItem,
   reorderListItems,
@@ -57,71 +56,13 @@ import {
   baseGramsForCategory,
   computeWeightBreakdown,
   consumableGramsForCategory,
-  withProjectedFood,
 } from '../lib/weight-breakdown'
-import { useFoodProjection } from './use-food-projection'
-import { useFoodPlanLink } from './use-food-plan-link'
-import { useFoodPack } from './use-food-pack'
-import FoodPackSection from './FoodPackSection'
-import FoodRow from './FoodRow'
-import FoodPlanPicker from './FoodPlanPicker'
 import { planPackingItemReorder } from './packing-dnd'
 
-type LibraryTab = 'gear' | 'food'
-
-// One label per half of the panel. Shared so the toggle's button text and the
-// mobile drawer's accessible title cannot drift apart.
-const LIBRARY_TAB_LABELS: Record<LibraryTab, string> = {
-  gear: 'Add from gear',
-  food: 'Food plan',
-}
-
-// Gear | Food switch for the library panel: two views of one panel, exactly one
-// of which is active.
-//
-// Styled as tabs but deliberately NOT role="tablist"/"tab". That contract
-// promises arrow-key navigation between tabs, a roving tabIndex, and an
-// aria-controls'd tabpanel; claiming it without those makes keyboard behavior
-// worse than plain buttons, because a screen reader announces a widget that is
-// not there. Two aria-pressed toggles say exactly what these are and get Tab
-// navigation for free. (The pane is also mounted twice below lg - CSS-hidden
-// aside plus the drawer - so an aria-controls id would need to be unique per
-// mount, which a real tablist here would have to solve too.)
-function LibraryTabs({
-  tab,
-  onChange,
-}: {
-  tab: LibraryTab
-  onChange: (tab: LibraryTab) => void
-}) {
-  return (
-    <div
-      role="group"
-      aria-label="Add to this list"
-      className="flex border-b border-gray-200 bg-gray-50"
-    >
-      {(['gear', 'food'] as const).map((value) => (
-        <button
-          key={value}
-          type="button"
-          aria-pressed={tab === value}
-          onClick={() => onChange(value)}
-          className={`px-3 py-2 ${FLAT_TABLE_EYEBROW} border-b-2 -mb-px ${
-            tab === value
-              ? 'border-blue-600 text-blue-700'
-              : 'border-transparent hover:text-gray-900'
-          }`}
-        >
-          {LIBRARY_TAB_LABELS[value]}
-        </button>
-      ))}
-    </div>
-  )
-}
 import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
-import { FLAT_TABLE_EYEBROW, FLAT_TABLE_META_TEXT, FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
+import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import ListDocumentToolbar from './ListDocumentToolbar'
 import EmptyListCell from './EmptyListCell'
@@ -162,7 +103,6 @@ import { PackLocationSection } from './PackLocationSection'
 import { PlacementProvider, usePlacement } from './placement-context'
 import { planPlacementWithinLocation } from './placement-plan'
 import { DroppableUnassignedSection } from './SortablePackSection'
-import { FOOD_PLANNING_ENABLED } from '../lib/product-features'
 import { PACKING_LOCATION_CAP } from '../lib/caps'
 
 // TRANSPLANT NOTE (print): the old page rendered PrintListHeader above the
@@ -173,7 +113,6 @@ import { PACKING_LOCATION_CAP } from '../lib/caps'
 // TRANSPLANT NOTE (tabs): the old page rendered ListWorkspaceTabs (a
 // Gear/Pack two-tab remnant) above ListDocumentToolbar. The toolbar now owns
 // direct List / Organize / Pack navigation; the old workspace tab strip returns
-// only if the workspace grows real tabs (e.g. a Food tab with that slice).
 
 const EMPTY_LIST_ITEMS: ListItemWithGear[] = []
 const EMPTY_GEAR_ITEMS: GearItem[] = []
@@ -401,75 +340,6 @@ function ListDetailInner({
   // it resolves; falls back to "Lists" while the lists query is pending so
   // the title doesn't briefly drop to the bare app name.
   useDocumentTitle(list ? listDocumentTitle(list.name, mode) : 'Lists')
-
-  // The attached food plan's weight, derived from the plan document + the food
-  // library. Passing null while Food is parked keeps preserved links dormant
-  // without violating hook ordering or touching stored data.
-  const { projection: foodProjection, isError: foodProjectionError } =
-    useFoodProjection(FOOD_PLANNING_ENABLED ? (list?.foodPlanId ?? null) : null)
-  // The list ROW is the authority on whether food is part of this trip. The
-  // projection is only its weight, and it is absent while the plan loads or if
-  // the fetch fails - moments when the food has not gone anywhere.
-  const hasFoodPlan = FOOD_PLANNING_ENABLED && list?.foodPlanId != null
-  const incompleteFood = foodProjection?.incomplete ?? false
-
-  // Which half of the library panel is showing. Gear is the default: adding gear
-  // is the everyday act, picking a plan happens once per trip.
-  const [libraryTab, setLibraryTab] = useState<LibraryTab>('gear')
-  // Only fetched once the user actually opens the Food side - most sessions
-  // never touch it, and the Food row gets its name from the plan document
-  // rather than from this summary list.
-  const {
-    data: foodPlans = [],
-    isPending: foodPlansPending,
-    isError: foodPlansError,
-  } = useQuery({
-    queryKey: queryKeys.foodPlans(),
-    queryFn: fetchFoodPlans,
-    enabled: FOOD_PLANNING_ENABLED && libraryTab === 'food',
-  })
-  const { attachMut, detachMut, duplicateMut, busy: foodLinkBusy } =
-    useFoodPlanLink()
-  const onAttachFoodPlan = useCallback(
-    (foodPlanId: string) => attachMut.mutate({ id: listId, foodPlanId }),
-    [attachMut, listId],
-  )
-  const onDetachFoodPlan = useCallback(
-    () => detachMut.mutate(listId),
-    [detachMut, listId],
-  )
-  // Duplicate & attach (a plan already backing another list). The CAS
-  // expectation is THIS list's current link as this render observed it.
-  const listFoodPlanId = FOOD_PLANNING_ENABLED ? (list?.foodPlanId ?? null) : null
-
-  // Pack-mode food checklist (design 8, slice 4): rows + totals + the CAS
-  // toggle, with its own query subscriptions (colocation - see the hook).
-  // Enabled only where it renders; packableTotal/packedTotal are 0 while
-  // disabled, so edit mode and plan-less lists keep gear-only totals.
-  //
-  // !foodLinkBusy: never fetch pack state under a link the server hasn't
-  // confirmed. During an optimistic attach the lists cache already shows
-  // the NEW plan, but GET /food-pack is keyed by list alone and would
-  // return the OLD plan's rows - entering pack mode in that window would
-  // cache them under the new plan's key as phantom pre-checks (and retain
-  // them if the attach then failed). Once the link settles, success has
-  // removed the ['food-pack'] caches and failure has rolled the link back,
-  // so the fetch that then fires is correct either way.
-  const foodPack = useFoodPack(
-    listId,
-    listFoodPlanId,
-    hasFoodPlan && mode === 'pack' && !foodLinkBusy,
-  )
-  const onDuplicateAttachFoodPlan = useCallback(
-    (planId: string) =>
-      duplicateMut.mutate({
-        planId,
-        listId,
-        expectedFoodPlanId: listFoodPlanId,
-      }),
-    [duplicateMut, listId, listFoodPlanId],
-  )
-
 
   useEffect(() => {
     if (legacyPackMode || legacyOrganizeMode) {
@@ -849,9 +719,7 @@ function ListDetailInner({
   // their own field on failure, so they compose) and the failure toasts. The
   // page keeps the PackingProgress wiring, the per-item toggles, and the
   // ready-checks-enabled toggle.
-  // The plan link routes "Reset packed" through the food side too (design
-  // 8: reset spans both) and keys the pack-state cache it clears.
-  const { resetPacked, resetReady } = useListResetActions(listId, listFoodPlanId)
+  const { resetPacked, resetReady } = useListResetActions(listId)
 
 
   // ── Derived data ───────────────────────────────────────────────────────────
@@ -1001,23 +869,12 @@ function ListDetailInner({
       ),
     ),
   })
-  // Food composes into the gear breakdown here, at the page level, so the
-  // mobile strip and the desktop table are handed ONE number and cannot
-  // disagree about what the pack weighs. Food moves consumable + total only
-  // (design 5.3); grams is already rounded once by the projection (5.6).
   const weightBreakdown = useMemo(
-    () =>
-      withProjectedFood(
-        computeWeightBreakdown(listItems, categories),
-        foodProjection?.grams ?? 0,
-      ),
-    [categories, listItems, foodProjection],
+    () => computeWeightBreakdown(listItems, categories),
+    [categories, listItems],
   )
-  // Mirrors WeightSummary's own render guard. A plan that projects to nothing
-  // still earns the panel when it is an undercount, because the "estimate" note
-  // is the only thing explaining why the total looks wrong.
-  const showWeightSummary =
-    listItems.length > 0 || weightBreakdown.totalPackGrams > 0 || incompleteFood
+  // Mirrors WeightSummary's own render guard.
+  const showWeightSummary = listItems.length > 0 || weightBreakdown.totalPackGrams > 0
 
   // Worn rows are always extracted into one trailing section in Edit and Pack.
   // CategoryGroup filters ordinary sections at the leaf so unchanged groups
@@ -1112,39 +969,16 @@ function ListDetailInner({
   // Defined once and mounted by both the desktop aside and mobile drawer. The
   // feature gate removes the selector and leaves the Gear pane active in both.
   const libraryPane = (
-    <>
-      {/* The panel's Gear | Food toggle (design 8). Two different verbs sharing
-          one panel: Gear adds many items, Food picks the ONE plan for this trip.
-          The toggle lives out here rather than inside LibraryPanel because that
-          component is memoized on reference-stable props and knows only about
-          gear. */}
-      {FOOD_PLANNING_ENABLED && (
-        <LibraryTabs tab={libraryTab} onChange={setLibraryTab} />
-      )}
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {!FOOD_PLANNING_ENABLED || libraryTab === 'gear' ? (
-          <LibraryPanel
-            gearItems={gearItems}
-            categories={categories}
-            listItemGearIds={listItemGearIds}
-            weightUnit={weightUnit}
-            onAdd={onLibraryAdd}
-            onRemove={onLibraryRemove}
-          />
-        ) : (
-          <FoodPlanPicker
-            plans={foodPlans}
-            isPending={foodPlansPending}
-            isError={foodPlansError}
-            attachedPlanId={list?.foodPlanId ?? null}
-            busy={foodLinkBusy}
-            onAttach={onAttachFoodPlan}
-            onDetach={onDetachFoodPlan}
-            onDuplicateAttach={onDuplicateAttachFoodPlan}
-          />
-        )}
-      </div>
-    </>
+    <div className="flex-1 min-h-0 overflow-hidden">
+      <LibraryPanel
+        gearItems={gearItems}
+        categories={categories}
+        listItemGearIds={listItemGearIds}
+        weightUnit={weightUnit}
+        onAdd={onLibraryAdd}
+        onRemove={onLibraryRemove}
+      />
+    </div>
   )
 
   // Stable callback for CategoryGroup's "+ Add new item" affordance.
@@ -1450,25 +1284,11 @@ function ListDetailInner({
             <ListDetailStatus title="Loading list details..." busy />
           ) : (
             <>
-              {/* Pack-mode progress bar. When Food is enabled it renders for a food-only list too:
-                  a list with no gear but an attached plan still has packing
-                  to track. With a plan attached it waits for foodPack.isReady
-                  (unless the food side errored - then gear-only totals plus
-                  the banner below are the honest state): gear-only totals
-                  during the food fetch would show wrong denominators and
-                  could claim "All packed!" when unpacked food remains.
-                  !foodLinkBusy for the same reason: while a link mutation is
-                  settling, hasFoodPlan reflects an OPTIMISTIC link (a
-                  mid-detach render says "no plan" even though the detach may
-                  fail), so either generation's totals would be a guess -
-                  hold the bar for the sub-second settle instead. */}
-              {mode === 'pack' && !foodLinkBusy &&
-                (!hasFoodPlan || foodPack.isReady || foodPack.isError) &&
-                (listItems.length > 0 || foodPack.packableTotal > 0) && (
+              {mode === 'pack' && listItems.length > 0 && (
                 <div className="print:hidden">
                   <PackingProgress
-                    total={listItems.length + foodPack.packableTotal}
-                    packed={listItems.filter((i) => i.isPacked).length + foodPack.packedTotal}
+                    total={listItems.length}
+                    packed={listItems.filter((i) => i.isPacked).length}
                     onReset={resetPacked}
                     showUnpackedOnly={showUnpackedOnly}
                     onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
@@ -1495,7 +1315,6 @@ function ListDetailInner({
               {mode === 'edit' && (
                 // Two columns exactly when WeightSummary renders something -
                 // the same condition it guards itself with. Keying this on
-                // listItems alone hid the weight of a food-only list; keying it
                 // on "a plan is attached" would reserve an empty column for a
                 // plan that projects to nothing.
                 <div className={`print:hidden grid gap-4 ${showWeightSummary ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
@@ -1527,51 +1346,8 @@ function ListDetailInner({
                     items={listItems}
                     categories={categories}
                     breakdown={weightBreakdown}
-                    incompleteFood={incompleteFood}
                   />
                 </div>
-              )}
-
-              {/* Food, between the summary and the gear groups. Edit mode
-                  renders the derived Food row; pack mode expands it into the
-                  per-food checklist (FoodPackSection). */}
-              {FOOD_PLANNING_ENABLED && mode === 'pack' && foodPack.isError && (
-                <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  Couldn&apos;t load this list&apos;s food checklist. Gear packing
-                  still works.
-                </p>
-              )}
-              {/* A food-only list has NOTHING else on the page while the
-                  checklist data loads (the progress bar above also waits),
-                  so say what's happening instead of rendering blank. Gear
-                  lists skip this: their item groups render regardless. */}
-              {mode === 'pack' && hasFoodPlan && listItems.length === 0 &&
-                !foodPack.isReady && !foodPack.isError && (
-                  <p className={`mt-4 ${FLAT_TABLE_META_TEXT}`}>
-                    Loading food checklist...
-                  </p>
-                )}
-              {FOOD_PLANNING_ENABLED && mode === 'pack' && (
-                <FoodPackSection
-                  rows={foodPack.rows}
-                  weightUnit={weightUnit}
-                  showUnpackedOnly={showUnpackedOnly}
-                  onToggle={foodPack.toggle}
-                />
-              )}
-              {mode === 'edit' && foodProjectionError && (
-                <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  Couldn&apos;t load this list&apos;s food plan, so the weight below leaves
-                  food out.
-                </p>
-              )}
-              {mode === 'edit' && foodProjection && (
-                <FoodRow
-                  projection={foodProjection}
-                  weightUnit={weightUnit}
-                  busy={foodLinkBusy}
-                  onDetach={onDetachFoodPlan}
-                />
               )}
 
               {/* Packing-location admin, lifted from the retired Organize
@@ -1610,11 +1386,7 @@ function ListDetailInner({
 
               {/* Items grouped by category */}
               {listItems.length === 0 ? (
-                // A list with a plan but no gear is not empty - it has food. This
-                // asks the LIST ROW, not the projection: the projection is absent
-                // while the plan is still loading and after a failed fetch, and
-                // neither of those means the list became empty.
-                hasFoodPlan ? null : <EmptyListCell onMobileAdd={() => setDrawerOpen(true)} />
+                <EmptyListCell onMobileAdd={() => setDrawerOpen(true)} />
               ) : (() => {
                 const activeParsed = activeId ? parseDnDId(activeId) : null
                 const activeItem =
@@ -1802,7 +1574,7 @@ function ListDetailInner({
             <ListSidebarDrawer
               open={drawerOpen}
               onOpenChange={setDrawerOpen}
-              title={LIBRARY_TAB_LABELS[libraryTab]}
+              title="Add from gear"
             >
               <div className="flex h-full flex-col">{libraryPane}</div>
             </ListSidebarDrawer>

@@ -18,7 +18,6 @@ const list: List = {
   name: 'Trip',
   description: null,
   slug: 'trip',
-  foodPlanId: null,
   isShared: false,
   isDraft: false,
   groupWorn: false,

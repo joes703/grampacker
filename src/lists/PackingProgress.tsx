@@ -10,7 +10,7 @@ import {
 } from '../components/flat-table-styles'
 
 type Props = {
-  // COMBINED totals (design 8): gear items + packable foods. The food side
+  // Totals over the list's gear items.
   // is 0 until a plan is attached, so gear-only lists are unchanged.
   total: number
   packed: number
@@ -29,9 +29,6 @@ type Props = {
   // render this component.
   readyChecks: {
     ready: number
-    // Gear-only denominator. Ready checks never cover food, so dividing by
-    // the combined `total` above would make the ready bar uncompletable on
-    // any list with a food plan.
     total: number
     onResetReady: () => void
   }

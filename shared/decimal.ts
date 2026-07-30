@@ -12,7 +12,7 @@ import { z } from 'zod'
 // round-tripped value back to the original catches that. (gear's costSchema
 // still uses the epsilon form; not touched here - different PR.)
 //
-// Lives in its own leaf module so shared/food.ts and shared/gear.ts can both
+// Lives in its own leaf module so schema modules can
 // use it without importing each other.
 export function decimalNumber(opts: {
   min: number

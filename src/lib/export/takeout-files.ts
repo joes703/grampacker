@@ -1,7 +1,5 @@
-import { foodItemsToCsv, gearItemsToCsv, listItemsToCsv } from '../csv'
-import type { Category, FoodItem, GearItem, List, ListItemWithGear, PackingLocation } from '../types'
-import type { FoodPlanDocument, TargetDefault } from '../queries'
-import { buildFoodDataJson } from './food-data-json'
+import { gearItemsToCsv, listItemsToCsv } from '../csv'
+import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../types'
 import { buildPackingJson } from './packing-json'
 
 export type TakeoutInput = {
@@ -13,12 +11,7 @@ export type TakeoutInput = {
   // warm in the cache) and concatenates them.
   allItems: ListItemWithGear[]
   packingLocationsByListId: ReadonlyMap<string, PackingLocation[]>
-  foodItems: FoodItem[]
   // Full per-plan graphs, fetched one document per plan (plan cap 100).
-  foodPlans: FoodPlanDocument[]
-  // Account-level default daily targets - part of "all data" (the old app
-  // exported them too); they ride in food-data.json, not their own file.
-  targetDefaults: TargetDefault[]
 }
 
 // Builds the takeout zip's file map as { path -> text content }. Pure and
@@ -26,20 +19,10 @@ export type TakeoutInput = {
 // settings page or mocking fflate. The handler strToU8-encodes each value
 // and zips the result.
 export function buildTakeoutFiles(input: TakeoutInput): Record<string, string> {
-  const { categories, gearItems, lists, allItems, packingLocationsByListId, foodItems, foodPlans, targetDefaults } =
+  const { categories, gearItems, lists, allItems, packingLocationsByListId } =
     input
   const files: Record<string, string> = {}
   files['gear-library.csv'] = gearItemsToCsv(gearItems, categories)
-  // Food: the re-importable CSV plus the version-4 json snapshot (the CSV
-  // is the human/portable format; the json carries the plan graphs +
-  // target defaults, which are not flat rows - see food-data-json.ts for
-  // the shape, version history and what's deliberately excluded).
-  files['food-library.csv'] = foodItemsToCsv(foodItems)
-  files['food-data.json'] = JSON.stringify(
-    buildFoodDataJson({ foodItems, foodPlans, targetDefaults }),
-    null,
-    2,
-  )
   files['packing.json'] = JSON.stringify(
     buildPackingJson({ lists, allItems, packingLocationsByListId }),
     null,

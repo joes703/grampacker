@@ -7,12 +7,8 @@ import { FLAT_TABLE_SURFACE, ROW_CONTROL_TARGET } from '../components/flat-table
 // imports only Radix Dialog + the chrome icons. Together with M11's
 // useIsBelowLg gate at the caller, this never loads on desktop.
 //
-// Header: title + close. The title names whichever half of the panel is
-// showing, so it has to come from the caller: the panel now has a Gear | Food
-// toggle, and a fixed "Add from gear" would tell a screen-reader user they were
-// in a gear picker while the food-plan picker was on screen. The Gear and Food
-// destinations themselves are reached via the mobile bottom bar, which exposes
-// them on every authed route.
+// Header: title + close. The title comes from the caller so it always names
+// what the drawer is actually showing.
 type Props = {
   open: boolean
   onOpenChange: (next: boolean) => void

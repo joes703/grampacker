@@ -40,8 +40,7 @@ export function isUniqueViolation(err: unknown, column: string): boolean {
 // A UNIQUE violation on ANY column - used where a repo prechecks a duplicate but
 // wants the DB's own unique index as the race backstop, and a composite/partial
 // index names several columns so a single-column match is impractical (e.g.
-// "UNIQUE constraint failed: food_plan_entries.day_meal_id,
-// food_plan_entries.food_item_id"). SQLITE_CONSTRAINT_UNIQUE pins the class.
+// "UNIQUE constraint failed: lists.slug"). SQLITE_CONSTRAINT_UNIQUE pins the class.
 export function isAnyUniqueViolation(err: unknown): boolean {
   const msg = rootMessage(err)
   return (

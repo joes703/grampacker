@@ -71,8 +71,6 @@ vi.mock('../lib/queries', async () => {
       lists: () => ['lists'],
       listItems: (id: string) => ['list-items', id],
       categories: () => ['categories'],
-      foodPlans: () => ['food-plans'],
-      foodPlanAll: () => ['food-plan'],
     },
     updateList: q.updateList,
     duplicateList: q.duplicateList,
@@ -94,7 +92,6 @@ const LIST: List = {
   name: 'Trip',
   description: null,
   slug: 'abc123',
-  foodPlanId: null,
   isShared: false,
   isDraft: false,
   groupWorn: false,
@@ -129,14 +126,9 @@ describe('useCurrentListActions - duplicate', () => {
   it('duplicates by id, invalidates, and navigates to the server row', async () => {
     q.duplicateList.mockResolvedValueOnce({ ...LIST, id: 'copy-id' })
     const { result } = renderHook(() => useCurrentListActions(), { wrapper })
-    // Seed the plan summaries so their invalidation is observable: the server
-    // deep-copies the source list's plan (one plan per trip), so the Plans
-    // index gained a card this cache doesn't know about.
-    lastQc.setQueryData(['food-plans'], [])
     act(() => { result.current.duplicateMut.mutate(LIST) })
     await waitFor(() => expect(q.duplicateList).toHaveBeenCalledWith('l1'))
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/lists/copy-id'))
-    expect(lastQc.getQueryState(['food-plans'])?.isInvalidated).toBe(true)
   })
 
   it('toasts when duplicateList rejects', async () => {
@@ -146,44 +138,6 @@ describe('useCurrentListActions - duplicate', () => {
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith("Couldn't duplicate that list. Please try again.", { type: 'error' }),
     )
-  })
-})
-
-// The list's name and existence are denormalized into the food-plan caches
-// (usedByListName on summaries, usedByList on documents), so rename and
-// delete must invalidate both or a stale Plans index keeps saying "In use by"
-// a renamed/deleted list.
-describe('useCurrentListActions - food-plan cache invalidation', () => {
-  beforeEach(() => {
-    q.updateList.mockReset()
-    q.deleteList.mockReset()
-  })
-  afterEach(() => cleanup())
-
-  function seedPlanCaches() {
-    lastQc.setQueryData(['lists'], [LIST])
-    lastQc.setQueryData(['food-plans'], [])
-    lastQc.setQueryData(['food-plan', 'p1'], { id: 'p1' })
-  }
-
-  it('rename invalidates plan summaries and documents', async () => {
-    q.updateList.mockResolvedValueOnce({ ...LIST, name: 'Renamed' })
-    const { result } = renderHook(() => useCurrentListActions(), { wrapper })
-    seedPlanCaches()
-    act(() => { result.current.renameMut.mutate({ id: 'l1', name: 'Renamed' }) })
-    await waitFor(() => expect(result.current.renameMut.isSuccess).toBe(true))
-    expect(lastQc.getQueryState(['food-plans'])?.isInvalidated).toBe(true)
-    expect(lastQc.getQueryState(['food-plan', 'p1'])?.isInvalidated).toBe(true)
-  })
-
-  it('delete invalidates plan summaries and documents', async () => {
-    q.deleteList.mockResolvedValueOnce(undefined)
-    const { result } = renderHook(() => useCurrentListActions(), { wrapper })
-    seedPlanCaches()
-    act(() => { result.current.deleteListMut.mutate('l1') })
-    await waitFor(() => expect(result.current.deleteListMut.isSuccess).toBe(true))
-    expect(lastQc.getQueryState(['food-plans'])?.isInvalidated).toBe(true)
-    expect(lastQc.getQueryState(['food-plan', 'p1'])?.isInvalidated).toBe(true)
   })
 })
 

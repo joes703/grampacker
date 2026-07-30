@@ -8,18 +8,12 @@ import {
   fetchLists,
   fetchListItems,
   fetchPackingLocations,
-  fetchFoodItems,
-  fetchFoodPlans,
-  fetchFoodPlan,
-  fetchTargetDefaults,
 } from '../lib/queries'
 import { buildTakeoutFiles, exportTimestamp } from '../lib/export/takeout-files'
-import type { FoodPlanDocument } from '../lib/queries'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 
 // "Download all data" control for the settings page: builds a zip client-
-// side (gear library CSV + one CSV per list + food library CSV + the
-// food-data.json plan snapshot) and triggers a download. The pure file-map
+// side (gear library CSV + one CSV per list) and triggers a download. The pure file-map
 // construction lives in ../lib/export/takeout-files so the bug-prone part
 // is unit-tested without this component.
 export default function DownloadAllData() {
@@ -41,24 +35,19 @@ export default function DownloadAllData() {
       // 30-second staleTime still considers fresh - another tab or device
       // may have written since this tab's cache filled (Codex finding).
       // Successful results still land in the cache for the app to reuse.
-      const [fflate, categories, gearItems, lists, foodItems, planSummaries, targetDefaults] =
+      const [fflate, categories, gearItems, lists] =
         await Promise.all([
           fflatePromise,
           qc.fetchQuery({ queryKey: queryKeys.categories(), queryFn: fetchCategories, staleTime: 0 }),
           qc.fetchQuery({ queryKey: queryKeys.gearItems(), queryFn: fetchGearItems, staleTime: 0 }),
           qc.fetchQuery({ queryKey: queryKeys.lists(), queryFn: fetchLists, staleTime: 0 }),
-          qc.fetchQuery({ queryKey: queryKeys.foodItems(), queryFn: fetchFoodItems, staleTime: 0 }),
-          qc.fetchQuery({ queryKey: queryKeys.foodPlans(), queryFn: fetchFoodPlans, staleTime: 0 }),
-          qc.fetchQuery({ queryKey: queryKeys.targetDefaults(), queryFn: fetchTargetDefaults, staleTime: 0 }),
         ])
 
       // Items for every list, fetched per list and flattened;
       // buildTakeoutFiles regroups by listId. No bulk endpoint and no
       // inArray, so no D1 param-limit exposure - the count of requests is
-      // the list count. Food plans follow the same per-entity pattern: one
-      // document fetch per plan (request count = plan count, capped at 100).
-      const [perList, foodPlans] = await Promise.all([
-        Promise.all(
+      // the list count.
+      const perList = await Promise.all(
           lists.map(async (list) => {
             const [items, locations] = await Promise.all([
               qc.fetchQuery({
@@ -74,18 +63,7 @@ export default function DownloadAllData() {
             ])
             return { listId: list.id, items, locations }
           }),
-        ),
-        Promise.all(
-          planSummaries.map(
-            (p): Promise<FoodPlanDocument> =>
-              qc.fetchQuery({
-                queryKey: queryKeys.foodPlan(p.id),
-                queryFn: () => fetchFoodPlan(p.id),
-                staleTime: 0,
-              }),
-          ),
-        ),
-      ])
+      )
       const allItems: ListItemWithGear[] = perList.flatMap(({ items }) => items)
       const packingLocationsByListId = new Map<string, PackingLocation[]>(
         perList.map(({ listId, locations }) => [listId, locations]),
@@ -98,9 +76,6 @@ export default function DownloadAllData() {
         lists,
         allItems,
         packingLocationsByListId,
-        foodItems,
-        foodPlans,
-        targetDefaults,
       })
       const files: Record<string, Uint8Array> = {}
       for (const [name, content] of Object.entries(fileContents)) {

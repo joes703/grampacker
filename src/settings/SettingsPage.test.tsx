@@ -33,7 +33,7 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('download-all-data')).toBeInTheDocument()
     expect(
-      screen.getByText('A complete archive of your gear, lists, food library, plans, and settings'),
+      screen.getByText('A complete archive of your gear, lists, and settings'),
     ).toBeInTheDocument()
 
     // Danger zone: delete account.

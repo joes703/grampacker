@@ -18,3 +18,23 @@ export function chunkIds<T>(ids: T[], size = MAX_IDS_PER_STATEMENT): T[][] {
   }
   return chunks
 }
+
+// floor(90 / columns) rows per multi-row INSERT. Column count is read off the
+// first row so a schema change reflows the chunking instead of silently
+// blowing D1's 100-bound-params-per-statement cap; 90 for the same headroom
+// as chunkIds above. Empty input -> no statements.
+//
+// Lived in the food plan-copy repo until food planning was removed; it was
+// never food-specific, and list duplication has always depended on it.
+export function chunkForParamCap<T extends Record<string, unknown>>(
+  rows: T[],
+): T[][] {
+  const first = rows[0]
+  if (!first) return []
+  const perStatement = Math.max(1, Math.floor(90 / Object.keys(first).length))
+  const out: T[][] = []
+  for (let i = 0; i < rows.length; i += perStatement) {
+    out.push(rows.slice(i, i + perStatement))
+  }
+  return out
+}
