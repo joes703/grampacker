@@ -415,7 +415,14 @@ function ListDetailInner({
     void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
   }, [qc, listId])
   const foodDaysMut = useMutation({
-    mutationFn: (days: number) => setFoodDays(listId, days),
+    // Refetch first: FoodSection decides whether to warn about losing planned
+    // meals from its cached snapshot, and that cache is up to 30s stale. This
+    // narrows the window to a single round trip. It does not close it - that
+    // needs a revision check on the write itself.
+    mutationFn: async (days: number) => {
+      await listFoodQuery.refetch()
+      return setFoodDays(listId, days)
+    },
     meta: { errorToast: "Couldn't change the trip length. Please try again." },
     onSuccess: invalidateFood,
   })
@@ -442,7 +449,10 @@ function ListDetailInner({
         status === 422
           ? `Food item limit reached (${FOOD_ITEM_CAP} per list).`
           : status === 400
-            ? 'Those meals are no longer available. Reopen the form and pick again.'
+            // 400 covers a pruned slot AND a value the server rejects, and the
+            // client cannot tell which from the status alone - so the message
+            // must not assert one of them.
+            ? "Couldn't add that food - check the name, weight and meals and try again."
             : "Couldn't add that food. Please try again.",
         { type: 'error' },
       )

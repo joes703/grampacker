@@ -444,16 +444,18 @@ export function createFoodRepo(db: Db, userId: string) {
   }
 
   /**
-   * Resolve client-supplied slot ids to the ones that are actually usable:
-   * on THIS list, owned by THIS user, and currently `needed`.
+   * Resolve client-supplied slot ids to the ones on THIS list, owned by THIS
+   * user. Returns null when any id is unknown, so a bad request fails rather
+   * than silently dropping placements the user asked for.
    *
-   * The `needed` filter gives a clean 400 for the ordinary case of naming a
-   * pruned slot. It is NOT what makes the fourth state unreachable: this is a
-   * read, and a concurrent prune can commit between it and the insert batch.
-   * The list_food_item_slots_needed_only trigger (migration 0017) is the actual
-   * guarantee; this is here so the common case gets a useful error instead of a
-   * constraint failure. Returns null when any id is unusable, so a bad request
-   * fails rather than silently dropping placements the user asked for.
+   * It deliberately does NOT filter on `needed`. An earlier version did, which
+   * looked like defence in depth but was really a second, weaker copy of a rule
+   * the database already enforces: the read cannot see a prune that commits
+   * before the insert, so it was never the guarantee. The
+   * list_food_item_slots_needed_only trigger is the single enforcement point,
+   * and both write paths map its abort to the same 400 - which also means the
+   * API tests exercise the real mechanism rather than a precheck standing in
+   * front of it.
    *
    * Chunked owned-set membership, never an unbounded inArray: the id list is
    * client-supplied and D1 caps bound params at 100 per statement.
@@ -472,7 +474,6 @@ export function createFoodRepo(db: Db, userId: string) {
           and(
             eq(listFoodSlots.listId, listId),
             eq(listFoodSlots.userId, userId),
-            eq(listFoodSlots.needed, true),
             inArray(listFoodSlots.id, chunk),
           ),
         )

@@ -54,6 +54,9 @@ type Props = {
   food: ListFoodResponse
   weightUnit: WeightUnit
   busy: boolean
+  /** Called with the new length. The caller refetches before applying, so a
+   *  shortening decided against a stale snapshot is narrowed to one round
+   *  trip. */
   onSetDays: (days: number) => void
   onSetSlotNeeded: (slotId: string, needed: boolean) => void
   onAddItem: (
@@ -77,7 +80,16 @@ export default function FoodSection({
   onSetItemSlots,
 }: Props) {
   const [daysDraft, setDaysDraft] = useState(String(food.dayCount))
+  // Follow the server. Without this a rejected day change leaves the input
+  // showing a length the list does not have.
+  const [lastSeenDayCount, setLastSeenDayCount] = useState(food.dayCount)
+  if (food.dayCount !== lastSeenDayCount) {
+    setLastSeenDayCount(food.dayCount)
+    setDaysDraft(String(food.dayCount))
+  }
   const [adding, setAdding] = useState(false)
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const editingItem = food.items.find((item) => item.id === editingItemId) ?? null
 
   const itemsBySlot = new Map<string, ListFoodResponse['items']>()
   for (const item of food.items) {
@@ -133,6 +145,14 @@ export default function FoodSection({
               // Shrinking throws away the slots beyond the new count, and with
               // them their placements and any "not needed" decisions. Ask, but
               // only when there is actually something to lose.
+              //
+              // KNOWN GAP, stated rather than papered over: this decides from
+              // the client's cached food, which is up to 30 seconds stale and
+              // does not refetch on focus. Another tab that schedules food onto
+              // a later day inside that window would be silently trimmed. The
+              // refetch below shrinks the window to the round trip; closing it
+              // properly needs a revision check on the write, which is more
+              // machinery than a single-user app has earned yet.
               if (next < food.dayCount && losesWorkBelow(food, next)) {
                 const ok = window.confirm(
                   `Shortening the trip to ${next} ${next === 1 ? 'day' : 'days'} removes ` +
@@ -242,6 +262,7 @@ export default function FoodSection({
               weightUnit={weightUnit}
               busy={busy}
               onDelete={() => onDeleteItem(item.id)}
+              onEditSlots={() => setEditingItemId(item.id)}
             />
           ))}
         </div>
@@ -257,11 +278,27 @@ export default function FoodSection({
               weightUnit={weightUnit}
               busy={busy}
               onDelete={() => onDeleteItem(item.id)}
-              onUnschedule={
-                item.slotIds.length > 0 ? () => onSetItemSlots(item.id, []) : undefined
-              }
+              onEditSlots={() => setEditingItemId(item.id)}
             />
           ))}
+        </div>
+      )}
+
+      {editingItem && (
+        <div className="border-t border-gray-100 bg-blue-50/40 px-3 py-2">
+          <p className="mb-1.5 text-xs font-medium text-gray-700">
+            When are you eating {editingItem.name}?
+          </p>
+          <SlotPicker
+            slots={food.slots.filter((slot) => slot.needed)}
+            selected={editingItem.slotIds}
+            busy={busy}
+            onCancel={() => setEditingItemId(null)}
+            onSave={(slotIds) => {
+              onSetItemSlots(editingItem.id, slotIds)
+              setEditingItemId(null)
+            }}
+          />
         </div>
       )}
 
@@ -304,13 +341,17 @@ function FoodItemRow({
   weightUnit,
   busy,
   onDelete,
-  onUnschedule,
+  onEditSlots,
 }: {
   item: ListFoodResponse['items'][number]
   weightUnit: WeightUnit
   busy: boolean
   onDelete: () => void
-  onUnschedule?: () => void
+  /** Opens the slot picker for this item. Present on BOTH scheduled and
+   *  unscheduled rows: an item that lost its meals - because the slot was
+   *  pruned or the trip was shortened - has to be repairable without deleting
+   *  and retyping it. */
+  onEditSlots?: () => void
 }) {
   return (
     <div className={`${FLAT_TABLE_ROW} flex items-center gap-2`}>
@@ -324,14 +365,14 @@ function FoodItemRow({
         </span>
       </span>
       <ItemWeightValue grams={item.weightGrams * item.quantity} unit={weightUnit} />
-      {onUnschedule && (
+      {onEditSlots && (
         <button
           type="button"
           disabled={busy}
-          onClick={onUnschedule}
+          onClick={onEditSlots}
           className="shrink-0 rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
         >
-          Unschedule
+          {item.slotIds.length > 0 ? 'Reschedule' : 'Schedule'}
         </button>
       )}
       <RowIconButton
@@ -369,22 +410,19 @@ function AddFoodForm({
   const [quantity, setQuantity] = useState('1')
   const [selected, setSelected] = useState<string[]>([])
 
-  const toggleMeal = (meal: Meal) => {
-    const ids = slots.filter((slot) => slot.meal === meal).map((slot) => slot.id)
-    const allOn = ids.every((id) => selected.includes(id))
-    setSelected((prev) =>
-      allOn ? prev.filter((id) => !ids.includes(id)) : [...new Set([...prev, ...ids])],
-    )
-  }
-
   const weightGrams = Number(weight)
   const quantityValue = Number(quantity)
+  // Mirrors the server's bounds (shared/food.ts) so a rejection is not the
+  // first the user hears that a name is too long or a weight out of range.
   const valid =
     name.trim().length > 0 &&
+    name.trim().length <= 128 &&
     Number.isFinite(weightGrams) &&
     weightGrams >= 0 &&
+    weightGrams <= 100000 &&
     Number.isInteger(quantityValue) &&
-    quantityValue >= 1
+    quantityValue >= 1 &&
+    quantityValue <= 9999
 
   return (
     <form
@@ -406,11 +444,13 @@ function AddFoodForm({
           onChange={(e) => setName(e.target.value)}
           placeholder="Name"
           aria-label="Food name"
+          maxLength={128}
           className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm"
         />
         <input
           type="number"
           min={0}
+          max={100000}
           value={weight}
           onChange={(e) => setWeight(e.target.value)}
           placeholder="0"
@@ -420,15 +460,99 @@ function AddFoodForm({
         <input
           type="number"
           min={1}
+          max={9999}
           value={quantity}
           onChange={(e) => setQuantity(e.target.value)}
           aria-label="Units carried"
           className="w-16 rounded border border-gray-300 px-2 py-1 text-right text-sm tabular-nums"
         />
       </div>
-      {/* Direct multi-select. The whole-meal buttons are a shortcut for the
-          common case; the per-day checkboxes below are how the days that differ
-          get set. No templates, no inheritance, no overrides. */}
+      {/* Direct multi-select. Whole-meal buttons for the common case, per-day
+          checkboxes for the days that differ. No templates, no inheritance. */}
+      <SlotChoices slots={slots} selected={selected} onChange={setSelected} />
+      <div className="flex items-center gap-2">
+        <button
+          type="submit"
+          disabled={busy || !valid}
+          className="rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          Add
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-md px-2 py-1 text-sm text-gray-600 hover:bg-gray-100"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// The day x meal chooser, shared by the add form and by rescheduling an
+// existing item. Whole-meal buttons for the common case, per-day checkboxes for
+// the days that differ.
+function SlotPicker({
+  slots,
+  selected: initial,
+  busy,
+  onCancel,
+  onSave,
+}: {
+  slots: ListFoodResponse['slots']
+  selected: string[]
+  busy: boolean
+  onCancel: () => void
+  onSave: (slotIds: string[]) => void
+}) {
+  const [selected, setSelected] = useState<string[]>(initial)
+  return (
+    <div className="space-y-2">
+      <SlotChoices slots={slots} selected={selected} onChange={setSelected} />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onSave(selected)}
+          className="rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-md px-2 py-1 text-sm text-gray-600 hover:bg-gray-100"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function SlotChoices({
+  slots,
+  selected,
+  onChange,
+}: {
+  slots: ListFoodResponse['slots']
+  selected: string[]
+  onChange: (next: string[]) => void
+}) {
+  const toggleMeal = (meal: Meal) => {
+    const ids = slots.filter((slot) => slot.meal === meal).map((slot) => slot.id)
+    const allOn = ids.every((id) => selected.includes(id))
+    onChange(
+      allOn
+        ? selected.filter((id) => !ids.includes(id))
+        : [...new Set([...selected, ...ids])],
+    )
+  }
+  const days = [...new Set(slots.map((slot) => slot.dayNumber))].sort((a, b) => a - b)
+
+  return (
+    <>
       <div className="flex flex-wrap gap-1.5">
         {MEALS.map((meal) => {
           const ids = slots.filter((slot) => slot.meal === meal).map((slot) => slot.id)
@@ -451,56 +575,39 @@ function AddFoodForm({
           )
         })}
       </div>
-      {slots.length > 0 && (
+      {days.length > 0 && (
         <div className="max-h-40 overflow-y-auto rounded border border-gray-200">
-          {[...new Set(slots.map((slot) => slot.dayNumber))]
-            .sort((a, b) => a - b)
-            .map((day) => (
-              <div key={day} className="flex items-center gap-2 px-2 py-1">
-                <span className={`w-12 shrink-0 ${FLAT_TABLE_META_TEXT}`}>Day {day}</span>
-                {MEALS.map((meal) => {
-                  const slot = slots.find(
-                    (s) => s.dayNumber === day && s.meal === meal,
-                  )
-                  if (!slot) return null
-                  return (
-                    <label key={slot.id} className="flex items-center gap-1 text-xs text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(slot.id)}
-                        onChange={(e) =>
-                          setSelected((prev) =>
-                            e.target.checked
-                              ? [...prev, slot.id]
-                              : prev.filter((id) => id !== slot.id),
-                          )
-                        }
-                        aria-label={`${MEAL_LABELS[meal]} day ${day}`}
-                      />
-                      {MEAL_LABELS[meal].slice(0, 1)}
-                    </label>
-                  )
-                })}
-              </div>
-            ))}
+          {days.map((day) => (
+            <div key={day} className="flex items-center gap-2 px-2 py-1">
+              <span className={`w-12 shrink-0 ${FLAT_TABLE_META_TEXT}`}>Day {day}</span>
+              {MEALS.map((meal) => {
+                const slot = slots.find((s) => s.dayNumber === day && s.meal === meal)
+                if (!slot) return null
+                return (
+                  <label
+                    key={slot.id}
+                    className="flex items-center gap-1 text-xs text-gray-700"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(slot.id)}
+                      onChange={(e) =>
+                        onChange(
+                          e.target.checked
+                            ? [...selected, slot.id]
+                            : selected.filter((id) => id !== slot.id),
+                        )
+                      }
+                      aria-label={`${MEAL_LABELS[meal]} day ${day}`}
+                    />
+                    {MEAL_LABELS[meal].slice(0, 1)}
+                  </label>
+                )
+              })}
+            </div>
+          ))}
         </div>
       )}
-      <div className="flex items-center gap-2">
-        <button
-          type="submit"
-          disabled={busy || !valid}
-          className="rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          Add
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md px-2 py-1 text-sm text-gray-600 hover:bg-gray-100"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
+    </>
   )
 }

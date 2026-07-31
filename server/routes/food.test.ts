@@ -382,6 +382,19 @@ describe('food never crosses the public share boundary', () => {
     // happened to think of - a `foodItems` array would slip past a deny-list.
     const { cookie } = await signUpVerifiedUser('food-share@example.com', 'FS')
     const listId = await createList(cookie, 'Shared trip')
+
+    // A real gear row, so the items loop below actually runs. Without one
+    // raw.items is empty and the per-item assertion passes vacuously.
+    const cat = await apiRequest(cookie, 'POST', '/api/categories', { name: 'Shelter' })
+    const categoryId = ((await cat.json()) as { id: string }).id
+    const gear = await apiRequest(cookie, 'POST', '/api/gear-items', {
+      name: 'Tarp',
+      weightGrams: 400,
+      categoryId,
+    })
+    const gearItemId = ((await gear.json()) as { id: string }).id
+    await apiRequest(cookie, 'POST', `/api/lists/${listId}/items`, { gearItemId })
+
     await setDays(cookie, listId, 3)
     const food = await getFood(cookie, listId)
     await addItem(cookie, listId, {
@@ -411,6 +424,7 @@ describe('food never crosses the public share boundary', () => {
       'name',
     ])
     const items = raw.items as Record<string, unknown>[]
+    expect(items.length).toBeGreaterThan(0)
     for (const item of items) {
       expect(Object.keys(item).sort()).toEqual([
         'gear',
@@ -421,6 +435,15 @@ describe('food never crosses the public share boundary', () => {
         'quantity',
         'sortOrder',
       ])
+      expect(Object.keys(item.gear as object).sort()).toEqual([
+        'categoryId',
+        'description',
+        'name',
+        'weightGrams',
+      ])
+    }
+    for (const category of raw.categories as Record<string, unknown>[]) {
+      expect(Object.keys(category).sort()).toEqual(['id', 'name', 'sortOrder'])
     }
     // And nothing anywhere in the payload mentions the food we just added.
     expect(JSON.stringify(raw)).not.toContain('Secret snacks')

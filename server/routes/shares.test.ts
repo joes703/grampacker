@@ -310,6 +310,3 @@ describe('PATCH /api/lists/:id isShared authorization', () => {
   })
 })
 
-// Slice 5 (design 7): the share carries the attached plan's projected weight
-// as ONE nullable object - null encodes "no plan attached", which two bare
-// scalars could not distinguish from a plan that weighs zero.
