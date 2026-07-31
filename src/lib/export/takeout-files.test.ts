@@ -42,6 +42,7 @@ function makeListItem(
     isReady: over.isReady ?? false,
     packingLocationId: over.packingLocationId ?? null,
     sortOrder: over.sortOrder ?? 0,
+    packSortOrder: over.packSortOrder ?? over.sortOrder ?? 0,
     createdAt: over.createdAt ?? '2024-01-01',
     updatedAt: over.updatedAt ?? '2024-01-01',
     gearItem: over.gearItem,
@@ -198,7 +199,7 @@ describe('buildTakeoutFiles', () => {
       }>
     }
 
-    expect(packing.version).toBe(2)
+    expect(packing.version).toBe(3)
     expect(packing.lists[0]?.list).toEqual({ id: 'l-1', name: 'JMT section' })
     expect(packing.lists[0]?.locations.map((location) => location.id)).toEqual([
       'loc-a', 'loc-b', 'loc-empty',

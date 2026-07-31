@@ -18,6 +18,7 @@ function item(
     isReady: false,
     packingLocationId,
     sortOrder,
+    packSortOrder: sortOrder,
     createdAt: '2026-01-01',
     updatedAt: '2026-01-01',
     gearItem: {

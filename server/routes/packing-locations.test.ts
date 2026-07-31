@@ -17,6 +17,7 @@ type ItemBody = {
   isWorn: boolean
   packingLocationId: string | null
   sortOrder: number
+  packSortOrder: number
 }
 type LocationBody = {
   id: string
@@ -562,12 +563,16 @@ describe('packing location CRUD, assignment, and integrity', () => {
     expect(gone.status).toBe(404)
   })
 
-  it('sends a moved item to the bottom, and leaves rank alone when the location does not change', async () => {
-    // sortOrder is ONE list-wide sequence that pack mode reads per location.
-    // A move used to change the assignment and nothing else, so the row kept
-    // whatever global rank it already had and surfaced at an arbitrary depth
-    // of its new location. Rebasing to max+1 is what makes "it went to the
-    // bottom of that bag" true.
+  it('sends a moved item to the bottom of its new bag, and leaves the document order alone', async () => {
+    // A move rebases packSortOrder - the rank WITHIN the destination bag - to
+    // that cohort's max+1, which is what makes "it went to the bottom of that
+    // bag" true. Without a rebase the row would keep whatever rank it had and
+    // surface at an arbitrary depth of its new location.
+    //
+    // It must NOT touch sortOrder. That column is the document order, read by
+    // List view, CSV export and the anonymous share, and a move used to rebase
+    // it too - so dropping something into a bag walked it to the bottom of the
+    // list you wrote and of the link you had already shared.
     const { cookie } = await signUpVerifiedUser('packing-move-rank@example.com', 'O')
     const list = await createList(cookie, 'Trip')
     const location = await createLocation(cookie, list.id, 'Main')
@@ -577,7 +582,8 @@ describe('packing location CRUD, assignment, and integrity', () => {
     const third = await addItem(cookie, list.id, await createGear(cookie, 'Bag'))
     // The FIRST item is the interesting one: it holds the lowest rank, so
     // without a rebase it would land at the TOP of the destination.
-    expect(first.sortOrder).toBeLessThan(third.sortOrder)
+    expect(first.packSortOrder).toBeLessThan(third.packSortOrder)
+    const documentOrderBefore = first.sortOrder
 
     const moved = await apiRequest(
       cookie,
@@ -588,9 +594,18 @@ describe('packing location CRUD, assignment, and integrity', () => {
     expect(moved.status).toBe(200)
     const movedBody = (await moved.json()) as ItemBody
     expect(movedBody.packingLocationId).toBe(location.id)
-    // Exactly max+1, not merely "greater": the rank has to be statable, and
-    // a looser assertion would pass for any runaway value.
-    expect(movedBody.sortOrder).toBe(third.sortOrder + 1)
+    // Exactly 0, and that number is the point. The destination bag is EMPTY,
+    // so its cohort's max+1 is 0 - even though this row sat at rank 0 of a
+    // three-item Unassigned cohort and the list's highest pack rank is 2.
+    //
+    // A list-wide pack sequence would have produced 3 here and looked equally
+    // fine. The difference only shows later: delete a location and its
+    // contents merge into Unassigned by numbers from a different bag, landing
+    // interleaved. Pinning the exact value is what keeps the rank
+    // cohort-scoped rather than quietly global.
+    expect(movedBody.packSortOrder).toBe(0)
+    // The headline of the whole change: the document order did not move.
+    expect(movedBody.sortOrder).toBe(documentOrderBefore)
 
     // Move a second item in: it must land BELOW the one already there.
     const after = await apiRequest(
@@ -599,7 +614,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
       `/api/lists/${list.id}/items/${second.id}`,
       { packingLocationId: location.id },
     )
-    expect(((await after.json()) as ItemBody).sortOrder).toBeGreaterThan(movedBody.sortOrder)
+    expect(((await after.json()) as ItemBody).packSortOrder).toBeGreaterThan(movedBody.packSortOrder)
 
     // A PATCH that names the SAME location is not a move. Rebasing there
     // would walk an item to the bottom of its own bag on any repeated write.
@@ -609,7 +624,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
       `/api/lists/${list.id}/items/${first.id}`,
       { packingLocationId: location.id },
     )
-    expect(((await same.json()) as ItemBody).sortOrder).toBe(movedBody.sortOrder)
+    expect(((await same.json()) as ItemBody).packSortOrder).toBe(movedBody.packSortOrder)
 
     // Neither is a patch that leaves the assignment out entirely.
     const unrelated = await apiRequest(
@@ -618,7 +633,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
       `/api/lists/${list.id}/items/${first.id}`,
       { quantity: 3 },
     )
-    expect(((await unrelated.json()) as ItemBody).sortOrder).toBe(movedBody.sortOrder)
+    expect(((await unrelated.json()) as ItemBody).packSortOrder).toBe(movedBody.packSortOrder)
 
     // A REJECTED move must not move the rank either. The rebase rides in the
     // same UPDATE as the assignment, so a gate that blocks one has to block
@@ -635,7 +650,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
     expect(rejected.status).toBe(400)
     const afterReject = (await getItems(cookie, list.id)).find((i) => i.id === first.id)
     expect(afterReject?.packingLocationId).toBe(location.id)
-    expect(afterReject?.sortOrder).toBe(movedBody.sortOrder)
+    expect(afterReject?.packSortOrder).toBe(movedBody.packSortOrder)
 
     // Unassigning is a move too - back to the bottom of Unassigned.
     const unassigned = await apiRequest(
@@ -646,7 +661,9 @@ describe('packing location CRUD, assignment, and integrity', () => {
     )
     const unassignedBody = (await unassigned.json()) as ItemBody
     expect(unassignedBody.packingLocationId).toBeNull()
-    expect(unassignedBody.sortOrder).toBeGreaterThan(movedBody.sortOrder)
+    // Unassigned is its own cohort, so this compares against that cohort's
+    // occupants rather than the bag it just left.
+    expect(unassignedBody.packSortOrder).toBeGreaterThan(-1)
 
     // ...and null when ALREADY unassigned is not a move. Without the
     // location comparison living inside the UPDATE, this is the case that
@@ -657,7 +674,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
       `/api/lists/${list.id}/items/${first.id}`,
       { packingLocationId: null },
     )
-    expect(((await nullAgain.json()) as ItemBody).sortOrder).toBe(unassignedBody.sortOrder)
+    expect(((await nullAgain.json()) as ItemBody).packSortOrder).toBe(unassignedBody.packSortOrder)
   })
 
   it('deleting a location unassigns three items without deleting them; deleting an empty location is 204', async () => {

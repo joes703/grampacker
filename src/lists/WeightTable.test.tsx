@@ -31,6 +31,7 @@ function listItem(o: {
     isReady: false,
     packingLocationId: null,
     sortOrder: 0,
+    packSortOrder: 0,
     createdAt: '2024-01-01',
     updatedAt: '2024-01-01',
     gearItem: {

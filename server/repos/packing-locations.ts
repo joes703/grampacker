@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import type { Db } from '../db'
 import { gearItems, listItems, lists, packingLocations } from '../db/schema'
@@ -210,14 +210,73 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       return { ok: true, row: updated }
     },
 
-    // Explicitly unassign before deleting. Both statements are scoped through
-    // the owned parent and run in one D1 transaction; success comes from the
-    // DELETE RETURNING row so an empty location still returns true.
+    // Explicitly unassign before deleting. Every statement is scoped through
+    // the owned parent and they run in one D1 transaction; success comes from
+    // the DELETE RETURNING row so an empty location still returns true.
+    //
+    // The orphans are RE-RANKED, not just unassigned. packSortOrder is a rank
+    // within a cohort - the rows sharing (list_id, packing_location_id) - so
+    // carrying old ranks across into Unassigned would interleave this
+    // location's contents with whatever is already there, by numbers that
+    // encode old cross-location accidents rather than anything the user
+    // arranged. Worse, those numbers would frequently COLLIDE with existing
+    // Unassigned ranks and the unique index would reject the whole delete.
+    //
+    // So they land as one contiguous block at the end of Unassigned, keeping
+    // their order relative to each other: the bag disappears, its contents
+    // stay together and stay in the order you put them in.
     async remove(listId: string, id: string): Promise<boolean> {
-      const unassign = db
-        .update(listItems)
-        .set({ packingLocationId: null, updatedAt: Date.now() })
-        .where(sql`packing_location_id = ${id} and list_id = ${listId} and user_id = ${userId} and exists (select 1 from packing_locations pl where pl.id = ${id} and pl.list_id = ${listId} and pl.user_id = ${userId})`)
+      // Read the orphans in their current pack order. Ordering the read is
+      // what makes "keep their relative order" true rather than incidental.
+      const orphans = await db
+        .select({ id: listItems.id })
+        .from(listItems)
+        .where(
+          and(
+            eq(listItems.packingLocationId, id),
+            eq(listItems.listId, listId),
+            eq(listItems.userId, userId),
+          ),
+        )
+        .orderBy(asc(listItems.packSortOrder), asc(listItems.id))
+
+      // One past the Unassigned cohort's current maximum. Worn rows count:
+      // they render outside the packing tree but keep their slot reserved, so
+      // ignoring them here would drop an orphan onto a rank a worn row owns.
+      const [maxRow] = await db
+        .select({ max: sql<number | null>`max(${listItems.packSortOrder})` })
+        .from(listItems)
+        .where(
+          and(
+            eq(listItems.listId, listId),
+            eq(listItems.userId, userId),
+            isNull(listItems.packingLocationId),
+          ),
+        )
+      const base = (maxRow?.max ?? -1) + 1
+
+      const now = Date.now()
+      // Appending, so no two-phase write is needed: every rank claimed here is
+      // above every rank Unassigned currently holds. If a concurrent write
+      // takes one first the unique index rejects the batch and the whole
+      // delete rolls back, which is the outcome we want - a loud retry beats a
+      // half-deleted bag.
+      const reassign = orphans.map((orphan, i) =>
+        db
+          .update(listItems)
+          .set({
+            packingLocationId: null,
+            packSortOrder: base + i,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(listItems.id, orphan.id),
+              eq(listItems.listId, listId),
+              eq(listItems.userId, userId),
+            ),
+          ),
+      )
       const remove = db
         .delete(packingLocations)
         .where(
@@ -228,7 +287,16 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
           ),
         )
         .returning({ id: packingLocations.id })
-      const [, deleted] = await db.batch([unassign, remove])
+      // The DELETE goes last so the reassignments are computed and applied
+      // while the relationship still resolves. Anything the read missed (an
+      // item added to this location between the read and the batch) still
+      // falls to Unassigned via the FK's SET NULL - keeping its old rank, and
+      // failing the unique index if that rank is taken, which again rolls the
+      // whole thing back rather than corrupting the cohort.
+      const [first, ...rest] = [...reassign, remove]
+      if (!first) return false // unreachable: `remove` is always present
+      const results = await db.batch([first, ...rest])
+      const deleted = results[results.length - 1] as { id: string }[]
       return deleted.length > 0
     },
 

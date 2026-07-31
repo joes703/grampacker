@@ -1,4 +1,5 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
+import { ApiError } from '../api'
 import { showToast } from '../toast'
 
 // This module holds only the pure TanStack Query cache lifecycle helpers
@@ -357,6 +358,53 @@ export function makeOptimisticBulkUpdate<TList extends { id: string }, TInput>(o
 // the prod safety branch (logs + throws a tagged sentinel error onError
 // recognizes, so the user sees onSettled's refetch instead of a corrupted
 // optimistic cache).
+// The pack twin of validateReorderPayload. Same three checks - no duplicate
+// ids, every id present in the cache, and the payload's ranks a permutation of
+// what those rows already hold - read against packSortOrder.
+function validatePackReorderPayload<
+  T extends { id: string; packSortOrder: number },
+>(
+  updates: { id: string; packSortOrder: number }[],
+  cached: T[] | undefined,
+): string | null {
+  if (!cached) return null
+
+  const seen = new Set<string>()
+  for (const u of updates) {
+    if (seen.has(u.id)) {
+      return `makeOptimisticPackReorder: duplicate id "${u.id}" in payload. Each id must appear at most once.`
+    }
+    seen.add(u.id)
+  }
+
+  const cachedById = new Map(cached.map((row) => [row.id, row.packSortOrder]))
+  for (const u of updates) {
+    if (!cachedById.has(u.id)) {
+      return (
+        `makeOptimisticPackReorder: payload id "${u.id}" is not in the cached list. ` +
+        'Either the cache was invalidated between snapshot and dispatch, ' +
+        'or the payload was built from a stale view.'
+      )
+    }
+  }
+
+  const payloadOrders = updates.map((u) => u.packSortOrder).sort((a, b) => a - b)
+  const subsetOrders = updates
+    .map((u) => cachedById.get(u.id) as number)
+    .sort((a, b) => a - b)
+  for (let i = 0; i < payloadOrders.length; i++) {
+    if (payloadOrders[i] !== subsetOrders[i]) {
+      return (
+        `makeOptimisticPackReorder: payload packSortOrder values [${payloadOrders.join(', ')}] ` +
+        `are not a permutation of the touched subset's existing pack ranks ` +
+        `[${subsetOrders.join(', ')}]. ` +
+        'Use assignPackRankSlots() (src/lib/grouping.ts) to build safe payloads.'
+      )
+    }
+  }
+  return null
+}
+
 function validateReorderPayload<T extends { id: string; sortOrder: number }>(
   updates: { id: string; sortOrder: number }[],
   cached: T[] | undefined,
@@ -412,6 +460,82 @@ class OptimisticReorderValidationError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'OptimisticReorderValidationError'
+  }
+}
+
+// The PACK-order sibling of makeOptimisticReorder below.
+//
+// It is a separate function rather than a field parameter on that one, and the
+// difference is not stylistic. makeOptimisticReorder re-sorts the WHOLE cached
+// array by the field it writes; parameterizing it would sort the shared
+// list-items cache by packSortOrder, which would corrupt List view order and
+// CSV export for every consumer of that same cache. It would also put lists,
+// categories, gear items and packing-location reorders in the blast radius of
+// a change that is only about one view.
+//
+// So this one patches ONLY packSortOrder and deliberately leaves the array in
+// its canonical document order. The pack renderers sort their own cohorts
+// (packing-tree.ts), so they pick the change up without the cache ever
+// pretending pack order is the list's order.
+export function makeOptimisticPackReorder<
+  T extends { id: string; packSortOrder: number },
+>(qc: QueryClient, queryKey: QueryKey) {
+  return {
+    // Synchronous and un-awaited cancel, for the same drag-animation reason as
+    // makeOptimisticReorder - see the long note there.
+    onMutate: (updates: { id: string; packSortOrder: number }[]) => {
+      void qc.cancelQueries({ queryKey })
+      const previous = qc.getQueryData<T[]>(queryKey)
+
+      // Same permutation rule, read against packSortOrder. It matters more
+      // here: pack ranks carry a unique index per cohort server-side, so a
+      // non-permutation payload does not merely look wrong, it can collide
+      // with a row the payload never mentioned and be rejected wholesale.
+      const validationError = validatePackReorderPayload(updates, previous)
+      if (validationError) {
+        if (import.meta.env.DEV) throw new Error(validationError)
+        console.error(
+          'makeOptimisticPackReorder validation failed:',
+          validationError,
+          { updates },
+        )
+        throw new OptimisticReorderValidationError(validationError)
+      }
+
+      const byId = new Map(updates.map((u) => [u.id, u.packSortOrder]))
+      qc.setQueryData<T[]>(queryKey, (curr) => {
+        if (!curr) return curr
+        // No .sort(): the cache stays in document order on purpose.
+        return curr.map((item) =>
+          byId.has(item.id)
+            ? { ...item, packSortOrder: byId.get(item.id)! }
+            : item,
+        )
+      })
+      return { previous }
+    },
+    onError: (
+      err: unknown,
+      _vars: unknown,
+      ctx: { previous: T[] | undefined } | undefined,
+    ) => {
+      if (err instanceof OptimisticReorderValidationError) return
+      if (ctx?.previous) qc.setQueryData(queryKey, ctx.previous)
+      // A 409 means a concurrent reorder of this same bag won and the server
+      // rolled ours back whole. Same recovery either way - onSettled refetches
+      // - but say which happened, because "try again" is genuinely the fix for
+      // one and not the other.
+      const conflict = err instanceof ApiError && err.status === 409
+      showToast(
+        conflict
+          ? 'This bag changed somewhere else. Reloading its order.'
+          : "Couldn't save the new order. Please try again.",
+        { type: 'error' },
+      )
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey })
+    },
   }
 }
 

@@ -38,8 +38,10 @@ import {
   updateList,
   updateListItem,
   reorderListItems,
+  reorderPackListItems,
   reorderPackingLocations,
   makeOptimisticReorder,
+  makeOptimisticPackReorder,
   makeOptimisticUpdate,
   type ListItemPatch,
 } from '../lib/queries'
@@ -55,7 +57,11 @@ import {
   getListIdFromListPath,
 } from '../lib/last-list-path'
 import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
-import { assignSortOrderSlots, nextMoveSortOrder } from '../lib/grouping'
+import {
+  assignPackRankSlots,
+  assignSortOrderSlots,
+  nextPackRankInCohort,
+} from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
 import {
@@ -213,6 +219,7 @@ export function planListItemReorder({
   overId,
   items,
   groupingKind,
+  mode,
   locations,
   hiddenItemIds,
 }: {
@@ -220,21 +227,33 @@ export function planListItemReorder({
   overId: string | undefined
   items: ListItemWithGear[]
   groupingKind: 'category' | 'location'
+  /** Which VIEW the drag happened in. Decides which ordering is written -
+   *  see the note in the category branch for why grouping.kind cannot. */
+  mode: ListDetailMode
   locations: PackingLocation[]
   // Rows currently filtered out of the rendered list (see
   // deriveFilteredItemIds). Empty set = nothing hidden.
   hiddenItemIds: ReadonlySet<string>
-}): { id: string; sortOrder: number }[] | null {
+}):
+  | { kind: 'pack'; updates: { id: string; packSortOrder: number }[] }
+  | { kind: 'list'; updates: { id: string; sortOrder: number }[] }
+  | null {
   if (groupingKind === 'location') {
     const excludedItemIds = derivePackReorderExclusions(items, locations)
     for (const itemId of hiddenItemIds) excludedItemIds.add(itemId)
-    return planPackingItemReorder(
+    const updates = planPackingItemReorder(
       activeId,
       overId,
       items,
       'item',
       excludedItemIds,
     )
+    // Location grouping is Pack view, so this writes the PACK rank. Tagging
+    // the result rather than returning a bare array is what keeps the caller
+    // from posting a pack permutation to the document-order endpoint - the two
+    // payloads are structurally similar enough that an untagged union would be
+    // an easy mistake to make and a hard one to see.
+    return updates ? { kind: 'pack' as const, updates } : null
   }
 
   const active = parseDnDId(activeId)
@@ -248,13 +267,35 @@ export function planListItemReorder({
   const categoryId = activeItem.gearItem.categoryId
   if (overItem.gearItem.categoryId !== categoryId) return null
 
-  const categoryItems = items.filter((item) =>
-    item.gearItem.categoryId === categoryId && !hiddenItemIds.has(item.id),
-  )
+  const categoryItems = items
+    .filter((item) =>
+      item.gearItem.categoryId === categoryId && !hiddenItemIds.has(item.id),
+    )
+    // Sorted by whichever order the user is actually looking at. The cache is
+    // canonically in document order, so the pack fallback has to re-sort or it
+    // would compute the move against a sequence not on screen.
+    .toSorted((a, b) =>
+      mode === 'pack'
+        ? a.packSortOrder - b.packSortOrder
+        : a.sortOrder - b.sortOrder,
+    )
   const oldIndex = categoryItems.findIndex((item) => item.id === active.id)
   const newIndex = categoryItems.findIndex((item) => item.id === over.id)
   if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return null
-  return assignSortOrderSlots(arrayMove(categoryItems, oldIndex, newIndex))
+  const moved = arrayMove(categoryItems, oldIndex, newIndex)
+  // MODE decides, not grouping.kind. Pack falls back to category grouping
+  // until a list has its first packing location - which is every list on its
+  // first visit - and a drag there is still a Pack action. Keying this on
+  // grouping.kind would leave the original bug alive on exactly that surface,
+  // and then creating a first location would reveal a stale pack order nobody
+  // had arranged.
+  //
+  // Permuting a category-sized SUBSET of the Unassigned cohort is still a
+  // valid cohort permutation: a subset's ranks are a subset of the multiset,
+  // so redistributing them among themselves leaves the cohort intact.
+  return mode === 'pack'
+    ? { kind: 'pack' as const, updates: assignPackRankSlots(moved) }
+    : { kind: 'list' as const, updates: assignSortOrderSlots(moved) }
 }
 
 export default function ListDetailPage() {
@@ -589,10 +630,24 @@ function ListDetailInner({
     listItems,
   })
 
+  // DOCUMENT order. List view only.
   const reorderItemsMut = useMutation({
     mutationFn: (updates: { id: string; sortOrder: number }[]) =>
       reorderListItems(listId, updates),
     ...makeOptimisticReorder<ListItemWithGear>(qc, queryKeys.listItems(listId)),
+  })
+
+  // PACK order. Every reorder that happens in Pack view - drag and
+  // click-to-place alike - goes here instead, which is the whole point of the
+  // split: arranging your pack no longer rewrites the list you wrote or the
+  // share link you sent someone.
+  const reorderPackItemsMut = useMutation({
+    mutationFn: (updates: { id: string; packSortOrder: number }[]) =>
+      reorderPackListItems(listId, updates),
+    ...makeOptimisticPackReorder<ListItemWithGear>(
+      qc,
+      queryKeys.listItems(listId),
+    ),
   })
 
   // Packing-location admin (create / rename / delete / promote an item to a
@@ -607,7 +662,7 @@ function ListDetailInner({
   type MoveItemVars = {
     itemId: string
     locationId: string | null
-    nextSortOrder: number
+    nextPackSortOrder: number
   }
   const moveItemMut = useMutation({
     mutationFn: ({ itemId, locationId }: MoveItemVars) =>
@@ -616,16 +671,19 @@ function ListDetailInner({
       qc,
       queryKey: queryKeys.listItems(listId),
       id: ({ itemId }) => itemId,
-      // nextSortOrder mirrors the rank the server assigns a move (repo
-      // `nextItemSortOrder`). Applying only the assignment would park the row
-      // at its OLD rank until the refetch landed, so it would appear at some
-      // arbitrary depth of its new location and then visibly jump to the
-      // bottom a moment later. The caller computes it, because `apply` only
-      // ever sees the one row and the rank depends on all of them.
-      apply: (item, { locationId, nextSortOrder }) => ({
+      // nextPackSortOrder mirrors the rank the server assigns a move (repo
+      // `nextPackSortOrderInCohort`). Applying only the assignment would park
+      // the row at its OLD rank until the refetch landed, so it would appear
+      // at some arbitrary depth of its new location and then visibly jump to
+      // the bottom a moment later. The caller computes it, because `apply`
+      // only ever sees the one row and the rank depends on all of them.
+      //
+      // sortOrder is deliberately untouched: a move rearranges your pack, not
+      // your document.
+      apply: (item, { locationId, nextPackSortOrder }) => ({
         ...item,
         packingLocationId: locationId,
-        sortOrder: nextSortOrder,
+        packSortOrder: nextPackSortOrder,
       }),
     }),
   })
@@ -696,7 +754,10 @@ function ListDetailInner({
       if (!updates) return
       const moved = listItemsById.get(itemId)
       if (moved) setAnnouncement(`Moving ${moved.gearItem.name}.`)
-      reorderItemsMut.mutate(updates, {
+      // Pack rank: click-to-place is offered only inside a bag (the menu
+      // withholds it outside location grouping), so it is always a pack
+      // reorder.
+      reorderPackItemsMut.mutate(updates, {
         onSuccess: () => {
           if (moved) setAnnouncement(`Moved ${moved.gearItem.name}.`)
         },
@@ -739,7 +800,14 @@ function ListDetailInner({
       ? 'Unassigned'
       : realLocations.find((location) => location.id === locationId)?.name
     if (item && destination) setAnnouncement(`Moving ${item.gearItem.name} to ${destination}.`)
-    moveItemMut.mutate({ itemId, locationId, nextSortOrder: nextMoveSortOrder(listItems) }, {
+    moveItemMut.mutate({
+      itemId,
+      locationId,
+      // The DESTINATION cohort's next rank, mirroring the server. A move no
+      // longer touches sortOrder at all, so the row keeps its place in List
+      // view and on the share link.
+      nextPackSortOrder: nextPackRankInCohort(listItems, locationId),
+    }, {
       onSuccess: () => {
         if (item && destination) setAnnouncement(`Moved ${item.gearItem.name} to ${destination}.`)
       },
@@ -783,7 +851,7 @@ function ListDetailInner({
       )
       if (plan?.kind === 'reorder') {
         if (draggedItem) setAnnouncement(`Reordering ${draggedItem.gearItem.name}.`)
-        reorderItemsMut.mutate(plan.updates, {
+        reorderPackItemsMut.mutate(plan.updates, {
           onSuccess: () => {
             if (draggedItem) setAnnouncement(`Reordered ${draggedItem.gearItem.name}.`)
           },
@@ -804,15 +872,17 @@ function ListDetailInner({
     if (!over) return
     if (active.id === over.id) return
 
-    const updates = planListItemReorder({
+    const plan = planListItemReorder({
       activeId: draggedId,
       overId: String(over.id),
       items: listItems,
       groupingKind: grouping.kind,
+      mode,
       locations: packingLocations,
       hiddenItemIds: mode === 'pack' ? packFilteredItemIds : EMPTY_HIDDEN_ITEM_IDS,
     })
-    if (updates) reorderItemsMut.mutate(updates)
+    if (plan?.kind === 'pack') reorderPackItemsMut.mutate(plan.updates)
+    else if (plan) reorderItemsMut.mutate(plan.updates)
   }
 
   // Pack/Ready reset actions live in a dedicated hook; it owns the field-scoped
@@ -852,7 +922,14 @@ function ListDetailInner({
     [gearIdsKey],
   )
 
-  const grouped = useGroupedListItems(listItems, grouping)
+  // Pack reads pack order in BOTH of its groupings - by location, and by
+  // category on a list that has no locations yet. List view reads the document
+  // order it is named for.
+  const grouped = useGroupedListItems(
+    listItems,
+    grouping,
+    mode === 'pack' ? 'pack' : 'document',
+  )
   const orderedPackGroups = orderPackGroups(grouped, grouping.kind)
   const packingTree = useMemo(
     () => mode === 'pack' && packingLocations.length > 0

@@ -38,6 +38,20 @@ export function useStableWornItems(
       if (item.isWorn) next.push(item)
     }
   }
+  // DOCUMENT order, always - in Pack view as much as List.
+  //
+  // Two reasons. First, walking `grouped` collects worn rows bucket by bucket,
+  // so without this the section's order is really the GROUP order with worn
+  // rows swept up behind it - two worn items in different categories sort by
+  // their categories, not by themselves. Second, worn rows are excluded from
+  // the packing tree and cannot be dragged, so ordering them by pack rank
+  // would sort them on a number the user has no way to control. They keep that
+  // rank - it reserves their slot for when they stop being worn - but it is
+  // not what this section reads.
+  next.sort(
+    (a, b) =>
+      a.sortOrder - b.sortOrder || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  )
 
   if (next.length === cached.length) {
     let same = true

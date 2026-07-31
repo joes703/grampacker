@@ -29,6 +29,7 @@ function item(id: string, name: string, overrides: Partial<ListItemWithGear> = {
     isReady: false,
     packingLocationId: 'loc-1',
     sortOrder: 0,
+    packSortOrder: 0,
     createdAt: '2026-01-01',
     updatedAt: '2026-01-01',
     gearItem: {

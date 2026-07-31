@@ -120,6 +120,11 @@ export default function SharePage() {
     isReady: false,
     packingLocationId: null,
     sortOrder: item.sortOrder,
+    // Placeholder, and permanently so: the share wire response has no pack
+    // rank and never will - how someone arranged their bags is not part of
+    // what a share link publishes. The share view never enters pack mode, so
+    // nothing reads this.
+    packSortOrder: 0,
     createdAt: '',
     updatedAt: '',
     gearItem: {

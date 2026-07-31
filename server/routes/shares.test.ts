@@ -97,6 +97,12 @@ const FORBIDDEN_KEYS = new Set([
   'packing_location_id',
   'packingLocations',
   'packing_locations',
+  // How someone arranged the inside of their bags is not part of what a share
+  // link publishes. Both spellings: the guard walks the RAW json, so a
+  // projection that leaked the column name directly would slip past a
+  // camelCase-only check.
+  'packSortOrder',
+  'pack_sort_order',
 ])
 
 function collectKeys(value: unknown, into: Set<string>): Set<string> {
@@ -178,15 +184,22 @@ describe('GET /api/shares/:slug', () => {
     expect(body.categories.map((c) => c.name)).toEqual(['Zeta', 'Alpha'])
 
     expect(body.items).toHaveLength(3)
-    // sortOrder order, and Tarp is LAST despite being added first: the PATCH
-    // above assigned it a packing location, and assigning one is a move, which
-    // rebases the row's rank to the end of the list (repo `nextItemSortOrder`).
-    // sortOrder is one list-wide sequence, so a pack-mode move is visible here
-    // too - including on the public share, which is what this asserts.
+    // DOCUMENT order, and Tarp is FIRST because it was added first - even
+    // though the PATCH above assigned it a packing location.
+    //
+    // This assertion is INVERTED from what it used to say, deliberately. It
+    // used to require Tarp LAST, because a move rebased sort_order and
+    // sort_order was the single list-wide sequence every surface read. That
+    // made arranging your pack silently rewrite the link you had already sent
+    // someone. The assertion documented the bug rather than a decision.
+    //
+    // A move now writes pack_sort_order, which the share projection does not
+    // select and this DTO does not carry. Organizing is private; the published
+    // document is the one you wrote.
     expect(body.items.map((i) => i.gear.name)).toEqual([
+      'Tarp',
       'Pot',
       'Uncategorized thing',
-      'Tarp',
     ])
     const tarp = body.items.find((i) => i.gear.name === 'Tarp')!
     expect(tarp).toMatchObject({

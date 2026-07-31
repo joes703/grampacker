@@ -3,6 +3,7 @@ import {
   type ListItemResponse,
   type QuickAddListItemRequestInput,
   type ReorderListItemsRequest,
+  type ReorderPackListItemsRequest,
   type UpdateListItemRequest,
 } from '../../../shared/lists'
 import { apiFetch, apiFetchVoid } from '../api'
@@ -74,6 +75,19 @@ export async function reorderListItems(
   updates: ReorderListItemsRequest,
 ): Promise<void> {
   await apiFetchVoid(`/lists/${listId}/items/order`, {
+    method: 'PUT',
+    body: updates,
+  })
+}
+
+// Pack view's reorder. Separate endpoint, separate payload key: this writes
+// pack_sort_order, the rank within a packing location, and leaves the document
+// order the List view and the public share link read completely alone.
+export async function reorderPackListItems(
+  listId: string,
+  updates: ReorderPackListItemsRequest,
+): Promise<void> {
+  await apiFetchVoid(`/lists/${listId}/items/pack-order`, {
     method: 'PUT',
     body: updates,
   })

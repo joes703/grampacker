@@ -19,6 +19,7 @@ function item(id: string, sortOrder: number): ListItemWithGear {
     isReady: false,
     packingLocationId: 'loc-1',
     sortOrder,
+    packSortOrder: sortOrder,
     createdAt: '2026-01-01',
     updatedAt: '2026-01-01',
     gearItem: {
@@ -40,10 +41,13 @@ function item(id: string, sortOrder: number): ListItemWithGear {
 // A B C D E, ranks deliberately sparse: nothing constrains them to be dense
 // and imports leave gaps on purpose.
 const rows = [item('A', 0), item('B', 10), item('C', 20), item('D', 30), item('E', 45)]
-const order = (updates: { id: string; sortOrder: number }[] | null) =>
+// Click-to-place is a Pack action, so the plan it returns permutes PACK ranks
+// now. The assertions below are unchanged - what they pin is the resulting
+// order, which is the point.
+const order = (updates: { id: string; packSortOrder: number }[] | null) =>
   updates === null
     ? null
-    : [...updates].sort((x, y) => x.sortOrder - y.sortOrder).map((u) => u.id)
+    : [...updates].sort((x, y) => x.packSortOrder - y.packSortOrder).map((u) => u.id)
 
 describe('visualSlotToInsertIndex', () => {
   // The moving row occupies a position in the VISUAL list but not in the
@@ -120,8 +124,8 @@ describe('planPlacementWithinLocation', () => {
     // and the optimistic reorder validator rejects any update set that is not
     // a permutation of the ranks it touched.
     const updates = planPlacementWithinLocation('C', 0, rows)!
-    expect(updates.map((u) => u.sortOrder).sort((a, b) => a - b))
-      .toEqual(rows.map((r) => r.sortOrder).sort((a, b) => a - b))
+    expect(updates.map((u) => u.packSortOrder).sort((a, b) => a - b))
+      .toEqual(rows.map((r) => r.packSortOrder).sort((a, b) => a - b))
     expect(updates.map((u) => u.id).sort()).toEqual(['A', 'B', 'C', 'D', 'E'])
   })
 
@@ -134,7 +138,7 @@ describe('planPlacementWithinLocation', () => {
     expect(order(updates)).toEqual(['E', 'A', 'C'])
     expect(updates.map((u) => u.id).sort()).toEqual(['A', 'C', 'E'])
     // B and D are untouched entirely.
-    expect(updates.map((u) => u.sortOrder).sort((a, b) => a - b)).toEqual([0, 20, 45])
+    expect(updates.map((u) => u.packSortOrder).sort((a, b) => a - b)).toEqual([0, 20, 45])
   })
 
   it('handles a two-row bag, where every real move is a swap', () => {

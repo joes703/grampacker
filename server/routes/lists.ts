@@ -7,6 +7,7 @@ import {
   importListRequestSchema,
   quickAddListItemRequestSchema,
   reorderListItemsRequestSchema,
+  reorderPackListItemsRequestSchema,
   reorderListsRequestSchema,
   updateListItemRequestSchema,
   updateListRequestSchema,
@@ -45,7 +46,17 @@ import type { ListRow } from '../repos/lists'
 //   POST   /api/lists/:id/items/quick-add      - session - own list + own
 //                                                category; atomic gear+item
 //   PUT    /api/lists/:id/items/order          - session - items of THIS
-//                                                list only, all-or-nothing
+//                                                list only, all-or-nothing;
+//                                                writes sort_order (document
+//                                                order)
+//   PUT    /api/lists/:id/items/pack-order     - session - items of THIS
+//                                                list only, all-or-nothing;
+//                                                writes pack_sort_order. 400
+//                                                on a payload spanning two
+//                                                cohorts, not a permutation of
+//                                                current ranks, or naming a
+//                                                worn row; 409 when a
+//                                                concurrent reorder won
 //   POST   /api/lists/:id/items/reset-packed   - session - own list or 404
 //   POST   /api/lists/:id/items/reset-ready    - session - own list or 404
 //   PATCH  /api/lists/:id/items/:itemId        - session - item must belong
@@ -105,6 +116,7 @@ function toListItemResponse(row: ListItemWithGear): ListItemResponse {
     isReady: row.item.isReady,
     packingLocationId: row.item.packingLocationId,
     sortOrder: row.item.sortOrder,
+    packSortOrder: row.item.packSortOrder,
     createdAt: new Date(row.item.createdAt).toISOString(),
     updatedAt: new Date(row.item.updatedAt).toISOString(),
     gearItem: toEmbeddedGear(row.gear),
@@ -290,6 +302,30 @@ listRoutes.put('/:id/items/order', async (c) => {
     .listItems.reorder(c.req.param('id'), parsed.data)
   if (!ok) return c.json({ error: 'Not found' }, 404)
   return c.body(null, 204)
+})
+
+// The Pack-view sibling of /items/order. Separate route rather than a scope
+// flag on that one, because the payload shape differs (`packSortOrder`) and
+// because "which column does this write" should be visible in the URL rather
+// than buried in a body field.
+listRoutes.put('/:id/items/pack-order', async (c) => {
+  const raw = await c.req.json().catch(() => null)
+  const parsed = reorderPackListItemsRequestSchema.safeParse(raw)
+  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const result = await c
+    .get('repos')
+    .listItems.reorderPack(c.req.param('id'), parsed.data)
+  if (result.ok) return c.body(null, 204)
+  // An id that is not on this list (or not this user's) is indistinguishable
+  // from a list that does not exist, deliberately - the same 404 either way,
+  // so the response never confirms that someone else's item id is real.
+  if (result.reason === 'not_found') return c.json({ error: 'Not found' }, 404)
+  // Lost a race with a concurrent reorder of the same bag. The whole batch
+  // rolled back, so nothing partial landed; the client refetches and retries.
+  if (result.reason === 'conflict') {
+    return c.json({ error: 'This bag changed while you were reordering' }, 409)
+  }
+  return c.json({ error: 'Invalid request body' }, 400)
 })
 
 listRoutes.post('/:id/items/reset-packed', async (c) => {

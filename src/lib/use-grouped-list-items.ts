@@ -8,15 +8,45 @@ export type ListItemGrouping =
 
 export type StableListItemGroup = Group<Category | PackingLocation, ListItemWithGear>
 
+// Which of the row's two orderings this view reads.
+//
+// The hook does not sort item buckets itself - it preserves the order of the
+// `items` array it is handed, which is the cache's canonical DOCUMENT order.
+// That is right for List view and wrong for Pack, so Pack hands in a
+// pack-ordered array instead.
+//
+// This matters most on the surface that looks like it should not need it:
+// Pack with no packing locations falls back to CATEGORY grouping, so without
+// this a drag there would write a pack rank and then visibly snap back on the
+// next refetch, because the refetched array is still in document order.
+export type ListItemOrder = 'document' | 'pack'
+
+function orderItems(
+  items: ListItemWithGear[],
+  order: ListItemOrder,
+): ListItemWithGear[] {
+  if (order === 'document') return items
+  // The id tiebreak is defensive: pack ranks are unique within a cohort
+  // (enforced by a unique index server-side), so a tie means something is
+  // already corrupt and deterministic beats arbitrary.
+  return items.toSorted(
+    (a, b) =>
+      a.packSortOrder - b.packSortOrder ||
+      a.sortOrder - b.sortOrder ||
+      (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  )
+}
+
 function buildGroups(
   items: ListItemWithGear[],
   grouping: ListItemGrouping,
+  order: ListItemOrder,
   prior?: StableListItemGroup[],
 ): StableListItemGroup[] {
   const groups: (Category | PackingLocation)[] = grouping.groups
     .toSorted((a, b) => a.sortOrder - b.sortOrder)
   return groupBy(
-    items,
+    orderItems(items, order),
     groups,
     grouping.kind === 'category'
       ? (item) => item.gearItem.categoryId
@@ -52,11 +82,12 @@ function buildGroups(
 export function useGroupedListItems(
   items: ListItemWithGear[],
   grouping: ListItemGrouping,
+  order: ListItemOrder = 'document',
 ): StableListItemGroup[] {
   const [cached, setCached] = useState<StableListItemGroup[]>(() =>
-    buildGroups(items, grouping),
+    buildGroups(items, grouping, order),
   )
-  const next = buildGroups(items, grouping, cached)
+  const next = buildGroups(items, grouping, order, cached)
   if (next !== cached) {
     setCached(next)
   }

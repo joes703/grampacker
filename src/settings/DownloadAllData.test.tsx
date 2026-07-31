@@ -62,6 +62,7 @@ function itemFor(listId: string, id: string): ListItemWithGear {
   return {
     id, listId, gearItemId: 'g-1', quantity: 1, isWorn: false, isConsumable: false,
     isPacked: false, isReady: false, packingLocationId: null, sortOrder: 0,
+    packSortOrder: 0,
     createdAt: '2024-01-01',
     updatedAt: '2024-01-01', gearItem: gearItems[0]!,
   }

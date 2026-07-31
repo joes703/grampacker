@@ -19,6 +19,7 @@ function item(id: string, locationId: string | null, isWorn: boolean): ListItemW
     isReady: false,
     packingLocationId: locationId,
     sortOrder: 0,
+    packSortOrder: 0,
     createdAt: '2026-01-01',
     updatedAt: '2026-01-01',
     gearItem: {
