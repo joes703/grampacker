@@ -802,17 +802,21 @@ const POST_CHECKS = [
   // sequence. These pin exact values rather than "contiguous", because a
   // list-wide backfill would also be contiguous - and would be wrong.
   //
-  // li-seed sits on pl-seed too (an earlier check moved it there), so that
-  // cohort holds three rows ordered by sort_order: li-seed (0), li-cohort-a2
-  // (10), li-cohort-a1 (40) -> ranks 0,1,2. Unassigned in the same list holds
-  // li-cohort-u1 alone -> rank 0. The SAME value 0 appearing in both cohorts
-  // is exactly what a list-wide implementation could not produce.
+  // list-seed holds two cohorts at backfill time. Ordered by sort_order:
+  //   pl-seed:    li-cohort-a2 (10) -> 0, li-cohort-a1 (40) -> 1
+  //   Unassigned: li-seed (0)        -> 0, li-cohort-u1 (30) -> 1
+  //
+  // Rank 0 appearing TWICE in one list is the whole assertion. A list-wide
+  // sequence could not produce it, and would have given a1 and u1 distinct
+  // global ranks that later interleave when a location is deleted. Gapped
+  // source ranks (10, 30, 40) also prove the backfill ranks by ORDER rather
+  // than copying sort_order across.
   { migration: '0018_pack-sort-order.sql', description: 'backfill ranks each cohort from 0, independently',
     sql: "select id, pack_sort_order as rank from list_items where id in ('li-seed','li-cohort-a2','li-cohort-a1','li-cohort-u1') order by id",
     expectRows: [
-      { id: 'li-cohort-a1', rank: 2 },
-      { id: 'li-cohort-a2', rank: 1 },
-      { id: 'li-cohort-u1', rank: 0 },
+      { id: 'li-cohort-a1', rank: 1 },
+      { id: 'li-cohort-a2', rank: 0 },
+      { id: 'li-cohort-u1', rank: 1 },
       { id: 'li-seed', rank: 0 },
     ] },
   { migration: '0018_pack-sort-order.sql', description: 'no committed rank is negative',
@@ -822,7 +826,7 @@ const POST_CHECKS = [
     sql: "select name from sqlite_master where type='index' and name in ('list_items_pack_cohort_uq','list_items_pack_unassigned_uq') order by name",
     expectRows: [{ name: 'list_items_pack_cohort_uq' }, { name: 'list_items_pack_unassigned_uq' }] },
   { migration: '0018_pack-sort-order.sql', description: 'a duplicate rank in a located cohort is rejected',
-    sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,packing_location_id,sort_order,pack_sort_order,created_at,updated_at) values ('li-dup-loc','u-seed','list-seed','gear-seed',1,0,0,0,0,'pl-seed',99,2,0,0)",
+    sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,packing_location_id,sort_order,pack_sort_order,created_at,updated_at) values ('li-dup-loc','u-seed','list-seed','gear-seed',1,0,0,0,0,'pl-seed',99,1,0,0)",
     expectErrorMatch: /unique/i },
   // SQLite treats NULLs as distinct in a unique index, so the composite index
   // above does NOT cover Unassigned. This proves the partial index does.

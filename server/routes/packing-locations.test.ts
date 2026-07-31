@@ -18,6 +18,7 @@ type ItemBody = {
   packingLocationId: string | null
   sortOrder: number
   packSortOrder: number
+  updatedAt: string
 }
 type LocationBody = {
   id: string
@@ -924,5 +925,249 @@ describe('packing location database triggers', () => {
         .where(eq(listItems.id, item.id)),
       'container nesting cycle',
     )
+  })
+})
+
+// The point of splitting the two orderings, tested from the outside: the two
+// views must be able to disagree, and neither may write the other's column.
+describe('pack ordering is independent of document ordering', () => {
+  it('a pack reorder leaves List order and the public share alone', async () => {
+    const { cookie } = await signUpVerifiedUser('pack-independent@example.com', 'O')
+    const list = await createList(cookie, 'Trip')
+    const location = await createLocation(cookie, list.id, 'Main')
+
+    const a = await addItem(cookie, list.id, await createGear(cookie, 'Alpha'))
+    const b = await addItem(cookie, list.id, await createGear(cookie, 'Bravo'))
+    const c = await addItem(cookie, list.id, await createGear(cookie, 'Charlie'))
+    for (const item of [a, b, c]) {
+      const res = await apiRequest(
+        cookie,
+        'PATCH',
+        `/api/lists/${list.id}/items/${item.id}`,
+        { packingLocationId: location.id },
+      )
+      expect(res.status).toBe(200)
+    }
+
+    const share = await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}`, {
+      isShared: true,
+    })
+    expect(share.status).toBe(200)
+    const slug = ((await share.json()) as { slug: string }).slug
+    const documentOrder = (await getItems(cookie, list.id)).map((i) => i.id)
+
+    // Reverse the bag. The payload is a permutation of the ranks those rows
+    // already hold, which is the contract the route enforces.
+    const inBag = (await getItems(cookie, list.id))
+      .filter((i) => i.packingLocationId === location.id)
+      .sort((x, y) => x.packSortOrder - y.packSortOrder)
+    const ranks = inBag.map((i) => i.packSortOrder)
+    const reversed = [...inBag].reverse()
+    const reorder = await apiRequest(
+      cookie,
+      'PUT',
+      `/api/lists/${list.id}/items/pack-order`,
+      reversed.map((item, i) => ({ id: item.id, packSortOrder: ranks[i]! })),
+    )
+    expect(reorder.status).toBe(204)
+
+    const after = await getItems(cookie, list.id)
+    // Pack order flipped...
+    expect(
+      after
+        .filter((i) => i.packingLocationId === location.id)
+        .sort((x, y) => x.packSortOrder - y.packSortOrder)
+        .map((i) => i.id),
+    ).toEqual(reversed.map((i) => i.id))
+    // ...and the document order did not move at all.
+    expect(after.map((i) => i.id)).toEqual(documentOrder)
+
+    // Nor did the link already sent to someone else.
+    const anon = await apiRequest(null, 'GET', `/api/shares/${slug}`)
+    expect(anon.status).toBe(200)
+    const body = (await anon.json()) as { items: { gear: { name: string } }[] }
+    expect(body.items.map((i) => i.gear.name)).toEqual(['Alpha', 'Bravo', 'Charlie'])
+    // And the pack rank is not published under either spelling.
+    expect(JSON.stringify(body)).not.toContain('packSortOrder')
+    expect(JSON.stringify(body)).not.toContain('pack_sort_order')
+  })
+
+  it('a List reorder leaves pack order alone', async () => {
+    const { cookie } = await signUpVerifiedUser('list-independent@example.com', 'O')
+    const list = await createList(cookie, 'Trip')
+    const location = await createLocation(cookie, list.id, 'Main')
+    const a = await addItem(cookie, list.id, await createGear(cookie, 'Alpha'))
+    const b = await addItem(cookie, list.id, await createGear(cookie, 'Bravo'))
+    for (const item of [a, b]) {
+      await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${item.id}`, {
+        packingLocationId: location.id,
+      })
+    }
+    const before = await getItems(cookie, list.id)
+    const packBefore = new Map(before.map((i) => [i.id, i.packSortOrder]))
+
+    const swap = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/order`, [
+      { id: a.id, sortOrder: b.sortOrder },
+      { id: b.id, sortOrder: a.sortOrder },
+    ])
+    expect(swap.status).toBe(204)
+
+    for (const item of await getItems(cookie, list.id)) {
+      expect(item.packSortOrder).toBe(packBefore.get(item.id))
+    }
+  })
+})
+
+describe('pack-order route contract', () => {
+  async function bagOfTwo(email: string) {
+    const { cookie } = await signUpVerifiedUser(email, 'O')
+    const list = await createList(cookie, 'Trip')
+    const location = await createLocation(cookie, list.id, 'Main')
+    const a = await addItem(cookie, list.id, await createGear(cookie, 'Alpha'))
+    const b = await addItem(cookie, list.id, await createGear(cookie, 'Bravo'))
+    for (const item of [a, b]) {
+      await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${item.id}`, {
+        packingLocationId: location.id,
+      })
+    }
+    const inBag = (await getItems(cookie, list.id)).filter(
+      (i) => i.packingLocationId === location.id,
+    )
+    return { cookie, list, location, inBag }
+  }
+
+  it('rejects a payload spanning two cohorts, with zero writes', async () => {
+    const { cookie, list, inBag } = await bagOfTwo('pack-cohort@example.com')
+    // This one stays Unassigned, so it is a different cohort.
+    const loose = await addItem(cookie, list.id, await createGear(cookie, 'Loose'))
+    const before = await getItems(cookie, list.id)
+
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+      { id: inBag[0]!.id, packSortOrder: 1 },
+      { id: loose.id, packSortOrder: 0 },
+    ])
+    expect(res.status).toBe(400)
+    expect(await getItems(cookie, list.id)).toEqual(before)
+  })
+
+  it('rejects ranks that are not a permutation of what those rows hold', async () => {
+    const { cookie, list, inBag } = await bagOfTwo('pack-perm@example.com')
+    const before = await getItems(cookie, list.id)
+    // 7 and 8 are free, so a naive implementation would happily write them -
+    // and leave a cohort whose ranks no longer describe positions.
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+      { id: inBag[0]!.id, packSortOrder: 7 },
+      { id: inBag[1]!.id, packSortOrder: 8 },
+    ])
+    expect(res.status).toBe(400)
+    expect(await getItems(cookie, list.id)).toEqual(before)
+  })
+
+  it('rejects a payload naming a worn row', async () => {
+    const { cookie, list, inBag } = await bagOfTwo('pack-worn@example.com')
+    const worn = inBag[0]!
+    await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${worn.id}`, {
+      isWorn: true,
+    })
+    const before = await getItems(cookie, list.id)
+
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+      { id: worn.id, packSortOrder: inBag[1]!.packSortOrder },
+      { id: inBag[1]!.id, packSortOrder: worn.packSortOrder },
+    ])
+    expect(res.status).toBe(400)
+    expect(await getItems(cookie, list.id)).toEqual(before)
+  })
+
+  it("404s on another user's item without writing anything", async () => {
+    const { cookie, list, inBag } = await bagOfTwo('pack-foreign-a@example.com')
+    const b = await signUpVerifiedUser('pack-foreign-b@example.com', 'B')
+    const before = await getItems(cookie, list.id)
+
+    const res = await apiRequest(b.cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+      { id: inBag[0]!.id, packSortOrder: 1 },
+      { id: inBag[1]!.id, packSortOrder: 0 },
+    ])
+    expect(res.status).toBe(404)
+    expect(await getItems(cookie, list.id)).toEqual(before)
+  })
+
+  it('does not bump updatedAt', async () => {
+    const { cookie, list, inBag } = await bagOfTwo('pack-updated@example.com')
+    const before = await getItems(cookie, list.id)
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+      { id: inBag[0]!.id, packSortOrder: inBag[1]!.packSortOrder },
+      { id: inBag[1]!.id, packSortOrder: inBag[0]!.packSortOrder },
+    ])
+    expect(res.status).toBe(204)
+    const after = await getItems(cookie, list.id)
+    for (const item of after) {
+      const was = before.find((i) => i.id === item.id)!
+      expect(item.updatedAt).toBe(was.updatedAt)
+    }
+  })
+
+  // The two-phase write exists for this: applied naively, the first UPDATE
+  // would put one row on a rank its neighbour still holds and the unique
+  // index would reject the whole batch.
+  it('applies a permutation whose intermediate state would collide', async () => {
+    const { cookie, list, inBag } = await bagOfTwo('pack-twophase@example.com')
+    const [first, second] = inBag
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+      { id: first!.id, packSortOrder: second!.packSortOrder },
+      { id: second!.id, packSortOrder: first!.packSortOrder },
+    ])
+    expect(res.status).toBe(204)
+    const after = await getItems(cookie, list.id)
+    expect(after.find((i) => i.id === first!.id)?.packSortOrder).toBe(second!.packSortOrder)
+    expect(after.find((i) => i.id === second!.id)?.packSortOrder).toBe(first!.packSortOrder)
+  })
+})
+
+describe('deleting a location keeps its contents together', () => {
+  it('appends the orphans to Unassigned as one block, in their prior order', async () => {
+    const { cookie } = await signUpVerifiedUser('pack-orphans@example.com', 'O')
+    const list = await createList(cookie, 'Trip')
+    const location = await createLocation(cookie, list.id, 'Main')
+
+    // Two rows already sitting in Unassigned, so the block has to land AFTER
+    // them rather than interleaving with them.
+    const looseA = await addItem(cookie, list.id, await createGear(cookie, 'LooseA'))
+    const looseB = await addItem(cookie, list.id, await createGear(cookie, 'LooseB'))
+
+    const inBag = []
+    for (const name of ['BagOne', 'BagTwo', 'BagThree']) {
+      const item = await addItem(cookie, list.id, await createGear(cookie, name))
+      await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${item.id}`, {
+        packingLocationId: location.id,
+      })
+      inBag.push(item)
+    }
+    const bagOrderBefore = (await getItems(cookie, list.id))
+      .filter((i) => i.packingLocationId === location.id)
+      .sort((x, y) => x.packSortOrder - y.packSortOrder)
+      .map((i) => i.id)
+
+    const del = await apiRequest(
+      cookie,
+      'DELETE',
+      `/api/lists/${list.id}/packing-locations/${location.id}`,
+    )
+    expect(del.status).toBe(204)
+
+    const unassigned = (await getItems(cookie, list.id))
+      .filter((i) => i.packingLocationId === null)
+      .sort((x, y) => x.packSortOrder - y.packSortOrder)
+    // The pre-existing rows keep the top, the bag's contents follow as a
+    // contiguous block, and their internal order survived.
+    expect(unassigned.map((i) => i.id)).toEqual([
+      looseA.id,
+      looseB.id,
+      ...bagOrderBefore,
+    ])
+    // Ranks are unique, which is what the interleaving bug destroyed.
+    const ranks = unassigned.map((i) => i.packSortOrder)
+    expect(new Set(ranks).size).toBe(ranks.length)
+    expect(ranks.every((r) => r >= 0)).toBe(true)
   })
 })
