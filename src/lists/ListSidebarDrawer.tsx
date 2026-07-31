@@ -4,8 +4,12 @@ import { FLAT_TABLE_SURFACE, ROW_CONTROL_TARGET } from '../components/flat-table
 
 // Lazy boundary for the left-anchored sidebar drawer on the list page.
 // The panel body (LibraryPanel) is passed in as `children` so this file
-// imports only Radix Dialog + the chrome icons. Together with M11's
-// useIsBelowLg gate at the caller, this never loads on desktop.
+// imports only Radix Dialog + the chrome icons.
+//
+// The caller mounts it below lg in either view, and at lg+ in Pack only -
+// desktop Pack hides the library aside, so the drawer is its one way back to
+// the gear list. Desktop LIST view still never loads this chunk, and Radix
+// stays out of the eager authenticated bundle on every surface.
 //
 // Header: title + close. The title comes from the caller so it always names
 // what the drawer is actually showing.

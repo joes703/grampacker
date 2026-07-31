@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Pencil, Plus } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -93,6 +93,7 @@ import CategoryGroup, { type SectionIdentity } from './CategoryGroup'
 import { packingSortableRows, sortableRows } from './SortableCategoryRows'
 import PanelCard from './PanelCard'
 import ItemRow from './ItemRow'
+import RowIconButton from '../components/RowIconButton'
 import GearItemDialog from '../components/gear/GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useDocumentTitle } from '../lib/use-document-title'
@@ -1040,10 +1041,29 @@ function ListDetailInner({
       // The synchronous path this replaced was self-limiting because the
       // optimistic delete removed the row before a second click could land.
       if (removalPreflightRef.current.has(li.id)) return
+      // Click-to-place is a persistent mode: its insertion slots stay mounted
+      // and the rows around them stay clickable, so a removal started from a
+      // pack kebab can otherwise open a confirm dialog on top of live slots -
+      // and if the removed row is the one being placed, the mode is left
+      // pointing at something that no longer exists. Placement is about where
+      // a row sits; removing it makes that question moot, so the mode loses.
+      //
+      // returnFocus is false because the kebab that started this is inside the
+      // row about to disappear. PlacementProvider's restore already declines
+      // to focus a disconnected origin, but asking for it at all would be
+      // stating an intent this call cannot honour.
+      placementActions.cancel({ returnFocus: false })
       removalPreflightRef.current.add(li.id)
       void (async () => {
         try {
           const plan = await resolveRemovalPlan(qc, listId, li.id)
+          // Again, after the await. The lookup is a real round trip - the
+          // duplicate guard above exists because it is long enough for a
+          // second click - so placement can be started DURING it, after the
+          // cancel above has already run. Cancelling once on entry would leave
+          // the confirm dialog opening over live slots in exactly that window.
+          // cancel() is idempotent, so the common path pays nothing.
+          placementActions.cancel({ returnFocus: false })
           if (plan.kind === 'confirm') {
             setDialog({
               type: 'remove-container-item',
@@ -1059,7 +1079,7 @@ function ListDetailInner({
         }
       })()
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- qc and setDialog are stable; deleteItem is a TanStack mutation result (.mutate is stable, the wrapper is not); refs are stable; listId is fixed for this component instance (keyed by list)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- qc and setDialog are stable; deleteItem is a TanStack mutation result (.mutate is stable, the wrapper is not); refs are stable; placementActions is a useMemo over an empty dep array (see placement-context); listId is fixed for this component instance (keyed by list)
     [],
   )
 
@@ -1233,10 +1253,50 @@ function ListDetailInner({
           ? (origin: HTMLElement | null) => placementActions.start(item, section, origin)
           : undefined
       }
+      // Membership, not authoring: this drops the row from the list and
+      // leaves the gear item in the library. requestRemoveListItem owns the
+      // container-backing case, which needs a confirm because it destroys
+      // more than the row.
+      onRemoveFromList={() => requestRemoveListItem(item)}
       onUseAsContainer={() => createItemContainer.mutate({
         itemId: item.id,
         name: item.gearItem.name,
       })}
+    />
+  )
+
+  // The same action, for the category-grouped sections. Those sections are
+  // NOT pack-only - they are what List view renders too - so the mode test is
+  // the whole point of this binding.
+  //
+  // Pack falls back to category grouping until a list has its first packing
+  // location (selectPackGrouping), which is every list on its first visit to
+  // this view. Without this the feature would be missing exactly where a new
+  // user meets it, and present only after they had built a bag - the kind of
+  // partial coverage that reads as "it does not work".
+  //
+  // The menu degrades correctly here on its own: click-to-place is already
+  // withheld outside location grouping, and with no locations the move list
+  // holds only the current one, disabled.
+  const packRowAction = mode === 'pack' ? renderPackRowAction : undefined
+
+  // Worn rows, which sit outside the packing tree by design: they are not in
+  // a bag, so move, reorder and containerize do not apply to them. Removal
+  // does - deciding you are not taking something is as likely for a worn item
+  // as any other - and pack mode suppresses ItemRow's ordinary kebab, so
+  // without this the Worn section is the one place in Pack you cannot drop an
+  // item from.
+  //
+  // A button rather than a kebab: one applicable action does not want a menu
+  // hiding it behind a second click.
+  const renderWornPackRowAction = (item: ListItemWithGear) => (
+    <RowIconButton
+      touchSafe
+      disabled={itemDragPending}
+      onClick={() => requestRemoveListItem(item)}
+      ariaLabel={`Remove ${item.gearItem.name} from list`}
+      title="Remove from list"
+      icon={<Trash2 size={14} />}
     />
   )
 
@@ -1267,6 +1327,11 @@ function ListDetailInner({
             isContainer
             excludedLocationIds={containerMoveExclusions.get(containerItem.id)}
             onMove={(locationId) => requestMove(containerItem.id, locationId)}
+            // The container's own row. Removing it necessarily takes the
+            // location with it (container_list_item_id cascades) and drops its
+            // contents to Unassigned - requestRemoveListItem routes exactly
+            // this case through a confirm that names both consequences.
+            onRemoveFromList={() => requestRemoveListItem(containerItem)}
             onStopUsingAsContainer={() => setDeleteLocationTarget(location)}
           />
         ) : undefined}
@@ -1456,6 +1521,26 @@ function ListDetailInner({
                 </div>
               )}
 
+              {/* Desktop Pack's way back to the gear library. Below lg the
+                  bottom action bar already carries Add, so rendering this
+                  there would be a second button for one action on the surface
+                  with the least room for it.
+
+                  It opens the same library panel the aside shows in List view,
+                  so adding gear behaves identically in both views - only the
+                  container differs. */}
+              {mode === 'pack' && !isBelowLg && (
+                <div className="print:hidden flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setDrawerOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    <Plus size={15} /> Add gear
+                  </button>
+                </div>
+              )}
+
               {/* Packing-location admin, lifted from the retired Organize
                   view. Pack mode is the organizer now, so building the
                   structure and filling it happen in one place instead of
@@ -1565,6 +1650,7 @@ function ListDetailInner({
                                 categoryId={definition.id}
                                 items={group.items}
                                 {...sharedGroupProps}
+                                renderRowAction={packRowAction}
                                 reorderPending={reorderItemsMut.isPending}
                                 baseSubtotalGrams={baseGramsForCategory(weightBreakdown, definition.id)}
                                 consumableSubtotalGrams={consumableGramsForCategory(weightBreakdown, definition.id)}
@@ -1579,6 +1665,7 @@ function ListDetailInner({
                               categoryId={null}
                               items={group.items}
                               {...sharedGroupProps}
+                              renderRowAction={packRowAction}
                               reorderPending={reorderItemsMut.isPending}
                               baseSubtotalGrams={baseGramsForCategory(weightBreakdown, null)}
                               consumableSubtotalGrams={consumableGramsForCategory(weightBreakdown, null)}
@@ -1656,6 +1743,9 @@ function ListDetailInner({
                         // second definition of the metric this change removed.
                         subtotalGrams={weightBreakdown.wornGrams}
                         renderRows={undefined}
+                        renderRowAction={
+                          mode === 'pack' ? renderWornPackRowAction : undefined
+                        }
                       />
                     )}
                   </div>
@@ -1706,10 +1796,16 @@ function ListDetailInner({
           button, or Escape. Stays open across multiple add/remove
           actions so the user can build up a list quickly.
 
-          JS-gated by isBelowLg so desktop genuinely doesn't mount the
-          drawer; React.lazy on the wrapper means desktop also never
-          fetches the Radix Dialog chunk. */}
-      {isBelowLg && (
+          JS-gated so a surface that has another way to reach the library
+          doesn't mount the drawer at all; React.lazy on the wrapper means
+          those surfaces also never fetch the Radix Dialog chunk.
+
+          Below lg: always, since there is no room for the aside.
+          At lg+: pack only. Desktop Pack hides the left aside on purpose (see
+          the aside's comment - packing wants the focus), which also removed
+          the only way to put a forgotten item on the list without leaving the
+          view. The drawer restores that without giving the aside back. */}
+      {(isBelowLg || mode === 'pack') && (
         <div className="print:hidden">
           <Suspense fallback={null}>
             <ListSidebarDrawer
