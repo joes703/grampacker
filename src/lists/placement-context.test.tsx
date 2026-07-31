@@ -22,6 +22,7 @@ function item(id: string, name: string, sortOrder: number): ListItemWithGear {
     isReady: false,
     packingLocationId: 'loc-1',
     sortOrder,
+    packSortOrder: sortOrder,
     createdAt: '2026-01-01',
     updatedAt: '2026-01-01',
     gearItem: {

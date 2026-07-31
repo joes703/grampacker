@@ -104,6 +104,11 @@ export const listItemResponseSchema = z.object({
   isReady: z.boolean(),
   packingLocationId: z.string().nullable(),
   sortOrder: z.number().int(),
+  // Rank within this row's packing cohort - the rows sharing
+  // (listId, packingLocationId). Authenticated surface only: the public share
+  // DTO deliberately does not carry it (see publicListItemSchema), because how
+  // someone arranged their bags is not part of what a share link publishes.
+  packSortOrder: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
   gearItem: gearItemResponseSchema,
@@ -274,6 +279,26 @@ export type ReorderListsRequest = z.infer<typeof reorderListsRequestSchema>
 export const reorderListItemsRequestSchema = reorderSchema(LIST_ITEM_CAP)
 export type ReorderListItemsRequest = z.infer<
   typeof reorderListItemsRequestSchema
+>
+
+// Pack reorder gets its OWN payload shape, keyed `packSortOrder`, rather than
+// reusing the `sortOrder` array above. One wire shape persisting to two
+// different columns depending on which URL it was posted to is a trap: it
+// reads as interchangeable, it is not, and it makes the optimistic cache
+// mapping guess which field it is patching.
+//
+// The server additionally requires the ranks to be a permutation of what the
+// touched rows already hold, and requires them all to be in one cohort. Those
+// are relational facts this schema cannot see, so they live in the repo.
+export const reorderPackListItemsRequestSchema = z
+  .array(z.object({ id: idSchema, packSortOrder: sortOrderSchema }).strict())
+  .min(1)
+  .max(LIST_ITEM_CAP)
+  .refine((entries) => uniqueIds(entries.map((e) => e.id)), {
+    message: 'duplicate ids',
+  })
+export type ReorderPackListItemsRequest = z.infer<
+  typeof reorderPackListItemsRequestSchema
 >
 
 export const reorderPackingLocationsRequestSchema = reorderSchema(

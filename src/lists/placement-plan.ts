@@ -1,4 +1,4 @@
-import { assignSortOrderSlots } from '../lib/grouping'
+import { assignPackRankSlots } from '../lib/grouping'
 import type { ListItemWithGear } from '../lib/types'
 
 // The ordering half of click-to-place: reordering a row inside its bag without
@@ -47,7 +47,7 @@ export function isNoOpSlot(slot: number, sourceIndex: number): boolean {
  * rendered array through means the plan always describes what the user was
  * actually looking at.
  *
- * Ranks come from assignSortOrderSlots, which permutes the values the cohort
+ * Ranks come from assignPackRankSlots, which permutes the values the cohort
  * already holds. That keeps the list-wide multiset unchanged (so rows outside
  * this bag never renumber) and satisfies the optimistic reorder validator,
  * which requires exactly that permutation property.
@@ -56,7 +56,7 @@ export function planPlacementWithinLocation(
   itemId: string,
   insertIndex: number,
   eligibleItems: readonly ListItemWithGear[],
-): { id: string; sortOrder: number }[] | null {
+): { id: string; packSortOrder: number }[] | null {
   const sourceIndex = eligibleItems.findIndex((item) => item.id === itemId)
   if (sourceIndex === -1) return null
 
@@ -70,7 +70,7 @@ export function planPlacementWithinLocation(
   const moving = eligibleItems[sourceIndex]
   if (!moving) return null
   const next = [...reduced.slice(0, insertIndex), moving, ...reduced.slice(insertIndex)]
-  return assignSortOrderSlots(next)
+  return assignPackRankSlots(next)
 }
 
 /**

@@ -400,6 +400,60 @@ const FIXTURES = [
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
   }],
+  // 0018's backfill canaries. The existing seeds are one row per list, so a
+  // list-wide implementation of pack_sort_order would satisfy a contiguity
+  // check just as well as a per-cohort one. These give ONE list two cohorts -
+  // two rows on pl-seed and two unassigned - with interleaved and gapped
+  // document ranks, so the post-check below can pin exact per-cohort values.
+  //
+  // Deliberately pre-migration rows and NOT carrying pack_sort_order: the
+  // column does not exist yet at fixture time. That is the point - they are
+  // what the migration has to rank.
+  ['list_items', {
+    id: 'li-cohort-a1',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    gear_item_id: 'gear-seed',
+    quantity: 1,
+    is_worn: 0,
+    is_consumable: 0,
+    is_packed: 0,
+    is_ready: 0,
+    packing_location_id: 'pl-seed',
+    sort_order: 40,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  ['list_items', {
+    id: 'li-cohort-a2',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    gear_item_id: 'gear-seed',
+    quantity: 1,
+    is_worn: 0,
+    is_consumable: 0,
+    is_packed: 0,
+    is_ready: 0,
+    packing_location_id: 'pl-seed',
+    sort_order: 10,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  ['list_items', {
+    id: 'li-cohort-u1',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    gear_item_id: 'gear-seed',
+    quantity: 1,
+    is_worn: 0,
+    is_consumable: 0,
+    is_packed: 0,
+    is_ready: 0,
+    packing_location_id: null,
+    sort_order: 30,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
   ['list_items', {
     id: 'li-seed-2',
     user_id: 'u-seed-2',
@@ -743,6 +797,42 @@ const POST_CHECKS = [
   { migration: '0015_item-backed-containers.sql', description: 'container cascade left contents intact and unassigned',
     sql: "select (select count(*) from packing_locations where id='pl-lifecycle-chk') as locationCount, packing_location_id as packingLocationId from list_items where id='li-content-chk'",
     expectRows: [{ locationCount: 0, packingLocationId: null }] },
+
+  // 0018: pack_sort_order is a rank WITHIN a cohort, not a second list-wide
+  // sequence. These pin exact values rather than "contiguous", because a
+  // list-wide backfill would also be contiguous - and would be wrong.
+  //
+  // list-seed holds two cohorts at backfill time. Ordered by sort_order:
+  //   pl-seed:    li-cohort-a2 (10) -> 0, li-cohort-a1 (40) -> 1
+  //   Unassigned: li-seed (0)        -> 0, li-cohort-u1 (30) -> 1
+  //
+  // Rank 0 appearing TWICE in one list is the whole assertion. A list-wide
+  // sequence could not produce it, and would have given a1 and u1 distinct
+  // global ranks that later interleave when a location is deleted. Gapped
+  // source ranks (10, 30, 40) also prove the backfill ranks by ORDER rather
+  // than copying sort_order across.
+  { migration: '0018_pack-sort-order.sql', description: 'backfill ranks each cohort from 0, independently',
+    sql: "select id, pack_sort_order as rank from list_items where id in ('li-seed','li-cohort-a2','li-cohort-a1','li-cohort-u1') order by id",
+    expectRows: [
+      { id: 'li-cohort-a1', rank: 1 },
+      { id: 'li-cohort-a2', rank: 0 },
+      { id: 'li-cohort-u1', rank: 1 },
+      { id: 'li-seed', rank: 0 },
+    ] },
+  { migration: '0018_pack-sort-order.sql', description: 'no committed rank is negative',
+    sql: "select count(*) as negatives from list_items where pack_sort_order < 0",
+    expectRows: [{ negatives: 0 }] },
+  { migration: '0018_pack-sort-order.sql', description: 'both uniqueness indexes exist',
+    sql: "select name from sqlite_master where type='index' and name in ('list_items_pack_cohort_uq','list_items_pack_unassigned_uq') order by name",
+    expectRows: [{ name: 'list_items_pack_cohort_uq' }, { name: 'list_items_pack_unassigned_uq' }] },
+  { migration: '0018_pack-sort-order.sql', description: 'a duplicate rank in a located cohort is rejected',
+    sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,packing_location_id,sort_order,pack_sort_order,created_at,updated_at) values ('li-dup-loc','u-seed','list-seed','gear-seed',1,0,0,0,0,'pl-seed',99,1,0,0)",
+    expectErrorMatch: /unique/i },
+  // SQLite treats NULLs as distinct in a unique index, so the composite index
+  // above does NOT cover Unassigned. This proves the partial index does.
+  { migration: '0018_pack-sort-order.sql', description: 'a duplicate rank in the unassigned cohort is rejected too',
+    sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,packing_location_id,sort_order,pack_sort_order,created_at,updated_at) values ('li-dup-un','u-seed','list-seed','gear-seed',1,0,0,0,0,null,98,0,0,0)",
+    expectErrorMatch: /unique/i },
 ]
 
 const quoteIdent = (name) => `"${name.replaceAll('"', '""')}"`

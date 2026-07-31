@@ -1,7 +1,7 @@
 import { arrayMove } from '@dnd-kit/sortable'
 import { parseDnDId } from '../lib/dnd-ids'
 import type { DnDIdKind } from '../lib/dnd-ids'
-import { assignSortOrderSlots } from '../lib/grouping'
+import { assignPackRankSlots } from '../lib/grouping'
 import type { ListItemWithGear } from '../lib/types'
 
 export type PackingItemDrop = { itemId: string; locationId: string | null }
@@ -12,7 +12,7 @@ export function planPackingItemReorder(
   items: ListItemWithGear[],
   dndKind: Extract<DnDIdKind, 'item' | 'packing-item'> = 'packing-item',
   excludedItemIds: ReadonlySet<string> = new Set(),
-): { id: string; sortOrder: number }[] | null {
+): { id: string; packSortOrder: number }[] | null {
   if (overId === undefined || activeId === overId) return null
   const active = parseDnDId(activeId)
   const over = parseDnDId(overId)
@@ -29,12 +29,15 @@ export function planPackingItemReorder(
       item.packingLocationId === activeItem.packingLocationId &&
       !excludedItemIds.has(item.id),
     )
-    .toSorted((a, b) => a.sortOrder - b.sortOrder)
+    // Pack order: this array IS one cohort, which is the scope packSortOrder
+    // ranks within. Sorting by document order here would compute the move
+    // against a sequence the user is not looking at.
+    .toSorted((a, b) => a.packSortOrder - b.packSortOrder)
   const oldIndex = locationItems.findIndex((item) => item.id === active.id)
   const newIndex = locationItems.findIndex((item) => item.id === over.id)
   if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return null
 
-  return assignSortOrderSlots(arrayMove(locationItems, oldIndex, newIndex))
+  return assignPackRankSlots(arrayMove(locationItems, oldIndex, newIndex))
 }
 
 export function isPackingCollisionTarget(
@@ -96,7 +99,7 @@ export function planPackingItemDrop(
 }
 
 export type PackingItemDragPlan =
-  | { kind: 'reorder'; updates: { id: string; sortOrder: number }[] }
+  | { kind: 'reorder'; updates: { id: string; packSortOrder: number }[] }
   | ({ kind: 'move' } & PackingItemDrop)
 
 export function planPackingItemDragEnd(

@@ -267,6 +267,7 @@ export function createListsRepo(db: Db, userId: string) {
             isReady: listItems.isReady,
             packingLocationId: listItems.packingLocationId,
             sortOrder: listItems.sortOrder,
+            packSortOrder: listItems.packSortOrder,
           })
           .from(listItems)
           .where(
@@ -408,6 +409,10 @@ export function createListsRepo(db: Db, userId: string) {
             locationIdMap,
           ),
           sortOrder: it.sortOrder,
+          // Verbatim, like sortOrder. A duplicate copies whole COHORTS - every
+          // location is remapped as a set - so each rank stays unique within
+          // its new cohort and the copy packs exactly like the original.
+          packSortOrder: it.packSortOrder,
           createdAt: now,
           updatedAt: now,
         }))
@@ -628,6 +633,12 @@ export function createListsRepo(db: Db, userId: string) {
             // The original CSV row index; dropped empty-name rows leave
             // intentional gaps (old-repo parity).
             sortOrder: item.sortOrder,
+            // Everything imported lands Unassigned, so the whole file is one
+            // cohort and the row index ranks it. Gaps are fine - pack ranks
+            // only have to be unique within a cohort, and importListItemSchema
+            // already rejects duplicate sortOrders. A CSV has one order, so
+            // the import DTO deliberately gains no second field.
+            packSortOrder: item.sortOrder,
             createdAt: now,
             updatedAt: now,
           }),
@@ -700,6 +711,9 @@ export function createListsRepo(db: Db, userId: string) {
             listId: newId,
             gearItemId,
             sortOrder: i,
+            // One fresh list, everything Unassigned: one cohort, so the
+            // selection index serves as both ranks.
+            packSortOrder: i,
             createdAt: now,
             updatedAt: now,
           }),

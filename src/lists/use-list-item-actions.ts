@@ -10,6 +10,7 @@ import {
   makeOptimisticDelete,
   type ListItemPatch,
 } from '../lib/queries'
+import { nextPackRankInCohort } from '../lib/grouping'
 import { randomTempId } from '../lib/random-temp-id'
 import type { GearItem, ListItemWithGear } from '../lib/types'
 import { type AddItemData } from './use-quick-add-form'
@@ -72,6 +73,11 @@ export function useListItemActions(
           isReady: false,
           packingLocationId: null,
           sortOrder: nextListItemSortOrder(listItems),
+          // A new item is Unassigned, so its placeholder rank comes from that
+          // cohort - mirroring what the server assigns. Reusing the document
+          // rank here would put the row in the wrong place in Pack for the one
+          // frame before the settled refetch corrects it.
+          packSortOrder: nextPackRankInCohort(listItems, null),
           createdAt: now,
           updatedAt: now,
         }

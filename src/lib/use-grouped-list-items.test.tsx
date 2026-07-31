@@ -52,6 +52,7 @@ function makeItem(overrides: {
     isReady: false,
     packingLocationId: overrides.packingLocationId ?? null,
     sortOrder: overrides.sortOrder ?? 0,
+    packSortOrder: overrides.sortOrder ?? 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     gearItem: {

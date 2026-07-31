@@ -94,6 +94,11 @@ describe('/api/lists authorization matrix', () => {
       ['POST', '/api/lists/some-id/items', { gearItemId: 'x' }],
       ['POST', '/api/lists/some-id/items/quick-add', { name: 'X' }],
       ['PUT', '/api/lists/some-id/items/order', [{ id: 'x', sortOrder: 0 }]],
+      [
+        'PUT',
+        '/api/lists/some-id/items/pack-order',
+        [{ id: 'x', packSortOrder: 0 }],
+      ],
       ['POST', '/api/lists/some-id/items/reset-packed', undefined],
       ['POST', '/api/lists/some-id/items/reset-ready', undefined],
       ['PATCH', '/api/lists/some-id/items/item-id', { quantity: 2 }],
@@ -738,11 +743,16 @@ describe('caps and slug integrity', () => {
     const gearId = await createGear(cookie, 'Filler')
 
     // No UNIQUE(list_id, gear_item_id), so one gear row can seed all 299.
+    //
+    // pack_sort_order is supplied explicitly, and must be: it is UNIQUE per
+    // cohort, these rows are all Unassigned (one cohort), and the column
+    // DEFAULTs to 0 - so leaving it out makes 299 rows collide on rank 0 and
+    // the seed fails before the cap is ever reached.
     const values = Array.from({ length: 299 }, (_, i) => {
-      return `('seed-${i}', '${userId}', '${list.id}', '${gearId}', 1, 0, 0, 0, 0, ${i}, 0, 0)`
+      return `('seed-${i}', '${userId}', '${list.id}', '${gearId}', 1, 0, 0, 0, 0, ${i}, ${i}, 0, 0)`
     }).join(',')
     await env.DB.prepare(
-      `insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, created_at, updated_at) values ${values}`,
+      `insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, pack_sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
     const at300 = await apiRequest(cookie, 'POST', `/api/lists/${list.id}/items`, {

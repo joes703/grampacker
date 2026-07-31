@@ -19,6 +19,7 @@ function item(
     isReady: flags.isReady ?? false,
     packingLocationId: 'loc-1',
     sortOrder,
+    packSortOrder: sortOrder,
     createdAt: '2026-01-01',
     updatedAt: '2026-01-01',
     gearItem: {
@@ -47,10 +48,27 @@ const locations: PackingLocation[] = [{
   sortOrder: 0,
   containerListItemId: null,
 }]
-const expectedVisibleSlotSwap = [
-  { id: 'visible-last', sortOrder: 1 },
-  { id: 'visible-first', sortOrder: 3 },
-]
+// The planner now returns a TAGGED result, because Pack and List write
+// different columns and an untagged array of near-identical shape was too easy
+// to post to the wrong endpoint. Pack view's payload is keyed packSortOrder;
+// List view's stays sortOrder. The swapped ranks are the same either way -
+// what these tests pin is that hidden rows keep their slots.
+const expectedPackSwap = {
+  kind: 'pack',
+  updates: [
+    { id: 'visible-last', packSortOrder: 1 },
+    { id: 'visible-first', packSortOrder: 3 },
+  ],
+}
+const expectedListSwap = {
+  kind: 'list',
+  updates: [
+    { id: 'visible-last', sortOrder: 1 },
+    { id: 'visible-first', sortOrder: 3 },
+  ],
+}
+const expectedSwapFor = (groupingKind: 'location' | 'category') =>
+  groupingKind === 'location' ? expectedPackSwap : expectedListSwap
 
 describe('ListDetailPage reorder planning', () => {
   it.each(['location', 'category'] as const)(
@@ -61,9 +79,13 @@ describe('ListDetailPage reorder planning', () => {
         overId: makeDnDId('item', visibleFirst.id),
         items,
         groupingKind,
+        // Pack for location grouping, and for the category FALLBACK too when the
+        // test is exercising a pack surface - mode is what decides which
+        // ordering a drag writes now, not groupingKind.
+        mode: groupingKind === 'location' ? ('pack' as const) : ('edit' as const),
         locations,
         hiddenItemIds: new Set([hiddenPacked.id]),
-      })).toEqual(expectedVisibleSlotSwap)
+      })).toEqual(expectedSwapFor(groupingKind))
     },
   )
 
@@ -80,9 +102,13 @@ describe('ListDetailPage reorder planning', () => {
         overId: makeDnDId('item', visibleFirst.id),
         items: [visibleFirst, readyRow, visibleLast],
         groupingKind,
+        // Pack for location grouping, and for the category FALLBACK too when the
+        // test is exercising a pack surface - mode is what decides which
+        // ordering a drag writes now, not groupingKind.
+        mode: groupingKind === 'location' ? ('pack' as const) : ('edit' as const),
         locations,
         hiddenItemIds: new Set([readyRow.id]),
-      })).toEqual(expectedVisibleSlotSwap)
+      })).toEqual(expectedSwapFor(groupingKind))
     },
   )
 
@@ -96,6 +122,10 @@ describe('ListDetailPage reorder planning', () => {
         overId: makeDnDId('item', visibleFirst.id),
         items,
         groupingKind,
+        // Pack for location grouping, and for the category FALLBACK too when the
+        // test is exercising a pack surface - mode is what decides which
+        // ordering a drag writes now, not groupingKind.
+        mode: groupingKind === 'location' ? ('pack' as const) : ('edit' as const),
         locations,
         hiddenItemIds: new Set([hiddenPacked.id]),
       })).toBeNull()

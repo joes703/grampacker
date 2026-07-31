@@ -92,8 +92,18 @@ export function buildPackingTree(
     else unassignedItems.push(item)
   }
 
+  // PACK order, not document order. Every array this sorts is exactly one
+  // cohort - a location's items, or the unassigned pile - which is the scope
+  // packSortOrder is a rank within.
+  //
+  // The sortOrder/id tiebreaks are DEFENSIVE, not part of the model. Pack
+  // ranks are unique within a cohort, enforced by a unique index server-side,
+  // so a tie means something is already corrupt; rendering it deterministically
+  // beats rendering it arbitrarily and makes the bug reproducible.
   const byItemOrder = (a: ListItemWithGear, b: ListItemWithGear) =>
-    a.sortOrder - b.sortOrder
+    a.packSortOrder - b.packSortOrder ||
+    a.sortOrder - b.sortOrder ||
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
   const byLocationOrder = (a: PackingTreeLocation, b: PackingTreeLocation) =>
     a.location.sortOrder - b.location.sortOrder
   for (const node of nodesById.values()) {

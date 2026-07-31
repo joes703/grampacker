@@ -256,7 +256,28 @@ export const listItems = sqliteTable(
       () => packingLocations.id,
       { onDelete: 'set null' },
     ),
+    // DOCUMENT order. List view, the public share and CSV read this, and only
+    // a List-view reorder writes it. It used to be the ONLY order, which meant
+    // arranging your pack rewrote the list you had written - and rewrote the
+    // public share link, because the anonymous read orders by this column.
     sortOrder: integer('sort_order').notNull().default(0),
+    // PACKING order, and it is NOT a second list-wide sequence. It is a rank
+    // within this row's packing COHORT - the set of rows sharing
+    // (list_id, packing_location_id), where a null location is the Unassigned
+    // cohort. A list-wide pack rank looks equivalent until a location is
+    // deleted: its orphans would interleave into Unassigned by ranks that
+    // encode old cross-location accidents rather than anything the user
+    // arranged.
+    //
+    // Committed values are ALWAYS nonnegative. Negatives exist only between
+    // the two phases of a permutation write (see below) and never survive the
+    // batch. That is deliberately NOT a CHECK constraint: a check is evaluated
+    // per statement and would reject phase 1.
+    //
+    // Worn rows keep a rank and reserve their slot even though they render
+    // outside the packing tree, so toggling worn costs zero ordering writes
+    // and returns the row to where it was.
+    packSortOrder: integer('pack_sort_order').notNull().default(0),
     createdAt: integer('created_at').notNull(), // epoch ms
     updatedAt: integer('updated_at').notNull(), // epoch ms, repo-maintained
   },
@@ -267,6 +288,31 @@ export const listItems = sqliteTable(
     index('list_items_list_sort_idx').on(t.listId, t.sortOrder),
     index('list_items_gear_item_user_idx').on(t.gearItemId, t.userId),
     index('list_items_packing_location_idx').on(t.packingLocationId),
+    // UNIQUE, and that is load-bearing rather than tidiness. Validate-then-
+    // batch cannot hold the rank invariant: two concurrent reorders of one
+    // cohort planned from the same read (A=0,B=1,C=2; one plans A=1,B=0, the
+    // other B=2,C=1) both validate, and the second commit leaves A and C both
+    // at 1. Conditional updates do not save it either - the losing statement
+    // matches nothing while its sibling still applies. With a unique index the
+    // loser violates the constraint and D1 rolls the whole batch back, which
+    // the route turns into a 409 and the client refetches.
+    //
+    // Consequence: SQLite enforces uniqueness per STATEMENT, so a permutation
+    // written as a sequence of updates transiently collides. Every writer that
+    // PERMUTES within a cohort is two-phase inside one batch - shift the
+    // touched rows to `-1 - i`, then write finals. Appends skip phase 1.
+    uniqueIndex('list_items_pack_cohort_uq').on(
+      t.listId,
+      t.packingLocationId,
+      t.packSortOrder,
+    ),
+    // SQLite treats every NULL as DISTINCT in a unique index, so the index
+    // above does not constrain the Unassigned cohort at all. Without this
+    // partial index Unassigned would keep exactly the corruption the other one
+    // exists to prevent.
+    uniqueIndex('list_items_pack_unassigned_uq')
+      .on(t.listId, t.packSortOrder)
+      .where(sql`${t.packingLocationId} is null`),
     foreignKey({
       name: 'list_items_list_same_owner_fk',
       columns: [t.listId, t.userId],

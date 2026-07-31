@@ -24,6 +24,7 @@ function item(
     isReady: false,
     packingLocationId: locationId,
     sortOrder,
+    packSortOrder: sortOrder,
     createdAt: '2026-01-01',
     updatedAt: '2026-01-01',
     gearItem: {
@@ -62,8 +63,8 @@ describe('planPackingItemReorder', () => {
       makeDnDId('packing-item', second.id),
       reorderItems,
     )).toEqual([
-      { id: 'second', sortOrder: 2 },
-      { id: 'first', sortOrder: 8 },
+      { id: 'second', packSortOrder: 2 },
+      { id: 'first', packSortOrder: 8 },
     ])
   })
 
@@ -74,8 +75,8 @@ describe('planPackingItemReorder', () => {
       reorderItems,
       'item',
     )).toEqual([
-      { id: 'second', sortOrder: 2 },
-      { id: 'first', sortOrder: 8 },
+      { id: 'second', packSortOrder: 2 },
+      { id: 'first', packSortOrder: 8 },
     ])
   })
 
@@ -88,8 +89,8 @@ describe('planPackingItemReorder', () => {
       'packing-item',
       new Set([hiddenContainer.id]),
     )).toEqual([
-      { id: 'second', sortOrder: 2 },
-      { id: 'first', sortOrder: 8 },
+      { id: 'second', packSortOrder: 2 },
+      { id: 'first', packSortOrder: 8 },
     ])
   })
 
@@ -209,8 +210,8 @@ describe('planPackingItemDragEnd', () => {
     )).toEqual({
       kind: 'reorder',
       updates: [
-        { id: 'sibling', sortOrder: 1 },
-        { id: 'dragged', sortOrder: 3 },
+        { id: 'sibling', packSortOrder: 1 },
+        { id: 'dragged', packSortOrder: 3 },
       ],
     })
   })

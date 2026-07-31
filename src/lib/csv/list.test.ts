@@ -44,6 +44,7 @@ function makeListItem(
     isReady: over.isReady ?? false,
     packingLocationId: over.packingLocationId ?? null,
     sortOrder: over.sortOrder ?? 0,
+    packSortOrder: over.packSortOrder ?? over.sortOrder ?? 0,
     createdAt: over.createdAt ?? '2024-01-01',
     updatedAt: over.updatedAt ?? '2024-01-01',
     gearItem: over.gearItem,
