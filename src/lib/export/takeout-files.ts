@@ -1,5 +1,7 @@
 import { gearItemsToCsv, listItemsToCsv } from '../csv'
 import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../types'
+import type { ListFoodResponse } from '../../../shared/food'
+import { buildFoodJson } from './food-json'
 import { buildPackingJson } from './packing-json'
 
 export type TakeoutInput = {
@@ -11,6 +13,7 @@ export type TakeoutInput = {
   // warm in the cache) and concatenates them.
   allItems: ListItemWithGear[]
   packingLocationsByListId: ReadonlyMap<string, PackingLocation[]>
+  foodByListId: ReadonlyMap<string, ListFoodResponse>
   // Full per-plan graphs, fetched one document per plan (plan cap 100).
 }
 
@@ -19,10 +22,11 @@ export type TakeoutInput = {
 // settings page or mocking fflate. The handler strToU8-encodes each value
 // and zips the result.
 export function buildTakeoutFiles(input: TakeoutInput): Record<string, string> {
-  const { categories, gearItems, lists, allItems, packingLocationsByListId } =
+  const { categories, gearItems, lists, allItems, packingLocationsByListId, foodByListId } =
     input
   const files: Record<string, string> = {}
   files['gear-library.csv'] = gearItemsToCsv(gearItems, categories)
+  files['food.json'] = JSON.stringify(buildFoodJson({ lists, foodByListId }), null, 2)
   files['packing.json'] = JSON.stringify(
     buildPackingJson({ lists, allItems, packingLocationsByListId }),
     null,

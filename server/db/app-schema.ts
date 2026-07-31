@@ -4,6 +4,7 @@ import {
   foreignKey,
   index,
   integer,
+  primaryKey,
   real,
   sqliteTable,
   text,
@@ -281,5 +282,163 @@ export const listItems = sqliteTable(
       'list_items_worn_xor_consumable',
       sql`not (${t.isWorn} and ${t.isConsumable})`,
     ),
+  ],
+)
+
+// ── Food ──────────────────────────────────────────────────────────────────
+//
+// A food WEIGHT ESTIMATE, not a meal planner. The previous food domain (10
+// tables, nutrition, targets, reusable plans, a library) was deleted in
+// migration 0016 for being far more machinery than the job needed. This is the
+// small replacement, and the boundary is deliberate: no calories, no macros,
+// no targets, no library, no plans reusable across lists.
+//
+// The model is three tables because of ONE fact that cannot be compressed: a
+// food entry is a THING YOU CARRY, not a placement. One 500 g bag of trail mix
+// eaten across five lunches is a single 500 g row associated with five slots.
+// Storing a row per placement would either multiply its weight by five - a
+// wrong pack weight, which is the number this whole app exists to compute - or
+// need an implicit grouping identity, which is a join table wearing a disguise.
+//
+// So: slots are the trip's eating periods, items are what you carry, and the
+// association between them expresses intent ONLY. It is never part of a sum.
+
+export const listFoodSlots = sqliteTable(
+  'list_food_slots',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    listId: text('list_id').notNull(),
+    dayNumber: integer('day_number').notNull(),
+    meal: text('meal', { enum: ['breakfast', 'lunch', 'dinner'] }).notNull(),
+    // The three-state distinction the feature exists for. needed + no
+    // associations = "you forgot this meal"; needed=false = "you deliberately
+    // skipped it" (breakfast on day 1, eaten in the car). Collapsing those two
+    // into one blank is exactly the omission this is meant to catch.
+    needed: integer('needed', { mode: 'boolean' }).notNull().default(true),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    unique('list_food_slots_id_user_unique').on(t.id, t.userId),
+    // The composite-FK target the association table references. The TRIPLE is
+    // load-bearing: FKs on (id, user_id) alone would only prove the slot
+    // belongs to SOME list of this user, so an item on list A could be
+    // associated with a slot on list B. Same convention as packing_locations.
+    unique('list_food_slots_id_list_user_unique').on(t.id, t.listId, t.userId),
+    unique('list_food_slots_day_meal_unique').on(t.listId, t.dayNumber, t.meal),
+    index('list_food_slots_list_day_idx').on(t.listId, t.dayNumber),
+    foreignKey({
+      name: 'list_food_slots_list_same_owner_fk',
+      columns: [t.listId, t.userId],
+      foreignColumns: [lists.id, lists.userId],
+    }).onDelete('cascade'),
+    // The drizzle text enum above is a TypeScript aid only; this is what the
+    // database actually enforces.
+    check(
+      'list_food_slots_meal_enum',
+      sql`${t.meal} in ('breakfast', 'lunch', 'dinner')`,
+    ),
+    // Also the day ceiling. There is deliberately NO row-count cap trigger
+    // here: this table holds three rows per day, so the repo's usual
+    // count-based convention would cap the feature at ten days.
+    //
+    // typeof() is load-bearing, not belt-and-braces. These are not STRICT
+    // tables, so an `integer` column happily stores 1.5 - and `between 1 and
+    // 30` accepts every fractional value in that range, which turns a 90-slot
+    // ceiling into a practically unbounded one. Adding this later would need a
+    // table rebuild with cascading children, so it goes in before deploy.
+    check(
+      'list_food_slots_day_range',
+      sql`typeof(${t.dayNumber}) = 'integer' and ${t.dayNumber} between 1 and 30`,
+    ),
+  ],
+)
+
+export const listFoodItems = sqliteTable(
+  'list_food_items',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    listId: text('list_id').notNull(),
+    name: text('name').notNull(),
+    // REAL for the same reason gear weights are: a single item's weight
+    // carries tenths.
+    weightGrams: real('weight_grams').notNull(),
+    // UNITS CARRIED, and nothing derives it. Associating an item with five
+    // slots must never touch this: the app cannot tell five packets from one
+    // shared bag, and guessing inflates the pack weight silently.
+    quantity: integer('quantity').notNull().default(1),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    unique('list_food_items_id_user_unique').on(t.id, t.userId),
+    unique('list_food_items_id_list_user_unique').on(t.id, t.listId, t.userId),
+    index('list_food_items_list_sort_idx').on(t.listId, t.sortOrder),
+    foreignKey({
+      name: 'list_food_items_list_same_owner_fk',
+      columns: [t.listId, t.userId],
+      foreignColumns: [lists.id, lists.userId],
+    }).onDelete('cascade'),
+    check(
+      'list_food_items_name_length',
+      sql`length(${t.name}) between 1 and 128`,
+    ),
+    check(
+      'list_food_items_weight_range',
+      sql`${t.weightGrams} between 0 and 100000`,
+    ),
+    // typeof() for the same affinity reason as day_number above, and here it
+    // is a WEIGHT correctness issue rather than a bound: a stored quantity of
+    // 1.5 makes a 500 g item weigh 750 g. "Units carried" has to mean units.
+    check(
+      'list_food_items_quantity_range',
+      sql`typeof(${t.quantity}) = 'integer' and ${t.quantity} between 1 and 9999`,
+    ),
+  ],
+)
+
+// Which slots a carried item is intended for. Expresses INTENT ONLY - this
+// table is never joined into a weight sum. The obvious query (join items to
+// slots, sum weight x quantity) returns 2500 g for one 500 g bag on five
+// lunches, and is the single most dangerous statement anyone could write here.
+export const listFoodItemSlots = sqliteTable(
+  'list_food_item_slots',
+  {
+    foodItemId: text('food_item_id').notNull(),
+    slotId: text('slot_id').notNull(),
+    userId: text('user_id').notNull(),
+    // Denormalized so the two FKs below can prove BOTH parents sit on the SAME
+    // list. Referencing (id, user_id) on each parent independently proves only
+    // that each belongs to some list this user owns - which permits an item on
+    // list A to be stitched to a slot on list B.
+    listId: text('list_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.foodItemId, t.slotId] }),
+    index('list_food_item_slots_slot_idx').on(t.slotId),
+    index('list_food_item_slots_list_idx').on(t.listId),
+    foreignKey({
+      name: 'list_food_item_slots_item_same_list_fk',
+      columns: [t.foodItemId, t.listId, t.userId],
+      foreignColumns: [listFoodItems.id, listFoodItems.listId, listFoodItems.userId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'list_food_item_slots_slot_same_list_fk',
+      columns: [t.slotId, t.listId, t.userId],
+      foreignColumns: [listFoodSlots.id, listFoodSlots.listId, listFoodSlots.userId],
+    }).onDelete('cascade'),
+    // Defence in depth, not the same-list proof.
+    foreignKey({
+      name: 'list_food_item_slots_list_same_owner_fk',
+      columns: [t.listId, t.userId],
+      foreignColumns: [lists.id, lists.userId],
+    }).onDelete('cascade'),
   ],
 )

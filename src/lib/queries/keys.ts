@@ -11,6 +11,7 @@ export const queryKeys = {
   // Partial-match prefix for cross-cache operations (the gear fan-out
   // finds every per-list cache through this).
   listItemsAll: () => ['list-items'] as const,
+  listFood: (listId: string) => ['list-food', listId] as const,
   packingLocations: (listId: string) => ['packing-locations', listId] as const,
   // Public /r/:slug read cache. Param accepts undefined because SharePage
   // reads the slug from the URL (useParams types it string | undefined);
@@ -21,25 +22,4 @@ export const queryKeys = {
   // so the writer invalidates every share it might hold rather than resolving
   // which slug moved (design 5.5).
   sharedListAll: () => ['shared-list'] as const,
-  // Account-level default daily targets (Settings + takeout). Save is a full
-  // replace returning the fresh set, written straight back here.
-  targetDefaults: () => ['target-defaults'] as const,
-  // The pack checklist's id set (design 6: row presence means packed). Only
-  // read in pack mode with a plan attached; the toggle and the resets write
-  // through it optimistically.
-  //
-  // The OBSERVED plan link is part of the key, for the same reason the
-  // toggle carries it as a CAS expectation: a checkmark only means anything
-  // under the plan it was made for. Relinking (which clears pack state
-  // server-side, rule 1) then structurally cannot render the old plan's
-  // cached ids as phantom pre-checks - the new link reads a fresh entry.
-  // Partial-match prefix: attach/detach/duplicate clear pack state
-  // server-side (rule 1) from hooks that don't know which list's cache is
-  // populated, so they invalidate the prefix (design 5.5 precedent).
-  // Partial-match prefix over every cached plan document. The document carries
-  // usedByList (the editor breadcrumb's data), which changes when a LIST
-  // mutation moves a pointer - attach, detach, list delete/rename, list
-  // duplicate. Those writers cannot know which plan documents are cached, so
-  // they invalidate the prefix (design 5.5: coarse invalidation over
-  // bookkeeping).
 }

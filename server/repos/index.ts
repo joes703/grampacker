@@ -1,4 +1,5 @@
 import type { Db } from '../db'
+import { createFoodRepo } from './food'
 import { createCategoriesRepo } from './categories'
 import { createGearItemsRepo } from './gear-items'
 import { createListItemsRepo } from './list-items'
@@ -16,6 +17,7 @@ export function reposForUser(db: Db, userId: string) {
     users: createUsersRepo(db, userId),
     categories: createCategoriesRepo(db, userId),
     gearItems: createGearItemsRepo(db, userId),
+    food: createFoodRepo(db, userId),
     lists: createListsRepo(db, userId),
     listItems: createListItemsRepo(db, userId),
     packingLocations: createPackingLocationsRepo(db, userId),

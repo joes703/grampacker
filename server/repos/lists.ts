@@ -3,6 +3,9 @@ import type { Db } from '../db'
 import {
   categories,
   gearItems,
+  listFoodItemSlots,
+  listFoodItems,
+  listFoodSlots,
   listItems,
   lists,
   packingLocations,
@@ -251,7 +254,8 @@ export function createListsRepo(db: Db, userId: string) {
       if (!source) return { ok: false, reason: 'not_found' }
       // Items and locations are one D1 batch snapshot so a concurrent delete
       // cannot split the organization graph across two moments.
-      const [items, sourceLocations] = await db.batch([
+      const [items, sourceLocations, sourceFoodSlots, sourceFoodItems, sourceFoodLinks] =
+        await db.batch([
         db
           .select({
             id: listItems.id,
@@ -282,6 +286,43 @@ export function createListsRepo(db: Db, userId: string) {
               eq(packingLocations.userId, userId),
             ),
           ),
+        // Food rides in the SAME snapshot batch as items and locations, so a
+        // duplicate cannot capture a half-edited trip.
+        db
+          .select({
+            id: listFoodSlots.id,
+            dayNumber: listFoodSlots.dayNumber,
+            meal: listFoodSlots.meal,
+            needed: listFoodSlots.needed,
+          })
+          .from(listFoodSlots)
+          .where(
+            and(eq(listFoodSlots.listId, id), eq(listFoodSlots.userId, userId)),
+          ),
+        db
+          .select({
+            id: listFoodItems.id,
+            name: listFoodItems.name,
+            weightGrams: listFoodItems.weightGrams,
+            quantity: listFoodItems.quantity,
+            sortOrder: listFoodItems.sortOrder,
+          })
+          .from(listFoodItems)
+          .where(
+            and(eq(listFoodItems.listId, id), eq(listFoodItems.userId, userId)),
+          ),
+        db
+          .select({
+            foodItemId: listFoodItemSlots.foodItemId,
+            slotId: listFoodItemSlots.slotId,
+          })
+          .from(listFoodItemSlots)
+          .where(
+            and(
+              eq(listFoodItemSlots.listId, id),
+              eq(listFoodItemSlots.userId, userId),
+            ),
+          ),
       ])
 
       for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt++) {
@@ -298,6 +339,23 @@ export function createListsRepo(db: Db, userId: string) {
           ...item,
           newId: crypto.randomUUID(),
         }))
+        // Food copies. Each carried item is copied ONCE, keeping its quantity;
+        // the associations are re-pointed at the new ids. Copying per
+        // association would multiply the duplicate's food weight.
+        const foodSlotCopies = sourceFoodSlots.map((slot) => ({
+          ...slot,
+          newId: crypto.randomUUID(),
+        }))
+        const foodSlotIdMap = new Map(
+          foodSlotCopies.map((slot) => [slot.id, slot.newId]),
+        )
+        const foodItemCopies = sourceFoodItems.map((item) => ({
+          ...item,
+          newId: crypto.randomUUID(),
+        }))
+        const foodItemIdMap = new Map(
+          foodItemCopies.map((item) => [item.id, item.newId]),
+        )
         const itemIdMap = new Map(
           itemCopies.map((item) => [item.id, item.newId]),
         )
@@ -361,6 +419,42 @@ export function createListsRepo(db: Db, userId: string) {
         const insertItems = chunkForParamCap(itemRows).map((rows) =>
           db.insert(listItems).values(rows),
         )
+        const foodSlotRows = foodSlotCopies.map((slot) => ({
+          id: slot.newId,
+          userId,
+          listId: newId,
+          dayNumber: slot.dayNumber,
+          meal: slot.meal,
+          needed: slot.needed,
+          createdAt: now,
+          updatedAt: now,
+        }))
+        const foodItemRows = foodItemCopies.map((item) => ({
+          id: item.newId,
+          userId,
+          listId: newId,
+          name: item.name,
+          weightGrams: item.weightGrams,
+          quantity: item.quantity,
+          sortOrder: item.sortOrder,
+          createdAt: now,
+          updatedAt: now,
+        }))
+        const foodLinkRows = sourceFoodLinks.flatMap((link) => {
+          const foodItemId = foodItemIdMap.get(link.foodItemId)
+          const slotId = foodSlotIdMap.get(link.slotId)
+          if (!foodItemId || !slotId) return []
+          return [{ foodItemId, slotId, userId, listId: newId }]
+        })
+        const insertFoodSlots = chunkForParamCap(foodSlotRows).map((rows) =>
+          db.insert(listFoodSlots).values(rows),
+        )
+        const insertFoodItems = chunkForParamCap(foodItemRows).map((rows) =>
+          db.insert(listFoodItems).values(rows),
+        )
+        const insertFoodLinks = chunkForParamCap(foodLinkRows).map((rows) =>
+          db.insert(listFoodItemSlots).values(rows),
+        )
         const linkContainerLocations = locationCopies.flatMap((location) => {
           if (location.containerListItemId === null) return []
           const copiedContainerItemId = itemIdMap.get(location.containerListItemId)
@@ -386,6 +480,11 @@ export function createListsRepo(db: Db, userId: string) {
             ...insertLocations,
             ...insertItems,
             ...linkContainerLocations,
+            // Food after the list row exists; slots and items before the
+            // associations that reference them.
+            ...insertFoodSlots,
+            ...insertFoodItems,
+            ...insertFoodLinks,
           ])
           const inserted = results[0] as ListRow[]
           const row = inserted[0]

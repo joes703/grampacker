@@ -1,13 +1,23 @@
-# Food planning: design
+> **SUPERSEDED - DO NOT BUILD THIS.**
+>
+> This document describes a standalone reusable food PLANNER: plans as
+> first-class objects, days, meals, entries, nutrition targets, macros and an
+> account-wide food library. All of it was built, none of it was used, and
+> migration 0016 deleted every table, route and component.
+>
+> Earlier revisions of this file said the workspace was merely "parked" with its
+> schema and data intact, a feature flag away from returning. That has been
+> false since the removal, and leaving it standing made this an authoritative
+> restart path for exactly the thing that was thrown away.
+>
+> What replaced it is much smaller: a food WEIGHT ESTIMATE scoped to one list -
+> day x meal slots you prune, carried items with a quantity, and one consumable
+> line in the pack weight. No calories, no macros, no targets, no library, no
+> plans reusable across lists. See migration 0017 and `shared/food.ts`.
+>
+> Kept only as a record of what was tried and why it was too much.
 
-> **PARKED 2026-07-22 (Joe):** The Food workspace is disabled while its product
-> model is reconsidered. This temporarily supersedes the user-facing
-> availability described below: Food is absent from navigation, bookmarked
-> `/food` routes redirect to Lists, list and Pack views ignore attached plans,
-> public shares ignore the retained food projection, and nutrition-target
-> settings are hidden. The schema, repositories, APIs, existing records, list
-> links, and takeout data remain intact. No migration detaches or deletes food
-> data, so restoring the single product flag can recover the feature.
+# Food planning: design
 
 Status: ACCEPTED - slices 1-7 shipped to production 2026-07-19 (PRs #62-#83;
 final slice 7b squash e1ebee0); section 13 all-days summary strips remain
