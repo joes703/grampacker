@@ -1661,30 +1661,43 @@ function ListDetailInner({
                   </div>
                 )
               })()}
+
+              {/* INSIDE the loaded branch, OUTSIDE the listItems.length === 0
+                  one. Both halves matter:
+
+                  Inside, because listFood falls back to an empty-food object
+                  when the query has not resolved. Rendered above that gate the
+                  section would sit under "Loading list details..." showing a
+                  0-day trip with live controls - and a day change typed into a
+                  fabricated snapshot writes against real rows.
+
+                  Outside the empty-gear branch, because a list with food and no
+                  gear yet is a real, usable list.
+
+                  It renders in BOTH views, deliberately. It first shipped gated
+                  to edit mode, on the reasoning that food carries no
+                  packed/ready state and so contributes nothing to the pack
+                  checklist. That reasoning was about the data; the consequence
+                  was that anyone working in Pack could not find the feature at
+                  all. A section reachable from only one of two peer views is a
+                  section users conclude does not exist. Food is part of what
+                  you carry, so it belongs wherever you look at what you
+                  carry. */}
+              <FoodSection
+                food={listFood}
+                weightUnit={weightUnit}
+                busy={foodBusy}
+                onSetDays={(days) => foodDaysMut.mutate(days)}
+                onSetSlotNeeded={(slotId, needed) => foodSlotMut.mutate({ slotId, needed })}
+                onAddItem={(input, onSuccess) =>
+                  foodItemCreateMut.mutate(input, { onSuccess: () => { invalidateFood(); onSuccess() } })
+                }
+                onDeleteItem={(itemId) => foodItemDeleteMut.mutate(itemId)}
+                onSetItemSlots={(itemId, slotIds) => foodItemSlotsMut.mutate({ itemId, slotIds })}
+              />
             </>
           )}
 
-          {/* Food sits OUTSIDE the listItems.length === 0 branch above: a list
-              with food and no gear yet is a real, usable list, and hiding this
-              behind the empty-gear state would make it unreachable.
-
-              Edit mode only. Not because pack mode is "for containers" - it is
-              a genuine packed/ready checklist - but because food here has no
-              packed/ready state to contribute to it. */}
-          {mode === 'edit' && (
-            <FoodSection
-              food={listFood}
-              weightUnit={weightUnit}
-              busy={foodBusy}
-              onSetDays={(days) => foodDaysMut.mutate(days)}
-              onSetSlotNeeded={(slotId, needed) => foodSlotMut.mutate({ slotId, needed })}
-              onAddItem={(input, onSuccess) =>
-                foodItemCreateMut.mutate(input, { onSuccess: () => { invalidateFood(); onSuccess() } })
-              }
-              onDeleteItem={(itemId) => foodItemDeleteMut.mutate(itemId)}
-              onSetItemSlots={(itemId, slotIds) => foodItemSlotsMut.mutate({ itemId, slotIds })}
-            />
-          )}
         </div>
       </div>
 
