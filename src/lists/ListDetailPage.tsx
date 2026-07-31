@@ -561,7 +561,7 @@ function ListDetailInner({
     void gearItemsQuery.refetch()
     void categoriesQuery.refetch()
     void listFoodQuery.refetch()
-  }, [categoriesQuery, gearItemsQuery, listItemsQuery])
+  }, [categoriesQuery, gearItemsQuery, listFoodQuery, listItemsQuery])
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
