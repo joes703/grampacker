@@ -323,6 +323,61 @@ const FIXTURES = [
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
   }],
+  // Food estimate (0017). Slots are the trip's eating periods; items are what
+  // you CARRY; the association expresses intent only and is never summed.
+  //
+  // One item is associated with TWO slots, one of them pruned. What that
+  // actually guards is a future migration DELETING or REWRITING association
+  // rows, or resetting `needed` back to 1 during a rebuild - either of which
+  // would silently re-add meals the user said they were not eating. It does
+  // NOT catch a future migration adding a weight column to the association
+  // table: the guard deliberately excludes new columns from comparison, so a
+  // wrong sum introduced that way has to be caught by tests, not here.
+  ['list_food_slots', {
+    id: 'lfs-seed',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    day_number: 1,
+    meal: 'breakfast',
+    needed: 1,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  ['list_food_slots', {
+    id: 'lfs-seed-2',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    day_number: 1,
+    meal: 'lunch',
+    // A deliberately pruned slot: "not needed" must survive a migration, or a
+    // rebuild would silently re-add meals the user said they were not eating.
+    needed: 0,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  ['list_food_items', {
+    id: 'lfi-seed',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    name: 'Seed Trail Mix',
+    weight_grams: 500,
+    quantity: 1,
+    sort_order: 0,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  ['list_food_item_slots', {
+    food_item_id: 'lfi-seed',
+    slot_id: 'lfs-seed',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+  }],
+  ['list_food_item_slots', {
+    food_item_id: 'lfi-seed',
+    slot_id: 'lfs-seed-2',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+  }],
   ['packing_locations', {
     id: 'pl-seed',
     user_id: 'u-seed',
