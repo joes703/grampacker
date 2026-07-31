@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   baseGramsForCategory,
   computeWeightBreakdown,
+  foodGramsFor,
+  withFoodWeight,
   consumableGramsForCategory,
 } from './weight-breakdown'
 import type { Category, ListItemWithGear } from './types'
@@ -242,4 +244,62 @@ describe('consumableGramsForCategory', () => {
     expect(consumableGramsForCategory(result, shelter.id)).toBe(0)
   })
 
+})
+
+describe('food weight', () => {
+  // Local fixture: the other describes each scope their own `breakdown()`.
+  const breakdown = () =>
+    computeWeightBreakdown(
+      [
+        listItem({ id: 'a', categoryId: 'cat-1', weightGrams: 1200 }),
+        listItem({ id: 'b', categoryId: 'cat-1', weightGrams: 230, isConsumable: true }),
+      ],
+      [{ id: 'cat-1', name: 'Shelter', sortOrder: 0, createdAt: '2024-01-01' }],
+    )
+
+  it('counts an item once no matter how many slots it is associated with', () => {
+    // THE invariant. One 500 g bag of trail mix eaten across five lunches
+    // weighs 500 g. Summing across the item->slot associations would say 2500,
+    // and pack weight is the number this app exists to produce.
+    expect(foodGramsFor([{ weightGrams: 500, quantity: 1 }])).toBe(500)
+  })
+
+  it('multiplies by quantity, which is UNITS CARRIED', () => {
+    // Four oatmeal packets is four packets - that is the user telling us, not
+    // us inferring it from four breakfast slots.
+    expect(foodGramsFor([{ weightGrams: 80, quantity: 4 }])).toBe(320)
+  })
+
+  it('sums several carried items', () => {
+    expect(
+      foodGramsFor([
+        { weightGrams: 500, quantity: 1 },
+        { weightGrams: 80, quantity: 4 },
+        { weightGrams: 15, quantity: 6 },
+      ]),
+    ).toBe(910)
+  })
+
+  it('is zero for no food', () => {
+    expect(foodGramsFor([])).toBe(0)
+  })
+
+  it('moves consumable and total only, never base, worn or a category row', () => {
+    // Food is not gear: it has no category and must never land in a category
+    // footer, or the per-section subtotals stop summing to the whole.
+    const before = breakdown()
+    const after = withFoodWeight(before, 800)
+
+    expect(after.consumableGrams).toBe(before.consumableGrams + 800)
+    expect(after.totalPackGrams).toBe(before.totalPackGrams + 800)
+    expect(after.baseGrams).toBe(before.baseGrams)
+    expect(after.wornGrams).toBe(before.wornGrams)
+    expect(after.catRows).toEqual(before.catRows)
+    expect(after.consumableCatRows).toEqual(before.consumableCatRows)
+  })
+
+  it('returns the same object when there is no food', () => {
+    const before = breakdown()
+    expect(withFoodWeight(before, 0)).toBe(before)
+  })
 })

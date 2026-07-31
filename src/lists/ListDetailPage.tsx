@@ -25,6 +25,7 @@ const ListSidebarDrawer = lazy(() => import('./ListSidebarDrawer'))
 import {
   queryKeys,
   fetchLists,
+  fetchListFood,
   fetchListItems,
   fetchGearItems,
   fetchCategories,
@@ -55,9 +56,15 @@ import { useStableWornItems } from '../lib/use-stable-worn-items'
 import {
   baseGramsForCategory,
   computeWeightBreakdown,
+  foodGramsFor,
+  withFoodWeight,
   consumableGramsForCategory,
 } from '../lib/weight-breakdown'
 import { planPackingItemReorder } from './packing-dnd'
+
+// Stable empty value so the food-derived memos below do not see a fresh object
+// on every render while the query is still cold.
+const EMPTY_LIST_FOOD = { dayCount: 0, slots: [], items: [] } as const
 
 import WeightSummary from './WeightSummary'
 import LibraryPanel from './LibraryPanel'
@@ -385,6 +392,12 @@ function ListDetailInner({
   })
   const listItems = listItemsQuery.data ?? EMPTY_LIST_ITEMS
 
+  const listFoodQuery = useQuery({
+    queryKey: queryKeys.listFood(listId),
+    queryFn: () => fetchListFood(listId),
+  })
+  const listFood = listFoodQuery.data ?? EMPTY_LIST_FOOD
+
   const gearItemsQuery = useQuery({
     queryKey: queryKeys.gearItems(),
     queryFn: fetchGearItems,
@@ -451,15 +464,24 @@ function ListDetailInner({
   const grouping = mode === 'pack'
     ? packingGroupingState.grouping
     : { kind: 'category' as const, groups: categories }
-  const detailDataLoading = listItemsQuery.isPending || gearItemsQuery.isPending || categoriesQuery.isPending
+  // Food joins the SAME gate as items/gear/categories. A failed food fetch must
+  // not fall through as zero food weight: the total would look right and be
+  // wrong, and pack weight is the number this page exists to report.
+  const detailDataLoading =
+    listItemsQuery.isPending ||
+    gearItemsQuery.isPending ||
+    categoriesQuery.isPending ||
+    listFoodQuery.isPending
   const detailDataError =
     (listItemsQuery.isError && listItemsQuery.data === undefined) ||
     (gearItemsQuery.isError && gearItemsQuery.data === undefined) ||
-    (categoriesQuery.isError && categoriesQuery.data === undefined)
+    (categoriesQuery.isError && categoriesQuery.data === undefined) ||
+    (listFoodQuery.isError && listFoodQuery.data === undefined)
   const retryDetailData = useCallback(() => {
     void listItemsQuery.refetch()
     void gearItemsQuery.refetch()
     void categoriesQuery.refetch()
+    void listFoodQuery.refetch()
   }, [categoriesQuery, gearItemsQuery, listItemsQuery])
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -869,9 +891,14 @@ function ListDetailInner({
       ),
     ),
   })
+  // Food composes in at the page level so the mobile strip and the desktop
+  // table are handed ONE number and cannot disagree about what the pack
+  // weighs. foodGramsFor sums items alone - never across their slot
+  // associations, which would multiply a shared bag by the meals it covers.
+  const foodGrams = useMemo(() => foodGramsFor(listFood.items), [listFood.items])
   const weightBreakdown = useMemo(
-    () => computeWeightBreakdown(listItems, categories),
-    [categories, listItems],
+    () => withFoodWeight(computeWeightBreakdown(listItems, categories), foodGrams),
+    [categories, listItems, foodGrams],
   )
   // Mirrors WeightSummary's own render guard.
   const showWeightSummary = listItems.length > 0 || weightBreakdown.totalPackGrams > 0

@@ -130,3 +130,39 @@ export function consumableGramsForCategory(
   const rowId = categoryId ?? UNCATEGORIZED_ROW_ID
   return breakdown.consumableCatRows.find((row) => row.id === rowId)?.grams ?? 0
 }
+
+/**
+ * Total grams of carried food.
+ *
+ * Sums over ITEMS ALONE. An item associated with five lunch slots contributes
+ * its weight ONCE - the associations say when you intend to eat it, not how
+ * many of it you carry. Summing across a join of items to slots is the single
+ * most dangerous query in this feature: for one 500 g bag of trail mix eaten
+ * across five lunches it returns 2500 g, and pack weight is the number the
+ * whole app exists to produce.
+ */
+export function foodGramsFor(
+  items: readonly { weightGrams: number; quantity: number }[],
+): number {
+  return items.reduce((grams, item) => grams + item.weightGrams * item.quantity, 0)
+}
+
+/**
+ * Compose carried food into a gear breakdown.
+ *
+ * Food is ALWAYS consumable - by definition, not by user choice - so only
+ * consumableGrams and totalPackGrams move. baseGrams, wornGrams and every
+ * per-category row are untouched: food is not gear, has no category, and is
+ * not a list_items row, so it can never belong in a category footer.
+ */
+export function withFoodWeight(
+  breakdown: WeightBreakdown,
+  foodGrams: number,
+): WeightBreakdown {
+  if (foodGrams === 0) return breakdown
+  return {
+    ...breakdown,
+    consumableGrams: breakdown.consumableGrams + foodGrams,
+    totalPackGrams: breakdown.totalPackGrams + foodGrams,
+  }
+}
