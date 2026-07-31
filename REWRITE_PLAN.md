@@ -65,7 +65,7 @@ Known pothole resolved by the Drizzle downgrade: better-auth's CLI schema genera
 ## 5. What transplants vs what is written fresh
 
 Transplant nearly intact (with their tests):
-- All React feature surfaces: gear library, lists, list detail, pack mode, food planning UI, share view, settings UI.
+- All React feature surfaces: gear library, lists, list detail, pack mode, share view, settings UI.
 - DnD system (dnd-kit classic), optimistic update helpers, flat-table density system, toast system, CSV parse/serialize (`src/lib/csv/`), import planning (`src/lib/queries/import-plan.ts` logic), weight math, caps constants.
 - CSV parsing stays CLIENT-side (keeps Worker CPU trivial); the server receives structured, validated plans.
 
@@ -122,7 +122,7 @@ Early candidates to discuss during review (not decided):
 2. Gear library end-to-end: schema (categories, gear_items), repository, routes, transplant GearLibraryPage + tests, reorder endpoint, CSV import/export. This is the proving slice for the whole transplant strategy.
 3. Lists + list items + pack mode (embedded gear_item response shape, quantity/worn/consumable/packed semantics, reorder).
 4. Public sharing (`/r/:slug` view + anon endpoint + projection allowlist).
-5. Food planning (largest port: plans, days, meals, entries, targets, pack state, public projections; atomic multi-add as plan+batch).
+5. ~~Food planning~~ - REMOVED. Built, never used, deleted in migration 0016. Replaced by a small food weight estimate on the list (migration 0017).
 6. Settings/account: password change (re-auth proof), delete account, passkey management.
 7. Owner data walk-over via CSV export/import (dogfoods the import path), deploy to grampacker.app, kill the Supabase project + Pages site - INCLUDING the Pages custom-domain binding and any DNS records pointing at the dead `*.pages.dev` project (a dangling CNAME is the subdomain-takeover class). Old repo stays as read-only reference.
 
@@ -141,7 +141,7 @@ planning (5) because the app needed to be usable for a real trip first.
 | 2 Gear library | done, incl. CSV import/export |
 | 3 Lists + pack mode | done |
 | 4 Public sharing | done (`/r/:slug`, read-only) |
-| **5 Food planning** | **NOT STARTED - the last feature.** Designed: [docs/food-planning-design.md](docs/food-planning-design.md). NOT a verbatim port - the plan becomes standalone and a list points AT it. Start at slice 1 (section 11). |
+| **5 Food planning** | **REMOVED.** Built and then deleted wholesale in migration 0016 - it was a nutrition planner (plans, days, meals, entries, targets, a food library) when what was wanted was a food WEIGHT ESTIMATE. Replaced by list-scoped food slots + carried items in migration 0017. Do not restore the old design. |
 | 6 Settings/account | done (passkeys, takeout, change password, delete account) |
 | 7 Teardown | Pages site deleted 2026-07-11; Supabase project deletion is the last step |
 

@@ -23,7 +23,6 @@ export const queryKeys = {
   sharedListAll: () => ['shared-list'] as const,
   // Account-level default daily targets (Settings + takeout). Save is a full
   // replace returning the fresh set, written straight back here.
-  targetDefaults: () => ['target-defaults'] as const,
   // The pack checklist's id set (design 6: row presence means packed). Only
   // read in pack mode with a plan attached; the toggle and the resets write
   // through it optimistically.

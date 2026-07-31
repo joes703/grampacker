@@ -1,3 +1,22 @@
+> **SUPERSEDED - DO NOT BUILD THIS.**
+>
+> This document describes a standalone reusable food PLANNER: plans as
+> first-class objects, days, meals, entries, nutrition targets, macros and an
+> account-wide food library. All of it was built, none of it was used, and
+> migration 0016 deleted every table, route and component.
+>
+> Earlier revisions of this file said the workspace was merely "parked" with its
+> schema and data intact, a feature flag away from returning. That has been
+> false since the removal, and leaving it standing made this an authoritative
+> restart path for exactly the thing that was thrown away.
+>
+> What replaced it is much smaller: a food WEIGHT ESTIMATE scoped to one list -
+> day x meal slots you prune, carried items with a quantity, and one consumable
+> line in the pack weight. No calories, no macros, no targets, no library, no
+> plans reusable across lists. See migration 0017 and `shared/food.ts`.
+>
+> Kept only as a record of what was tried and why it was too much.
+
 # Food planning: design
 
 > **PARKED 2026-07-22 (Joe):** The Food workspace is disabled while its product
