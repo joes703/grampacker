@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { ArrowUpDown, MapPin, MoreVertical, PackageMinus, PackagePlus } from 'lucide-react'
+import { ArrowUpDown, MapPin, MoreVertical, PackageMinus, PackagePlus, Trash2 } from 'lucide-react'
 import type { PackingLocation } from '../lib/types'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import RowIconButton from '../components/RowIconButton'
@@ -28,6 +28,18 @@ type BaseProps = {
    *  Receives the kebab element so focus can come back here when the mode
    *  closes - by then the slot that had focus has unmounted. */
   onStartReorder?: (origin: HTMLElement | null) => void
+  /** Drops the item from the list entirely. Pack could previously only
+   *  rearrange what was already there, so noticing "I am not taking this"
+   *  while packing meant leaving for List view and finding the row again.
+   *
+   *  This stays a MEMBERSHIP operation: it removes the row from this list and
+   *  never touches the gear item in the library. Authoring gear belongs to the
+   *  library, not to a packing checklist.
+   *
+   *  Optional because the caller owns the consequences - removing an item that
+   *  backs a container also destroys the container, and the page confirms that
+   *  case before it happens. */
+  onRemoveFromList?: () => void
 }
 
 type Props = BaseProps & (
@@ -55,6 +67,7 @@ export default function MoveToLocationMenu({
   excludedLocationIds,
   onMove,
   onStartReorder,
+  onRemoveFromList,
   onUseAsContainer,
   onStopUsingAsContainer,
 }: Props) {
@@ -133,6 +146,26 @@ export default function MoveToLocationMenu({
             }}
           >
             Stop using as container
+          </RowMenuItem>
+        </>
+      ) : null}
+      {/* Last, and behind its own rule. This is the only item in the menu that
+          takes the row off the list rather than moving it around, so it does
+          not want to sit adjacent to a destination in the move list where a
+          mis-tap costs real work. */}
+      {onRemoveFromList ? (
+        <>
+          <div className="my-1 border-t border-gray-100" />
+          <RowMenuItem
+            icon={<Trash2 size={13} />}
+            tone="removal"
+            disabled={disabled}
+            onClick={() => {
+              close()
+              onRemoveFromList()
+            }}
+          >
+            Remove from list
           </RowMenuItem>
         </>
       ) : null}

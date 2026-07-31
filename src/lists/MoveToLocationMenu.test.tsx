@@ -127,3 +127,102 @@ describe('MoveToLocationMenu container actions', () => {
     expect(screen.queryByRole('button', { name: 'Bear canister' })).not.toBeInTheDocument()
   })
 })
+
+// Pack could previously only rearrange what was already on the list. Noticing
+// "I am not taking this" while packing meant leaving for List view and finding
+// the row again.
+describe('MoveToLocationMenu removal', () => {
+  it.each([390, 1440])('offers removal and invokes it at %ipx', async (width) => {
+    stubViewport(width)
+    const user = userEvent.setup()
+    const onRemoveFromList = vi.fn()
+    render(
+      <MoveToLocationMenu
+        itemId="item-pot"
+        itemName="Cooking pot"
+        currentLocationId={null}
+        locations={locations}
+        mobile={width <= 1023}
+        disabled={false}
+        containerCreationDisabled={false}
+        isContainer={false}
+        onMove={vi.fn()}
+        onUseAsContainer={vi.fn()}
+        onRemoveFromList={onRemoveFromList}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Open Cooking pot packing options' }))
+    await user.click(screen.getByRole('button', { name: 'Remove from list' }))
+
+    expect(onRemoveFromList).toHaveBeenCalledTimes(1)
+  })
+
+  // A container's own row carries it too: removing it destroys the location
+  // and drops its contents to Unassigned, which the page confirms first.
+  it('offers removal on a container row', async () => {
+    stubViewport(1440)
+    const user = userEvent.setup()
+    const onRemoveFromList = vi.fn()
+    render(
+      <MoveToLocationMenu
+        itemId="item-canister"
+        itemName="Bear canister"
+        currentLocationId={null}
+        locations={locations}
+        mobile={false}
+        disabled={false}
+        containerCreationDisabled={false}
+        isContainer
+        onMove={vi.fn()}
+        onRemoveFromList={onRemoveFromList}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Open Bear canister packing options' }))
+    await user.click(screen.getByRole('button', { name: 'Remove from list' }))
+
+    expect(onRemoveFromList).toHaveBeenCalledTimes(1)
+  })
+
+  // The prop is optional, and the caller that omits it must not get a dead or
+  // silently-inert menu entry.
+  it('omits removal entirely when no handler is supplied', async () => {
+    stubViewport(1440)
+    const user = userEvent.setup()
+    render(<MenuHarness onUseAsContainer={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Open Cooking pot packing options' }))
+
+    expect(screen.queryByRole('button', { name: 'Remove from list' })).not.toBeInTheDocument()
+  })
+
+  it('does not fire removal while the menu is disabled', async () => {
+    stubViewport(1440)
+    const user = userEvent.setup()
+    const onRemoveFromList = vi.fn()
+    render(
+      <MoveToLocationMenu
+        itemId="item-pot"
+        itemName="Cooking pot"
+        currentLocationId={null}
+        locations={locations}
+        mobile={false}
+        disabled
+        containerCreationDisabled={false}
+        isContainer={false}
+        onMove={vi.fn()}
+        onUseAsContainer={vi.fn()}
+        onRemoveFromList={onRemoveFromList}
+      />,
+    )
+
+    // The kebab itself is disabled while a packing write is in flight, so the
+    // menu never opens and removal is unreachable.
+    const kebab = screen.getByRole('button', { name: 'Open Cooking pot packing options' })
+    expect((kebab as HTMLButtonElement).disabled).toBe(true)
+    await user.click(kebab)
+    expect(screen.queryByRole('button', { name: 'Remove from list' })).not.toBeInTheDocument()
+    expect(onRemoveFromList).not.toHaveBeenCalled()
+  })
+})
