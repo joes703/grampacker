@@ -25,8 +25,12 @@ const ListSidebarDrawer = lazy(() => import('./ListSidebarDrawer'))
 import {
   queryKeys,
   fetchLists,
+  createFoodItem,
+  deleteFoodItem,
   fetchListFood,
   fetchListItems,
+  setFoodDays,
+  setFoodSlotNeeded,
   fetchGearItems,
   fetchCategories,
   fetchPackingLocations,
@@ -64,9 +68,11 @@ import { planPackingItemReorder } from './packing-dnd'
 
 // Stable empty value so the food-derived memos below do not see a fresh object
 // on every render while the query is still cold.
-const EMPTY_LIST_FOOD = { dayCount: 0, slots: [], items: [] } as const
+const EMPTY_LIST_FOOD: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
 
 import WeightSummary from './WeightSummary'
+import FoodSection from './FoodSection'
+import type { ListFoodResponse } from '../../shared/food'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
 import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
@@ -397,6 +403,45 @@ function ListDetailInner({
     queryFn: () => fetchListFood(listId),
   })
   const listFood = listFoodQuery.data ?? EMPTY_LIST_FOOD
+
+  // Plain mutate-and-invalidate, deliberately not optimistic. A slot toggle
+  // also clears that slot's associations server-side, and an optimistic
+  // transform that flipped only `needed` would show a state the server is
+  // never going to produce.
+  const invalidateFood = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
+  }, [qc, listId])
+  const foodDaysMut = useMutation({
+    mutationFn: (days: number) => setFoodDays(listId, days),
+    meta: { errorToast: "Couldn't change the trip length. Please try again." },
+    onSuccess: invalidateFood,
+  })
+  const foodSlotMut = useMutation({
+    mutationFn: (vars: { slotId: string; needed: boolean }) =>
+      setFoodSlotNeeded(listId, vars.slotId, vars.needed),
+    meta: { errorToast: "Couldn't update that meal. Please try again." },
+    onSuccess: invalidateFood,
+  })
+  const foodItemCreateMut = useMutation({
+    mutationFn: (input: {
+      name: string
+      weightGrams: number
+      quantity: number
+      slotIds: string[]
+    }) => createFoodItem(listId, input),
+    meta: { errorToast: "Couldn't add that food. Please try again." },
+    onSuccess: invalidateFood,
+  })
+  const foodItemDeleteMut = useMutation({
+    mutationFn: (itemId: string) => deleteFoodItem(listId, itemId),
+    meta: { errorToast: "Couldn't remove that food. Please try again." },
+    onSuccess: invalidateFood,
+  })
+  const foodBusy =
+    foodDaysMut.isPending ||
+    foodSlotMut.isPending ||
+    foodItemCreateMut.isPending ||
+    foodItemDeleteMut.isPending
 
   const gearItemsQuery = useQuery({
     queryKey: queryKeys.gearItems(),
@@ -1583,6 +1628,25 @@ function ListDetailInner({
                 )
               })()}
             </>
+          )}
+
+          {/* Food sits OUTSIDE the listItems.length === 0 branch above: a list
+              with food and no gear yet is a real, usable list, and hiding this
+              behind the empty-gear state would make it unreachable.
+
+              Edit mode only. Not because pack mode is "for containers" - it is
+              a genuine packed/ready checklist - but because food here has no
+              packed/ready state to contribute to it. */}
+          {mode === 'edit' && (
+            <FoodSection
+              food={listFood}
+              weightUnit={weightUnit}
+              busy={foodBusy}
+              onSetDays={(days) => foodDaysMut.mutate(days)}
+              onSetSlotNeeded={(slotId, needed) => foodSlotMut.mutate({ slotId, needed })}
+              onAddItem={(input) => foodItemCreateMut.mutate(input)}
+              onDeleteItem={(itemId) => foodItemDeleteMut.mutate(itemId)}
+            />
           )}
         </div>
       </div>

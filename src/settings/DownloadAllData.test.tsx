@@ -23,6 +23,7 @@ vi.mock('../lib/queries', async (importOriginal) => ({
   fetchLists: vi.fn(),
   fetchListItems: vi.fn(),
   fetchPackingLocations: vi.fn(),
+  fetchListFood: vi.fn(),
 }))
 
 import {
@@ -31,6 +32,7 @@ import {
   fetchLists,
   fetchListItems,
   fetchPackingLocations,
+  fetchListFood,
 } from '../lib/queries'
 import DownloadAllData from './DownloadAllData'
 
@@ -80,6 +82,7 @@ beforeEach(() => {
     Promise.resolve([itemFor(listId, `i-${listId}`)]),
   )
   vi.mocked(fetchPackingLocations).mockResolvedValue(packingLocations)
+  vi.mocked(fetchListFood).mockResolvedValue({ dayCount: 0, slots: [], items: [] })
   // jsdom implements neither of these object-URL helpers.
   URL.createObjectURL = vi.fn(() => 'blob:mock')
   URL.revokeObjectURL = vi.fn()
@@ -115,6 +118,7 @@ describe('DownloadAllData', () => {
     // snapshot, and one entry per list, keyed by slugified name.
     const files = zipSync.mock.calls[0]![0]
     expect(Object.keys(files).sort()).toEqual([
+      'food.json',
       'gear-library.csv',
       'lists/thru-hike.csv',
       'lists/weekend-trip.csv',

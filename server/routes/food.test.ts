@@ -374,3 +374,35 @@ describe('food: list duplication', () => {
     expect(copied.items[0]!.id).not.toBe(food.items[0]?.id)
   })
 })
+
+describe('food never crosses the public share boundary', () => {
+  it('is absent from a shared list, with food populated', async () => {
+    // Food is a private planning aid. The projection is field-by-field, so this
+    // asserts the EXACT key set of the raw JSON rather than banning names I
+    // happened to think of - a `foodItems` array would slip past a deny-list.
+    const { cookie } = await signUpVerifiedUser('food-share@example.com', 'FS')
+    const listId = await createList(cookie, 'Shared trip')
+    await setDays(cookie, listId, 3)
+    const food = await getFood(cookie, listId)
+    await addItem(cookie, listId, {
+      name: 'Secret snacks',
+      weightGrams: 500,
+      quantity: 2,
+      slotIds: [slotOf(food, 1, 'lunch').id],
+    })
+
+    const shared = await apiRequest(cookie, 'PATCH', `/api/lists/${listId}`, {
+      isShared: true,
+    })
+    expect(shared.status).toBe(200)
+    const slug = ((await shared.json()) as { slug: string }).slug
+
+    const res = await apiRequest('', 'GET', `/api/shares/${slug}`)
+    expect(res.status).toBe(200)
+    const raw = (await res.json()) as Record<string, unknown>
+
+    expect(Object.keys(raw).sort()).toEqual(['categories', 'items', 'list'])
+    // And nothing anywhere in the payload mentions the food we just added.
+    expect(JSON.stringify(raw)).not.toContain('Secret snacks')
+  })
+})

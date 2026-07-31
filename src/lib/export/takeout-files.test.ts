@@ -76,12 +76,13 @@ const gearItems: GearItem[] = [
 
 // Spread into the tests that do not exercise packing, so their expectations
 // stay about the files rather than the packing snapshot's inputs.
-const noPacking = { packingLocationsByListId: new Map() }
+const noPacking = { packingLocationsByListId: new Map(), foodByListId: new Map() }
 
 describe('buildTakeoutFiles', () => {
   it('always emits the library files, matching their standalone exports', () => {
     const files = buildTakeoutFiles({ categories, gearItems, lists: [], allItems: [], ...noPacking })
     expect(Object.keys(files).sort()).toEqual([
+      'food.json',
       'gear-library.csv',
       'packing.json',
     ])
@@ -105,6 +106,7 @@ describe('buildTakeoutFiles', () => {
     })
 
     expect(Object.keys(files).sort()).toEqual([
+      'food.json',
       'gear-library.csv',
       'lists/thru-hike.csv',
       'lists/weekend-trip.csv',
@@ -176,6 +178,7 @@ describe('buildTakeoutFiles', () => {
       lists,
       allItems: [assigned, unassigned],
       packingLocationsByListId,
+      foodByListId: new Map(),
     })
     const packing = JSON.parse(files['packing.json'] ?? '') as {
       version: number

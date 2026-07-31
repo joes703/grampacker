@@ -7,6 +7,7 @@ import {
   fetchGearItems,
   fetchLists,
   fetchListItems,
+  fetchListFood,
   fetchPackingLocations,
 } from '../lib/queries'
 import { buildTakeoutFiles, exportTimestamp } from '../lib/export/takeout-files'
@@ -49,7 +50,7 @@ export default function DownloadAllData() {
       // the list count.
       const perList = await Promise.all(
           lists.map(async (list) => {
-            const [items, locations] = await Promise.all([
+            const [items, locations, food] = await Promise.all([
               qc.fetchQuery({
                 queryKey: queryKeys.listItems(list.id),
                 queryFn: () => fetchListItems(list.id),
@@ -60,14 +61,20 @@ export default function DownloadAllData() {
                 queryFn: () => fetchPackingLocations(list.id),
                 staleTime: 0,
               }),
+              qc.fetchQuery({
+                queryKey: queryKeys.listFood(list.id),
+                queryFn: () => fetchListFood(list.id),
+                staleTime: 0,
+              }),
             ])
-            return { listId: list.id, items, locations }
+            return { listId: list.id, items, locations, food }
           }),
       )
       const allItems: ListItemWithGear[] = perList.flatMap(({ items }) => items)
       const packingLocationsByListId = new Map<string, PackingLocation[]>(
         perList.map(({ listId, locations }) => [listId, locations]),
       )
+      const foodByListId = new Map(perList.map(({ listId, food }) => [listId, food]))
 
       const { zipSync, strToU8 } = fflate
       const fileContents = buildTakeoutFiles({
@@ -76,6 +83,7 @@ export default function DownloadAllData() {
         lists,
         allItems,
         packingLocationsByListId,
+        foodByListId,
       })
       const files: Record<string, Uint8Array> = {}
       for (const [name, content] of Object.entries(fileContents)) {
