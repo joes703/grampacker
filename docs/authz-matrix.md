@@ -23,7 +23,6 @@ resources). A route without a row, or a row without tests, fails review.
 | `/api/gear-items/bulk-delete` | POST | session | every id owned or 404, zero writes | `BulkDeleteRequest` | 204 | `server/routes/gear-items.test.ts` |
 | `/api/gear-items/bulk-move` | POST | session | every id + target category owned, else 404/400, zero writes | `BulkMoveRequest` | 204 | `server/routes/gear-items.test.ts` |
 | `/api/gear-items/:id` | PATCH, DELETE | session | own row or 404; PATCH validates category ownership | `UpdateGearItemRequest` (PATCH) | `GearItemResponse` / 204 | `server/routes/gear-items.test.ts` |
-| `/api/lists` | GET, POST | session | own rows only (repo-scoped); POST 422 at the 100-list cap | `CreateListRequest` (POST) | `ListResponse[]` / `ListResponse` (carries `foodPlanId`, nullable - the attached plan pointer) | `server/routes/lists.test.ts` |
 | `/api/lists/order` | PUT | session | every id owned or 404, zero writes; never bumps `updatedAt` | `ReorderListsRequest` | 204 | `server/routes/lists.test.ts` |
 | `/api/lists/from-selection` | POST | session | every gear id owned or 400, zero writes; atomic list+items batch | `CreateListFromSelectionRequest` | `ListResponse` | `server/routes/lists.test.ts` |
 | `/api/lists/import` | POST | session | every existing category/gear ref owned or 400, zero writes; creates list + categories + gear + items in one transaction; 422 at the list/gear caps | `ImportListRequest` | `ListResponse` | `server/routes/lists.test.ts` |

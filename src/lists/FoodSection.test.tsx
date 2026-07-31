@@ -16,6 +16,7 @@ const baseProps = {
   onSetSlotNeeded: vi.fn(),
   onAddItem: vi.fn(),
   onDeleteItem: vi.fn(),
+  onSetItemSlots: vi.fn(),
 }
 
 function renderSection(food: ListFoodResponse, overrides = {}) {
@@ -113,12 +114,17 @@ describe('FoodSection add form', () => {
     expect(screen.getByLabelText('Units carried')).toHaveValue(1)
 
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
-    expect(props.onAddItem).toHaveBeenCalledWith({
-      name: 'Oatmeal',
-      weightGrams: 80,
-      quantity: 1,
-      slotIds: ['b1', 'b2', 'b3', 'b4'],
-    })
+    expect(props.onAddItem).toHaveBeenCalledWith(
+      {
+        name: 'Oatmeal',
+        weightGrams: 80,
+        quantity: 1,
+        slotIds: ['b1', 'b2', 'b3', 'b4'],
+      },
+      // The form stays open until the write succeeds, so the caller hands back
+      // a close callback rather than the form closing on submit.
+      expect.any(Function),
+    )
   })
 
   it('warns that food here adds to consumable gear', () => {
@@ -132,5 +138,77 @@ describe('FoodSection empty state', () => {
   it('explains what setting a trip length does', () => {
     renderSection({ dayCount: 0, slots: [], items: [] })
     expect(screen.getByText(/Strike the ones you will not/)).toBeInTheDocument()
+  })
+})
+
+describe('FoodSection destructive guards', () => {
+  const food: ListFoodResponse = {
+    dayCount: 3,
+    slots: [
+      slot('b1', 1, 'breakfast'),
+      slot('l3', 3, 'lunch'),
+    ],
+    items: [
+      { id: 'i1', name: 'Ramen', weightGrams: 120, quantity: 1, sortOrder: 0, slotIds: ['l3'] },
+    ],
+  }
+
+  it('treats an emptied day field as a typo, not as zero days', () => {
+    // Number('') is 0, and 0 days deletes every slot on the list. Clearing the
+    // box to retype it must not wipe the trip.
+    const props = renderSection(food)
+    const input = screen.getByLabelText('Trip length in days')
+    fireEvent.change(input, { target: { value: '' } })
+    fireEvent.blur(input)
+
+    expect(props.onSetDays).not.toHaveBeenCalled()
+    expect(input).toHaveValue(3)
+  })
+
+  it('asks before a shortening that would drop planned meals', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const props = renderSection(food)
+    const input = screen.getByLabelText('Trip length in days')
+    fireEvent.change(input, { target: { value: '2' } })
+    fireEvent.blur(input)
+
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(props.onSetDays).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('shortens without asking when nothing would be lost', () => {
+    // Day 3 holds the only planned food; trimming to 3 loses nothing.
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    const props = renderSection({ ...food, dayCount: 4 })
+    const input = screen.getByLabelText('Trip length in days')
+    fireEvent.change(input, { target: { value: '3' } })
+    fireEvent.blur(input)
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(props.onSetDays).toHaveBeenCalledWith(3)
+    confirmSpy.mockRestore()
+  })
+
+  it('asks before unscheduling a filled slot, and says the weight stays', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const props = renderSection(food)
+    // Day 3 lunch is the filled one; its button is the second "Not needed".
+    const buttons = screen.getAllByRole('button', { name: 'Not needed' })
+    fireEvent.click(buttons[buttons.length - 1]!)
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('pack weight'))
+    expect(props.onSetSlotNeeded).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('does not ask when the slot is empty', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    const props = renderSection(food)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Not needed' })[0]!)
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(props.onSetSlotNeeded).toHaveBeenCalledWith('b1', false)
+    confirmSpy.mockRestore()
   })
 })

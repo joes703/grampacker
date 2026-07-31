@@ -27,6 +27,7 @@ import {
   fetchLists,
   createFoodItem,
   deleteFoodItem,
+  updateFoodItem,
   fetchListFood,
   fetchListItems,
   setFoodDays,
@@ -72,7 +73,9 @@ const EMPTY_LIST_FOOD: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
 
 import WeightSummary from './WeightSummary'
 import FoodSection from './FoodSection'
-import type { ListFoodResponse } from '../../shared/food'
+import { ApiError } from '../lib/api'
+import { showToast } from '../lib/toast'
+import { FOOD_ITEM_CAP, type ListFoodResponse } from '../../shared/food'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
 import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
@@ -429,7 +432,27 @@ function ListDetailInner({
       quantity: number
       slotIds: string[]
     }) => createFoodItem(listId, input),
-    meta: { errorToast: "Couldn't add that food. Please try again." },
+    // Deliberately no meta.errorToast: the server's 422 at the item cap and
+    // its 400 for a stale slot each say something the generic message cannot,
+    // and the cap is the one refusal a user can act on. onError surfaces the
+    // real reason and consumes the rejection.
+    onError: (err) => {
+      const status = err instanceof ApiError ? err.status : 0
+      showToast(
+        status === 422
+          ? `Food item limit reached (${FOOD_ITEM_CAP} per list).`
+          : status === 400
+            ? 'Those meals are no longer available. Reopen the form and pick again.'
+            : "Couldn't add that food. Please try again.",
+        { type: 'error' },
+      )
+    },
+    onSuccess: invalidateFood,
+  })
+  const foodItemSlotsMut = useMutation({
+    mutationFn: (vars: { itemId: string; slotIds: string[] }) =>
+      updateFoodItem(listId, vars.itemId, { slotIds: vars.slotIds }),
+    meta: { errorToast: "Couldn't reschedule that food. Please try again." },
     onSuccess: invalidateFood,
   })
   const foodItemDeleteMut = useMutation({
@@ -441,6 +464,7 @@ function ListDetailInner({
     foodDaysMut.isPending ||
     foodSlotMut.isPending ||
     foodItemCreateMut.isPending ||
+    foodItemSlotsMut.isPending ||
     foodItemDeleteMut.isPending
 
   const gearItemsQuery = useQuery({
@@ -1644,8 +1668,11 @@ function ListDetailInner({
               busy={foodBusy}
               onSetDays={(days) => foodDaysMut.mutate(days)}
               onSetSlotNeeded={(slotId, needed) => foodSlotMut.mutate({ slotId, needed })}
-              onAddItem={(input) => foodItemCreateMut.mutate(input)}
+              onAddItem={(input, onSuccess) =>
+                foodItemCreateMut.mutate(input, { onSuccess: () => { invalidateFood(); onSuccess() } })
+              }
               onDeleteItem={(itemId) => foodItemDeleteMut.mutate(itemId)}
+              onSetItemSlots={(itemId, slotIds) => foodItemSlotsMut.mutate({ itemId, slotIds })}
             />
           )}
         </div>

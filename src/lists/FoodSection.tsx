@@ -33,6 +33,16 @@ import type { WeightUnit } from '../lib/weight'
 // holding only coffee is non-empty and not necessarily enough; judging that is
 // the user's job, not the app's.
 
+// True when shrinking to `days` would drop a slot that is either holding food
+// or has been explicitly marked not-needed. Untouched, empty days are not work,
+// so shortening a trip you have not planned yet asks nothing.
+function losesWorkBelow(food: ListFoodResponse, days: number): boolean {
+  const doomed = food.slots.filter((slot) => slot.dayNumber > days)
+  if (doomed.some((slot) => !slot.needed)) return true
+  const doomedIds = new Set(doomed.map((slot) => slot.id))
+  return food.items.some((item) => item.slotIds.some((id) => doomedIds.has(id)))
+}
+
 const MEAL_LABELS: Record<Meal, string> = {
   breakfast: 'Breakfast',
   // Joe's definition: everything between breakfast and dinner. Not a sit-down.
@@ -46,13 +56,14 @@ type Props = {
   busy: boolean
   onSetDays: (days: number) => void
   onSetSlotNeeded: (slotId: string, needed: boolean) => void
-  onAddItem: (input: {
-    name: string
-    weightGrams: number
-    quantity: number
-    slotIds: string[]
-  }) => void
+  onAddItem: (
+    input: { name: string; weightGrams: number; quantity: number; slotIds: string[] },
+    onSuccess: () => void,
+  ) => void
   onDeleteItem: (itemId: string) => void
+  /** Reschedule an existing item. Passing [] unschedules it without deleting
+   *  it - the food is still carried, it just has no meal in mind. */
+  onSetItemSlots: (itemId: string, slotIds: string[]) => void
 }
 
 export default function FoodSection({
@@ -63,6 +74,7 @@ export default function FoodSection({
   onSetSlotNeeded,
   onAddItem,
   onDeleteItem,
+  onSetItemSlots,
 }: Props) {
   const [daysDraft, setDaysDraft] = useState(String(food.dayCount))
   const [adding, setAdding] = useState(false)
@@ -103,12 +115,36 @@ export default function FoodSection({
             disabled={busy}
             onChange={(e) => setDaysDraft(e.target.value)}
             onBlur={() => {
-              const next = Number(daysDraft)
-              if (!Number.isInteger(next) || next < 0 || next > FOOD_DAY_CAP) {
+              // An EMPTY field is not zero. Number('') is 0, and 0 days deletes
+              // every slot and every placement on the list - so clearing the
+              // box to retype it would silently destroy the trip.
+              const trimmed = daysDraft.trim()
+              const next = Number(trimmed)
+              if (
+                trimmed === '' ||
+                !Number.isInteger(next) ||
+                next < 0 ||
+                next > FOOD_DAY_CAP
+              ) {
                 setDaysDraft(String(food.dayCount))
                 return
               }
-              if (next !== food.dayCount) onSetDays(next)
+              if (next === food.dayCount) return
+              // Shrinking throws away the slots beyond the new count, and with
+              // them their placements and any "not needed" decisions. Ask, but
+              // only when there is actually something to lose.
+              if (next < food.dayCount && losesWorkBelow(food, next)) {
+                const ok = window.confirm(
+                  `Shortening the trip to ${next} ${next === 1 ? 'day' : 'days'} removes ` +
+                    'the later meals, including what you had planned for them. ' +
+                    'Your food items stay on the list. Continue?',
+                )
+                if (!ok) {
+                  setDaysDraft(String(food.dayCount))
+                  return
+                }
+              }
+              onSetDays(next)
             }}
             className="w-14 rounded border border-gray-300 px-1.5 py-0.5 text-right tabular-nums"
             aria-label="Trip length in days"
@@ -169,7 +205,21 @@ export default function FoodSection({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => onSetSlotNeeded(slot.id, !slot.needed)}
+                      onClick={() => {
+                        // Pruning a FILLED slot unschedules its food. The items
+                        // survive and so does their weight - say so, because
+                        // "not needed" sounds like it should be reversible.
+                        if (slot.needed && slotItems.length > 0) {
+                          const ok = window.confirm(
+                            `${MEAL_LABELS[meal]} on day ${day} has food planned for it. ` +
+                              'Marking it not needed unschedules that food - it stays ' +
+                              'on the list and still counts toward your pack weight. ' +
+                              'Continue?',
+                          )
+                          if (!ok) return
+                        }
+                        onSetSlotNeeded(slot.id, !slot.needed)
+                      }}
                       className="shrink-0 rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
                     >
                       {slot.needed ? 'Not needed' : 'Need it'}
@@ -207,6 +257,9 @@ export default function FoodSection({
               weightUnit={weightUnit}
               busy={busy}
               onDelete={() => onDeleteItem(item.id)}
+              onUnschedule={
+                item.slotIds.length > 0 ? () => onSetItemSlots(item.id, []) : undefined
+              }
             />
           ))}
         </div>
@@ -218,10 +271,11 @@ export default function FoodSection({
             slots={food.slots.filter((slot) => slot.needed)}
             busy={busy}
             onCancel={() => setAdding(false)}
-            onSubmit={(input) => {
-              onAddItem(input)
-              setAdding(false)
-            }}
+            // The form closes only once the add SUCCEEDS. Closing on submit
+            // threw the typed name, weight and slot selection away whenever the
+            // write failed - including at the item cap, where the user is most
+            // likely to be told no.
+            onSubmit={(input) => onAddItem(input, () => setAdding(false))}
           />
         ) : (
           <button
@@ -250,11 +304,13 @@ function FoodItemRow({
   weightUnit,
   busy,
   onDelete,
+  onUnschedule,
 }: {
   item: ListFoodResponse['items'][number]
   weightUnit: WeightUnit
   busy: boolean
   onDelete: () => void
+  onUnschedule?: () => void
 }) {
   return (
     <div className={`${FLAT_TABLE_ROW} flex items-center gap-2`}>
@@ -268,6 +324,16 @@ function FoodItemRow({
         </span>
       </span>
       <ItemWeightValue grams={item.weightGrams * item.quantity} unit={weightUnit} />
+      {onUnschedule && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onUnschedule}
+          className="shrink-0 rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
+        >
+          Unschedule
+        </button>
+      )}
       <RowIconButton
         touchSafe
         onClick={onDelete}
@@ -360,9 +426,9 @@ function AddFoodForm({
           className="w-16 rounded border border-gray-300 px-2 py-1 text-right text-sm tabular-nums"
         />
       </div>
-      {/* Direct multi-select, by meal. No template, no inheritance, no
-          overrides - "all four breakfasts" is one tap and the days that differ
-          are edited afterwards. */}
+      {/* Direct multi-select. The whole-meal buttons are a shortcut for the
+          common case; the per-day checkboxes below are how the days that differ
+          get set. No templates, no inheritance, no overrides. */}
       <div className="flex flex-wrap gap-1.5">
         {MEALS.map((meal) => {
           const ids = slots.filter((slot) => slot.meal === meal).map((slot) => slot.id)
@@ -385,6 +451,40 @@ function AddFoodForm({
           )
         })}
       </div>
+      {slots.length > 0 && (
+        <div className="max-h-40 overflow-y-auto rounded border border-gray-200">
+          {[...new Set(slots.map((slot) => slot.dayNumber))]
+            .sort((a, b) => a - b)
+            .map((day) => (
+              <div key={day} className="flex items-center gap-2 px-2 py-1">
+                <span className={`w-12 shrink-0 ${FLAT_TABLE_META_TEXT}`}>Day {day}</span>
+                {MEALS.map((meal) => {
+                  const slot = slots.find(
+                    (s) => s.dayNumber === day && s.meal === meal,
+                  )
+                  if (!slot) return null
+                  return (
+                    <label key={slot.id} className="flex items-center gap-1 text-xs text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(slot.id)}
+                        onChange={(e) =>
+                          setSelected((prev) =>
+                            e.target.checked
+                              ? [...prev, slot.id]
+                              : prev.filter((id) => id !== slot.id),
+                          )
+                        }
+                        aria-label={`${MEAL_LABELS[meal]} day ${day}`}
+                      />
+                      {MEAL_LABELS[meal].slice(0, 1)}
+                    </label>
+                  )
+                })}
+              </div>
+            ))}
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <button
           type="submit"

@@ -76,3 +76,18 @@ WHEN (SELECT count(*) FROM `list_food_items` WHERE `list_id` = NEW.`list_id`) >=
 BEGIN
   SELECT RAISE(ABORT, 'food item cap exceeded (200 per list)');
 END;
+--> statement-breakpoint
+-- The three slot states have to stay THREE. "Deliberately skipped, but still
+-- holding food" is not one of them, and the repo clearing associations when a
+-- slot is pruned only closes that door from one side: a create/update reads the
+-- slot, a concurrent prune commits, and the association insert then lands on a
+-- slot that is no longer needed. The read and the insert are separate round
+-- trips, so no amount of ordering in JS closes it.
+--
+-- This does. An association can only ever exist for a slot that is needed.
+CREATE TRIGGER `list_food_item_slots_needed_only`
+BEFORE INSERT ON `list_food_item_slots`
+WHEN (SELECT `needed` FROM `list_food_slots` WHERE `id` = NEW.`slot_id`) = 0
+BEGIN
+  SELECT RAISE(ABORT, 'food slot not needed');
+END;

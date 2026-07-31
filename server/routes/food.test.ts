@@ -402,7 +402,67 @@ describe('food never crosses the public share boundary', () => {
     const raw = (await res.json()) as Record<string, unknown>
 
     expect(Object.keys(raw).sort()).toEqual(['categories', 'items', 'list'])
+    // Nested too: a `food` key hanging off the list or an item would sail past
+    // a root-only assertion.
+    expect(Object.keys(raw.list as object).sort()).toEqual([
+      'description',
+      'groupWorn',
+      'isDraft',
+      'name',
+    ])
+    const items = raw.items as Record<string, unknown>[]
+    for (const item of items) {
+      expect(Object.keys(item).sort()).toEqual([
+        'gear',
+        'gearItemId',
+        'id',
+        'isConsumable',
+        'isWorn',
+        'quantity',
+        'sortOrder',
+      ])
+    }
     // And nothing anywhere in the payload mentions the food we just added.
     expect(JSON.stringify(raw)).not.toContain('Secret snacks')
+  })
+})
+
+describe('food: the fourth state is unreachable at the database', () => {
+  it('rejects an association insert against a pruned slot', async () => {
+    // The repo's needed=true read is a PRECHECK - a concurrent prune can commit
+    // between it and the insert batch. The needed_only trigger is what actually
+    // guarantees "deliberately skipped" never coexists with food, so this drives
+    // the write path directly rather than trusting the read.
+    const { cookie } = await signUpVerifiedUser('food-race@example.com', 'FR')
+    const listId = await createList(cookie, 'Trip')
+    await setDays(cookie, listId, 2)
+    const food = await getFood(cookie, listId)
+    const lunch = slotOf(food, 1, 'lunch')
+
+    // An item that IS legitimately scheduled...
+    const created = (await (
+      await addItem(cookie, listId, {
+        name: 'Bar',
+        weightGrams: 60,
+        quantity: 1,
+        slotIds: [slotOf(food, 1, 'breakfast').id],
+      })
+    ).json()) as FoodItemResponse
+
+    // ...then the lunch slot is pruned, and we try to reschedule onto it.
+    await apiRequest(cookie, 'PATCH', `/api/lists/${listId}/food/slots/${lunch.id}`, {
+      needed: false,
+    })
+    const res = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${listId}/food/items/${created.id}`,
+      { slotIds: [lunch.id] },
+    )
+    expect(res.status).toBe(400)
+
+    // And the item kept its original placement rather than being left bare.
+    const after = await getFood(cookie, listId)
+    expect(after.items[0]!.slotIds).toEqual([slotOf(after, 1, 'breakfast').id])
   })
 })

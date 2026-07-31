@@ -326,7 +326,9 @@ const FIXTURES = [
   // Food estimate (0017). Slots are the trip's eating periods; items are what
   // you CARRY; the association expresses intent only and is never summed.
   //
-  // One item is associated with TWO slots, one of them pruned. What that
+  // One item is associated with a needed slot; a SECOND slot is pruned and
+  // deliberately holds nothing, because "pruned but still holding food" is a
+  // state the schema forbids (see the needed_only trigger). What this
   // actually guards is a future migration DELETING or REWRITING association
   // rows, or resetting `needed` back to 1 during a rebuild - either of which
   // would silently re-add meals the user said they were not eating. It does
@@ -369,12 +371,6 @@ const FIXTURES = [
   ['list_food_item_slots', {
     food_item_id: 'lfi-seed',
     slot_id: 'lfs-seed',
-    user_id: 'u-seed',
-    list_id: 'list-seed',
-  }],
-  ['list_food_item_slots', {
-    food_item_id: 'lfi-seed',
-    slot_id: 'lfs-seed-2',
     user_id: 'u-seed',
     list_id: 'list-seed',
   }],

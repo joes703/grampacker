@@ -43,6 +43,13 @@ export function isFoodItemCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'food item cap exceeded')
 }
 
+// Raised by the needed_only trigger when an association insert loses a race
+// with a prune. The read in usableSlotIds catches the ordinary case; this
+// catches the narrow window it cannot.
+export function isSlotNotNeededError(err: unknown): boolean {
+  return isTriggerAbort(err, 'food slot not needed')
+}
+
 export function createFoodRepo(db: Db, userId: string) {
   // Every method takes listId and filters on it. The route's list is the only
   // authority on which list a nested resource belongs to - trusting the child
@@ -297,6 +304,7 @@ export function createFoodRepo(db: Db, userId: string) {
         await db.batch([insertItem, ...linkInserts])
       } catch (err) {
         if (isFoodItemCapError(err)) return { ok: false, reason: 'cap_exceeded' }
+        if (isSlotNotNeededError(err)) return { ok: false, reason: 'invalid_slots' }
         throw err
       }
 
@@ -384,7 +392,12 @@ export function createFoodRepo(db: Db, userId: string) {
         )
       }
       const [first, ...rest] = statements
-      if (first) await db.batch([first, ...rest])
+      try {
+        if (first) await db.batch([first, ...rest])
+      } catch (err) {
+        if (isSlotNotNeededError(err)) return { ok: false, reason: 'invalid_slots' }
+        throw err
+      }
 
       const links =
         usable ??
@@ -434,11 +447,13 @@ export function createFoodRepo(db: Db, userId: string) {
    * Resolve client-supplied slot ids to the ones that are actually usable:
    * on THIS list, owned by THIS user, and currently `needed`.
    *
-   * The `needed` filter is what stops the fourth state being created from the
-   * other direction - setSlotNeeded(false) clears existing associations, but
-   * without this, a create/update could simply add one to an already-pruned
-   * slot. Returns null when any id is unusable, so a bad request fails rather
-   * than silently dropping placements the user asked for.
+   * The `needed` filter gives a clean 400 for the ordinary case of naming a
+   * pruned slot. It is NOT what makes the fourth state unreachable: this is a
+   * read, and a concurrent prune can commit between it and the insert batch.
+   * The list_food_item_slots_needed_only trigger (migration 0017) is the actual
+   * guarantee; this is here so the common case gets a useful error instead of a
+   * constraint failure. Returns null when any id is unusable, so a bad request
+   * fails rather than silently dropping placements the user asked for.
    *
    * Chunked owned-set membership, never an unbounded inArray: the id list is
    * client-supplied and D1 caps bound params at 100 per statement.
