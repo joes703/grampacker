@@ -55,7 +55,7 @@ export default function CurrentListHeader({ list }: Props) {
           aria-label="Rename list"
           title="Rename list"
           // The shared target stays 40x40 and visible below lg. At lg it
-          // compacts to 28x28 and hides until a pointer user hovers the header.
+          // compacts to 28x24 and hides until a pointer user hovers the header.
           className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 opacity-100 transition-opacity hover:text-gray-600 lg:opacity-0 lg:group-hover:opacity-100`}
         >
           <Pencil size={14} />

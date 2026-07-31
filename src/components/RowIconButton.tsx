@@ -3,9 +3,10 @@ import { ROW_CONTROL_TARGET, ROW_LEADING_CONTROL_TARGET } from './flat-table-sty
 
 // Single shared component for the small icon buttons that live inside a row
 // (item-row toggles, kebabs, drag handles, gear-row edit/delete, category-
-// header actions, etc.). The compact default is w-7 h-6 (28x24) for controls
+// header actions, etc.). The compact default is 28x24 below lg and 24x24 at
+// lg+, for controls
 // that render only on desktop. Set `touchSafe` on any control that can render
-// below lg to use the shared 40px touch / 28px pointer target.
+// below lg to use the shared 40px touch / 28x24 pointer target.
 //
 // Pick a variant; the variant owns idle + hover styling. For toggles, set
 // `active` to render the chip-background "on" state. Pass dnd-kit listeners
@@ -36,7 +37,23 @@ type Props = {
   ref?: Ref<HTMLButtonElement>
 } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label' | 'children'>
 
-const BASE = 'shrink-0 w-7 h-6 inline-flex items-center justify-center rounded'
+// 24x24 is the WCAG 2.2 SC 2.5.8 (Level AA) pointer-target floor. Do not go
+// below it. The width must stay equal to DESKTOP_ROW_CONTROL_TARGET's so
+// header controls and row controls share a column.
+//
+// `rounded` clips the corners, so this does not strictly CONTAIN a 24x24
+// square and still leans on 2.5.8's spacing exception - see the longer note
+// on DESKTOP_ROW_CONTROL_TARGET in flat-table-styles.ts. Sitting at the
+// nominal floor is about leaving as little of the argument as possible
+// resting on gaps that shift when layout moves.
+//
+// The lg: prefix is load-bearing. This is nominally a desktop-only button,
+// but AddItemRow mounts non-touchSafe instances that SURVIVE a resize below
+// lg once the form is open, so an unprefixed w-6 would quietly shrink a real
+// mobile target from 28px to 24px. The density doc's standing rule is that
+// tuning desktop never moves touch sizing.
+const BASE =
+  'shrink-0 w-7 lg:w-6 h-6 inline-flex items-center justify-center rounded'
 const TOUCH_BASE = `shrink-0 ${ROW_CONTROL_TARGET}`
 // Drag handles keep the touch box on mobile but narrow on desktop: the grip
 // glyph is a ~6px column of dots, so a square box strands visible dead space
