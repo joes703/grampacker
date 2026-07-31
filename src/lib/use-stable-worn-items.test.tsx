@@ -7,7 +7,13 @@ import type { ListItemWithGear, PackingLocation } from './types'
 
 afterEach(cleanup)
 
-function item(id: string, locationId: string | null, isWorn: boolean): ListItemWithGear {
+function item(
+  id: string,
+  locationId: string | null,
+  isWorn: boolean,
+  sortOrder = 0,
+  packSortOrder = 0,
+): ListItemWithGear {
   return {
     id,
     listId: 'list-1',
@@ -18,8 +24,8 @@ function item(id: string, locationId: string | null, isWorn: boolean): ListItemW
     isPacked: false,
     isReady: false,
     packingLocationId: locationId,
-    sortOrder: 0,
-    packSortOrder: 0,
+    sortOrder,
+    packSortOrder,
     createdAt: '2026-01-01',
     updatedAt: '2026-01-01',
     gearItem: {
@@ -60,5 +66,46 @@ describe('useStableWornItems with location groups', () => {
     expect(result.current).toEqual([])
     expect(grouped[0]?.items.map((entry) => entry.id)).toEqual(['worn-assigned', 'normal'])
     expect(grouped.at(-1)?.items.map((entry) => entry.id)).toEqual(['worn-unassigned'])
+  })
+})
+
+// The Worn section renders in DOCUMENT order, and it has to derive that
+// itself. This hook walks the grouped buckets, so before it sorted, two worn
+// rows in different groups came out ordered by their GROUPS - which is not an
+// order the user ever chose for them.
+//
+// Pack order is deliberately not used here either: worn rows sit outside the
+// packing tree and cannot be dragged, so ranking them by a pack rank would
+// sort them on a number nobody can control. They keep that rank - it reserves
+// their slot for when they stop being worn - it just is not what this reads.
+describe('useStableWornItems ordering', () => {
+  const locations: PackingLocation[] = [
+    { id: 'loc-1', name: 'First bag', sortOrder: 0, containerListItemId: null },
+    { id: 'loc-2', name: 'Second bag', sortOrder: 1, containerListItemId: null },
+  ]
+
+  it('orders by document rank across groups, not by group', () => {
+    // Document order says late-bag-row comes FIRST. Group order would put it
+    // last, because its bag sorts second.
+    const early = item('early-doc', 'loc-2', true, 0, 99)
+    const late = item('late-doc', 'loc-1', true, 5, 0)
+    const grouped = groupListItemsByLocation([late, early], locations)
+
+    const { result } = renderHook(() => useStableWornItems(grouped, true))
+    expect(result.current.map((entry) => entry.id)).toEqual([
+      'early-doc',
+      'late-doc',
+    ])
+  })
+
+  it('ignores pack rank entirely', () => {
+    // Pack ranks are the reverse of document ranks. Document order wins.
+    const a = item('a', 'loc-1', true, 0, 2)
+    const b = item('b', 'loc-1', true, 1, 1)
+    const c = item('c', 'loc-1', true, 2, 0)
+    const grouped = groupListItemsByLocation([c, b, a], locations)
+
+    const { result } = renderHook(() => useStableWornItems(grouped, true))
+    expect(result.current.map((entry) => entry.id)).toEqual(['a', 'b', 'c'])
   })
 })

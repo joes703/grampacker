@@ -195,6 +195,7 @@ describe('buildTakeoutFiles', () => {
           listItemId: string
           gearItem: { id: string; name: string }
           packingLocationId: string | null
+          packSortOrder: number
         }>
       }>
     }
@@ -220,6 +221,19 @@ describe('buildTakeoutFiles', () => {
     }
     expect(packing.lists[0]?.items.find((item) => item.listItemId === 'i-2')?.packingLocationId)
       .toBeNull()
+
+    // v3's reason for existing. The version bump alone would pass even if the
+    // new field were silently dropped, which would make this file a LOSSY
+    // snapshot while claiming to be a lossless one - the export exists so a
+    // reimport can rebuild how a list was organized, and "which bag" without
+    // "where in the bag" no longer rebuilds it.
+    for (const item of packing.lists[0]?.items ?? []) {
+      expect(typeof item.packSortOrder).toBe('number')
+      expect(item.packSortOrder).toBeGreaterThanOrEqual(0)
+    }
+    // Emitted in pack order so the file reads the way Pack view does.
+    const ranks = (packing.lists[0]?.items ?? []).map((item) => item.packSortOrder)
+    expect(ranks).toEqual([...ranks].sort((a, b) => a - b))
   })
 })
 

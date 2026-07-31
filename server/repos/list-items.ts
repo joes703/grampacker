@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import type { Db } from '../db'
 import { categories, gearItems, listItems, lists } from '../db/schema'
 import { isAnyUniqueViolation, isTriggerAbort } from './db-errors'
@@ -553,17 +553,48 @@ export function createListItemsRepo(db: Db, userId: string) {
       // transaction: if anything fails - including a concurrent writer taking
       // a rank first - the scratch values roll back with everything else and
       // never survive.
+      // Both phases RE-ASSERT what the pre-read saw. Without that the writes
+      // key on id alone, and the pre-read is a separate query - so a row that
+      // moved cohorts, became worn, or was reordered by someone else between
+      // the two would still be written. The batch is atomic, but atomic
+      // application of a stale payload is still wrong: it would land a rank
+      // computed for one bag onto a row now sitting in another.
+      //
+      // A precondition that no longer holds simply matches zero rows, which
+      // SQLite does not treat as an error - so the settle phase additionally
+      // requires the row to be sitting at the scratch value its own park
+      // wrote. A row whose park was skipped therefore cannot be settled
+      // either, and is left exactly as the concurrent writer left it.
+      const byIdCohortAndRank = (u: { id: string; packSortOrder: number }) => {
+        const seen = byId.get(u.id)!
+        return and(
+          eq(listItems.id, u.id),
+          eq(listItems.userId, userId),
+          eq(listItems.listId, listId),
+          eq(listItems.isWorn, false),
+          eq(listItems.packSortOrder, seen.packSortOrder),
+          cohort === null
+            ? isNull(listItems.packingLocationId)
+            : eq(listItems.packingLocationId, cohort),
+        )
+      }
       const park = updates.map((u, i) =>
         db
           .update(listItems)
           .set({ packSortOrder: -1 - i })
-          .where(and(eq(listItems.id, u.id), eq(listItems.userId, userId))),
+          .where(byIdCohortAndRank(u)),
       )
-      const settle = updates.map((u) =>
+      const settle = updates.map((u, i) =>
         db
           .update(listItems)
           .set({ packSortOrder: u.packSortOrder })
-          .where(and(eq(listItems.id, u.id), eq(listItems.userId, userId))),
+          .where(
+            and(
+              eq(listItems.id, u.id),
+              eq(listItems.userId, userId),
+              eq(listItems.packSortOrder, -1 - i),
+            ),
+          ),
       )
       const [first, ...rest] = [...park, ...settle]
       if (!first) return { ok: true }

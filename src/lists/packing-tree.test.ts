@@ -6,6 +6,7 @@ function item(
   id: string,
   packingLocationId: string | null,
   sortOrder: number,
+  packSortOrder?: number,
 ): ListItemWithGear {
   return {
     id,
@@ -18,7 +19,10 @@ function item(
     isReady: false,
     packingLocationId,
     sortOrder,
-    packSortOrder: sortOrder,
+    // Defaults to matching sortOrder, which is the state a freshly migrated
+    // list is in. The divergence case gets its own test below - see
+    // "sorts by pack rank, not document rank".
+    packSortOrder: packSortOrder ?? sortOrder,
     createdAt: '2026-01-01',
     updatedAt: '2026-01-01',
     gearItem: {
@@ -205,5 +209,32 @@ describe('optimistic move placement', () => {
 
     const tree = buildPackingTree(items, [main])
     expect(tree.roots[0]!.items.map((i) => i.id)).toEqual(['tarp', 'moved', 'stove'])
+  })
+})
+
+// The regression guard for the whole split. Every other fixture in this file
+// leaves the two ranks equal - the state a freshly migrated list is in - so
+// those assertions would pass just as well against code that still sorted by
+// the document field. This one makes them disagree.
+describe('packing tree ordering source', () => {
+  it('sorts by pack rank, not document rank', () => {
+    const tree = buildPackingTree(
+      [
+        // Document order says A, B, C. Pack order says the reverse.
+        item('a', 'loc-1', 0, 2),
+        item('b', 'loc-1', 1, 1),
+        item('c', 'loc-1', 2, 0),
+      ],
+      [{ id: 'loc-1', name: 'Main', sortOrder: 0, containerListItemId: null }],
+    )
+    expect(tree.roots[0]?.items.map((i) => i.id)).toEqual(['c', 'b', 'a'])
+  })
+
+  it('sorts the unassigned pile by pack rank too', () => {
+    const tree = buildPackingTree(
+      [item('a', null, 0, 2), item('b', null, 1, 0), item('c', null, 2, 1)],
+      [],
+    )
+    expect(tree.unassignedItems.map((i) => i.id)).toEqual(['b', 'c', 'a'])
   })
 })

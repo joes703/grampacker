@@ -269,7 +269,19 @@ export function planListItemReorder({
 
   const categoryItems = items
     .filter((item) =>
-      item.gearItem.categoryId === categoryId && !hiddenItemIds.has(item.id),
+      item.gearItem.categoryId === categoryId &&
+      !hiddenItemIds.has(item.id) &&
+      // Worn rows are pulled out into their own section and are not draggable,
+      // but they were still landing in this planning array - so a category
+      // holding one produced a permutation naming a worn row, which the
+      // pack-order route rejects outright. The effect was a 400 on an ordinary
+      // drag in any list with worn gear. Location grouping already excluded
+      // them (derivePackReorderExclusions); the category fallback did not.
+      //
+      // Only in pack mode: List view genuinely renders worn rows inside their
+      // categories, so excluding them there would plan against rows the user
+      // is not looking at.
+      !(mode === 'pack' && item.isWorn),
     )
     // Sorted by whichever order the user is actually looking at. The cache is
     // canonically in document order, so the pack fallback has to re-sort or it
