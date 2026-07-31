@@ -55,12 +55,33 @@ export const MOBILE_HEADER_HEIGHT = 'min-h-11'
 export const DESKTOP_HEADER_HEIGHT = 'lg:min-h-8'
 
 // Explicit chevron / kebab / drag-handle target box. Mobile 40px square
-// (the minimum comfortable phone target); desktop 28px (exactly fills the
-// new row height so a hover-revealed control doesn't push the row taller).
-// Distinct from RowIconButton, the compact desktop-only inline icon button
-// (28x24) that never renders on mobile and so needs no touch box.
+// (the minimum comfortable phone target); desktop 28px TALL (exactly fills
+// the row height so a hover-revealed control doesn't push the row taller)
+// and 24px WIDE.
+//
+// 24 is deliberate: WCAG 2.2 SC 2.5.8 (Target Size (Minimum), Level AA) sets
+// a 24x24 CSS px floor for pointer targets, and this is that floor.
+//
+// Be precise about what that does and does not buy. 2.5.8 asks the target to
+// CONTAIN a 24x24 square, and `rounded` clips the corners - so a nominal
+// 24x24 box does not strictly satisfy the size requirement on its own, and
+// these controls still lean on the spacing exception the same way the
+// narrower leading column below does. What 24 buys is margin: the smaller the
+// nominal box, the more of the argument rests on gaps that move whenever the
+// surrounding layout is touched.
+//
+// It was 28, which spent 4px on that margin without reaching independence
+// either, and left a 14px glyph visibly rattling around inside its target on
+// every row.
+//
+// Height is free here: 28px is the desktop row height, so filling it costs no
+// vertical space. Only the width comes in, which is the axis wasting room.
+//
+// The width must stay equal to RowIconButton's compact width - a section
+// header leads with one and an item row leads with the other, and equal
+// widths are what keep their columns aligned.
 export const MOBILE_ROW_CONTROL_TARGET = 'h-10 w-10'
-export const DESKTOP_ROW_CONTROL_TARGET = 'lg:h-7 lg:w-7'
+export const DESKTOP_ROW_CONTROL_TARGET = 'lg:h-7 lg:w-6'
 
 // The LEADING control column - narrower on desktop than the square target
 // above, and only on desktop.
@@ -150,7 +171,7 @@ export const FLAT_TABLE_ROW =
   `flex ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} items-center border-b ${TABLE_DIVIDER}`
 
 // Explicit kebab / toggle target inside a row or header. Heights flow from
-// the density tokens above (40px touch, 28px pointer). Compose color + hover
+// the density tokens above (40px touch, 28x24 pointer). Compose color + hover
 // + `shrink-0` at the call site.
 export const ROW_CONTROL_TARGET =
   `inline-flex ${MOBILE_ROW_CONTROL_TARGET} ${DESKTOP_ROW_CONTROL_TARGET} items-center justify-center rounded`

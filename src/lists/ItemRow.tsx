@@ -283,10 +283,10 @@ export default function ItemRow({
             </div>
           </div>
         </label>
-        <span className="shrink-0 w-6 lg:w-7 inline-flex items-center justify-center">
+        <span className="shrink-0 w-6 inline-flex items-center justify-center">
           {item.isWorn && <WornIcon />}
         </span>
-        <span className="shrink-0 w-6 lg:w-7 inline-flex items-center justify-center">
+        <span className="shrink-0 w-6 inline-flex items-center justify-center">
           {item.isConsumable && <ConsumableIcon />}
         </span>
         <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
@@ -403,7 +403,7 @@ export default function ItemRow({
             icon={<Shirt size={14} />}
           />
         ) : (
-          <span className="shrink-0 w-7 inline-flex items-center justify-center">
+          <span className="shrink-0 w-6 inline-flex items-center justify-center">
             {item.isWorn && <WornIcon />}
           </span>
         )}
@@ -419,7 +419,7 @@ export default function ItemRow({
             icon={<UtensilsCrossed size={14} />}
           />
         ) : (
-          <span className="shrink-0 w-7 inline-flex items-center justify-center">
+          <span className="shrink-0 w-6 inline-flex items-center justify-center">
             {item.isConsumable && <ConsumableIcon />}
           </span>
         )}

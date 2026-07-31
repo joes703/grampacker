@@ -231,7 +231,7 @@ function CategorySectionInner(
           <div className="flex items-center gap-1.5 ml-auto">
             {/* Desktop column labels — widths and gap mirror GearItemRow's
                right-side columns (w-20 cost, w-24 purchase date, w-24
-               weight, w-7 kebab) so labels sit directly above row values.
+               weight, w-6 kebab) so labels sit directly above row values.
                No horizontal nudge is needed any more: the header now uses the
                row's own px-3 + gap-1.5, so the two rails share coordinates
                outright instead of compensating for a 4px difference.
@@ -250,8 +250,8 @@ function CategorySectionInner(
                 {/* Uncategorized has no category-level kebab in the header,
                    but item rows still render a per-row kebab in non-select
                    mode. Without this spacer, the labels above would slide
-                   2.125rem (w-7 + gap-1.5) right of the row column edges. */}
-                {!category && <span className="shrink-0 w-7" />}
+                   1.875rem (w-6 + gap-1.5) right of the row column edges. */}
+                {!category && <span className="shrink-0 w-6" />}
               </div>
             )}
             {category && (

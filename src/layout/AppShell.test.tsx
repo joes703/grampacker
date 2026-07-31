@@ -30,7 +30,7 @@ describe('AppShell', () => {
       'h-10',
       'w-10',
       'lg:h-7',
-      'lg:w-7',
+      'lg:w-6',
     )
   })
 

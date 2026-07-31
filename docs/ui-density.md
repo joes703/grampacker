@@ -31,7 +31,7 @@ unchanged whenever desktop is tuned**.
 |---|---|---|
 | Row height | 44px (`min-h-11`) | 28px (`lg:min-h-7`) |
 | Header height | 44px (`min-h-11`) | 32px (`lg:min-h-8`) |
-| Row control target | 40px (`h-10 w-10`) | 28px (`lg:h-7 lg:w-7`) |
+| Row control target | 40px (`h-10 w-10`) | 28x24px (`lg:h-7 lg:w-6`) |
 | Leading control target | 40px (`h-10 w-10`) | 28x20px (`lg:h-7 lg:w-5`) |
 | Row padding | `px-2 py-2` | `lg:px-3 lg:py-0` |
 | Header padding | `px-3 py-0` | `px-3 py-0` |
@@ -41,8 +41,18 @@ The desktop header is deliberately 4px taller than the desktop row so the
 section divider still reads as a distinct strip without bulking into a
 card-like band.
 
-The LEADING control column is the one that is not square on desktop, and the
-reason is the glyph rather than the gesture. A kebab fills its box, so 28x28
+Neither desktop control column is square, and they are narrow for different
+reasons. The TRAILING column (kebabs, action icons) sits at 24px wide because
+that is the WCAG 2.2 SC 2.5.8 floor, so each control clears the requirement on
+its own. It could be smaller - the spec's spacing exception would probably
+cover it, as it does for the leading column - but that exception depends on
+the gaps around a control and so has to be re-argued whenever the surrounding
+layout moves. An independently compliant box does not. It was 28px, which
+cleared the floor by 4px that bought nothing and left a 14px glyph rattling
+inside its box on every row.
+
+The LEADING control column is narrower still, and the
+reason is the glyph rather than the gesture. A kebab fills its box, so 28x24
 reads as a tight control; `GripVertical` draws two thin columns of dots about
 6px wide, so the same box strands ~11px of visible dead space either side and
 every draggable row opens with a wide empty gutter. Only the width comes in -
@@ -95,9 +105,9 @@ the control lives and whether it can be touched**, not by what the icon is.
 | Control | Token | Size |
 |---|---|---|
 | **Leading** control of a row or section header: a drag grip, or the collapse chevron that shares its column | `ROW_LEADING_CONTROL_TARGET` (or `RowIconButton touchSafe variant="dragHandle"`) | 40px touch / 28x20px pointer |
-| Kebab or action icon elsewhere in a row or section header | `ROW_CONTROL_TARGET` (or `RowIconButton touchSafe`) | 40px touch / 28px pointer |
-| Compact inline icon button in a surface that renders **only** at `lg+` | `RowIconButton` | 28x24, no touch box |
-| Modal / drawer close button | `ROW_CONTROL_TARGET` | 40px touch / 28px pointer |
+| Kebab or action icon elsewhere in a row or section header | `ROW_CONTROL_TARGET` (or `RowIconButton touchSafe`) | 40px touch / 28x24 pointer |
+| Compact inline icon button in a surface that renders **only** at `lg+` | `RowIconButton` | 24x24, no touch box |
+| Modal / drawer close button | `ROW_CONTROL_TARGET` | 40px touch / 28x24 pointer |
 | Full-width disclosure button where the chevron is inline content | neither | the whole row is the hit area |
 | Toolbar button, labelled options trigger, form stepper | neither | out of scope; bordered controls with their own padding |
 | Compact panel header action (`PanelCard` `headerAction`) | neither | see below |
@@ -158,8 +168,8 @@ coordinates exactly:
 - **The content column aligns per breakpoint, in the normal read state.** A
   section title and the item names beneath it start at the same x. Two desktop
   states are knowingly exempt, because each reshapes the row rather than the
-  header: **select mode** swaps the row's 28px drag handle for a 16px
-  checkbox, leaving the header title 12px right of the item names; **rename
+  header: **select mode** swaps the row's 20px drag handle for a 16px
+  checkbox, leaving the header title 4px right of the item names; **rename
   mode** puts the title in an input whose `px-1.5` sits its editable text 6px
   right of the item text. Both are improved by the current geometry but not
   zeroed. Do not "fix" either by re-tightening the header, which would break
