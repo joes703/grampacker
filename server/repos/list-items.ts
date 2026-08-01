@@ -1,7 +1,7 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import type { Db } from '../db'
-import { categories, gearItems, listItems, lists } from '../db/schema'
-import { isAnyUniqueViolation, isTriggerAbort } from './db-errors'
+import { categories, gearItems, listItems, lists, packReorderGuard } from '../db/schema'
+import { isAnyUniqueViolation, isPackGuardViolation, isTriggerAbort } from './db-errors'
 import type { GearItemRow } from './gear-items'
 
 const itemCols = {
@@ -544,27 +544,34 @@ export function createListItemsRepo(db: Db, userId: string) {
       // TWO-PHASE, and it is not optional. SQLite enforces uniqueness per
       // STATEMENT, so writing a permutation as a sequence of updates collides
       // the moment one row takes a rank another still holds. Phase 1 parks
-      // every touched row at `-1 - i`; phase 2 writes the finals. Committed
-      // ranks are always nonnegative (backfill counts from 0, arrivals append
-      // above a nonnegative maximum, permutations preserve their own multiset)
-      // which is exactly what makes the scratch range disjoint from live rows.
+      // every touched row on a scratch rank; phase 2 writes the finals.
       //
-      // Both phases are in ONE db.batch, which D1 runs as a single
-      // transaction: if anything fails - including a concurrent writer taking
-      // a rank first - the scratch values roll back with everything else and
-      // never survive.
+      // THE SCRATCH RANGE IS NEGATIVE, and migration 0019 is what makes that a
+      // fact rather than a hope. It always was `-1 - i`, but its safety rested
+      // on "committed ranks are never negative" - an invariant nothing enforced.
+      // 0019 enforces it: INSERT allows 0..PACK_RANK_MAX, UPDATE additionally
+      // allows -LIST_ITEM_CAP..-1 because parking IS an update.
+      //
+      // Negative specifically, NOT a band above PACK_RANK_MAX. That alternative
+      // was tried and is broken: arrivals compute `max + 1`, and import can
+      // legitimately create a row at exactly PACK_RANK_MAX, so an ordinary move
+      // COMMITS a row above it - which the guard below would then count as one
+      // of our parks. Every writer of this column produces a nonnegative value
+      // by construction, so only a park can go below zero.
+      //
+      // The range is exactly LIST_ITEM_CAP wide and the DTO caps a payload at
+      // the same number, so `i` always fits.
+      //
+      // Everything is ONE db.batch, which D1 runs as a single transaction: if
+      // anything fails - including a concurrent writer taking a rank first -
+      // the scratch values roll back with everything else and never survive.
+      //
       // Both phases RE-ASSERT what the pre-read saw. Without that the writes
       // key on id alone, and the pre-read is a separate query - so a row that
       // moved cohorts, became worn, or was reordered by someone else between
       // the two would still be written. The batch is atomic, but atomic
       // application of a stale payload is still wrong: it would land a rank
       // computed for one bag onto a row now sitting in another.
-      //
-      // A precondition that no longer holds simply matches zero rows, which
-      // SQLite does not treat as an error - so the settle phase additionally
-      // requires the row to be sitting at the scratch value its own park
-      // wrote. A row whose park was skipped therefore cannot be settled
-      // either, and is left exactly as the concurrent writer left it.
       const byIdCohortAndRank = (u: { id: string; packSortOrder: number }) => {
         const seen = byId.get(u.id)!
         return and(
@@ -578,12 +585,47 @@ export function createListItemsRepo(db: Db, userId: string) {
             : eq(listItems.packingLocationId, cohort),
         )
       }
+      const scratch = (i: number) => -1 - i
       const park = updates.map((u, i) =>
         db
           .update(listItems)
-          .set({ packSortOrder: -1 - i })
+          .set({ packSortOrder: scratch(i) })
           .where(byIdCohortAndRank(u)),
       )
+
+      // THE GUARD. A precondition that no longer holds matches zero rows, and
+      // SQLite does not treat that as an error - so without this, losing a race
+      // is SILENT. When a concurrent reorder rewrites the cohort first, every
+      // park misses AND every settle misses, the batch commits having changed
+      // nothing, and the route returns 204 claiming success. The client
+      // announces the move and snaps back on the next refetch.
+      //
+      // A batch statement cannot branch on an earlier one, so aborting has to
+      // be a statement that FAILS. This yields NULL into a NOT NULL column
+      // exactly when the number of parked rows in this cohort is not the number
+      // of rows we tried to park, and D1 rolls the whole batch back.
+      //
+      // Counting negatives is EXACT rather than heuristic, because 0019 makes
+      // a negative rank unreachable by every other writer. Counting also means
+      // no ids in the predicate - a per-id join would breach D1's
+      // 100-parameter cap at 300 items.
+      //
+      // Raw SQL rides an insert builder deliberately: `db.run(sql)` typechecks
+      // as a batch item and then crashes the D1 driver. The select renders
+      // verbatim after the column list in DEFINITION order, so it must yield
+      // (list_id, ok) in that order. Identifiers are hand-written so the
+      // unqualified-rendering trap cannot reach them.
+      const cohortMatch = cohort === null
+        ? sql`packing_location_id is null`
+        : sql`packing_location_id = ${cohort}`
+      const guard = db.insert(packReorderGuard).select(
+        sql`select ${listId}, (select case when count(*) = ${updates.length} then 1 end
+              from list_items
+             where list_id = ${listId} and user_id = ${userId}
+               and ${cohortMatch}
+               and pack_sort_order < 0)`,
+      )
+
       const settle = updates.map((u, i) =>
         db
           .update(listItems)
@@ -592,19 +634,34 @@ export function createListItemsRepo(db: Db, userId: string) {
             and(
               eq(listItems.id, u.id),
               eq(listItems.userId, userId),
-              eq(listItems.packSortOrder, -1 - i),
+              eq(listItems.listId, listId),
+              eq(listItems.isWorn, false),
+              eq(listItems.packSortOrder, scratch(i)),
+              cohort === null
+                ? isNull(listItems.packingLocationId)
+                : eq(listItems.packingLocationId, cohort),
             ),
           ),
       )
-      const [first, ...rest] = [...park, ...settle]
+
+      // Not optional. The guard table is keyed on list_id, so leaving the row
+      // behind makes the NEXT reorder of this list collide on the primary key.
+      const cleanup = db
+        .delete(packReorderGuard)
+        .where(eq(packReorderGuard.listId, listId))
+
+      const [first, ...rest] = [...park, guard, ...settle, cleanup]
       if (!first) return { ok: true }
       try {
         await db.batch([first, ...rest])
       } catch (err) {
-        // A concurrent reorder of the same cohort committed first, so this
-        // payload's finals now collide. The whole batch rolled back; the
-        // client refetches and retries against fresh ranks.
-        if (isAnyUniqueViolation(err)) return { ok: false, reason: 'conflict' }
+        // Two shapes of the same answer: someone beat us. Either a concurrent
+        // reorder took a rank so the finals collide (unique violation), or the
+        // guard fired because a park did not land (NOT NULL violation). Both
+        // rolled the batch back; the client refetches and retries.
+        if (isAnyUniqueViolation(err) || isPackGuardViolation(err)) {
+          return { ok: false, reason: 'conflict' }
+        }
         throw err
       }
       return { ok: true }

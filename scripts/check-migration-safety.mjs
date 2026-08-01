@@ -675,6 +675,29 @@ const DROPPED_TABLES = [
   { migration: '0016_remove-food-planning.sql', table: 'meals' },
 ]
 
+// Tables that exist only DURING a statement and are correct only when EMPTY.
+//
+// The fixture requirement below demands a seeded row for every new table, which
+// is right for real tables and wrong for these: seeding one asserts a state that
+// can never persist, and keying that seed to another fixture risks a primary-key
+// collision. Renaming them to a `__` prefix does not help either - they would
+// then trip the scratch-table check instead. Both naming options fail, so the
+// mechanism has to be explicit.
+//
+// The exemption is deliberately NARROW. An entry is excused only from needing a
+// seeded row; it is still required to EXIST and required to be EMPTY after
+// migration. Every other table's fixture, and all the rebuild/cascade detection
+// that is this script's whole purpose, is untouched - so a future migration that
+// rebuilt `list_items` would still be caught by `list_items`' own fixture rather
+// than hidden by anything here.
+const TRANSIENT_TABLES = [
+  {
+    migration: '0019_pack-rank-guard.sql',
+    table: '_pack_reorder_guard',
+    why: "reorderPack's fail-loud CAS guard; a row lives only between park and settle",
+  },
+]
+
 // Columns a migration is ALLOWED to drop, and the schema objects that go with
 // them. Indexes and triggers belonging to a DROPPED_TABLES entry are exempt
 // automatically (the table took them); this list is for objects on tables that
@@ -1355,9 +1378,13 @@ const main = () => {
     // New tables hold no data yet, so nothing can be lost from them THIS time -
     // but without a fixture they would be invisible to every future run. Demand
     // one now, while the table is fresh in the author's mind.
+    const transientTables = new Set(TRANSIENT_TABLES.map((t) => t.table))
     const fixtureTables = new Set(FIXTURES.map(([table]) => table))
     const missingFixture = tablesAfter.filter(
-      (table) => !isScratchTable(table) && !fixtureTables.has(table),
+      (table) =>
+        !isScratchTable(table) &&
+        !fixtureTables.has(table) &&
+        !transientTables.has(table),
     )
     if (missingFixture.length > 0) {
       failures.push(
@@ -1365,6 +1392,27 @@ const main = () => {
           'Add a fixture row to scripts/check-migration-safety.mjs, or no future ' +
           'migration will ever be checked against them.',
       )
+    }
+
+    // A transient table earns its fixture exemption by proving the thing that
+    // makes it transient: it exists, and it is empty.
+    for (const { table, why } of TRANSIENT_TABLES) {
+      if (!tablesAfter.includes(table)) {
+        failures.push(
+          `Declared transient table ${table} does not exist after migration. ` +
+            'Either the migration that creates it is missing, or the ' +
+            'TRANSIENT_TABLES entry is stale.',
+        )
+        continue
+      }
+      const rows = query(`select count(*) as n from \`${table}\``)
+      const n = Number(rows?.[0]?.n ?? -1)
+      if (n !== 0) {
+        failures.push(
+          `Transient table ${table} holds ${n} row(s) after migration; it must ` +
+            `be empty (${why}).`,
+        )
+      }
     }
 
     if (failures.length > 0) {

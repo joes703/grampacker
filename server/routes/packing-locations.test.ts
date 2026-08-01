@@ -1,9 +1,10 @@
 import { env } from 'cloudflare:test'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
+import { PACK_RANK_MAX } from '../../shared/lists'
 import app from '../index'
 import { createDb } from '../db'
-import { listItems, packingLocations } from '../db/schema'
+import { listItems, packReorderGuard, packingLocations } from '../db/schema'
 import { isTriggerAbort } from '../repos/db-errors'
 import { remapPackingLocationId } from '../repos/lists'
 import { apiRequest } from '../test/api-helpers'
@@ -1169,5 +1170,163 @@ describe('deleting a location keeps its contents together', () => {
     const ranks = unassigned.map((i) => i.packSortOrder)
     expect(new Set(ranks).size).toBe(ranks.length)
     expect(ranks.every((r) => r >= 0)).toBe(true)
+  })
+})
+
+// Release 2A. The reserved scratch band, and the guard that turns a lost race
+// into a 409 instead of a 204 that lies.
+describe('pack-order scratch band and reorder guard (0019)', () => {
+  async function bagOfThree(email: string) {
+    const { cookie } = await signUpVerifiedUser(email, 'O')
+    const list = await createList(cookie, 'Trip')
+    const location = await createLocation(cookie, list.id, 'Main')
+    for (const name of ['Alpha', 'Bravo', 'Charlie']) {
+      const item = await addItem(cookie, list.id, await createGear(cookie, name))
+      await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${item.id}`, {
+        packingLocationId: location.id,
+      })
+    }
+    const inBag = (await getItems(cookie, list.id))
+      .filter((i) => i.packingLocationId === location.id)
+      .sort((x, y) => x.packSortOrder - y.packSortOrder)
+    return { cookie, list, location, inBag }
+  }
+
+  const guardRows = async () =>
+    createDb(env.DB).select().from(packReorderGuard)
+
+  it('leaves the guard table empty, and a SECOND reorder still succeeds', async () => {
+    // The regression this pins: the guard is keyed on list_id, so a batch that
+    // forgets its own cleanup makes the NEXT reorder collide on the primary
+    // key. One passing reorder proves nothing; two do.
+    const { cookie, list, location, inBag } = await bagOfThree(
+      'pack-guard-cleanup@example.com',
+    )
+    const [a, , c] = inBag as [ItemBody, ItemBody, ItemBody]
+
+    const first = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+      { id: a.id, packSortOrder: c.packSortOrder },
+      { id: c.id, packSortOrder: a.packSortOrder },
+    ])
+    expect(first.status).toBe(204)
+    expect(await guardRows()).toEqual([])
+
+    // Re-read: the first swap moved these rows, and a payload built from the
+    // pre-swap snapshot is no longer a permutation of what they hold - the
+    // route would (correctly) 400 it, and this test would then prove nothing
+    // about the guard's cleanup.
+    const after = (await getItems(cookie, list.id))
+      .filter((i) => i.packingLocationId === location.id)
+      .sort((x, y) => x.packSortOrder - y.packSortOrder)
+    const [x, y] = after as [ItemBody, ItemBody]
+
+    const second = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+      { id: x.id, packSortOrder: y.packSortOrder },
+      { id: y.id, packSortOrder: x.packSortOrder },
+    ])
+    expect(second.status).toBe(204)
+    expect(await guardRows()).toEqual([])
+  })
+
+  it('rejects a negative packSortOrder with 400, not a 500 from the trigger', async () => {
+    // packSortOrder used to reuse sortOrderSchema, which allows negatives. With
+    // 0019 in place anything slipping past the DTO would RAISE(ABORT) and
+    // surface as a 500, so the DTO is the thing that has to say no.
+    const { cookie, list, inBag } = await bagOfThree('pack-negative@example.com')
+    const before = await getItems(cookie, list.id)
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+      { id: inBag[0]!.id, packSortOrder: -1 },
+    ])
+    expect(res.status).toBe(400)
+    expect(await getItems(cookie, list.id)).toEqual(before)
+  })
+
+  it('rejects a rank above PACK_RANK_MAX with 400', async () => {
+    const { cookie, list, inBag } = await bagOfThree('pack-overmax@example.com')
+    const before = await getItems(cookie, list.id)
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+      { id: inBag[0]!.id, packSortOrder: PACK_RANK_MAX + 1 },
+    ])
+    expect(res.status).toBe(400)
+    expect(await getItems(cookie, list.id)).toEqual(before)
+  })
+
+  it('refuses to INSERT a negative rank, which is what makes the guard exact', async () => {
+    // The scratch range is reserved by an ASYMMETRIC pair: INSERT allows only
+    // 0..PACK_RANK_MAX, UPDATE additionally allows the negatives that parking
+    // needs. If INSERT were also permissive, a row could be created negative
+    // and "every negative row is one of our parks" - the whole basis for
+    // counting rather than checking ids - would be false.
+    const { cookie, list } = await bagOfThree('pack-band-insert@example.com')
+    const userId = await userIdFor(cookie)
+    const db = createDb(env.DB)
+    await expectTriggerAbort(
+      db.insert(listItems).values({
+        id: crypto.randomUUID(),
+        userId,
+        listId: list.id,
+        gearItemId: await createGear(cookie, 'Band'),
+        packSortOrder: -1,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }),
+      'pack_sort_order out of range',
+    )
+  })
+
+  it('refuses to commit a rank ABOVE PACK_RANK_MAX, closing the silent-overflow hole', async () => {
+    // The reason the scratch range is negative rather than a band above the
+    // maximum: arrivals compute max+1 and import may legitimately create a row
+    // at exactly PACK_RANK_MAX, so an ordinary move would COMMIT above it. With
+    // the UPDATE trigger capped, that aborts instead of silently stranding a
+    // rank the client can never submit back.
+    const { cookie, inBag } = await bagOfThree('pack-overflow@example.com')
+    const userId = await userIdFor(cookie)
+    const db = createDb(env.DB)
+    await expectTriggerAbort(
+      db
+        .update(listItems)
+        .set({ packSortOrder: PACK_RANK_MAX + 1 })
+        .where(and(eq(listItems.id, inBag[0]!.id), eq(listItems.userId, userId))),
+      'pack_sort_order out of range',
+    )
+  })
+
+  it('fires the guard when a park did not land, and rolls the whole batch back', async () => {
+    // The defect this exists for: when a concurrent reorder rewrites the cohort
+    // first, every park predicate AND every settle predicate matches zero rows.
+    // Nothing violates a constraint, so nothing raises - the batch commits
+    // having changed nothing and the route returns 204 claiming success.
+    //
+    // A route-level test cannot produce that interleaving, because the pre-read
+    // and the batch both live inside one repo call. So this drives the batch
+    // shape directly against real D1: park ONE row, then run the guard
+    // expecting TWO. The guard must abort.
+    const { cookie, list, inBag } = await bagOfThree('pack-guard-fires@example.com')
+    const userId = await userIdFor(cookie)
+    const db = createDb(env.DB)
+    const before = await getItems(cookie, list.id)
+    const [a] = inBag as [ItemBody]
+
+    await expect(
+      db.batch([
+        db
+          .update(listItems)
+          .set({ packSortOrder: -1 })
+          .where(and(eq(listItems.id, a.id), eq(listItems.userId, userId))),
+        db.insert(packReorderGuard).select(
+          sql`select ${list.id}, (select case when count(*) = 2 then 1 end
+                from list_items
+               where list_id = ${list.id} and user_id = ${userId}
+                 and packing_location_id is not null
+                 and pack_sort_order < 0)`,
+        ),
+      ]),
+    ).rejects.toThrow(/NOT NULL constraint failed: _pack_reorder_guard\.ok/)
+
+    // The whole batch rolled back: the park is gone and no guard row survived
+    // to poison the next reorder.
+    expect(await getItems(cookie, list.id)).toEqual(before)
+    expect(await guardRows()).toEqual([])
   })
 })

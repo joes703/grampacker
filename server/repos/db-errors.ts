@@ -61,3 +61,20 @@ export function isForeignKeyViolation(err: unknown): boolean {
     msg.includes('SQLITE_CONSTRAINT')
   )
 }
+
+// The reorder guard firing. `reorderPack` aborts its batch by feeding NULL into
+// `_pack_reorder_guard.ok` (NOT NULL) when a park did not land, which is how a
+// lost race becomes a 409 instead of a silent no-op that returns 204.
+//
+// Pinned to the guard's own column so an unrelated NOT NULL failure elsewhere
+// in the batch is not misread as a lost race. SQLITE_CONSTRAINT_NOTNULL pins
+// the class; the raw SQLite message never embeds bound values, so no
+// user-controlled text can reach this match.
+export function isPackGuardViolation(err: unknown): boolean {
+  const msg = rootMessage(err)
+  return (
+    msg !== null &&
+    msg.includes('NOT NULL constraint failed: _pack_reorder_guard.ok') &&
+    msg.includes('SQLITE_CONSTRAINT')
+  )
+}

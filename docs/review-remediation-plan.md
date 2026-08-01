@@ -3,20 +3,35 @@
 Source: `docs/review-2026-07-31-combined.md` (union of the Claude and Codex
 reviews, deduplicated and ranked).
 
-**Revision 6.** Revisions 1-5 were each BLOCKed by Codex at GATE 1. Revision 6
-fixes the five findings that blocked revision 5: it replaces the deploy marker
-with a mechanism `GITHUB_TOKEN` can actually write, bootstraps the audit
-workflow onto the default branch before anything needs it, makes pack reorder
-abort loudly instead of committing a silent no-op, unifies the pack-rank bound
-across schema/writers/audit/trigger, and gives the share `Cache-Control` change
-a rollout that reaches already-cached responses.
+**Revision 7.** Revisions 1-5 were each BLOCKed by Codex at GATE 1; revision 6
+narrowed the blockers to two Phase 2 items. Revision 7 closes those two, and it
+closes them by **prototyping them against the repo's real 19 migrations rather
+than asserting them** - which is how revisions 4-6 kept failing. Every SQL
+statement in Phase 2 below has been executed. The evidence tables are results,
+not intentions.
 
-The most consequential thing revision 6 adds was not in any review: **`reorderPack`
-returns 204 after losing a concurrent reorder.** When another request rewrites
-the cohort's ranks first, every park predicate and every settle predicate
-matches zero rows, the batch commits as a no-op, and the route reports success.
-Verified against the real schema on the CURRENT shipped code, so this is a
-pre-existing defect rather than one Phase 2 introduces - but Phase 2 rewrites
+Two things that only showed up under test, both of which changed the design:
+
+- The reorder guard's scratch range has to be **negative**, and reserved by an
+  asymmetric trigger pair. Putting it in a band *above* `PACK_RANK_MAX` looked
+  right and is broken: every arrival computes `max + 1` through an UPDATE, and
+  import may legitimately create a row at exactly `PACK_RANK_MAX`, so an
+  ordinary move **commits** into the supposed band and the guard counts it.
+  Reproduced. The first prototype missed it because it only tested INSERT -
+  vacuous in exactly the way the 2-row container fixture was.
+- Offsetting orphan ranks does not merely risk overflow; with a correct
+  backstop it **silently strands a rank above `PACK_RANK_MAX`** that the client
+  can never resubmit. Dropping offsetting for one uniform dense renumbering
+  removed a whole class of failure and made the trigger simpler.
+
+Phase 1 shipped in PR #137 (GATE 2: MERGE).
+
+The most consequential thing this plan records was in neither review:
+**`reorderPack` returns 204 after losing a concurrent reorder.** When another
+request rewrites the cohort's ranks first, every park predicate and every settle
+predicate matches zero rows, the batch commits as a no-op, and the route reports
+success. Verified against the real schema on the CURRENT shipped code, so it is
+a pre-existing defect rather than one Phase 2 introduces - but Phase 2 rewrites
 exactly this code, so it is fixed there.
 
 Corrections carried forward, so they are not re-litigated:
@@ -269,20 +284,44 @@ Verified against the real schema:
 trigger bodies do allow - unlike in an `UPDATE ... SET`, where it is not
 available at all.
 
-**STILL OPEN: compacting only the orphans is not enough.** Appending a compacted
-orphan block *after* the destination maximum still needs headroom above that
-maximum. If an Unassigned row already sits at `PACK_RANK_MAX` - reachable today,
-since import copies an allowed `sort_order` straight into `pack_sort_order` -
-then deleting a location with even one item requires `PACK_RANK_MAX + 1`, and
-the delete aborts. That is P0.1 again, wearing a different error message. The
-15-case matrix has no maximum-bound case, which is why neither the matrix nor I
-caught it.
+**RESOLVED in revision 7 - prototyped, and the design got simpler.**
 
-The fix is to compact the **entire resulting cohort**, destination rows first
-then orphans, rather than only the orphan block - the combined row count is
-bounded by the 300-item list cap, so a dense `0..n-1` renumbering always fits.
-Prototype it, and add matrix cases for a destination rank of exactly
-`PACK_RANK_MAX`, multiple source rows, cascade paths, and repeated deletion.
+Offsetting orphans above the destination maximum needs headroom that may not
+exist. With an Unassigned row already at `PACK_RANK_MAX` - reachable today,
+since import copies an allowed `sort_order` straight into `pack_sort_order` -
+deleting a location with even one item needs `PACK_RANK_MAX + 1`.
+
+The prototype showed this is **worse than an abort**: with a correct backstop,
+the offset design does not fail at all. It silently writes a rank above
+`PACK_RANK_MAX`, which `sortOrderSchema` will never accept back - a list that
+renders fine and can never be reordered again. That control case is in the
+suite.
+
+So offsetting is dropped entirely. **One uniform path: renumber the entire
+resulting cohort densely, destination rows first then orphans, each by their
+own rank.** Two phases through the reserved band, because a dense renumbering
+moves rows *down* and a single `UPDATE` collides mid-statement.
+
+This is strictly simpler than what it replaces. Dense means the top rank is
+`cohort_size - 1`, bounded by the 300-item list cap, so `pack_sort_order` never
+approaches `PACK_RANK_MAX` and **overflow stops being a case to handle and
+becomes impossible**. The `RAISE(ABORT)` backstop stays, but it now guards
+`count(*) - 1 > PACK_RANK_MAX` and cannot fire - it exists so a future change
+to either cap fails loudly instead of silently corrupting ranks.
+
+**The deliberate cost: sparse gaps are no longer preserved.** Revisions 4-6
+sold gap preservation as a feature ("relative order and sparse gaps are
+preserved exactly"). It is given up on purpose. Gaps carry no user-visible
+meaning - the UI renders order, not rank values - they exist only as insertion
+headroom, and migration 0018's own backfill already renumbers densely with
+`ROW_NUMBER()`. Trading them for a single code path with no reachable overflow
+is the better deal. Two matrix rows change accordingly: source `0,2,7` now
+yields `[0,1,2,3]` rather than `[0,1,3,8]`.
+
+Verified against the real 19 migrations: 19/19 on the cascade matrix
+re-derived for this design, plus destination at exactly `PACK_RANK_MAX`, order
+preserved with destination rows ahead of orphans, worn rows keeping their
+reserved slot, an empty destination cohort, and the offset-only control above.
 
 ```sql
 CREATE TRIGGER `packing_locations_rerank_orphans`
@@ -293,64 +332,40 @@ WHEN EXISTS (
   WHERE `li`.`list_id` = OLD.`list_id` AND `li`.`packing_location_id` = OLD.`id`
 )
 BEGIN
-  -- Abort only if even DENSE packing would pass PACK_RANK_MAX. Offsetting
-  -- overflow no longer aborts - it falls back to compaction below - so this
-  -- fires only when the destination cohort is itself nearly full, which the
-  -- 300-item list cap makes unreachable in practice. It stays as a backstop
-  -- rather than as the routine path, because aborting a list or account
-  -- deletion is a worse failure than losing rank gaps.
   SELECT CASE
-    WHEN (SELECT coalesce(max(`u`.`pack_sort_order`), -1) + 1
-            FROM `list_items` AS `u`
-           WHERE `u`.`list_id` = OLD.`list_id`
-             AND `u`.`packing_location_id` IS NULL)
-         + (SELECT count(*) FROM `list_items` AS `s`
-             WHERE `s`.`list_id` = OLD.`list_id`
-               AND `s`.`packing_location_id` = OLD.`id`)
+    WHEN (SELECT count(*) FROM `list_items` AS `c`
+           WHERE `c`.`list_id` = OLD.`list_id`
+             AND (`c`.`packing_location_id` IS NULL OR `c`.`packing_location_id` = OLD.`id`)) - 1
          > 1000000000
     THEN RAISE(ABORT, 'pack_sort_order exhausted while deleting packing location')
   END;
 
-  -- Materialize EVERY orphan's final rank before any row moves. The base is
-  -- frozen here by construction, since no source row has moved yet.
-  -- Offset while there is headroom (preserves gaps); compact densely when
-  -- offsetting would pass PACK_RANK_MAX. Both stay above every existing
-  -- destination rank, and both are injective, so neither can collide.
   INSERT INTO `_packing_location_delete_state` (`list_item_id`, `new_rank`)
-  SELECT `x`.`id`,
-         (SELECT coalesce(max(`u`.`pack_sort_order`), -1) + 1
-            FROM `list_items` AS `u`
-           WHERE `u`.`list_id` = OLD.`list_id`
-             AND `u`.`packing_location_id` IS NULL)
-         + CASE
-             WHEN (SELECT coalesce(max(`u`.`pack_sort_order`), -1) + 1
-                     FROM `list_items` AS `u`
-                    WHERE `u`.`list_id` = OLD.`list_id`
-                      AND `u`.`packing_location_id` IS NULL)
-                  + (SELECT max(`s`.`pack_sort_order`)
-                       FROM `list_items` AS `s`
-                      WHERE `s`.`list_id` = OLD.`list_id`
-                        AND `s`.`packing_location_id` = OLD.`id`)
-                  > 1000000000
-             THEN row_number() OVER (ORDER BY `x`.`pack_sort_order`, `x`.`id`) - 1
-             ELSE `x`.`pack_sort_order`
-           END
-  FROM `list_items` AS `x`
-  WHERE `x`.`list_id` = OLD.`list_id` AND `x`.`packing_location_id` = OLD.`id`;
+  SELECT * FROM (
+    SELECT `x`.`id`,
+           row_number() OVER (
+             ORDER BY CASE WHEN `x`.`packing_location_id` IS NULL THEN 0 ELSE 1 END,
+                      `x`.`pack_sort_order`, `x`.`id`) - 1
+      FROM `list_items` AS `x`
+     WHERE `x`.`list_id` = OLD.`list_id`
+       AND (`x`.`packing_location_id` IS NULL OR `x`.`packing_location_id` = OLD.`id`)
+  );
 
-  -- Move location and rank together, reading the frozen mapping.
   UPDATE `list_items`
-  SET `packing_location_id` = NULL,
-      `pack_sort_order` = (
-        SELECT `s`.`new_rank` FROM `_packing_location_delete_state` AS `s`
-        WHERE `s`.`list_item_id` = `list_items`.`id`
-      )
-  WHERE `list_items`.`list_id` = OLD.`list_id`
-    AND `list_items`.`packing_location_id` = OLD.`id`;
+     SET `pack_sort_order` = 1000000001 + (
+           SELECT `s`.`new_rank` FROM `_packing_location_delete_state` AS `s`
+            WHERE `s`.`list_item_id` = `list_items`.`id`)
+   WHERE `list_items`.`id` IN (SELECT `list_item_id` FROM `_packing_location_delete_state`);
+
+  UPDATE `list_items`
+     SET `packing_location_id` = NULL,
+         `pack_sort_order` = (
+           SELECT `s`.`new_rank` FROM `_packing_location_delete_state` AS `s`
+            WHERE `s`.`list_item_id` = `list_items`.`id`)
+   WHERE `list_items`.`id` IN (SELECT `list_item_id` FROM `_packing_location_delete_state`);
 
   DELETE FROM `_packing_location_delete_state`
-  WHERE `list_item_id` IN (SELECT `id` FROM `list_items`
-                            WHERE `list_id` = OLD.`list_id`);
+   WHERE `list_item_id` IN (SELECT `id` FROM `list_items` WHERE `list_id` = OLD.`list_id`);
 END;
 ```
 
@@ -499,29 +514,92 @@ here, both caught by running the SQL rather than reading it:
 `IS` rather than `=` because the Unassigned cohort is `NULL`. A payload of size
 one behaves correctly (`count(*) = 1`).
 
-**STILL OPEN after the revision 6 review - do not implement 2A.3 as written.**
-Two defects remain, both real:
+**RESOLVED in revision 7 - prototyped against the real 19 migrations, 16/16.**
 
-1. **No success-path cleanup.** The batch never deletes its `_pack_reorder_guard`
-   row. With `list_id` as the primary key the *next* reorder of that list
-   collides; without a key the table accumulates rows forever while being
-   declared transient. A `delete from _pack_reorder_guard where list_id = :listId`
-   must end the batch, with a test asserting two consecutive successful reorders
-   and an empty table afterwards.
-2. **Counting a range is weaker than verifying the rows.** Even with the cohort
-   predicate, a concurrent insert landing in the scratch range inflates the
-   count and can mask a missed park.
+The counted-range guard above is superseded. Counting an arbitrary range is
+weaker than it looks (a concurrent insert landing in the range inflates the
+count and masks a missed park), and the draft also never deleted its own guard
+row, so the *next* reorder of that list would collide on the primary key.
 
-The direction that resolves both, to be prototyped before revision 7 rather
-than asserted here: **reserve the scratch range by construction instead of
-computing it.** Enforce `0 <= pack_sort_order <= PACK_RANK_MAX + LIST_ITEM_CAP`
-in the 2A triggers while the *request schema* continues to cap client-supplied
-ranks at `PACK_RANK_MAX`. Park at `PACK_RANK_MAX + 1 + i`. No client-reachable
-value can occupy that band, so counting rows above `PACK_RANK_MAX` in the cohort
-counts exactly this batch's parks - no ids in the predicate, and therefore no
-collision with the D1 100-parameter cap, which a per-id `VALUES` join would
-breach at 300 items. This is the "genuinely reserved scratch range" the first
-review asked for.
+**Reserve the scratch range by construction rather than computing it** - and
+make it NEGATIVE, not a band above the maximum.
+
+A first attempt put the scratch band at `(PACK_RANK_MAX, PACK_RANK_MAX +
+LIST_ITEM_CAP]` with a strict INSERT cap to keep it clean. **That is broken, and
+the prototype for it was vacuous** - it tested INSERT and never tested the
+writers that actually matter. Every arrival computes `max(pack_sort_order) + 1`
+through an UPDATE, and import can legitimately create a row at exactly
+`PACK_RANK_MAX` (`importListItemSchema` allows `0 .. 1_000_000_000`), so moving
+an item into that cohort **commits** a row at `PACK_RANK_MAX + 1` - inside the
+supposed band. Reproduced against the real schema: an ordinary move committed
+rank `1000000001`, and the guard then counted one band row with **zero parks in
+flight**. The false success the guard exists to prevent would have survived it.
+
+Negative works where "above the maximum" does not, because every writer of this
+column produces a nonnegative value *by construction*. Enumerated and executed
+against the real schema, each in isolation:
+
+| Writer | Lowest rank produced |
+| --- | --- |
+| arrival append (`nextPackSortOrderInCohort`) | 0 |
+| move into a cohort (`listItems.update`) | 0 |
+| `packingLocations.remove()` (`base + i`) | 0 |
+| import (`0 .. PACK_RANK_MAX`) | 0 |
+| list duplication (dense index) | 0 |
+
+So the two triggers are asymmetric the other way round:
+
+```sql
+-- Nothing is ever CREATED negative.
+CREATE TRIGGER list_items_pack_rank_range_ins
+BEFORE INSERT ON list_items FOR EACH ROW
+WHEN NEW.pack_sort_order < 0 OR NEW.pack_sort_order > 1000000000
+BEGIN SELECT RAISE(ABORT, 'pack_sort_order out of range (0..1000000000)'); END;
+
+-- UPDATE additionally allows the scratch range, because parking IS an update.
+CREATE TRIGGER list_items_pack_rank_range_upd
+BEFORE UPDATE OF pack_sort_order ON list_items FOR EACH ROW
+WHEN NEW.pack_sort_order < -300 OR NEW.pack_sort_order > 1000000000
+BEGIN SELECT RAISE(ABORT, 'pack_sort_order out of range (-300..1000000000)'); END;
+```
+
+Park at `-1 - i`. The range is exactly `LIST_ITEM_CAP` wide and the DTO caps a
+payload at the same number, so `i` always fits.
+
+Capping UPDATE at `PACK_RANK_MAX` is a second fix in the same stroke: an arrival
+into a cohort already at `PACK_RANK_MAX` now **aborts loudly** instead of
+silently committing a rank `sortOrderSchema` will never accept back.
+
+The guard is then an exact check needing no ids - and therefore no D1
+100-parameter problem, which a per-id `VALUES` join would breach at 300 items:
+
+```sql
+INSERT INTO _pack_reorder_guard (list_id, ok)
+SELECT :listId, (SELECT CASE WHEN count(*) = :expected THEN 1 END
+                   FROM list_items
+                  WHERE list_id = :listId AND user_id = :userId
+                    AND packing_location_id IS :cohort
+                    AND pack_sort_order < 0);
+
+-- ...settle statements...
+
+DELETE FROM _pack_reorder_guard WHERE list_id = :listId;   -- REQUIRED
+```
+
+Verified, all against the real schema and now all in the committed suite:
+
+| Case | Result |
+| --- | --- |
+| Normal reorder | commits, guard table empty after |
+| **Two consecutive reorders** | both commit - proves the cleanup |
+| **Lost race (park did not land)** | aborts, whole batch rolls back, no false 204 |
+| Concurrent cohort change | aborts |
+| Concurrent worn toggle | aborts |
+| Concurrent delete of a touched row | aborts |
+| Payload of size 1 | commits |
+| INSERT of a negative rank | rejected |
+| UPDATE above `PACK_RANK_MAX` | rejected |
+| Negative `packSortOrder` in the DTO | 400, not a 500 from the trigger |
 
 `db.batch` is atomic, so a raised guard rolls back park and settle together and
 leaves the concurrent writer's state untouched. The repo maps the violation to
@@ -574,6 +652,26 @@ So: **one exported constant, `PACK_RANK_MAX = 1_000_000_000`**, referenced by
 the request schema, every writer, the migration audit, and the delete trigger.
 Well inside `MAX_SAFE_INTEGER`, and identical to what the API already accepts.
 
+**`packSortOrder` needs its own schema, not `sortOrderSchema`.** Audited every
+writer of `pack_sort_order` in `server/repos`, and two things came out of it:
+
+- `reorderPackListItemsRequestSchema` (`shared/lists.ts:294`) reuses
+  `sortOrderSchema`, which is `min(-1_000_000_000)`. So a client can submit a
+  **negative** `packSortOrder` today. The permutation check happens to reject it
+  because committed ranks are nonnegative - but once 2A's enforcement trigger
+  exists, any path that got past that check would `RAISE(ABORT)` and surface as
+  a **500 where a 400 is correct**. Add `packRankSchema =
+  z.number().int().min(0).max(PACK_RANK_MAX)` and use it for `packSortOrder`
+  everywhere. `sortOrder` keeps its own signed schema; the two limits are
+  different contracts that happen to share a magnitude, which PR 7.1 says not to
+  merge.
+- `lists.ts:641` copies `item.sortOrder` straight into `packSortOrder` on
+  import, and `importListItemSchema` allows `0 .. 1_000_000_000`. So a row at
+  **exactly `PACK_RANK_MAX` is reachable in production through a normal import**
+  - the delete-trigger case that motivated dropping offsetting is real, not
+  synthetic. It is also already compatible with the strict INSERT cap, since
+  import's own bound is the same number.
+
 And **compact rather than abort.** Aborting a list or account deletion because
 ranks ran out of headroom is a worse outcome than the bug being fixed - it would
 make P0.1 fail differently instead of working. When the delete trigger's
@@ -623,8 +721,14 @@ migration for `_pack_reorder_guard`, so it is a deploy and needs approval.
    pre-merge audit, then re-land 2B. Production is never left mid-migration,
    because the check precedes the first mutation.
 
-2. The two enforcement triggers above.
-3. The helper table and delete trigger above.
+2. **Not the range triggers.** They belong to **2A**, which is where the guard
+   that depends on them lives. Revision 6 listed them here, which read as 2A
+   shipping a count guard before the mechanism that reserves what it counts.
+   To be unambiguous: **2A owns** the two asymmetric range triggers,
+   `_pack_reorder_guard`, their schema definitions, the `TRANSIENT_TABLES`
+   mechanism, and their tests. **2B owns** only the audit gate, the delete
+   helper table, the delete trigger, and its own `TRANSIENT_TABLES` entry.
+3. The delete helper table and delete trigger above.
 4. **Migration-safety harness changes.** Revision 4 said "add all three to the
    fixtures", which cannot be done as written. `check-migration-safety.mjs:1358`
    fails any new table without a fixture row, but
