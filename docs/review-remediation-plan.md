@@ -352,7 +352,7 @@ BEGIN
   );
 
   UPDATE `list_items`
-     SET `pack_sort_order` = 1000000001 + (
+     SET `pack_sort_order` = -1 - (
            SELECT `s`.`new_rank` FROM `_packing_location_delete_state` AS `s`
             WHERE `s`.`list_item_id` = `list_items`.`id`)
    WHERE `list_items`.`id` IN (SELECT `list_item_id` FROM `_packing_location_delete_state`);

@@ -505,3 +505,23 @@ export const packReorderGuard = sqliteTable('_pack_reorder_guard', {
   listId: text('list_id').primaryKey(),
   ok: integer('ok').notNull(),
 })
+
+// TRANSIENT. Correct only when EMPTY. Rows exist solely between the two UPDATE
+// statements of the packing_locations delete trigger, which deletes them again
+// before it returns.
+//
+// It holds the FINAL rank for every row in the affected cohort, materialized
+// before anything moves. That ordering is the point: computing a dense ordinal
+// inside the UPDATE would be self-referencing, because rows already updated
+// have had their packing_location_id set to NULL and drop out of the count.
+//
+// No repo writes to it - the trigger owns it entirely. It is declared here so
+// drizzle-kit's snapshot matches the deployed schema. Created by migration
+// 0020.
+export const packingLocationDeleteState = sqliteTable(
+  '_packing_location_delete_state',
+  {
+    listItemId: text('list_item_id').primaryKey(),
+    newRank: integer('new_rank').notNull(),
+  },
+)

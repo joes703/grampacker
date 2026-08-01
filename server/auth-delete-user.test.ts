@@ -213,6 +213,65 @@ describe('POST /api/auth/delete-user', () => {
     expect(await verificationCount(userId, email), 'verification artifacts after delete').toBe(0)
   })
 
+  it('deletes an account whose list has a bagged item colliding on pack rank (P0.1)', async () => {
+    // The account-delete arm of P0.1, one cascade level deeper than the list
+    // arm: user -> lists -> packing_locations, whose SET NULL then drops bagged
+    // items into Unassigned carrying their old ranks. Before migration 0020
+    // this failed with
+    //   UNIQUE constraint failed: list_items.list_id, list_items.pack_sort_order
+    // and the account could not be deleted at all.
+    const listRes = await apiRequest(cookie, 'POST', '/api/lists', { name: 'Trip' })
+    expect(listRes.status).toBe(201)
+    const listId = ((await listRes.json()) as { id: string }).id
+
+    const gear = async (name: string) => {
+      const r = await apiRequest(cookie, 'POST', '/api/gear-items', { name })
+      expect(r.status).toBe(201)
+      return ((await r.json()) as { id: string }).id
+    }
+    const addItem = async (gearItemId: string) => {
+      const r = await apiRequest(cookie, 'POST', `/api/lists/${listId}/items`, {
+        gearItemId,
+      })
+      expect(r.status).toBe(201)
+      return (await r.json()) as { id: string; packSortOrder: number }
+    }
+
+    const loose = await addItem(await gear('Loose'))
+    const locRes = await apiRequest(
+      cookie,
+      'POST',
+      `/api/lists/${listId}/packing-locations`,
+      { name: 'Bag' },
+    )
+    expect(locRes.status).toBe(201)
+    const locationId = ((await locRes.json()) as { id: string }).id
+    const bagged = await addItem(await gear('Bagged'))
+    expect(
+      (
+        await apiRequest(cookie, 'PATCH', `/api/lists/${listId}/items/${bagged.id}`, {
+          packingLocationId: locationId,
+        })
+      ).status,
+    ).toBe(200)
+
+    // Assert the colliding shape exists, so this cannot pass vacuously.
+    const items = (await (
+      await apiRequest(cookie, 'GET', `/api/lists/${listId}/items`)
+    ).json()) as { id: string; packSortOrder: number }[]
+    expect(items.find((i) => i.id === loose.id)?.packSortOrder).toBe(
+      items.find((i) => i.id === bagged.id)?.packSortOrder,
+    )
+
+    expect((await deleteAccount(cookie)).status).toBe(200)
+    const left = await env.DB.prepare(
+      'select count(*) as n from list_items where user_id = ?',
+    )
+      .bind(userId)
+      .first<{ n: number }>()
+    expect(left?.n).toBe(0)
+  })
+
   it('leaves every other user completely intact (blast radius is one account)', async () => {
     const otherBefore = await rowCounts(otherId)
     const res = await deleteAccount(cookie)
