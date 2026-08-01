@@ -1,0 +1,138 @@
+# Alerts when main has moved ahead of what is actually running in production.
+#
+# WHY THIS EXISTS
+# ---------------
+# deploy.yml has two failure modes that are SILENT by construction:
+#
+#   1. Its `workflow_run` listener matches CI by DISPLAY NAME. Renaming the CI
+#      workflow stops deployment dead, with no error anywhere - the trigger
+#      simply never fires again.
+#   2. A stale-SHA run exits SUCCESS without deploying. That is correct
+#      behavior (see deploy.yml), but it means a bug in the comparison would
+#      also look like a healthy green run that quietly shipped nothing.
+#
+# Both leave a green Actions tab and an un-deployed production. This job is the
+# only thing that would notice.
+#
+# It is ADVISORY and never mutates production. It reads deployment records and
+# git refs, and opens an issue. That is all it can do.
+name: Deploy liveness
+
+on:
+  # Every 6 hours. Deliberately not tighter: this is a single-user app where a
+  # missed deploy is an inconvenience rather than an outage, and a noisy
+  # watchdog is one that gets muted.
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read # read main's head commit
+  deployments: read # read the marker deploy.yml writes
+  actions: read # inspect recent deploy runs when explaining a gap
+  issues: write # the alert channel
+
+jobs:
+  check:
+    name: Check production is current
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: refs/heads/main
+
+      - name: Compare main against the deployment marker
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          head_sha=$(git rev-parse HEAD)
+          head_epoch=$(git log -1 --format=%ct HEAD)
+          now=$(date +%s)
+          age=$(( now - head_epoch ))
+
+          # A deploy in flight is not a fault. Two hours is comfortably longer
+          # than deploy.yml's 10-minute timeout plus any queueing behind the
+          # deploy-production concurrency group.
+          if [ "$age" -lt 7200 ]; then
+            echo "state=fresh" >> "$GITHUB_OUTPUT"
+            echo "main head is ${age}s old; too new to judge. Skipping."
+            exit 0
+          fi
+
+          deployed_sha=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/deployments?environment=production&per_page=100" \
+            --jq 'map(select(.sha != null)) | .[0].sha // ""')
+
+          if [ -z "$deployed_sha" ]; then
+            # No marker at all. Distinct from "main is ahead": this is what a
+            # brand-new setup looks like, and also what a broken marker step
+            # looks like. Say so rather than guessing.
+            echo "state=no-marker" >> "$GITHUB_OUTPUT"
+            echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "deployed_sha=$deployed_sha" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+
+          if [ "$deployed_sha" = "$head_sha" ]; then
+            echo "state=current" >> "$GITHUB_OUTPUT"
+            echo "Production is current at $head_sha."
+          else
+            echo "state=behind" >> "$GITHUB_OUTPUT"
+            echo "Production is at $deployed_sha but main is at $head_sha."
+          fi
+
+      - name: Open or update the liveness issue
+        if: steps.check.outputs.state == 'behind' || steps.check.outputs.state == 'no-marker'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE: ${{ steps.check.outputs.state }}
+          HEAD_SHA: ${{ steps.check.outputs.head_sha }}
+          DEPLOYED_SHA: ${{ steps.check.outputs.deployed_sha }}
+        run: |
+          set -euo pipefail
+          title="deploy liveness: main is ahead of production"
+
+          if [ "$STATE" = "no-marker" ]; then
+            body="No production deployment marker exists.
+
+          Either nothing has deployed since the marker was introduced, or the
+          marker step in \`deploy.yml\` is failing. Check the most recent Deploy
+          run: if it deployed but could not record the marker, it will have
+          failed with an explicit message saying exactly that, and production is
+          fine - only the marker needs fixing.
+
+          main is at \`$HEAD_SHA\`."
+          else
+            body="Production is running \`$DEPLOYED_SHA\` but main is at \`$HEAD_SHA\`.
+
+          Likely causes, in order of how often they bite:
+
+          1. The CI workflow was renamed. \`deploy.yml\` listens for a
+             \`workflow_run\` from a workflow named exactly \`CI\`; renaming it
+             silently stops all deployment.
+          2. A deploy failed. Check the Actions tab.
+          3. Every recent Deploy run decided it was stale and skipped.
+
+          To recover, dispatch \`Deploy\` manually - it re-verifies CI is green
+          for main's head before doing anything."
+          fi
+
+          # Idempotent: update the existing open issue rather than filing a new
+          # one every 6 hours.
+          existing=$(gh issue list --state open --search "$title in:title" \
+            --json number --jq '.[0].number // ""')
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+            echo "Updated issue #$existing."
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
