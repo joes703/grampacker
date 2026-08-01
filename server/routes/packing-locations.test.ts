@@ -1388,3 +1388,50 @@ describe('pack rank exhaustion is a status, not a 500', () => {
     expect(after.status).toBe(201)
   })
 })
+
+describe('location deletion near the top of the rank space', () => {
+  it('deletes a two-item location when Unassigned sits just below the ceiling', async () => {
+    // packingLocations.remove() appends every orphan at base + i, so a cohort
+    // one below PACK_RANK_MAX needs 1000000000 AND 1000000001 for two orphans -
+    // and the second overflows. This is why 0019 normalizes cohorts lacking
+    // LIST_ITEM_CAP of headroom rather than only those already out of range.
+    // Fresh lists cannot reach that state any more, so it is forced directly.
+    const { cookie } = await signUpVerifiedUser('pack-nearceiling@example.com', 'O')
+    const list = await createList(cookie, 'Trip')
+    const userId = await userIdFor(cookie)
+    const db = createDb(env.DB)
+
+    const loose = await addItem(cookie, list.id, await createGear(cookie, 'Loose'))
+    await db
+      .update(listItems)
+      .set({ packSortOrder: PACK_RANK_MAX - 1 })
+      .where(and(eq(listItems.id, loose.id), eq(listItems.userId, userId)))
+
+    const location = await createLocation(cookie, list.id, 'Bag')
+    for (const name of ['A', 'B']) {
+      const item = await addItem(cookie, list.id, await createGear(cookie, name))
+      await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${item.id}`, {
+        packingLocationId: location.id,
+      })
+    }
+
+    const res = await apiRequest(
+      cookie,
+      'DELETE',
+      `/api/lists/${list.id}/packing-locations/${location.id}`,
+    )
+    // 422 is the classified outcome; what must NEVER happen is a 500.
+    expect([204, 422]).toContain(res.status)
+    expect(res.status).not.toBe(500)
+
+    if (res.status === 422) {
+      expect(await res.json()).toEqual({
+        error: expect.stringContaining('run out of pack ordering space'),
+      })
+      // And nothing was half-applied.
+      expect((await getLocations(cookie, list.id)).map((l) => l.id)).toContain(
+        location.id,
+      )
+    }
+  })
+})

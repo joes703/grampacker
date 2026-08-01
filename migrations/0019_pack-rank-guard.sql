@@ -80,9 +80,20 @@
 -- no way out: `reorderPack` only writes a PERMUTATION of the ranks a cohort
 -- already holds, so it would write the prohibited values straight back.
 --
--- Only DIRTY cohorts are touched - those whose maximum is already at or above
--- PACK_RANK_MAX. Everything else keeps its exact ranks, gaps included, so this
--- rewrites as little production data as possible.
+-- Only DIRTY cohorts are touched, and "dirty" means WITHOUT HEADROOM rather
+-- than merely out of range: max(pack_sort_order) > PACK_RANK_MAX -
+-- LIST_ITEM_CAP, i.e. 999999700.
+--
+-- The tighter predicate (>= PACK_RANK_MAX) is not enough, because
+-- `packingLocations.remove()` appends every orphan at `base + i`. A perfectly
+-- legal legacy state - one Unassigned row at 999999999, two rows in a location
+-- - needs ranks 1000000000 AND 1000000001 when that location is deleted, and
+-- the second overflows. Reproduced before this predicate was widened.
+--
+-- LIST_ITEM_CAP is the conservative bound: no cohort can exceed the 300-item
+-- list cap, so no single batch append can need more than 300 ranks of
+-- headroom. Everything below the threshold keeps its exact ranks, gaps
+-- included, so this rewrites as little production data as possible.
 --
 -- Two phases via a negative scratch range, because a dense renumbering moves
 -- rows DOWN and a single UPDATE would collide with the cohort unique indexes
@@ -105,7 +116,7 @@ SELECT `id`, `rn` FROM (
      SELECT `list_id`, coalesce(`packing_location_id`, '')
        FROM `list_items`
       GROUP BY `list_id`, coalesce(`packing_location_id`, '')
-     HAVING max(`pack_sort_order`) >= 1000000000)
+     HAVING max(`pack_sort_order`) > 999999700)
 );--> statement-breakpoint
 
 UPDATE `list_items`

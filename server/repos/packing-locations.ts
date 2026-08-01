@@ -4,6 +4,7 @@ import type { Db } from '../db'
 import { gearItems, listItems, lists, packingLocations } from '../db/schema'
 import {
   isForeignKeyViolation,
+  isPackRankRangeError,
   isTriggerAbort,
   isUniqueViolation,
 } from './db-errors'
@@ -225,7 +226,10 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
     // So they land as one contiguous block at the end of Unassigned, keeping
     // their order relative to each other: the bag disappears, its contents
     // stay together and stay in the order you put them in.
-    async remove(listId: string, id: string): Promise<boolean> {
+    async remove(
+      listId: string,
+      id: string,
+    ): Promise<'deleted' | 'not_found' | 'pack_rank_exhausted'> {
       // Read the orphans in their current pack order. Ordering the read is
       // what makes "keep their relative order" true rather than incidental.
       const orphans = await db
@@ -294,10 +298,21 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       // failing the unique index if that rank is taken, which again rolls the
       // whole thing back rather than corrupting the cohort.
       const [first, ...rest] = [...reassign, remove]
-      if (!first) return false // unreachable: `remove` is always present
-      const results = await db.batch([first, ...rest])
+      if (!first) return 'not_found' // unreachable: `remove` is always present
+      let results
+      try {
+        results = await db.batch([first, ...rest])
+      } catch (err) {
+        // `base + i` can step past PACK_RANK_MAX when the destination cohort
+        // is near the ceiling. Migration 0019 normalizes any legacy cohort
+        // without LIST_ITEM_CAP ranks of headroom, so reaching this needs
+        // roughly a billion arrivals - but an unclassified abort here would be
+        // a 500 on an ordinary delete, and the condition is understood.
+        if (isPackRankRangeError(err)) return 'pack_rank_exhausted'
+        throw err
+      }
       const deleted = results[results.length - 1] as { id: string }[]
-      return deleted.length > 0
+      return deleted.length > 0 ? 'deleted' : 'not_found'
     },
 
     async reorder(

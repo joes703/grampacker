@@ -95,13 +95,26 @@ packingLocationRoutes.patch(
 packingLocationRoutes.delete(
   '/:id/packing-locations/:locationId',
   async (c) => {
-    const ok = await c
+    const result = await c
       .get('repos')
       .packingLocations.remove(
         c.req.param('id'),
         c.req.param('locationId'),
       )
-    if (!ok) return c.json({ error: 'Not found' }, 404)
+    if (result === 'not_found') return c.json({ error: 'Not found' }, 404)
+    // The orphans are appended above the Unassigned maximum, so a cohort near
+    // the top of the rank space has nowhere to put them. 0019 normalizes any
+    // legacy cohort without headroom, so this is effectively unreachable - but
+    // a 500 on an ordinary delete would be a poor way to find out otherwise.
+    if (result === 'pack_rank_exhausted') {
+      return c.json(
+        {
+          error:
+            'This list has run out of pack ordering space. Move some items out of Unassigned first.',
+        },
+        422,
+      )
+    }
     return c.body(null, 204)
   },
 )

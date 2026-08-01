@@ -529,6 +529,27 @@ const FIXTURES = [
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
   }],
+  // Codex's near-ceiling case: an Unassigned row one BELOW PACK_RANK_MAX, so
+  // it passes any "is the rank in range" test, plus a two-item location.
+  // Deleting that location appends orphans at base+i = 1000000000 and
+  // 1000000001, and the second overflows. Legal legacy data that the narrower
+  // >= PACK_RANK_MAX predicate accepted and left wedged.
+  ['list_items', {
+    id: 'li-nearceiling-u',
+    user_id: 'u-seed',
+    list_id: 'list-seed-3',
+    gear_item_id: 'gear-seed',
+    quantity: 1,
+    is_worn: 0,
+    is_consumable: 0,
+    is_packed: 0,
+    is_ready: 0,
+    packing_location_id: null,
+    pack_sort_order: 999999999,
+    sort_order: 95,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
   ['food_items', {
     id: 'food-seed',
     user_id: 'u-seed',
@@ -717,6 +738,15 @@ const EXPECTED_CHANGES = [
     column: 'pack_sort_order',
     before: 1000000005,
     after: 1,
+  },
+  // In range, but with no headroom for a location deletion's base+i append.
+  {
+    migration: '0019_pack-rank-guard.sql',
+    table: 'list_items',
+    key: { column: 'id', value: 'li-nearceiling-u' },
+    column: 'pack_sort_order',
+    before: 999999999,
+    after: 0,
   },
   {
     migration: '0010_one-plan-per-list.sql',
