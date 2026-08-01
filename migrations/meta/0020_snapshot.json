@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d231776f-a26b-4787-9fd3-07c471ef1c1d",
+  "id": "6d69d39f-6c49-4768-8f5a-aea2e835532c",
   "prevId": "fdcc5e2e-9760-4fbd-9201-c083766260e7",
   "tables": {
     "account": {
@@ -1537,6 +1537,13 @@
         },
         "new_rank": {
           "name": "new_rank",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "seq": {
+          "name": "seq",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,

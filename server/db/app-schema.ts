@@ -523,5 +523,9 @@ export const packingLocationDeleteState = sqliteTable(
   {
     listItemId: text('list_item_id').primaryKey(),
     newRank: integer('new_rank').notNull(),
+    // A small dense ordinal for the negative park slot. `newRank` cannot serve
+    // as one: on the offset path it can be far larger than the reserved
+    // scratch range allows.
+    seq: integer('seq').notNull(),
   },
 )
