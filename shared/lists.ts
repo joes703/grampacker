@@ -18,11 +18,29 @@ export const LIST_ITEM_CAP = 300
 export const PACKING_LOCATION_CAP = 30
 export const MAX_LIST_ITEM_QUANTITY = 9999
 
+// The upper bound on a COMMITTED pack rank. Deliberately a separate constant
+// from sortOrder's bound even though the magnitude matches: they are different
+// contracts. sortOrder is a signed document position; pack_sort_order is an
+// unsigned per-cohort rank that the DB now enforces, and that reorderPack
+// parks ABOVE transiently.
+//
+// PACK_RANK_MAX .. PACK_RANK_MAX + LIST_ITEM_CAP is the reserved scratch band.
+// Nothing may be INSERTed there - migration 0019's insert trigger is strict at
+// PACK_RANK_MAX - so a row sitting in the band can only have been parked by an
+// in-flight reorder, which is exactly what makes reorderPack's guard an exact
+// check rather than a heuristic.
+export const PACK_RANK_MAX = 1_000_000_000
+
 const listNameSchema = z.string().trim().min(1).max(256)
 // Empty string is not a valid description - clients send null to clear.
 const descriptionSchema = z.string().trim().min(1).max(2000)
 const idSchema = z.string().min(1).max(64)
 const sortOrderSchema = z.number().int().min(-1_000_000_000).max(1_000_000_000)
+// NOT sortOrderSchema. That one permits negatives, so a client could submit a
+// negative packSortOrder; the permutation check happens to reject it today,
+// but once 0019's enforcement trigger exists any path past that check would
+// RAISE(ABORT) and surface as a 500 where a 400 is correct.
+const packRankSchema = z.number().int().min(0).max(PACK_RANK_MAX)
 const quantitySchema = z.number().int().min(1).max(MAX_LIST_ITEM_QUANTITY)
 
 function uniqueIds(ids: string[]): boolean {
@@ -291,7 +309,7 @@ export type ReorderListItemsRequest = z.infer<
 // touched rows already hold, and requires them all to be in one cohort. Those
 // are relational facts this schema cannot see, so they live in the repo.
 export const reorderPackListItemsRequestSchema = z
-  .array(z.object({ id: idSchema, packSortOrder: sortOrderSchema }).strict())
+  .array(z.object({ id: idSchema, packSortOrder: packRankSchema }).strict())
   .min(1)
   .max(LIST_ITEM_CAP)
   .refine((entries) => uniqueIds(entries.map((e) => e.id)), {

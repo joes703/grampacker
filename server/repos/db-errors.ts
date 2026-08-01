@@ -61,3 +61,32 @@ export function isForeignKeyViolation(err: unknown): boolean {
     msg.includes('SQLITE_CONSTRAINT')
   )
 }
+
+// The reorder guard firing. `reorderPack` aborts its batch by feeding NULL into
+// `_pack_reorder_guard.ok` (NOT NULL) when a park did not land, which is how a
+// lost race becomes a 409 instead of a silent no-op that returns 204.
+//
+// Pinned to the guard's own column so an unrelated NOT NULL failure elsewhere
+// in the batch is not misread as a lost race. SQLITE_CONSTRAINT_NOTNULL pins
+// the class; the raw SQLite message never embeds bound values, so no
+// user-controlled text can reach this match.
+export function isPackGuardViolation(err: unknown): boolean {
+  const msg = rootMessage(err)
+  return (
+    msg !== null &&
+    msg.includes('NOT NULL constraint failed: _pack_reorder_guard.ok') &&
+    msg.includes('SQLITE_CONSTRAINT')
+  )
+}
+
+// Migration 0019's range triggers. Reachable only when a cohort has exhausted
+// the rank space (its maximum is already PACK_RANK_MAX, so the `max + 1` every
+// arrival computes would step past it).
+//
+// Import no longer plants a row at the maximum - it assigns dense pack ranks -
+// so this should not be reachable through the API at all. It is classified
+// anyway: "should not be reachable" is exactly the kind of claim that decays,
+// and the alternative is a 500 for a condition we understand completely.
+export function isPackRankRangeError(err: unknown): boolean {
+  return isTriggerAbort(err, 'pack_sort_order out of range')
+}

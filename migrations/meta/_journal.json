@@ -134,6 +134,13 @@
       "when": 1785488400000,
       "tag": "0018_pack-sort-order",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1785559663206,
+      "tag": "0019_pack-rank-guard",
+      "breakpoints": true
     }
   ]
 }
