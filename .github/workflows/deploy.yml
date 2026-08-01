@@ -1,16 +1,50 @@
-# Ships grampacker to Cloudflare Workers whenever something lands on main.
+# Ships grampacker to Cloudflare Workers, but ONLY for a commit CI has proven
+# green.
 #
-# The flow: a PR is verified by ci.yml and (with branch protection +
-# auto-merge) can only reach main once those checks pass. The push to main
-# that a merge produces triggers THIS workflow, which applies any pending D1
-# schema migrations and then deploys the Worker. So in practice "merge the
-# PR" == "deploy to production".
+# WHY THIS IS NOT `on: push`
+# --------------------------
+# It used to be. `on: push: branches: [main]` fires the moment a merge lands,
+# which is completely independent of whether ci.yml passed - and branch
+# protection here will merge while checks are still running. So a red commit
+# could deploy to production, apply its D1 migrations, and nothing objected.
+#
+# `workflow_run` inverts that: the deploy is triggered BY CI finishing, so
+# "CI concluded success" is a precondition of the trigger rather than a hope.
+#
+# PROPERTIES THIS RELIES ON - do not edit one of these away in isolation
+# ---------------------------------------------------------------------
+#   * A `workflow_run` definition only takes effect from the DEFAULT BRANCH, so
+#     a fork or a PR branch cannot modify this privileged workflow to run its
+#     own code.
+#   * `event == 'push'` plus `head_branch == 'main'` excludes every
+#     pull_request run; `head_repository.full_name == github.repository`
+#     excludes fork-origin runs. Neither is expressible on the `workflow_run`
+#     trigger itself, which is why the whole condition is a job-level `if`.
+#   * THE TRIGGER IS MATCHED BY DISPLAY NAME, WHICH IS NOT A SECURITY BOUNDARY.
+#     `workflows: ['CI']` matches any workflow whose *name* is CI. A commit that
+#     reaches main before checks finish could add a second, trivial workflow
+#     also named CI; its success event would satisfy every condition above and
+#     deploy that commit while the real ci.yml was still running or already red.
+#     Two independent things close that: the `if` also pins
+#     `github.event.workflow.path` to `.github/workflows/ci.yml`, and the deploy
+#     job re-verifies through the API - keyed on the ci.yml FILE PATH - that a
+#     successful push-run on main exists for the SHA it is about to ship. A file
+#     path cannot be spoofed by naming a workflow "CI". The trigger is only ever
+#     a wake-up call and never the proof.
+#   * THE CHECKOUT NEVER USES AN EVENT-SUPPLIED REF. Always `refs/heads/main`.
+#     Never `head_sha`, never the dispatch ref.
+#   * THE AUTHORITATIVE CHECK LIVES INSIDE THE CONCURRENCY LOCK. Preflight is a
+#     cheap filter that drops obsolete events before they contend for the lock;
+#     its verdict can rot while the deploy job queues. The deploy job therefore
+#     re-resolves main and re-verifies CI under the lock, and ships main's head
+#     rather than the SHA that woke it. That is what makes both a stale event
+#     and a concurrency eviction harmless: whichever run survives converges
+#     production onto the newest verified commit.
 #
 # Auth is a Cloudflare API token stored as a GitHub Actions secret
 # (CLOUDFLARE_API_TOKEN). It lives only here in GitHub - never on a laptop or
-# in an agent sandbox. CLOUDFLARE_ACCOUNT_ID tells wrangler which account to
-# deploy into. Both are configured in repo Settings > Secrets and variables >
-# Actions.
+# in an agent sandbox. It is scoped onto the two wrangler steps rather than the
+# whole job, so `npm ci` and the vite build never see it.
 #
 # No third-party actions are used (only the same first-party checkout/setup
 # actions ci.yml already pins by commit SHA), so there is nothing extra to
@@ -18,52 +52,275 @@
 name: Deploy
 
 on:
-  push:
-    branches: [main]
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+  workflow_dispatch:
 
-# Read-only: the deploy needs the source and the secrets, nothing more.
+# Unspecified permissions default to none, so every one of these is load-bearing:
+#   contents     - check out the source.
+#   actions      - query workflow runs, for the manual-dispatch recovery path.
+#   deployments  - record which SHA reached production, which the liveness
+#                  watchdog reads. GITHUB_TOKEN can write deployment records and
+#                  their statuses; it CANNOT write Actions variables, which is
+#                  why a deployment record is the marker rather than a variable.
 permissions:
   contents: read
+  actions: read
+  deployments: write
 
-# Never run two production deploys at once. If a second merge lands while a
-# deploy is in flight, it queues behind it rather than racing (we do NOT
-# cancel an in-progress deploy - a half-cancelled deploy is worse than a wait).
-concurrency:
-  group: deploy-production
-  cancel-in-progress: false
-
+# NOTE: there is deliberately NO workflow-level concurrency group. It used to be
+# here, and it was a liveness bug: a concurrency group holds at most ONE pending
+# run, and a newly queued run REPLACES (cancels) the pending one. So with deploy
+# A running and current-main B queued, re-running an old CI run X would evict B,
+# and X would then stale-skip itself - leaving the newest green commit
+# undeployed with no event left to retry it. The group now sits on the deploy
+# job alone (below), and the preflight job that discards stale runs sits
+# OUTSIDE it, so a stale run is dropped before it can ever displace real work.
 jobs:
-  deploy:
-    name: Deploy to Cloudflare
+  # Decides whether this event should deploy at all. Cheap, and crucially
+  # OUTSIDE the deploy concurrency group.
+  preflight:
+    name: Verify this SHA is deployable
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    timeout-minutes: 5
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow.path == '.github/workflows/ci.yml')
+    outputs:
+      # Deliberately NOT exporting the SHA. The deploy job must re-resolve it
+      # under the lock; handing it one from out here would reintroduce exactly
+      # the stale-verdict race this split exists to close.
+      deploy: ${{ steps.decide.outputs.deploy }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Deliberately the branch ref, never an event-supplied one. See the
+          # header. The staleness gate below is what makes this safe.
+          ref: refs/heads/main
+
+      # Resolve what we actually checked out. Everything downstream keys on
+      # this value, not on anything the event handed us.
+      - name: Resolve checked-out SHA
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # A workflow_run completion can arrive out of order, or be replayed by
+      # re-running an OLD CI run. In both cases main has moved on, and
+      # deploying the checkout would be a silent production ROLLBACK to
+      # whatever that older run pointed at. Treat it as a no-op instead.
+      #
+      # Exiting success (not failure) is deliberate: nothing is wrong, this
+      # event is simply obsolete. The newer commit gets its own CI run and its
+      # own deploy. The liveness watchdog is what catches the case where that
+      # never happens.
+      - name: Skip if this run is stale
+        id: stale
+        if: github.event_name == 'workflow_run'
+        env:
+          EVENT_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          if [ "$EVENT_SHA" != "$HEAD_SHA" ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Deploy skipped: stale run"
+              echo ""
+              echo "CI completed for \`$EVENT_SHA\` but main is now at \`$HEAD_SHA\`."
+              echo "Deploying would roll production back. The newer commit deploys itself."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Single output the deploy job keys on, so the guard is expressed once
+      # rather than repeated on every step.
+      #
+      # Preflight is only a CHEAP FILTER - it stops obviously-obsolete events
+      # from spinning up a deploy job and contending for the lock. It is NOT the
+      # gate. Anything it decides can go stale while the deploy job waits for
+      # the concurrency lock, so the authoritative resolve-and-verify happens
+      # INSIDE the lock. Do not move that check back up here.
+      - name: Decide
+        id: decide
+        env:
+          STALE: ${{ steps.stale.outputs.stale }}
+        run: |
+          if [ "$STALE" = "true" ]; then
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    name: Deploy to Cloudflare
+    needs: preflight
+    if: needs.preflight.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Never run two production deploys at once. A second merge queues behind
+    # the first rather than racing; we do NOT cancel an in-progress deploy,
+    # because a half-cancelled deploy is worse than a wait. Only genuinely
+    # deployable runs reach this group - see the note above `jobs:`.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      # EVERYTHING BELOW RUNS INSIDE THE CONCURRENCY LOCK, and that is the whole
+      # point. Preflight's answer can rot while this job waits for the lock:
+      # preflight validates B, the job queues, main advances to C, and B then
+      # wakes up holding a stale verdict. Deploying B at that point is a
+      # production ROLLBACK.
+      #
+      # So this job does not trust preflight's SHA. It re-resolves main and
+      # re-verifies CI from scratch, under the lock, and deploys whatever main's
+      # head is right now. Whichever run wins the lock therefore converges
+      # production onto the newest verified commit, instead of replaying an
+      # older one - which also means losing a queued run to concurrency eviction
+      # is no longer a lost deploy, because the survivor ships main's head
+      # regardless of which event woke it.
+      - name: Check out main (inside the lock)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: refs/heads/main
+
+      - name: Resolve main's current head
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # THE REAL GATE. The trigger proves nothing: workflow_dispatch has no CI
+      # link at all, and the workflow_run trigger matched a display NAME, which
+      # any workflow can claim. The authoritative answer is whether THE FILE
+      # .github/workflows/ci.yml has a successful push-run on main for this
+      # exact SHA. A file path cannot be spoofed by naming a workflow "CI".
+      #
+      # FAIL-CLOSED: missing, ambiguous, queued or in-progress all refuse.
+      #
+      # A red or unfinished head is NOT an error - it just means there is
+      # nothing to ship yet, and the commit that turns main green will trigger
+      # its own deploy. Exit success, deploy nothing.
+      #
+      # Note `gh api --jq` takes exactly one expression and does NOT accept jq
+      # CLI flags like --arg (it fails with "accepts 1 arg(s), received 4"), so
+      # the response is piped into standalone jq instead.
+      - name: Verify ci.yml is green for main's head
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          runs=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${HEAD_SHA}&event=push&branch=main&status=success" \
+            | jq --arg sha "$HEAD_SHA" \
+              '[.workflow_runs[] | select(.conclusion == "success" and .head_sha == $sha and .head_branch == "main")] | length')
+          if [ "$runs" -lt 1 ]; then
+            echo "go=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Deploy skipped: main's head is not verified green"
+              echo ""
+              echo "No successful \`ci.yml\` push-run on main for \`$HEAD_SHA\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "go=true" >> "$GITHUB_OUTPUT"
+          echo "Found $runs successful ci.yml run(s) for $HEAD_SHA."
 
       - name: Set up Node
+        if: steps.verify.outputs.go == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
+        if: steps.verify.outputs.go == 'true'
         run: npm ci
 
-      # Apply schema migrations to the REMOTE (production) D1 before deploying
-      # the new code, so the new Worker never runs against an old table shape.
-      # A no-op when there are no new migration files. Additive-only migrations
-      # make apply-then-deploy safe; a destructive migration would need its own
-      # ordering plan.
+      # BUILD BEFORE ANY REMOTE MUTATION. The migration is the irreversible
+      # half of a deploy; a build failure after it would leave production on old
+      # code against a new schema. Building first removes that failure source.
+      #
+      # It does NOT close the window - `wrangler deploy` is networked and can
+      # still fail after a successful migration. Only the expand/contract work
+      # (Phase 3) remediates that.
+      #
+      # Note this is `npm run build`, not `npm run deploy`: the latter would
+      # rebuild during the deploy step, so the artifact that ships would not be
+      # the one this step verified.
+      - name: Build
+        if: steps.verify.outputs.go == 'true'
+        run: npm run build
+
+      # The Cloudflare token is scoped onto THIS step and the next one only.
+      # It was previously job-level env, which put a production credential in
+      # the environment of `npm ci` and the vite build - i.e. reachable by any
+      # dependency's install or build script.
       - name: Apply D1 migrations (production)
+        if: steps.verify.outputs.go == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler d1 migrations apply grampacker --remote
 
-      # npm run deploy == `npm run build && wrangler deploy`: vite build emits
-      # the SPA + Worker bundle, then wrangler ships it. wrangler authenticates
-      # from the CLOUDFLARE_API_TOKEN env var above - no interactive login.
-      - name: Build and deploy
-        run: npm run deploy
+      # Ships the artifact built above - no rebuild.
+      - name: Deploy Worker
+        if: steps.verify.outputs.go == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy
+
+      # Record what reached production, for the liveness watchdog to read.
+      #
+      # This runs LAST, so a failed deploy never advances the marker.
+      #
+      # A marker failure is NOT a deploy failure and must not be reported as
+      # one: production has already changed by this point, and telling the
+      # operator "deploy failed" would invite a pointless re-run of something
+      # that already landed. It still exits non-zero - something does need
+      # fixing - but the message names the marker as the thing that broke.
+      - name: Record deployment marker
+        if: steps.verify.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -uo pipefail
+          # Built with jq rather than gh's -f/-F flags. `-F` only auto-types
+          # booleans, null, and integers, so `-F required_contexts='[]'` sends
+          # the STRING "[]" where the API demands an array - which fails
+          # validation *after* production has already changed. An explicit JSON
+          # body avoids the whole class of flag-typing surprises, and --arg
+          # keeps the SHA safely quoted.
+          #
+          # required_contexts MUST be an empty array and cannot be omitted:
+          # its default is "every context on the ref", and unmet contexts make
+          # the API return 202 with a merge/None message instead of creating a
+          # deployment.
+          payload=$(jq -n --arg ref "$HEAD_SHA" \
+            '{ref: $ref, environment: "production", auto_merge: false,
+              required_contexts: [], description: "grampacker production deploy"}')
+          if ! deployment_id=$(printf '%s' "$payload" | gh api --method POST \
+                "repos/${GITHUB_REPOSITORY}/deployments" \
+                --input - --jq '.id'); then
+            echo "::error::DEPLOY SUCCEEDED but the deployment marker could not be created."
+            echo "::error::Production is running $HEAD_SHA. Do NOT re-run this deploy."
+            exit 1
+          fi
+          if ! gh api --method POST \
+                "repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses" \
+                -f state=success \
+                -f description="deployed $HEAD_SHA" >/dev/null; then
+            echo "::error::DEPLOY SUCCEEDED but the deployment status could not be set."
+            echo "::error::Production is running $HEAD_SHA. Do NOT re-run this deploy."
+            exit 1
+          fi
+          echo "Recorded deployment $deployment_id for $HEAD_SHA." >> "$GITHUB_STEP_SUMMARY"

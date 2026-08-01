@@ -1,0 +1,175 @@
+# Read-only audit of production pack ranks. Gates the Phase 2B migration.
+#
+# WHY IT LANDS BEFORE IT IS USED
+# ------------------------------
+# GitHub only offers `workflow_dispatch` for a workflow file that already
+# exists ON THE DEFAULT BRANCH. A workflow shipped by the same PR it is meant
+# to gate therefore cannot gate itself. So this lands in Phase 1, ahead of the
+# release that needs it. Until then it is inert: dispatch-only, read-only, and
+# nothing calls it.
+#
+# WHAT IT PROVES
+# --------------
+# Phase 2B adds triggers enforcing `0 <= pack_sort_order <= PACK_RANK_MAX` and
+# a delete trigger that assumes ranks are clean. If production holds a row that
+# violates either, the migration fails partway through a deploy. This answers
+# "is production clean?" BEFORE the merge that would find out the hard way.
+#
+# WHAT IT DOES NOT PROVE
+# ----------------------
+# A database has no commit SHA, so this cannot be "bound" to a revision in any
+# real sense. Taking a PR number and publishing the result as a commit status
+# makes the answer attributable and reviewable - it does not make cleanliness a
+# property of the code. Freshness comes from the identical re-check inside
+# deploy.yml immediately before `migrations apply`, which is the check that
+# actually stands between dirty data and a broken production migration.
+name: Audit pack ranks
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'PR number whose head SHA the audit result is posted against'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read # resolve the PR's head SHA
+  statuses: write # publish the result against that SHA
+
+jobs:
+  audit:
+    name: Audit production pack ranks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # Resolve the SHA from the PR rather than accepting one as free text, so
+      # a result can never be posted against a commit that is not actually the
+      # head of the PR being merged.
+      - name: Resolve PR head SHA
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr }}
+        run: |
+          set -euo pipefail
+          case "$PR_NUMBER" in
+            ''|*[!0-9]*) echo "::error::PR input must be a number."; exit 1 ;;
+          esac
+          sha=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')
+          if [ -z "$sha" ]; then
+            echo "::error::Could not resolve head SHA for PR #${PR_NUMBER}."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Auditing on behalf of PR #${PR_NUMBER} at $sha."
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # A token scoped to D1 READ only - a different secret from
+      # CLOUDFLARE_API_TOKEN, which can write. If Cloudflare turns out not to
+      # offer a read-only D1 permission when this secret is created, say so
+      # here rather than silently reusing the write token.
+      - name: Audit remote D1
+        id: audit
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_READONLY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+
+          # Keep this in step with PACK_RANK_MAX in shared/. If they diverge,
+          # the audit certifies rows the schema will later reject.
+          pack_rank_max=1000000000
+
+          # FAIL-CLOSED PARSING. The obvious version of this - default a missing
+          # `results` to [] and take the first value or 0 - turns every failure
+          # into "0 violations", which is indistinguishable from a clean
+          # database. Feeding it [{"success":false,"error":"no such column"}]
+          # yields 0 and exit 0, so a broken audit would publish a GREEN status
+          # and wave through the very migration it exists to gate.
+          #
+          # So: demand exactly one result, success === true, exactly one row,
+          # exactly one column, and a finite nonnegative integer. Anything else
+          # exits nonzero with the error surfaced.
+          probe() {
+            npx wrangler d1 execute grampacker --remote --json --command "$1" \
+              | node -e '
+                let s = ""
+                process.stdin.on("data", (d) => (s += d)).on("end", () => {
+                  const die = (m) => { console.error("audit probe failed: " + m); process.exit(1) }
+                  let r
+                  try { r = JSON.parse(s) } catch { die("response was not JSON: " + s.slice(0, 400)) }
+                  if (!Array.isArray(r) || r.length !== 1) die("expected exactly 1 result, got " + JSON.stringify(r).slice(0, 400))
+                  const [res] = r
+                  if (!res || res.success !== true) die("query reported failure: " + JSON.stringify(res).slice(0, 400))
+                  const rows = res.results
+                  if (!Array.isArray(rows) || rows.length !== 1) die("expected exactly 1 row, got " + JSON.stringify(rows).slice(0, 400))
+                  const values = Object.values(rows[0])
+                  if (values.length !== 1) die("expected exactly 1 column, got " + JSON.stringify(rows[0]).slice(0, 400))
+                  // Check the RAW value before converting. Number(null),
+                  // Number(false) and Number("") are all 0, so converting
+                  // first would turn those shapes into a clean result. They
+                  // are not reachable from a count(*) response today; the
+                  // point is that they never become 0 if that ever changes.
+                  const v = values[0]
+                  const numeric = typeof v === "number" || (typeof v === "string" && /^[0-9]+$/.test(v))
+                  if (!numeric) die("count was not numeric: " + JSON.stringify(v))
+                  const n = Number(v)
+                  if (!Number.isSafeInteger(n) || n < 0) die("count was not a nonnegative safe integer: " + String(v))
+                  process.stdout.write(String(n))
+                })'
+          }
+
+          negatives=$(probe "select count(*) as c from list_items where pack_sort_order < 0")
+          over=$(probe "select count(*) as c from list_items where pack_sort_order > ${pack_rank_max}")
+          dupes=$(probe "select count(*) as c from (select list_id, pack_sort_order from list_items where packing_location_id is null group by list_id, pack_sort_order having count(*) > 1)")
+
+          echo "negative ranks:        $negatives"
+          echo "ranks over the bound:  $over"
+          echo "duplicate unassigned:  $dupes"
+
+          {
+            echo "### Pack-rank audit"
+            echo ""
+            echo "| Probe | Count |"
+            echo "| --- | --- |"
+            echo "| \`pack_sort_order < 0\` | $negatives |"
+            echo "| \`pack_sort_order > $pack_rank_max\` | $over |"
+            echo "| duplicate Unassigned ranks | $dupes |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$negatives" != "0" ] || [ "$over" != "0" ] || [ "$dupes" != "0" ]; then
+            echo "state=failure" >> "$GITHUB_OUTPUT"
+            echo "::error::Production pack ranks are DIRTY. Phase 2B must not merge."
+            exit 1
+          fi
+          echo "state=success" >> "$GITHUB_OUTPUT"
+
+      # Runs even on failure, so a dirty result is recorded against the commit
+      # rather than only living in a log.
+      - name: Publish result as a commit status
+        if: always() && steps.pr.outputs.sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.pr.outputs.sha }}
+          STATE: ${{ steps.audit.outputs.state || 'failure' }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+            -f state="$STATE" \
+            -f context='audit/pack-ranks' \
+            -f description='remote D1 pack-rank cleanliness' >/dev/null
+          echo "Posted $STATE for $SHA."
