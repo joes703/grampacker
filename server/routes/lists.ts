@@ -149,9 +149,15 @@ function listItemFailure(result: Extract<ListItemWriteResult, { ok: false }>): {
     case 'cap_exceeded':
       return { status: 422, error: 'List item limit reached (300 per list)' }
     case 'pack_rank_exhausted':
+      // Deliberately does NOT tell the user to reorder. reorderPack writes a
+      // permutation of the ranks a cohort already holds, so reordering cannot
+      // compact anything - it would write the same exhausted values back.
+      // Migration 0019 normalizes existing dirty cohorts, so reaching this
+      // needs roughly a billion arrivals; there is no self-service fix and
+      // pretending otherwise would send people in circles.
       return {
         status: 422,
-        error: 'Pack ordering space is exhausted for this group. Reorder it to compact the ranks.',
+        error: 'This packing group has run out of ordering space. Move some items to another group.',
       }
   }
 }

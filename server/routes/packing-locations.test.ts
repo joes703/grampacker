@@ -1352,7 +1352,7 @@ describe('pack rank exhaustion is a status, not a 500', () => {
     })
     expect(res.status).toBe(422)
     expect(await res.json()).toEqual({
-      error: expect.stringContaining('Pack ordering space is exhausted'),
+      error: expect.stringContaining('run out of ordering space'),
     })
   })
 

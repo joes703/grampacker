@@ -134,11 +134,15 @@ jobs:
           }
 
           negatives=$(probe "select count(*) as c from list_items where pack_sort_order < 0")
-          over=$(probe "select count(*) as c from list_items where pack_sort_order > ${pack_rank_max}")
+          # >= not >. A rank of EXACTLY PACK_RANK_MAX is the dangerous one: it
+          # is legal for the column, but every arrival computes max+1, so that
+          # cohort refuses new items, moves, and location deletion. Probing only
+          # for > would certify precisely the state that wedges a list.
+          over=$(probe "select count(*) as c from list_items where pack_sort_order >= ${pack_rank_max}")
           dupes=$(probe "select count(*) as c from (select list_id, pack_sort_order from list_items where packing_location_id is null group by list_id, pack_sort_order having count(*) > 1)")
 
           echo "negative ranks:        $negatives"
-          echo "ranks over the bound:  $over"
+          echo "ranks at or over bound: $over"
           echo "duplicate unassigned:  $dupes"
 
           {
@@ -147,7 +151,7 @@ jobs:
             echo "| Probe | Count |"
             echo "| --- | --- |"
             echo "| \`pack_sort_order < 0\` | $negatives |"
-            echo "| \`pack_sort_order > $pack_rank_max\` | $over |"
+            echo "| \`pack_sort_order >= $pack_rank_max\` | $over |"
             echo "| duplicate Unassigned ranks | $dupes |"
           } >> "$GITHUB_STEP_SUMMARY"
 

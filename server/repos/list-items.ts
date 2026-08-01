@@ -413,18 +413,31 @@ export function createListItemsRepo(db: Db, userId: string) {
       // above: today nothing can move an item between lists, but the
       // write must stay parent-path-consistent by construction if that
       // ever changes (Codex hardening note, PR #19).
-      const [item] = await db
-        .update(listItems)
-        .set(set)
-        .where(
-          and(
-            eq(listItems.id, itemId),
-            eq(listItems.listId, listId),
-            eq(listItems.userId, userId),
-            packingLocationGate,
-          ),
-        )
-        .returning(itemCols)
+      // Moving into a cohort computes `max + 1`, which 0019's range trigger
+      // refuses once that cohort sits at PACK_RANK_MAX. 0019 normalizes any
+      // pre-existing dirty cohort so this needs about a billion arrivals to
+      // reach, but an unclassified trigger abort here would be a 500, and this
+      // condition is understood well enough to deserve a status.
+      let item: ListItemRow | undefined
+      try {
+        ;[item] = await db
+          .update(listItems)
+          .set(set)
+          .where(
+            and(
+              eq(listItems.id, itemId),
+              eq(listItems.listId, listId),
+              eq(listItems.userId, userId),
+              packingLocationGate,
+            ),
+          )
+          .returning(itemCols)
+      } catch (err) {
+        if (isPackRankRangeError(err)) {
+          return { ok: false, reason: 'pack_rank_exhausted' }
+        }
+        throw err
+      }
       if (!item) {
         if (packingLocationGate !== undefined) {
           const [stillExists] = await db

@@ -391,6 +391,15 @@ const FIXTURES = [
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
   }],
+['packing_locations', {
+    id: 'pl-seed-exhausted',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    name: 'Exhausted Location',
+    sort_order: 0,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
   // The row 0009 would have destroyed: it cascades from BOTH lists and
   // gear_items, so it is the canary for any rebuild of either parent.
   ['list_items', {
@@ -479,6 +488,44 @@ const FIXTURES = [
     packing_location_id: null,
     pack_sort_order: 0,
     sort_order: 1,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  // Two rows in ONE cohort on their own list, seeded AT and ABOVE
+  // PACK_RANK_MAX - the exact legacy state 0019 has to repair. Before this
+  // release the import endpoint copied sort_order straight into
+  // pack_sort_order and importListItemSchema permits 1000000000, so this is
+  // reachable production data rather than a synthetic case. 0019 renumbers the
+  // cohort densely; the rewrite is declared in EXPECTED_CHANGES.
+  ['list_items', {
+    id: 'li-exhausted-a',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    gear_item_id: 'gear-seed',
+    quantity: 1,
+    is_worn: 0,
+    is_consumable: 0,
+    is_packed: 0,
+    is_ready: 0,
+    packing_location_id: 'pl-seed-exhausted',
+    pack_sort_order: 1000000000,
+    sort_order: 90,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  ['list_items', {
+    id: 'li-exhausted-b',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    gear_item_id: 'gear-seed',
+    quantity: 1,
+    is_worn: 0,
+    is_consumable: 0,
+    is_packed: 0,
+    is_ready: 0,
+    packing_location_id: 'pl-seed-exhausted',
+    pack_sort_order: 1000000005,
+    sort_order: 91,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
   }],
@@ -649,6 +696,28 @@ const FIXTURES = [
 //   - once it is part of the base ref, the fixture seeds `after` directly
 //     (the pre-0010 shared-link state is not even insertable any more).
 const EXPECTED_CHANGES = [
+  // 0019 densely renumbers only cohorts whose maximum is at or above
+  // PACK_RANK_MAX. These two are the whole point: without the repair they
+  // would survive the migration and permanently refuse arrivals, moves, and
+  // location deletion, because every arrival computes max+1 and the new
+  // trigger rejects it. Clean cohorts elsewhere in the fixtures must be
+  // UNCHANGED, which the ordinary row comparison asserts for free.
+  {
+    migration: '0019_pack-rank-guard.sql',
+    table: 'list_items',
+    key: { column: 'id', value: 'li-exhausted-a' },
+    column: 'pack_sort_order',
+    before: 1000000000,
+    after: 0,
+  },
+  {
+    migration: '0019_pack-rank-guard.sql',
+    table: 'list_items',
+    key: { column: 'id', value: 'li-exhausted-b' },
+    column: 'pack_sort_order',
+    before: 1000000005,
+    after: 1,
+  },
   {
     migration: '0010_one-plan-per-list.sql',
     table: 'lists',

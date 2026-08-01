@@ -65,6 +65,64 @@
 -- Additive: two triggers and one table. No `list_items` rebuild, so the D1
 -- cascade trap that bit 0009 and 0016 does not apply.
 
+-- STEP 1: REPAIR BEFORE CONSTRAINING.
+--
+-- The triggers below start rejecting ranks this schema previously accepted, so
+-- the migration has to fix the rows it is about to outlaw. It is not
+-- hypothetical: until this release the import endpoint copied `sort_order`
+-- straight into `pack_sort_order`, and `importListItemSchema` permits a
+-- sort_order of exactly PACK_RANK_MAX - so a list could already be sitting at
+-- the ceiling, and later arrivals could have pushed rows past it.
+--
+-- Leaving those rows in place would be worse than the bug being fixed. Every
+-- arrival computes `max + 1`, so a cohort at the maximum would refuse new
+-- items, refuse moves into it, and refuse location deletion - permanently, with
+-- no way out: `reorderPack` only writes a PERMUTATION of the ranks a cohort
+-- already holds, so it would write the prohibited values straight back.
+--
+-- Only DIRTY cohorts are touched - those whose maximum is already at or above
+-- PACK_RANK_MAX. Everything else keeps its exact ranks, gaps included, so this
+-- rewrites as little production data as possible.
+--
+-- Two phases via a negative scratch range, because a dense renumbering moves
+-- rows DOWN and a single UPDATE would collide with the cohort unique indexes
+-- mid-statement. The scratch values are -1-n with n bounded by the 300-item
+-- list cap, so they stay inside the range the UPDATE trigger below permits.
+
+CREATE TABLE `_pack_rank_normalize` (
+  `list_item_id` text PRIMARY KEY,
+  `new_rank` integer NOT NULL
+) WITHOUT ROWID;--> statement-breakpoint
+
+INSERT INTO `_pack_rank_normalize` (`list_item_id`, `new_rank`)
+SELECT `id`, `rn` FROM (
+  SELECT `id`,
+         ROW_NUMBER() OVER (
+           PARTITION BY `list_id`, `packing_location_id`
+           ORDER BY `pack_sort_order`, `id`) - 1 AS `rn`
+    FROM `list_items`
+   WHERE (`list_id`, coalesce(`packing_location_id`, '')) IN (
+     SELECT `list_id`, coalesce(`packing_location_id`, '')
+       FROM `list_items`
+      GROUP BY `list_id`, coalesce(`packing_location_id`, '')
+     HAVING max(`pack_sort_order`) >= 1000000000)
+);--> statement-breakpoint
+
+UPDATE `list_items`
+   SET `pack_sort_order` = -1 - (
+     SELECT `s`.`new_rank` FROM `_pack_rank_normalize` `s`
+      WHERE `s`.`list_item_id` = `list_items`.`id`)
+ WHERE `list_items`.`id` IN (SELECT `list_item_id` FROM `_pack_rank_normalize`);--> statement-breakpoint
+
+UPDATE `list_items`
+   SET `pack_sort_order` = (
+     SELECT `s`.`new_rank` FROM `_pack_rank_normalize` `s`
+      WHERE `s`.`list_item_id` = `list_items`.`id`)
+ WHERE `list_items`.`id` IN (SELECT `list_item_id` FROM `_pack_rank_normalize`);--> statement-breakpoint
+
+DROP TABLE `_pack_rank_normalize`;--> statement-breakpoint
+
+-- STEP 2: NOW CONSTRAIN.
 -- Keep in lockstep with PACK_RANK_MAX and LIST_ITEM_CAP in `shared/lists.ts`.
 -- The pre-deploy audit (.github/workflows/audit-pack-ranks.yml) probes the same
 -- numbers, so a divergence fails there rather than in production.
