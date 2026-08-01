@@ -1,7 +1,12 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import type { Db } from '../db'
 import { categories, gearItems, listItems, lists, packReorderGuard } from '../db/schema'
-import { isAnyUniqueViolation, isPackGuardViolation, isTriggerAbort } from './db-errors'
+import {
+  isAnyUniqueViolation,
+  isPackGuardViolation,
+  isPackRankRangeError,
+  isTriggerAbort,
+} from './db-errors'
 import type { GearItemRow } from './gear-items'
 
 const itemCols = {
@@ -86,6 +91,7 @@ export type ListItemWriteResult =
         | 'worn_consumable_conflict'
         | 'cap_exceeded'
         | 'gear_cap_exceeded'
+        | 'pack_rank_exhausted'
     }
 
 // A pack reorder fails in more distinguishable ways than a list reorder, and
@@ -212,6 +218,12 @@ export function createListItemsRepo(db: Db, userId: string) {
         if (isListItemCapError(err)) {
           return { ok: false, reason: 'cap_exceeded' }
         }
+        // 0019's range trigger: this cohort's rank space is exhausted, so the
+        // `max + 1` an arrival computes would step past PACK_RANK_MAX. A known
+        // condition, so it gets a status rather than a 500.
+        if (isPackRankRangeError(err)) {
+          return { ok: false, reason: 'pack_rank_exhausted' }
+        }
         throw err
       }
     },
@@ -281,11 +293,20 @@ export function createListItemsRepo(db: Db, userId: string) {
         if (!gear || !item) throw new Error('quick-add returned no rows')
         return { ok: true, row: { item, gear } }
       } catch (err) {
+        if (isPackRankRangeError(err)) {
+          return { ok: false, reason: 'pack_rank_exhausted' }
+        }
         if (isGearCapError(err)) {
           return { ok: false, reason: 'gear_cap_exceeded' }
         }
         if (isListItemCapError(err)) {
           return { ok: false, reason: 'cap_exceeded' }
+        }
+        // 0019's range trigger: this cohort's rank space is exhausted, so the
+        // `max + 1` an arrival computes would step past PACK_RANK_MAX. A known
+        // condition, so it gets a status rather than a 500.
+        if (isPackRankRangeError(err)) {
+          return { ok: false, reason: 'pack_rank_exhausted' }
         }
         throw err
       }

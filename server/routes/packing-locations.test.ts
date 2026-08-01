@@ -1330,3 +1330,61 @@ describe('pack-order scratch band and reorder guard (0019)', () => {
     expect(await guardRows()).toEqual([])
   })
 })
+
+// Release 2A, the other half of bounding the column: what happens at the top.
+describe('pack rank exhaustion is a status, not a 500', () => {
+  it('answers 422 when a cohort has no rank headroom left', async () => {
+    // Reachable in principle whenever a cohort's maximum is PACK_RANK_MAX,
+    // because every arrival computes max+1 and 0019 refuses to commit past the
+    // bound. Import used to be able to plant such a row by copying sortOrder;
+    // it now assigns dense ranks, so this is forced directly instead.
+    const { cookie } = await signUpVerifiedUser('pack-exhausted@example.com', 'O')
+    const list = await createList(cookie, 'Trip')
+    const userId = await userIdFor(cookie)
+    const seed = await addItem(cookie, list.id, await createGear(cookie, 'Seed'))
+    await createDb(env.DB)
+      .update(listItems)
+      .set({ packSortOrder: PACK_RANK_MAX })
+      .where(and(eq(listItems.id, seed.id), eq(listItems.userId, userId)))
+
+    const res = await apiRequest(cookie, 'POST', `/api/lists/${list.id}/items`, {
+      gearItemId: await createGear(cookie, 'Next'),
+    })
+    expect(res.status).toBe(422)
+    expect(await res.json()).toEqual({
+      error: expect.stringContaining('Pack ordering space is exhausted'),
+    })
+  })
+
+  it('imports assign DENSE pack ranks, so a gapped file cannot exhaust the space', async () => {
+    // The reachability fix. sortOrder keeps the file's gaps (old-repo parity);
+    // pack rank must not, or one row near PACK_RANK_MAX would permanently wedge
+    // the list.
+    const { cookie } = await signUpVerifiedUser('pack-import-dense@example.com', 'O')
+    const res = await apiRequest(cookie, 'POST', '/api/lists/import', {
+      name: 'Imported',
+      categories: [],
+      gear: [
+        { tempId: 'g1', name: 'Alpha', weightGrams: 1 },
+        { tempId: 'g2', name: 'Bravo', weightGrams: 1 },
+      ],
+      items: [
+        { gear: { kind: 'new', tempId: 'g1' }, sortOrder: 0 },
+        { gear: { kind: 'new', tempId: 'g2' }, sortOrder: PACK_RANK_MAX },
+      ],
+    })
+    expect(res.status).toBe(201)
+    const listId = ((await res.json()) as { id: string }).id
+    const items = await getItems(cookie, listId)
+
+    expect(items.map((i) => i.sortOrder).sort((a, b) => a - b)).toEqual([0, PACK_RANK_MAX])
+    // Dense, and in the file's order.
+    expect(items.map((i) => i.packSortOrder).sort((a, b) => a - b)).toEqual([0, 1])
+
+    // And the list still accepts an arrival, which is the whole point.
+    const after = await apiRequest(cookie, 'POST', `/api/lists/${listId}/items`, {
+      gearItemId: await createGear(cookie, 'Charlie'),
+    })
+    expect(after.status).toBe(201)
+  })
+})

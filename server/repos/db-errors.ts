@@ -78,3 +78,15 @@ export function isPackGuardViolation(err: unknown): boolean {
     msg.includes('SQLITE_CONSTRAINT')
   )
 }
+
+// Migration 0019's range triggers. Reachable only when a cohort has exhausted
+// the rank space (its maximum is already PACK_RANK_MAX, so the `max + 1` every
+// arrival computes would step past it).
+//
+// Import no longer plants a row at the maximum - it assigns dense pack ranks -
+// so this should not be reachable through the API at all. It is classified
+// anyway: "should not be reachable" is exactly the kind of claim that decays,
+// and the alternative is a 500 for a condition we understand completely.
+export function isPackRankRangeError(err: unknown): boolean {
+  return isTriggerAbort(err, 'pack_sort_order out of range')
+}

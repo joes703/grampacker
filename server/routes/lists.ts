@@ -148,6 +148,11 @@ function listItemFailure(result: Extract<ListItemWriteResult, { ok: false }>): {
       return { status: 422, error: 'Gear item limit reached (500 per user)' }
     case 'cap_exceeded':
       return { status: 422, error: 'List item limit reached (300 per list)' }
+    case 'pack_rank_exhausted':
+      return {
+        status: 422,
+        error: 'Pack ordering space is exhausted for this group. Reorder it to compact the ranks.',
+      }
   }
 }
 

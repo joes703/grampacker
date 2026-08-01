@@ -621,7 +621,30 @@ export function createListsRepo(db: Db, userId: string) {
             updatedAt: now,
           }),
         )
-        const insertItems = input.items.map((item) =>
+        // Pack ranks are assigned DENSELY here, in sortOrder order - not copied
+        // from sortOrder. The two look equivalent and are not.
+        //
+        // `importListItemSchema` allows a sortOrder up to PACK_RANK_MAX, so
+        // copying it could plant a row at exactly the maximum. Every later
+        // arrival into that cohort computes `max + 1`, which migration 0019's
+        // range trigger now refuses - so a single imported row at the top of
+        // the range would leave a list unable to accept items, accept moves, or
+        // delete a location, forever. Dense ranks bound the maximum at
+        // items.length - 1, which LIST_ITEM_CAP holds at 299, so exhaustion
+        // stops being reachable at all rather than being reported nicely.
+        //
+        // sortOrder keeps the file's gaps (dropped empty-name rows, old-repo
+        // parity); pack rank has never had a reason to preserve them, since it
+        // only has to be unique and ordered within its cohort.
+        const packRanks = new Map(
+          [...input.items]
+            .map((item, index) => ({ item, index }))
+            .sort((a, b) =>
+              a.item.sortOrder - b.item.sortOrder || a.index - b.index,
+            )
+            .map(({ index }, rank) => [index, rank]),
+        )
+        const insertItems = input.items.map((item, index) =>
           db.insert(listItems).values({
             id: crypto.randomUUID(),
             userId,
@@ -634,11 +657,8 @@ export function createListsRepo(db: Db, userId: string) {
             // intentional gaps (old-repo parity).
             sortOrder: item.sortOrder,
             // Everything imported lands Unassigned, so the whole file is one
-            // cohort and the row index ranks it. Gaps are fine - pack ranks
-            // only have to be unique within a cohort, and importListItemSchema
-            // already rejects duplicate sortOrders. A CSV has one order, so
-            // the import DTO deliberately gains no second field.
-            packSortOrder: item.sortOrder,
+            // cohort and this dense rank orders it.
+            packSortOrder: packRanks.get(index) ?? 0,
             createdAt: now,
             updatedAt: now,
           }),
