@@ -109,6 +109,14 @@ const isScratchTable = (name) => name.startsWith('__')
 // migration that mangles cross-user ownership or drops non-default rows.
 const FIXED_TS = 1_700_000_000_000
 
+// NOTE on pack_sort_order: these values are explicit, and must stay that way.
+// They were originally omitted so that 0018's backfill would assign them, which
+// is what the 0018 POST_CHECKS probe asserts. That worked only while 0018 was
+// the migration UNDER TEST. Now that 0018 is on the base ref, the fixtures are
+// seeded into a schema that already carries its two unique indexes, so rows
+// defaulting to 0 in the same cohort collide - and the seed fails before any
+// new migration is even applied. The values below are exactly what the 0018
+// backfill produced, so that probe still asserts the same thing.
 const FIXTURES = [
   ['user', {
     id: 'u-seed',
@@ -396,6 +404,7 @@ const FIXTURES = [
     is_packed: 0,
     is_ready: 0,
     packing_location_id: null,
+    pack_sort_order: 0,
     sort_order: 0,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
@@ -420,6 +429,7 @@ const FIXTURES = [
     is_packed: 0,
     is_ready: 0,
     packing_location_id: 'pl-seed',
+    pack_sort_order: 1,
     sort_order: 40,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
@@ -435,6 +445,7 @@ const FIXTURES = [
     is_packed: 0,
     is_ready: 0,
     packing_location_id: 'pl-seed',
+    pack_sort_order: 0,
     sort_order: 10,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
@@ -450,6 +461,7 @@ const FIXTURES = [
     is_packed: 0,
     is_ready: 0,
     packing_location_id: null,
+    pack_sort_order: 1,
     sort_order: 30,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
@@ -465,6 +477,7 @@ const FIXTURES = [
     is_packed: 1,
     is_ready: 1,
     packing_location_id: null,
+    pack_sort_order: 0,
     sort_order: 1,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
