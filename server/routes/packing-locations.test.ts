@@ -4,7 +4,12 @@ import { describe, expect, it } from 'vitest'
 import { PACK_RANK_MAX } from '../../shared/lists'
 import app from '../index'
 import { createDb } from '../db'
-import { listItems, packReorderGuard, packingLocations } from '../db/schema'
+import {
+  listItems,
+  packReorderGuard,
+  packingLocationDeleteState,
+  packingLocations,
+} from '../db/schema'
 import { isTriggerAbort } from '../repos/db-errors'
 import { remapPackingLocationId } from '../repos/lists'
 import { apiRequest } from '../test/api-helpers'
@@ -1433,5 +1438,170 @@ describe('location deletion near the top of the rank space', () => {
         location.id,
       )
     }
+  })
+})
+
+// Release 2B: the actual P0.1 fix.
+describe('deleting a list with bagged items (P0.1)', () => {
+  async function collidingList(email: string) {
+    // The minimal shape that reproduces it: rank 0 held in Unassigned AND rank
+    // 0 held inside a bag. On delete the bagged row is SET NULL into Unassigned
+    // carrying rank 0, which the partial unique index rejects.
+    const { cookie } = await signUpVerifiedUser(email, 'O')
+    const list = await createList(cookie, 'Trip')
+    const loose = await addItem(cookie, list.id, await createGear(cookie, 'Loose'))
+    const location = await createLocation(cookie, list.id, 'Bag')
+    const bagged = await addItem(cookie, list.id, await createGear(cookie, 'Bagged'))
+    await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${bagged.id}`, {
+      packingLocationId: location.id,
+    })
+    const items = await getItems(cookie, list.id)
+    // Assert the colliding shape really exists, so this cannot pass vacuously.
+    const looseRank = items.find((i) => i.id === loose.id)!.packSortOrder
+    const baggedRank = items.find((i) => i.id === bagged.id)!.packSortOrder
+    expect(looseRank).toBe(baggedRank)
+    return { cookie, list, location, loose, bagged }
+  }
+
+  it('deletes the list instead of failing on the unique index', async () => {
+    const { cookie, list } = await collidingList('p01-list-delete@example.com')
+    const res = await apiRequest(cookie, 'DELETE', `/api/lists/${list.id}`)
+    expect(res.status).toBe(204)
+    expect((await apiRequest(cookie, 'GET', `/api/lists/${list.id}`)).status).toBe(404)
+  })
+
+  it('deletes the location and re-ranks its orphans into Unassigned', async () => {
+    const { cookie, list, location, loose, bagged } = await collidingList(
+      'p01-location-delete@example.com',
+    )
+    const res = await apiRequest(
+      cookie,
+      'DELETE',
+      `/api/lists/${list.id}/packing-locations/${location.id}`,
+    )
+    expect(res.status).toBe(204)
+
+    const after = await getItems(cookie, list.id)
+    expect(after.every((i) => i.packingLocationId === null)).toBe(true)
+    // Dense, distinct, and the survivor keeps its place ahead of the orphan.
+    expect(after.map((i) => i.packSortOrder).sort((a, b) => a - b)).toEqual([0, 1])
+    expect(after.find((i) => i.id === loose.id)!.packSortOrder).toBeLessThan(
+      after.find((i) => i.id === bagged.id)!.packSortOrder,
+    )
+  })
+
+  it('leaves the transient mapping table empty afterwards', async () => {
+    const { cookie, list } = await collidingList('p01-transient@example.com')
+    expect(
+      (await apiRequest(cookie, 'DELETE', `/api/lists/${list.id}`)).status,
+    ).toBe(204)
+    expect(
+      await createDb(env.DB).select().from(packingLocationDeleteState),
+    ).toEqual([])
+  })
+
+  it('deletes an item-backed container without colliding', async () => {
+    // Needs THREE rows. A two-row fixture passes without the fix, because
+    // deleting the backing item frees its own rank first - so it would prove
+    // nothing. Assert the pre-delete shape to keep it that way.
+    const { cookie } = await signUpVerifiedUser('p01-container@example.com', 'O')
+    const list = await createList(cookie, 'Trip')
+    const survivor = await addItem(cookie, list.id, await createGear(cookie, 'Survivor'))
+    const backing = await addItem(cookie, list.id, await createGear(cookie, 'Backing'))
+    const container = await createItemContainer(cookie, list.id, backing.id)
+    const content = await addItem(cookie, list.id, await createGear(cookie, 'Content'))
+    await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${content.id}`, {
+      packingLocationId: container.id,
+    })
+
+    const before = await getItems(cookie, list.id)
+    expect(
+      before.filter((i) => i.packingLocationId === null).map((i) => i.id).sort(),
+    ).toEqual([survivor.id, backing.id].sort())
+
+    const res = await apiRequest(
+      cookie,
+      'DELETE',
+      `/api/lists/${list.id}/items/${backing.id}`,
+    )
+    expect(res.status).toBe(204)
+    const after = await getItems(cookie, list.id)
+    expect(after.map((i) => i.packSortOrder).sort((a, b) => a - b)).toEqual([0, 1])
+  })
+
+})
+
+describe('cascade delete at the schema caps', () => {
+  it('deletes a list with 30 locations and 300 items without timing out', async () => {
+    // Re-ranking per location rewrites the growing Unassigned cohort each time,
+    // so a cascade over a list at the caps is quadratic in locations. Measured
+    // at 17,430 list_items writes for ONE list, and ~1.9M for an account at 100
+    // lists - past D1's 30-second query ceiling, where it would time out and
+    // roll the whole delete back. The trigger now deletes doomed rows instead
+    // of re-ranking them, which makes this one write per row.
+    //
+    // Seeded through the DB rather than the API: 330 API calls would dominate
+    // the runtime and prove nothing extra.
+    //
+    // HONEST LIMIT: this asserts the delete SUCCEEDS at cap shape, not a write
+    // budget - vitest-pool-workers gives no counter for that. The write-count
+    // evidence lives in the migration comment and was measured directly.
+    const { cookie } = await signUpVerifiedUser('cascade-scale@example.com', 'O')
+    const list = await createList(cookie, 'Big')
+    const userId = await userIdFor(cookie)
+    const gearId = await createGear(cookie, 'Shared')
+    const db = createDb(env.DB)
+    const now = Date.now()
+
+    const LOCATIONS = 30
+    const ITEMS = 300
+    // Chunked: D1 caps a query at 100 BOUND PARAMETERS, and these rows carry
+    // 7 columns each, so a single 30-row insert is 210 params and fails. Same
+    // reason the repos chunk their multi-row writes.
+    const locationRows = Array.from({ length: LOCATIONS }, (_, k) => ({
+      id: `scale-loc-${k}`,
+      userId,
+      listId: list.id,
+      name: `Bag ${k}`,
+      sortOrder: k,
+      createdAt: now,
+      updatedAt: now,
+    }))
+    for (let i = 0; i < locationRows.length; i += 10) {
+      await db.insert(packingLocations).values(locationRows.slice(i, i + 10))
+    }
+
+    // Unassigned-heavy on purpose: a big destination cohort is what the old
+    // shape rewrote once per location.
+    const existing = (await getItems(cookie, list.id)).length
+    const rows = []
+    let unassigned = existing
+    for (let i = 0; i < ITEMS - existing; i++) {
+      const inLocation = i < LOCATIONS
+      rows.push({
+        id: `scale-item-${i}`,
+        userId,
+        listId: list.id,
+        gearItemId: gearId,
+        packingLocationId: inLocation ? `scale-loc-${i}` : null,
+        packSortOrder: inLocation ? 0 : unassigned++,
+        sortOrder: i,
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+    // 7 rows, not 10. Drizzle emits EVERY column of the table - 14 here,
+    // including the ones left to their defaults - so the parameter count is
+    // driven by the table's width, not by how many fields this code sets.
+    // 7 x 14 = 98, just under D1's 100-parameter cap. (This is the same
+    // divisor bug P2.6 records against `chunkForParamCap`.)
+    for (let i = 0; i < rows.length; i += 7) {
+      await db.insert(listItems).values(rows.slice(i, i + 7))
+    }
+    expect((await getItems(cookie, list.id)).length).toBe(ITEMS)
+
+    const res = await apiRequest(cookie, 'DELETE', `/api/lists/${list.id}`)
+    expect(res.status).toBe(204)
+    expect(await createDb(env.DB).select().from(packingLocationDeleteState)).toEqual([])
   })
 })

@@ -808,6 +808,11 @@ const TRANSIENT_TABLES = [
     table: '_pack_reorder_guard',
     why: "reorderPack's fail-loud CAS guard; a row lives only between park and settle",
   },
+  {
+    migration: '0020_cascade-rerank.sql',
+    table: '_packing_location_delete_state',
+    why: 'the cascade re-rank mapping; rows live only inside the delete trigger',
+  },
 ]
 
 // Columns a migration is ALLOWED to drop, and the schema objects that go with
@@ -1317,7 +1322,15 @@ const main = () => {
 
     const seededColumns = seed(columnsByTable, addedNames)
 
-    const unseeded = listTables().filter((table) => !seededColumns.has(table))
+    // Transient tables are exempt here for the same reason they are exempt
+    // from the new-table fixture check below: a seeded row asserts a state that
+    // can never persist. This matters MORE once they are on the base ref -
+    // every future migration would otherwise trip this, which is exactly the
+    // shape of breakage 0018 left behind by relying on its own backfill.
+    const transientAtBase = new Set(TRANSIENT_TABLES.map((t) => t.table))
+    const unseeded = listTables().filter(
+      (table) => !seededColumns.has(table) && !transientAtBase.has(table),
+    )
     if (unseeded.length > 0) {
       throw new Error(
         `No fixture for: ${unseeded.join(', ')}.\n` +
