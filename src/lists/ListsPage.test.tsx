@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, cleanup, screen, fireEvent, within } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { render, cleanup, screen, fireEvent, within, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider, onlineManager, useQuery } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
 import type { List } from '../lib/types'
+import { queryKeys, fetchLists } from '../lib/queries'
 import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
 
 // jsdom has no matchMedia; ListsPage reads useIsMobile() (max-width: 767px)
@@ -59,7 +60,12 @@ vi.mock('./use-current-list-actions', () => ({
 
 import ListsPage from './ListsPage'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  // onlineManager is module-global; the offline test would otherwise pause
+  // every later query in this file.
+  onlineManager.setOnline(true)
+})
 
 function list(over: Partial<List> = {}): List {
   return {
@@ -78,16 +84,36 @@ function list(over: Partial<List> = {}): List {
   }
 }
 
+// An independent observer on the same query key. Tests wait until THIS has
+// rendered the status they are looking for, which is the same barrier the page
+// must cross, with no dependence on the notification scheduler's tick count.
+// It renders status AND fetchStatus because status alone cannot express the
+// case these tests exist for: 'pending' covers both an in-flight cold load and
+// one parked offline, and it is specifically the parked one that used to render
+// the empty state. Waiting on the pair asserts the state by name.
+function ListsQueryProbe() {
+  const { status, fetchStatus } = useQuery({
+    queryKey: queryKeys.lists(),
+    queryFn: fetchLists,
+  })
+  return <span data-testid="lists-status">{`${status}:${fetchStatus}`}</span>
+}
+
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/lists']}>
-        <MobilePrimaryNavProvider>{children}</MobilePrimaryNavProvider>
+        <MobilePrimaryNavProvider>
+          <ListsQueryProbe />
+          {children}
+        </MobilePrimaryNavProvider>
       </MemoryRouter>
     </QueryClientProvider>
   )
-  return render(<ListsPage />, { wrapper })
+  // qc is returned so a test can drive a BACKGROUND refetch, which is the
+  // only way to reach the "errored but still holding data" state.
+  return { qc, ...render(<ListsPage />, { wrapper }) }
 }
 
 // Click the bottom bar's Add slot (aria-label "New list"), disambiguated from
@@ -174,5 +200,80 @@ describe('ListsPage create-input placement', () => {
     // Still exactly one input, and the header owns it (phone surface gated out).
     expect(screen.getByPlaceholderText('List name')).toBeTruthy()
     expect(within(desktopHeader()).getByPlaceholderText('List name')).toBeTruthy()
+  })
+})
+
+// A failed lists fetch used to be indistinguishable from having no lists:
+// useReorderable defaults `items` to [], so the page fell into the
+// brand-new-user onboarding state. That copy tells an existing user their
+// lists are gone, and offers no way to retry.
+describe('ListsPage lists-fetch failure', () => {
+  it('renders a retryable failure state, not the empty state', async () => {
+    h.fetchLists.mockRejectedValue(new Error('offline'))
+    renderPage()
+
+    await screen.findByText("Couldn't load your lists")
+    expect(screen.queryByText('Create your first list')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+  })
+
+  it('refetches when Retry is clicked', async () => {
+    h.fetchLists.mockRejectedValueOnce(new Error('offline'))
+    renderPage()
+
+    await screen.findByText("Couldn't load your lists")
+    h.fetchLists.mockResolvedValue([list()])
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    await screen.findByText('Weekend trip')
+    expect(screen.queryByText("Couldn't load your lists")).toBeNull()
+  })
+
+  it('still shows the empty state when the fetch SUCCEEDS with no lists', async () => {
+    h.fetchLists.mockResolvedValue([])
+    renderPage()
+
+    await screen.findByText('Create your first list')
+    expect(screen.queryByText("Couldn't load your lists")).toBeNull()
+  })
+
+  // The trap inside the fix. TanStack Query v5 sets status to 'error' on a
+  // failed BACKGROUND refetch while KEEPING the cached rows, so isError is
+  // true with a fully rendered page on screen. Keying the failure panel on
+  // bare isError would blank the page after any post-mutation blip, and every
+  // list mutation invalidates ['lists']. isLoadingError is what excludes it.
+  it('keeps rendering cached lists when a LATER refetch fails', async () => {
+    h.fetchLists.mockResolvedValueOnce([list()])
+    const { qc } = renderPage()
+    await screen.findByText('Weekend trip')
+
+    h.fetchLists.mockRejectedValue(new Error('offline'))
+    void qc.refetchQueries({ queryKey: queryKeys.lists() })
+    // Wait on a RENDERED observer, not on qc.getQueryState. The cache flips to
+    // 'error' before any React observer re-renders, so asserting off cache
+    // state inspects the pre-error DOM and this test would pass against the
+    // bare-isError bug it exists to catch.
+    await waitFor(() =>
+      expect(screen.getByTestId('lists-status').textContent).toBe('error:idle'),
+    )
+
+    expect(screen.getByText('Weekend trip')).toBeTruthy()
+    expect(screen.queryByText("Couldn't load your lists")).toBeNull()
+  })
+
+  // Cold load with the browser offline. TanStack parks the fetch at
+  // fetchStatus 'paused', and v5's isLoading is `isPending && isFetching` - so
+  // isLoading is FALSE with zero rows in hand. Gated on isLoading, this page
+  // pitched the brand-new-user onboarding state at an offline user who has
+  // lists.
+  it('does not show the empty state on a cold load that is paused offline', async () => {
+    h.fetchLists.mockImplementation(() => new Promise(() => {}))
+    onlineManager.setOnline(false)
+    renderPage()
+
+    await waitFor(() =>
+      expect(screen.getByTestId('lists-status').textContent).toBe('pending:paused'),
+    )
+    expect(screen.queryByText('Create your first list')).toBeNull()
   })
 })
