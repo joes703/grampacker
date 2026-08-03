@@ -1,5 +1,6 @@
 import type { z } from 'zod'
 import { CSRF_HEADER, type ApiErrorBody } from '../../shared/api'
+import { revalidateSessionAfterUnauthorized } from './session-revalidation'
 
 // The SPA's single door to /api/*. Owns the three cross-cutting concerns
 // so no call site can forget one: the anti-CSRF header on unsafe methods,
@@ -41,6 +42,13 @@ async function rawFetch(path: string, opts: FetchOptions): Promise<Response> {
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   })
   if (!res.ok) {
+    // Before the body, not after. A 401 is reason enough to re-check the session
+    // whether or not the body ever arrives, and `await res.json()` below can stall on
+    // a truncated or hanging response - which would swallow the one signal that gets
+    // the user out of a dead session. Status decides; the body is only ever the
+    // message. (Re-check, not conclude: an edge or proxy can produce a 401 that says
+    // nothing about the app session. The server's answer settles it, not this line.)
+    if (res.status === 401) revalidateSessionAfterUnauthorized()
     const body = await res
       .json()
       .then((parsed) => parsed as ApiErrorBody | null)
@@ -52,6 +60,19 @@ async function rawFetch(path: string, opts: FetchOptions): Promise<Response> {
     )
   }
   return res
+}
+
+// The QueryClient's retry rule (wired in App.tsx). Lives here because it is a
+// statement about ApiError, which this module owns.
+//
+// A 401 is not a blip: `requireSession` said there is no session, and retrying the
+// same request with the same absent cookie asks the same question and gets the same
+// answer. Worse, the retry is a second 401, which is a second reason to re-check a
+// session that is already being re-checked. Everything else keeps the single retry
+// that smooths a transient failure without hammering a down server.
+export function shouldRetryQuery(failureCount: number, error: unknown): boolean {
+  if (error instanceof ApiError && error.status === 401) return false
+  return failureCount < 1
 }
 
 // For endpoints that return a JSON body, validated against its DTO schema.
