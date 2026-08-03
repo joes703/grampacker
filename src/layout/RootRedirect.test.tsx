@@ -1,22 +1,37 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Routes, Route, useParams } from 'react-router'
 import type { List } from '../lib/types'
 
-// Mock the two inputs RootRedirect reads: the cached-path helper and the
-// lists fetch. queryKeys stays real so the useQuery key matches nothing
-// unexpected.
-vi.mock('../lib/last-list-path', () => ({ readLastListPath: vi.fn() }))
+// A controllable session: RootRedirect reads authClient.useSession() only to
+// get the owner id it scopes the cached-path read to. A rerender with a new
+// value models signing in as a different account on the same browser.
+const h = vi.hoisted(() => ({ data: null as { user: { id: string } } | null }))
+vi.mock('../lib/auth-client', () => ({
+  authClient: { useSession: () => ({ data: h.data, isPending: false }) },
+}))
+
+// last-list-path is deliberately REAL here (backed by real localStorage): the
+// owner check it enforces is half of what these tests exist to prove, so a mock
+// would let a cross-account regression pass. Only the network fetch is mocked.
 vi.mock('../lib/queries', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/queries')>()),
   fetchLists: vi.fn(),
 }))
 
-import { readLastListPath } from '../lib/last-list-path'
+import { writeLastListPath } from '../lib/last-list-path'
 import { fetchLists } from '../lib/queries'
 import RootRedirect from './RootRedirect'
+
+const OWNER = 'user-a'
+const CACHED_UUID = '11111111-1111-1111-1111-111111111111'
+
+beforeEach(() => {
+  localStorage.clear()
+  h.data = { user: { id: OWNER } }
+})
 
 afterEach(() => {
   cleanup()
@@ -68,7 +83,6 @@ function Probe() {
 
 describe('RootRedirect', () => {
   it('shows a loading landmark while the list redirect is unresolved', () => {
-    vi.mocked(readLastListPath).mockReturnValue(null)
     vi.mocked(fetchLists).mockReturnValue(new Promise(() => {}))
     renderAt()
 
@@ -79,9 +93,7 @@ describe('RootRedirect', () => {
   })
 
   it('fast path: redirects to the cached last-list path without fetching', async () => {
-    vi.mocked(readLastListPath).mockReturnValue(
-      '/lists/11111111-1111-1111-1111-111111111111/pack',
-    )
+    writeLastListPath(`/lists/${CACHED_UUID}/pack`, OWNER)
     renderAt()
 
     await waitFor(() => expect(screen.getByText('pack-page')).toBeInTheDocument())
@@ -89,18 +101,26 @@ describe('RootRedirect', () => {
     expect(fetchLists).not.toHaveBeenCalled()
   })
 
-  it('fast path: restores the peer Organize mode', async () => {
-    vi.mocked(readLastListPath).mockReturnValue(
-      '/lists/11111111-1111-1111-1111-111111111111/organize',
-    )
+  it('cross-account: a pointer owned by A is IGNORED for account B', async () => {
+    // The leak this whole change exists to close. A wrote the pointer; B signs
+    // in on the same browser (a fresh document, or a lapsed cookie) with A's
+    // pointer still in localStorage. RootRedirect must NOT follow it to A's list
+    // URL - it falls through to the slow path and picks B's own most-recent list.
+    writeLastListPath(`/lists/${CACHED_UUID}/pack`, 'account-A')
+    h.data = { user: { id: 'account-B' } }
+    vi.mocked(fetchLists).mockResolvedValue([
+      makeList({ id: 'b-list', updatedAt: '2026-05-01T00:00:00Z' }),
+    ])
     renderAt()
 
-    await waitFor(() => expect(screen.getByText('organize-page')).toBeInTheDocument())
-    expect(fetchLists).not.toHaveBeenCalled()
+    // Fast path skipped: B lands on B's own list via a real fetch, never on
+    // /lists/<A's uuid>/pack.
+    await waitFor(() => expect(screen.getByText('detail:b-list')).toBeInTheDocument())
+    expect(fetchLists).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('pack-page')).not.toBeInTheDocument()
   })
 
   it('slow path: no cache -> redirects to the most-recently-updated list', async () => {
-    vi.mocked(readLastListPath).mockReturnValue(null)
     vi.mocked(fetchLists).mockResolvedValue([
       makeList({ id: 'older', updatedAt: '2026-01-01T00:00:00Z' }),
       makeList({ id: 'newest', updatedAt: '2026-03-01T00:00:00Z' }),
@@ -116,7 +136,6 @@ describe('RootRedirect', () => {
   })
 
   it('empty account: zero lists -> redirects to the lists empty state', async () => {
-    vi.mocked(readLastListPath).mockReturnValue(null)
     vi.mocked(fetchLists).mockResolvedValue([])
     renderAt()
 
@@ -124,7 +143,6 @@ describe('RootRedirect', () => {
   })
 
   it('failed fetch (no cache) -> redirects to /lists instead of a blank page', async () => {
-    vi.mocked(readLastListPath).mockReturnValue(null)
     vi.mocked(fetchLists).mockRejectedValue(new Error('network down'))
     renderAt()
 

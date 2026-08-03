@@ -10,6 +10,7 @@ import MagicLinkPage from './auth/MagicLinkPage'
 import ToastViewport from './components/Toast'
 import ChunkErrorBoundary from './components/ChunkErrorBoundary'
 import AppLoading from './components/AppLoading'
+import { SessionCacheGuard } from './layout/session-cache-guard'
 
 // The two anonymous surfaces are split out of the main bundle, because until
 // now both of them shipped the whole authenticated app to people who could not
@@ -178,10 +179,19 @@ export default function App() {
   return (
     <ChunkErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <AppRoutes />
-          <ToastViewport />
-        </BrowserRouter>
+        {/* Owns the "one account's data may not render to another" invariant
+            for the whole app. It WRAPS the router (not a sibling) on purpose:
+            on any ambient account change/sign-out it must be able to suppress
+            the mounted tree synchronously - before A's cached rows commit under
+            B - and only then tear the document down. It also reloads a
+            bfcache-restored authenticated document. See its doc comment for why
+            a cache clear is not enough and why suppression must be synchronous. */}
+        <SessionCacheGuard>
+          <BrowserRouter>
+            <AppRoutes />
+            <ToastViewport />
+          </BrowserRouter>
+        </SessionCacheGuard>
       </QueryClientProvider>
     </ChunkErrorBoundary>
   )

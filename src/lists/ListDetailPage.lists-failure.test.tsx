@@ -17,6 +17,15 @@ import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
 import { writeLastListPath, readLastListPath } from '../lib/last-list-path'
 import { queryKeys, fetchLists } from '../lib/queries'
 
+// The last-list pointer is owner-tagged: both ListDetailPage's write/self-heal
+// and the test's own pointer setup must use the SAME account, or the self-heal
+// would read a pointer it doesn't own and never clear it. A fixed session id
+// makes the page's ownerId deterministic and matches OWNER below.
+const OWNER = 'owner-1'
+vi.mock('../lib/auth-client', () => ({
+  authClient: { useSession: () => ({ data: { user: { id: OWNER } }, isPending: false }) },
+}))
+
 // Real UUID: writeLastListPath validates against a strict /lists/<uuid> regex
 // and silently no-ops on anything else, so a placeholder id would make the
 // self-heal assertions below pass vacuously.
@@ -180,22 +189,22 @@ describe('ListDetailPage when the lists query fails', () => {
   })
 
   it('does not clear the cached last-list path on a failed fetch', async () => {
-    writeLastListPath(`/lists/${listId}`)
+    writeLastListPath(`/lists/${listId}`, OWNER)
     h.fetchLists.mockRejectedValue(new Error('offline'))
     await renderDetail()
 
     await screen.findByText("Couldn't load your lists")
-    expect(readLastListPath()).toBe(`/lists/${listId}`)
+    expect(readLastListPath(OWNER)).toBe(`/lists/${listId}`)
   })
 
   it('still shows "List not found", and clears the cache, when the fetch SUCCEEDS without the list', async () => {
-    writeLastListPath(`/lists/${listId}`)
+    writeLastListPath(`/lists/${listId}`, OWNER)
     h.fetchLists.mockResolvedValue([])
     await renderDetail()
 
     await screen.findByText('List not found')
     expect(screen.queryByText("Couldn't load your lists")).toBeNull()
-    expect(readLastListPath()).toBeNull()
+    expect(readLastListPath(OWNER)).toBeNull()
   })
 
   // The case a naive `isError && data === undefined` predicate gets wrong.
@@ -204,7 +213,7 @@ describe('ListDetailPage when the lists query fails', () => {
   // "List not found" - asserting the list is gone on the strength of a
   // request that failed. Both branches are guarded on `!list` instead.
   it('shows the failure state, not "List not found", when the fetch fails over a cached collection that lacks this list', async () => {
-    writeLastListPath(`/lists/${listId}`)
+    writeLastListPath(`/lists/${listId}`, OWNER)
     // A stale collection from an earlier session, which never contained this
     // list, plus a fetch that fails. data is DEFINED and `list` is undefined:
     // exactly the state an `isError && data === undefined` predicate misses.
@@ -214,7 +223,7 @@ describe('ListDetailPage when the lists query fails', () => {
 
     await screen.findByText("Couldn't load your lists")
     expect(screen.queryByText('List not found')).toBeNull()
-    expect(readLastListPath()).toBe(`/lists/${listId}`)
+    expect(readLastListPath(OWNER)).toBe(`/lists/${listId}`)
   })
 
   // The control for the branch above: a resolved list must never be replaced
@@ -238,7 +247,7 @@ describe('ListDetailPage when the lists query fails', () => {
   // perfectly valid last-list pointer, on the strength of a request that has
   // not even been sent.
   it('does not claim "List not found" while a warm-cache refetch is paused offline', async () => {
-    writeLastListPath(`/lists/${listId}`)
+    writeLastListPath(`/lists/${listId}`, OWNER)
     const otherList = { ...list, id: '99999999-8888-4777-8666-555555555555', name: 'Other' } as List
     h.fetchLists.mockImplementation(() => new Promise(() => {}))
     onlineManager.setOnline(false)
@@ -249,6 +258,6 @@ describe('ListDetailPage when the lists query fails', () => {
     )
 
     expect(screen.queryByText('List not found')).toBeNull()
-    expect(readLastListPath()).toBe(`/lists/${listId}`)
+    expect(readLastListPath(OWNER)).toBe(`/lists/${listId}`)
   })
 })
