@@ -21,6 +21,12 @@
       "Bash(git fetch *)",
       "Bash(gh pr create *)",
       "mcp__cloudflare__docs"
+    ],
+    "deny": [
+      "Read(./.dev.vars)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./dist/**/.dev.vars)"
     ]
   }
 }
