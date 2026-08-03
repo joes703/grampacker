@@ -110,6 +110,12 @@ describe('passkey fresh-auth gate', () => {
       env,
     )
     expect(res.status).toBe(401)
+    // better-auth's dialect, like the 403 above - NOT the app's {error} shape.
+    // This middleware answers inside /api/auth/*, which the SPA reads through
+    // better-auth's client: PasskeySection keys off `code`, auth-errors renders
+    // `message`. Answering {error} here would be a shape nothing on this path
+    // reads.
+    expect(await res.json()).toMatchObject({ code: 'UNAUTHORIZED' })
   })
 
   it('leaves RENAME ungated even for a stale session', async () => {
