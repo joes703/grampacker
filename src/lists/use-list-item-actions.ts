@@ -10,6 +10,7 @@ import {
   makeOptimisticDelete,
   type ListItemPatch,
 } from '../lib/queries'
+import { mutationKeys } from '../lib/queries/keys'
 import { nextPackRankInCohort } from '../lib/grouping'
 import { randomTempId } from '../lib/random-temp-id'
 import type { GearItem, ListItemWithGear } from '../lib/types'
@@ -50,6 +51,7 @@ export function useListItemActions(
   const qc = useQueryClient()
 
   const addItem = useMutation({
+    mutationKey: mutationKeys.addListItem(listId),
     mutationFn: (item: GearItem) => addListItem(listId, item.id),
     ...makeOptimisticInsert<ListItemWithGear, GearItem>({
       qc,
@@ -107,7 +109,7 @@ export function useListItemActions(
   // cache with server truth when something external raced the optimistic
   // writes (e.g. the edit-gear dialog saves gear first, whose fan-out
   // invalidation refetches this list mid-save).
-  const updateMutKey = ['update-list-item', listId] as const
+  const updateMutKey = mutationKeys.updateListItem(listId)
   const updateItem = useMutation({
     mutationKey: updateMutKey,
     mutationFn: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) =>
@@ -155,6 +157,7 @@ export function useListItemActions(
   // backing row no longer exists, and the pack view rendered a ghost section
   // until something else happened to refetch it.
   const deleteItem = useMutation({
+    mutationKey: mutationKeys.deleteListItem(listId),
     mutationFn: (itemId: string) => deleteListItem(listId, itemId),
     ...makeOptimisticDelete<ListItemWithGear, string>({
       qc,
@@ -170,6 +173,7 @@ export function useListItemActions(
   // with a meta.errorToast for the failure path. cost/purchaseDate are out of
   // scope for Quick Add and fixed at null by the server.
   const addNewItem = useMutation({
+    mutationKey: mutationKeys.addNewListItem(listId),
     mutationFn: ({ categoryId, data }: { categoryId: string | null; data: AddItemData }) =>
       quickAddListItem(listId, {
         name: data.name,

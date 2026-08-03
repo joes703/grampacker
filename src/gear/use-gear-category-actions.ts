@@ -9,6 +9,7 @@ import {
   makeOptimisticUpdate,
   makeOptimisticDelete,
 } from '../lib/queries'
+import { mutationKeys } from '../lib/queries/keys'
 import { randomTempId } from '../lib/random-temp-id'
 import type { Category } from '../lib/types'
 
@@ -33,6 +34,7 @@ export function useGearCategoryActions(categories: Category[]) {
   const qc = useQueryClient()
 
   const addCategory = useMutation({
+    mutationKey: mutationKeys.addGearCategory(),
     mutationFn: (name: string) => createCategory(name),
     ...makeOptimisticInsert<Category, string>({
       qc,
@@ -47,6 +49,7 @@ export function useGearCategoryActions(categories: Category[]) {
   })
 
   const renameCategory = useMutation({
+    mutationKey: mutationKeys.renameGearCategory(),
     mutationFn: ({ id, name }: { id: string; name: string }) =>
       renameCategoryRequest(id, name),
     ...makeOptimisticUpdate<Category, { id: string; name: string }>({
@@ -58,6 +61,7 @@ export function useGearCategoryActions(categories: Category[]) {
   })
 
   const removeCategory = useMutation({
+    mutationKey: mutationKeys.removeGearCategory(),
     mutationFn: (id: string) => deleteCategory(id),
     ...makeOptimisticDelete<Category, string>({
       qc,

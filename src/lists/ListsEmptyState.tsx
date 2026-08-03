@@ -7,6 +7,7 @@ import {
   createList,
   makeOptimisticInsert,
 } from '../lib/queries'
+import { mutationKeys } from '../lib/queries/keys'
 import type { List } from '../lib/types'
 import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
@@ -42,6 +43,7 @@ export default function ListsEmptyState() {
   const importMut = useListImportMutation()
 
   const createMut = useMutation({
+    mutationKey: mutationKeys.createList(),
     mutationFn: (n: string) => createList(n),
     // sortOrder 0 is correct here: this empty state only renders when
     // lists.length === 0, where nextListSortOrder([]) === 0, so the new

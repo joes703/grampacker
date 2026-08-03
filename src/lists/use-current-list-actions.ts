@@ -14,6 +14,7 @@ import {
   makeOptimisticInsert,
   nextListSortOrder,
 } from '../lib/queries'
+import { mutationKeys } from '../lib/queries/keys'
 import { listItemsToCsv, downloadCsv } from '../lib/csv'
 import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { showToast } from '../lib/toast'
@@ -42,6 +43,7 @@ export function useCurrentListActions() {
   const [exportingListId, setExportingListId] = useState<string | null>(null)
 
   const renameMut = useMutation({
+    mutationKey: mutationKeys.renameList(),
     mutationFn: ({ id, name }: { id: string; name: string }) => updateList(id, { name }),
     ...makeOptimisticUpdate<List, { id: string; name: string }>({
       qc,
@@ -82,6 +84,7 @@ export function useCurrentListActions() {
   // snapshot whenever the cache is fresh; the settled refetch reconciles any
   // race.
   const createListMut = useMutation({
+    mutationKey: mutationKeys.createList(),
     mutationFn: ({ name }: CreateListVars) => createList(name),
     meta: { errorToast: "Couldn't create the list. Please try again." },
     ...makeOptimisticInsert<List, CreateListVars>({
@@ -112,6 +115,7 @@ export function useCurrentListActions() {
   // Non-optimistic: the server performs the deep copy (fresh slug,
   // isShared/isDraft reset) and returns the new row; invalidate + navigate.
   const duplicateMut = useMutation({
+    mutationKey: mutationKeys.duplicateList(),
     mutationFn: (target: List) => duplicateList(target.id),
     meta: { errorToast: "Couldn't duplicate that list. Please try again." },
     onSuccess: (created) => {
@@ -121,6 +125,7 @@ export function useCurrentListActions() {
   })
 
   const deleteListMut = useMutation({
+    mutationKey: mutationKeys.deleteList(),
     mutationFn: deleteList,
     ...makeOptimisticDelete<List, string>({
       qc,

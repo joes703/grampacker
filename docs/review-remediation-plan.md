@@ -850,9 +850,30 @@ Document in AGENTS.md beside the existing migration traps.
 - **PR 4.3 (P1.2)** - `qc.clear()` and `clearLastListPath()` in `useSignOut`,
   or a full-document navigation as the other two paths use.
 - **PR 4.4 (P1.4)** - `app.onError` logging `{path, method, status, error}` and
-  returning a correlation id in the uniform `{error}` shape. Fix
-  `fresh-auth.ts:58-64`, which returns `{code, message}`. Add `mutationKey`s.
-- **PR 4.5 (P1.5)** - single 401 policy in `rawFetch`.
+  returning a correlation id in the uniform `{error}` shape. ~~Fix
+  `fresh-auth.ts:58-64`, which returns `{code, message}`.~~ Add `mutationKey`s.
+
+  **CORRECTED at implementation time (2026-08-03): the fresh-auth item was
+  backwards, and the 403 it named is right.** That middleware answers on
+  `/api/auth/passkey/*`, which is better-auth's namespace, consumed by
+  better-auth's CLIENT rather than by `src/lib/api.ts`:
+  `PasskeySection.tsx:34-40` keys its re-auth prompt off `code`, and
+  `auth-errors.ts:19` renders `message`. Rewriting the 403 to `{error}` would
+  have stranded "Add a passkey" on a raw message with no way forward, silently,
+  because the 403 still arrives. A superset `{error, code, message}` was
+  considered and rejected too: it would give `error` to fresh-auth alone while
+  every other `/api/auth/*` error - including the `SESSION_NOT_FRESH` that same
+  component handles - kept better-auth's dialect, making the uniformity claim
+  false.
+
+  What shipped instead: `/api/auth/*` is documented as better-auth's dialect,
+  and fresh-auth's **401** (the one answering `{error: 'Unauthorized'}` inside
+  that namespace) was brought into line with its own 403. `shared/api.ts`
+  narrows its claim to app-owned routes.
+- **PR 4.5 (P1.5)** - single 401 policy in `rawFetch`. **Scope note from 4.4:**
+  `rawFetch` never sees `/api/auth/*` (that traffic goes through better-auth's
+  client), so this policy covers app-owned routes only and must not be written
+  as though it were global.
 - **PR 4.6** - `meta.errorToast` on gear mutations and `saveError` into
   `GearItemDialog` on `GearLibraryPage`.
 

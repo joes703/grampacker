@@ -77,6 +77,24 @@ const CSP = [
   "worker-src 'self'",
 ].join('; ')
 
+// Dev-vs-prod classification, and the ONE thing in this middleware that could
+// throw: `new URL()` rejects a malformed BETTER_AUTH_URL. That matters more than
+// it looks. Hono catches errors at EACH composed middleware frame, so a throw
+// here while unwinding from an already-failed request invokes app.onError a
+// SECOND time - the client gets the second correlation id while the real
+// incident sits in the logs under an orphaned one. Non-throwing at the source is
+// the fix; the error handler cannot repair it from below.
+//
+// Fails CLOSED: an unparseable origin is treated as production, so the full
+// header set (including CSP) applies rather than the relaxed dev set.
+export function isDevEnvironment(env: Env): boolean {
+  try {
+    return new URL(env.BETTER_AUTH_URL).hostname === 'localhost'
+  } catch {
+    return false
+  }
+}
+
 export function securityHeaderMap(opts: { dev: boolean }): Record<string, string> {
   return {
     // Dev only: Vite's HMR client and the react-refresh preamble are
@@ -96,7 +114,7 @@ export function securityHeaderMap(opts: { dev: boolean }): Record<string, string
 export const securityHeaders = createMiddleware<{ Bindings: Env }>(
   async (c, next) => {
     await next()
-    const dev = new URL(c.env.BETTER_AUTH_URL).hostname === 'localhost'
+    const dev = isDevEnvironment(c.env)
     // Responses proxied from ASSETS.fetch have immutable headers;
     // reconstruct before writing.
     const res = new Response(c.res.body, c.res)

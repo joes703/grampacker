@@ -50,7 +50,18 @@ export const requireFreshAuth = createMiddleware<{ Bindings: Env }>(
     const session = await createAuth(c.env).api.getSession({
       headers: c.req.raw.headers,
     })
-    if (!session) return c.json({ error: 'Unauthorized' }, 401)
+    // better-auth's dialect ({code, message}), not the app's ApiErrorBody
+    // ({error}). This middleware answers inside /api/auth/*, which is consumed
+    // by better-auth's CLIENT, not by src/lib/api.ts - PasskeySection keys its
+    // re-auth prompt off `code` and auth-errors renders `message`. The 403 below
+    // already spoke this dialect; this 401 was the odd one out, answering in a
+    // shape nothing on that path reads.
+    if (!session) {
+      return c.json(
+        { code: 'UNAUTHORIZED', message: 'Sign in to manage your passkeys.' },
+        401,
+      )
+    }
 
     // Fail closed on an unparseable timestamp rather than treating it as fresh.
     const createdAt = new Date(session.session.createdAt).getTime()

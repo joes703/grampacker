@@ -1,4 +1,5 @@
 import type { Mutation } from '@tanstack/react-query'
+import { ApiError } from './api'
 import { showToast } from './toast'
 
 // Opt-in per-mutation failure feedback. A non-optimistic mutation (no visible
@@ -53,9 +54,15 @@ export function mutationErrorHandler(
     error && typeof error === 'object' && 'code' in error
       ? (error as { code: unknown }).code
       : undefined
+  // The server's id for the same incident, when it minted one (5xx that it
+  // actually logged). This is the join between what the console shows and what
+  // Workers Logs holds - without it, a client-side "Internal Server Error" and
+  // the server entry that explains it cannot be tied together.
+  const correlationId = error instanceof ApiError ? error.correlationId : undefined
   console.warn(`[${key}] failed`, {
     error: message,
     code,
+    correlationId,
     mutationKey: mutation.options.mutationKey,
   })
   const errorToast = mutation.options.meta?.errorToast

@@ -45,6 +45,7 @@ import {
   makeOptimisticUpdate,
   type ListItemPatch,
 } from '../lib/queries'
+import { mutationKeys } from '../lib/queries/keys'
 import type { Category, GearItem, ListItemWithGear, List, PackingLocation } from '../lib/types'
 import { authClient } from '../lib/auth-client'
 import { useWeightUnit } from '../lib/use-weight-unit'
@@ -535,6 +536,7 @@ function ListDetailInner({
     void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
   }, [qc, listId])
   const foodDaysMut = useMutation({
+    mutationKey: mutationKeys.setFoodDays(listId),
     // Refetch first: FoodSection decides whether to warn about losing planned
     // meals from its cached snapshot, and that cache is up to 30s stale. This
     // narrows the window to a single round trip. It does not close it - that
@@ -547,12 +549,14 @@ function ListDetailInner({
     onSuccess: invalidateFood,
   })
   const foodSlotMut = useMutation({
+    mutationKey: mutationKeys.setFoodSlot(listId),
     mutationFn: (vars: { slotId: string; needed: boolean }) =>
       setFoodSlotNeeded(listId, vars.slotId, vars.needed),
     meta: { errorToast: "Couldn't update that meal. Please try again." },
     onSuccess: invalidateFood,
   })
   const foodItemCreateMut = useMutation({
+    mutationKey: mutationKeys.createFoodItem(listId),
     mutationFn: (input: {
       name: string
       weightGrams: number
@@ -580,12 +584,14 @@ function ListDetailInner({
     onSuccess: invalidateFood,
   })
   const foodItemSlotsMut = useMutation({
+    mutationKey: mutationKeys.setFoodItemSlots(listId),
     mutationFn: (vars: { itemId: string; slotIds: string[] }) =>
       updateFoodItem(listId, vars.itemId, { slotIds: vars.slotIds }),
     meta: { errorToast: "Couldn't reschedule that food. Please try again." },
     onSuccess: invalidateFood,
   })
   const foodItemDeleteMut = useMutation({
+    mutationKey: mutationKeys.deleteFoodItem(listId),
     mutationFn: (itemId: string) => deleteFoodItem(listId, itemId),
     meta: { errorToast: "Couldn't remove that food. Please try again." },
     onSuccess: invalidateFood,
@@ -710,6 +716,7 @@ function ListDetailInner({
 
   // DOCUMENT order. List view only.
   const reorderItemsMut = useMutation({
+    mutationKey: mutationKeys.reorderListItems(listId),
     mutationFn: (updates: { id: string; sortOrder: number }[]) =>
       reorderListItems(listId, updates),
     ...makeOptimisticReorder<ListItemWithGear>(qc, queryKeys.listItems(listId)),
@@ -720,6 +727,7 @@ function ListDetailInner({
   // split: arranging your pack no longer rewrites the list you wrote or the
   // share link you sent someone.
   const reorderPackItemsMut = useMutation({
+    mutationKey: mutationKeys.reorderPackItems(listId),
     mutationFn: (updates: { id: string; packSortOrder: number }[]) =>
       reorderPackListItems(listId, updates),
     ...makeOptimisticPackReorder<ListItemWithGear>(
@@ -743,6 +751,7 @@ function ListDetailInner({
     nextPackSortOrder: number
   }
   const moveItemMut = useMutation({
+    mutationKey: mutationKeys.moveListItem(listId),
     mutationFn: ({ itemId, locationId }: MoveItemVars) =>
       updateListItem(listId, itemId, { packingLocationId: locationId }),
     ...makeOptimisticUpdate<ListItemWithGear, MoveItemVars>({
@@ -769,6 +778,7 @@ function ListDetailInner({
     moveItemMut.isPending || reorderItemsMut.isPending || locationCreationPending
 
   const notesMut = useMutation({
+    mutationKey: mutationKeys.updateListNotes(listId),
     mutationFn: (description: string) => updateList(listId, { description: description || null }),
     ...makeOptimisticUpdate<List, string>({
       qc,
