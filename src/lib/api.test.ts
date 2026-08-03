@@ -79,6 +79,23 @@ describe('apiFetch', () => {
     expect((err as ApiError).message).toBe('Request failed (502)')
   })
 
+  it('carries the correlation id off a 500 so the client log can join the server one', async () => {
+    mockFetch(500, {
+      error: 'Internal Server Error',
+      correlationId: 'c0ffee00-dead-4bee-8888-feedfacecafe',
+    })
+    const err = await apiFetch('/lists', z.unknown()).catch((e: unknown) => e)
+    expect((err as ApiError).correlationId).toBe('c0ffee00-dead-4bee-8888-feedfacecafe')
+  })
+
+  it('leaves correlationId undefined when the server minted none', async () => {
+    // Handler-returned 4xx are not incidents, and the server also stops minting
+    // ids once its log budget is spent - so absent is a normal case, not a bug.
+    mockFetch(409, { error: 'Conflict' })
+    const err = await apiFetch('/lists', z.unknown()).catch((e: unknown) => e)
+    expect((err as ApiError).correlationId).toBeUndefined()
+  })
+
   it('response shape drift fails loudly instead of leaking into the UI', async () => {
     mockFetch(200, [{ wrong: 'shape' }])
     await expect(

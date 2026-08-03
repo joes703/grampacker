@@ -9,11 +9,19 @@ import { CSRF_HEADER, type ApiErrorBody } from '../../shared/api'
 
 export class ApiError extends Error {
   readonly status: number
+  // Present only on unhandled 5xx, and only when the server actually logged the
+  // incident - it stops minting ids once its per-window budget is spent, rather
+  // than handing out one that cannot be found. Developer-only: it joins a
+  // DevTools console line to a Workers Logs entry. There is deliberately no
+  // "quote this to support" UI, because there is no support process to quote it
+  // to.
+  readonly correlationId?: string
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, correlationId?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.correlationId = correlationId
   }
 }
 
@@ -33,11 +41,15 @@ async function rawFetch(path: string, opts: FetchOptions): Promise<Response> {
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   })
   if (!res.ok) {
-    const message = await res
+    const body = await res
       .json()
-      .then((body) => (body as ApiErrorBody | null)?.error ?? null)
+      .then((parsed) => parsed as ApiErrorBody | null)
       .catch(() => null)
-    throw new ApiError(res.status, message ?? `Request failed (${res.status})`)
+    throw new ApiError(
+      res.status,
+      body?.error ?? `Request failed (${res.status})`,
+      body?.correlationId,
+    )
   }
   return res
 }
