@@ -34,6 +34,10 @@ import { useSignOut } from './use-sign-out'
 // regex and silently no-ops on anything else, so a placeholder id would make
 // the clearing assertions pass vacuously.
 const listPath = '/lists/11111111-2222-4333-8444-555555555555'
+// The pointer is owner-tagged now; write and read it as the same account so the
+// clear assertion isn't vacuous. Sign-out clears the KEY regardless of owner,
+// so this just makes a real, readable pointer exist before the teardown.
+const OWNER = 'signed-in-user'
 
 // The hook under test no longer touches the router, so this wrapper looks
 // redundant. It is not: AppShell renders the hook inside a router, and more to
@@ -82,14 +86,14 @@ describe('useSignOut', () => {
   })
 
   it('clears the last-list path, which the reload would not', async () => {
-    writeLastListPath(listPath)
+    writeLastListPath(listPath, OWNER)
     const { result } = renderSignOut()
 
     await act(() => result.current.signOut())
 
     // Left behind, RootRedirect's fast path sends the NEXT account straight to
     // the signed-out account's list URL on their first visit to /.
-    expect(readLastListPath()).toBeNull()
+    expect(readLastListPath(OWNER)).toBeNull()
   })
 
   it('leaves device preferences alone', async () => {
@@ -110,14 +114,14 @@ describe('useSignOut', () => {
     // The cookie may already be gone (expired, or cleared server-side). That
     // is the case where a populated cache is most likely to be left sitting in
     // front of the next user, so the teardown has to run on this path too.
-    writeLastListPath(listPath)
+    writeLastListPath(listPath, OWNER)
     h.signOut.mockRejectedValue(new Error('network'))
     const { result } = renderSignOut()
 
     await act(() => result.current.signOut())
 
     expect(assignMock).toHaveBeenCalledWith('/sign-in')
-    expect(readLastListPath()).toBeNull()
+    expect(readLastListPath(OWNER)).toBeNull()
   })
 
   it('stays disabled after the navigation is scheduled', async () => {

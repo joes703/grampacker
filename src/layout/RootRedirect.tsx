@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
+import { authClient } from '../lib/auth-client'
 import { queryKeys, fetchLists } from '../lib/queries'
 import { readLastListPath } from '../lib/last-list-path'
 import type { List } from '../lib/types'
@@ -32,12 +33,20 @@ import AppLoading from '../components/AppLoading'
 // in flight (isLoading) - doing so on error too would strand `/` with no way
 // forward.
 //
+// Owner-scoped: the cached path is only followed when the CURRENT session owns
+// it (readLastListPath gates on the stored owner id). A pointer left by a
+// different account - a magic-link switch, or a browser whose prior cookie
+// lapsed before the next person signed in - is treated as a miss, so B is never
+// routed into A's list URL. This runs inside RequireSession, so a session is
+// present; useSession is read here only to supply the owner id.
+//
 // Hooks-order note: the cached-path check is read at render top, but
 // useQuery is called unconditionally with `enabled: !cachedPath` so the
 // hook order stays stable across renders (returning before useQuery would
 // flip the hook count).
 export default function RootRedirect() {
-  const cachedPath = readLastListPath()
+  const { data: session } = authClient.useSession()
+  const cachedPath = readLastListPath(session?.user.id)
 
   const { data: lists, isLoading } = useQuery({
     queryKey: queryKeys.lists(),

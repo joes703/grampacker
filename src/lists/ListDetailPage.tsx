@@ -46,6 +46,7 @@ import {
   type ListItemPatch,
 } from '../lib/queries'
 import type { Category, GearItem, ListItemWithGear, List, PackingLocation } from '../lib/types'
+import { authClient } from '../lib/auth-client'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useReorderable } from '../lib/use-reorderable'
@@ -401,6 +402,12 @@ function ListDetailInner({
   // settled, successful absence and render "List not found".
   const listsIndeterminate = listsLoading || listsFetching || listsPaused
   const qc = useQueryClient()
+  // Owner for the last-list pointer: the shortcut it feeds (RootRedirect) only
+  // follows a pointer the current account wrote, so both the write and the
+  // self-heal read below are scoped to this session's user. Guaranteed present
+  // here (this page renders inside RequireSession); read for the id only.
+  const { data: session } = authClient.useSession()
+  const ownerId = session?.user.id ?? null
   // Pack mode is URL-represented as /lists/:id/pack so it's bookmarkable,
   // refresh-stable, and back/forward navigable. The legacy ?mode=pack URL
   // redirects below for old bookmarks and home-screen shortcuts.
@@ -474,9 +481,9 @@ function ListDetailInner({
   // stored path stays in sync with List, Pack, or Organize.
   useEffect(() => {
     if (list?.id) {
-      writeLastListPath(persistedListPath(list.id, mode))
+      writeLastListPath(persistedListPath(list.id, mode), ownerId)
     }
-  }, [list?.id, mode])
+  }, [list?.id, mode, ownerId])
 
   // Last-list cache self-heal: if the route's listId is the cached one but
   // the list isn't in the user's `lists` collection (deleted, or another
@@ -501,12 +508,12 @@ function ListDetailInner({
   useEffect(() => {
     if (listsIndeterminate || listsIsError) return
     if (!list && listId) {
-      const cachedPath = readLastListPath()
+      const cachedPath = readLastListPath(ownerId)
       if (cachedPath && getListIdFromListPath(cachedPath) === listId) {
         clearLastListPath()
       }
     }
-  }, [list, listId, listsIndeterminate, listsIsError])
+  }, [list, listId, listsIndeterminate, listsIsError, ownerId])
 
   const listItemsQuery = useQuery({
     queryKey: queryKeys.listItems(listId),
