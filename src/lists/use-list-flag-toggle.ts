@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { UpdateListRequest } from '../../shared/lists'
 import { queryKeys, updateList, makeOptimisticUpdate } from '../lib/queries'
+import { mutationKeys } from '../lib/queries/keys'
 import type { List } from '../lib/types'
 
 type ToggleVars = { id: string; value: boolean }
@@ -57,6 +58,7 @@ export function useListFlagToggle(opts: {
   const inFlight = useRef<Set<string>>(new Set())
 
   const mut = useMutation({
+    mutationKey: mutationKeys.toggleListFlag(),
     mutationFn: ({ id, value }: ToggleVars) => updateList(id, opts.patch(value)),
     ...makeOptimisticUpdate<List, ToggleVars>({
       qc,

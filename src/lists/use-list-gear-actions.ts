@@ -9,6 +9,7 @@ import {
   makeOptimisticGearItemUpdate,
   makeOptimisticGearItemDelete,
 } from '../lib/queries'
+import { mutationKeys } from '../lib/queries/keys'
 import { randomTempId } from '../lib/random-temp-id'
 import type { Category } from '../lib/types'
 
@@ -50,6 +51,7 @@ export function useListGearActions(categories: Category[]) {
   // the gear library and every list that embeds the same gear. The helper owns
   // both cache surfaces, including rollback and narrow invalidation.
   const updateGearItemMut = useMutation({
+    mutationKey: mutationKeys.updateGearFromList(),
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateGearItem>[1] }) =>
       updateGearItem(id, patch),
     ...makeOptimisticGearItemUpdate({ qc }),
@@ -59,6 +61,7 @@ export function useListGearActions(categories: Category[]) {
   // The DB cascades list_items rows; the helper mirrors that immediately in
   // every affected list-items cache and rolls both surfaces back together.
   const deleteGearItemMut = useMutation({
+    mutationKey: mutationKeys.deleteGearFromList(),
     mutationFn: (id: string) => deleteGearItem(id),
     ...makeOptimisticGearItemDelete({
       qc,
@@ -67,6 +70,7 @@ export function useListGearActions(categories: Category[]) {
   })
 
   const addCategoryMut = useMutation({
+    mutationKey: mutationKeys.addCategoryFromList(),
     mutationFn: (name: string) => createCategory(name),
     ...makeOptimisticInsert<Category, string>({
       qc,

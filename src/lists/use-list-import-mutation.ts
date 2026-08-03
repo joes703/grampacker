@@ -6,6 +6,7 @@ import {
   fetchGearItems,
   fetchCategories,
 } from '../lib/queries'
+import { mutationKeys } from '../lib/queries/keys'
 import type { ListCsvRow } from '../lib/csv'
 import {
   planListImport,
@@ -41,6 +42,7 @@ export function useListImportMutation() {
   const qc = useQueryClient()
 
   return useMutation({
+    mutationKey: mutationKeys.importList(),
     mutationFn: async ({ name, rows }: { name: string; rows: ListCsvRow[] }) => {
       const [gearItems, categories] = await Promise.all([
         qc.fetchQuery<GearItem[]>({ queryKey: queryKeys.gearItems(), queryFn: fetchGearItems }),

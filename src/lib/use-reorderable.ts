@@ -10,6 +10,7 @@ import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { parseDnDId } from './dnd-ids'
 import { assignSortOrderSlots } from './grouping'
 import { makeOptimisticReorder } from './queries/optimistic'
+import { mutationKeys } from './queries/keys'
 
 // Reorder state machine for a single flat sortable surface. Owns the
 // useQuery subscription for the cached array, the useMutation that writes
@@ -186,6 +187,7 @@ export function useReorderable<T extends { id: string; sortOrder: number }>(
   })
 
   const reorderMut = useMutation({
+    mutationKey: mutationKeys.reorder(dndKind),
     mutationFn,
     ...makeOptimisticReorder<T>(qc, queryKey),
   })

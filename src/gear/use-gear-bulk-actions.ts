@@ -5,6 +5,7 @@ import {
   makeOptimisticGearItemsBulkDelete,
   makeOptimisticGearItemsBulkCategoryMove,
 } from '../lib/queries'
+import { mutationKeys } from '../lib/queries/keys'
 
 // Input for the bulk category move: the selected gear ids and the destination
 // category (null clears the category). Defined here so the action layer never
@@ -32,6 +33,7 @@ export function useGearBulkActions() {
   const qc = useQueryClient()
 
   const bulkDelete = useMutation({
+    mutationKey: mutationKeys.bulkDeleteGear(),
     mutationFn: (ids: string[]) => bulkDeleteGearItems(ids),
     ...makeOptimisticGearItemsBulkDelete({
       qc,
@@ -40,6 +42,7 @@ export function useGearBulkActions() {
   })
 
   const bulkMove = useMutation({
+    mutationKey: mutationKeys.bulkMoveGear(),
     mutationFn: ({ ids, categoryId }: BulkMoveInput) =>
       bulkMoveToCategoryGearItems(ids, categoryId),
     ...makeOptimisticGearItemsBulkCategoryMove({

@@ -8,6 +8,7 @@ import {
   queryKeys,
   renamePackingLocation,
 } from '../lib/queries'
+import { mutationKeys } from '../lib/queries/keys'
 import { randomTempId } from '../lib/random-temp-id'
 import type { PackingLocation } from '../lib/types'
 
@@ -22,6 +23,7 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
   const queryKey = queryKeys.packingLocations(listId)
 
   const createLocation = useMutation({
+    mutationKey: mutationKeys.createPackingLocation(listId),
     mutationFn: (name: string) => createPackingLocation(listId, { name }),
     ...makeOptimisticInsert<PackingLocation, string>({
       qc,
@@ -36,6 +38,7 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
   })
 
   const createItemContainer = useMutation({
+    mutationKey: mutationKeys.createItemContainer(listId),
     mutationFn: ({ itemId }: { itemId: string; name: string }) =>
       createPackingLocation(listId, { containerListItemId: itemId }),
     ...makeOptimisticInsert<PackingLocation, { itemId: string; name: string }>({
@@ -51,6 +54,7 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
   })
 
   const renameLocation = useMutation({
+    mutationKey: mutationKeys.renamePackingLocation(listId),
     mutationFn: ({ id, name }: { id: string; name: string }) =>
       renamePackingLocation(listId, id, name),
     ...makeOptimisticUpdate<PackingLocation, { id: string; name: string }>({
@@ -62,6 +66,7 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
   })
 
   const removeLocation = useMutation({
+    mutationKey: mutationKeys.removePackingLocation(listId),
     mutationFn: (id: string) => deletePackingLocation(listId, id),
     ...makeOptimisticDelete<PackingLocation, string>({
       qc,
