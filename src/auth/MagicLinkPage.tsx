@@ -84,6 +84,14 @@ export default function MagicLinkPage() {
   function handleVerify() {
     if (pending || !token) return
     setPending(true)
+    // No last-list-pointer bookkeeping here. Redeeming a link (re)establishes a
+    // session in a BRAND-NEW document that lands on '/', and if this browser was
+    // signed in as A while this link is for B, A's pointer survives in
+    // localStorage across the navigation. That is closed at the READ instead:
+    // the pointer is owner-tagged and RootRedirect only follows one the current
+    // account wrote (see lib/last-list-path.ts), so a fresh document as B never
+    // routes into A's list URL - and A keeps its own shortcut. Clearing here
+    // would only wipe a returning A's valid pointer for no gain.
     const query = new URLSearchParams({
       token,
       callbackURL: '/',

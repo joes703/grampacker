@@ -10,6 +10,7 @@ import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { parseDnDId } from './dnd-ids'
 import { assignSortOrderSlots } from './grouping'
 import { makeOptimisticReorder } from './queries/optimistic'
+import { mutationKeys } from './queries/keys'
 
 // Reorder state machine for a single flat sortable surface. Owns the
 // useQuery subscription for the cached array, the useMutation that writes
@@ -136,8 +137,27 @@ type UseReorderableOptions<T extends { id: string; sortOrder: number }> = {
 
 type UseReorderableResult<T extends { id: string; sortOrder: number }> = {
   items: T[]
+  // NOTE: v5's isLoading is `isPending && isFetching`, which is NOT "has not
+  // resolved yet". A cold load while the browser is offline sits at
+  // fetchStatus 'paused', so isFetching - and therefore isLoading - is false
+  // with no data in hand. Gate an empty state on isPending, not this.
   isLoading: boolean
+  // status === 'pending': no data has arrived, whatever the fetch is doing.
+  isPending: boolean
+  // Raw query error status. NOTE: in TanStack Query v5 a failed BACKGROUND
+  // refetch sets status to 'error' while KEEPING the previous data - the
+  // 'error' case in query-core's reducer sets status unconditionally and only
+  // flags the existing data invalidated. So this is true both when there is
+  // nothing to render and when perfectly good cached rows are on screen.
   isError: boolean
+  // isError narrowed to "and no data has ever arrived". This is the one a
+  // terminal failure screen wants: keyed on bare isError, a page would blank
+  // out its own rendered rows every time a post-mutation refetch failed.
+  // Mirrors TanStack's own isLoadingError, which is defined as exactly this.
+  isLoadingError: boolean
+  // Retry handle for the failure state. Returns void rather than the query
+  // result so a call site can pass it straight to an onClick.
+  refetch: () => void
   activeItem: T | null
   reorderPending: boolean
   handleDragStart: (e: DragStartEvent) => void
@@ -153,13 +173,21 @@ export function useReorderable<T extends { id: string; sortOrder: number }>(
   const { queryKey, queryFn, initialData, mutationFn, dndKind, buildUpdates } = opts
   const qc = useQueryClient()
 
-  const { data: items = (initialData ?? ([] as T[])), isLoading, isError } = useQuery({
+  const {
+    data: items = (initialData ?? ([] as T[])),
+    isLoading,
+    isPending,
+    isError,
+    isLoadingError,
+    refetch,
+  } = useQuery({
     queryKey,
     queryFn,
     ...(initialData !== undefined ? { initialData } : {}),
   })
 
   const reorderMut = useMutation({
+    mutationKey: mutationKeys.reorder(dndKind),
     mutationFn,
     ...makeOptimisticReorder<T>(qc, queryKey),
   })
@@ -197,7 +225,10 @@ export function useReorderable<T extends { id: string; sortOrder: number }>(
   return {
     items,
     isLoading,
+    isPending,
     isError,
+    isLoadingError,
+    refetch: () => void refetch(),
     activeItem,
     reorderPending: reorderMut.isPending,
     handleDragStart,

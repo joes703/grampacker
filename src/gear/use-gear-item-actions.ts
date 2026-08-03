@@ -9,6 +9,7 @@ import {
   makeOptimisticGearItemUpdate,
   makeOptimisticGearItemDelete,
 } from '../lib/queries'
+import { mutationKeys } from '../lib/queries/keys'
 import { randomTempId } from '../lib/random-temp-id'
 import type { GearItem } from '../lib/types'
 
@@ -35,6 +36,7 @@ export function useGearItemActions(allItems: GearItem[]) {
   const qc = useQueryClient()
 
   const addItem = useMutation({
+    mutationKey: mutationKeys.addGearItem(),
     mutationFn: (data: CreateGearItemInput) => createGearItem(data),
     ...makeOptimisticInsert<GearItem, CreateGearItemInput>({
       qc,
@@ -59,6 +61,7 @@ export function useGearItemActions(allItems: GearItem[]) {
   })
 
   const editItem = useMutation({
+    mutationKey: mutationKeys.editGearItem(),
     mutationFn: ({ id, patch }: { id: string; patch: GearItemPatch }) =>
       updateGearItem(id, patch),
     // Fans the patch out to every list cache embedding this gear; the
@@ -67,6 +70,7 @@ export function useGearItemActions(allItems: GearItem[]) {
   })
 
   const removeItem = useMutation({
+    mutationKey: mutationKeys.removeGearItem(),
     mutationFn: (id: string) => deleteGearItem(id),
     // The server cascades list_items on gear delete; the fan-out mirrors
     // that by dropping the membership rows optimistically too.

@@ -45,7 +45,9 @@ import {
   makeOptimisticUpdate,
   type ListItemPatch,
 } from '../lib/queries'
+import { mutationKeys } from '../lib/queries/keys'
 import type { Category, GearItem, ListItemWithGear, List, PackingLocation } from '../lib/types'
+import { authClient } from '../lib/auth-client'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useReorderable } from '../lib/use-reorderable'
@@ -100,6 +102,7 @@ import { packingSortableRows, sortableRows } from './SortableCategoryRows'
 import PanelCard from './PanelCard'
 import ItemRow from './ItemRow'
 import RowIconButton from '../components/RowIconButton'
+import StatusPanel from '../components/StatusPanel'
 import GearItemDialog from '../components/gear/GearItemDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useDocumentTitle } from '../lib/use-document-title'
@@ -326,10 +329,34 @@ export default function ListDetailPage() {
   // empty-array fallback would render "List not found" on every cold load
   // for ~1 paint before the query resolves. The session cookie scopes the
   // fetch server-side; there is no client-side userId filter.
-  const { data: lists = [], isPending: listsLoading } = useQuery({
+  //
+  // isError and isFetching are threaded through for the same reason isPending
+  // is, and they matter more: the `= []` default made a FAILED lists fetch
+  // indistinguishable from a successful empty one, so a dropped connection
+  // rendered the terminal "List not found" state - copy that tells the user
+  // their list was deleted - with no retry.
+  //
+  // Both flags are passed RAW rather than pre-reduced here, because the
+  // question they answer ("is this list actually missing, or do we just not
+  // know?") needs `list`, which only the inner resolves. In TanStack Query v5
+  // a failed background refetch sets status to 'error' while KEEPING the
+  // cached collection, so `isError` alone cannot be used as a terminal
+  // failure signal - see the branches in ListDetailInner.
+  const {
+    data: listsData,
+    isPending: listsLoading,
+    isFetching: listsFetching,
+    isPaused: listsPaused,
+    isError: listsIsError,
+    refetch: refetchLists,
+  } = useQuery({
     queryKey: queryKeys.lists(),
     queryFn: fetchLists,
   })
+  const lists = listsData ?? []
+  const retryLists = useCallback(() => {
+    void refetchLists()
+  }, [refetchLists])
 
   // key={routeId} forces a fresh ListDetailInner instance per list, so local
   // state (open dialogs, draft inputs, etc.) doesn't leak when the user
@@ -340,6 +367,10 @@ export default function ListDetailPage() {
       listId={routeId}
       lists={lists}
       listsLoading={listsLoading}
+      listsFetching={listsFetching}
+      listsPaused={listsPaused}
+      listsIsError={listsIsError}
+      onRetryLists={retryLists}
     />
   )
 }
@@ -348,12 +379,36 @@ function ListDetailInner({
   listId,
   lists,
   listsLoading,
+  listsFetching,
+  listsPaused,
+  listsIsError,
+  onRetryLists,
 }: {
   listId: string
   lists: List[]
   listsLoading: boolean
+  listsFetching: boolean
+  listsPaused: boolean
+  listsIsError: boolean
+  onRetryLists: () => void
 }) {
+
+  // "Whatever we have is not a settled answer from the server." Any of the
+  // three means the collection in hand may be incomplete or stale, so an
+  // absent list proves nothing.
+  //
+  // listsPaused is the one that is easy to miss: offline, a fetch sits at
+  // fetchStatus 'paused', which makes isFetching FALSE. A warm cache that
+  // predates the list being shared with this user would otherwise look like a
+  // settled, successful absence and render "List not found".
+  const listsIndeterminate = listsLoading || listsFetching || listsPaused
   const qc = useQueryClient()
+  // Owner for the last-list pointer: the shortcut it feeds (RootRedirect) only
+  // follows a pointer the current account wrote, so both the write and the
+  // self-heal read below are scoped to this session's user. Guaranteed present
+  // here (this page renders inside RequireSession); read for the id only.
+  const { data: session } = authClient.useSession()
+  const ownerId = session?.user.id ?? null
   // Pack mode is URL-represented as /lists/:id/pack so it's bookmarkable,
   // refresh-stable, and back/forward navigable. The legacy ?mode=pack URL
   // redirects below for old bookmarks and home-screen shortcuts.
@@ -427,9 +482,9 @@ function ListDetailInner({
   // stored path stays in sync with List, Pack, or Organize.
   useEffect(() => {
     if (list?.id) {
-      writeLastListPath(persistedListPath(list.id, mode))
+      writeLastListPath(persistedListPath(list.id, mode), ownerId)
     }
-  }, [list?.id, mode])
+  }, [list?.id, mode, ownerId])
 
   // Last-list cache self-heal: if the route's listId is the cached one but
   // the list isn't in the user's `lists` collection (deleted, or another
@@ -439,15 +494,27 @@ function ListDetailInner({
   // missing-list deep-link doesn't wipe a valid cache. Gated on
   // !listsLoading so the in-flight window — where `list` is undefined for a
   // different reason — doesn't wipe a perfectly valid cache during cold load.
+  //
+  // Gated on the other two non-authoritative states for the same reason: a
+  // failed fetch also leaves `list` undefined, and an in-flight refetch over a
+  // stale collection leaves it undefined while the real answer is still on the
+  // wire. Clearing the cache in either case would let one offline page load
+  // permanently forget which list the user was working in. The cache is only
+  // wrong if the server SETTLED and SAID the list is not in the collection -
+  // so this runs only on a completed, successful fetch.
+  //
+  // listsFetching (not just listsLoading) is what covers the warm-cache case:
+  // with a cached collection present, isPending is already false during the
+  // refetch, so isPending alone would let the effect fire on stale absence.
   useEffect(() => {
-    if (listsLoading) return
+    if (listsIndeterminate || listsIsError) return
     if (!list && listId) {
-      const cachedPath = readLastListPath()
+      const cachedPath = readLastListPath(ownerId)
       if (cachedPath && getListIdFromListPath(cachedPath) === listId) {
         clearLastListPath()
       }
     }
-  }, [list, listId, listsLoading])
+  }, [list, listId, listsIndeterminate, listsIsError, ownerId])
 
   const listItemsQuery = useQuery({
     queryKey: queryKeys.listItems(listId),
@@ -469,6 +536,7 @@ function ListDetailInner({
     void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
   }, [qc, listId])
   const foodDaysMut = useMutation({
+    mutationKey: mutationKeys.setFoodDays(listId),
     // Refetch first: FoodSection decides whether to warn about losing planned
     // meals from its cached snapshot, and that cache is up to 30s stale. This
     // narrows the window to a single round trip. It does not close it - that
@@ -481,12 +549,14 @@ function ListDetailInner({
     onSuccess: invalidateFood,
   })
   const foodSlotMut = useMutation({
+    mutationKey: mutationKeys.setFoodSlot(listId),
     mutationFn: (vars: { slotId: string; needed: boolean }) =>
       setFoodSlotNeeded(listId, vars.slotId, vars.needed),
     meta: { errorToast: "Couldn't update that meal. Please try again." },
     onSuccess: invalidateFood,
   })
   const foodItemCreateMut = useMutation({
+    mutationKey: mutationKeys.createFoodItem(listId),
     mutationFn: (input: {
       name: string
       weightGrams: number
@@ -514,12 +584,14 @@ function ListDetailInner({
     onSuccess: invalidateFood,
   })
   const foodItemSlotsMut = useMutation({
+    mutationKey: mutationKeys.setFoodItemSlots(listId),
     mutationFn: (vars: { itemId: string; slotIds: string[] }) =>
       updateFoodItem(listId, vars.itemId, { slotIds: vars.slotIds }),
     meta: { errorToast: "Couldn't reschedule that food. Please try again." },
     onSuccess: invalidateFood,
   })
   const foodItemDeleteMut = useMutation({
+    mutationKey: mutationKeys.deleteFoodItem(listId),
     mutationFn: (itemId: string) => deleteFoodItem(listId, itemId),
     meta: { errorToast: "Couldn't remove that food. Please try again." },
     onSuccess: invalidateFood,
@@ -644,6 +716,7 @@ function ListDetailInner({
 
   // DOCUMENT order. List view only.
   const reorderItemsMut = useMutation({
+    mutationKey: mutationKeys.reorderListItems(listId),
     mutationFn: (updates: { id: string; sortOrder: number }[]) =>
       reorderListItems(listId, updates),
     ...makeOptimisticReorder<ListItemWithGear>(qc, queryKeys.listItems(listId)),
@@ -654,6 +727,7 @@ function ListDetailInner({
   // split: arranging your pack no longer rewrites the list you wrote or the
   // share link you sent someone.
   const reorderPackItemsMut = useMutation({
+    mutationKey: mutationKeys.reorderPackItems(listId),
     mutationFn: (updates: { id: string; packSortOrder: number }[]) =>
       reorderPackListItems(listId, updates),
     ...makeOptimisticPackReorder<ListItemWithGear>(
@@ -677,6 +751,7 @@ function ListDetailInner({
     nextPackSortOrder: number
   }
   const moveItemMut = useMutation({
+    mutationKey: mutationKeys.moveListItem(listId),
     mutationFn: ({ itemId, locationId }: MoveItemVars) =>
       updateListItem(listId, itemId, { packingLocationId: locationId }),
     ...makeOptimisticUpdate<ListItemWithGear, MoveItemVars>({
@@ -703,6 +778,7 @@ function ListDetailInner({
     moveItemMut.isPending || reorderItemsMut.isPending || locationCreationPending
 
   const notesMut = useMutation({
+    mutationKey: mutationKeys.updateListNotes(listId),
     mutationFn: (description: string) => updateList(listId, { description: description || null }),
     ...makeOptimisticUpdate<List, string>({
       qc,
@@ -1459,8 +1535,37 @@ function ListDetailInner({
   // for the genuinely-missing case (deleted list, stale deep link, another
   // account's list). Without this gate, every cold load on /lists/:id
   // flashed "List not found" for ~1 paint before the query resolved.
-  if (listsLoading && !list) {
-    return <ListDetailStatus title="Loading list..." busy />
+  // All three branches below are guarded on `!list`, so a resolved list is
+  // never replaced by a status screen. That is what keeps a failed background
+  // refetch (which in v5 sets status to 'error' while retaining the cached
+  // collection) from blanking out a page the user is working in.
+  //
+  // Ordered from least to most authoritative: still working on it, gave up,
+  // and only then genuinely absent.
+  if (listsIndeterminate && !list) {
+    return <StatusPanel title="Loading list..." busy />
+  }
+
+  // Settled in error, and the list is not in whatever we have. Distinct from
+  // the not-found branch below, and checked BEFORE it: both leave `list`
+  // undefined, but only one of them means the list is gone. Merging them
+  // showed "This list may have been deleted" to anyone whose connection
+  // dropped, and gave them a Back-to-lists link into a page that was about to
+  // fail the same way. A stale cached collection that predates the deletion
+  // (or the sharing) of this list lands here too, which is right: an errored
+  // query is not evidence of absence.
+  //
+  // DesktopListsPanel needs no equivalent guard: it renders inside the list
+  // document below, which this branch replaces wholesale, so it never mounts
+  // against a lists fetch that failed with nothing to show.
+  if (listsIsError && !list) {
+    return (
+      <StatusPanel
+        title="Couldn't load your lists"
+        body="Check your connection and try again."
+        onRetry={onRetryLists}
+      />
+    )
   }
 
   if (!list) {
@@ -1534,14 +1639,14 @@ function ListDetailInner({
           />
 
           {detailDataError ? (
-            <ListDetailStatus
+            <StatusPanel
               title="Couldn't load list details"
               body="Check your connection and try again."
               onRetry={retryDetailData}
               showBackToLists
             />
           ) : detailDataLoading ? (
-            <ListDetailStatus title="Loading list details..." busy />
+            <StatusPanel title="Loading list details..." busy />
           ) : (
             <>
               {mode === 'pack' && listItems.length > 0 && (
@@ -2163,53 +2268,6 @@ function PackLocationControls({
               </button>
             ))}
           </div>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function ListDetailStatus({
-  title,
-  body,
-  busy = false,
-  onRetry,
-  showBackToLists = false,
-}: {
-  title: string
-  body?: string
-  busy?: boolean
-  onRetry?: () => void
-  showBackToLists?: boolean
-}) {
-  return (
-    <div
-      className="flex h-64 flex-col items-center justify-center gap-3 text-center"
-      aria-busy={busy || undefined}
-    >
-      <div className="space-y-2">
-        <p className="text-base font-medium text-gray-700">{title}</p>
-        {body ? <p className="text-sm text-gray-500">{body}</p> : null}
-      </div>
-      {(onRetry || showBackToLists) ? (
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {onRetry ? (
-            <button
-              type="button"
-              onClick={onRetry}
-              className="inline-flex items-center rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              Retry
-            </button>
-          ) : null}
-          {showBackToLists ? (
-            <Link
-              to="/lists"
-              className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Back to lists
-            </Link>
-          ) : null}
         </div>
       ) : null}
     </div>

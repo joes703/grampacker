@@ -5,6 +5,7 @@ import { createDb } from './db'
 import { assetCache, forceValidatedAssetResponse } from './middleware/asset-cache'
 import { apiBodyLimit } from './middleware/body-limit'
 import { csrfProtection } from './middleware/csrf'
+import { errorHandler, withAuthErrorCorrelation } from './middleware/error-handler'
 import { requireFreshAuth } from './middleware/fresh-auth'
 import { authRateLimit } from './middleware/rate-limit'
 import { securityHeaders } from './middleware/security-headers'
@@ -73,7 +74,17 @@ api.use('/auth/passkey/*', requireFreshAuth)
 // sign-out, passkeys). It does its own origin checking against baseURL. The
 // email+password routes are still mounted by the library but answer 400 -
 // there is no emailAndPassword config for them to run against.
-api.on(['GET', 'POST'], '/auth/*', (c) => createAuth(c.env).handler(c.req.raw))
+//
+// Wrapped for observability, not for behavior: better-call catches every throw
+// inside its own router and RETURNS a Response, so nothing here ever reaches
+// app.onError. Without this wrapper, auth 5xx would be the one part of the
+// server outside the correlation scheme entirely.
+api.on(['GET', 'POST'], '/auth/*', async (c) =>
+  withAuthErrorCorrelation(await createAuth(c.env).handler(c.req.raw), {
+    method: c.req.method,
+    path: new URL(c.req.raw.url).pathname,
+  }),
+)
 
 api.route('/me', meRoutes)
 api.route('/categories', categoryRoutes)
@@ -112,5 +123,10 @@ app.route('/api', api)
 // (which cannot). See forceValidatedAssetResponse - without it the caching win
 // never reaches anyone who already has the app cached.
 app.all('*', (c) => c.env.ASSETS.fetch(forceValidatedAssetResponse(c.req.raw)))
+
+// Registered on the ROOT app, which catches throws from the /api sub-app too -
+// a sub-app's own onError would win, so `api` deliberately has none. Everything
+// this does and does not cover is documented in the middleware.
+app.onError(errorHandler)
 
 export default app

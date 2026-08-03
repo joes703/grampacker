@@ -134,11 +134,19 @@ jobs:
           }
 
           negatives=$(probe "select count(*) as c from list_items where pack_sort_order < 0")
-          over=$(probe "select count(*) as c from list_items where pack_sort_order > ${pack_rank_max}")
+          # The probe is for HEADROOM, not merely for range. A rank of exactly
+          # PACK_RANK_MAX is legal for the column yet already wedged, because
+          # every arrival computes max+1. And a location deletion appends every
+          # orphan at base+i, so a cohort within LIST_ITEM_CAP of the ceiling
+          # can overflow too. The threshold matches migration 0019's
+          # normalization predicate exactly; if they ever diverge, this probe
+          # certifies data the schema will reject.
+          headroom_floor=$(( pack_rank_max - 300 ))
+          over=$(probe "select count(*) as c from list_items where pack_sort_order > ${headroom_floor}")
           dupes=$(probe "select count(*) as c from (select list_id, pack_sort_order from list_items where packing_location_id is null group by list_id, pack_sort_order having count(*) > 1)")
 
           echo "negative ranks:        $negatives"
-          echo "ranks over the bound:  $over"
+          echo "ranks without headroom: $over"
           echo "duplicate unassigned:  $dupes"
 
           {
@@ -147,7 +155,7 @@ jobs:
             echo "| Probe | Count |"
             echo "| --- | --- |"
             echo "| \`pack_sort_order < 0\` | $negatives |"
-            echo "| \`pack_sort_order > $pack_rank_max\` | $over |"
+            echo "| \`pack_sort_order > $headroom_floor\` (no headroom) | $over |"
             echo "| duplicate Unassigned ranks | $dupes |"
           } >> "$GITHUB_STEP_SUMMARY"
 

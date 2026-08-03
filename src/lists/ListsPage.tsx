@@ -48,6 +48,7 @@ import {
 } from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import ListsEmptyState from './ListsEmptyState'
+import StatusPanel from '../components/StatusPanel'
 import MobileListsActionBar from './MobileListsActionBar'
 import PrivacyPanel from './PrivacyPanel'
 
@@ -78,7 +79,18 @@ export default function ListsPage() {
   // src/lib/use-reorderable.ts for the same-tick-subscription rationale.
   const {
     items: lists,
-    isLoading: listsLoading,
+    // isPending, NOT isLoading. v5's isLoading is `isPending && isFetching`,
+    // so a cold load with the browser offline (fetchStatus 'paused') reports
+    // isLoading false with zero rows - and the empty state below would greet
+    // an offline user with the brand-new-user onboarding pitch.
+    isPending: listsLoading,
+    // isLoadingError, NOT isError. In TanStack Query v5 a failed background
+    // refetch flips status to 'error' while keeping the cached rows, and list
+    // mutations invalidate ['lists'] constantly - so keying the terminal
+    // failure screen on bare isError would replace a fully rendered page with
+    // "Couldn't load your lists" after any post-mutation network blip.
+    isLoadingError: listsError,
+    refetch: retryLists,
     activeItem: activeList,
     reorderPending,
     handleDragStart,
@@ -133,6 +145,23 @@ export default function ListsPage() {
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+
+  // Failed lists fetch, checked BEFORE the empty state. useReorderable
+  // collapses "failed" into the same empty array as "genuinely has no
+  // lists", so without this a dropped connection greeted an existing user
+  // with the brand-new-user onboarding pitch, and no way to try again.
+  if (listsError) {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="text-xl font-semibold text-gray-900">Lists</h1>
+        <StatusPanel
+          title="Couldn't load your lists"
+          body="Check your connection and try again."
+          onRetry={retryLists}
+        />
+      </div>
+    )
+  }
 
   // Brand-new user with zero lists: retain the route heading above the
   // teaching empty state so page identity does not disappear with data.

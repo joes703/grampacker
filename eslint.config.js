@@ -46,7 +46,38 @@ export default tseslint.config(
           selector:
             "CallExpression[callee.property.name='fetch'][callee.object.name='window']",
           message:
-            'Use apiFetch/apiFetchVoid from src/lib/api.ts - raw fetch skips the CSRF header, error normalization, and DTO validation.',
+            "Use apiFetch/apiFetchVoid from src/lib/api.ts - raw fetch skips the CSRF header, error normalization, and DTO validation.",
+        },
+        // Every useMutation carries a mutationKey from src/lib/queries/keys.ts.
+        // Without one, mutation-error-handler logs `[mutation] failed` with an
+        // empty payload - which was true of 38 of the app's 39 mutations before
+        // PR 4.4.
+        //
+        // Three selectors, because one has holes. A textual scan was tried first
+        // and rejected: src/lib/queries/optimistic.ts contains `useMutation({`
+        // inside COMMENTS, so prose can satisfy a grep while an executable call
+        // goes unkeyed. Comments are not AST nodes, so this cannot happen here.
+        {
+          // Also catches `useMutation(opts)` - options hoisted into a variable
+          // hide the key from review as effectively as omitting it.
+          selector:
+            "CallExpression[callee.name='useMutation']:not(:has(ObjectExpression > Property[key.name='mutationKey']))",
+          message:
+            'useMutation needs an inline `mutationKey:` from mutationKeys (src/lib/queries/keys.ts).',
+        },
+        {
+          // rq.useMutation(...) - a member call renames the callee out of the
+          // selector above.
+          selector: "CallExpression[callee.property.name='useMutation']",
+          message:
+            'Call useMutation as a bare named import so the mutationKey rule can see it.',
+        },
+        {
+          // An aliased import does the same thing by another route.
+          selector:
+            "ImportSpecifier[imported.name='useMutation'][local.name!='useMutation']",
+          message:
+            'Do not alias useMutation - the mutationKey rule matches on the callee name.',
         },
       ],
     },

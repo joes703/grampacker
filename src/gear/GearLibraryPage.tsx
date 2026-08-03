@@ -32,6 +32,7 @@ import {
   reorderGearItems,
   makeOptimisticReorder,
 } from '../lib/queries'
+import { mutationKeys } from '../lib/queries/keys'
 import { gearItemsToCsv, parseGearCsv, downloadCsv, type GearCsvRow } from '../lib/csv'
 import { planGearImport } from '../lib/csv/import-plan'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
@@ -178,6 +179,7 @@ export default function GearLibraryPage() {
   // existing gear plan to zero new items; skip the POST (the endpoint
   // rejects empty imports) and just close.
   const importItems = useMutation({
+    mutationKey: mutationKeys.importGearItems(),
     mutationFn: async (rows: GearCsvRow[]) => {
       const plan = planGearImport(rows, categories, allItems)
       if (plan.newItems.length === 0) return
@@ -228,6 +230,7 @@ export default function GearLibraryPage() {
   // posts name + description + ids and navigates into the result.
   const navigate = useNavigate()
   const createListFromSelectionMut = useMutation({
+    mutationKey: mutationKeys.createListFromSelection(),
     mutationFn: createListFromSelection,
     meta: { errorToast: "Couldn't create the list. Please try again." },
     onSuccess: (newList) => {
@@ -287,6 +290,7 @@ export default function GearLibraryPage() {
   // round-trip, applied all-or-nothing on the server, same write path as
   // categories. Optimistic via makeOptimisticReorder on ['gear-items'].
   const reorderGearItemsMut = useMutation({
+    mutationKey: mutationKeys.reorderGearItems(),
     mutationFn: reorderGearItems,
     ...makeOptimisticReorder<GearItem>(qc, queryKeys.gearItems()),
   })

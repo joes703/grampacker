@@ -109,6 +109,14 @@ const isScratchTable = (name) => name.startsWith('__')
 // migration that mangles cross-user ownership or drops non-default rows.
 const FIXED_TS = 1_700_000_000_000
 
+// NOTE on pack_sort_order: these values are explicit, and must stay that way.
+// They were originally omitted so that 0018's backfill would assign them, which
+// is what the 0018 POST_CHECKS probe asserts. That worked only while 0018 was
+// the migration UNDER TEST. Now that 0018 is on the base ref, the fixtures are
+// seeded into a schema that already carries its two unique indexes, so rows
+// defaulting to 0 in the same cohort collide - and the seed fails before any
+// new migration is even applied. The values below are exactly what the 0018
+// backfill produced, so that probe still asserts the same thing.
 const FIXTURES = [
   ['user', {
     id: 'u-seed',
@@ -383,6 +391,15 @@ const FIXTURES = [
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
   }],
+['packing_locations', {
+    id: 'pl-seed-exhausted',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    name: 'Exhausted Location',
+    sort_order: 0,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
   // The row 0009 would have destroyed: it cascades from BOTH lists and
   // gear_items, so it is the canary for any rebuild of either parent.
   ['list_items', {
@@ -396,6 +413,7 @@ const FIXTURES = [
     is_packed: 0,
     is_ready: 0,
     packing_location_id: null,
+    pack_sort_order: 0,
     sort_order: 0,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
@@ -420,6 +438,7 @@ const FIXTURES = [
     is_packed: 0,
     is_ready: 0,
     packing_location_id: 'pl-seed',
+    pack_sort_order: 1,
     sort_order: 40,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
@@ -435,6 +454,7 @@ const FIXTURES = [
     is_packed: 0,
     is_ready: 0,
     packing_location_id: 'pl-seed',
+    pack_sort_order: 0,
     sort_order: 10,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
@@ -450,6 +470,7 @@ const FIXTURES = [
     is_packed: 0,
     is_ready: 0,
     packing_location_id: null,
+    pack_sort_order: 1,
     sort_order: 30,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
@@ -465,7 +486,67 @@ const FIXTURES = [
     is_packed: 1,
     is_ready: 1,
     packing_location_id: null,
+    pack_sort_order: 0,
     sort_order: 1,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  // Two rows in ONE cohort on their own list, seeded AT and ABOVE
+  // PACK_RANK_MAX - the exact legacy state 0019 has to repair. Before this
+  // release the import endpoint copied sort_order straight into
+  // pack_sort_order and importListItemSchema permits 1000000000, so this is
+  // reachable production data rather than a synthetic case. 0019 renumbers the
+  // cohort densely; the rewrite is declared in EXPECTED_CHANGES.
+  ['list_items', {
+    id: 'li-exhausted-a',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    gear_item_id: 'gear-seed',
+    quantity: 1,
+    is_worn: 0,
+    is_consumable: 0,
+    is_packed: 0,
+    is_ready: 0,
+    packing_location_id: 'pl-seed-exhausted',
+    pack_sort_order: 1000000000,
+    sort_order: 90,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  ['list_items', {
+    id: 'li-exhausted-b',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    gear_item_id: 'gear-seed',
+    quantity: 1,
+    is_worn: 0,
+    is_consumable: 0,
+    is_packed: 0,
+    is_ready: 0,
+    packing_location_id: 'pl-seed-exhausted',
+    pack_sort_order: 1000000005,
+    sort_order: 91,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  // Codex's near-ceiling case: an Unassigned row one BELOW PACK_RANK_MAX, so
+  // it passes any "is the rank in range" test, plus a two-item location.
+  // Deleting that location appends orphans at base+i = 1000000000 and
+  // 1000000001, and the second overflows. Legal legacy data that the narrower
+  // >= PACK_RANK_MAX predicate accepted and left wedged.
+  ['list_items', {
+    id: 'li-nearceiling-u',
+    user_id: 'u-seed',
+    list_id: 'list-seed-3',
+    gear_item_id: 'gear-seed',
+    quantity: 1,
+    is_worn: 0,
+    is_consumable: 0,
+    is_packed: 0,
+    is_ready: 0,
+    packing_location_id: null,
+    pack_sort_order: 999999999,
+    sort_order: 95,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
   }],
@@ -636,6 +717,37 @@ const FIXTURES = [
 //   - once it is part of the base ref, the fixture seeds `after` directly
 //     (the pre-0010 shared-link state is not even insertable any more).
 const EXPECTED_CHANGES = [
+  // 0019 densely renumbers only cohorts whose maximum is at or above
+  // PACK_RANK_MAX. These two are the whole point: without the repair they
+  // would survive the migration and permanently refuse arrivals, moves, and
+  // location deletion, because every arrival computes max+1 and the new
+  // trigger rejects it. Clean cohorts elsewhere in the fixtures must be
+  // UNCHANGED, which the ordinary row comparison asserts for free.
+  {
+    migration: '0019_pack-rank-guard.sql',
+    table: 'list_items',
+    key: { column: 'id', value: 'li-exhausted-a' },
+    column: 'pack_sort_order',
+    before: 1000000000,
+    after: 0,
+  },
+  {
+    migration: '0019_pack-rank-guard.sql',
+    table: 'list_items',
+    key: { column: 'id', value: 'li-exhausted-b' },
+    column: 'pack_sort_order',
+    before: 1000000005,
+    after: 1,
+  },
+  // In range, but with no headroom for a location deletion's base+i append.
+  {
+    migration: '0019_pack-rank-guard.sql',
+    table: 'list_items',
+    key: { column: 'id', value: 'li-nearceiling-u' },
+    column: 'pack_sort_order',
+    before: 999999999,
+    after: 0,
+  },
   {
     migration: '0010_one-plan-per-list.sql',
     table: 'lists',
@@ -673,6 +785,34 @@ const DROPPED_TABLES = [
   { migration: '0016_remove-food-planning.sql', table: 'food_plans' },
   { migration: '0016_remove-food-planning.sql', table: 'meal_targets' },
   { migration: '0016_remove-food-planning.sql', table: 'meals' },
+]
+
+// Tables that exist only DURING a statement and are correct only when EMPTY.
+//
+// The fixture requirement below demands a seeded row for every new table, which
+// is right for real tables and wrong for these: seeding one asserts a state that
+// can never persist, and keying that seed to another fixture risks a primary-key
+// collision. Renaming them to a `__` prefix does not help either - they would
+// then trip the scratch-table check instead. Both naming options fail, so the
+// mechanism has to be explicit.
+//
+// The exemption is deliberately NARROW. An entry is excused only from needing a
+// seeded row; it is still required to EXIST and required to be EMPTY after
+// migration. Every other table's fixture, and all the rebuild/cascade detection
+// that is this script's whole purpose, is untouched - so a future migration that
+// rebuilt `list_items` would still be caught by `list_items`' own fixture rather
+// than hidden by anything here.
+const TRANSIENT_TABLES = [
+  {
+    migration: '0019_pack-rank-guard.sql',
+    table: '_pack_reorder_guard',
+    why: "reorderPack's fail-loud CAS guard; a row lives only between park and settle",
+  },
+  {
+    migration: '0020_cascade-rerank.sql',
+    table: '_packing_location_delete_state',
+    why: 'the cascade re-rank mapping; rows live only inside the delete trigger',
+  },
 ]
 
 // Columns a migration is ALLOWED to drop, and the schema objects that go with
@@ -1182,7 +1322,15 @@ const main = () => {
 
     const seededColumns = seed(columnsByTable, addedNames)
 
-    const unseeded = listTables().filter((table) => !seededColumns.has(table))
+    // Transient tables are exempt here for the same reason they are exempt
+    // from the new-table fixture check below: a seeded row asserts a state that
+    // can never persist. This matters MORE once they are on the base ref -
+    // every future migration would otherwise trip this, which is exactly the
+    // shape of breakage 0018 left behind by relying on its own backfill.
+    const transientAtBase = new Set(TRANSIENT_TABLES.map((t) => t.table))
+    const unseeded = listTables().filter(
+      (table) => !seededColumns.has(table) && !transientAtBase.has(table),
+    )
     if (unseeded.length > 0) {
       throw new Error(
         `No fixture for: ${unseeded.join(', ')}.\n` +
@@ -1355,9 +1503,13 @@ const main = () => {
     // New tables hold no data yet, so nothing can be lost from them THIS time -
     // but without a fixture they would be invisible to every future run. Demand
     // one now, while the table is fresh in the author's mind.
+    const transientTables = new Set(TRANSIENT_TABLES.map((t) => t.table))
     const fixtureTables = new Set(FIXTURES.map(([table]) => table))
     const missingFixture = tablesAfter.filter(
-      (table) => !isScratchTable(table) && !fixtureTables.has(table),
+      (table) =>
+        !isScratchTable(table) &&
+        !fixtureTables.has(table) &&
+        !transientTables.has(table),
     )
     if (missingFixture.length > 0) {
       failures.push(
@@ -1365,6 +1517,27 @@ const main = () => {
           'Add a fixture row to scripts/check-migration-safety.mjs, or no future ' +
           'migration will ever be checked against them.',
       )
+    }
+
+    // A transient table earns its fixture exemption by proving the thing that
+    // makes it transient: it exists, and it is empty.
+    for (const { table, why } of TRANSIENT_TABLES) {
+      if (!tablesAfter.includes(table)) {
+        failures.push(
+          `Declared transient table ${table} does not exist after migration. ` +
+            'Either the migration that creates it is missing, or the ' +
+            'TRANSIENT_TABLES entry is stale.',
+        )
+        continue
+      }
+      const rows = query(`select count(*) as n from \`${table}\``)
+      const n = Number(rows?.[0]?.n ?? -1)
+      if (n !== 0) {
+        failures.push(
+          `Transient table ${table} holds ${n} row(s) after migration; it must ` +
+            `be empty (${why}).`,
+        )
+      }
     }
 
     if (failures.length > 0) {

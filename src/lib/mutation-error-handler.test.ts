@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Mutation } from '@tanstack/react-query'
+import { ApiError } from './api'
 import { mutationErrorHandler } from './mutation-error-handler'
 import { showToast } from './toast'
 
@@ -100,6 +101,40 @@ describe('mutationErrorHandler', () => {
       error: 'boom',
       code: undefined,
       mutationKey: undefined,
+    })
+  })
+
+  it('carries the correlation id from an ApiError into the log payload', () => {
+    // The join between this console line and the Workers Logs entry that
+    // explains it. Without it, a client-side "Internal Server Error" and the
+    // server incident behind it cannot be tied together.
+    mutationErrorHandler(
+      new ApiError(500, 'Internal Server Error', 'c0ffee00-dead-4bee-8888-feedfacecafe'),
+      undefined,
+      undefined,
+      fakeMutation(undefined, ['update-list-item', 'list-1']),
+    )
+    expect(warnSpy).toHaveBeenCalledWith('[update-list-item/list-1] failed', {
+      error: 'Internal Server Error',
+      code: undefined,
+      correlationId: 'c0ffee00-dead-4bee-8888-feedfacecafe',
+      mutationKey: ['update-list-item', 'list-1'],
+    })
+  })
+
+  it('leaves the correlation id undefined for errors that carry none', () => {
+    // A 4xx is not an incident and mints no id; neither does a network failure.
+    mutationErrorHandler(
+      new ApiError(409, 'Conflict'),
+      undefined,
+      undefined,
+      fakeMutation(undefined, ['reorder-pack-items', 'list-1']),
+    )
+    expect(warnSpy).toHaveBeenCalledWith('[reorder-pack-items/list-1] failed', {
+      error: 'Conflict',
+      code: undefined,
+      correlationId: undefined,
+      mutationKey: ['reorder-pack-items', 'list-1'],
     })
   })
 

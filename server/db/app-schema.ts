@@ -488,3 +488,44 @@ export const listFoodItemSlots = sqliteTable(
     }).onDelete('cascade'),
   ],
 )
+
+// TRANSIENT. Correct only when EMPTY. A row exists solely between the park and
+// settle statements of one `reorderPack` batch, and the same batch deletes it.
+//
+// It exists because a D1 batch cannot branch on an earlier statement's result,
+// and a conditional UPDATE matching zero rows is not an error in SQLite - so
+// "abort if the parks did not all land" has to be expressed as a statement that
+// FAILS. Feeding NULL into `ok` (NOT NULL) is that failure, and D1 rolls the
+// whole batch back with it.
+//
+// Declared in scripts/check-migration-safety.mjs's TRANSIENT_TABLES, which
+// asserts presence and emptiness rather than demanding a fixture row. Created
+// by migration 0019.
+export const packReorderGuard = sqliteTable('_pack_reorder_guard', {
+  listId: text('list_id').primaryKey(),
+  ok: integer('ok').notNull(),
+})
+
+// TRANSIENT. Correct only when EMPTY. Rows exist solely between the two UPDATE
+// statements of the packing_locations delete trigger, which deletes them again
+// before it returns.
+//
+// It holds the FINAL rank for every row in the affected cohort, materialized
+// before anything moves. That ordering is the point: computing a dense ordinal
+// inside the UPDATE would be self-referencing, because rows already updated
+// have had their packing_location_id set to NULL and drop out of the count.
+//
+// No repo writes to it - the trigger owns it entirely. It is declared here so
+// drizzle-kit's snapshot matches the deployed schema. Created by migration
+// 0020.
+export const packingLocationDeleteState = sqliteTable(
+  '_packing_location_delete_state',
+  {
+    listItemId: text('list_item_id').primaryKey(),
+    newRank: integer('new_rank').notNull(),
+    // A small dense ordinal for the negative park slot. `newRank` cannot serve
+    // as one: on the offset path it can be far larger than the reserved
+    // scratch range allows.
+    seq: integer('seq').notNull(),
+  },
+)
