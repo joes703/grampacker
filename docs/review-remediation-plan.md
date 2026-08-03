@@ -874,6 +874,38 @@ Document in AGENTS.md beside the existing migration traps.
   `rawFetch` never sees `/api/auth/*` (that traffic goes through better-auth's
   client), so this policy covers app-owned routes only and must not be written
   as though it were global.
+
+  **Shipped 2026-08-03.** The policy is "ask the server", not "sign the user
+  out": a 401 calls `revalidateSessionAfterUnauthorized()`
+  (`src/lib/session-revalidation.ts`), which drives better-auth's own session
+  refetch. Everything downstream already existed - the atom publishes
+  `data: null`, `SessionCacheGuard` suppresses and tears the document down,
+  `RequireSession` lands on `/sign-in`. Queries also stop retrying a 401
+  (`shouldRetryQuery`), since the same absent cookie gets the same answer.
+
+  **Two things the review process changed, recorded so they are not re-derived:**
+
+  1. The first design debounced the re-check on a 5s cooldown to bound a burst
+     of parallel 401s. That reproduced the very bug it was fixing: better-auth
+     deliberately KEEPS the existing session when `/get-session` fails with
+     anything other than a 401, so one transient 500 plus a suppression window
+     meant the failed check could be the only check ever made. Replaced with
+     in-flight + trailing coalescing - no event is dropped, and the burst costs
+     one leading and one trailing check rather than a timer's guess. The change
+     review then found the same class of bug once more in the coalescer itself:
+     `fetch` has no default timeout, so a check whose response never finished
+     would pin the in-flight slot and every later 401 would queue behind it
+     forever. The wait (not the request) is now bounded, and the test that pins
+     it was verified to fail without the bound.
+  2. It also used `$store.notify('$sessionSignal')`, which is fire-and-forget
+     and only heard by a MOUNTED atom. The module calls the atom's own
+     `refetch()` instead: it returns a promise (so the coalescing is exact
+     rather than clock-based) and runs with or without subscribers. The cost is
+     one narrow assertion over `$store.atoms`, typed from
+     `ReturnType<typeof authClient.useSession>` so an upstream change breaks the
+     build, and pinned at runtime by a test against the real client that asserts
+     an established session transitions to null - not that null stays null,
+     which is vacuous.
 - **PR 4.6** - `meta.errorToast` on gear mutations and `saveError` into
   `GearItemDialog` on `GearLibraryPage`.
 

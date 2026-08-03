@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, type ReactNode } from 'react'
 import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { shouldRetryQuery } from './lib/api'
 import { authClient } from './lib/auth-client'
 import { mutationErrorHandler } from './lib/mutation-error-handler'
 import { hasSeenSession, rememberSession } from './lib/session-hint'
@@ -65,7 +66,10 @@ if (hasSeenSession()) {
 // Query defaults ported from the old app: 30s staleTime keeps rapid
 // navigation off the network, a single retry smooths transient blips
 // without hammering a down server, and focus refetch stays off (the data
-// is single-user; nothing changes behind your back). The
+// is single-user; nothing changes behind your back). Note that this last one
+// governs TANSTACK's focus refetch only - better-auth runs its own on the
+// session, deliberately left on, and it is one of the paths that recovers a
+// session check that failed for a reason other than a 401. The
 // MutationCache.onError handler is extracted to
 // src/lib/mutation-error-handler.ts so the same function powers both
 // production and the unit tests (a copy in the test would only test
@@ -74,7 +78,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 1000 * 30,
-      retry: (failureCount) => failureCount < 1,
+      retry: shouldRetryQuery,
       refetchOnWindowFocus: false,
     },
   },
