@@ -9,5 +9,17 @@
 // non-auth /api/* request (server/middleware/csrf.ts).
 export const CSRF_HEADER = 'x-grampacker-request'
 
-// Every non-2xx API response carries this body shape.
-export type ApiErrorBody = { error: string }
+// Every non-2xx response from an APP-OWNED /api/* route carries this shape.
+//
+// /api/auth/* is the documented exception, the same way the CSRF header above
+// carves it out: those routes belong to better-auth, are consumed by
+// better-auth's client, and answer in ITS dialect ({code, message}). The SPA
+// reads both fields there - PasskeySection keys its re-auth prompt off `code`,
+// auth-errors renders `message` - so imposing this shape on that namespace would
+// break the client while making the app's own routes no more uniform.
+//
+// correlationId appears on unhandled 5xx only, and only when the incident was
+// actually logged (server/middleware/error-handler.ts). A handler-returned
+// 400/404/409 is not an incident and has no id - hence optional rather than
+// required, which would be a lie in the type.
+export type ApiErrorBody = { error: string; correlationId?: string }
