@@ -208,9 +208,18 @@ export function makeOptimisticInsert<TList extends { id: string }, TInput>(opts:
       await qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<TList[]>(queryKey)
       const next = optimistic(input)
+      // An ABSENT cache is left absent, exactly as makeOptimisticUpdate leaves
+      // it. Seeding one here fabricates a collection the user never loaded:
+      // writing a row flips `data` from undefined to defined, which is the
+      // same signal every page uses for "the fetch resolved", so a create
+      // issued while the library failed to load replaces the failure state
+      // with a one-row library and hides every real row until a refetch
+      // succeeds. A loaded-but-empty [] is a different thing - that IS the
+      // user's collection - and still gets the placeholder, which is what
+      // keeps first-list and first-packing-location feedback.
       qc.setQueryData<TList[]>(queryKey, (curr) => {
-        const arr = curr ?? []
-        return merge ? merge(arr, next) : [...arr, next]
+        if (!curr) return curr
+        return merge ? merge(curr, next) : [...curr, next]
       })
       return { previous }
     },

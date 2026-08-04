@@ -102,8 +102,9 @@ vi.mock('../lib/queries', () => ({
 vi.mock('../lib/use-reorderable', () => ({
   useReorderable: () => ({
     items: h.reorderableItems(),
-    isLoading: false,
-    isError: false,
+    isPending: false,
+    isLoadingError: false,
+    refetch: vi.fn(),
     reorderPending: false,
     handleDragStart: vi.fn(),
     handleDragCancel: vi.fn(),
@@ -232,6 +233,26 @@ function renderPage() {
   )
 }
 
+// "New item" is disabled until BOTH halves of the library have resolved: the
+// dialog builds a create from that snapshot, and with categories missing it
+// would offer only Uncategorized and POST that null. Every test that opens it
+// therefore waits for the page to finish loading first, exactly as a user does.
+async function openNewItemDialog() {
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'New item' })).toBeEnabled(),
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'New item' }))
+}
+
+async function enterSelectMode() {
+  // Same gate as New item: Select is the doorway to the bulk writes, so it
+  // stays disabled until the library snapshot is trustworthy.
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Select' })).toBeEnabled(),
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Select' }))
+}
+
 function nameField(): HTMLInputElement {
   return screen.getByLabelText(/^Name/) as HTMLInputElement
 }
@@ -268,7 +289,7 @@ describe('GearItemDialog save failures', () => {
     h.addItemAsync.mockReturnValue(d.promise)
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'New item' }))
+    await openNewItemDialog()
     fireEvent.change(nameField(), { target: { value: 'Down quilt' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add item' }))
 
@@ -324,7 +345,7 @@ describe('GearItemDialog save failures', () => {
     h.addItemAsync.mockReturnValue(d.promise)
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'New item' }))
+    await openNewItemDialog()
     fireEvent.change(nameField(), { target: { value: 'Down quilt' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add item' }))
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
@@ -342,7 +363,7 @@ describe('GearItemDialog save failures', () => {
     h.addItemAsync.mockReturnValue(d.promise)
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'New item' }))
+    await openNewItemDialog()
     fireEvent.change(nameField(), { target: { value: 'Down quilt' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add item' }))
 
@@ -457,7 +478,7 @@ describe('completions that arrive after the user has moved on', () => {
     h.addItemAsync.mockReturnValue(d.promise)
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'New item' }))
+    await openNewItemDialog()
     fireEvent.change(nameField(), { target: { value: 'Down quilt' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add item' }))
 
@@ -505,7 +526,7 @@ describe('completions that arrive after the user has moved on', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'New item' }))
+    await openNewItemDialog()
     fireEvent.change(nameField(), { target: { value: 'Down quilt' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add item' }))
     expect(await screen.findByRole('button', { name: 'Saving…' })).toBeInTheDocument()
@@ -522,7 +543,7 @@ describe('completions that arrive after the user has moved on', () => {
     h.addItemAsync.mockReturnValue(d.promise)
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'New item' }))
+    await openNewItemDialog()
     fireEvent.change(nameField(), { target: { value: 'Down quilt' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add item' }))
 
@@ -612,7 +633,7 @@ describe('create list from selection', () => {
     h.createListFromSelection.mockRejectedValue(new Error('nope'))
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Select' }))
+    await enterSelectMode()
     fireEvent.click(screen.getByRole('button', { name: 'Create list from selection' }))
     fireEvent.change(screen.getByLabelText(/^List name/), { target: { value: 'Winter kit' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create list' }))
@@ -643,7 +664,7 @@ describe('sessions ended by something other than their own close button', () => 
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     await waitFor(() => expect(h.createCategory).toHaveBeenCalled())
 
-    fireEvent.click(screen.getByRole('button', { name: 'New item' }))
+    await openNewItemDialog()
     expect(screen.getByRole('dialog', { name: 'New item' })).toBeInTheDocument()
 
     d.resolve({ id: 'c-new', name: 'Sleep system', sortOrder: 0, createdAt: '' })
@@ -665,7 +686,7 @@ describe('sessions ended by something other than their own close button', () => 
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     await waitFor(() => expect(h.createCategory).toHaveBeenCalled())
 
-    fireEvent.click(screen.getByRole('button', { name: 'New item' }))
+    await openNewItemDialog()
     d.reject(new Error('nope'))
     await settle(d)
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
@@ -682,7 +703,7 @@ describe('sessions ended by something other than their own close button', () => 
     h.createListFromSelection.mockReturnValue(d.promise as Promise<unknown>)
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Select' }))
+    await enterSelectMode()
     fireEvent.click(screen.getByRole('button', { name: 'Create list from selection' }))
     fireEvent.change(screen.getByLabelText(/^List name/), { target: { value: 'Winter kit' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create list' }))
@@ -707,7 +728,7 @@ describe("GearItemDialog's own create-category affordance", () => {
     h.createCategory.mockRejectedValue(new Error('nope'))
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'New item' }))
+    await openNewItemDialog()
     fireEvent.change(screen.getByLabelText(/^Category/), {
       target: { value: '__new_category__' },
     })

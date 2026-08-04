@@ -4,7 +4,7 @@
 // import is what brings the vitest module augmentation into tsc's
 // program for THIS file, so each matcher-using test stays self-typed.
 import '@testing-library/jest-dom/vitest'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -21,8 +21,8 @@ const h = vi.hoisted(() => ({
     options?: { onSuccess?: () => void },
   ) => void>(),
   reorderableItems: vi.fn<() => Category[]>(),
-  reorderableLoading: vi.fn<() => boolean>(),
-  reorderableError: vi.fn<() => boolean>(),
+  reorderablePending: vi.fn<() => boolean>(),
+  reorderableFailed: vi.fn<() => boolean>(),
   fetchGearItems: vi.fn<() => Promise<GearItem[]>>(),
   // Deliberately typed with no options argument: the delete confirms close on the
   // click, not on onSuccess (see the confirmation test below), so re-introducing a
@@ -51,8 +51,9 @@ vi.mock('../lib/queries', () => ({
 vi.mock('../lib/use-reorderable', () => ({
   useReorderable: () => ({
     items: h.reorderableItems(),
-    isLoading: h.reorderableLoading(),
-    isError: h.reorderableError(),
+    isPending: h.reorderablePending(),
+    isLoadingError: h.reorderableFailed(),
+    refetch: vi.fn(),
     reorderPending: false,
     handleDragStart: vi.fn(),
     handleDragCancel: vi.fn(),
@@ -189,7 +190,14 @@ function renderPage() {
 }
 
 async function selectOneItem() {
-  fireEvent.click(await screen.findByRole('button', { name: 'Select' }))
+  // Select is disabled until BOTH halves of the library are in hand - it is
+  // the doorway to bulk move and bulk delete, which write against that
+  // snapshot. Waiting for it to become enabled is the harness equivalent of
+  // the user waiting for the page to finish loading.
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Select' })).toBeEnabled(),
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Select' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Select tent' }))
   expect(screen.getByText('1 selected')).toBeInTheDocument()
 }
@@ -209,8 +217,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   h.reorderableItems.mockReturnValue([category({ id: 'c1', name: 'Shelter' })])
-  h.reorderableLoading.mockReturnValue(false)
-  h.reorderableError.mockReturnValue(false)
+  h.reorderablePending.mockReturnValue(false)
+  h.reorderableFailed.mockReturnValue(false)
   h.fetchGearItems.mockResolvedValue([gear()])
   h.bulkDeleteMutate.mockImplementation((_ids, options) => options?.onSuccess?.())
   h.bulkMoveMutate.mockImplementation((_input, options) => options?.onSuccess?.())
@@ -221,6 +229,9 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  // onlineManager is module-level state shared by every test in the file, so
+  // the offline cold-load case has to hand it back.
+  onlineManager.setOnline(true)
 })
 
 describe('GearLibraryPage route identity', () => {
@@ -272,7 +283,7 @@ describe('GearLibraryPage bulk success handling', () => {
 
   it('does not show the first-run empty state while categories are still loading', async () => {
     h.reorderableItems.mockReturnValue([])
-    h.reorderableLoading.mockReturnValue(true)
+    h.reorderablePending.mockReturnValue(true)
     h.fetchGearItems.mockResolvedValue([])
 
     renderPage()
@@ -283,13 +294,85 @@ describe('GearLibraryPage bulk success handling', () => {
 
   it('does not show the first-run empty state after a category load failure', async () => {
     h.reorderableItems.mockReturnValue([])
-    h.reorderableError.mockReturnValue(true)
+    h.reorderableFailed.mockReturnValue(true)
     h.fetchGearItems.mockResolvedValue([])
 
     renderPage()
 
-    expect(await screen.findByText("Couldn't load gear library. Refresh the page and try again.")).toBeInTheDocument()
+    expect(await screen.findByText("Couldn't load your gear")).toBeInTheDocument()
     expect(screen.queryByText('No gear yet')).not.toBeInTheDocument()
+    // /lists has offered a retry for the same failure since PR 4.1; telling a
+    // gear user to "refresh the page" was the odd one out.
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+
+  // The gear half of the same trap, and the one that was live: v5's isLoading
+  // is `isPending && isFetching`, so a cold load with the browser offline parks
+  // at fetchStatus 'paused' and reports isLoading FALSE with zero rows. The
+  // page fell straight through to the empty state and pitched onboarding at a
+  // user who owns a full library and is merely offline.
+  it('does not show the first-run empty state on a cold load that is paused offline', async () => {
+    h.reorderableItems.mockReturnValue([])
+    // Parked, not rejected: this is the state that reports isLoading false.
+    h.fetchGearItems.mockImplementation(() => new Promise(() => {}))
+    onlineManager.setOnline(false)
+
+    renderPage()
+
+    expect(await screen.findByText('Loading…')).toBeInTheDocument()
+    expect(screen.queryByText('No gear yet')).not.toBeInTheDocument()
+  })
+
+  describe('library action gate', () => {
+    // Every action behind these controls builds its write from the gear +
+    // category snapshot, and both arrays are [] while pending or failed. See
+    // libraryReady in GearLibraryPage for what each one gets wrong.
+    async function expectActionsDisabled() {
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'New item' })).toBeDisabled(),
+      )
+      expect(screen.getByRole('button', { name: 'Select' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Gear options' })).toBeDisabled()
+    }
+
+    it('disables New item, Select and Options while the gear fetch is in flight', async () => {
+      h.fetchGearItems.mockImplementation(() => new Promise(() => {}))
+      renderPage()
+      await expectActionsDisabled()
+    })
+
+    it('disables them after a gear load failure', async () => {
+      h.fetchGearItems.mockRejectedValue(new Error('offline'))
+      renderPage()
+      await expectActionsDisabled()
+    })
+
+    // Categories failing alone is the case the old `canExport` missed: gear is
+    // in hand, so Export looked safe, but gearItemsToCsv resolves category
+    // NAMES out of the categories array and would have written a blank cell
+    // for every row.
+    it('disables them when only the categories failed', async () => {
+      h.reorderableFailed.mockReturnValue(true)
+      renderPage()
+      await expectActionsDisabled()
+    })
+
+    it('enables them once both halves have resolved', async () => {
+      renderPage()
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'New item' })).toBeEnabled(),
+      )
+      expect(screen.getByRole('button', { name: 'Select' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Gear options' })).toBeEnabled()
+    })
+
+    // Cancel is the way OUT of a mode, never a write. Gating it alongside the
+    // rest would trap a user in select mode.
+    it('never disables Cancel in select mode', async () => {
+      renderPage()
+      await selectOneItem()
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+    })
   })
 
   it('exits select mode after a successful bulk delete', async () => {

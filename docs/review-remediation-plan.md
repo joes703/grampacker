@@ -847,6 +847,74 @@ Document in AGENTS.md beside the existing migration traps.
   `clearLastListPath()`. Same for `ListsPage.tsx` and `DesktopListsPanel.tsx`.
 - **PR 4.2** - expose a discriminated `{status, data}` from `useReorderable`
   and the page-level queries so an unhandled error branch is a type error.
+
+  **RESCOPED and shipped 2026-08-04. The discriminated union was NOT built.**
+  Four rounds of plan review established that the finding's own premise does
+  not hold. The type gate lands literally only where the data can be narrowed
+  before use - which is `ListsPage`, the one page already correct after PR 4.1.
+  On `GearLibraryPage` and `ListDetailPage` the arrays are consumed by hooks
+  and memos above the JSX, React forbids returning before those hooks, and
+  `state.status === 'ready' ? state.data : []` type-checks. Making it real
+  there means extracting a 1,055-line and a 2,324-line page body into content
+  components taking resolved data - a restructure whose risk has nothing to do
+  with this finding. This item had no finding ID; neither review reported it.
+  It was the plan's own invention, and the investigation is the argument that
+  the framing was wrong.
+
+  **What the investigation was worth: eight live bugs, all shipped.** The first
+  seven are the same shape - a fallback `[]` reaching code that computes a
+  WRITE from it, in a window where the array means "we do not know" rather than
+  "there are none". The eighth is the render gate that made the others
+  reachable.
+
+  1. `makeOptimisticInsert` seeded an absent cache (`optimistic.ts`). Creating
+     during a failed load wrote a one-row cache, which flipped `data` from
+     undefined to defined - the signal every page reads as "resolved" - so the
+     failure state was replaced by a library containing only the new row, every
+     real row hidden. Fixed at the helper, which kills the class for all eight
+     insert sites. A loaded `[]` still gets its placeholder: that is the
+     first-list / first-location case, and absence is not emptiness.
+  2. Gear import dedup ran against the fallback, so restoring your own CSV
+     backup after a blip re-created the entire library as duplicates.
+  3. Gear export wrote a blank category cell per row when gear loaded and
+     categories did not; `canExport` only checked the gear half.
+  4. New item offered only "Uncategorized" and POSTed that null.
+  5. Bulk move defaulted to Uncategorized and could uncategorize a selection.
+  6. The gear picker on list detail mounts OUTSIDE the detail gate, so a
+     list-items failure emptied `listItemGearIds` and every row read as
+     not-on-list - clicking re-added gear the list already held.
+  7. Pack reorder: on an unresolved locations query the grouping falls back to
+     categories, and the planner's category branch is justified by "every item
+     is in the single Unassigned cohort". True for a list that HAS no
+     locations; false when they merely failed to load, where the write
+     redistributes pack ranks across items that really do sit in different
+     bags. Silent. Also gated: location create, container promotion, and the
+     move-destination menu, whose destination list is built from the empty
+     array plus a hardcoded Unassigned.
+
+  8. The `/gear` render gate itself keyed on `isLoading` - v5's
+     `isPending && isFetching`, so an offline cold load parks at fetchStatus
+     'paused' and reports false with zero rows. The page fell through to the
+     brand-new-user onboarding pitch for a user who owns a full library and is
+     merely offline. Same class as PR 4.1 on `/lists`; it also gained the
+     Retry `/lists` has had since.
+
+  **Two boundaries held deliberately, both verified against existing tests.**
+  Removal (`MoveToLocationMenu`'s Remove from list) is NOT swept into the
+  locations gate: `resolveRemovalPlan` resolves the query itself and fail-safes
+  to a confirm, so it is the one action that stays correct during the outage,
+  and the menu's existing blanket `disabled` would have taken it out. And the
+  gear header's Cancel is never gated - it leaves a mode rather than writing.
+
+  **No new abstraction.** "Has this resolved?" is `!isPending &&
+  !isLoadingError` on the hook and `data !== undefined` on a plain query. Both
+  stay true when a background refetch fails over good cached rows, which is
+  what keeps the PR 4.1 rule intact.
+
+  **Declared not done:** `useReorderable` still returns six loose booleans.
+  Tidying them fixes nothing. The content-component extraction - the only thing
+  that would make an unhandled error branch a genuine type error - remains
+  unbuilt and is not scheduled.
 - **PR 4.3 (P1.2)** - `qc.clear()` and `clearLastListPath()` in `useSignOut`,
   or a full-document navigation as the other two paths use.
 - **PR 4.4 (P1.4)** - `app.onError` logging `{path, method, status, error}` and

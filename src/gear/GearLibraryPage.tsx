@@ -56,6 +56,7 @@ import CreateListFromSelectionDialog from './CreateListFromSelectionDialog'
 import MobileGearActionBar from './MobileGearActionBar'
 import GearOptionsButton from './GearOptionsButton'
 import ConfirmDialog from '../components/ConfirmDialog'
+import StatusPanel from '../components/StatusPanel'
 import PrimaryButton from '../components/PrimaryButton'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useGearItemActions } from './use-gear-item-actions'
@@ -107,8 +108,9 @@ export default function GearLibraryPage() {
   // same-tick-subscription rationale.
   const {
     items: categories,
-    isLoading: categoriesLoading,
-    isError: categoriesError,
+    isPending: categoriesPending,
+    isLoadingError: categoriesFailed,
+    refetch: retryCategories,
     reorderPending: catReorderPending,
     handleDragStart: catDragStart,
     handleDragCancel: catDragCancel,
@@ -120,10 +122,40 @@ export default function GearLibraryPage() {
     dndKind: 'category',
     buildUpdates: (reordered) => reordered.map((c, i) => ({ id: c.id, sortOrder: i })),
   })
-  const { data: allItems = [], isLoading, isError: gearItemsError } = useQuery({
+  const {
+    data: allItems = [],
+    isPending: gearItemsPending,
+    isLoadingError: gearItemsFailed,
+    refetch: refetchGearItems,
+  } = useQuery({
     queryKey: queryKeys.gearItems(),
     queryFn: fetchGearItems,
   })
+
+  // Retries both halves: the failure panel does not say which one failed, so
+  // the button must not either.
+  const retryLibrary = useCallback(() => {
+    void refetchGearItems()
+    retryCategories()
+  }, [refetchGearItems, retryCategories])
+
+  // "Both halves of the library are in hand." Every gear action builds its
+  // write from these two arrays, and BOTH default to [] while pending or
+  // failed - so without this gate a dropped connection turns each of them into
+  // a confident write against an empty library:
+  //
+  //   - Import dedups against nothing, so a user restoring their own CSV
+  //     backup re-creates every item they already own.
+  //   - Export writes a blank category cell for every row (gearItemsToCsv
+  //     resolves names out of `categories`).
+  //   - New item offers only "Uncategorized" and POSTs that null.
+  //   - Bulk move defaults to Uncategorized and can uncategorize a selection.
+  //
+  // isPending + isLoadingError rather than isLoading + isError, for the reason
+  // stated on the render gate below: this must be false for a cold load that
+  // has not resolved, and TRUE when a background refetch failed over rows we
+  // still hold - those rows are good, and the actions above are safe on them.
+  const libraryReady = !gearItemsPending && !gearItemsFailed && !categoriesPending && !categoriesFailed
 
   // The create-list-from-selection dialog needs the existing list count for
   // its LIST_CAP warning. Subscribe via `select` so this page re-renders on
@@ -616,7 +648,12 @@ export default function GearLibraryPage() {
           ) : (
             <button
               onClick={() => setSelectMode(true)}
-              className="md:ml-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              // Gating ENTRY, never Cancel above: selection is the doorway to
+              // bulk move and bulk delete, both of which write against the
+              // library snapshot. Disabling the way out of a mode the user is
+              // already in would trap them.
+              disabled={!libraryReady}
+              className="md:ml-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
             >
               Select
             </button>
@@ -632,16 +669,18 @@ export default function GearLibraryPage() {
           <div className="hidden lg:flex items-center gap-2">
             <button
               onClick={() => setDialog({ type: 'create-item', saveError: null })}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              disabled={!libraryReady}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
             >
               <Plus size={14} />
               New item
             </button>
             <GearOptionsButton
+              libraryReady={libraryReady}
               onNewCategory={() => setDialog(openNewCategory())}
               onImport={() => setDialog({ type: 'import-explainer' })}
               onExport={handleExport}
-              canExport={allItems.length > 0}
+              canExport={libraryReady && allItems.length > 0}
               onCollapseAll={() => resetCollapsed(collapsibleKeys)}
               onExpandAll={expandAll}
               canCollapseExpand={collapsibleKeys.length > 0}
@@ -667,11 +706,28 @@ export default function GearLibraryPage() {
         />
       )}
 
-      {/* Category list */}
-      {isLoading || categoriesLoading ? (
+      {/* Category list.
+          Failure is checked BEFORE loading, and both are checked before the
+          empty state, because the empty state makes a claim the other two
+          cannot support: "you own no gear yet".
+          isLoadingError, not isError: in v5 a failed BACKGROUND refetch sets
+          status to 'error' while KEEPING the cached rows, and every gear
+          mutation invalidates this key - so bare isError would replace a fully
+          rendered library with a failure line after any post-write blip.
+          isPending, not isLoading: v5's isLoading is `isPending && isFetching`,
+          so a cold load with the browser offline parks at fetchStatus 'paused'
+          and reports isLoading FALSE with zero rows. That fell through to the
+          empty state below, which greeted an offline user who owns 200 items
+          with the brand-new-user onboarding pitch. Same class of bug as PR 4.1
+          on /lists. */}
+      {gearItemsFailed || categoriesFailed ? (
+        <StatusPanel
+          title="Couldn't load your gear"
+          body="Check your connection and try again."
+          onRetry={retryLibrary}
+        />
+      ) : gearItemsPending || categoriesPending ? (
         <p className="text-sm text-gray-500">Loading…</p>
-      ) : (gearItemsError && allItems.length === 0) || (categoriesError && categories.length === 0) ? (
-        <p className="text-sm text-red-600">Couldn&apos;t load gear library. Refresh the page and try again.</p>
       ) : allItems.length === 0 && categories.length === 0 ? (
         <GearLibraryEmptyState
           onCreateItem={() => setDialog({ type: 'create-item', saveError: null })}
@@ -998,11 +1054,12 @@ export default function GearLibraryPage() {
           discoverable without taking a bottom-bar slot. lg:hidden inside
           the component itself, so desktop never renders. */}
       <MobileGearActionBar
+        libraryReady={libraryReady}
         onNewItem={() => setDialog({ type: 'create-item', saveError: null })}
         onNewCategory={() => setDialog(openNewCategory())}
         onImport={() => setDialog({ type: 'import-explainer' })}
         onExport={handleExport}
-        canExport={allItems.length > 0}
+        canExport={libraryReady && allItems.length > 0}
         onCollapseAll={() => resetCollapsed(collapsibleKeys)}
         onExpandAll={expandAll}
         canCollapseExpand={collapsibleKeys.length > 0}
