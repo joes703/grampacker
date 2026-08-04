@@ -1,0 +1,78 @@
+# Before this file existed, only GitHub's repo-level SECURITY updates ran.
+# Those can bump a direct dependency (hono, PR #152) but will not bump a
+# PARENT to fix a transitive child - so the Cloudflare toolchain drifted
+# untouched until miniflare's bundled sharp picked up four libvips CVEs that
+# nothing was ever going to raise a PR for. This file adds the scheduled
+# version updates that close that gap.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+    # Deliberate delay before adopting a fresh release. The npm worm campaigns
+    # (Shai-Hulud and its variants) are detected and the poisoned versions
+    # yanked within hours to days of publication, so essentially the entire
+    # risk window is a version's first few days on the registry. We are not
+    # chasing features, so waiting costs us nothing and takes us out of that
+    # window. Majors wait longest because they are the ones we would want to
+    # read release notes for anyway.
+    #
+    # This applies to SCHEDULED version updates only. Dependabot's security
+    # updates still open immediately, which is the behaviour we want when
+    # there is a real advisory against something we actually ship.
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+
+    groups:
+      # wrangler and the two @cloudflare/* plugins pin each other EXACTLY -
+      # @cloudflare/vite-plugin 1.48.0 depends on wrangler 4.115.0 which depends
+      # on miniflare 4.20260722.1, and vitest-pool-workers 0.19.0 pins the same
+      # pair. Bumping one alone does not fail; it silently installs a second
+      # nested copy of the others, so the dev server and the workerd test pool
+      # end up on different runtimes.
+      #
+      # This group REDUCES that risk, it does not eliminate it. Dependabot
+      # combines updates that happen to be eligible in the same run, so it is
+      # coordination rather than a lockstep guarantee. miniflare is listed for
+      # the case where it ever becomes a direct dependency - today it is purely
+      # transitive, so it moves only when its parents move. If the versions do
+      # drift apart, `npm ls wrangler miniflare --all` shows it immediately as a
+      # non-deduped nested copy.
+      cloudflare-toolchain:
+        patterns:
+          - wrangler
+          - miniflare
+          - "@cloudflare/*"
+
+      types:
+        patterns:
+          - "@types/*"
+
+      # Everything else dev-side in one PR. Runtime dependencies are
+      # deliberately left ungrouped so react, hono, better-auth and drizzle
+      # each get their own reviewable PR.
+      dev-tooling:
+        dependency-type: development
+        exclude-patterns:
+          - wrangler
+          - miniflare
+          - "@cloudflare/*"
+          - "@types/*"
+
+  # AGENTS.md requires third-party actions to be pinned to a full commit SHA.
+  # That pin is what makes a workflow reproducible, but it also means the
+  # action never picks up an upstream security fix unless something moves the
+  # SHA. This block is that something.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
