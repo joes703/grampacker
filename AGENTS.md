@@ -144,6 +144,49 @@ time. Never delete or recreate the D1 database.
   milliseconds, so the UI flashes correct then snaps back. Hard-refresh after a
   write to confirm the server accepted it. Optimistic UI is a latency tool, not a
   correctness signal.
+- **An empty array from a query means THREE different things**, and only one of
+  them may be written against: still loading, failed, or genuinely empty. Every
+  `data ?? []` and every `items` default collapses them. This class has cost two
+  PRs (4.1 on `/lists`, 4.2 on `/gear` and list detail), so:
+  - **Reading**: check failure BEFORE loading, and both before any empty state -
+    an empty state makes a claim ("you own none") that neither other state
+    supports. Use `isLoadingError`, NOT `isError`: in v5 a failed BACKGROUND
+    refetch sets status to 'error' while KEEPING the cached rows, and mutations
+    invalidate constantly, so bare `isError` blanks a working page after any
+    post-write blip. Use `isPending`, NOT `isLoading`: v5's `isLoading` is
+    `isPending && isFetching`, so a cold load with the browser offline parks at
+    fetchStatus 'paused' and reports FALSE with zero rows.
+  - **Writing**: anything that computes a mutation payload from a cached
+    collection - a dedup, a sort slot, a membership set, a destination list -
+    must be gated on that collection having RESOLVED
+    (`!isPending && !isLoadingError`, or `data !== undefined` on a plain query).
+    Both stay true over good cached rows when a refetch fails, which is the
+    point. Gate the ACTION, not just the render: page headers, mobile action
+    bars and side panels routinely mount outside the render gate and stay live.
+    Scope this to collections the write is COMPUTED from. A client-side
+    PREFLIGHT that the server independently enforces need not gate the write -
+    `/gear`'s `listCount` defaults to 0 and is deliberately left ungated, so a
+    slow or failed `/api/lists` cannot take down the gear library. It does block
+    submission once resolved (`CreateListFromSelectionDialog`'s `canSubmit`);
+    unresolved it simply lets the request through to the real gate.
+  - Both predicates prove "we have data to act on", NOT "the server answered":
+    `initialData` is promoted to `status: 'success'` on construction
+    (`query-core`'s `getDefaultState`), and `useReorderable` accepts it. That is
+    fine where the seed is itself authoritative - `DesktopListsPanel` is handed
+    rows from the parent's own resolved query - but do not reach for these
+    predicates on a query seeded with a placeholder or a guess.
+  - **Never gate the way out.** A Cancel that leaves a mode, and any action
+    whose own preflight resolves the data authoritatively (e.g.
+    `resolveRemovalPlan`), must stay enabled - see `MoveToLocationMenu`'s
+    separate `locationsUnavailable` prop, which exists so the blanket
+    `disabled` cannot take Remove from list with it.
+- **`makeOptimisticInsert` leaves an ABSENT cache absent** (`optimistic.ts`), and
+  must keep doing so. Writing a placeholder into a cache that never loaded flips
+  `data` from undefined to defined - the signal every page reads as "resolved" -
+  so a create during a failed load replaces the failure state with a collection
+  containing only the new row, hiding every real one. A loaded-but-empty `[]` is
+  a different thing and still gets its placeholder: that is the
+  first-list / first-packing-location case. Absence is not emptiness.
 - **`c.res = res` does not REPLACE a response in Hono - it MERGES.** The setter
   copies the previous response's headers onto the new one with `headers.set(k, v)`,
   so on any header present in BOTH, the OLD value wins and your new value is
@@ -171,13 +214,47 @@ time. Never delete or recreate the D1 database.
 
 ## Async and failure feedback
 
-> These four rules came from the Supabase version. Confirm the React Query /
-> mutation architecture actually carried into grampacker-next before treating
-> them as binding; update or delete them once verified against the new code.
+> Verified against this codebase and rewritten 2026-08-04. The caveat that used
+> to sit here - "these came from the Supabase version, confirm the architecture
+> carried over" - is discharged: it did carry over, and the canonical rule now
+> lives in code. These are the rules to FOLLOW; where the codebase has not
+> caught up to one, it says so inline rather than pretending otherwise.
+
+**`src/lib/mutation-error-handler.ts` is the single home of the which-failures-
+earn-a-toast rule.** Read it before adding or removing one. It is a rule rather
+than a per-site judgement call precisely so two surfaces doing the same thing
+cannot answer differently. In outline:
 
 - Optimistic mutation with a visible rollback: the snap-back usually IS the
-  failure signal. Don't add a toast for ordinary optimistic rollbacks. Exception:
-  reorders, whose rollback is otherwise invisible.
+  failure signal, and an in-place EDIT needs nothing - the value reverts under
+  the user's cursor. Needs EXPLICIT feedback when the rollback is easy to MISS:
+  every optimistic delete/removal (the snap-back is a row reappearing after the
+  confirm closed), bulk transforms, drag-driven writes, and the create-list
+  placeholder. "Explicit" is not automatically a toast - see the next bullet.
+- **Where that feedback goes is the modal rule, and it outranks the rest.**
+  `Modal.tsx` opens a native `<dialog>` with `showModal()`, which puts it in the
+  browser's TOP LAYER; `ToastViewport` is an ordinary `z-50` element. So a toast
+  raised while a modal is open is not merely worse than inline - it is nothing
+  at all, sitting behind the backdrop until it expires. A write issued from a
+  modal still open when it fails MUST report inline (`saveError`). A non-modal
+  surface that stays put may also report inline and often should - the gear
+  library's inline category editor does - and one that goes away can use a
+  toast. The constraint is the top layer, not visibility. Check that the surface
+  really does stay put: an optimistic insert can unmount the very component
+  holding the error state (`ListsEmptyState` stops rendering the moment the
+  placeholder lands, which is why its local `error` never reaches the screen -
+  a known gap, recorded in the remediation plan).
+- **Say what you can prove.** A rejected fetch never proves the server did not
+  commit - the connection can drop after the write lands, and `apiFetch` also
+  rejects when a 200 fails DTO validation (`api.ts`, `schema.parse`). So
+  "Couldn't confirm…", not "Couldn't delete…", and on a non-idempotent POST
+  advise a refresh before retrying rather than "try again", which invites a
+  duplicate. **This is the standard for new and touched code, not a description
+  of the whole codebase**: PR 4.6 applied it to the gear and list-item paths and
+  deliberately left list creation, list duplication, Quick Add and food creation
+  still saying "Please try again" (`use-current-list-actions.ts`,
+  `use-list-item-actions.ts`, and the food mutations in `ListDetailPage.tsx`). Sweeping those is unclaimed work. Do not cite
+  them as precedent.
 - Non-optimistic mutations: opt into explicit feedback rather than hand-rolling an
   `onError` toast where a shared handler already covers it.
 - Non-optimistic async actions that aren't mutations: wrap the body in try/catch,
