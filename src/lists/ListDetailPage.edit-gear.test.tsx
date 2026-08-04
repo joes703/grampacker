@@ -105,6 +105,17 @@ const h = vi.hoisted(() => ({
   updateListItem: vi.fn<(listId: string, itemId: string, patch: unknown) => Promise<unknown>>(),
 }))
 
+// The page calls authClient.useSession(), which mounts better-auth's nanostores
+// session atom. Nanostores keeps an unmounted store alive on a ~1s timer, and
+// when that timer fires AFTER vitest has torn down this file's jsdom
+// environment, better-auth's cleanupBroadcastSetup touches `window` and throws
+// an unhandled ReferenceError - failing CI with every test still passing.
+// Mocking the client means the atom never mounts. The session is read here only
+// for the last-list pointer's owner id, which no test in this file asserts on.
+vi.mock('../lib/auth-client', () => ({
+  authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
+}))
+
 vi.mock('../lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/queries')>()
   return { ...actual, ...h }
