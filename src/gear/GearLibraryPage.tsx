@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -62,17 +62,31 @@ import { useGearItemActions } from './use-gear-item-actions'
 import { useGearCategoryActions } from './use-gear-category-actions'
 import { useGearBulkActions } from './use-gear-bulk-actions'
 
+// `saveError` on the two GearItemDialog variants is the dialog's own failure
+// surface. It has to be inline rather than a toast: Modal opens a native <dialog>
+// via showModal(), which sits in the browser's top layer, so a toast raised from
+// behind one is never seen (the rule and its rationale live in
+// src/lib/mutation-error-handler.ts). Keeping it in the dialog STATE rather than a
+// separate useState is what makes closing the dialog discard the error with it,
+// and is what the save's completion guard compares identity against.
 type DialogState =
-  | { type: 'create-item'; categoryId?: string | null }
-  | { type: 'edit-item'; item: GearItem }
-  | { type: 'create-list-from-selection' }
+  | { type: 'create-item'; categoryId?: string | null; saveError: string | null }
+  | { type: 'edit-item'; item: GearItem; saveError: string | null }
+  | { type: 'create-list-from-selection'; saveError: string | null }
   // `returnDialog` lets the confirm dialog restore the prior dialog on
   // cancel — set when the delete is launched from inside GearItemDialog
   // so the user lands back in the edit form. Omitted (undefined) for
   // deletes launched directly from the row kebab or trash icon.
   | { type: 'delete-item'; item: GearItem; returnDialog?: DialogState }
   | { type: 'delete-category'; category: Category }
-  | { type: 'add-category' }
+  // The inline category editor is a SESSION, not a flag. Its draft, its error and
+  // its in-flight state all live here so that every transition is one functional
+  // setDialog guarded on `session` - which makes a late answer's decision atomic
+  // with respect to whatever else replaced the editor. An earlier draft kept these
+  // in separate useState and inferred "the user left" from an effect on the dialog;
+  // that lost races against the async dialog replacements this page already has
+  // (CSV import completion, bulk-move completion).
+  | { type: 'add-category'; session: number; name: string; error: string | null; pending: boolean }
   | { type: 'bulk-move' }
   | { type: 'import-explainer' }
   | { type: 'import-preview'; rows: GearCsvRow[] }
@@ -136,19 +150,88 @@ export default function GearLibraryPage() {
   const { set: collapsed, toggle: toggleCollapse, clear: expandAll, reset: resetCollapsed } = useToggleSet<string>()
   const { weightUnit } = useWeightUnit()
   const isBelowLg = useIsBelowLg()
-  const [newCategoryName, setNewCategoryName] = useState('')
+  // Monotonic id for each opening of the inline category editor. The editor has no
+  // stable object to compare (its state changes on every keystroke), so the session
+  // number is its identity.
+  const categorySessionRef = useRef(0)
+  const openNewCategory = (): DialogState => ({
+    type: 'add-category',
+    session: (categorySessionRef.current += 1),
+    name: '',
+    error: null,
+    pending: false,
+  })
+  // The GearItemDialog save currently awaiting a response, held as the exact
+  // DialogState object it was submitted from. Two jobs, both identity-based:
+  // `saving` is true only while THIS dialog's own save is out (addItem/editItem
+  // .isPending would also light up for an inline row edit happening behind the
+  // dialog), and a completion whose attempt is no longer the open dialog is
+  // discarded rather than applied to whatever is on screen now.
+  const [savingAttempt, setSavingAttempt] = useState<DialogState | null>(null)
 
   function exitSelectMode() {
     setSelectMode(false)
     clearSelected()
   }
 
-  function commitNewCategory() {
-    const name = newCategoryName.trim()
-    if (!name) return
-    addCategory.mutate(name)
-    setNewCategoryName('')
+  // Every transition of the inline category editor goes through this: apply `next`
+  // only if the editor is STILL open on the same session. That is what makes a late
+  // answer safe no matter what replaced the editor in the meantime - another dialog,
+  // a CSV import finishing, a bulk move finishing, or the user simply closing it -
+  // without needing to know in advance what the routes out are.
+  function updateCategorySession(
+    session: number,
+    next: (prev: Extract<DialogState, { type: 'add-category' }>) => DialogState | null,
+  ) {
+    setDialog((prev) =>
+      prev?.type === 'add-category' && prev.session === session ? next(prev) : prev,
+    )
+  }
+
+  function closeNewCategory() {
     setDialog(null)
+  }
+
+  // The editor holds its own error rather than raising a toast, and stays open with
+  // the typed name until the create actually succeeds. Both halves are forced.
+  //
+  // A toast is out because `addCategory` is shared with GearItemDialog's "create
+  // category" affordance, which runs inside a native <dialog> - top layer - where a
+  // toast is never seen (see src/lib/mutation-error-handler.ts). Closing on the
+  // optimistic insert is out because the placeholder takes the next sort order and
+  // so lands at the END of the category list, which on a library of any size is
+  // below the fold: it can appear and roll back without ever being on screen.
+  function commitNewCategory(editor: Extract<DialogState, { type: 'add-category' }>) {
+    const name = editor.name.trim()
+    // Category names are NOT unique in the schema, so a second submit while the
+    // first is out quietly creates a duplicate - and Enter repeats on its own. The
+    // primary block is the UI: `pending` disables both the input and the Add button,
+    // which is what the double-submit test actually exercises. This early return is
+    // the backstop for any future caller that reaches the function directly.
+    if (!name || editor.pending) return
+    const { session } = editor
+    updateCategorySession(session, (prev) => ({ ...prev, error: null, pending: true }))
+    // mutateAsync, NOT mutate with per-call callbacks. `addCategory` is ONE mutation
+    // observer shared with GearItemDialog's create-category affordance, and TanStack
+    // detaches the observer from the previous mutation on every new mutate call - so
+    // per-call callbacks here would simply never run. That overlap IS reachable:
+    // abandon an in-flight inline create by opening New item, then create a category
+    // from inside the dialog. The promise mutateAsync returns belongs to THIS
+    // mutation and settles regardless of what the observer does next.
+    void (async () => {
+      try {
+        await addCategory.mutateAsync(name)
+        updateCategorySession(session, () => null)
+      } catch {
+        updateCategorySession(session, (prev) => ({
+          ...prev,
+          pending: false,
+          // POST, so no blind retry - see the note on the item dialog's message.
+          error:
+            "Couldn't confirm the category was created. Refresh before retrying, in case it was.",
+        }))
+      }
+    })()
   }
 
   // ── CSV import/export ─────────────────────────────────────────────────────────
@@ -229,10 +312,14 @@ export default function GearLibraryPage() {
   // batch; any foreign gear id rejects the whole call), so the client just
   // posts name + description + ids and navigates into the result.
   const navigate = useNavigate()
+  // No meta.errorToast, deliberately, even though this is a NON-optimistic mutation
+  // - the case the toast mechanism exists for. Its dialog stays open on failure and
+  // is a modal, so the toast this used to raise expired behind the backdrop and the
+  // create failed silently. The dialog carries the error inline instead. See the
+  // rule in src/lib/mutation-error-handler.ts.
   const createListFromSelectionMut = useMutation({
     mutationKey: mutationKeys.createListFromSelection(),
     mutationFn: createListFromSelection,
-    meta: { errorToast: "Couldn't create the list. Please try again." },
     onSuccess: (newList) => {
       void qc.invalidateQueries({ queryKey: queryKeys.lists() })
       void qc.invalidateQueries({ queryKey: queryKeys.listItems(newList.id) })
@@ -402,7 +489,7 @@ export default function GearLibraryPage() {
       editItemMutate({ id, patch }),
     [editItemMutate],
   )
-  const handleEditItem = useCallback((item: GearItem) => setDialog({ type: 'edit-item', item }), [])
+  const handleEditItem = useCallback((item: GearItem) => setDialog({ type: 'edit-item', item, saveError: null }), [])
   const handleDeleteItem = useCallback((item: GearItem) => setDialog({ type: 'delete-item', item }), [])
   const handleSetItemStatus = useCallback(
     (id: string, status: GearItem['status']) => editItemMutate({ id, patch: { status } }),
@@ -467,38 +554,48 @@ export default function GearLibraryPage() {
               shared input here keeps a single source of truth instead
               of duplicating the inline editor per surface. */}
           {dialog?.type === 'add-category' && (
-            <div className="flex w-full md:w-auto items-center gap-2">
-              <input
-                autoFocus
-                type="text"
-                placeholder="Category name"
-                maxLength={MAX_CATEGORY_NAME}
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitNewCategory()
-                  if (e.key === 'Escape') {
-                    setNewCategoryName('')
-                    setDialog(null)
+            <div className="flex w-full md:w-auto flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="Category name"
+                  maxLength={MAX_CATEGORY_NAME}
+                  value={dialog.name}
+                  disabled={dialog.pending}
+                  onChange={(e) =>
+                    updateCategorySession(dialog.session, (prev) => ({
+                      ...prev,
+                      name: e.target.value,
+                    }))
                   }
-                }}
-                className="w-44 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <PrimaryButton
-                onClick={commitNewCategory}
-                disabled={!newCategoryName.trim()}
-                size="sm"
-                disabledOpacity="40"
-              >
-                Add
-              </PrimaryButton>
-              <button
-                onClick={() => { setNewCategoryName(''); setDialog(null) }}
-                className="rounded p-1.5 text-gray-500 hover:text-gray-600"
-                aria-label="Cancel new category"
-              >
-                <X size={16} />
-              </button>
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitNewCategory(dialog)
+                    if (e.key === 'Escape') closeNewCategory()
+                  }}
+                  className="w-44 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                />
+                <PrimaryButton
+                  onClick={() => commitNewCategory(dialog)}
+                  disabled={!dialog.name.trim() || dialog.pending}
+                  size="sm"
+                  disabledOpacity="40"
+                >
+                  {dialog.pending ? 'Adding…' : 'Add'}
+                </PrimaryButton>
+                <button
+                  onClick={closeNewCategory}
+                  className="rounded p-1.5 text-gray-500 hover:text-gray-600"
+                  aria-label="Cancel new category"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              {dialog.error && (
+                <p role="alert" className="text-xs text-red-600">
+                  {dialog.error}
+                </p>
+              )}
             </div>
           )}
 
@@ -534,14 +631,14 @@ export default function GearLibraryPage() {
               this breakpoint. */}
           <div className="hidden lg:flex items-center gap-2">
             <button
-              onClick={() => setDialog({ type: 'create-item' })}
+              onClick={() => setDialog({ type: 'create-item', saveError: null })}
               className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               <Plus size={14} />
               New item
             </button>
             <GearOptionsButton
-              onNewCategory={() => setDialog({ type: 'add-category' })}
+              onNewCategory={() => setDialog(openNewCategory())}
               onImport={() => setDialog({ type: 'import-explainer' })}
               onExport={handleExport}
               canExport={allItems.length > 0}
@@ -564,7 +661,7 @@ export default function GearLibraryPage() {
           onClose={exitSelectMode}
           onSelectAll={() => resetSelected(searchFiltered.map((i) => i.id))}
           onDeselectAll={clearSelected}
-          onCreateList={() => setDialog({ type: 'create-list-from-selection' })}
+          onCreateList={() => setDialog({ type: 'create-list-from-selection', saveError: null })}
           onMoveToCategory={() => setDialog({ type: 'bulk-move' })}
           onDelete={() => bulkDelete.mutate(Array.from(selectedIds), { onSuccess: exitSelectMode })}
         />
@@ -577,9 +674,9 @@ export default function GearLibraryPage() {
         <p className="text-sm text-red-600">Couldn&apos;t load gear library. Refresh the page and try again.</p>
       ) : allItems.length === 0 && categories.length === 0 ? (
         <GearLibraryEmptyState
-          onCreateItem={() => setDialog({ type: 'create-item' })}
+          onCreateItem={() => setDialog({ type: 'create-item', saveError: null })}
           onImport={() => setDialog({ type: 'import-explainer' })}
-          onCreateCategory={() => setDialog({ type: 'add-category' })}
+          onCreateCategory={() => setDialog(openNewCategory())}
         />
       ) : search.trim() !== '' && searchFiltered.length === 0 ? (
         <p className="text-sm text-gray-500">
@@ -676,17 +773,65 @@ export default function GearLibraryPage() {
           categories={categories}
           item={dialog.type === 'edit-item' ? dialog.item : undefined}
           defaultCategoryId={dialog.type === 'create-item' ? dialog.categoryId : undefined}
-          saving={addItem.isPending || editItem.isPending}
+          saving={savingAttempt === dialog}
+          saveError={dialog.saveError}
           onClose={() => setDialog(null)}
           onCreateCategory={(categoryName) => addCategory.mutateAsync(categoryName)}
           onSave={(gearPatch) => {
             // Gear library page never opens the dialog with a list context,
             // so listPatch is always null here and is ignored.
-            if (dialog.type === 'edit-item') {
-              editItem.mutate({ id: dialog.item.id, patch: gearPatch }, { onSuccess: () => setDialog(null) })
-            } else {
-              addItem.mutate(gearPatch, { onSuccess: () => setDialog(null) })
-            }
+            //
+            // The dialog stays open and stays DISMISSABLE while this runs (Escape,
+            // the X, Cancel), so the result is applied through functional updates
+            // guarded on object identity. `attempt` is the exact state object this
+            // save was submitted from; if the user has since closed the dialog
+            // (prev === null), opened a different item, or hit Save again - each of
+            // which installs a fresh object - the guard makes the late completion a
+            // no-op. Without it a slow rejection would re-open a dialog the user
+            // had already dismissed, remounted, with their draft gone.
+            const attempt: DialogState =
+              dialog.type === 'edit-item'
+                ? { ...dialog, saveError: null }
+                : { ...dialog, saveError: null }
+            // Installing `attempt` also clears any error from the previous try, so
+            // a retry shows fresh state rather than last time's message.
+            setDialog(attempt)
+            setSavingAttempt(attempt)
+            void (async () => {
+              try {
+                if (attempt.type === 'edit-item') {
+                  await editItem.mutateAsync({ id: attempt.item.id, patch: gearPatch })
+                } else {
+                  await addItem.mutateAsync(gearPatch)
+                }
+                setDialog((prev) => (prev === attempt ? null : prev))
+              } catch {
+                // mutateAsync rejects only after the optimistic helper has rolled
+                // back, so by here the caches are already consistent and there is
+                // nothing to undo - just something to say. Catching is also what
+                // keeps this off the unhandled-rejection path.
+                setDialog((prev) =>
+                  prev === attempt
+                    ? {
+                        ...prev,
+                        // Create and edit diverge, and the reason is retry safety rather
+                        // than tone. The edit is a PATCH: repeating it converges, so
+                        // "try again" is sound advice. The create is a POST that mints
+                        // an id, so if the server committed and the response was lost, a
+                        // blind retry adds the item twice - and a rejected request is
+                        // never proof the server did not commit (apiFetch also rejects
+                        // when a 200 fails DTO validation).
+                        saveError:
+                          attempt.type === 'edit-item'
+                            ? "Couldn't confirm those changes saved. Try again, or refresh to check."
+                            : "Couldn't confirm the item was created. Refresh before retrying, in case it was.",
+                      }
+                    : prev,
+                )
+              } finally {
+                setSavingAttempt((prev) => (prev === attempt ? null : prev))
+              }
+            })()
           }}
           // Mobile-only Delete from inventory action inside the dialog.
           // Replaces the trash icon that used to sit in the row on desktop
@@ -711,8 +856,17 @@ export default function GearLibraryPage() {
           // user launched delete from inside GearItemDialog). Otherwise
           // close to the page.
           onCancel={() => setDialog(dialog.returnDialog ?? null)}
+          // Close first, then mutate - the same order every delete confirm in the
+          // lists code already uses. Two reasons it matters here. The delete is
+          // optimistic, so the row is gone the instant this runs and a modal
+          // sitting over a list that already reflects the deletion is just in the
+          // way. And the failure toast is raised from the mutation's rollback: a
+          // native <dialog> renders in the top layer, so had the confirm still been
+          // open the toast would have expired behind it unseen.
           onConfirm={() => {
-            removeItem.mutate(dialog.item.id, { onSuccess: () => setDialog(null) })
+            const target = dialog.item
+            setDialog(null)
+            removeItem.mutate(target.id)
           }}
         />
       )}
@@ -724,8 +878,11 @@ export default function GearLibraryPage() {
           confirmLabel="Delete"
           dangerous
           onCancel={() => setDialog(null)}
+          // Close-then-mutate, same rationale as the delete-item confirm above.
           onConfirm={() => {
-            removeCategory.mutate(dialog.category.id, { onSuccess: () => setDialog(null) })
+            const target = dialog.category
+            setDialog(null)
+            removeCategory.mutate(target.id)
           }}
         />
       )}
@@ -735,13 +892,30 @@ export default function GearLibraryPage() {
           selectedCount={selectedIds.size}
           existingListCount={listCount}
           saving={createListFromSelectionMut.isPending}
-          onSubmit={(name, description) =>
-            createListFromSelectionMut.mutate({
-              name,
-              description,
-              gearItemIds: Array.from(selectedIds),
-            })
-          }
+          saveError={dialog.saveError}
+          onSubmit={(name, description) => {
+            // Same identity guard as the gear dialog above: `attempt` is the exact
+            // state object this submit came from, so an error arriving after the
+            // user closed the dialog cannot re-open it. Success is handled by the
+            // mutation's own onSuccess, which navigates away.
+            const attempt: DialogState = { ...dialog, saveError: null }
+            setDialog(attempt)
+            createListFromSelectionMut.mutate(
+              { name, description, gearItemIds: Array.from(selectedIds) },
+              {
+                onError: () =>
+                  setDialog((prev) =>
+                    prev === attempt
+                      ? {
+                          ...prev,
+                          saveError:
+                            "Couldn't confirm the list was created. Refresh before retrying, in case it was.",
+                        }
+                      : prev,
+                  ),
+              },
+            )
+          }}
           onClose={() => setDialog(null)}
         />
       )}
@@ -824,8 +998,8 @@ export default function GearLibraryPage() {
           discoverable without taking a bottom-bar slot. lg:hidden inside
           the component itself, so desktop never renders. */}
       <MobileGearActionBar
-        onNewItem={() => setDialog({ type: 'create-item' })}
-        onNewCategory={() => setDialog({ type: 'add-category' })}
+        onNewItem={() => setDialog({ type: 'create-item', saveError: null })}
+        onNewCategory={() => setDialog(openNewCategory())}
         onImport={() => setDialog({ type: 'import-explainer' })}
         onExport={handleExport}
         canExport={allItems.length > 0}

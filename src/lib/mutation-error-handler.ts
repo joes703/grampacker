@@ -4,9 +4,44 @@ import { showToast } from './toast'
 
 // Opt-in per-mutation failure feedback. A non-optimistic mutation (no visible
 // snap-back to act as the error signal) sets `meta: { errorToast: "..." }`;
-// this handler turns that into a toast. Optimistic mutations normally leave it
-// unset, except when the rollback is too easy to miss (reorder writes, and the
-// first-list/create-list placeholder).
+// this handler turns that into a toast.
+//
+// WHEN AN OPTIMISTIC MUTATION ALSO NEEDS ONE. The default is silence, because the
+// snap-back IS the signal. That holds for an in-place EDIT: the value you typed
+// reverts under your cursor, so what failed and what to do are both obvious. It
+// does not hold once the rollback is easy to miss, which is the case for:
+//
+//   - every optimistic DELETE/REMOVAL. The snap-back is a row REAPPEARING, after
+//     the confirm has closed and the user's attention has moved on. That reads as
+//     "the app didn't delete it" - a bug - rather than "the request failed, retry".
+//   - bulk transforms (a change spread across rows, most of them off-screen).
+//   - DRAG-DRIVEN writes - reorders, and moves between packing locations - where
+//     the snap-back is indistinguishable from "the user dragged it back
+//     themselves". The trigger is the gesture, not the verb: a move issued from a
+//     row menu shares the mutation and is no more obvious.
+//   - the first-list/create-list placeholder.
+//
+// THE MODAL RULE, which outranks all of the above. src/components/Modal.tsx opens a
+// native <dialog> with showModal(), which puts it in the browser's TOP LAYER, above
+// all ordinary stacking. ToastViewport is an ordinary z-50 element, so a toast
+// raised while a MODAL is open sits behind the backdrop and expires there, unseen.
+// So: IF THE WRITE WAS ISSUED FROM A MODAL THAT IS STILL OPEN WHEN IT FAILS, the
+// error belongs inline, and a toast is not merely worse - it is nothing at all.
+// That is why GearItemDialog and CreateListFromSelectionDialog take a `saveError`
+// prop, why the dialog's "create category" affordance keeps its own
+// `categoryError`, and why the gear library's inline category editor holds its own
+// (that one is not a modal, but it stays open and can say it in place, which is
+// better than a toast). It applies to non-optimistic mutations too: a modal-bound
+// write gets inline feedback rather than meta.errorToast.
+//
+// This is narrower than "any visible surface". A non-modal surface that stays put -
+// the trip-length and meal controls on the list page, say - can perfectly well be
+// answered by a toast, and an in-place edit still needs nothing at all. The
+// constraint is the top layer, not visibility.
+//
+// The corollary is what makes the delete confirms close on the CLICK rather than on
+// success - a confirm still standing when the rollback lands would swallow the
+// toast that explains it.
 declare module '@tanstack/react-query' {
   interface Register {
     mutationMeta: { errorToast?: string }
@@ -33,11 +68,10 @@ declare module '@tanstack/react-query' {
 // are silent optimistic rollbacks where the user sees the snap-back. We
 // deliberately do NOT route every mutation failure through the toast
 // system from here - that would spam users with toasts for transient
-// network failures and background refetch errors. The toast system
-// exists (src/lib/toast.ts) and is used selectively by
-// makeOptimisticReorder.onError where the rollback is otherwise silent
-// and confusing. New mutation paths should consider whether their
-// failure mode warrants a toast on a case-by-case basis.
+// network failures and background refetch errors. Which failures earn a
+// toast is the rule stated at the top of this file; it is a rule rather
+// than a per-site judgement call precisely so the answer does not drift
+// between two surfaces doing the same thing.
 //
 // Extracted from the App.tsx inline arrow so the same function is
 // consumed by both the production QueryClient and the unit test -

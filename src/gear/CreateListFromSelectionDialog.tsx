@@ -12,6 +12,11 @@ type Props = {
   saving: boolean
   onSubmit: (name: string, description: string | null) => void
   onClose: () => void
+  /** Save-time error from the parent, rendered inline. This dialog stays open on
+   *  failure, and it is a modal - a native <dialog> in the browser's top layer -
+   *  so a toast raised behind it would never be seen. Same contract as
+   *  GearItemDialog's `saveError`; see src/lib/mutation-error-handler.ts. */
+  saveError?: string | null
 }
 
 export default function CreateListFromSelectionDialog({
@@ -20,6 +25,7 @@ export default function CreateListFromSelectionDialog({
   saving,
   onSubmit,
   onClose,
+  saveError = null,
 }: Props) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -40,8 +46,19 @@ export default function CreateListFromSelectionDialog({
       </div>
       <form
         onSubmit={(e) => { e.preventDefault(); if (canSubmit) onSubmit(trimmed, description.trim() || null) }}
-        className="px-6 py-4 space-y-4"
       >
+        {/* Frozen for the duration of the create, for the same reason as
+            GearItemDialog's body: without it the fields stay live while the
+            request is out, so anything typed after Create is in state the
+            submitted payload never saw - and a success navigates away and
+            discards it. Cancel sits inside the fieldset here (unlike the gear
+            dialog, whose footer is outside the scroll region), so it is
+            disabled too; the X in the header remains the way out.
+            min-w-0 because a <fieldset> carries a UA min-inline-size. */}
+        <fieldset
+          disabled={saving}
+          className="min-w-0 px-6 py-4 space-y-4 disabled:opacity-60"
+        >
           <p className="text-sm text-gray-600">
             {selectedCount} item{selectedCount === 1 ? '' : 's'} will be added to the new list.
           </p>
@@ -87,6 +104,15 @@ export default function CreateListFromSelectionDialog({
             />
           </div>
 
+          {saveError && (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            >
+              {saveError}
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"
@@ -102,6 +128,7 @@ export default function CreateListFromSelectionDialog({
               {saving ? 'Creating…' : 'Create list'}
             </PrimaryButton>
           </div>
+        </fieldset>
       </form>
     </Modal>
   )

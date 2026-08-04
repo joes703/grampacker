@@ -124,6 +124,14 @@ export function useCurrentListActions() {
     },
   })
 
+  // Toasted per the rule in src/lib/mutation-error-handler.ts, and this is the
+  // worst of the delete rollbacks rather than the mildest. Every call site closes
+  // its confirm before mutating, and the two that navigate do so on SUCCESS only
+  // (DesktopListsPanel, ListSettingsPanel) - so a failure leaves the user wherever
+  // they were with the list silently back in the sidebar, and from
+  // ListSettingsPanel it reads as the list detail page flashing "List not found"
+  // and then recovering on its own. Nothing in that sequence says "the delete
+  // failed".
   const deleteListMut = useMutation({
     mutationKey: mutationKeys.deleteList(),
     mutationFn: deleteList,
@@ -131,6 +139,7 @@ export function useCurrentListActions() {
       qc,
       queryKey: queryKeys.lists(),
       id: (id) => id,
+      errorToast: "Couldn't confirm that list was deleted. Refresh to check before trying again.",
     }),
   })
 

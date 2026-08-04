@@ -68,11 +68,16 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
   const removeLocation = useMutation({
     mutationKey: mutationKeys.removePackingLocation(listId),
     mutationFn: (id: string) => deletePackingLocation(listId, id),
+    // Toasted per the rule in src/lib/mutation-error-handler.ts: the confirm
+    // closes before mutating, and the rollback also has to put this location's
+    // items BACK out of Unassigned - a change spread across rows the user is not
+    // watching. Rename above stays silent; its snap-back is in-place.
     ...makeOptimisticDelete<PackingLocation, string>({
       qc,
       queryKey,
       id: (id) => id,
       invalidateKeys: [queryKeys.listItems(listId)],
+      errorToast: "Couldn't confirm that packing location was deleted. Refresh to check before trying again.",
     }),
   })
 

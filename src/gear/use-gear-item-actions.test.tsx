@@ -143,7 +143,26 @@ describe('useGearItemActions', () => {
       result.current.removeItem.mutate('g1')
 
       await waitFor(() => expect(h.deleteGearItem).toHaveBeenCalledWith('g1'))
-      expect(h.makeOptimisticGearItemDelete).toHaveBeenCalledWith({ qc })
+      expect(h.makeOptimisticGearItemDelete).toHaveBeenCalledWith(
+        expect.objectContaining({ qc }),
+      )
+    })
+
+    it('asks the fan-out to toast the rollback, with the same copy as the list-side delete', async () => {
+      // Wiring only - that the option actually produces a toast is the helper's
+      // own test (gear-list-items-fan-out.test.ts). What is asserted here is the
+      // rule from src/lib/mutation-error-handler.ts holding at this call site: a
+      // delete's rollback is a row REAPPEARING after the confirm has closed, which
+      // is the case the toast exists for. The edit above deliberately has none.
+      const { result, qc } = setup()
+
+      result.current.removeItem.mutate('g1')
+
+      await waitFor(() => expect(h.deleteGearItem).toHaveBeenCalledWith('g1'))
+      expect(h.makeOptimisticGearItemDelete).toHaveBeenCalledWith({
+        qc,
+        errorToast: "Couldn't confirm that item was deleted. Refresh to check before trying again.",
+      })
     })
   })
 })

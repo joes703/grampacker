@@ -74,7 +74,22 @@ export function useGearItemActions(allItems: GearItem[]) {
     mutationFn: (id: string) => deleteGearItem(id),
     // The server cascades list_items on gear delete; the fan-out mirrors
     // that by dropping the membership rows optimistically too.
-    ...makeOptimisticGearItemDelete({ qc }),
+    //
+    // Toasted, unlike the edit above: a failed delete snaps back as a row
+    // REAPPEARING somewhere in a long library, after the confirm has closed - the
+    // easy-to-miss case the rule in src/lib/mutation-error-handler.ts names. Same
+    // copy as the identical delete initiated from a list
+    // (src/lists/use-list-gear-actions.ts), because it is the same event.
+    //
+    // "Couldn't confirm", not "couldn't delete", and not "try again". A rejected
+    // request never proves the server did not commit, and this route is not
+    // response-idempotent: if the DELETE landed and only the response was lost, the
+    // rollback has just put a row back that no longer exists, and retrying answers
+    // 404. Refreshing is the only thing that settles it.
+    ...makeOptimisticGearItemDelete({
+      qc,
+      errorToast: "Couldn't confirm that item was deleted. Refresh to check before trying again.",
+    }),
   })
 
   return { addItem, editItem, removeItem }
