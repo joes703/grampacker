@@ -150,7 +150,11 @@ export default function GearItemDialog({
       setNewCategoryName('')
       setNewCategoryOpen(false)
     } catch {
-      setCategoryError("Couldn't create category. Please try again.")
+      // Not "try again": createCategory is a POST that mints an id, so a commit
+      // whose response was lost would be duplicated by a blind retry - and category
+      // names are not unique, so nothing stops it. See the rule in
+      // src/lib/mutation-error-handler.ts.
+      setCategoryError("Couldn't confirm the category was created. Refresh before retrying, in case it was.")
     } finally {
       setCreatingCategory(false)
     }
@@ -186,8 +190,24 @@ export default function GearItemDialog({
             flex child that can shrink AND grow inside its parent's flex
             constraints. Without min-h-0 the child would refuse to be
             smaller than its content and the overflow-y-auto would
-            never kick in. */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 space-y-4">
+            never kick in.
+
+            The fieldset freezes the form for the duration of a save. Without it
+            the fields stay live while the request is out, so anything typed
+            after Save is in state the submitted patch never saw - and a success
+            closes the dialog and discards it, silently. Deliberately scoped to
+            the body: the header's Close and the footer's Cancel stay reachable,
+            because abandoning a slow save is a legitimate thing to want (the
+            page's completion guard is what makes leaving safe).
+
+            min-w-0 is load-bearing: a <fieldset> carries a UA
+            `min-inline-size: min-content`, which would stop it shrinking and let
+            the two-column rows below (and native date controls) overflow the
+            modal. The div this replaced had no such floor. */}
+        <fieldset
+          disabled={saving}
+          className="flex-1 min-h-0 min-w-0 overflow-y-auto px-6 space-y-4 disabled:opacity-60"
+        >
           <div>
             <FormLabel htmlFor="gi-name">
               Name
@@ -477,7 +497,7 @@ export default function GearItemDialog({
           {/* Bottom padding so the last form field has breathing room
               above the sticky footer. */}
           <div className="h-2" aria-hidden="true" />
-        </div>
+        </fieldset>
 
         {/* Sticky footer — Cancel / Save. Stays visible at the bottom of
             the modal even when the scroll region above scrolls. Inside

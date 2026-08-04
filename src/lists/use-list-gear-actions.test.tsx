@@ -119,7 +119,7 @@ describe('useListGearActions', () => {
 
       expect(h.makeOptimisticGearItemDelete).toHaveBeenCalledWith({
         qc,
-        errorToast: "Couldn't delete that item. Please try again.",
+        errorToast: "Couldn't confirm that item was deleted. Refresh to check before trying again.",
       })
       expect(h.makeOptimisticDelete).not.toHaveBeenCalled()
     })

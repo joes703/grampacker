@@ -63,11 +63,15 @@ export function useGearCategoryActions(categories: Category[]) {
   const removeCategory = useMutation({
     mutationKey: mutationKeys.removeGearCategory(),
     mutationFn: (id: string) => deleteCategory(id),
+    // Toasted for the same reason as the gear-item delete: the section vanishes
+    // and then returns, with the confirm already gone. Rename above stays silent -
+    // its snap-back happens in the field the user just typed in.
     ...makeOptimisticDelete<Category, string>({
       qc,
       queryKey: queryKeys.categories(),
       invalidateKeys: [queryKeys.gearItems(), queryKeys.listItemsAll()],
       id: (id) => id,
+      errorToast: "Couldn't confirm that category was deleted. Refresh to check before trying again.",
     }),
   })
 

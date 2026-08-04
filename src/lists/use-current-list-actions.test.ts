@@ -141,6 +141,49 @@ describe('useCurrentListActions - duplicate', () => {
   })
 })
 
+describe('useCurrentListActions - deleteListMut', () => {
+  beforeEach(() => {
+    vi.mocked(showToast).mockClear()
+    q.deleteList.mockReset()
+  })
+  afterEach(() => cleanup())
+
+  it('toasts when the delete fails, through the REAL optimistic helper', async () => {
+    // This one runs against the actual makeOptimisticDelete rather than a mock, so
+    // it proves the whole path - option -> rollback -> toast - not just that a
+    // string reached a spy.
+    //
+    // Why a list delete earns a toast at all (the rule in
+    // src/lib/mutation-error-handler.ts): every call site closes its confirm before
+    // mutating, and the two that navigate do so on SUCCESS only, so a failure
+    // leaves the user where they were with the list silently back in the sidebar.
+    // Nothing in that sequence reads as "the delete failed".
+    q.deleteList.mockRejectedValueOnce(new Error('nope'))
+    const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+
+    act(() => { result.current.deleteListMut.mutate(LIST.id) })
+
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(
+        "Couldn't confirm that list was deleted. Refresh to check before trying again.",
+        { type: 'error' },
+      ),
+    )
+  })
+
+  it('says nothing when the delete succeeds', async () => {
+    q.deleteList.mockResolvedValueOnce(undefined)
+    const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+
+    act(() => { result.current.deleteListMut.mutate(LIST.id) })
+
+    // `mutationFn: deleteList` is passed by reference, so TanStack hands it the
+    // variables AND its own mutation context as a second argument.
+    await waitFor(() => expect(q.deleteList).toHaveBeenCalledWith(LIST.id, expect.anything()))
+    expect(showToast).not.toHaveBeenCalled()
+  })
+})
+
 describe('useCurrentListActions - createListMut', () => {
   beforeEach(() => {
     q.createList.mockReset()

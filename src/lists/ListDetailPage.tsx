@@ -453,6 +453,12 @@ function ListDetailInner({
   // switching gear items naturally discards the error: no separate state to
   // keep in sync.
   const [dialog, setDialog] = useState<DialogState | null>(null)
+  // The edit-gear save currently awaiting a response, held as the exact DialogState
+  // object it was submitted from. Same device as GearLibraryPage's: it is both the
+  // dialog's own pending flag (the mutations behind it are shared with inline row
+  // writes, so their `isPending` is not this dialog's) and the identity a late
+  // completion is checked against before it touches the screen.
+  const [savingGearAttempt, setSavingGearAttempt] = useState<DialogState | null>(null)
   // Packing-location admin state, lifted from the retired OrganizePackPanel.
   // Which section is renaming (by id, so switching sections cannot leak a
   // half-typed name), the pending location delete, and the new-location draft.
@@ -772,6 +778,12 @@ function ListDetailInner({
         packingLocationId: locationId,
         packSortOrder: nextPackSortOrder,
       }),
+      // Toasted for the reorder reason rather than the delete one (see the rule in
+      // src/lib/mutation-error-handler.ts): this is the write behind a DRAG, and a
+      // rollback that sends the row back where it came from is indistinguishable
+      // from the user having dragged it back themselves. The row-menu "Move to"
+      // path shares the mutation and is no more obvious.
+      errorToast: "Couldn't move that item. Please try again.",
     }),
   })
   const itemDragPending =
@@ -2017,14 +2029,29 @@ function ListDetailInner({
           Edit on any viewport). Reuses GearItemDialog and, when a list item
           accompanies the gear item, renders an "On this list" section with
           quantity / worn / consumable controls.
-          Save runs sequentially: gear first, then the per-list patch. If
-          the gear write fails, nothing is applied. If the gear write
-          succeeds but the list write fails, the gear changes are committed
-          but the list item is unchanged — surfaced via dialog.saveError so
-          the user can retry (PATCH is idempotent on the gear side) or
-          close to keep the partial result intentionally.
-          updateGearItem already invalidates ['list-items'] (broad) so
-          other lists pick up the change. */}
+          Save runs sequentially: gear first, then the per-list patch, and a
+          failed gear write short-circuits the list one. Three reachable
+          outcomes, not four - "both failed" cannot happen, because stage two
+          never starts.
+
+          The messages say UNCONFIRMED rather than "not applied", and the
+          distinction is not pedantry. A rejected mutateAsync does not prove
+          the server did not commit: the connection can drop after the PATCH
+          lands, and apiFetch also rejects when a 200 fails DTO validation.
+          Telling the user "no changes were applied" - as this did - invites
+          them to close the dialog believing a change to their SHARED gear
+          item did not persist when it did.
+
+          What we can honestly offer is that retrying is safe, because both
+          stages are PATCHes and repeating one converges on the same row, and
+          that a REFRESH shows the truth. Not "reopen the dialog": the
+          settled invalidation is fired unawaited, so a quick reopen reads
+          whatever is in the cache right now - possibly the rollback
+          snapshot - and if that refetch failed, it stays there.
+
+          updateGearItem's fan-out invalidates the affected per-list caches
+          it snapshotted, so other open lists pick the change up; it is not
+          a broad ['list-items'] prefix invalidation. */}
       {dialog?.type === 'edit-gear' && (
         <GearItemDialog
           key={dialog.gear.id}
@@ -2039,36 +2066,58 @@ function ListDetailInner({
                 }
               : undefined
           }
-          saving={updateGearItem.isPending || updateItem.isPending}
+          // Per-attempt, NOT `updateGearItem.isPending || updateItem.isPending`. Both
+          // mutations also serve inline row writes behind this dialog, so the shared
+          // flags would report a row edit as this dialog saving - and now that
+          // `saving` freezes the form, that would disable a dialog the user is
+          // typing in for a write that has nothing to do with it.
+          saving={savingGearAttempt === dialog}
           saveError={dialog.saveError}
           onClose={() => setDialog(null)}
           onCreateCategory={(categoryName) => addCategory.mutateAsync(categoryName)}
           onSave={(gearPatch, listPatch) => {
+            // `attempt` is the exact DialogState this save was submitted from, and
+            // every completion below is applied only if it is STILL the open dialog.
+            // The dialog stays dismissable while saving (deliberately - abandoning a
+            // slow save is legitimate), and without the guard a late failure would
+            // re-open a dismissed dialog, remounted and therefore blank, while a late
+            // success would close whichever dialog the user opened in the meantime.
+            const attempt: DialogState = { ...dialog, saveError: null }
+            const gearTarget = dialog.gear
+            const listTarget = dialog.listItem
+            // Installing `attempt` also clears the previous try's error.
+            setDialog(attempt)
+            setSavingGearAttempt(attempt)
+            const settle = (next: (prev: DialogState) => DialogState | null) =>
+              setDialog((prev) => (prev === attempt ? next(prev) : prev))
             void (async () => {
-              const gearTarget = dialog.gear
-              const listTarget = dialog.listItem
-              // Reset prior error so the user sees fresh state for this attempt.
-              // Spread the variant so we keep the targets while clearing saveError.
-              setDialog({ ...dialog, saveError: null })
               try {
-                await updateGearItem.mutateAsync({ id: gearTarget.id, patch: gearPatch })
-              } catch {
-                setDialog({ ...dialog, saveError: "Couldn't save gear changes. No changes were applied." })
-                return
-              }
-              if (listPatch && listTarget) {
                 try {
-                  await updateItem.mutateAsync({ itemId: listTarget.id, patch: listPatch })
+                  await updateGearItem.mutateAsync({ id: gearTarget.id, patch: gearPatch })
                 } catch {
-                  setDialog({
-                    ...dialog,
+                  settle((prev) => ({
+                    ...prev,
                     saveError:
-                      "Saved gear changes, but couldn't update this list item. Try again, or close to keep just the gear changes.",
-                  })
+                      "Couldn't confirm those gear changes saved. Try again, or refresh to check.",
+                  }))
                   return
                 }
+                if (listPatch && listTarget) {
+                  try {
+                    await updateItem.mutateAsync({ itemId: listTarget.id, patch: listPatch })
+                  } catch {
+                    settle((prev) => ({
+                      ...prev,
+                      saveError:
+                        "Saved the gear changes, but couldn't confirm the update to this list item. Try again, or refresh to check.",
+                    }))
+                    return
+                  }
+                }
+                settle(() => null)
+              } finally {
+                setSavingGearAttempt((prev) => (prev === attempt ? null : prev))
               }
-              setDialog(null)
             })()
           }}
           onRemoveFromList={

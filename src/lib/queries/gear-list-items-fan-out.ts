@@ -35,9 +35,10 @@ export type GearFanOutContext = {
 
 type FanOutOpts = {
   qc: QueryClient
-  // Bulk surfaces layer an explicit toast on the rollback (a bulk
-  // failure is easy to miss); single-item surfaces rely on the global
-  // mutation error handler, same split as the generic helpers.
+  // Set on the rollbacks the user would otherwise not notice - bulk surfaces and
+  // single-item DELETES alike. Same rule as the generic helpers, stated once in
+  // src/lib/mutation-error-handler.ts; an in-place gear EDIT stays silent because
+  // its snap-back happens under the user's cursor.
   errorToast?: string
 }
 

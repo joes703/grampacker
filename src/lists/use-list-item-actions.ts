@@ -159,11 +159,16 @@ export function useListItemActions(
   const deleteItem = useMutation({
     mutationKey: mutationKeys.deleteListItem(listId),
     mutationFn: (itemId: string) => deleteListItem(listId, itemId),
+    // Toasted per the rule in src/lib/mutation-error-handler.ts. Both routes here
+    // are easy to miss: the confirm path closes before mutating, and the pristine
+    // path removes with no confirm at all, so the only other evidence of failure
+    // is a row quietly returning to a long list.
     ...makeOptimisticDelete<ListItemWithGear, string>({
       qc,
       queryKey: queryKeys.listItems(listId),
       id: (itemId) => itemId,
       invalidateKeys: [queryKeys.packingLocations(listId)],
+      errorToast: "Couldn't confirm that item was removed. Refresh to check before trying again.",
     }),
   })
 

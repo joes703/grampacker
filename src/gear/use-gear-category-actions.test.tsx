@@ -18,15 +18,27 @@ import type { Category } from '../lib/types'
 // path + options.
 
 type Lifecycle = { onMutate: () => unknown; onError: () => void; onSettled: () => void }
-type InsertOpts = { qc: unknown; queryKey: unknown; optimistic: (name: string) => Category }
+type InsertOpts = {
+  qc: unknown
+  queryKey: unknown
+  optimistic: (name: string) => Category
+  errorToast?: string
+}
 type RenameInput = { id: string; name: string }
 type UpdateOpts = {
   qc: unknown
   queryKey: unknown
   id: (input: RenameInput) => string
   apply: (item: Category, input: RenameInput) => Category
+  errorToast?: string
 }
-type DeleteOpts = { qc: unknown; queryKey: unknown; invalidateKeys: unknown[]; id: (input: string) => string }
+type DeleteOpts = {
+  qc: unknown
+  queryKey: unknown
+  invalidateKeys: unknown[]
+  id: (input: string) => string
+  errorToast?: string
+}
 
 const h = vi.hoisted(() => ({
   queryKeys: {
@@ -98,6 +110,17 @@ describe('useGearCategoryActions', () => {
       )
     })
 
+    it('carries no rollback toast, because both its call sites surface failures inline', () => {
+      // Load-bearing absence. `addCategory` is fired from two places: the gear
+      // library's inline toolbar editor, which keeps its own error, and
+      // GearItemDialog's "create category" affordance, which keeps `categoryError`.
+      // The second runs inside a native <dialog> - top layer - so a toast raised
+      // there would sit behind the backdrop and expire unseen while the inline
+      // message said the same thing. See src/lib/mutation-error-handler.ts.
+      setup([])
+      expect(h.makeOptimisticInsert.mock.calls[0]![0].errorToast).toBeUndefined()
+    })
+
     it('builds an optimistic placeholder with a temp id and the next sort slot', () => {
       setup([])
       const opts = h.makeOptimisticInsert.mock.calls[0]![0]
@@ -149,6 +172,18 @@ describe('useGearCategoryActions', () => {
       expect(opts.queryKey).toEqual(['categories'])
       expect(opts.invalidateKeys).toEqual([['gear-items'], ['list-items']])
       expect(opts.id('c1')).toBe('c1')
+    })
+
+    it('asks for a rollback toast, unlike the in-place rename', () => {
+      // The rule in src/lib/mutation-error-handler.ts, pinned at both call sites
+      // in one test so the contrast is the assertion: a category SECTION
+      // disappearing and returning after the confirm has closed needs saying out
+      // loud, a rename reverting in the field under the cursor does not.
+      setup()
+      expect(h.makeOptimisticDelete.mock.calls[0]![0].errorToast).toBe(
+        "Couldn't confirm that category was deleted. Refresh to check before trying again.",
+      )
+      expect(h.makeOptimisticUpdate.mock.calls[0]![0].errorToast).toBeUndefined()
     })
   })
 })

@@ -24,7 +24,10 @@ const h = vi.hoisted(() => ({
   reorderableLoading: vi.fn<() => boolean>(),
   reorderableError: vi.fn<() => boolean>(),
   fetchGearItems: vi.fn<() => Promise<GearItem[]>>(),
-  removeCategoryMutate: vi.fn<(id: string, options?: { onSuccess?: () => void }) => void>(),
+  // Deliberately typed with no options argument: the delete confirms close on the
+  // click, not on onSuccess (see the confirmation test below), so re-introducing a
+  // callback here should be a type error rather than a silent behaviour change.
+  removeCategoryMutate: vi.fn<(id: string) => void>(),
 }))
 
 vi.mock('../lib/queries', () => ({
@@ -211,7 +214,8 @@ beforeEach(() => {
   h.fetchGearItems.mockResolvedValue([gear()])
   h.bulkDeleteMutate.mockImplementation((_ids, options) => options?.onSuccess?.())
   h.bulkMoveMutate.mockImplementation((_input, options) => options?.onSuccess?.())
-  h.removeCategoryMutate.mockImplementation((_id, options) => options?.onSuccess?.())
+  // removeCategoryMutate is deliberately left inert - it never calls back. The
+  // confirm must close without it.
 })
 
 afterEach(() => {
@@ -329,6 +333,17 @@ describe('GearLibraryPage category delete confirmation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
 
-    expect(h.removeCategoryMutate).toHaveBeenCalledWith('c1', expect.objectContaining({ onSuccess: expect.any(Function) }))
+    // Close-then-mutate: the id alone, no onSuccess. `removeCategoryMutate` is
+    // inert in this suite, so the confirm has to be gone WITHOUT the mutation ever
+    // settling - which is what makes this non-vacuous. The old assertion passed
+    // against a mock that synchronously invoked onSuccess, so it could not tell
+    // close-on-click from close-on-success. The distinction is load-bearing: the
+    // failure toast is raised from the rollback, and a native <dialog> sits in the
+    // top layer, so a toast raised while this confirm was still up would never be
+    // seen.
+    expect(h.removeCategoryMutate).toHaveBeenCalledWith('c1')
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Delete category' })).not.toBeInTheDocument(),
+    )
   })
 })

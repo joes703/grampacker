@@ -294,6 +294,21 @@ describe('useListItemActions', () => {
         }),
       )
     })
+
+    it('asks for a rollback toast, because neither removal route leaves one visible', () => {
+      // The rule in src/lib/mutation-error-handler.ts. Both ways in are easy to
+      // miss: the confirm closes before mutating, and a pristine item is removed
+      // with no confirm at all - so without this the only evidence of failure is a
+      // row quietly returning to a long list. That the option actually toasts is
+      // the helper's own test (queries/optimistic.test.ts).
+      setup()
+
+      expect(h.makeOptimisticDelete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          errorToast: "Couldn't confirm that item was removed. Refresh to check before trying again.",
+        }),
+      )
+    })
   })
 
   describe('addNewItem', () => {

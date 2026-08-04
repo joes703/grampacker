@@ -909,6 +909,174 @@ Document in AGENTS.md beside the existing migration traps.
 - **PR 4.6** - `meta.errorToast` on gear mutations and `saveError` into
   `GearItemDialog` on `GearLibraryPage`.
 
+  **Shipped 2026-08-04.** The gear library's own writes - add / edit / delete an
+  item, add / delete a category, create a list from a selection - all failed
+  silently. (Rename is not in that list: its snap-back happens in the field under
+  the cursor, which is exactly the case the policy below leaves silent.) (Not *every* write on the page: bulk delete and move already
+  toasted, the reorder helpers already toasted, CSV import used an error dialog and
+  export a toast.)
+
+  What decides the surface turned out not to be taste. `src/components/Modal.tsx`
+  opens a native `<dialog>` with `showModal()`, which puts it in the browser's TOP
+  LAYER, while `ToastViewport` is an ordinary `z-50` element - so a toast raised
+  while a modal is open sits behind the backdrop and expires there, unseen. The
+  rule that falls out: **if the write was issued from a MODAL that is still open
+  when it fails, the error belongs inline** - and a toast there is not merely worse,
+  it is nothing at all. Deliberately narrower than "any visible surface": a non-modal
+  surface that stays put can be answered by a toast, and an in-place edit needs
+  nothing.
+
+  So: `GearItemDialog` and `CreateListFromSelectionDialog` take a `saveError`, the
+  inline category editor keeps its own error and stays open with the typed name,
+  and the two delete confirms close on the click and let the rollback toast speak -
+  which also aligns them with the close-then-mutate order every delete confirm in
+  the lists code already used. Note the mechanism: these optimistic deletes use the
+  helpers' `errorToast` OPTION, not `meta.errorToast` as this entry's title
+  supposed. `meta` is for non-optimistic mutations; the option is coupled to the
+  rollback it explains.
+
+  **The policy this settled, and where it now lives.** The codebase had scattered
+  judgement calls about when an optimistic mutation earns a toast, one recorded as
+  a "documented, mild deviation ... preserved, not fixed". Review rejected
+  "consistency with an acknowledged deviation" as a justification and asked for a
+  rule, then sharpened the one proposed: the boundary is not whether the user
+  confirmed, it is **any optimistic delete/removal that makes visible entities
+  disappear** - an unconfirmed removal is just as easy to miss. Drag-driven writes
+  are in for the reorder reason: a rollback that puts the row back where it came
+  from is indistinguishable from the user having dragged it back. The rule lives
+  once, in `src/lib/mutation-error-handler.ts`; the deviation note in
+  `use-list-gear-actions.ts` became an instance of it. Five existing violations
+  were closed in the same PR so the rule was not false the day it was written:
+  `deleteListMut`, `deleteItem`, `removeLocation`, `moveItemMut`, and
+  `createListFromSelectionMut` (which had the opposite problem - a `meta.errorToast`
+  it could never show, because its dialog stays open on failure).
+
+  **Seven bugs review found, recorded so they are not re-derived:**
+
+  1. The first plan had no surface at all for the toolbar "New category" path, on
+     the reasoning that its optimistic snap-back was visible. It is not: the
+     placeholder takes the next sort order, so it lands at the END of the category
+     list and can appear and roll back entirely below the fold. It could not take a
+     toast either, because `addCategory` is shared with `GearItemDialog`'s create-
+     category affordance, which runs inside a modal. Hence the inline editor
+     holding its own error.
+  2. The dialog save had a stale-completion race. `GearItemDialog` stays
+     dismissable while saving, so a rejection arriving after the user closed it
+     would have re-opened a dismissed dialog - remounted, so with the draft the
+     error was inviting them to retry already gone. Fixed by capturing the exact
+     `DialogState` object at submit and applying the result only if `prev` is still
+     that object: closed -> `null`, replaced -> a different object, superseded by a
+     newer save -> a different object, so one identity check covers every case. The
+     same per-attempt object drives `saving`, which also removes the pre-existing
+     cross-talk where an inline row edit made the open dialog say "Saving…".
+  3. The inline category editor had the same race and no double-submit guard, which
+     matters more there because category names are NOT unique in the schema, so a
+     repeated Enter quietly creates a duplicate. How it ended up being fixed is
+     item 5 below - it took three attempts.
+  4. And one claim that was wrong before this PR started, which the PR then made
+     worse by asserting it in a test: the edit-gear dialog told the user
+     "No changes were applied" whenever the gear write rejected. A rejected request
+     is not proof the server did not commit - the connection can drop after the PATCH
+     lands, and `apiFetch` also rejects when a 200 fails DTO validation. On a write to
+     a SHARED gear item that is the wrong way round to be wrong: it invites the user
+     to close believing nothing persisted when it may have. Both messages now say
+     "couldn't confirm", and point at the two things that are actually true - retrying
+     is safe (both stages are PATCHes, which converge on repeat) and that a REFRESH
+     shows the truth. Not "reopen the dialog", which was this PR's first correction
+     and was also wrong: the settled invalidation is fired unawaited, so a quick
+     reopen reads whatever is in the cache right now - possibly the rollback
+     snapshot - and a failed refetch leaves it there.
+
+     The same reasoning then had to be pushed the other way for the CREATES. `POST`s
+     mint ids and carry no idempotency key, so "Please try again" on a create whose
+     response was merely lost is advice to duplicate the row - and category names are
+     not unique, so nothing downstream stops it. The create messages (gear item,
+     category, list-from-selection, and the dialog's own create-category affordance)
+     now say "Refresh before retrying, in case it was", while the edits keep "try
+     again" because repeating a PATCH converges. The DELETES landed in the same
+     place for a slightly different reason: they cannot duplicate anything, but they
+     are not response-idempotent either, so a lost response leaves the rollback
+     showing a row that no longer exists and a retry answers 404. They say
+     "Couldn't confirm ... Refresh to check before trying again."
+
+     **Deliberately NOT swept**: the pre-existing "Please try again" copy on list
+     creation, list duplication, Quick Add and food creation. They are the same class
+     of non-idempotent POST and unchanged from `main`; making the principle
+     application-wide is its own change, not a rider on this one.
+
+     `GearItemDialog` also left its fields live during a save: anything typed after
+     Save went into state the submitted patch never saw, and a success then closed the
+     dialog and discarded it. The body is now a `fieldset disabled={saving}` - scoped
+     to the body, so Close and Cancel stay reachable, which the completion guard
+     makes safe. (`min-w-0` on it is load-bearing: a `<fieldset>` carries a UA
+     `min-inline-size: min-content` that the `<div>` it replaced did not.)
+  5. The inline category editor took THREE attempts, and the two wrong ones are
+     worth keeping. Attempt one scoped the guard to the editor's own Cancel - but
+     every other dialog on the page replaces the editor by calling `setDialog`
+     directly, so submitting a category and then clicking "New item" let the create's
+     callback close the New item dialog. Attempt two moved the bump into an effect on
+     the dialog state, which covers every route out but only AFTER commit, so it
+     still lost to the page's async dialog replacements (CSV import finishing, bulk
+     move finishing). What shipped stops inferring departure at all: the editor's
+     draft, error and pending state moved INTO its own `add-category` dialog variant
+     alongside a session id, so every transition is one functional `setDialog`
+     guarded on that id - atomic with respect to whatever else changed the dialog.
+     A new session cannot inherit a previous one's pending state, which makes the
+     stuck-editor failure structural rather than something to remember to clear.
+
+     It also uses `mutateAsync` rather than `mutate` with per-call callbacks:
+     `addCategory` is ONE mutation observer shared with `GearItemDialog`'s
+     create-category affordance, and TanStack detaches the observer from the previous
+     mutation on every new `mutate`, dropping its callbacks. Review found that; the
+     session redesign happens to close the same hole, since a dropped callback can
+     only fail to update a session that is already gone, but the promise `mutateAsync`
+     returns belongs to the mutation and settles regardless, so it is the honest
+     mechanism to depend on - and the overlap is genuinely reachable, contrary to
+     what an earlier draft of this entry claimed: abandon an in-flight inline create
+     by opening New item, then create a category from inside that dialog. No test
+     pins the observer behaviour itself; the assertion would be that per-call
+     callbacks never fire, which is a claim about TanStack rather than about us.
+  6. `ListDetailPage` renders the same `GearItemDialog` and had both halves of the
+     problem. Its `saving` came from `updateGearItem.isPending || updateItem.isPending`
+     - mutations shared with inline row writes - so once `saving` froze the form, an
+     unrelated row edit would have disabled a dialog the user was typing in. And its
+     own completion handlers were unguarded, so the resurrect-a-dismissed-dialog race
+     lived there too. Both now use the same per-attempt object, and it gained a
+     page-level test file of its own (`ListDetailPage.edit-gear.test.tsx`) covering
+     all three reachable outcomes of the two-stage save - "both failed" is not one of
+     them, because a failed gear write short-circuits - plus the dismissal races.
+
+  **Test note.** Anything asserting WHEN something happened is driven by a deferred
+  mutation the test settles by hand: a mock that calls back synchronously cannot
+  tell "closes on click" from "closes on success", and the old category-confirm test
+  had exactly that hole - it mocked `mutate` to invoke `onSuccess` immediately, so
+  it passed against either behaviour. It was replaced with one that asserts the
+  confirm is gone while the mutation never settles.
+
+  Fifteen mutations were run against the suite across the four review rounds, each
+  killing a named test: the gear dialog's identity guard (reject and resolve paths
+  separately), its functional `finally`, its per-attempt `saving`, the shared
+  `isPending` leaking back in, the confirm close order, the inline category editor,
+  the retry's error clear, the category session guard (dropped, and applied
+  unconditionally), the save-time `fieldset`, the create-list inline surface, the
+  create-list completion guard, and on `ListDetailPage` both the `settle()` guard and
+  its per-attempt `saving`. One mutation did NOT fail: removing the early return in
+  `commitNewCategory`. The disabled input and button already block the second submit,
+  so that return is a backstop rather than the mechanism, and its comment now says
+  so.
+
+  **Known gaps, declared rather than papered over.** Two one-line `errorToast`
+  additions have no wiring assertion: `removeLocation`
+  (`use-packing-location-actions.test.ts` only unit-tests a pure helper) and
+  `moveItemMut` (defined inline in `ListDetailPage`). The rule applied: assert the
+  wiring where a hook harness already exists, and declare the gap where covering one
+  literal would mean standing up a full page render. Review accepted both as lower
+  risk, and rejected the same argument for `ListDetailPage`'s edit-gear guard -
+  correctly, since that one is a four-branch async state machine rather than a
+  literal - so that got the harness. What is NOT a gap is the mechanism:
+  `queries/optimistic.test.ts` proves the option toasts on rollback, and
+  `deleteListMut`'s new test drives that path end-to-end through the real helper.
+
 ---
 
 ## Phase 5 - Correctness batch

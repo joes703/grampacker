@@ -151,10 +151,14 @@ type CommonOpts = {
   // also invalidates ['list-items'] so any open list view picks up the
   // change after the round-trip.
   invalidateKeys?: QueryKey[]
-  // If provided, shows a toast on error rollback. Omit for silent rollback
-  // when the calling page surfaces errors inline (e.g. dialog with its own
-  // error state). Reorder uses this because the snap-back is otherwise
-  // indistinguishable from "user dragged it back themselves".
+  // If provided, shows a toast on error rollback. WHICH mutations set it is one
+  // rule, stated in src/lib/mutation-error-handler.ts: in-place edits stay silent
+  // because the snap-back explains itself, while deletes/removals, bulk
+  // transforms and reorders do not and need saying out loud. Omit it whenever the
+  // calling surface shows the error inline instead - a dialog with its own error
+  // state, or the gear library's inline category editor. That is mandatory, not
+  // preferred, for anything reachable from inside a modal: a native <dialog>
+  // renders in the top layer, so a toast raised behind one is never seen.
   errorToast?: string
 }
 
