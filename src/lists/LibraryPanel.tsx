@@ -20,12 +20,19 @@ type Props = {
   gearItems: GearItem[]
   categories: Category[]
   listItemGearIds: Set<string>
+  /** The list-items query has not resolved, so `listItemGearIds` is empty
+   *  because we do not KNOW what is on the list rather than because nothing
+   *  is. Every row would render as not-yet-added and its tap would call
+   *  onAdd - re-adding gear the list already holds. Both of this panel's jobs
+   *  depend on that set, so the rows are replaced by a status line rather
+   *  than shown in a state where they say the wrong thing. */
+  membershipUnknown?: boolean
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
   onRemove: (item: GearItem) => void
 }
 
-export default function LibraryPanel({ gearItems, categories, listItemGearIds, weightUnit, onAdd, onRemove }: Props) {
+export default function LibraryPanel({ gearItems, categories, listItemGearIds, membershipUnknown = false, weightUnit, onAdd, onRemove }: Props) {
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState(new Set<string>())
   const searchId = useId()
@@ -103,7 +110,12 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, w
 
       {/* Category groups */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {groups.length === 0 ? (
+        {membershipUnknown ? (
+          <PickerEmptyState
+            heading="Couldn't load this list's items."
+            body="Adding gear is unavailable until it loads, so nothing gets added twice."
+          />
+        ) : groups.length === 0 ? (
           // Gear-first empty state. Whether the user is searching for
           // something that isn't in their library yet or they have no
           // gear at all, the answer is the same: create gear on the

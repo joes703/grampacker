@@ -14,6 +14,21 @@ type BaseProps = {
   locations: PackingLocation[]
   mobile: boolean
   disabled: boolean
+  /** The locations query has not resolved, so `locations` is [] because we do
+   *  not KNOW rather than because there are none. Disables every row whose
+   *  write is computed from that array - the destinations, container
+   *  promotion/demotion, and in-bag reorder - while deliberately leaving the
+   *  trigger and Remove from list alone.
+   *
+   *  Kept separate from `disabled` for exactly that reason: removal resolves
+   *  the locations query itself and fail-safes to a confirm (see
+   *  resolveRemovalPlan), so it is the one action here that is still correct
+   *  during an outage, and folding it into the blanket flag would take away
+   *  the menu's only working option. Without this, an item that really does
+   *  sit in a bag is offered an enabled "Unassigned" - the destination list is
+   *  built from the empty array plus a hardcoded Unassigned - and taking it
+   *  writes a move the user never meant. */
+  locationsUnavailable?: boolean
   containerCreationDisabled: boolean
   isContainer: boolean
   excludedLocationIds?: ReadonlySet<string>
@@ -62,6 +77,7 @@ export default function MoveToLocationMenu({
   locations,
   mobile,
   disabled,
+  locationsUnavailable = false,
   containerCreationDisabled,
   isContainer,
   excludedLocationIds,
@@ -87,7 +103,7 @@ export default function MoveToLocationMenu({
     <RowMenuItem
       key={choice.id ?? '__unassigned__'}
       icon={<MapPin size={13} />}
-      disabled={disabled || choice.id === currentLocationId}
+      disabled={disabled || locationsUnavailable || choice.id === currentLocationId}
       onClick={() => {
         close()
         onMove(choice.id)
@@ -102,7 +118,7 @@ export default function MoveToLocationMenu({
         <>
           <RowMenuItem
             icon={<ArrowUpDown size={13} />}
-            disabled={disabled}
+            disabled={disabled || locationsUnavailable}
             onClick={() => {
               // Read the trigger BEFORE close(), while the menu is still the
               // thing that owns it. close() only clears the popover position;
@@ -121,7 +137,7 @@ export default function MoveToLocationMenu({
         <>
           <RowMenuItem
             icon={<PackagePlus size={13} />}
-            disabled={disabled || containerCreationDisabled}
+            disabled={disabled || locationsUnavailable || containerCreationDisabled}
             onClick={() => {
               close()
               onUseAsContainer()
@@ -139,7 +155,7 @@ export default function MoveToLocationMenu({
           <RowMenuItem
             icon={<PackageMinus size={13} />}
             tone="removal"
-            disabled={disabled}
+            disabled={disabled || locationsUnavailable}
             onClick={() => {
               close()
               onStopUsingAsContainer()

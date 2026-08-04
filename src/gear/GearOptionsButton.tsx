@@ -13,6 +13,11 @@ type Props = {
   onCollapseAll: () => void
   onExpandAll: () => void
   canCollapseExpand: boolean
+  /** False until BOTH gear items and categories have resolved. Disables the
+   *  trigger outright: every row in the panel either builds a write from the
+   *  library snapshot or has nothing to act on without it. Mirrors
+   *  MobileGearActionBar's Options slot. */
+  libraryReady: boolean
 }
 
 // Desktop popover trigger for Gear page rare/utility actions (New category,
@@ -20,7 +25,7 @@ type Props = {
 // usePortalPopover for dismiss + portal-rendered panel anchored to the
 // trigger's bottom-right. Hidden at <md because MobileGearActionBar owns
 // the equivalent surface there.
-export default function GearOptionsButton(props: Props) {
+export default function GearOptionsButton({ libraryReady, ...props }: Props) {
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
@@ -45,10 +50,11 @@ export default function GearOptionsButton(props: Props) {
         ref={triggerRef}
         type="button"
         onClick={() => (open ? setPos(null) : openPopover())}
+        disabled={!libraryReady}
         title="Gear options"
         aria-label="Gear options"
         aria-expanded={open}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
       >
         <Settings2 size={14} />
         Options

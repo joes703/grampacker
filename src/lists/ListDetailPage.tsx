@@ -652,6 +652,9 @@ function ListDetailInner({
   const {
     items: packingLocations,
     isError: packingLocationsError,
+    isPending: packingLocationsPending,
+    isLoadingError: packingLocationsFailed,
+    refetch: retryPackingLocations,
     activeItem: activeLocation,
     reorderPending: locationReorderPending,
     handleDragStart: handleLocationDragStart,
@@ -665,9 +668,15 @@ function ListDetailInner({
   })
   // useReorderable collapses "loading", "failed" and "genuinely empty" into
   // one empty array. Anything that would tell the user this list HAS no
-  // locations needs to know the difference, so ask the cache directly.
+  // locations - or WRITE as though it had none - needs to know the difference.
+  //
+  // isPending + isLoadingError rather than the cache's own status: a
+  // background refetch that fails leaves status 'error' over locations we
+  // still hold, and those are perfectly good to act on. Asking
+  // qc.getQueryState for 'success' (as this did) went false in that case and
+  // would now disable working controls.
   const packingLocationsResolved =
-    qc.getQueryState(queryKeys.packingLocations(listId))?.status === 'success'
+    !packingLocationsPending && !packingLocationsFailed
   const packingGroupingState = selectPackGroupingState(categories, {
     data: packingLocations,
     isError: packingLocationsError,
@@ -937,6 +946,24 @@ function ListDetailInner({
     const draggedId = String(active.id)
     const overId = over ? String(over.id) : undefined
     const activeParsed = parseDnDId(draggedId)
+
+    // A pack drag writes pack ranks, and it cannot do that correctly without
+    // knowing the real location layout. When the locations query has not
+    // resolved, `packingLocations` is [] and the grouping silently falls back
+    // to categories - at which point planListItemReorder takes its category
+    // branch, whose justification (see the comment on it) is that every item
+    // is in the single Unassigned cohort, so permuting a category-sized subset
+    // permutes a subset of one cohort's ranks. That premise holds for a list
+    // that genuinely HAS no locations. It is false when the locations merely
+    // failed to load, and then the write redistributes ranks across items that
+    // really do belong to different cohorts.
+    //
+    // A successful empty result IS resolved, so a location-free list keeps
+    // dragging exactly as before.
+    if (mode === 'pack' && !packingLocationsResolved) {
+      setAnnouncement('Cannot reorder until packing locations have loaded.')
+      return
+    }
 
     if (activeParsed?.kind === 'packing-item') {
       const draggedItem = listItemsById.get(activeParsed.id)
@@ -1277,6 +1304,10 @@ function ListDetailInner({
         gearItems={gearItems}
         categories={categories}
         listItemGearIds={listItemGearIds}
+        // This pane mounts in the desktop aside and the mobile drawer, both
+        // OUTSIDE the detail gate below - so it is on screen and interactive
+        // during exactly the failure that empties listItemGearIds.
+        membershipUnknown={listItemsQuery.data === undefined}
         weightUnit={weightUnit}
         onAdd={onLibraryAdd}
         onRemove={onLibraryRemove}
@@ -1409,6 +1440,7 @@ function ListDetailInner({
       locations={realLocations}
       mobile={isBelowLg}
       disabled={itemDragPending}
+      locationsUnavailable={!packingLocationsResolved}
       containerCreationDisabled={
         packingLocations.length >= PACKING_LOCATION_CAP || locationCreationPending
       }
@@ -1498,6 +1530,7 @@ function ListDetailInner({
             locations={realLocations}
             mobile={isBelowLg}
             disabled={itemDragPending}
+            locationsUnavailable={!packingLocationsResolved}
             containerCreationDisabled={
               packingLocations.length >= PACKING_LOCATION_CAP || locationCreationPending
             }
@@ -1771,6 +1804,8 @@ function ListDetailInner({
                   // there is one extra, visible, deletable location, not the
                   // irreversible cascade the removal path guards against.
                   locationsResolved={packingLocationsResolved}
+                  loadFailed={packingGroupingState.showErrorNotice}
+                  onRetry={retryPackingLocations}
                   creationPending={locationCreationPending}
                   draft={newLocationName}
                   onDraftChange={setNewLocationName}
@@ -1814,11 +1849,6 @@ function ListDetailInner({
                           reorderable here — category-level DnD is /gear-only. Each
                           CategoryGroup still renders a per-category SortableContext
                           internally so items reorder within their category. */}
-                      {mode === 'pack' && packingGroupingState.showErrorNotice && (
-                        <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                          Couldn&apos;t load packing locations. Showing the last available grouping.
-                        </p>
-                      )}
                       {grouping.kind === 'location' && packingTree ? (
                         <>
                           {/* Unassigned is a drop target but not sortable: it
@@ -2244,6 +2274,8 @@ function ListDetailInner({
 function PackLocationControls({
   locations,
   locationsResolved,
+  loadFailed,
+  onRetry,
   creationPending,
   draft,
   onDraftChange,
@@ -2253,6 +2285,11 @@ function PackLocationControls({
   /** Has the locations query actually answered? An empty array alone cannot
    *  tell "this list has no locations" from "we haven't loaded them yet". */
   locationsResolved: boolean
+  /** The query settled in error. Distinct from !locationsResolved, which is
+   *  also true while it is merely in flight - only a settled failure has
+   *  something to tell the user and something to retry. */
+  loadFailed: boolean
+  onRetry: () => void
   creationPending: boolean
   draft: string
   onDraftChange: (value: string) => void
@@ -2262,10 +2299,31 @@ function PackLocationControls({
   const atCap = locations.length >= PACKING_LOCATION_CAP
   // noValidate makes maxLength inert for SUBMIT purposes (AGENTS.md), so the
   // length check is manual here and the server is the real gate.
-  const canSubmit = Boolean(trimmed) && trimmed.length <= 60 && !atCap && !creationPending
+  //
+  // locationsResolved is part of this, not just of the nudge below: an
+  // unresolved query means `locations` is [] because we do not know, which
+  // makes the cap check above vacuous and hands the optimistic insert a slot
+  // computed against no locations at all.
+  const canSubmit =
+    locationsResolved && Boolean(trimmed) && trimmed.length <= 60 && !atCap && !creationPending
 
   return (
     <div className="space-y-3 print:hidden">
+      {/* Sits with the control it explains, and OUTSIDE the items branch this
+          notice used to live in - an empty list whose locations failed showed a
+          disabled Add with no reason given and no way to recover. */}
+      {loadFailed && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <span>Couldn&apos;t load packing locations. Showing the last available grouping.</span>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-md border border-amber-400 bg-white px-2.5 py-1 text-sm font-medium text-amber-900 hover:bg-amber-100"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       <form
         noValidate
         className="flex gap-2"

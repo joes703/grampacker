@@ -69,11 +69,33 @@ describe('makeOptimisticInsert', () => {
     ])
   })
 
-  it('seeds the cache with the optimistic row when no prior data exists', async () => {
+  // The two halves of the absent-vs-empty distinction. This helper used to
+  // seed an absent cache with the placeholder, which fabricated a collection
+  // the user never loaded: `data` flipping from undefined to defined is the
+  // signal every page reads as "the fetch resolved", so creating while the
+  // library had failed to load replaced the failure state with a one-row
+  // library and hid every real row.
+  it('leaves an ABSENT cache absent rather than seeding one', async () => {
     const qc = new QueryClient()
     const key = ['rows'] as const
-    // No setQueryData ahead of time — onMutate must still produce a usable
-    // cache value.
+    // No setQueryData ahead of time: this query has never resolved.
+    const helper = makeOptimisticInsert<Row, { name: string }>({
+      qc,
+      queryKey: key,
+      optimistic: (input) => ({ id: 'temp-1', name: input.name, categoryId: null }),
+    })
+    const ctx = await helper.onMutate({ name: 'b' })
+    expect(qc.getQueryData<Row[]>(key)).toBeUndefined()
+    // And the rollback keeps it absent rather than writing an empty array.
+    helper.onError(new Error('boom'), { name: 'b' }, ctx)
+    expect(qc.getQueryData<Row[]>(key)).toBeUndefined()
+  })
+
+  it('still applies the placeholder to a LOADED empty collection', async () => {
+    // [] that came back from the server is the user's actual collection, not
+    // absence. This is the first-list / first-packing-location case, and it
+    // keeps its optimistic feedback.
+    const { qc, key } = makeClient([])
     const helper = makeOptimisticInsert<Row, { name: string }>({
       qc,
       queryKey: key,

@@ -18,6 +18,11 @@ type Props = {
   onCollapseAll: () => void
   onExpandAll: () => void
   canCollapseExpand: boolean
+  /** False until BOTH gear items and categories have resolved. Every action
+   *  behind Add and Options reads the library snapshot to build its write, and
+   *  a pending or failed fetch renders as an empty array - see
+   *  GearLibraryPage's libraryReady. Navigation slots stay enabled. */
+  libraryReady: boolean
 }
 
 // Mobile-only bottom action bar for the Gear page. Standardized 4-slot
@@ -45,6 +50,7 @@ export default function MobileGearActionBar({
   onCollapseAll,
   onExpandAll,
   canCollapseExpand,
+  libraryReady,
 }: Props) {
   useSuppressMobilePrimaryNav()
   const { pathname } = useLocation()
@@ -61,6 +67,7 @@ export default function MobileGearActionBar({
             label: 'Add',
             icon: <Plus size={18} />,
             onClick: onNewItem,
+            disabled: !libraryReady,
             ariaLabel: 'New gear item',
           },
           {
@@ -68,6 +75,10 @@ export default function MobileGearActionBar({
             label: 'Options',
             icon: <Settings2 size={18} />,
             onClick: () => setOptionsOpen(true),
+            // Every row inside is either library-dependent (New category,
+            // Import, Export) or has nothing to act on when the library
+            // hasn't loaded (Collapse/Expand all).
+            disabled: !libraryReady,
             ariaLabel: 'Gear options',
           },
         ]}
