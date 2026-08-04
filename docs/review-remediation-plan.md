@@ -911,6 +911,24 @@ Document in AGENTS.md beside the existing migration traps.
   stay true when a background refetch fails over good cached rows, which is
   what keeps the PR 4.1 rule intact.
 
+  **Found while documenting this, NOT fixed:** `ListsEmptyState`'s first-list
+  create reports failure through local `error` state that can never reach the
+  screen. Its optimistic insert appends a placeholder, `lists.length` becomes 1,
+  and `ListsPage` stops rendering `ListsEmptyState` (`ListsPage.tsx:168`) - so
+  the component holding the error unmounts on submit, and the rollback remounts
+  a fresh one with `error: null`. The user sees the list appear, vanish, and
+  nothing said. This is the create-list-placeholder case that
+  `mutation-error-handler.ts` already says needs explicit feedback; the feedback
+  is simply unreachable where it was put. Note what does NOT fix it: lifting
+  only the error STATE to `ListsPage`. The handler is a per-call `onError`
+  (`ListsEmptyState.tsx:69`), and TanStack skips per-call callbacks once the
+  mutation observer unmounts - the same observer-bound behaviour PR 4.6 hit. The
+  fix is to move the mutation's whole lifecycle to the persistent parent, or to
+  use a mutation-level handler that fires from the MutationCache regardless of
+  observer (`meta.errorToast`, or the optimistic helper's own `errorToast`,
+  which also preserves the rollback). A toast is allowed on this path - it is
+  not modal-bound.
+
   **Declared not done:** `useReorderable` still returns six loose booleans.
   Tidying them fixes nothing. The content-component extraction - the only thing
   that would make an unhandled error branch a genuine type error - remains
