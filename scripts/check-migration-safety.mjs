@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Proves that this branch's new D1 migrations preserve existing data.
+// Proves that every D1 migration added since the frozen baseline preserves the
+// data that existed before it.
 //
 // WHY THIS EXISTS
 // ---------------
@@ -19,14 +20,22 @@
 //
 // WHAT IT DOES
 // ------------
-//   1. Applies only the migrations that already exist on the base ref (what
-//      production is running) to a throwaway local D1.
+//   1. Applies the FROZEN BASELINE - the 21 migrations that predate this gate,
+//      pinned by digest below - to a throwaway local D1.
 //   2. Seeds one row into every table, so the database looks like production
 //      rather than like a fresh install.
-//   3. Applies this branch's new migrations - the same `wrangler d1 migrations
+//   3. Applies every post-baseline migration - the same `wrangler d1 migrations
 //      apply` code path deploy.yml runs against production.
 //   4. Asserts every seeded row still exists AND still holds the same values
 //      in every column that existed beforehand.
+//
+// "Post-baseline" is computed from the migrations DIRECTORY, never from a git
+// diff, and that distinction is load-bearing. A diff-scoped version washed
+// through: push A adds a migration that destroys rows, this check goes red and A
+// never deploys; push B changes no SQL, so the diff is empty and the check
+// reports nothing to do; B goes green, and B's deploy applies every PENDING
+// migration - A's included. Anchoring to the baseline means a bad migration is
+// re-tested on every run for as long as it exists.
 //
 // Step 4 catches both failure modes a rebuild has: rows cascading away, and an
 // INSERT...SELECT that copies columns into the wrong slots. It also fails if a
@@ -41,49 +50,61 @@
 //   - Fixtures cover every table, but not every state. Two users and a shared
 //     list are here to catch the obvious ownership/filter mistakes; a migration
 //     that only corrupts some third combination can still pass.
-//   - It compares the base ref's schema as it exists IN YOUR CHECKOUT. On a
-//     branch behind main it is really testing the merge base. CI runs on the PR
-//     merge commit, which does include main.
+//   - It cannot tell you whether an EDIT to a post-baseline migration ever
+//     reached production. The baseline itself is digest-pinned, so editing one
+//     of those 21 fails closed forever. Post-baseline files have no such pin:
+//     the edited text is fully re-tested, but wrangler tracks migrations by
+//     NAME, so if the old text already ran in production the edit silently
+//     reaches no deployed database. Closing that needs a record of what
+//     production actually applied - the same problem Phase 3's manifest solves
+//     (docs/review-remediation-plan.md). Until then: never edit a migration
+//     that has shipped, and note this check will not catch you.
 //
 // MAINTENANCE
 // -----------
 // Adding a table? Add a fixture row below - the script fails on any table it
 // finds without one, so coverage cannot silently rot. A table may have several
 // fixture rows, and all of them must set the same keys. Fixture columns that do
-// not exist yet on the base ref are dropped automatically, so a fixture may be
-// written against the schema as it looks AFTER your migration.
+// not exist yet at the point being tested are dropped automatically, so a
+// fixture may be written against the schema as it looks AFTER your migration.
 //
 // Writing a migration that DELIBERATELY rewrites data? Declare each rewrite in
 // EXPECTED_CHANGES (and, if it also needs a constraint proven, a POST_CHECKS
 // probe) - the row-changed failure flips into an assertion that the rewrite
 // happened exactly as declared.
 //
-// Writing a migration that DELIBERATELY DROPS a column? Declare it in
-// DROPPED_COLUMNS, and any index or trigger that went with it in
-// DROPPED_SCHEMA_OBJECTS. Every OTHER column on that table is still compared
-// value-for-value, so the rebuild that removed it still has to preserve the
-// rest of the row.
+// Writing a migration that DROPS, REBUILDS or RENAMES anything? You cannot,
+// and there is no declaration that lets you. A new migration containing
+// destructive DDL is REJECTED - see the DESTRUCTIVE DDL GATE below for why, and
+// for what to do instead. That also means a column TYPE change is out, since
+// SQLite can only do one through a table rebuild.
 //
-// Writing a migration that DELIBERATELY DROPS a table? Declare it in
-// DROPPED_TABLES. Its fixture stays - the table has to hold rows for the drop
-// to be realistic, and a cascade from it into a surviving table is exactly the
-// kind of damage this script exists to catch - but the table itself is exempt
-// from the after-comparison, which would otherwise fail trying to read a table
-// that is supposed to be gone.
+// DROPPED_TABLES, DROPPED_COLUMNS, DROPPED_SCHEMA_OBJECTS and
+// EXPECTED_TYPE_CHANGES are FROZEN HISTORY. They describe migrations that
+// already shipped. Each only ever activates for a POST-BASELINE migration, and
+// every entry names a baseline one, so none of them can fire. Do not add
+// entries: the gate rejects the migrations they would describe, so an entry can
+// no longer excuse anything - it only looks like it can.
 //
-// Changing a column's declared TYPE? Declare it in EXPECTED_TYPE_CHANGES. Value
-// comparison ignores numeric formatting (1200 vs 1200.0), so the declared type
-// is the only thing standing between you and an accidental widening.
+// Usage: node scripts/check-migration-safety.mjs
 //
-// Usage: node scripts/check-migration-safety.mjs [--base=<git-ref>]
+// Takes no arguments and reads no git state - what it checks is determined
+// entirely by the contents of the migrations directory.
 
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
 const DB = 'grampacker'
 const MIGRATIONS_DIR = 'migrations'
+
+// Wrangler's record of which migrations have already run. Excluded from every
+// snapshot below (it is bookkeeping, not app data), which is exactly why the
+// classifier has to refuse migrations that write to it - nothing here would see
+// the damage.
+const LEDGER_TABLE = 'd1_migrations'
 
 // Restricts a sqlite_master scan to tables we own. D1's authorizer rejects
 // pragma_table_info() on its own internal tables with SQLITE_AUTH, so they have
@@ -112,7 +133,7 @@ const FIXED_TS = 1_700_000_000_000
 // NOTE on pack_sort_order: these values are explicit, and must stay that way.
 // They were originally omitted so that 0018's backfill would assign them, which
 // is what the 0018 POST_CHECKS probe asserts. That worked only while 0018 was
-// the migration UNDER TEST. Now that 0018 is on the base ref, the fixtures are
+// the migration UNDER TEST. Now that 0018 is in the frozen baseline, the fixtures are
 // seeded into a schema that already carries its two unique indexes, so rows
 // defaulting to 0 in the same cohort collide - and the seed fails before any
 // new migration is even applied. The values below are exactly what the 0018
@@ -243,7 +264,7 @@ const FIXTURES = [
     name: 'Seed List',
     description: 'A list that must survive every migration.',
     slug: 'seed01', // lists_slug_shape: exactly 6 characters
-    // Dropped automatically while the base ref predates migration 0009, and
+    // Dropped automatically while the tested schema predates migration 0009, and
     // seeded from then on - so any later rebuild of food_plans has to honour
     // this live NO ACTION reference instead of quietly breaking it.
     food_plan_id: 'plan-seed',
@@ -277,7 +298,7 @@ const FIXTURES = [
   // A second list on the SAME plan as list-seed, updated earlier. Migration
   // 0010's dedupe must detach exactly this one (the most recently updated list
   // wins) - declared in EXPECTED_CHANGES below, which both exempts the rewrite
-  // and ASSERTS it happened. Once 0010 is in the base ref this row seeds with
+  // and ASSERTS it happened. Now that 0010 is in the frozen baseline this row seeds with
   // its after-value (null) instead, because the unique index would reject the
   // shared link at insert time.
   ['lists', {
@@ -712,10 +733,12 @@ const FIXTURES = [
 // data - so a deliberate one is declared here instead, and the check flips
 // from "this row must not change" to "this row MUST change exactly like this".
 // Each entry names the migration that performs it:
-//   - while that migration is NEW on this branch, the fixture seeds `before`
-//     and the post-migration snapshot must show `after`;
-//   - once it is part of the base ref, the fixture seeds `after` directly
-//     (the pre-0010 shared-link state is not even insertable any more).
+//   - in the pass testing that migration, the fixture seeds `before` and the
+//     post-migration snapshot must show `after`;
+//   - in the pass for any LATER migration it has already run, so the fixture
+//     seeds `after` directly (the pre-0010 shared-link state is not even
+//     insertable any more). Entries naming a baseline migration are always in
+//     this second case.
 const EXPECTED_CHANGES = [
   // 0019 densely renumbers only cohorts whose maximum is at or above
   // PACK_RANK_MAX. These two are the whole point: without the repair they
@@ -770,10 +793,14 @@ const EXPECTED_CHANGES = [
   },
 ]
 
-// Tables a migration is ALLOWED to drop. Keyed by the migration that drops
-// them, so the exemption applies only while that migration is new on the
-// branch; afterwards the table is gone from the base schema and needs no
-// fixture at all.
+// Tables 0016 dropped. Keyed by the migration that dropped them, so the entry
+// only ever applied in that migration's own pass; 0016 is in the frozen
+// baseline, so the table is simply absent and needs no fixture at all.
+// FROZEN HISTORY - do not add entries. Every one below is from 0016, which
+// shipped long ago, and each consumer only activates for a POST-BASELINE
+// migration. The destructive-DDL gate now rejects any such migration, so
+// a new entry here could not excuse a drop even if you added one. Kept because
+// they document what 0016 actually did.
 const DROPPED_TABLES = [
   { migration: '0016_remove-food-planning.sql', table: 'day_meals' },
   { migration: '0016_remove-food-planning.sql', table: 'food_items' },
@@ -815,10 +842,12 @@ const TRANSIENT_TABLES = [
   },
 ]
 
-// Columns a migration is ALLOWED to drop, and the schema objects that go with
-// them. Indexes and triggers belonging to a DROPPED_TABLES entry are exempt
-// automatically (the table took them); this list is for objects on tables that
-// SURVIVE, where a silently vanished index would be a real regression.
+// Columns 0016 dropped, and the schema objects that went with them. Indexes and
+// triggers belonging to a DROPPED_TABLES entry are exempt automatically (the
+// table took them); this list is for objects on tables that SURVIVED, where a
+// silently vanished index would be a real regression.
+//
+// FROZEN HISTORY - do not add entries. See DROPPED_TABLES above.
 const DROPPED_COLUMNS = [
   { migration: '0016_remove-food-planning.sql', table: 'lists', column: 'food_plan_id' },
 ]
@@ -827,10 +856,13 @@ const DROPPED_SCHEMA_OBJECTS = [
   { migration: '0016_remove-food-planning.sql', object: 'index lists_food_plan_id_unique' },
 ]
 
-// Column type changes a migration is ALLOWED to make. Anything not listed here
-// that changes type fails the run. Keep this tight: an unintended rebuild that
-// widens a column is exactly the silent corruption this script exists to catch,
-// and canonicalize() means the value comparison can no longer see it.
+// Column type changes 0013 made. Anything not listed here that changes type
+// fails the run: an unintended rebuild that widens a column is exactly the
+// silent corruption this script exists to catch, and canonicalize() means the
+// value comparison can no longer see it.
+//
+// FROZEN HISTORY - do not add entries. SQLite changes a column type only via a
+// table rebuild, which the destructive-DDL gate rejects.
 const EXPECTED_TYPE_CHANGES = [
   {
     migration: '0013_gear-weight-real.sql',
@@ -840,9 +872,9 @@ const EXPECTED_TYPE_CHANGES = [
   },
 ]
 
-// One-shot probes that run right after the new migrations apply, while the
-// migration that motivates them is still on this branch. Later regressions are
-// covered elsewhere (listSchemaObjects fails if the index ever vanishes).
+// Probes that run right after the migration that motivates them applies, for as
+// long as that migration is post-baseline. Later regressions are covered
+// elsewhere (listSchemaObjects fails if the index ever vanishes).
 const POST_CHECKS = [
   {
     migration: '0010_one-plan-per-list.sql',
@@ -991,6 +1023,911 @@ const quoteValue = (value) => {
   throw new Error(`Unsupported fixture value type (${typeof value}): ${String(value)}`)
 }
 
+// ---------------------------------------------------------------------------
+// DESTRUCTIVE DDL GATE
+// ---------------------------------------------------------------------------
+// Blocks every drop, rebuild and rename in a NEW migration, with no exception.
+//
+// WHY A HARD BLOCK RATHER THAN A DECLARATION
+// The rest of this script proves data SURVIVED a migration. It cannot prove the
+// CODE still works, and that is the open half of the problem: deploy.yml applies
+// migrations and THEN deploys the Worker, so between those two steps -
+// indefinitely, if `wrangler deploy` fails - production runs the OLD Worker
+// against the NEW schema. A dropped or renamed column breaks it in that window.
+//
+// The real fix is expand/contract: add in one deploy, remove in a later one,
+// with a manifest CI can check. Until that exists there is nothing to
+// distinguish a safe staged contract from a destructive migration that merely
+// passed incomplete tests, so the honest control is to allow neither.
+// docs/review-remediation-plan.md, Phase 3.
+//
+// There is deliberately NO declaration that excuses a drop. The DROPPED_*
+// constants below are frozen history, not a hatch - see the note on them. The
+// only way past this gate is a human deliberately editing it, which shows up in
+// the diff as its own reviewable act.
+//
+// Additive DDL is untouched: ADD COLUMN, CREATE TABLE, CREATE INDEX and
+// CREATE TRIGGER all pass, which is what Phase 8's two releases need.
+
+// Turns SQL into tokens so the classifier never reads a keyword that is really a
+// comment, a string, or an identifier that merely spells one.
+//
+// Quoted identifiers keep their text but are tagged 'ident' rather than 'word'.
+// Quoting hides a token's KEYWORD-ness, not its IDENTITY: a table named `drop`
+// must not be read as a DROP statement, while `PRAGMA "writable_schema"` and
+// `UPDATE "sqlite_schema"` must still be recognised for what they name. An
+// earlier version threw the text away and both of those walked straight through.
+//
+// Fails closed on an unterminated quote or block comment. Unterminated means the
+// rest of the file is being swallowed by a construct we cannot see the end of,
+// and "scan what is left" would be exactly how a drop slips through.
+const tokenizeSql = (sql, label) => {
+  const tokens = []
+  const bail = (what, at) => {
+    throw new Error(
+      `${label}: unterminated ${what} starting at offset ${at}. The migration ` +
+        'cannot be scanned for destructive DDL, so it is rejected.',
+    )
+  }
+
+  let i = 0
+  while (i < sql.length) {
+    const ch = sql[i]
+
+    if (ch === '-' && sql[i + 1] === '-') {
+      const nl = sql.indexOf('\n', i)
+      i = nl === -1 ? sql.length : nl + 1
+      continue
+    }
+    if (ch === '/' && sql[i + 1] === '*') {
+      const end = sql.indexOf('*/', i + 2)
+      if (end === -1) bail('block comment', i)
+      i = end + 2
+      continue
+    }
+    // '' inside a string is an escaped quote, not the end of one.
+    if (ch === "'") {
+      const open = i
+      let j = i + 1
+      for (;;) {
+        const q = sql.indexOf("'", j)
+        if (q === -1) bail('string literal', i)
+        if (sql[q + 1] === "'") {
+          j = q + 2
+          continue
+        }
+        i = q + 1
+        break
+      }
+      // Carries its text for the same reason quoted identifiers do: SQLite
+      // accepts a single-quoted STRING where an identifier belongs, so
+      // `PRAGMA 'writable_schema'=ON` and `UPDATE 'sqlite_schema'` are real,
+      // executable statements. Type stays 'string' so it is never read as a
+      // keyword; only the positional name checks look at the value.
+      tokens.push({
+        type: 'string',
+        value: sql.slice(open + 1, i - 1).replaceAll("''", "'").toUpperCase(),
+      })
+      continue
+    }
+    const closer = ch === '"' ? '"' : ch === '`' ? '`' : ch === '[' ? ']' : ''
+    if (closer) {
+      const open = i
+      let j = i + 1
+      for (;;) {
+        const q = sql.indexOf(closer, j)
+        if (q === -1) bail('quoted identifier', i)
+        // "" and `` double up the same way strings do; [ ] does not.
+        if (closer !== ']' && sql[q + 1] === closer) {
+          j = q + 2
+          continue
+        }
+        i = q + 1
+        break
+      }
+      const text = sql.slice(open + 1, i - 1)
+      tokens.push({
+        type: 'ident',
+        value: (closer === ']' ? text : text.replaceAll(closer + closer, closer)).toUpperCase(),
+      })
+      continue
+    }
+    if (ch === ';') {
+      tokens.push({ type: 'semi' })
+      i += 1
+      continue
+    }
+    if (/[A-Za-z0-9_$]/.test(ch)) {
+      let j = i
+      while (j < sql.length && /[A-Za-z0-9_$]/.test(sql[j])) j += 1
+      tokens.push({ type: 'word', value: sql.slice(i, j).toUpperCase() })
+      i = j
+      continue
+    }
+    if (!/\s/.test(ch)) tokens.push({ type: 'punct', value: ch })
+    i += 1
+  }
+  return tokens
+}
+
+// Splitting on every `;` also splits trigger bodies, which is harmless: a
+// fragment that starts mid-statement begins with a word we do not act on, and a
+// fragment that starts with DROP is still caught. SQLite forbids schema DDL
+// inside a trigger body, so the split cannot hide one either.
+const splitStatements = (tokens) => {
+  const statements = []
+  let current = []
+  for (const token of tokens) {
+    if (token.type === 'semi') {
+      if (current.length > 0) statements.push(current)
+      current = []
+      continue
+    }
+    current.push(token)
+  }
+  if (current.length > 0) statements.push(current)
+  return statements
+}
+
+// Keyword position: quoted tokens are excluded, so a table named `drop` is a
+// name and not a statement.
+const wordAt = (statement, index) =>
+  statement[index]?.type === 'word' ? statement[index].value : ''
+
+// Name position: quoted or not, both identify the same object, so
+// UPDATE "sqlite_schema" and UPDATE sqlite_schema are the same statement.
+const valueAt = (statement, index) => statement[index]?.value ?? ''
+
+// Pragmas that hand out write access to the schema itself.
+const SYSTEM_SCHEMA_PRAGMAS = new Set(['WRITABLE_SCHEMA'])
+
+// SQLite's full ON CONFLICT vocabulary, which can sit between the write verb
+// and its target.
+const CONFLICT_ACTIONS = new Set(['ROLLBACK', 'ABORT', 'REPLACE', 'FAIL', 'IGNORE'])
+
+// Every SQLite form that REMOVES a schema object or renames one out from under
+// the deployed Worker. DROP INDEX/TRIGGER/VIEW are in even though they preserve
+// rows: a UNIQUE index is a contract the running code relies on.
+//
+// The drizzle 12-step table rebuild needs no pattern of its own - it contains
+// both `DROP TABLE` and `ALTER TABLE ... RENAME TO`, so either convicts it.
+const classifyStatement = (statement) => {
+  const first = wordAt(statement, 0)
+
+  if (first === 'DROP') {
+    const kind = wordAt(statement, 1)
+    return `DROP ${kind || '<unknown>'}`
+  }
+
+  if (first === 'ALTER' && wordAt(statement, 1) === 'TABLE') {
+    // Step over the table name - which may be schema-qualified - and then read
+    // the operation, rather than scanning forward for the first operation-shaped
+    // keyword. Scanning was wrong: `ALTER TABLE rename ADD COLUMN y` is valid
+    // SQLite where the TABLE is called `rename`, and it was being reported as a
+    // rename of something.
+    let i = 2
+    if (statement[i + 1]?.value === '.') i += 2
+    // ANY alter of the ledger, including an additive ADD COLUMN. The ledger is
+    // excluded from every snapshot below, so a column added to it is a permanent
+    // change to wrangler's bookkeeping that nothing here would ever assert on.
+    if (valueAt(statement, i) === LEDGER_TABLE.toUpperCase()) {
+      return `ALTER TABLE ${LEDGER_TABLE}`
+    }
+    const op = wordAt(statement, i + 1)
+    if (op === 'DROP') return 'ALTER TABLE ... DROP COLUMN'
+    if (op === 'RENAME') return 'ALTER TABLE ... RENAME'
+    return ''
+  }
+
+  // An index or trigger attached to the ledger is another way to reach it - a
+  // trigger on d1_migrations fires on wrangler's own bookkeeping writes.
+  if (first === 'CREATE') {
+    const on = statement.findIndex((t) => t.type === 'word' && t.value === 'ON')
+    if (on !== -1) {
+      const target =
+        statement[on + 2]?.value === '.' ? valueAt(statement, on + 3) : valueAt(statement, on + 1)
+      if (target === LEDGER_TABLE.toUpperCase()) {
+        return `CREATE ... ON ${LEDGER_TABLE}`
+      }
+    }
+  }
+
+  // Editing sqlite_schema directly is the same operation wearing a disguise, and
+  // it is REAL: `PRAGMA writable_schema=ON` plus an UPDATE to sqlite_schema
+  // removes a column from a live table without any DDL keyword appearing.
+  //
+  // Matched on value regardless of token type, because quoting is not a defence:
+  // PRAGMA "writable_schema" and UPDATE "sqlite_schema" both work.
+  //
+  // Position-independent, unlike the DDL forms above. A trigger body's first
+  // statement stays glued to its CREATE TRIGGER by the semicolon split, and
+  // SQLite permits UPDATE sqlite_schema inside a trigger even though it forbids
+  // DROP TABLE - so keying off the leading keyword would miss it entirely.
+  //
+  // Matched by POSITION, not by mere mention, so that a legitimate additive
+  // `CREATE TABLE settings ("writable_schema" integer)` is not rejected for
+  // naming a column badly.
+  // Both forms below can be schema-qualified - `main.sqlite_schema`,
+  // `PRAGMA main.writable_schema` - and skipping that qualifier is how the
+  // first version of this let `PRAGMA main.writable_schema = ON` through.
+  const nameAfter = (index) => {
+    // A qualified name is `schema . object`; take whatever follows the dot.
+    if (valueAt(statement, index + 1) === '.' || statement[index + 1]?.value === '.') {
+      return valueAt(statement, index + 2)
+    }
+    return valueAt(statement, index)
+  }
+
+  if (first === 'PRAGMA' && SYSTEM_SCHEMA_PRAGMAS.has(nameAfter(1))) {
+    return `PRAGMA ${nameAfter(1).toLowerCase()}`
+  }
+
+  // A write TARGETING the system schema table. The target is whatever follows
+  // the write verb, past any conflict clause: `UPDATE x`, `DELETE FROM x`,
+  // `INSERT INTO x`, `INSERT OR IGNORE INTO x`, `UPDATE OR ROLLBACK x`.
+  // Scanned anywhere in the statement rather than only at the front, because
+  // WITH ... UPDATE puts the verb later and because a trigger body's first
+  // statement stays glued to its CREATE TRIGGER when split on semicolons.
+  //
+  // ...but NOT inside a CREATE TABLE/INDEX/VIEW, where a "verb" can only ever be
+  // a column's declared type. SQLite accepts arbitrary type names, so
+  // `CREATE TABLE d (x REPLACE sqlite_schema)` is legal and additive, and
+  // scanning it reported a write against sqlite_schema. A CREATE TRIGGER is
+  // deliberately still scanned - its body really can contain one.
+  const createsNonTrigger =
+    first === 'CREATE' && ['TABLE', 'INDEX', 'VIEW'].includes(wordAt(statement, 1))
+  if (createsNonTrigger) return ''
+
+  for (let i = 0; i < statement.length; i += 1) {
+    const verb = valueAt(statement, i)
+    if (!['UPDATE', 'DELETE', 'INSERT', 'REPLACE'].includes(verb)) continue
+    if (statement[i].type !== 'word') continue
+    let target = i + 1
+    // `OR ROLLBACK|ABORT|REPLACE|FAIL|IGNORE` - the whole vocabulary, not just
+    // REPLACE. Missing IGNORE was a real hole.
+    if (valueAt(statement, target) === 'OR' && CONFLICT_ACTIONS.has(valueAt(statement, target + 1))) {
+      target += 2
+    }
+    // INSERT and REPLACE are only writes when INTO follows; DELETE needs FROM.
+    // Without this, the word alone is enough, and a column whose declared type
+    // happens to be spelled `REPLACE` reads as a statement.
+    const next = valueAt(statement, target)
+    if (['INSERT', 'REPLACE'].includes(verb) && next !== 'INTO') continue
+    if (verb === 'DELETE' && next !== 'FROM') continue
+    if (['FROM', 'INTO'].includes(next)) target += 1
+    const name = nameAfter(target)
+    if (name === 'SQLITE_SCHEMA' || name === 'SQLITE_MASTER') {
+      return `${verb} against sqlite_schema`
+    }
+    // Wrangler's own ledger of which migrations have run. This script explicitly
+    // excludes d1_migrations from its snapshots, so nothing below would notice a
+    // migration rewriting it - and the consequences are production-level:
+    // clearing it makes the next deploy try to reapply the baseline from scratch
+    // and fail, while fabricated rows make wrangler skip migrations that never
+    // actually ran.
+    if (name === LEDGER_TABLE.toUpperCase()) {
+      return `${verb} against ${LEDGER_TABLE}`
+    }
+  }
+
+  return ''
+}
+
+const findDestructiveDdl = (sql, label) =>
+  splitStatements(tokenizeSql(sql, label))
+    .map(classifyStatement)
+    .filter(Boolean)
+
+// What one fixture column should hold at the moment the migration under test
+// starts, given every declared rewrite of it.
+//
+// Sorted by migration NUMBER, never by declaration order. Assigning each change
+// in turn made the answer depend on the order entries happened to be written in:
+// with 0021 declaring A -> B and 0022 declaring B -> C, resolving 0021's pass
+// walked A then overwrote it with B. B is precisely the value that makes a
+// broken no-op 0021 look correct, since its before and its expected after would
+// both be B.
+const resolveExpectedValue = (changes, alreadyApplied) => {
+  const ordered = [...changes].sort(
+    (a, b) => migrationNumber(a.migration) - migrationNumber(b.migration),
+  )
+  const applied = ordered.filter((change) => alreadyApplied(change.migration))
+  // The last rewrite that has already run gives the current value. If none has,
+  // the value is whatever the earliest pending one expects to start from.
+  return applied.length > 0 ? applied.at(-1).after : ordered[0].before
+}
+
+// Every migration that existed when this gate was introduced, pinned by CONTENT.
+// Five of them contain destructive DDL (0006, 0009, 0013, 0016, 0019) and all
+// five are long since applied to production, so they are grandfathered - the
+// gate governs what is added from here on.
+//
+// Digests, not just names, because a name list only says a file is old; it says
+// nothing about whether it still holds what production actually ran. Production
+// applied these BY NAME and will never re-run them, so an edit here reaches no
+// deployed database while silently changing the schema this script builds to
+// test against. Pinning the content is what makes "grandfathered" mean the
+// specific text that shipped.
+//
+// FROZEN. Never add an entry, and never update a digest. Either is
+// indistinguishable from disabling the gate for that migration.
+const PRE_GATE_MIGRATIONS = new Map([
+  ['0000_auth-tables.sql', '66aa24c1650de43e3240f01805560e3401a34c9568958876cb3b5eaa42113f6a'],
+  ['0001_rate-limits.sql', 'f127dbf7bdd5ce2438a8ea00e34320713a8a814c2439ef6fb47895ca05c982b9'],
+  ['0002_passkeys.sql', '2651a8276a48e0c7268a76bb6c44fdbb6bfdcfc08c8c5396a9de9c64db94d2e8'],
+  ['0003_gear.sql', 'c3fdf64490161f54a68110839da7b8ad226d2baec2bee68fec5de76543900d49'],
+  ['0004_lists.sql', '40f05e5d9557f09ba05d0581b3d9acb7053285e5c1c5067940862fdbba19ff8b'],
+  ['0005_cheerful_shadowcat.sql', '63d158f8f6a762cf037d5864fd7d420d705520ea178366b8247d2a00ed588921'],
+  ['0006_passwordless-teardown.sql', 'da4f8e66f7ea8f49ff40510b44becc2c7f451b2d4601013a72cb02dd869be2c9'],
+  ['0007_food-items.sql', 'a4bab87af289fdb6bde4ca593024af70aab709f689c349538594d3228b025fb0'],
+  ['0008_food-plans.sql', '5603431f9727a85b281d30a40c709848204a1199d80774218fd0aa3ecb1cd3e3'],
+  ['0009_food-plan-link.sql', 'c6df6c25f5b9575a83df5c335bcde28ccb48a242d2534e00d394c5865c80c1bb'],
+  ['0010_one-plan-per-list.sql', 'ea79cb9d20dff9158fe843471ffacbfb171ab11be0a398f493b4a6425f16e2e6'],
+  ['0011_food-pack-state.sql', '5a18960b69ba58d0214bd8a9a61e9ee228d457d8c04aa71cd0c7c29cdf4583bb'],
+  ['0012_food-targets.sql', 'ff329b2cca344d97ec98d9d69845d8fbe1ecb9edba0991f7b2099a5763db2ae9'],
+  ['0013_gear-weight-real.sql', '1a027499d8e0d2d2bd06c01eeba6b4a8834182096d7d29dffbec49f25a996102'],
+  ['0014_packing-locations.sql', 'c79ee9bd1ec2c2a5a2caf4f633045fb816df6fc633aa846c9ab65412a25a2fc5'],
+  ['0015_item-backed-containers.sql', 'c4a7c405bb4f1f50fedcc8e953f38792b51f51915140516c3f748b6be790a5fd'],
+  ['0016_remove-food-planning.sql', '312cb4afa0e8794415b5328778ce80ded8a71803de9f837c1b6c13329744f326'],
+  ['0017_food-estimate.sql', '477a1e8d76710fb3ce9f136a87244917cc6c06914485cd0237d9efbeb47a58dd'],
+  ['0018_pack-sort-order.sql', '20fc199d3b3771bd94709ec933e3ca8973ee31520717717a15487d5e69108a2c'],
+  ['0019_pack-rank-guard.sql', '8f76d29cd0f8783d39010f845d7f1c4954c12287dad4dc224d3b4a03cca5dee5'],
+  ['0020_cascade-rerank.sql', 'bf0aba6cdf3e59b95db8d6896935a93d1f89bdf0c21051015b3e0c75171a7436'],
+])
+
+// Wrangler orders migrations by the NUMERIC prefix it parses off the filename,
+// not by string comparison, and the two disagree: sorted as text, `00210_x.sql`
+// comes before `0022_y.sql`, while wrangler applies 0022 first. Testing in a
+// different order than production applies would check a migration against the
+// wrong predecessor state, so the number is what counts here too.
+const migrationNumber = (name) => {
+  const match = /^(\d+)_/.exec(name)
+  if (!match) {
+    throw new Error(
+      `Migration "${name}" does not start with a number followed by an underscore. ` +
+        'Wrangler derives apply order from that prefix, so a file without one has ' +
+        'no defined position and cannot be checked.',
+    )
+  }
+  return Number(match[1])
+}
+
+// The single source of truth for "what is new", used by BOTH halves of this
+// script. Derived from the directory, never from a diff, so it is cumulative:
+// a migration stays in scope for as long as it exists, rather than only on the
+// push that introduced it.
+const postBaselineMigrations = () => {
+  const names = readdirSync(MIGRATIONS_DIR).filter(
+    (name) => name.endsWith('.sql') && !PRE_GATE_MIGRATIONS.has(name),
+  )
+
+  // Two migrations sharing a number have no defined order relative to each
+  // other, so neither this script nor production can say which runs first.
+  //
+  // Seeded with the BASELINE numbers, not just the new ones. A fresh
+  // `0020_other.sql` beside the baseline's `0020_cascade-rerank.sql` is the same
+  // ambiguity, and checking only post-baseline files against each other would
+  // wave it through - this harness always applies the whole baseline first, so
+  // it would never notice what a fresh wrangler run cannot order.
+  const seen = new Map(
+    [...PRE_GATE_MIGRATIONS.keys()].map((name) => [migrationNumber(name), name]),
+  )
+  for (const name of names) {
+    const number = migrationNumber(name)
+    if (seen.has(number)) {
+      throw new Error(
+        `Migrations "${seen.get(number)}" and "${name}" share the number ${number}. ` +
+          'Apply order between them is undefined. Renumber one.',
+      )
+    }
+    seen.set(number, name)
+  }
+
+  return names.sort((a, b) => migrationNumber(a) - migrationNumber(b))
+}
+
+// Removes // and /* */ comments while respecting string literals, so a `//` or
+// `/*` INSIDE a JSON string is left alone. Escapes are tracked, so a string
+// ending in a backslash-escaped quote does not look terminated early.
+const stripJsonComments = (text) => {
+  let out = ''
+  let i = 0
+  let inString = false
+  while (i < text.length) {
+    const ch = text[i]
+    if (inString) {
+      out += ch
+      if (ch === '\\') {
+        out += text[i + 1] ?? ''
+        i += 2
+        continue
+      }
+      if (ch === '"') inString = false
+      i += 1
+      continue
+    }
+    if (ch === '"') {
+      inString = true
+      out += ch
+      i += 1
+      continue
+    }
+    // Trailing commas: wrangler's JSONC parser accepts them, strict JSON.parse
+    // does not. Dropped HERE, inside the string-aware scan, rather than by a
+    // regex over the whole document - that regex rewrote the CONTENTS of valid
+    // strings, turning {"note":"literal ,} text"} into {"note":"literal } text"}.
+    // A comma emitted inside a string is always followed by more string and then
+    // a closing quote, so a comma sitting immediately before a closer out here
+    // is always a real trailing comma.
+    if (ch === '}' || ch === ']') {
+      out = out.replace(/,(\s*)$/, '$1')
+    }
+    if (ch === '/' && text[i + 1] === '/') {
+      // Ends at CR or LF - a lone CR is a line ending too, and treating it as
+      // ordinary text would swallow the rest of the file as comment.
+      let end = i
+      while (end < text.length && text[end] !== '\n' && text[end] !== '\r') end += 1
+      i = end
+      continue
+    }
+    if (ch === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2)
+      if (end === -1) throw new Error('unterminated block comment')
+      i = end + 2
+      continue
+    }
+    out += ch
+    i += 1
+  }
+  return out
+}
+
+// This script enumerates `migrations/` itself, but `wrangler d1 migrations
+// apply` reads the directory from wrangler.jsonc. If those ever diverge, this
+// check would scan an empty or stale directory, report nothing to do, and let
+// deploy apply SQL from somewhere it never looked at. Cheap to pin, so pin it.
+//
+// An ABSENT migrations_dir is fine - wrangler's default is exactly this
+// directory. A present one has to agree.
+const verifyMigrationsDirIsPinned = () => {
+  let config
+  try {
+    config = readFileSync('wrangler.jsonc', 'utf8')
+  } catch {
+    throw new Error('wrangler.jsonc could not be read, so the migrations directory cannot be verified.')
+  }
+  // Parsed structurally, not pattern-matched. Both shortcuts fail OPEN, which is
+  // the worst direction for a check like this:
+  //   - stripping comments without tracking strings turns
+  //     {"note":"/*","migrations_dir":"elsewhere","tail":"*/"} into {"note":""},
+  //     hiding the setting completely;
+  //   - a regex for "migrations_dir" misses {"migrations_dir":"elsewhere"},
+  //     which wrangler's own parser resolves to the real key.
+  // Stripping comments string-aware and then handing the result to JSON.parse
+  // closes both: JSON.parse resolves escapes, and reading the parsed object
+  // finds the key however it was spelled.
+  //
+  // Scoped to the ONE d1_databases entry this script migrates. A recursive
+  // hunt for every `migrations_dir` anywhere in the file would fail CI over a
+  // second, unrelated database legitimately using its own directory.
+  let parsed
+  try {
+    parsed = JSON.parse(stripJsonComments(config))
+  } catch (error) {
+    throw new Error(`wrangler.jsonc could not be parsed, so the migrations directory cannot be verified: ${error.message}`)
+  }
+
+  // Matched on database_name OR binding, because `wrangler d1 migrations apply
+  // <name>` accepts either and takes the FIRST match. Selecting only on
+  // database_name could validate one entry's directory while wrangler applied a
+  // different entry's - an earlier binding: "grampacker" would win there and
+  // lose here.
+  const databases = Array.isArray(parsed?.d1_databases) ? parsed.d1_databases : []
+  const ours = databases.filter(
+    (entry) => entry?.database_name === DB || entry?.binding === DB,
+  )
+  if (ours.length !== 1) {
+    throw new Error(
+      `wrangler.jsonc has ${ours.length} d1_databases entries matching "${DB}" ` +
+        '(by database_name or binding); expected exactly one, so the migrations ' +
+        'directory cannot be verified.',
+    )
+  }
+
+  // Absent means wrangler's default, which is this directory.
+  const configured = ours[0].migrations_dir
+  if (configured !== undefined && configured !== MIGRATIONS_DIR) {
+    throw new Error(
+      `wrangler.jsonc sets migrations_dir to "${configured}" for "${DB}", ` +
+        `but this check only ever scans "${MIGRATIONS_DIR}". Deploy would apply ` +
+        'migrations from a directory nothing verified. Point them at the same place.',
+    )
+  }
+}
+
+// The baseline is the schema every other check builds on, so it has to still be
+// the baseline. Verifies presence AND content on every run.
+const verifyBaselineIntact = () => {
+  const problems = []
+  for (const [name, digest] of PRE_GATE_MIGRATIONS) {
+    let actual
+    try {
+      actual = createHash('sha256')
+        .update(readFileSync(join(MIGRATIONS_DIR, name)))
+        .digest('hex')
+    } catch {
+      problems.push(`${name}: missing (production has applied it; it cannot be deleted)`)
+      continue
+    }
+    if (actual !== digest) {
+      problems.push(`${name}: content changed (expected ${digest.slice(0, 12)}, got ${actual.slice(0, 12)})`)
+    }
+  }
+  if (problems.length > 0) {
+    throw new Error(
+      'The frozen migration baseline has been altered:\n' +
+        problems.map((p) => `  - ${p}`).join('\n') +
+        '\n\nProduction applied these by name and will never re-run them, so ' +
+        'editing or deleting one changes nothing there while silently changing ' +
+        'the schema this script tests against. Restore them and add a NEW ' +
+        'migration instead.',
+    )
+  }
+}
+
+// Scans by DIRECTORY CONTENTS, not by git diff, and that is the whole point.
+//
+// A diff-based gate washes through: commit A adds destructive migration 0021 and
+// its CI goes red, so nothing deploys. Commit B adds no migration at all, so the
+// diff from A to B is empty and B's CI is green - and B's deploy runs
+// `wrangler d1 migrations apply`, which applies every PENDING migration,
+// including 0021. The red run never blocked anything.
+//
+// Anchoring to a frozen baseline instead means 0021 is re-scanned on every run
+// for as long as it exists, so it cannot ride in behind a later commit.
+const gateNewMigrations = () => {
+  const files = postBaselineMigrations()
+
+  const destructive = files
+    .map((name) => {
+      const path = join(MIGRATIONS_DIR, name)
+      return { path, found: findDestructiveDdl(readFileSync(path, 'utf8'), path) }
+    })
+    .filter((entry) => entry.found.length > 0)
+
+  if (destructive.length > 0) {
+    throw new Error(
+      'Destructive DDL in a migration:\n' +
+        destructive
+          .map((e) => `  - ${e.path}\n${e.found.map((f) => `      ${f}`).join('\n')}`)
+          .join('\n') +
+        '\n\ndeploy.yml applies migrations BEFORE it deploys the Worker, so ' +
+        'production runs the old code against this schema - and keeps running ' +
+        'it if the deploy step fails. A drop or rename breaks it in that window.' +
+        '\n\nThere is no declaration that excuses this. Until expand/contract is ' +
+        'enforceable (docs/review-remediation-plan.md, Phase 3), the removal ' +
+        'cannot ship at all: land the additive half and stop using the old ' +
+        'object, then raise the removal rather than working around this.',
+    )
+  }
+
+  console.log(`Destructive-DDL gate: ${files.length} post-baseline migration(s) clean.`)
+}
+
+// Runs on EVERY invocation, including the common one where the branch adds no
+// migrations at all and the rest of this script no-ops. Without that, a branch
+// touching no SQL would exercise none of the classifier, and it could rot into
+// permanently returning "nothing destructive here" without a single red run.
+const DDL_GATE_CASES = [
+  // --- must be caught ---
+  ['DROP TABLE `x`;', true],
+  ['DROP TABLE IF EXISTS "x";', true],
+  ['DROP INDEX `lists_food_plan_id_unique`;', true],
+  ['DROP TRIGGER `gear_items_cap`;', true],
+  ['DROP VIEW `v`;', true],
+  ['DROP TABLE main.`x`;', true],
+  ['ALTER TABLE `lists` DROP COLUMN `food_plan_id`;', true],
+  ['ALTER TABLE `lists` DROP `food_plan_id`;', true],
+  ['ALTER TABLE `lists` RENAME TO `lists_old`;', true],
+  ['ALTER TABLE `lists` RENAME COLUMN `a` TO `b`;', true],
+  ['ALTER TABLE main.`lists` RENAME COLUMN `a` TO `b`;', true],
+  // Multiline, and with drizzle's own statement-breakpoint comment attached.
+  ['ALTER TABLE `lists`\n  RENAME COLUMN `a`\n  TO `b`;--> statement-breakpoint', true],
+  // The 12-step rebuild, convicted by the parts rather than by a shape matcher.
+  [
+    'CREATE TABLE `__new_lists` (`id` text PRIMARY KEY);\n' +
+      'INSERT INTO `__new_lists` SELECT `id` FROM `lists`;\n' +
+      'DROP TABLE `lists`;\n' +
+      'ALTER TABLE `__new_lists` RENAME TO `lists`;',
+    true,
+  ],
+  ['PRAGMA writable_schema = ON;', true],
+  ["UPDATE sqlite_master SET sql = '' WHERE name = 'lists';", true],
+  ["DELETE FROM sqlite_schema WHERE name = 'lists';", true],
+  // Case and whitespace are not a way out.
+  ['dRoP   tAbLe   `x`;', true],
+  // Schema surgery, every disguise. All of these are executable SQLite that
+  // removes a column with no DDL keyword in sight; an earlier version of this
+  // classifier returned "nothing destructive" for the first two.
+  ['PRAGMA "writable_schema" = ON;', true],
+  ['PRAGMA `writable_schema` = ON;', true],
+  ['PRAGMA [writable_schema] = ON;', true],
+  ["UPDATE \"sqlite_schema\" SET sql = 'CREATE TABLE x(a integer)' WHERE name = 'x';", true],
+  ["UPDATE `sqlite_schema` SET sql = '' WHERE name = 'x';", true],
+  ["REPLACE INTO sqlite_schema (name, sql) VALUES ('x', '');", true],
+  ["WITH t AS (SELECT 1) UPDATE sqlite_schema SET sql = '' WHERE name = 'x';", true],
+  // A trigger body doing the same thing. The semicolon split leaves this
+  // statement attached to its CREATE TRIGGER, so a leading-keyword test misses
+  // it - SQLite forbids DROP TABLE in a trigger but permits this.
+  [
+    'CREATE TRIGGER `mutate` AFTER INSERT ON `x` BEGIN\n' +
+      "  UPDATE sqlite_schema SET sql = 'CREATE TABLE x(a integer)' WHERE name = 'x';\n" +
+      'END;',
+    true,
+  ],
+
+  // --- must NOT be caught ---
+  ['ALTER TABLE `lists` ADD COLUMN `food_revision` integer DEFAULT 0 NOT NULL;', false],
+  ['CREATE TABLE `lists` (`id` text PRIMARY KEY);', false],
+  ['CREATE INDEX `i` ON `lists` (`id`);', false],
+  ['CREATE UNIQUE INDEX `u` ON `lists` (`id`);', false],
+  ['DELETE FROM `_packing_location_delete_state`;', false],
+  ['REINDEX `lists`;', false],
+  // A trigger body with statements and semicolons inside BEGIN ... END.
+  [
+    'CREATE TRIGGER `t` AFTER DELETE ON `packing_locations` BEGIN\n' +
+      '  DELETE FROM `_packing_location_delete_state`;\n' +
+      '  UPDATE `list_items` SET `pack_sort_order` = 0;\n' +
+      'END;',
+    false,
+  ],
+  // The keyword appears, but only ever as comment, string or identifier.
+  ['-- DROP TABLE `lists`;\nCREATE INDEX `i` ON `lists` (`id`);', false],
+  ['/* DROP TABLE `lists`; */ CREATE INDEX `i` ON `lists` (`id`);', false],
+  ["INSERT INTO `notes` (`body`) VALUES ('DROP TABLE lists');", false],
+  ["INSERT INTO `notes` (`body`) VALUES ('it''s a DROP TABLE, really');", false],
+  // A table actually NAMED drop. Quoted, so it is a name and nothing else.
+  ['CREATE TABLE `drop` (`id` text PRIMARY KEY);', false],
+  ['ALTER TABLE `drop` ADD COLUMN `x` text;', false],
+  ['SELECT * FROM "drop";', false],
+  // Naming a column after a system table is legal and additive. Matching on
+  // mere mention rather than on position used to reject all of these.
+  ['CREATE TABLE `settings` ("writable_schema" integer);', false],
+  ['CREATE TABLE `settings` (`sqlite_schema` text);', false],
+  ['INSERT INTO `audit` (`sql`) SELECT `sql` FROM sqlite_schema;', false],
+  ['INSERT OR REPLACE INTO `settings` (`k`) VALUES (1);', false],
+  // ...but writing THROUGH those spellings is still the same operation.
+  ["INSERT OR REPLACE INTO sqlite_schema (name) VALUES ('x');", true],
+  // Schema-qualified and conflict-clause forms. Every one of these is valid
+  // SQLite that an earlier version of this classifier returned nothing for.
+  ['PRAGMA main.writable_schema = ON;', true],
+  ['PRAGMA "main"."writable_schema" = ON;', true],
+  ["UPDATE main.sqlite_schema SET sql = '' WHERE name = 'lists';", true],
+  ["UPDATE `main`.`sqlite_master` SET sql = '' WHERE name = 'lists';", true],
+  ["INSERT OR IGNORE INTO sqlite_schema (name) VALUES ('x');", true],
+  ["UPDATE OR IGNORE sqlite_schema SET sql = '';", true],
+  ["UPDATE OR ROLLBACK main.sqlite_schema SET sql = '';", true],
+  ["DELETE FROM main.sqlite_schema WHERE name = 'x';", true],
+  // Qualified names that are NOT the system schema stay legal.
+  ['UPDATE main.`list_items` SET `pack_sort_order` = 0;', false],
+  ["INSERT OR IGNORE INTO main.`settings` (`k`) VALUES ('x');", false],
+  // SQLite accepts a single-quoted STRING where an identifier belongs. Both of
+  // these execute, and both used to return nothing.
+  ["PRAGMA 'writable_schema' = ON;", true],
+  ["UPDATE 'sqlite_schema' SET sql = '' WHERE name = 'x';", true],
+  ["DELETE FROM main.'sqlite_master' WHERE name = 'x';", true],
+  // ...but a string in a VALUE position is just a value.
+  ["INSERT INTO `notes` (`body`) VALUES ('sqlite_schema');", false],
+  ["INSERT INTO `notes` (`body`) VALUES ('writable_schema');", false],
+  // A table genuinely NAMED after an operation keyword. Valid SQLite, additive,
+  // and it was being reported as a rename.
+  ['ALTER TABLE rename ADD COLUMN `y` text;', false],
+  ['ALTER TABLE main.rename ADD COLUMN `y` text;', false],
+  ['ALTER TABLE `add` ADD COLUMN `y` text;', false],
+  // The same shapes, still caught when they really are destructive.
+  ['ALTER TABLE rename RENAME TO `other`;', true],
+  ['ALTER TABLE main.rename DROP COLUMN `y`;', true],
+  // SQLite lets a column's declared TYPE be any word sequence, so this is a
+  // legal additive table with a column typed `REPLACE sqlite_schema`.
+  ['CREATE TABLE `d` (`x` REPLACE sqlite_schema);', false],
+  ['CREATE TABLE `d` (`x` UPDATE sqlite_master);', false],
+  ['CREATE INDEX `i` ON `d` (`x`) WHERE `x` <> 0;', false],
+  // Any ALTER of wrangler's ledger, additive or not. It is excluded from every
+  // snapshot, so nothing downstream would ever notice the change.
+  ['ALTER TABLE main.d1_migrations ADD COLUMN `poison` text;', true],
+  ['ALTER TABLE `d1_migrations` ADD COLUMN `poison` text;', true],
+  ['ALTER TABLE "d1_migrations" ADD COLUMN `poison` text;', true],
+  ["ALTER TABLE 'd1_migrations' ADD COLUMN `poison` text;", true],
+  // A normal table of our own is still additive and fine.
+  ['ALTER TABLE `lists` ADD COLUMN `poison` text;', false],
+  // A trigger body is still scanned - it really can contain a write.
+  [
+    'CREATE TRIGGER `t` AFTER INSERT ON `x` BEGIN\n' +
+      "  UPDATE sqlite_schema SET sql = '' WHERE name = 'x';\n" +
+      'END;',
+    true,
+  ],
+]
+
+// Sorting by migration number is STABLE, so two entries with the SAME number
+// keep whatever order they were written in - and the whole point of resolving by
+// number was to stop declaration order mattering. Two rewrites of one column by
+// one migration also cannot be expressed honestly: the check compares the state
+// before that migration against the state after it, so only the net
+// `before -> after` is observable.
+//
+// Also verifies the chain joins up. If 0021 says A -> B, then a later rewrite of
+// the same column must start at B; a declaration starting somewhere else means
+// one of the two entries is wrong about reality, and silently preferring either
+// would seed a value the database never actually holds.
+const validateExpectedChanges = (knownMigrations) => {
+  const problems = []
+  const groups = new Map()
+
+  for (const change of EXPECTED_CHANGES) {
+    // A declaration naming a migration that does not exist is worse than
+    // useless. alreadyApplied() answers "not post-baseline, so it has already
+    // run" for an unknown name, so the fixture seeds `after` - while the change
+    // never becomes active, so no rewrite is expected. A typo therefore describes
+    // a migration that already happened and asserts nothing, which is exactly
+    // the shape that lets a broken no-op migration pass.
+    if (!knownMigrations.has(change.migration)) {
+      problems.push(
+        `${change.migration} is named by an EXPECTED_CHANGES entry but no such ` +
+          'migration exists. A typo here silently disables the assertion.',
+      )
+      continue
+    }
+
+    // Grouped by the fixture row a declaration RESOLVES to, not by the key
+    // expression used to reach it. Keying by the expression let two entries
+    // target one row through different columns (id here, slug there) without
+    // looking like duplicates - and declaration order decided the outcome again.
+    const matches = FIXTURES.map((entry, index) => ({ entry, index })).filter(
+      ({ entry: [table, row] }) =>
+        table === change.table && row[change.key.column] === change.key.value,
+    )
+    if (matches.length !== 1) {
+      problems.push(
+        `${change.migration}: ${change.table} where ${change.key.column} = ` +
+          `${JSON.stringify(change.key.value)} matches ${matches.length} fixture rows; ` +
+          'it must match exactly one, or the declaration asserts nothing definite.',
+      )
+      continue
+    }
+
+    const key = `fixture#${matches[0].index}|${change.column}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(change)
+  }
+
+  for (const [key, changes] of groups) {
+    const byMigration = new Map()
+    for (const change of changes) {
+      if (byMigration.has(change.migration)) {
+        problems.push(
+          `${key}: ${change.migration} declares more than one rewrite of this ` +
+            'column. Only the net before -> after is observable, so collapse them into one entry.',
+        )
+      }
+      byMigration.set(change.migration, change)
+    }
+
+    const ordered = [...changes].sort(
+      (a, b) => migrationNumber(a.migration) - migrationNumber(b.migration),
+    )
+    for (const [i, next] of ordered.slice(1).entries()) {
+      const previous = ordered[i]
+      if (previous.after !== next.before) {
+        problems.push(
+          `${key}: ${previous.migration} leaves ${JSON.stringify(previous.after)} but ` +
+            `${next.migration} declares it starts from ${JSON.stringify(next.before)}. ` +
+            'One of them does not match what the database actually holds.',
+        )
+      }
+    }
+  }
+
+  // Every other declaration list is keyed by migration filename too, and every
+  // one of them silently does nothing when the name is wrong.
+  for (const [label, entries] of [
+    ['DROPPED_TABLES', DROPPED_TABLES],
+    ['DROPPED_COLUMNS', DROPPED_COLUMNS],
+    ['DROPPED_SCHEMA_OBJECTS', DROPPED_SCHEMA_OBJECTS],
+    ['EXPECTED_TYPE_CHANGES', EXPECTED_TYPE_CHANGES],
+    ['TRANSIENT_TABLES', TRANSIENT_TABLES],
+    ['POST_CHECKS', POST_CHECKS],
+  ]) {
+    for (const entry of entries) {
+      if (!knownMigrations.has(entry.migration)) {
+        problems.push(
+          `${label} names migration ${entry.migration}, which does not exist. ` +
+            'The entry can never activate.',
+        )
+      }
+    }
+  }
+
+  if (problems.length > 0) {
+    throw new Error(
+      `Migration declarations are inconsistent:\n${problems.map((p) => `  - ${p}`).join('\n')}`,
+    )
+  }
+}
+
+// Both declaration orders of the same chain must give the same answer. That is
+// the whole point of resolving by migration number, and reversing the order is
+// what exposed the bug this replaced.
+const selfTestExpectedValues = () => {
+  const chain = [
+    { migration: '0021_a.sql', before: 'A', after: 'B' },
+    { migration: '0022_b.sql', before: 'B', after: 'C' },
+  ]
+  const reversed = [...chain].reverse()
+  const cases = [
+    // Nothing applied yet - testing 0021. Must be A, its declared start.
+    [() => false, 'A'],
+    // 0021 has run - testing 0022. Must be B.
+    [(m) => m === '0021_a.sql', 'B'],
+    // Both have run - a later migration's pass. Must be C.
+    [() => true, 'C'],
+  ]
+  const failures = []
+  for (const [alreadyApplied, want] of cases) {
+    for (const [label, order] of [['declared', chain], ['reversed', reversed]]) {
+      const got = resolveExpectedValue(order, alreadyApplied)
+      if (got !== want) {
+        failures.push(`${label} order gave ${got}, want ${want}`)
+      }
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      'EXPECTED_CHANGES resolution is broken - chained rewrites do not resolve ' +
+        `by migration order:\n${failures.map((f) => `  - ${f}`).join('\n')}`,
+    )
+  }
+}
+
+const selfTestDdlGate = () => {
+  const failures = []
+  for (const [sql, shouldFlag] of DDL_GATE_CASES) {
+    let flagged
+    try {
+      flagged = findDestructiveDdl(sql, 'self-test').length > 0
+    } catch (error) {
+      failures.push(`threw on: ${sql}\n      ${error.message}`)
+      continue
+    }
+    if (flagged !== shouldFlag) {
+      failures.push(
+        `${shouldFlag ? 'MISSED' : 'FALSE POSITIVE'} on: ${sql.replaceAll('\n', ' ')}`,
+      )
+    }
+  }
+  // Unterminated constructs must fail closed rather than scan what is left.
+  for (const [sql, what] of [
+    ["INSERT INTO `n` VALUES ('oops", 'string literal'],
+    ['/* never closed', 'block comment'],
+    ['CREATE TABLE `never-closed', 'quoted identifier'],
+  ]) {
+    let threw = false
+    try {
+      findDestructiveDdl(sql, 'self-test')
+    } catch {
+      threw = true
+    }
+    if (!threw) failures.push(`did not fail closed on an unterminated ${what}`)
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      'The destructive-DDL classifier is broken - its own regression cases ' +
+        `fail:\n${failures.map((f) => `  - ${f}`).join('\n')}`,
+    )
+  }
+}
+
 const run = (command, args) => {
   try {
     return execFileSync(command, args, {
@@ -1005,8 +1942,6 @@ const run = (command, args) => {
     throw new Error(`${command} ${args[0]} ${args[1]} failed:\n${detail || error.message}`)
   }
 }
-
-const git = (...args) => run('git', args).trim()
 
 let persistDir = ''
 
@@ -1059,7 +1994,7 @@ const expectSqlRows = (statement, expected) => {
 }
 
 // The before-snapshot, rewritten to what it SHOULD look like after the new
-// migrations: every EXPECTED_CHANGES entry whose migration is in this branch's
+// migrations: every EXPECTED_CHANGES entry whose migration is in the tested
 // new set is applied to its row. Comparing this against the real
 // after-snapshot both exempts the declared rewrite and asserts it happened.
 const applyExpectedChanges = (before, newMigrations) => {
@@ -1147,24 +2082,46 @@ const describeColumnTypes = () => {
   return new Map(rows.map(({ tbl, col, type }) => [`${tbl}.${col}`, String(type).toUpperCase()]))
 }
 
-// Drops fixture columns the base ref does not have yet, so a fixture can be
-// written against the post-migration schema. `newMigrations` decides which
-// side of each EXPECTED_CHANGES entry to seed (see that constant).
-const seed = (columnsByTable, newMigrations) => {
+// Drops fixture columns the schema does not have yet, so a fixture can be
+// written against the post-migration schema.
+//
+// `alreadyApplied(migration)` decides which side of each EXPECTED_CHANGES entry
+// to seed, and it has to be an ORDERING question rather than a set-membership
+// one. Seeding `after` for anything simply "not under test" was wrong: with
+// 0021 declaring A -> B and 0022 declaring B -> C, 0021's pass would seed C -
+// the state two migrations in the future - and 0021 would then be tested against
+// data that never existed at the point it runs. A later declaration could
+// retroactively hide corruption in an earlier migration's test.
+//
+// The rule is simply the truth about the database at this point: a change seeds
+// `after` if its migration has ALREADY run, and `before` if it has not - which
+// covers both the migration under test and every migration after it.
+const seed = (columnsByTable, alreadyApplied) => {
   const seededColumns = new Map()
   const inserts = []
 
   for (const [table, fixtureRow] of FIXTURES) {
     const existing = columnsByTable.get(table)
-    if (!existing) continue // table arrives in one of the new migrations
+    if (!existing) continue // table arrives in a later migration
 
     const row = { ...fixtureRow }
+
+    // Resolved per COLUMN and in MIGRATION order. Assigning each matching change
+    // in turn was still wrong, just less obviously: with 0021 declaring A -> B
+    // and 0022 declaring B -> C, 0021's pass assigned A (0021 not yet applied)
+    // and then immediately overwrote it with B (0022 not yet applied either).
+    // The seeded value depended on which order the entries happened to be
+    // written in, and B is exactly the state that makes a no-op 0021 look
+    // correct - its before and its expected after would both be B.
+    const changesByColumn = new Map()
     for (const change of EXPECTED_CHANGES) {
       if (change.table !== table) continue
       if (row[change.key.column] !== change.key.value) continue
-      row[change.column] = newMigrations.has(change.migration)
-        ? change.before
-        : change.after
+      if (!changesByColumn.has(change.column)) changesByColumn.set(change.column, [])
+      changesByColumn.get(change.column).push(change)
+    }
+    for (const [column, changes] of changesByColumn) {
+      row[column] = resolveExpectedValue(changes, alreadyApplied)
     }
 
     const columns = Object.keys(row).filter((col) => existing.has(col))
@@ -1233,98 +2190,59 @@ const snapshot = (seededColumns) => {
   )
 }
 
-const main = () => {
-  const baseArg = process.argv.find((arg) => arg.startsWith('--base='))
-  const base = baseArg ? baseArg.slice('--base='.length) : 'origin/main'
+// Tests ONE migration, against a database holding every migration before it -
+// applied AND seeded with fixture rows.
+//
+// Running the whole post-baseline set in a single pass was wrong, and silently
+// so. Seeding happens once, at the start. A table created by 0021 therefore held
+// no rows when 0022 ran, so `DELETE FROM that_table` in 0022 compared empty
+// against empty and passed. The blind spot grew with every migration added.
+// One pass per migration means each one faces populated tables, which is the
+// whole point of the check.
+const checkOneMigration = (postBaseline, index, contentsByPath) => {
+  const name = postBaseline[index]
+  const target = join(MIGRATIONS_DIR, name)
+  const heldBack = postBaseline.slice(index).map((n) => join(MIGRATIONS_DIR, n))
+  const addedNames = new Set([name])
 
-  // Status letter + path for every migration touched since the base ref.
-  const changed = git(
-    'diff',
-    '--name-status',
-    `${base}...HEAD`,
-    '--',
-    `${MIGRATIONS_DIR}/*.sql`,
+  // "Has this migration run by the time the one under test starts?" Anything in
+  // the frozen baseline has. Anything post-baseline has only if it sorts before
+  // this one. The migration under test itself has NOT - it is applied after
+  // seeding, which is the entire point.
+  const appliedBefore = new Set(postBaseline.slice(0, index))
+  const alreadyApplied = (migration) =>
+    !postBaseline.includes(migration) || appliedBefore.has(migration)
+
+  // Transient tables only exist once the migration that creates them has run.
+  // Asserting all of them in every pass would fail an earlier migration's pass
+  // for a table a later migration has not created yet.
+  const transientsInPlay = TRANSIENT_TABLES.filter(
+    (t) => alreadyApplied(t.migration) || t.migration === name,
   )
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => {
-      const [status, ...paths] = line.split('\t')
-      return { status: status[0], path: paths[paths.length - 1] }
-    })
 
-  // Fail closed on anything but a pure addition. Production has ALREADY run the
-  // old text of an existing migration and wrangler tracks it as applied by
-  // name, so editing, deleting or renaming one is silently a no-op there while
-  // this check would build a base schema from a history that never existed.
-  const rewritten = changed.filter((file) => file.status !== 'A')
-  if (rewritten.length > 0) {
-    throw new Error(
-      'Existing migrations were modified, deleted or renamed:\n' +
-        rewritten.map((f) => `  - ${f.status} ${f.path}`).join('\n') +
-        '\n\nProduction has already applied these by name and will never re-run ' +
-        'them, so the change reaches no deployed database. Add a NEW migration ' +
-        'instead.',
-    )
-  }
-
-  const added = changed.map((file) => file.path)
-  const addedNames = new Set(added.map((file) => basename(file)))
-
-  if (added.length === 0) {
-    console.log(`No migrations added since ${base}. Nothing to check.`)
-    return
-  }
-
-  console.log(`Migrations added since ${base}:`)
-  for (const file of added) console.log(`  ${file}`)
-
+  console.log(`\n--- ${name}`)
   persistDir = mkdtempSync(join(tmpdir(), 'migration-safety-'))
 
-  // The new migrations have to leave the directory for the base-schema pass, so
-  // they are held in memory AND copied to disk first. The disk copy is what
-  // survives a SIGKILL or a crash, where `finally` never runs - and it matters
-  // because an uncommitted migration edit exists nowhere else, so
-  // `git checkout -- migrations/` would restore the committed text over it.
-  // (Copied, not renamed: the temp dir is usually another filesystem, and
-  // rename across one gives EXDEV.)
-  const backupDir = mkdtempSync(join(tmpdir(), 'migration-safety-backup-'))
-  const held = new Map(added.map((file) => [file, readFileSync(file, 'utf8')]))
-  for (const [file, contents] of held) {
-    writeFileSync(join(backupDir, basename(file)), contents)
-  }
-
-  const restore = () => {
-    for (const [file, contents] of held) writeFileSync(file, contents)
-  }
-
-  // Ctrl-C exits without running `finally`, which would leave the working tree
-  // missing tracked migration files.
-  const onSignal = () => {
-    restore()
-    process.exit(130)
-  }
-  process.on('SIGINT', onSignal)
-  process.on('SIGTERM', onSignal)
-
   try {
-    // 1. Rewind to the base ref's migrations by taking the new files away.
-    for (const file of held.keys()) rmSync(file)
+    // 1. Rewind to just before this migration: take it, and everything that
+    // comes after it, out of the directory.
+    for (const file of heldBack) rmSync(file)
 
-    console.log(`\nApplying migrations as of ${base}...`)
+    console.log('  applying everything before it...')
     applyMigrations()
 
     // 2. Make the database look like production.
     const columnsByTable = describeColumns()
     if (columnsByTable.size === 0) {
-      console.log(`\nNo tables exist as of ${base}; there is no data to preserve.`)
+      console.log('  no tables exist yet; there is no data to preserve.')
       return
     }
 
-    const seededColumns = seed(columnsByTable, addedNames)
+    const seededColumns = seed(columnsByTable, alreadyApplied)
 
     // Transient tables are exempt here for the same reason they are exempt
     // from the new-table fixture check below: a seeded row asserts a state that
-    // can never persist. This matters MORE once they are on the base ref -
+    // can never persist. This matters MORE once they are in the baseline -
     // every future migration would otherwise trip this, which is exactly the
     // shape of breakage 0018 left behind by relying on its own backfill.
     const transientAtBase = new Set(TRANSIENT_TABLES.map((t) => t.table))
@@ -1343,19 +2261,20 @@ const main = () => {
     const schemaBefore = listSchemaObjects()
     const typesBefore = describeColumnTypes()
     const seededRows = [...before.values()].reduce((n, rows) => n + rows.length, 0)
-    console.log(`Seeded ${seededRows} rows across ${before.size} tables.`)
+    console.log(`  seeded ${seededRows} rows across ${before.size} tables.`)
 
-    // 3. Apply the new migrations, exactly as deploy.yml does in production.
-    for (const [file, contents] of held) writeFileSync(file, contents)
+    // 3. Apply THIS migration alone, exactly as deploy.yml does in production.
+    writeFileSync(target, contentsByPath.get(target))
 
-    console.log('\nApplying the new migrations...')
+    console.log(`  applying ${name}...`)
     applyMigrations()
 
     // 4. Nothing may have been lost or corrupted - except the rewrites the
     // new migrations DECLARED, which must have happened exactly as declared.
-    // Tables this branch declared it drops are read neither here nor below:
-    // they no longer exist, and every OTHER table's rows still get compared,
-    // which is what proves the drop did not cascade into surviving data.
+    // A table dropped by a grandfathered migration is read neither here nor
+    // below: it no longer exists, and every OTHER table's rows still get
+    // compared, which is what proves the drop did not cascade into surviving
+    // data. New migrations cannot reach this path - the gate rejects them.
     const droppedTables = new Set(
       DROPPED_TABLES.filter((d) => addedNames.has(d.migration)).map((d) => d.table),
     )
@@ -1478,9 +2397,9 @@ const main = () => {
       )
     }
 
-    // One-shot probes for the migrations this branch introduces. Run AFTER the
-    // snapshots so a probe that unexpectedly succeeds cannot contaminate the
-    // row comparison above.
+    // Probes belonging to the migration under test. Run AFTER the snapshots so
+    // a probe that unexpectedly succeeds cannot contaminate the row comparison
+    // above.
     for (const check of POST_CHECKS) {
       if (!addedNames.has(check.migration)) continue
       const problem = check.expectErrorMatch
@@ -1521,7 +2440,7 @@ const main = () => {
 
     // A transient table earns its fixture exemption by proving the thing that
     // makes it transient: it exists, and it is empty.
-    for (const { table, why } of TRANSIENT_TABLES) {
+    for (const { table, why } of transientsInPlay) {
       if (!tablesAfter.includes(table)) {
         failures.push(
           `Declared transient table ${table} does not exist after migration. ` +
@@ -1542,20 +2461,97 @@ const main = () => {
 
     if (failures.length > 0) {
       throw new Error(
-        'These migrations are NOT safe to apply to production:\n\n' +
+        `${name} is NOT safe to apply to production:\n\n` +
           failures.map((f) => `  - ${f}`).join('\n') +
-          '\n\nA migration that rebuilds a table must back up child rows before ' +
-          'DROP TABLE and restore them after. PRAGMA foreign_keys=OFF does NOT ' +
-          'protect you on D1 - see AGENTS.md.',
+          '\n\nThis is how a table rebuild destroys cascading child rows on D1, ' +
+          'where PRAGMA foreign_keys=OFF is a no-op - see AGENTS.md. Note that ' +
+          'new migrations cannot rebuild a table at all while the ' +
+          'destructive-DDL gate stands, so reaching this failure means either a ' +
+          'grandfathered migration is under test or the gate was edited.',
       )
     }
 
-    console.log(`\nOK: all ${seededRows} seeded rows survived intact.`)
+    console.log(`  OK: all ${seededRows} seeded rows survived ${name}.`)
+  } finally {
+    // Put back everything this pass took away, whatever happened.
+    for (const file of heldBack) writeFileSync(file, contentsByPath.get(file))
+    rmSync(persistDir, { recursive: true, force: true })
+  }
+}
+
+const main = () => {
+  // All three run before anything else and none of them consults git, so none
+  // can be skipped by a branch that happens to touch no SQL: prove the
+  // classifier still works, prove the baseline is still the baseline, then hold
+  // every post-baseline migration to the gate.
+  selfTestDdlGate()
+  selfTestExpectedValues()
+  verifyMigrationsDirIsPinned()
+  validateExpectedChanges(
+    new Set([...PRE_GATE_MIGRATIONS.keys(), ...postBaselineMigrations()]),
+  )
+  verifyBaselineIntact()
+  gateNewMigrations()
+
+  // EVERY post-baseline migration, not just the ones this push happened to
+  // touch. The diff-scoped version had a wash-through: push A adds a migration
+  // that corrupts rows, this check goes red and A never deploys; push B changes
+  // no SQL, so the diff is empty, this check reports "nothing to do", B is
+  // green - and B's deploy runs `wrangler d1 migrations apply`, which applies
+  // every PENDING migration, A's included. Anchoring to the frozen baseline
+  // instead means A's migration is re-tested on every run until it is fixed.
+  const postBaseline = postBaselineMigrations()
+
+  if (postBaseline.length === 0) {
+    console.log('No migrations added since the frozen baseline. Nothing to check.')
+    return
+  }
+
+  console.log('Migrations added since the frozen baseline:')
+  for (const name of postBaseline) console.log(`  ${name}`)
+
+  // Held in memory AND copied to disk before anything is moved. The disk copy is
+  // what survives a SIGKILL or a crash, where `finally` never runs - and it
+  // matters because an uncommitted migration exists nowhere else, so
+  // `git checkout -- migrations/` would restore committed text over it.
+  // (Copied, not renamed: the temp dir is usually another filesystem, and
+  // rename across one gives EXDEV.)
+  const backupDir = mkdtempSync(join(tmpdir(), 'migration-safety-backup-'))
+  const contentsByPath = new Map(
+    postBaseline.map((name) => {
+      const path = join(MIGRATIONS_DIR, name)
+      return [path, readFileSync(path, 'utf8')]
+    }),
+  )
+  for (const [path, contents] of contentsByPath) {
+    writeFileSync(join(backupDir, basename(path)), contents)
+  }
+
+  const restore = () => {
+    for (const [path, contents] of contentsByPath) writeFileSync(path, contents)
+  }
+
+  // Ctrl-C exits without running `finally`, which would leave the working tree
+  // missing tracked migration files.
+  const onSignal = () => {
+    restore()
+    process.exit(130)
+  }
+  process.on('SIGINT', onSignal)
+  process.on('SIGTERM', onSignal)
+
+  try {
+    for (let i = 0; i < postBaseline.length; i += 1) {
+      checkOneMigration(postBaseline, i, contentsByPath)
+    }
+    console.log(
+      `\nOK: ${postBaseline.length} post-baseline migration(s) each preserve ` +
+        'the data that existed before them.',
+    )
   } finally {
     restore()
     process.off('SIGINT', onSignal)
     process.off('SIGTERM', onSignal)
-    rmSync(persistDir, { recursive: true, force: true })
     rmSync(backupDir, { recursive: true, force: true })
   }
 }

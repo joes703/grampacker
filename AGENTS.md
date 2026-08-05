@@ -288,21 +288,67 @@ cannot answer differently. In outline:
   performs an implicit DELETE that fires every `ON DELETE CASCADE` child - wiping
   that data in production (verified against D1; the API tests miss it because
   migrations run on an EMPTY db before any test rows exist). `defer_foreign_keys`
-  does not help either - it defers the CHECK, not the cascade ACTION. When you
-  rebuild a table that has cascading children (see migration 0009 rebuilding
-  `lists`, parent of `list_items`), back the children up into a scratch table
-  before the DROP and restore them after - and recreate the parent's UNIQUE
-  indexes BEFORE the restore, or the child FK fails "foreign key mismatch". Also
-  recreate any hand-added triggers (previous bullet). This is ENFORCED, not left
-  to discipline: `npm run test:migrations` (CI, and worth running locally) seeds
-  a populated D1 at `origin/main`'s schema, applies the branch's new migrations
-  the way deploy.yml does, and fails if any row was lost or changed or if a
-  trigger/index disappeared. It rejects any table it has no fixture for, so a NEW
-  TABLE means adding a fixture row to `scripts/check-migration-safety.mjs` - that
-  is the check refusing to go quiet, not an obstacle to route around. It proves
-  only that existing data SURVIVED: whether a backfill wrote the RIGHT value is
-  yours to test. It also fails closed if you edit an existing migration file -
-  production applied it by name and will never re-run it, so always add a new one.
+  does not help either - it defers the CHECK, not the cascade ACTION. A new
+  migration can no longer do this at all - the next bullet blocks every rebuild -
+  so this is here to explain the historical damage (migration 0009 rebuilt
+  `lists`, parent of `list_items`, and wiped it) and what the grandfathered
+  migrations had to do: back the children up into a scratch table before the DROP
+  and restore them after, recreating the parent's UNIQUE indexes BEFORE the
+  restore or the child FK fails "foreign key mismatch", plus any hand-added
+  triggers (previous bullet). This is ENFORCED, not left
+  to discipline: `npm run test:migrations` (CI, and worth running locally) tests
+  each post-baseline migration in its own pass - it applies everything before
+  that migration, seeds a populated D1, then applies that one migration the way
+  deploy.yml does, and fails if a SEEDED FIXTURE row was lost or changed or if a
+  trigger/index disappeared. Fixture rows are the only data it can speak for -
+  coverage is one or two rows per table, not every state a real database holds,
+  so a migration that only corrupts some combination the fixtures do not
+  represent can still pass. One pass per migration is what makes a table created
+  by an earlier
+  post-baseline migration hold rows by the time a later one touches it; a single
+  combined pass seeded only at the start, so a newly created table was always
+  empty and anything that wiped it compared empty against empty and passed. It
+  rejects any table it has no fixture for, so a NEW TABLE means adding a fixture
+  row to `scripts/check-migration-safety.mjs` - that is the check refusing to go
+  quiet, not an obstacle to route around. It proves only that the seeded rows
+  SURVIVED: whether a backfill wrote the RIGHT value is yours to test. Scope is
+  taken from the migrations DIRECTORY, not a git diff, so a migration that fails
+  is re-tested on every run rather than washing through behind a later commit
+  that touched no SQL.
+- **Never edit a migration that has shipped** - production applied it by name and
+  will never re-run it, so the edit reaches no deployed database. The 21 baseline
+  migrations are digest-pinned and editing or deleting one fails closed forever.
+  Migrations added after that are NOT pinned: the edited text gets re-tested, but
+  nothing detects that production already ran the old text. That gap closes with
+  Phase 3's manifest; until then it is on you.
+- **A new migration may NOT drop, rebuild or rename anything. There is no
+  exception and no declaration that grants one.** `npm run test:migrations`
+  rejects `DROP TABLE/INDEX/TRIGGER/VIEW`, `ALTER TABLE ... DROP COLUMN`,
+  `ALTER TABLE ... RENAME`, and direct `sqlite_schema` surgery. Additive DDL
+  (`ADD COLUMN`, `CREATE TABLE/INDEX/TRIGGER`) is unaffected, with one exception:
+  anything touching `d1_migrations` is refused outright, additive included. That
+  table is wrangler's record of which migrations have run - clearing it makes the
+  next deploy try to reapply everything, fabricated rows make it skip migrations
+  that never ran, and it is excluded from every snapshot, so nothing else here
+  would see the damage. The reason is
+  deploy ORDER: `deploy.yml` applies migrations and THEN deploys the Worker, so
+  in between - and indefinitely if the deploy step fails - production runs the
+  OLD code against the NEW schema, where a removed or renamed object breaks it.
+  What you CAN do is ship the additive half and stop using the old object. What
+  you CANNOT do yet is remove it: the eventual answer is expand/contract, where
+  the removal lands in a later release than the code that stopped needing it, but
+  until that sequencing is machine-checkable (`docs/review-remediation-plan.md`,
+  Phase 3) the gate blocks the removal too, in any release. Dead objects
+  therefore accumulate on purpose; that is the accepted price of the freeze.
+  The gate scans by DIRECTORY, against a frozen baseline of the 21 migrations
+  that predate it - not by git diff. A rejected migration is re-scanned on every
+  run for as long as it exists, so it cannot ride to production behind a later
+  green commit. This blocks some legitimate work - a one-shot scratch table you
+  clean up, a column type change, retiring a dead index. That cost is deliberate;
+  do not add a bypass, raise it instead. The `DROPPED_*` and
+  `EXPECTED_TYPE_CHANGES` constants in the script are frozen history, not a
+  hatch - they document migrations that already shipped and cannot excuse a new
+  one.
 
 ## Git and supply chain
 
