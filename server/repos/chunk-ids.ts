@@ -1,3 +1,5 @@
+import { getTableColumns, type Table } from 'drizzle-orm'
+
 // D1 allows at most 100 bound parameters per query
 // (https://developers.cloudflare.com/d1/platform/limits/), and drizzle's
 // inArray binds one parameter per id. Any statement carrying a DTO-sized
@@ -19,19 +21,28 @@ export function chunkIds<T>(ids: T[], size = MAX_IDS_PER_STATEMENT): T[][] {
   return chunks
 }
 
-// floor(90 / columns) rows per multi-row INSERT. Column count is read off the
-// first row so a schema change reflows the chunking instead of silently
-// blowing D1's 100-bound-params-per-statement cap; 90 for the same headroom
+// floor(90 / columns) rows per multi-row INSERT, where columns is the
+// TABLE's column count, not the row literal's key count. Table width is a
+// conservative UPPER BOUND on what drizzle 0.45 actually binds: an omitted
+// column with a JS default still becomes a parameter, while SQL defaults
+// and missing non-defaulted columns render inline and generated columns are
+// skipped - so counting the table can only over-split, never blow the cap.
+// Counting row KEYS could blow it: a literal that forgets one JS-defaulted
+// column (listFoodItems is 9 wide; at 10 rows that is 90 params with ZERO
+// margin) reports fewer keys than drizzle binds. One caveat keeps the bound
+// honest: a cell holding a multi-parameter sql`` expression would cost more
+// than one param - none of the callers does that. 90 for the same headroom
 // as chunkIds above. Empty input -> no statements.
 //
 // Lived in the food plan-copy repo until food planning was removed; it was
 // never food-specific, and list duplication has always depended on it.
 export function chunkForParamCap<T extends Record<string, unknown>>(
+  table: Table,
   rows: T[],
 ): T[][] {
-  const first = rows[0]
-  if (!first) return []
-  const perStatement = Math.max(1, Math.floor(90 / Object.keys(first).length))
+  if (rows.length === 0) return []
+  const columns = Object.keys(getTableColumns(table)).length
+  const perStatement = Math.max(1, Math.floor(90 / columns))
   const out: T[][] = []
   for (let i = 0; i < rows.length; i += perStatement) {
     out.push(rows.slice(i, i + perStatement))
