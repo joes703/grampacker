@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import type { SharedListResponse } from '../../shared/lists'
+import { sharedListResponseSchema, type SharedListResponse } from '../../shared/lists'
+import { deepStrict } from '../../shared/deep-strict'
 import {
   attachPublicShares,
   type PublicShareVars,
@@ -57,8 +58,18 @@ function toSharedListResponse(share: PublicShare): SharedListResponse {
   }
 }
 
+// Belt to the mapping's braces: the outgoing DTO is re-validated against the
+// deep-strict schema at the boundary, so a field that somehow got past the
+// field-by-field mapping 500s in every test run instead of shipping to an
+// anonymous reader. This is the ONE response where client-side stripping was
+// doing security work; the server is the only place that work cannot be
+// bypassed (review P2.13).
+const strictShareResponse = deepStrict(sharedListResponseSchema)
+
 shareRoutes.get('/:slug', async (c) => {
   const share = await c.get('publicShares').getBySlug(c.req.param('slug'))
   if (!share) return c.json({ error: 'Not found' }, 404)
-  return c.json(toSharedListResponse(share))
+  const body = toSharedListResponse(share)
+  strictShareResponse.parse(body)
+  return c.json(body)
 })
