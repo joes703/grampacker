@@ -274,11 +274,16 @@ tidier sentence, but tidiness is not a threat model.)
   refreshed** by activity, so it cannot be laundered by staying logged
   in. It is per-session: one browser re-authenticating does not make
   another browser's session fresh.
-- `server/middleware/fresh-auth.ts` enforces it BEFORE better-auth sees
-  the request, on `generate-register-options`, `verify-registration`,
-  `delete-passkey` (403 `REAUTH_REQUIRED`). `delete-user` enforces the
-  same window inside better-auth's own route (400 `SESSION_EXPIRED`) -
-  two error codes for one rule, and the client handles both.
+- A deny-by-default `hooks.before` inside better-auth itself
+  (`server/auth.ts`) enforces it on every `/passkey/*` endpoint not on
+  the explicit ungated allowlist - today that gates
+  `generate-register-options`, `verify-registration`, `delete-passkey`
+  (403 `SESSION_NOT_FRESH`), and any endpoint a future plugin version
+  adds fails closed. The hook keys on the RESOLVED endpoint path, so no
+  second URL parser exists to diverge from the router. `delete-user`
+  enforces the same window inside better-auth's own route (400
+  `SESSION_EXPIRED`) - two error codes for one rule, and the client
+  handles both (plus the legacy `REAUTH_REQUIRED` for compatibility).
 - Not gated: `update-passkey` (a label), the anonymous passkey SIGN-IN
   ceremony (gating it would make passkey sign-in impossible), and
   `list-user-passkeys` (a read).

@@ -16,13 +16,12 @@ export const MAGIC_LINK_PATH = '/auth/magic'
 // account) require a fresh one. Re-authenticating means running a sign-in
 // ceremony again, which mints a new session.
 //
-// Single source of truth, and it has to be: better-auth enforces it natively on
-// delete-user and on passkey registration (from session.freshAge, in seconds),
-// while our own gate on delete-passkey enforces it in middleware (in ms). Two
-// numbers here would mean two different definitions of "fresh" in one app, and
-// nothing would catch the drift.
+// Single source of truth, and it has to be: better-auth enforces it natively
+// on delete-user and on passkey registration, and the deny-by-default
+// passkey gate (hooks.before in server/auth.ts) reads the SAME value back
+// out of session.freshAge at request time - one number, one definition of
+// "fresh", nothing to drift.
 //
 // 24h is better-auth's default, pinned explicitly so an upstream change cannot
 // move it silently. See docs/passwordless-auth-design.md section 8.2.
 export const FRESH_AGE_SECONDS = 60 * 60 * 24
-export const FRESH_AGE_MS = FRESH_AGE_SECONDS * 1000

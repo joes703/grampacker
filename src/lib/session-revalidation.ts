@@ -17,10 +17,11 @@ import { authClient } from './auth-client'
 // DOES see, the only 401 is server/middleware/session.ts's `requireSession`, which
 // means exactly one thing: no session. That is what makes "401 implies the session is
 // gone" a sound inference here. It would not be sound if this ran over every route:
-// server/middleware/fresh-auth.ts answers 403 for "signed in, but not recently
-// enough", and reading that as a dead session would sign someone out for declining to
-// confirm a passkey change. (Its 401 does mean no session, same as requireSession -
-// but it, too, is inside /api/auth/* and never reaches here.)
+// the passkey freshness gate (hooks.before in server/auth.ts) answers 403 for
+// "signed in, but not recently enough", and reading that as a dead session would
+// sign someone out for declining to confirm a passkey change. (Its 401 does mean
+// no session, same as requireSession - but it, too, is inside /api/auth/* and
+// never reaches here.)
 //
 // It cannot loop. The session check goes out through better-auth's private $fetch,
 // never through `rawFetch`, so its own 401 cannot re-enter this module.

@@ -1,5 +1,9 @@
-import { betterAuth } from 'better-auth'
-import { APIError } from 'better-auth/api'
+import { BASE_ERROR_CODES, betterAuth } from 'better-auth'
+import {
+  APIError,
+  createAuthMiddleware,
+  getSessionFromCtx,
+} from 'better-auth/api'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { magicLink } from 'better-auth/plugins/magic-link'
 import { passkey } from '@better-auth/passkey'
@@ -21,6 +25,34 @@ export function passkeyRpId(baseUrl: string): string {
     ? 'grampacker.app'
     : hostname
 }
+
+// The passkey endpoints that may run WITHOUT a fresh session. Everything
+// else under /passkey/* - including any endpoint a future plugin version
+// adds - gets the freshness gate below, so a new credential-mutating
+// endpoint fails CLOSED instead of shipping ungated. (The gate used to be a
+// Hono middleware allow-listing three exact strings against c.req.path -
+// paths a different router resolved - and allow-by-default for anything
+// new. Review P2.11 inverted it and moved it HERE, where ctx.path is the
+// RESOLVED endpoint's registered path: there is no second parser left to
+// disagree.)
+//
+// Why each entry is open:
+//   - generate-authenticate-options, verify-authentication
+//     The SIGN-IN ceremony. The caller is anonymous by definition, so
+//     requiring a session - let alone a fresh one - would make passkey
+//     sign-in impossible.
+//   - list-user-passkeys
+//     A read. Its own sessionMiddleware is sufficient.
+//   - update-passkey
+//     RENAME. The plugin writes only the `name` column, so it cannot add,
+//     remove, or alter a credential - a gate here buys nothing and costs
+//     the owner a ceremony (docs/passwordless-auth-design.md).
+const PASSKEY_UNGATED = new Set([
+  '/passkey/generate-authenticate-options',
+  '/passkey/verify-authentication',
+  '/passkey/list-user-passkeys',
+  '/passkey/update-passkey',
+])
 
 // Shared between the runtime factory below and the CLI schema config
 // (auth-schema.config.ts). Schema-affecting options (adapter provider,
@@ -124,9 +156,9 @@ export function authOptions(env: Env) {
       // only shrink the window for a cookie stolen within a day of sign-in, at
       // the cost of a re-tap during ordinary use.
       //
-      // Shared with our own delete-passkey gate (server/middleware/fresh-auth),
-      // which better-auth does not protect - one constant, one definition of
-      // "fresh".
+      // The deny-by-default passkey gate (hooks.before below) reads this SAME
+      // value back out of sessionConfig at request time - one constant, one
+      // definition of "fresh".
       freshAge: FRESH_AGE_SECONDS,
     },
     advanced: {
@@ -141,6 +173,59 @@ export function authOptions(env: Env) {
       // would silently self-enable in production with per-isolate MEMORY
       // storage - useless on Workers and confusing to debug.
       enabled: false,
+    },
+    hooks: {
+      // Changing WHICH CREDENTIALS CAN SIGN IN requires a FRESH session,
+      // not merely a valid one: sessions are 30-day sliding, and a passkey
+      // planted by a session thief OUTLIVES the session - permanent, silent
+      // access. Removal is gated on the same proof so an attacker cannot
+      // strip the owner's other sign-in methods. In a passwordless app the
+      // sign-in ceremony IS the re-authentication: a fresh session can only
+      // come from a new ceremony.
+      //
+      // This hook runs on every dispatched endpoint and self-filters:
+      // deny-by-default across /passkey/*, with PASSKEY_UNGATED (above) as
+      // the explicit exceptions. Both register endpoints are ALSO gated
+      // natively by the plugin's freshSessionMiddleware; the redundancy is
+      // deliberate - a future flip of registration.requireSession cannot
+      // silently open a hole. delete-passkey is the endpoint the plugin
+      // does NOT protect, and the reason this hook exists.
+      //
+      // Position note: before-hooks run BEFORE the endpoint's zod body
+      // validation (see the magic-link quota comment below for where that
+      // bites). This check reads only the session, never the body, so the
+      // trap does not apply. Unknown /passkey/* paths never reach here -
+      // dispatch only runs hooks for RESOLVED endpoints - so a 404 stays a
+      // 404 (pinned by a test).
+      before: createAuthMiddleware(async (ctx) => {
+        if (!ctx.path.startsWith('/passkey/')) return
+        if (PASSKEY_UNGATED.has(ctx.path)) return
+
+        const session = await getSessionFromCtx(ctx)
+        // better-auth's dialect ({code, message}): these answers ride
+        // /api/auth/*, which the SPA reads through better-auth's client -
+        // PasskeySection keys its re-auth prompt off `code`.
+        if (!session?.session) {
+          throw new APIError('UNAUTHORIZED', {
+            code: 'UNAUTHORIZED',
+            message: 'Sign in to manage your passkeys.',
+          })
+        }
+        // Same clock and config as better-auth's own freshSessionMiddleware,
+        // with one deliberate divergence: the native check treats
+        // freshAge: 0 as "disabled" and lets everything through. This gate
+        // fails CLOSED on that (and on an unparseable createdAt) - a config
+        // mistake must not silently un-gate credential changes.
+        const freshAgeMs = ctx.context.sessionConfig.freshAge * 1000
+        const createdAt = new Date(session.session.createdAt).getTime()
+        if (
+          !(freshAgeMs > 0) ||
+          Number.isNaN(createdAt) ||
+          Date.now() - createdAt >= freshAgeMs
+        ) {
+          throw new APIError('FORBIDDEN', BASE_ERROR_CODES.SESSION_NOT_FRESH)
+        }
+      }),
     },
     plugins: [
       magicLink({

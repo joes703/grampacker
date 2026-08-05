@@ -13,7 +13,7 @@ import type { SelfRow } from '../repos/users'
 //
 // There is no POST /api/me/reauth any more. Proving "it is really you" was a
 // password check; passwordless, it is a fresh session, which only a sign-in
-// ceremony can mint (server/middleware/fresh-auth.ts).
+// ceremony can mint (enforced by the hooks.before gate in server/auth.ts).
 export const meRoutes = new Hono<{ Bindings: Env; Variables: SessionVars }>()
 
 meRoutes.use('*', requireSession)
