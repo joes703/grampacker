@@ -7,6 +7,11 @@ import { decimalNumber } from './decimal'
 // stores epoch-ms integers, cents, and ISO dates; DTOs speak ISO strings
 // and dollars.
 
+// Mirrors the 0021 categories_user_cap trigger; the DB is authoritative.
+// Distinct from the gear cap even though the values match - they are
+// different contracts that happen to agree today.
+export const CATEGORY_CAP = 500
+
 export const GEAR_STATUSES = [
   'active',
   'needs_repair',
@@ -131,6 +136,11 @@ function uniqueIds(ids: string[]): boolean {
 }
 
 // All-or-nothing: one non-owned id rejects the whole call, zero writes.
+// The 500 here is a TRANSPORT bound shared by /gear-items/order and
+// /categories/order, deliberately a literal: writing GEAR_ITEM_CAP or
+// CATEGORY_CAP here would couple one contract to the other's cap. It must
+// stay >= both caps (500 gear per user, CATEGORY_CAP categories per user)
+// or a full reorder becomes inexpressible.
 export const reorderRequestSchema = z
   .array(z.object({ id: idSchema, sortOrder: sortOrderSchema }).strict())
   .min(1)

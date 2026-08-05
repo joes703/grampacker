@@ -148,6 +148,13 @@
       "when": 1785563069069,
       "tag": "0020_cascade-rerank",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1785968400000,
+      "tag": "0021_categories-cap",
+      "breakpoints": true
     }
   ]
 }

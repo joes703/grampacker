@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { gearStatusSchema } from '../../shared/gear'
+import { CATEGORY_CAP, gearStatusSchema } from '../../shared/gear'
 import {
   addListItemRequestSchema,
   createListFromSelectionRequestSchema,
@@ -246,6 +246,12 @@ listRoutes.post('/import', async (c) => {
     }
     if (result.reason === 'item_cap_exceeded') {
       return c.json({ error: 'List item limit reached (300 per list)' }, 422)
+    }
+    if (result.reason === 'category_cap_exceeded') {
+      return c.json(
+        { error: `Category limit reached (${CATEGORY_CAP} per user)` },
+        422,
+      )
     }
     return c.json({ error: 'List limit reached (100 per user)' }, 422)
   }

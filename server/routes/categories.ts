@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import {
+  CATEGORY_CAP,
   createCategoryRequestSchema,
   reorderRequestSchema,
   updateCategoryRequestSchema,
@@ -10,7 +11,7 @@ import type { CategoryRow } from '../repos/categories'
 
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET    /api/categories        - session - own rows only
-//   POST   /api/categories        - session - creates own row
+//   POST   /api/categories        - session - creates own row; 422 at the cap
 //   PUT    /api/categories/order  - session - own rows, all-or-nothing
 //   PATCH  /api/categories/:id    - session - own row or 404
 //   DELETE /api/categories/:id    - session - own row or 404; uncategorizes
@@ -42,8 +43,14 @@ categoryRoutes.post('/', async (c) => {
   if (!parsed.success) {
     return c.json({ error: 'Invalid request body' }, 400)
   }
-  const row = await c.get('repos').categories.create(parsed.data.name)
-  return c.json(toCategoryResponse(row), 201)
+  const result = await c.get('repos').categories.create(parsed.data.name)
+  if (!result.ok) {
+    return c.json(
+      { error: `Category limit reached (${CATEGORY_CAP} per user)` },
+      422,
+    )
+  }
+  return c.json(toCategoryResponse(result.row), 201)
 })
 
 // Registered before /:id so the static segment cannot be captured as a
