@@ -61,6 +61,12 @@ export type DuplicateListResult =
   | { ok: true; row: ListRow }
   | { ok: false; reason: 'cap_exceeded' | 'not_found' }
 
+// Rotating a link cannot hit a cap - it writes one column on a row that
+// already exists - so not_found is the only way it fails.
+export type RotateShareLinkResult =
+  | { ok: true; row: ListRow }
+  | { ok: false; reason: 'not_found' }
+
 export type FromSelectionResult =
   | { ok: true; row: ListRow }
   | { ok: false; reason: 'cap_exceeded' | 'invalid_gear' }
@@ -126,6 +132,30 @@ export function generateSlug(): string {
   return Array.from(bytes, (b) => SLUG_ALPHABET[b % 62]).join('')
 }
 
+// Every write that mints a slug races the lists_slug_unique index, so all of
+// them need the same retry. This is that loop, once: create, duplicate,
+// from-selection, import, and rotateShareLink all run through it.
+//
+// It ONLY handles slug collisions. A caller that maps other failures to a
+// result (the list-cap trigger, say) catches those itself and rethrows the
+// rest, which is what lets a collision reach this loop and retry.
+//
+// Exported for its own test: five write paths now depend on this loop, and the
+// collision it exists for is far too rare to reach through the HTTP surface.
+export async function withFreshSlug<T>(
+  attempt: (slug: string) => Promise<T>,
+): Promise<T> {
+  for (let i = 0; i < SLUG_ATTEMPTS; i++) {
+    try {
+      return await attempt(generateSlug())
+    } catch (err) {
+      if (isUniqueViolation(err, 'lists.slug')) continue
+      throw err
+    }
+  }
+  throw new Error('slug generation exhausted retries')
+}
+
 // "(copy)" suffix must not push the name past the 256 CHECK; the old
 // Postgres RPC had the same latent overflow, fixed here rather than
 // Suffix used when duplicating a list. Truncates to keep the result inside the
@@ -169,7 +199,7 @@ export function createListsRepo(db: Db, userId: string) {
     },
 
     async create(name: string): Promise<ListWriteResult> {
-      for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt++) {
+      return withFreshSlug(async (slug) => {
         const now = Date.now()
         try {
           const [row] = await db
@@ -178,7 +208,7 @@ export function createListsRepo(db: Db, userId: string) {
               id: crypto.randomUUID(),
               userId,
               name,
-              slug: generateSlug(),
+              slug,
               sortOrder: nextSortOrder(),
               createdAt: now,
               updatedAt: now,
@@ -187,12 +217,10 @@ export function createListsRepo(db: Db, userId: string) {
           if (!row) throw new Error('list insert returned no row')
           return { ok: true, row }
         } catch (err) {
-          if (isUniqueViolation(err, 'lists.slug')) continue
           if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
           throw err
         }
-      }
-      throw new Error('slug generation exhausted retries')
+      })
     },
 
     async update(id: string, patch: UpdateListPatch): Promise<ListWriteResult> {
@@ -326,7 +354,7 @@ export function createListsRepo(db: Db, userId: string) {
           ),
       ])
 
-      for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt++) {
+      return withFreshSlug(async (slug) => {
         const newId = crypto.randomUUID()
         const now = Date.now()
         const locationCopies = sourceLocations.map((location) => ({
@@ -367,7 +395,7 @@ export function createListsRepo(db: Db, userId: string) {
             userId,
             name: copyName(source.name),
             description: source.description,
-            slug: generateSlug(),
+            slug,
             isShared: false,
             groupWorn: source.groupWorn,
             readyChecksEnabled: source.readyChecksEnabled,
@@ -496,12 +524,10 @@ export function createListsRepo(db: Db, userId: string) {
           if (!row) throw new Error('list duplicate returned no row')
           return { ok: true, row }
         } catch (err) {
-          if (isUniqueViolation(err, 'lists.slug')) continue
           if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
           throw err
         }
-      }
-      throw new Error('slug generation exhausted retries')
+      })
     },
 
     // Atomic CSV list import: new categories, new gear, the list row,
@@ -577,7 +603,7 @@ export function createListsRepo(db: Db, userId: string) {
         return id
       }
 
-      for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt++) {
+      return withFreshSlug(async (slug) => {
         const newListId = crypto.randomUUID()
         const now = Date.now()
         const insertList = db
@@ -586,7 +612,7 @@ export function createListsRepo(db: Db, userId: string) {
             id: newListId,
             userId,
             name: input.name,
-            slug: generateSlug(),
+            slug,
             sortOrder: nextSortOrder(),
             createdAt: now,
             updatedAt: now,
@@ -674,7 +700,6 @@ export function createListsRepo(db: Db, userId: string) {
           if (!row) throw new Error('list import returned no row')
           return { ok: true, row }
         } catch (err) {
-          if (isUniqueViolation(err, 'lists.slug')) continue
           if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
           if (isGearCapError(err)) {
             return { ok: false, reason: 'gear_cap_exceeded' }
@@ -684,8 +709,7 @@ export function createListsRepo(db: Db, userId: string) {
           }
           throw err
         }
-      }
-      throw new Error('slug generation exhausted retries')
+      })
     },
 
     // Gear-page "Create list from selection". All-or-nothing: one
@@ -708,7 +732,7 @@ export function createListsRepo(db: Db, userId: string) {
         return { ok: false, reason: 'invalid_gear' }
       }
 
-      for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt++) {
+      return withFreshSlug(async (slug) => {
         const newId = crypto.randomUUID()
         const now = Date.now()
         const insertList = db
@@ -718,7 +742,7 @@ export function createListsRepo(db: Db, userId: string) {
             userId,
             name,
             description,
-            slug: generateSlug(),
+            slug,
             sortOrder: nextSortOrder(),
             createdAt: now,
             updatedAt: now,
@@ -744,12 +768,30 @@ export function createListsRepo(db: Db, userId: string) {
           if (!row) throw new Error('list from-selection returned no row')
           return { ok: true, row }
         } catch (err) {
-          if (isUniqueViolation(err, 'lists.slug')) continue
           if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
           throw err
         }
-      }
-      throw new Error('slug generation exhausted retries')
+      })
+    },
+
+    // Mint a new share link for a list the caller owns. The old slug stops
+    // resolving the moment this lands - /r/<old> becomes an unknown slug and
+    // 404s like any other, which is the whole point of the control.
+    //
+    // Deliberately does NOT touch isShared. Rotating the link and turning
+    // sharing off are separate intentions: someone rotating a link wants a
+    // different URL, not to stop sharing. Bundling them would also make the
+    // toggle destructive, which is the behaviour this control exists to
+    // avoid - people publish these URLs in places they cannot easily edit.
+    async rotateShareLink(id: string): Promise<RotateShareLinkResult> {
+      return withFreshSlug(async (slug) => {
+        const [row] = await db
+          .update(lists)
+          .set({ slug, updatedAt: Date.now() })
+          .where(and(eq(lists.id, id), eq(lists.userId, userId)))
+          .returning(cols)
+        return row ? { ok: true, row } : { ok: false, reason: 'not_found' }
+      })
     },
   }
 }

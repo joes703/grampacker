@@ -38,6 +38,10 @@ import type { ListRow } from '../repos/lists'
 //   PATCH  /api/lists/:id                      - session - own list or 404;
 //                                                isShared patchable (the
 //                                                share/unshare toggle)
+//   POST   /api/lists/:id/share-link           - session - own list or 404;
+//                                                mints a new slug. Old link
+//                                                404s from then on. Does NOT
+//                                                change isShared
 //   DELETE /api/lists/:id                      - session - own list or 404;
 //                                                cascades membership rows
 //   GET    /api/lists/:id/items                - session - own list or 404
@@ -258,6 +262,14 @@ listRoutes.patch('/:id', async (c) => {
   const result = await c
     .get('repos')
     .lists.update(c.req.param('id'), parsed.data)
+  if (!result.ok) return c.json({ error: 'Not found' }, 404)
+  return c.json(toListResponse(result.row))
+})
+
+// Replaces the list's share link with a freshly minted one. No body: there is
+// nothing to choose, the slug is server-minted like every other.
+listRoutes.post('/:id/share-link', async (c) => {
+  const result = await c.get('repos').lists.rotateShareLink(c.req.param('id'))
   if (!result.ok) return c.json({ error: 'Not found' }, 404)
   return c.json(toListResponse(result.row))
 })

@@ -54,6 +54,7 @@ export const mutationKeys = {
   deleteList: () => ['delete-list'] as const,
   importList: () => ['import-list'] as const,
   toggleListFlag: () => ['toggle-list-flag'] as const,
+  rotateShareLink: () => ['rotate-share-link'] as const,
   updateListNotes: (listId: string) => ['update-list-notes', listId] as const,
 
   // List items. `updateListItem` keeps the exact shape it had when it was an
