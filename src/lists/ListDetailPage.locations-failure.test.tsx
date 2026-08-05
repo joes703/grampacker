@@ -349,6 +349,45 @@ describe('a packing-locations query that failed to load', () => {
   })
 })
 
+// Regression (review P2.1): every reorder-pending guard on this page read
+// reorderItemsMut.isPending - the DOCUMENT-order mutation - which never fires
+// in Pack view. So while a pack reorder was in flight, nothing locked: the
+// packing menus stayed live and a second reorder could start against ranks the
+// first was still rewriting. The guards now read anyItemReorderPending, which
+// watches both mutations. This lives here rather than in the pack suite
+// because firing a pack reorder in jsdom needs this file's DndContext
+// passthrough.
+describe('a pack reorder in flight', () => {
+  beforeEach(() => {
+    h.fetchPackingLocations.mockResolvedValue([] as PackingLocation[])
+  })
+
+  it('locks the packing menus until it settles, then re-arms', async () => {
+    let resolveReorder!: (v: undefined) => void
+    h.reorderPackListItems.mockImplementation(
+      () => new Promise<undefined>((resolve) => { resolveReorder = resolve }),
+    )
+    await renderDetail(`/lists/${listId}/pack`)
+    // Same anchor as the drag test above: fire only once locations RESOLVED
+    // empty, or the drag is refused for the unrelated still-loading reason.
+    await screen.findByRole('heading', { name: 'Start with where your gear lives' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'fire drag end' }))
+    await waitFor(() => expect(h.reorderPackListItems).toHaveBeenCalledTimes(1))
+
+    // The pack write is in flight NOW, so the row's packing menu - the entry
+    // point to moves and further reorders - must be locked.
+    const trigger = screen.getByRole('button', {
+      name: 'Open Cooking pot packing options',
+    })
+    await waitFor(() => expect(trigger).toBeDisabled())
+
+    // And it is pending-scoped, not a latch: settling re-arms the menu.
+    resolveReorder(undefined)
+    await waitFor(() => expect(trigger).toBeEnabled())
+  })
+})
+
 describe('a list-items query that failed to load', () => {
   beforeEach(() => {
     h.fetchPackingLocations.mockResolvedValue([] as PackingLocation[])

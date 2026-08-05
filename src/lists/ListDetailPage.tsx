@@ -795,8 +795,14 @@ function ListDetailInner({
       errorToast: "Couldn't move that item. Please try again.",
     }),
   })
+  // Every reorder guard below must watch BOTH mutations. Pack view fires
+  // reorderPackItemsMut, so a guard reading only reorderItemsMut.isPending is
+  // permanently false in exactly the mode it was written for - a second pack
+  // drag could start while the first was still in flight.
+  const anyItemReorderPending =
+    reorderItemsMut.isPending || reorderPackItemsMut.isPending
   const itemDragPending =
-    moveItemMut.isPending || reorderItemsMut.isPending || locationCreationPending
+    moveItemMut.isPending || anyItemReorderPending || locationCreationPending
 
   const notesMut = useMutation({
     mutationKey: mutationKeys.updateListNotes(listId),
@@ -1458,7 +1464,7 @@ function ListDetailInner({
       // which is the right test: a bag of ten rows showing one is just as
       // unreorderable as a bag holding one.
       onStartReorder={
-        grouping.kind === 'location' && !reorderItemsMut.isPending && cohort.length > 1
+        grouping.kind === 'location' && !anyItemReorderPending && cohort.length > 1
           ? (origin: HTMLElement | null) => placementActions.start(item, section, origin)
           : undefined
       }
@@ -1545,7 +1551,7 @@ function ListDetailInner({
             onStopUsingAsContainer={() => setDeleteLocationTarget(location)}
           />
         ) : undefined}
-        itemReorderPending={reorderItemsMut.isPending}
+        itemReorderPending={anyItemReorderPending}
         locationReorderPending={locationReorderPending || locationCreationPending}
         movePending={itemDragPending}
         renaming={renamingLocationId === location.id}
@@ -1864,7 +1870,7 @@ function ListDetailInner({
                               items={packingTree.unassignedItems}
                               {...sharedGroupProps}
                               renderRowAction={renderPackRowAction}
-                              reorderPending={reorderItemsMut.isPending}
+                              reorderPending={anyItemReorderPending}
                             />
                           </DroppableUnassignedSection>
                           <SortableContext
@@ -1887,7 +1893,7 @@ function ListDetailInner({
                                 items={group.items}
                                 {...sharedGroupProps}
                                 renderRowAction={packRowAction}
-                                reorderPending={reorderItemsMut.isPending}
+                                reorderPending={anyItemReorderPending}
                                 baseSubtotalGrams={baseGramsForCategory(weightBreakdown, definition.id)}
                                 consumableSubtotalGrams={consumableGramsForCategory(weightBreakdown, definition.id)}
                                 onAddItem={onAddNewItem}
@@ -1902,7 +1908,7 @@ function ListDetailInner({
                               items={group.items}
                               {...sharedGroupProps}
                               renderRowAction={packRowAction}
-                              reorderPending={reorderItemsMut.isPending}
+                              reorderPending={anyItemReorderPending}
                               baseSubtotalGrams={baseGramsForCategory(weightBreakdown, null)}
                               consumableSubtotalGrams={consumableGramsForCategory(weightBreakdown, null)}
                               onAddItem={onAddNewItem}
