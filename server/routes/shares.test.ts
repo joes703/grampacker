@@ -233,12 +233,46 @@ describe('GET /api/shares/:slug', () => {
     for (const forbidden of FORBIDDEN_KEYS) {
       expect(keys.has(forbidden), `forbidden key on the wire: ${forbidden}`).toBe(false)
     }
-    expect(Object.keys(body.list).toSorted()).toEqual([
+    // Exact key sets on the RAW json at EVERY public level, independent of
+    // the schemas: a denylist can only ban names someone thought of, and the
+    // parsed DTO strips before it can testify. This is the allowlist the
+    // matrix row promises, checked where stripping cannot reach.
+    const rawShape = raw as {
+      list: object
+      categories: object[]
+      items: { gear: object }[]
+    }
+    expect(Object.keys(rawShape).toSorted()).toEqual([
+      'categories',
+      'items',
+      'list',
+    ])
+    expect(Object.keys(rawShape.list).toSorted()).toEqual([
       'description',
       'groupWorn',
       'isDraft',
       'name',
     ])
+    for (const category of rawShape.categories) {
+      expect(Object.keys(category).toSorted()).toEqual(['id', 'name', 'sortOrder'])
+    }
+    for (const item of rawShape.items) {
+      expect(Object.keys(item).toSorted()).toEqual([
+        'gear',
+        'gearItemId',
+        'id',
+        'isConsumable',
+        'isWorn',
+        'quantity',
+        'sortOrder',
+      ])
+      expect(Object.keys(item.gear).toSorted()).toEqual([
+        'categoryId',
+        'description',
+        'name',
+        'weightGrams',
+      ])
+    }
   })
 
   it('reflects groupWorn and isDraft edits', async () => {

@@ -5,8 +5,10 @@ import { revalidateSessionAfterUnauthorized } from './session-revalidation'
 // The SPA's single door to /api/*. Owns the three cross-cutting concerns
 // so no call site can forget one: the anti-CSRF header on unsafe methods,
 // JSON encoding, and error normalization. Responses are validated against
-// the shared zod DTOs - shape drift surfaces as a loud client error (and
-// in tests), never as undefined leaking into the UI.
+// the shared zod DTOs - a missing or wrong-typed field surfaces as a loud
+// client error, never as undefined leaking into the UI; unexpected fields
+// strip at runtime and fail in CI (see apiFetch below for the full
+// contract).
 
 export class ApiError extends Error {
   readonly status: number
@@ -76,6 +78,18 @@ export function shouldRetryQuery(failureCount: number, error: unknown): boolean 
 }
 
 // For endpoints that return a JSON body, validated against its DTO schema.
+//
+// The exact contract, stated precisely because an earlier comment claimed
+// more than the code did: a MISSING or WRONG-TYPED field fails here at
+// runtime; an UNEXPECTED field is silently STRIPPED here and fails in CI
+// instead (the response-contract tests parse ONE REPRESENTATIVE endpoint
+// per response schema as raw JSON against a deep-strict variant, and the
+// share route re-validates its own output server-side on every request).
+// Runtime tolerance is deliberate: during a deploy
+// window an open tab's old bundle can receive one additive field from the
+// newer server, and rejecting it would report a COMMITTED write - a gear
+// import, say - as a retryable failure, inviting duplicates. Stale tabs may
+// fail reads; they must not be lied to about writes that succeeded.
 export async function apiFetch<Schema extends z.ZodType>(
   path: string,
   schema: Schema,
