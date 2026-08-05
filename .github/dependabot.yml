@@ -1,9 +1,36 @@
-# Before this file existed, only GitHub's repo-level SECURITY updates ran.
-# Those can bump a direct dependency (hono, PR #152) but will not bump a
-# PARENT to fix a transitive child - so the Cloudflare toolchain drifted
-# untouched until miniflare's bundled sharp picked up four libvips CVEs that
-# nothing was ever going to raise a PR for. This file adds the scheduled
-# version updates that close that gap.
+# Keeps dependencies current. Without it, only GitHub's repo-level SECURITY
+# updates run, and those bump a direct dependency but never a PARENT to fix a
+# transitive child - which is how the Cloudflare toolchain drifted until
+# miniflare's bundled sharp picked up four libvips CVEs that nothing was ever
+# going to raise a PR for.
+#
+# ONE GROUP PER ECOSYSTEM, ON PURPOSE
+# -----------------------------------
+# This file used to partition npm updates by semver level (major 30 days, minor
+# 7, patch 3) and by package family. The semver partition was the mistake. A
+# group can only ever combine updates that are eligible in the SAME run, so
+# different waits per level push packages that pin each other exactly into
+# separate runs. @cloudflare/vitest-pool-workers pins wrangler EXACTLY; a patch
+# on one and a minor on the other came eligible three days apart, and the
+# resulting PR would have installed a second nested wrangler, miniflare and five
+# workerd binaries.
+#
+# Grouping by family was the attempt to fix that, and it only works if every
+# family is enumerated in advance - which is how react got missed. react-dom
+# declares a peer of react ^19.2.8, a PR moved only react-dom, and CI passed
+# because the conflict was already in the lockfile: `npm ci` never re-resolves,
+# and `npm install` re-resolves only when package.json and the lockfile
+# disagree, which here they did not.
+#
+# One group per ecosystem needs no such enumeration. Everything non-major moves
+# in a single resolution, so no family has to be known about ahead of time.
+# Majors still arrive on their own, which is where release notes get read.
+#
+# This is coordination, not a guarantee - a major landing beside a minor still
+# splits. The real check on any of it is the CI gate: build plus the full test
+# suite. If a grouped PR goes red, the fallback is to close it and let the next
+# run rebuild it, or hand-author the branch; you cannot drop one package from a
+# Dependabot-authored group PR in place.
 version: 2
 
 updates:
@@ -11,119 +38,39 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
 
-    # Deliberate delay before adopting a fresh release. The npm worm campaigns
-    # (Shai-Hulud and its variants) are detected and the poisoned versions
-    # yanked within hours to days of publication, so essentially the entire
-    # risk window is a version's first few days on the registry. We are not
-    # chasing features, so waiting costs us nothing and takes us out of that
-    # window. Majors wait longest because they are the ones we would want to
-    # read release notes for anyway.
+    # One layer, not a shield. The npm worm campaigns are usually detected and
+    # the poisoned versions yanked within hours to days of publication, so a week
+    # on the registry avoids most of that exposure at no cost to us - we are not
+    # chasing features. It does nothing about a patient backdoor, and GitHub is
+    # explicit that cooldown is one defence among several.
     #
-    # This applies to SCHEDULED version updates only. Dependabot's security
-    # updates still open immediately, which is the behaviour we want when
-    # there is a real advisory against something we actually ship.
-    #
-    # WHY MINOR AND PATCH SHARE ONE NUMBER
-    # ------------------------------------
-    # They used to be 7 and 3. That ladder actively BROKE the grouping below.
-    # A group can only ever combine updates that are eligible in the SAME run,
-    # so giving two semver levels different waits guarantees that any family
-    # releasing a minor alongside a patch gets split across two runs, which is
-    # exactly what a lockstep-pinned family must never do.
-    #
-    # It is not hypothetical. On 2026-07-30 the Cloudflare toolchain shipped
-    # wrangler 4.116.0 (minor) and @cloudflare/vitest-pool-workers 0.19.1
-    # (patch) together. The patch cleared its 3 days on 08-02 and opened alone
-    # as PR #156; the minor was still sitting out its 7. That PR would have
-    # installed a second nested wrangler, miniflare and all five workerd
-    # binaries under vitest-pool-workers, because 0.19.1 pins wrangler 4.116.0
-    # exactly while our direct devDependency stayed on 4.115.0. It was closed
-    # unmerged.
-    #
-    # One number for both levels means a family that releases together also
-    # becomes eligible together. Majors keep their longer soak: a major is the
-    # case we WANT to read release notes for, and a family mixing a major with
-    # a minor needs a human either way, so the split is the right outcome there.
+    # Scheduled updates only. Security updates ignore cooldown and open
+    # immediately, which is what we want when there is a real advisory.
     cooldown:
       default-days: 7
-      semver-major-days: 30
 
     groups:
-      # wrangler and the two @cloudflare/* plugins pin each other EXACTLY -
-      # @cloudflare/vite-plugin 1.48.0 depends on wrangler 4.115.0 which depends
-      # on miniflare 4.20260722.1, and vitest-pool-workers 0.19.0 pins the same
-      # pair. Bumping one alone does not fail; it silently installs a second
-      # nested copy of the others, so the dev server and the workerd test pool
-      # end up on different runtimes.
-      #
-      # This group REDUCES that risk, it does not eliminate it. Dependabot
-      # combines updates that happen to be eligible in the same run, so it is
-      # coordination rather than a lockstep guarantee - which is precisely why
-      # the cooldown above no longer varies between minor and patch. miniflare
-      # is listed for the case where it ever becomes a direct dependency - today
-      # it is purely transitive, so it moves only when its parents move. If the
-      # versions do drift apart, `npm ls wrangler miniflare workerd --all` shows
-      # it immediately as a non-deduped nested copy.
-      cloudflare-toolchain:
-        patterns:
-          - wrangler
-          - miniflare
-          - "@cloudflare/*"
-
-      # The OTHER lockstep family, and the reason this group has to sit ABOVE
-      # `types`: a dependency matching several groups joins the first one
-      # declared, and @types/react-dom must ride with react-dom rather than with
-      # the unrelated @types/* bumps.
-      #
-      # react-dom 19.2.8 declares a peer of react ^19.2.8, so moving one without
-      # the other leaves a peer that cannot be satisfied. Dependabot did exactly
-      # that in PR #160 - react-dom to 19.2.8, react left on 19.2.7 - and CI went
-      # green anyway. The conflict was already baked into the LOCKFILE, and both
-      # `npm ci` and `npm install` install that locked tree rather than
-      # re-deriving it, so neither one had to object. Only a lockfile-free
-      # resolution of the two exact root pins raises ERESOLVE. Green CI is
-      # therefore not evidence that a paired bump was paired. That PR was closed
-      # unmerged and the two went in together instead.
-      react:
-        patterns:
-          - react
-          - react-dom
-          - "@types/react"
-          - "@types/react-dom"
-
-      types:
-        patterns:
-          - "@types/*"
-
-      # Everything else dev-side in one PR. Runtime dependencies are otherwise
-      # deliberately left ungrouped so hono, better-auth and drizzle each get
-      # their own reviewable PR; react is grouped above only because its peer
-      # constraint makes a solo bump incorrect, not to reduce PR count.
-      dev-tooling:
-        dependency-type: development
-        exclude-patterns:
-          - wrangler
-          - miniflare
-          - "@cloudflare/*"
-          - "@types/*"
+      non-major:
+        patterns: ['*']
+        update-types: [minor, patch]
 
   # AGENTS.md requires third-party actions to be pinned to a full commit SHA.
-  # That pin is what makes a workflow reproducible, but it also means the
-  # action never picks up an upstream security fix unless something moves the
-  # SHA. This block is that something.
+  # That pin is what makes a workflow reproducible, but it also means an action
+  # never picks up an upstream fix unless something moves the SHA. This is what
+  # moves it.
+  #
+  # Do NOT add semver-major-days / semver-minor-days / semver-patch-days here.
+  # They are real Dependabot keys, but they are NOT supported for the
+  # github-actions ecosystem, and an unsupported key risks failing config
+  # validation - which would silently disable everything in this file.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-    # DO NOT add semver-major-days / semver-minor-days / semver-patch-days here.
-    # They are valid YAML and they are real Dependabot keys, but the SemVer-bump
-    # cooldown fields are NOT supported for the github-actions ecosystem - only
-    # default-days is. GitHub's cooldown support matrix lists github-actions as
-    # default-days only. An unsupported key risks failing config validation, and
-    # a rejected .github/dependabot.yml disables every scheduled update in this
-    # file silently - the exact gap this file was created to close. One flat
-    # window for all action bumps is the only thing expressible here.
     cooldown:
       default-days: 7
+    groups:
+      non-major:
+        patterns: ['*']
+        update-types: [minor, patch]
