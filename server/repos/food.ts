@@ -260,7 +260,7 @@ export function createFoodRepo(db: Db, userId: string) {
 
       // chunkForParamCap because 90 rows x 8 columns is ~720 bound params and
       // D1 caps a statement at 100 - including statements inside a batch.
-      const inserts = chunkForParamCap(missing).map((rows) =>
+      const inserts = chunkForParamCap(listFoodSlots, missing).map((rows) =>
         db.insert(listFoodSlots).values(rows),
       )
       const trim = db
@@ -584,7 +584,7 @@ function linkStatements(
   slotIds: string[],
 ) {
   const rows = slotIds.map((slotId) => ({ foodItemId, slotId, userId, listId }))
-  return chunkForParamCap(rows).map((chunk) =>
+  return chunkForParamCap(listFoodItemSlots, rows).map((chunk) =>
     db.insert(listFoodItemSlots).values(chunk),
   )
 }

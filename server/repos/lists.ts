@@ -440,7 +440,7 @@ export function createListsRepo(db: Db, userId: string) {
           createdAt: now,
           updatedAt: now,
         }))
-        const insertLocations = chunkForParamCap(locationRows).map((rows) =>
+        const insertLocations = chunkForParamCap(packingLocations, locationRows).map((rows) =>
           db.insert(packingLocations).values(rows),
         )
         const itemRows = itemCopies.map((it) => ({
@@ -470,7 +470,7 @@ export function createListsRepo(db: Db, userId: string) {
         // statements instead of 300,
         // which matters because the whole batch can already carry up to 371
         // plan-copy statements ahead of it.
-        const insertItems = chunkForParamCap(itemRows).map((rows) =>
+        const insertItems = chunkForParamCap(listItems, itemRows).map((rows) =>
           db.insert(listItems).values(rows),
         )
         const foodSlotRows = foodSlotCopies.map((slot) => ({
@@ -500,13 +500,13 @@ export function createListsRepo(db: Db, userId: string) {
           if (!foodItemId || !slotId) return []
           return [{ foodItemId, slotId, userId, listId: newId }]
         })
-        const insertFoodSlots = chunkForParamCap(foodSlotRows).map((rows) =>
+        const insertFoodSlots = chunkForParamCap(listFoodSlots, foodSlotRows).map((rows) =>
           db.insert(listFoodSlots).values(rows),
         )
-        const insertFoodItems = chunkForParamCap(foodItemRows).map((rows) =>
+        const insertFoodItems = chunkForParamCap(listFoodItems, foodItemRows).map((rows) =>
           db.insert(listFoodItems).values(rows),
         )
-        const insertFoodLinks = chunkForParamCap(foodLinkRows).map((rows) =>
+        const insertFoodLinks = chunkForParamCap(listFoodItemSlots, foodLinkRows).map((rows) =>
           db.insert(listFoodItemSlots).values(rows),
         )
         const linkContainerLocations = locationCopies.flatMap((location) => {
