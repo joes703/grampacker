@@ -128,15 +128,23 @@ function toListItemResponse(row: ListItemWithGear): ListItemResponse {
 }
 
 // One place for the item-write failure map so every route agrees on
-// statuses and wording.
-function listItemFailure(result: Extract<ListItemWriteResult, { ok: false }>): {
-  status: 400 | 404 | 422
+// statuses and wording. Exported for a direct unit test: the conflict branch
+// exists for a race that cannot be staged through the HTTP surface, so the
+// mapping is pinned here and the repo's conversion is pinned in its own test.
+export function listItemFailure(
+  result: Extract<ListItemWriteResult, { ok: false }>,
+): {
+  status: 400 | 404 | 409 | 422
   error: string
 } {
   switch (result.reason) {
     case 'list_not_found':
     case 'not_found':
       return { status: 404, error: 'Not found' }
+    case 'conflict':
+      // Same dialect as the pack-order 409 below: someone else's write landed
+      // first; the client refetches and retries.
+      return { status: 409, error: 'This bag changed while you were moving that item' }
     case 'invalid_gear':
       return { status: 400, error: 'Invalid gear item' }
     case 'invalid_category':

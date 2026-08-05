@@ -3,6 +3,7 @@ import type { Db } from '../db'
 import { categories, gearItems, listItems, lists, packReorderGuard } from '../db/schema'
 import {
   isAnyUniqueViolation,
+  isForeignKeyViolation,
   isPackGuardViolation,
   isPackRankRangeError,
   isTriggerAbort,
@@ -92,6 +93,7 @@ export type ListItemWriteResult =
         | 'cap_exceeded'
         | 'gear_cap_exceeded'
         | 'pack_rank_exhausted'
+        | 'conflict'
     }
 
 // A pack reorder fails in more distinguishable ways than a list reorder, and
@@ -123,12 +125,27 @@ function isGearCapError(err: unknown): boolean {
 }
 
 export function createListItemsRepo(db: Db, userId: string) {
-  async function ownsList(listId: string): Promise<boolean> {
-    const [row] = await db
+  // Builders, not awaited reads: the FK-recovery path batches them so its
+  // probes are one consistent snapshot. The precheck path awaits the same
+  // builders, which is what keeps precheck and recovery from drifting apart.
+  function listProbe(listId: string) {
+    return db
       .select({ id: lists.id })
       .from(lists)
       .where(and(eq(lists.id, listId), eq(lists.userId, userId)))
       .limit(1)
+  }
+
+  function gearProbe(gearItemId: string) {
+    return db
+      .select({ id: gearItems.id })
+      .from(gearItems)
+      .where(and(eq(gearItems.id, gearItemId), eq(gearItems.userId, userId)))
+      .limit(1)
+  }
+
+  async function ownsList(listId: string): Promise<boolean> {
+    const [row] = await listProbe(listId)
     return Boolean(row)
   }
 
@@ -194,6 +211,11 @@ export function createListItemsRepo(db: Db, userId: string) {
         .limit(1)
       if (!gear) return { ok: false, reason: 'invalid_gear' }
       const now = Date.now()
+      // FK recovery below: SQLite's FOREIGN KEY error never names the failed
+      // constraint, so on one the prechecked parents are RE-PROBED - in one
+      // batch, list before gear - and only a parent proven gone maps to its
+      // precheck's result. An FK no probe explains rethrows: a programming
+      // defect must stay a loud 500, not impersonate bad client input.
       try {
         const [item] = await db
           .insert(listItems)
@@ -223,6 +245,15 @@ export function createListItemsRepo(db: Db, userId: string) {
         // condition, so it gets a status rather than a 500.
         if (isPackRankRangeError(err)) {
           return { ok: false, reason: 'pack_rank_exhausted' }
+        }
+        if (isForeignKeyViolation(err)) {
+          const [listRows, gearRows] = await db.batch([
+            listProbe(listId),
+            gearProbe(gearItemId),
+          ])
+          if (!listRows[0]) return { ok: false, reason: 'list_not_found' }
+          if (!gearRows[0]) return { ok: false, reason: 'invalid_gear' }
+          throw err
         }
         throw err
       }
@@ -435,6 +466,15 @@ export function createListItemsRepo(db: Db, userId: string) {
       } catch (err) {
         if (isPackRankRangeError(err)) {
           return { ok: false, reason: 'pack_rank_exhausted' }
+        }
+        // The rank collision the comment above promises a 409 for. The only
+        // unique constraint this statement can trip is the pack-rank index,
+        // so any unique violation here IS a lost race; the route answers 409
+        // and the client refetches. (The rank subquery runs inside the
+        // statement, so on a single serialized D1 this is defensive depth -
+        // but "defensive" beats the 500 it used to be.)
+        if (isAnyUniqueViolation(err)) {
+          return { ok: false, reason: 'conflict' }
         }
         throw err
       }

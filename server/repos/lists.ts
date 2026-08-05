@@ -10,7 +10,11 @@ import {
   lists,
   packingLocations,
 } from '../db/schema'
-import { isTriggerAbort, isUniqueViolation } from './db-errors'
+import {
+  isForeignKeyViolation,
+  isTriggerAbort,
+  isUniqueViolation,
+} from './db-errors'
 import { chunkForParamCap } from './chunk-ids'
 import { isCapError as isGearCapError } from './gear-items'
 import { isListItemCapError } from './list-items'
@@ -187,6 +191,23 @@ export function createListsRepo(db: Db, userId: string) {
 
   function nextSortOrder() {
     return sql`coalesce((select max(${lists.sortOrder}) + 1 from ${lists} where ${lists.userId} = ${userId}), 0)`
+  }
+
+  // Builders for the import precheck's owned-set reads, shared with its
+  // FK-recovery path so the two run the same queries: the precheck awaits
+  // them one by one, recovery batches both into one consistent snapshot.
+  function ownedCategoryIdsProbe() {
+    return db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(eq(categories.userId, userId))
+  }
+
+  function ownedGearIdsProbe() {
+    return db
+      .select({ id: gearItems.id })
+      .from(gearItems)
+      .where(eq(gearItems.userId, userId))
   }
 
   return {
@@ -552,10 +573,7 @@ export function createListsRepo(db: Db, userId: string) {
         ),
       )
       if (existingCategoryIds.size > 0) {
-        const ownedRows = await db
-          .select({ id: categories.id })
-          .from(categories)
-          .where(eq(categories.userId, userId))
+        const ownedRows = await ownedCategoryIdsProbe()
         const owned = new Set(ownedRows.map((r) => r.id))
         for (const id of existingCategoryIds) {
           if (!owned.has(id)) return { ok: false, reason: 'invalid_category' }
@@ -567,10 +585,7 @@ export function createListsRepo(db: Db, userId: string) {
         ),
       )
       if (existingGearIds.size > 0) {
-        const ownedRows = await db
-          .select({ id: gearItems.id })
-          .from(gearItems)
-          .where(eq(gearItems.userId, userId))
+        const ownedRows = await ownedGearIdsProbe()
         const owned = new Set(ownedRows.map((r) => r.id))
         for (const id of existingGearIds) {
           if (!owned.has(id)) return { ok: false, reason: 'invalid_gear' }
@@ -706,6 +721,34 @@ export function createListsRepo(db: Db, userId: string) {
           }
           if (isListItemCapError(err)) {
             return { ok: false, reason: 'item_cap_exceeded' }
+          }
+          // A referenced existing category or gear row was deleted between
+          // the owned-set precheck and the batch. SQLite's FK error never
+          // says which constraint failed, so re-probe both owned sets in one
+          // batch - categories before gear, the precheck's own order - and
+          // answer exactly what the precheck would have. The imported list
+          // itself was created inside the rolled-back batch, so it is never
+          // probed as a parent. An FK neither set explains rethrows: that is
+          // a programming defect and must stay a loud 500. (A slug collision
+          // is a UNIQUE violation, not an FK one, so it still falls through
+          // to withFreshSlug's retry.)
+          if (isForeignKeyViolation(err)) {
+            const [catRows, gearRows] = await db.batch([
+              ownedCategoryIdsProbe(),
+              ownedGearIdsProbe(),
+            ])
+            const ownedCats = new Set(catRows.map((r) => r.id))
+            for (const id of existingCategoryIds) {
+              if (!ownedCats.has(id)) {
+                return { ok: false, reason: 'invalid_category' }
+              }
+            }
+            const ownedGear = new Set(gearRows.map((r) => r.id))
+            for (const id of existingGearIds) {
+              if (!ownedGear.has(id)) {
+                return { ok: false, reason: 'invalid_gear' }
+              }
+            }
           }
           throw err
         }
