@@ -3,7 +3,7 @@ import type { Db } from '../db'
 import { listFoodItemSlots, listFoodItems, listFoodSlots, lists } from '../db/schema'
 import { MEALS, type Meal } from '../../shared/food'
 import { chunkForParamCap } from './chunk-ids'
-import { isTriggerAbort } from './db-errors'
+import { isForeignKeyViolation, isTriggerAbort } from './db-errors'
 
 // The food estimate: slots are the trip's eating periods, items are what you
 // CARRY, and the association between them expresses intent only.
@@ -54,13 +54,86 @@ export function createFoodRepo(db: Db, userId: string) {
   // Every method takes listId and filters on it. The route's list is the only
   // authority on which list a nested resource belongs to - trusting the child
   // id alone would let one of this user's own lists reach into another's rows.
-  async function ownsList(listId: string): Promise<boolean> {
-    const [row] = await db
+  //
+  // Probes are BUILDERS so the FK-recovery paths can batch them into one
+  // consistent snapshot; the prechecks await the same builders, which is what
+  // keeps precheck and recovery from drifting apart.
+  function listProbe(listId: string) {
+    return db
       .select({ id: lists.id })
       .from(lists)
       .where(and(eq(lists.id, listId), eq(lists.userId, userId)))
       .limit(1)
+  }
+
+  function itemProbe(listId: string, itemId: string) {
+    return db
+      .select({ id: listFoodItems.id })
+      .from(listFoodItems)
+      .where(
+        and(
+          eq(listFoodItems.id, itemId),
+          eq(listFoodItems.listId, listId),
+          eq(listFoodItems.userId, userId),
+        ),
+      )
+      .limit(1)
+  }
+
+  // Chunked owned-set membership over client-supplied slot ids, never an
+  // unbounded inArray: D1 caps bound params at 100 per statement.
+  function slotProbes(listId: string, slotIds: string[]) {
+    return chunkIds(slotIds).map((chunk) =>
+      db
+        .select({ id: listFoodSlots.id })
+        .from(listFoodSlots)
+        .where(
+          and(
+            eq(listFoodSlots.listId, listId),
+            eq(listFoodSlots.userId, userId),
+            inArray(listFoodSlots.id, chunk),
+          ),
+        ),
+    )
+  }
+
+  async function ownsList(listId: string): Promise<boolean> {
+    const [row] = await listProbe(listId)
     return row !== undefined
+  }
+
+  // On a FOREIGN KEY violation from a food write: SQLite never names the
+  // failed constraint, so re-probe every prechecked parent in ONE batch (a
+  // consistent snapshot - sequential reads would just open a second
+  // classification race) and map only a parent PROVEN gone to its precheck's
+  // result. Precedence list -> item -> slots, matching the prechecks. Returns
+  // null when every probe still passes: the FK is unexplained and the caller
+  // must rethrow rather than dress a programming defect as client error.
+  async function classifyFoodFk(
+    listId: string,
+    itemId: string | null,
+    slotIds: string[],
+  ): Promise<'not_found' | 'invalid_slots' | null> {
+    const [first, ...rest] = [
+      listProbe(listId),
+      ...(itemId !== null ? [itemProbe(listId, itemId)] : []),
+      ...slotProbes(listId, slotIds),
+    ]
+    if (!first) throw new Error('unreachable: the list probe is always present')
+    // Every probe selects only `id`; batch typing cannot see through the
+    // dynamically built tuple, so one cast pins the shape they all share.
+    const results = (await db.batch([first, ...rest])) as { id: string }[][]
+    const [listRows, ...restRows] = results
+    if (!listRows?.[0]) return 'not_found'
+    let slotRowSets = restRows
+    if (itemId !== null) {
+      const [itemRows, ...slotsOnly] = restRows
+      if (!itemRows?.[0]) return 'not_found'
+      slotRowSets = slotsOnly
+    }
+    const found = new Set(slotRowSets.flat().map((row) => row.id))
+    if (slotIds.some((id) => !found.has(id))) return 'invalid_slots'
+    return null
   }
 
   return {
@@ -305,6 +378,14 @@ export function createFoodRepo(db: Db, userId: string) {
       } catch (err) {
         if (isFoodItemCapError(err)) return { ok: false, reason: 'cap_exceeded' }
         if (isSlotNotNeededError(err)) return { ok: false, reason: 'invalid_slots' }
+        // A concurrent delete beat the batch: the list itself (cascade took
+        // the slots with it) or a day-trim that removed a slot this item was
+        // being placed into. classifyFoodFk re-probes and says which; an FK
+        // it cannot explain rethrows as the 500 it deserves.
+        if (isForeignKeyViolation(err)) {
+          const reason = await classifyFoodFk(listId, null, usable)
+          if (reason !== null) return { ok: false, reason }
+        }
         throw err
       }
 
@@ -396,6 +477,14 @@ export function createFoodRepo(db: Db, userId: string) {
         if (first) await db.batch([first, ...rest])
       } catch (err) {
         if (isSlotNotNeededError(err)) return { ok: false, reason: 'invalid_slots' }
+        // Same recovery as createItem, plus the item itself as a probed
+        // parent: the association inserts reference it, and a concurrent
+        // delete of the item (or the whole list) fires the same anonymous FK
+        // error a trimmed slot does.
+        if (isForeignKeyViolation(err)) {
+          const reason = await classifyFoodFk(listId, itemId, usable ?? [])
+          if (reason !== null) return { ok: false, reason }
+        }
         throw err
       }
 
@@ -465,20 +554,13 @@ export function createFoodRepo(db: Db, userId: string) {
     slotIds: string[],
   ): Promise<string[] | null> {
     if (slotIds.length === 0) return []
-    const found = new Set<string>()
-    for (const chunk of chunkIds(slotIds)) {
-      const rows = await db
-        .select({ id: listFoodSlots.id })
-        .from(listFoodSlots)
-        .where(
-          and(
-            eq(listFoodSlots.listId, listId),
-            eq(listFoodSlots.userId, userId),
-            inArray(listFoodSlots.id, chunk),
-          ),
-        )
-      for (const row of rows) found.add(row.id)
-    }
+    const [first, ...rest] = slotProbes(listId, slotIds)
+    if (!first) return []
+    // One batch even when chunking splits the probe: the membership answer
+    // should be a single snapshot, and the FK-recovery path reuses these
+    // exact builders (classifyFoodFk), so the two cannot drift.
+    const chunks = await db.batch([first, ...rest])
+    const found = new Set(chunks.flat().map((row) => row.id))
     if (found.size !== new Set(slotIds).size) return null
     return slotIds
   }
