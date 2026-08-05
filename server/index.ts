@@ -8,6 +8,7 @@ import { csrfProtection } from './middleware/csrf'
 import { errorHandler, withAuthErrorCorrelation } from './middleware/error-handler'
 import { requireFreshAuth } from './middleware/fresh-auth'
 import { authRateLimit } from './middleware/rate-limit'
+import { requireSession } from './middleware/session'
 import { securityHeaders } from './middleware/security-headers'
 import { categoryRoutes } from './routes/categories'
 import { gearItemRoutes } from './routes/gear-items'
@@ -86,13 +87,25 @@ api.on(['GET', 'POST'], '/auth/*', async (c) =>
   }),
 )
 
+// ONE session gate for the three sub-apps that share the /lists base. Each
+// used to gate itself with use('*', requireSession), and because a request
+// falls through every sub-app on the mount until a route matches, a food
+// request paid the better-auth session lookup (fresh instance + session +
+// user reads) up to three times. Registration order is load-bearing TWICE:
+// after csrfProtection above (403 without the header must precede 401
+// without a session), and BEFORE the route() calls below - Hono copies
+// sub-app routes into the parent at route() registration time, so a
+// middleware registered after them would not wrap them at all.
+// /me, /categories and /gear-items each still gate themselves.
+api.use('/lists/*', requireSession)
+
 api.route('/me', meRoutes)
 api.route('/categories', categoryRoutes)
 api.route('/gear-items', gearItemRoutes)
 api.route('/lists', packingLocationRoutes)
 api.route('/lists', listRoutes)
-// Food lives under /lists/:id/food; mounted on the same base so it inherits
-// the CSRF and session layering the list routes have.
+// Food lives under /lists/:id/food; mounted on the same base so the hoisted
+// session gate above and the global CSRF layer cover it identically.
 api.route('/lists', foodRoutes)
 // Anonymous by design: the public share read (see routes/shares.ts for
 // the trust model). Everything else API-shaped stays session-gated.

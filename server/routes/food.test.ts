@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import app from '../index'
+import { env } from 'cloudflare:test'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 import type { ListFoodResponse, FoodItemResponse } from '../../shared/food'
@@ -269,11 +271,78 @@ describe('food: ownership and list scoping', () => {
     expect(res.status).toBe(404)
   })
 
-  it('requires a session', async () => {
-    const { cookie } = await signUpVerifiedUser('food-16@example.com', 'F16')
+})
+
+// The table-driven auth matrix the other four route files already have. Food
+// was the odd one out (a single ad-hoc GET 401), which mattered doubly once
+// the session gate moved to ONE hoisted api.use('/lists/*') in
+// server/index.ts: this loop is what proves the hoist did not silently
+// un-gate the food sub-app.
+describe('/api/lists/:id/food authorization', () => {
+  it('returns 401 without a session on every route shape', async () => {
+    for (const [method, path, body] of [
+      ['GET', '/api/lists/list/food', undefined],
+      ['PUT', '/api/lists/list/food/days', { days: 2 }],
+      ['PATCH', '/api/lists/list/food/slots/slot', { needed: false }],
+      ['POST', '/api/lists/list/food/items', { name: 'X', weightGrams: 1, quantity: 1, slotIds: [] }],
+      ['PATCH', '/api/lists/list/food/items/item', { name: 'X' }],
+      ['DELETE', '/api/lists/list/food/items/item', undefined],
+    ] as const) {
+      const res = await apiRequest(null, method, path, body)
+      expect(res.status, `${method} ${path}`).toBe(401)
+    }
+  })
+
+  it('allows GET without the CSRF header but rejects every write with 403', async () => {
+    // 403-before-401 layering: CSRF is checked ahead of the session, so these
+    // run WITH a valid session and still 403 - proving the hoisted session
+    // gate sits behind the CSRF layer, not in front of it.
+    const { cookie } = await signUpVerifiedUser('food-csrf@example.com', 'FC')
     const listId = await createList(cookie, 'Trip')
-    const res = await apiRequest('', 'GET', `/api/lists/${listId}/food`)
-    expect(res.status).toBe(401)
+
+    const requestWithoutCsrf = (method: string, path: string, body?: unknown) => {
+      const headers: Record<string, string> = {
+        Cookie: cookie,
+        Origin: 'http://localhost:5173',
+      }
+      if (body !== undefined) headers['Content-Type'] = 'application/json'
+      return app.request(
+        path,
+        {
+          method,
+          headers,
+          body: body === undefined ? undefined : JSON.stringify(body),
+        },
+        env,
+      )
+    }
+
+    // The ordering proof: NO session and NO header answers 403, not 401 -
+    // only a CSRF layer that runs BEFORE the session gate can produce that.
+    const anonNoHeader = await app.request(
+      `/api/lists/${listId}/food/days`,
+      {
+        method: 'PUT',
+        headers: { Origin: 'http://localhost:5173', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: 2 }),
+      },
+      env,
+    )
+    expect(anonNoHeader.status).toBe(403)
+
+    expect((await requestWithoutCsrf('GET', `/api/lists/${listId}/food`)).status).toBe(200)
+    for (const [method, path, body] of [
+      ['PUT', `/api/lists/${listId}/food/days`, { days: 2 }],
+      ['PATCH', `/api/lists/${listId}/food/slots/slot`, { needed: false }],
+      ['POST', `/api/lists/${listId}/food/items`, { name: 'X', weightGrams: 1, quantity: 1, slotIds: [] }],
+      ['PATCH', `/api/lists/${listId}/food/items/item`, { name: 'X' }],
+      ['DELETE', `/api/lists/${listId}/food/items/item`, undefined],
+    ] as const) {
+      expect(
+        (await requestWithoutCsrf(method, path, body)).status,
+        `${method} ${path}`,
+      ).toBe(403)
+    }
   })
 })
 

@@ -6,7 +6,7 @@ import {
   updateFoodSlotRequestSchema,
   type ListFoodResponse,
 } from '../../shared/food'
-import { requireSession, type SessionVars } from '../middleware/session'
+import { type SessionVars } from '../middleware/session'
 
 // The food estimate on one list. Everything here is nested under a list id, and
 // EVERY handler passes that id to the repo - the child id alone is never enough
@@ -21,7 +21,6 @@ export const foodRoutes = new Hono<{
   Variables: SessionVars
 }>()
 
-foodRoutes.use('*', requireSession)
 
 foodRoutes.get('/:id/food', async (c) => {
   const food = await c.get('repos').food.forList(c.req.param('id'))

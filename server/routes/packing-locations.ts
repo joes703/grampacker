@@ -5,7 +5,7 @@ import {
   updatePackingLocationRequestSchema,
   type PackingLocationResponse,
 } from '../../shared/lists'
-import { requireSession, type SessionVars } from '../middleware/session'
+import { type SessionVars } from '../middleware/session'
 import type { PackingLocationRow } from '../repos/packing-locations'
 
 export const packingLocationRoutes = new Hono<{
@@ -13,7 +13,6 @@ export const packingLocationRoutes = new Hono<{
   Variables: SessionVars
 }>()
 
-packingLocationRoutes.use('*', requireSession)
 
 function toResponse(row: PackingLocationRow): PackingLocationResponse {
   return {
