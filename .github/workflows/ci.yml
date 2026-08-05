@@ -45,3 +45,13 @@ jobs:
       # vanished or changed. A no-op when the branch adds no migrations.
       - name: Test (migrations preserve data)
         run: npm run test:migrations
+
+      # We pin actions by SHA because tags are mutable, and then rely on a
+      # trailing `# v7.0.0` comment to say what the SHA is. Nothing checked that
+      # comment until now: Dependabot moves the hash and leaves the label, so
+      # #154 offered the right v7.0.0 SHA still marked `# v6`. Needs network -
+      # it resolves each tag upstream - and fails closed if it cannot look.
+      - name: Check (action pins match their tag comments)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run check:action-pins

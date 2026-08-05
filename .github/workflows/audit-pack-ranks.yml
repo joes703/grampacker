@@ -90,8 +90,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Keep this in step with PACK_RANK_MAX in shared/. If they diverge,
-          # the audit certifies rows the schema will later reject.
+          # Mirrors PACK_RANK_MAX in shared/lists.ts. Shell cannot import it, so
+          # the value is copied - but NOT on the honour system:
+          # shared/pack-rank-constants.test.ts reads this file and fails CI if
+          # the two disagree, or if this assignment is renamed away. Without
+          # that, a divergence here would make the audit certify rows the schema
+          # later rejects.
           pack_rank_max=1000000000
 
           # FAIL-CLOSED PARSING. The obvious version of this - default a missing
@@ -138,9 +142,10 @@ jobs:
           # PACK_RANK_MAX is legal for the column yet already wedged, because
           # every arrival computes max+1. And a location deletion appends every
           # orphan at base+i, so a cohort within LIST_ITEM_CAP of the ceiling
-          # can overflow too. The threshold matches migration 0019's
-          # normalization predicate exactly; if they ever diverge, this probe
-          # certifies data the schema will reject.
+          # can overflow too. The subtrahend is LIST_ITEM_CAP, which makes this
+          # threshold match migration 0019's normalization predicate exactly.
+          # Same guard as above: the constants test asserts this literal against
+          # shared/lists.ts, so the two cannot drift apart unnoticed.
           headroom_floor=$(( pack_rank_max - 300 ))
           over=$(probe "select count(*) as c from list_items where pack_sort_order > ${headroom_floor}")
           dupes=$(probe "select count(*) as c from (select list_id, pack_sort_order from list_items where packing_location_id is null group by list_id, pack_sort_order having count(*) > 1)")

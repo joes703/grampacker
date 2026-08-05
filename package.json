@@ -12,13 +12,14 @@
     "test:unit": "vitest run",
     "test:api": "vitest run --config vitest.workers.config.ts",
     "test:migrations": "node scripts/check-migration-safety.mjs",
+    "check:action-pins": "node scripts/check-action-pins.mjs",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",
     "cf-typegen": "wrangler types"
   },
   "overrides": {
     "@esbuild-kit/core-utils": {
-      "esbuild": "0.25.12"
+      "esbuild": "^0.25.4"
     }
   },
   "dependencies": {

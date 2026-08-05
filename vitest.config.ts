@@ -5,7 +5,11 @@ import { defineConfig } from 'vitest/config'
 // config when they land in phase 1.
 export default defineConfig({
   test: {
-    include: ['shared/**/*.test.ts', 'src/**/*.test.{ts,tsx}'],
+    // `scripts/**` holds tests about the repo's own plumbing - constants that
+    // SQL or shell has to copy out of TypeScript, and similar. They read files
+    // with node:fs, which is why they cannot live in `shared/`: that project
+    // compiles for the browser and for workerd, and has no node types.
+    include: ['scripts/**/*.test.ts', 'shared/**/*.test.ts', 'src/**/*.test.{ts,tsx}'],
     // Default environment stays `node`. Component tests opt into jsdom
     // per-file with a leading `// @vitest-environment jsdom` comment
     // (ported convention from the old repo).
