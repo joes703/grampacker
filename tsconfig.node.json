@@ -11,10 +11,16 @@
   // Every root-level config file must be listed, or `npm run build` goes green
   // while the config TypeScript rots. vitest.setup.ts is NOT here: it pulls in
   // jest-dom matchers and needs the DOM lib, so it belongs to the app project.
+  //
+  // `scripts/**/*.test.ts` is here and NOT in the app or worker project because
+  // those tests use node:fs to read the repo's own files. `shared/` compiles
+  // for both the browser and workerd and must stay free of node APIs, so a test
+  // that needs one cannot live there.
   "include": [
     "vite.config.ts",
     "vitest.config.ts",
     "vitest.workers.config.ts",
-    "drizzle.config.ts"
+    "drizzle.config.ts",
+    "scripts/**/*.test.ts"
   ]
 }

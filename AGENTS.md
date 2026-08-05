@@ -29,8 +29,9 @@ conventions do NOT apply here (see "Do not reintroduce" at the bottom).
 | Full verify | `npm run build` | typecheck + lint + bundle. This is the real gate; a bare `tsc --noEmit` is NOT sufficient and misses project-reference and lib-type errors. |
 | Typecheck | `npm run typecheck` | = `wrangler types && tsc -b` |
 | Lint | `npm run lint` | ESLint. There is **no formatter** in this repo - do not add Prettier. |
-| Unit tests | `npm run test:unit` | Vitest over `shared/**` and `src/**`. Runs anywhere. |
+| Unit tests | `npm run test:unit` | Vitest over `scripts/**`, `shared/**` and `src/**`. Runs anywhere. |
 | API tests | `npm run test:api` | Vitest **workers pool** over `server/**`. |
+| Action pins | `npm run check:action-pins` | Resolves every pinned action SHA against its tag comment. **Needs network**; fails closed if it cannot reach the API. |
 | Dev server | `npm run dev` | Serves SPA + `/api/*` + local D1 in one process. |
 
 **`npm run test:api` will not run in a sandbox that cannot bind a local port or
@@ -373,9 +374,30 @@ cannot answer differently. In outline:
 - Do not add or replace a production dependency without explaining why. Review
   lockfile diffs for unexpected packages. Prefer maintained packages with few
   transitive deps.
+- **Never run `npm audit fix --force`.** It is permitted to DOWNGRADE to escape
+  an advisory, and it did: one run walked the Cloudflare toolchain back ten
+  months, reverted a deliberate sharp/libvips CVE fix, introduced two new
+  high-severity advisories via a `ws` downgrade, and left `npx wrangler` - the
+  binary that applies production migrations - on a different version from the
+  one the bundle was built with. Plain `npm audit` to look is fine.
+- **An `overrides` entry is a RANGE that tracks its parent, never an exact pin.**
+  Dependabot does not update `overrides`, so an exact one silently rots. Today
+  `@esbuild-kit/core-utils` (a deprecated transitive of drizzle-kit) asks for
+  `esbuild ~0.18.20`; the override lifts it to `^0.25.4`, which is drizzle-kit's
+  OWN range, so the two always resolve together. Pinned exactly, the next
+  esbuild patch would float drizzle-kit up and leave the override behind - two
+  different versions of the same package, which is the nested-duplicate failure
+  the wrangler incident was made of.
 - GitHub Actions: pin third-party actions to a full commit SHA (tag in a trailing
   comment). Use `pull_request`, never `pull_request_target`, for anything that
-  checks out or runs fork code.
+  checks out or runs fork code. **The trailing tag comment is checked, not
+  trusted** - `scripts/check-action-pins.mjs` resolves every pinned SHA against
+  the upstream tag and fails CI on a mismatch. Dependabot moves the SHA but has
+  left the comment reading the old major, so for one release the workflows said
+  `# v6` while running v7.
+- A constant that TypeScript owns but SQL or shell has to copy (`PACK_RANK_MAX`,
+  `LIST_ITEM_CAP`) gets a test asserting the copies, not a comment asking a
+  human to remember. See `scripts/pack-rank-constants.test.ts`.
 - Don't add `target="_blank"` without `rel="noopener noreferrer"` on the same
   anchor.
 
