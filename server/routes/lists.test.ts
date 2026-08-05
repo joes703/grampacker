@@ -88,6 +88,7 @@ describe('/api/lists authorization matrix', () => {
       ['POST', '/api/lists/from-selection', { name: 'X', gearItemIds: ['x'] }],
       ['POST', '/api/lists/import', { name: 'X', categories: [], gear: [], items: [{ gear: { kind: 'existing', id: 'x' }, sortOrder: 0 }] }],
       ['POST', '/api/lists/some-id/duplicate', undefined],
+      ['POST', '/api/lists/some-id/share-link', undefined],
       ['PATCH', '/api/lists/some-id', { name: 'X' }],
       ['DELETE', '/api/lists/some-id', undefined],
       ['GET', '/api/lists/some-id/items', undefined],
@@ -122,6 +123,7 @@ describe('/api/lists authorization matrix', () => {
       ['PATCH', `/api/lists/${aList.id}`, { name: 'stolen' }, 404],
       ['DELETE', `/api/lists/${aList.id}`, undefined, 404],
       ['POST', `/api/lists/${aList.id}/duplicate`, undefined, 404],
+      ['POST', `/api/lists/${aList.id}/share-link`, undefined, 404],
       ['POST', `/api/lists/${aList.id}/items`, { gearItemId: aGear }, 404],
       [
         'POST',
@@ -1105,6 +1107,83 @@ describe('caps and slug integrity', () => {
       ).run(),
     ).rejects.toThrow(/UNIQUE constraint failed: lists.slug/)
   })
+})
+
+// Replacing a share link is a PREFERENCE, not a security control. People paste
+// these URLs somewhere they cannot easily edit later, so the plain share toggle
+// must never retarget them - that is what this separate action is for.
+describe('replacing the share link', () => {
+  async function shareLinkFor(cookie: string, name: string) {
+    const list = await createList(cookie, name)
+    const shared = await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}`, {
+      isShared: true,
+    })
+    expect(shared.status).toBe(200)
+    return (await shared.json()) as { id: string; slug: string; isShared: boolean }
+  }
+
+  it('mints a new slug and leaves the old one resolving nothing', async () => {
+    const { cookie } = await signUpVerifiedUser('rotate-basic@example.com', 'R')
+    const before = await shareLinkFor(cookie, 'Trip')
+
+    // The old link works while it is the current one.
+    expect((await apiRequest(null, 'GET', `/api/shares/${before.slug}`)).status).toBe(200)
+
+    const res = await apiRequest(cookie, 'POST', `/api/lists/${before.id}/share-link`)
+    expect(res.status).toBe(200)
+    const after = (await res.json()) as { slug: string; isShared: boolean }
+
+    expect(after.slug).not.toBe(before.slug)
+    expect(after.slug).toHaveLength(6)
+
+    // The old link is now simply an unknown slug. Same 404 an invented one
+    // gets - nothing tells a stranger the pack ever existed.
+    const stale = await apiRequest(null, 'GET', `/api/shares/${before.slug}`)
+    expect(stale.status).toBe(404)
+    const invented = await apiRequest(null, 'GET', '/api/shares/zzzzzz')
+    expect(stale.status).toBe(invented.status)
+    expect(await stale.json()).toEqual(await invented.json())
+
+    // ...and the new one serves the same list.
+    expect((await apiRequest(null, 'GET', `/api/shares/${after.slug}`)).status).toBe(200)
+  })
+
+  it('does not touch sharing either way', async () => {
+    const { cookie } = await signUpVerifiedUser('rotate-flag@example.com', 'R')
+
+    // Public stays public.
+    const pub = await shareLinkFor(cookie, 'Public trip')
+    const rotatedPub = await apiRequest(cookie, 'POST', `/api/lists/${pub.id}/share-link`)
+    expect(((await rotatedPub.json()) as { isShared: boolean }).isShared).toBe(true)
+
+    // Private stays private - and the fresh slug is NOT quietly live.
+    const priv = await createList(cookie, 'Private trip')
+    const rotatedPriv = await apiRequest(cookie, 'POST', `/api/lists/${priv.id}/share-link`)
+    expect(rotatedPriv.status).toBe(200)
+    const body = (await rotatedPriv.json()) as { slug: string; isShared: boolean }
+    expect(body.isShared).toBe(false)
+    expect((await apiRequest(null, 'GET', `/api/shares/${body.slug}`)).status).toBe(404)
+  })
+
+  it('rotating twice strands both earlier links', async () => {
+    const { cookie } = await signUpVerifiedUser('rotate-twice@example.com', 'R')
+    const first = await shareLinkFor(cookie, 'Trip')
+
+    const r1 = await apiRequest(cookie, 'POST', `/api/lists/${first.id}/share-link`)
+    const second = (await r1.json()) as { slug: string }
+    const r2 = await apiRequest(cookie, 'POST', `/api/lists/${first.id}/share-link`)
+    const third = (await r2.json()) as { slug: string }
+
+    expect(new Set([first.slug, second.slug, third.slug]).size).toBe(3)
+    for (const dead of [first.slug, second.slug]) {
+      expect((await apiRequest(null, 'GET', `/api/shares/${dead}`)).status, dead).toBe(404)
+    }
+    expect((await apiRequest(null, 'GET', `/api/shares/${third.slug}`)).status).toBe(200)
+  })
+
+  // The retry on a slug collision is unreachable from here - two 6-char base62
+  // draws colliding is ~1-in-2^35 - so it is tested directly against
+  // withFreshSlug in server/repos/lists-slug.test.ts.
 })
 
 // The list <-> food-plan link (food-planning-design.md slice 3). A list points

@@ -5,8 +5,9 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { List } from '../lib/types'
 
-const { updateList } = vi.hoisted(() => ({
+const { updateList, rotateShareLink } = vi.hoisted(() => ({
   updateList: vi.fn(),
+  rotateShareLink: vi.fn(),
 }))
 
 vi.mock('../lib/queries', () => ({
@@ -14,6 +15,7 @@ vi.mock('../lib/queries', () => ({
     lists: () => ['lists'],
   },
   updateList,
+  rotateShareLink,
   makeOptimisticUpdate: () => ({}),
 }))
 
@@ -167,5 +169,94 @@ describe('PrivacyPanel', () => {
     await waitFor(() => {
       expect(updateList).toHaveBeenCalledWith('list-1', { isShared: false })
     })
+  })
+})
+
+// Replacing the link is a separate, irreversible action from the share toggle.
+// The toggle must stay non-destructive: people paste these URLs into places
+// they cannot edit afterwards, so only this control may retarget them.
+describe('PrivacyPanel - replacing the share link', () => {
+  const shared: List = { ...list, isShared: true }
+
+  it('offers no way to replace the link while the list is private', () => {
+    renderPanel()
+    expect(screen.queryByRole('button', { name: /replace link/i })).toBeNull()
+  })
+
+  it('does not replace on the first click - it asks first', async () => {
+    renderPanel(shared)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: /replace link/i }))
+
+    expect(rotateShareLink).not.toHaveBeenCalled()
+    expect(screen.getByText(/current link stops working/i)).toBeInTheDocument()
+  })
+
+  it('cancelling leaves the link alone', async () => {
+    renderPanel(shared)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: /replace link/i }))
+    await user.click(screen.getByRole('button', { name: /cancel/i }))
+
+    expect(rotateShareLink).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /replace link/i })).toBeInTheDocument()
+  })
+
+  it('confirming replaces the link for this list', async () => {
+    rotateShareLink.mockResolvedValue({ ...shared, slug: 'xyz789' })
+    renderPanel(shared)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: /replace link/i }))
+    await user.click(screen.getByRole('button', { name: /^replace$/i }))
+
+    await waitFor(() => expect(rotateShareLink).toHaveBeenCalledWith('list-1'))
+    expect(rotateShareLink).toHaveBeenCalledTimes(1)
+  })
+
+  it('never sends an isShared PATCH while replacing', async () => {
+    // The whole point of the separate control: rotating is not unsharing.
+    rotateShareLink.mockResolvedValue({ ...shared, slug: 'xyz789' })
+    renderPanel(shared)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: /replace link/i }))
+    await user.click(screen.getByRole('button', { name: /^replace$/i }))
+
+    await waitFor(() => expect(rotateShareLink).toHaveBeenCalled())
+    expect(updateList).not.toHaveBeenCalled()
+  })
+
+  it('shows the new URL once the replacement lands', async () => {
+    rotateShareLink.mockResolvedValue({ ...shared, slug: 'xyz789' })
+    const qc = renderPanel(shared, [shared])
+    const user = userEvent.setup()
+
+    expect(screen.getByDisplayValue(/\/r\/abc123$/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /replace link/i }))
+    await user.click(screen.getByRole('button', { name: /^replace$/i }))
+    await waitFor(() => expect(rotateShareLink).toHaveBeenCalled())
+
+    // The panel renders whatever the parent passes; the parent reads the lists
+    // cache, so the invalidate is what carries the new slug to the screen.
+    qc.setQueryData(['lists'], [{ ...shared, slug: 'xyz789' }])
+    cleanup()
+    renderPanel({ ...shared, slug: 'xyz789' })
+    expect(screen.getByDisplayValue(/\/r\/xyz789$/)).toBeInTheDocument()
+  })
+
+  it('does not fire twice on a double-click of Replace', async () => {
+    rotateShareLink.mockImplementation(() => new Promise(() => {}))
+    renderPanel(shared)
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /replace link/i }))
+    const confirm = screen.getByRole('button', { name: /^replace$/i })
+    fireEvent.click(confirm)
+    fireEvent.click(confirm)
+
+    await waitFor(() => expect(rotateShareLink).toHaveBeenCalledTimes(1))
   })
 })

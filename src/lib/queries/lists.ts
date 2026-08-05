@@ -48,6 +48,14 @@ export async function reorderLists(
   await apiFetchVoid('/lists/order', { method: 'PUT', body: updates })
 }
 
+// Swaps the list's share link for a new one. The old /r/:slug stops
+// resolving; sharing stays however it was.
+export async function rotateShareLink(id: string): Promise<List> {
+  return apiFetch(`/lists/${id}/share-link`, listResponseSchema, {
+    method: 'POST',
+  })
+}
+
 // Deep copy: server resets isShared/isDraft and mints a fresh slug.
 export async function duplicateList(id: string): Promise<List> {
   return apiFetch(`/lists/${id}/duplicate`, listResponseSchema, {
