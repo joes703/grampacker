@@ -17,13 +17,16 @@ type PasskeyRow = {
 type PasskeyAction = { kind: 'add' } | { kind: 'delete'; id: string }
 
 // Adding or removing a passkey needs a FRESH session - one created by a recent
-// sign-in ceremony (server/middleware/fresh-auth.ts). Renaming does not; it is
-// a display label.
+// sign-in ceremony (the deny-by-default hooks.before gate in server/auth.ts).
+// Renaming does not; it is a display label.
 //
-// Two different refusals mean the same thing, and both must be caught:
-//   - 403 REAUTH_REQUIRED  - our own gate, on delete-passkey.
-//   - 403 SESSION_NOT_FRESH - better-auth's freshSessionMiddleware, which the
-//     passkey plugin mounts on the two REGISTER endpoints itself.
+// Two refusal codes mean the same thing, and both must be caught:
+//   - 403 SESSION_NOT_FRESH - the current dialect: the auth.ts gate and
+//     better-auth's own freshSessionMiddleware (which the passkey plugin
+//     mounts on the two REGISTER endpoints) both speak it.
+//   - 403 REAUTH_REQUIRED   - legacy compatibility: the retired Hono
+//     middleware's word, kept so an old bundle against a new server (or
+//     vice versa) still prompts instead of stranding.
 // Missing the second would strand "Add a passkey" on a raw error message with
 // no way forward. The status alone is not enough to key on: better-auth answers
 // 403 for other reasons (a failed origin check), and those must not masquerade

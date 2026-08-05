@@ -6,7 +6,6 @@ import { assetCache, forceValidatedAssetResponse } from './middleware/asset-cach
 import { apiBodyLimit } from './middleware/body-limit'
 import { csrfProtection } from './middleware/csrf'
 import { errorHandler, withAuthErrorCorrelation } from './middleware/error-handler'
-import { requireFreshAuth } from './middleware/fresh-auth'
 import { authRateLimit } from './middleware/rate-limit'
 import { requireSession } from './middleware/session'
 import { securityHeaders } from './middleware/security-headers'
@@ -58,18 +57,13 @@ api.use('*', csrfProtection)
 // the allowlist in the middleware.
 api.use('/auth/*', authRateLimit)
 
-// ADDING or REMOVING a passkey requires a FRESH session, checked before
-// better-auth sees the request. A valid session alone must not be enough to
-// plant a permanent credential. Renames, reads and the passkey sign-in ceremony
-// are untouched - see the middleware for the exact set and why.
-//
-// Account deletion is gated the same way, but by better-auth itself: with no
-// password in the body its delete-user route enforces session.freshAge directly
-// (server/auth.ts). That is why the PASSWORD_REQUIRED gate that used to sit here
-// is gone rather than merely rewritten - it existed to stop freshness ALONE from
-// authorizing a delete, back when a password was the real proof. Freshness IS
-// the proof now.
-api.use('/auth/passkey/*', requireFreshAuth)
+// Passkey freshness is gated INSIDE better-auth now, not here: a
+// deny-by-default hooks.before in server/auth.ts covers every /passkey/*
+// endpoint (with an explicit ungated allowlist), keyed on the RESOLVED
+// endpoint path - so there is no second URL parser to diverge from the
+// router, and a future plugin endpoint fails closed instead of shipping
+// ungated. Account deletion is gated the same way by better-auth itself
+// (session.freshAge via user.deleteUser, server/auth.ts).
 
 // better-auth owns everything under /api/auth/* (magic-link send and verify,
 // sign-out, passkeys). It does its own origin checking against baseURL. The
