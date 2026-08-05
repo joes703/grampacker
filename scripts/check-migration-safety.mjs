@@ -1928,6 +1928,120 @@ const selfTestDdlGate = () => {
   }
 }
 
+// The constraint comparator is tested DIRECTLY with synthetic snapshots.
+// An end-to-end "rebuild that drops an FK must fail" test would stay green
+// with the comparator absent, because the destructive-DDL gate rejects the
+// rebuild before any snapshot is taken - so these are the only tests that
+// prove the comparator itself works.
+const selfTestConstraintCompare = () => {
+  const failures = []
+
+  // --- extractCheckClauses ---
+  const checkCases = [
+    ['CREATE TABLE t (a integer CHECK (a > 0))', ['(a > 0)']],
+    [
+      'CREATE TABLE t (a integer CHECK (a > 0), b text CHECK (length(b) <= 128))',
+      ['(a > 0)', '(length(b) <= 128)'],
+    ],
+    // Nested parens and a paren inside a string must not end the clause.
+    ["CREATE TABLE t (a text CHECK (a in ('x)', 'y') and (1 = 1)))", ["(a in ('x)', 'y') and (1 = 1))"]],
+    // The keyword inside a string, a comment, or an identifier is not a CHECK.
+    ["CREATE TABLE t (a text default 'check (a > 0)')", []],
+    ['CREATE TABLE t (a integer) -- check (a > 0)', []],
+    ['CREATE TABLE t (`check` integer)', []],
+    // typeof-style clause from 0017, whitespace collapsed.
+    [
+      "CREATE TABLE t (day integer CHECK (typeof(day) = 'integer'\n    AND day >= 1))",
+      ["(typeof(day) = 'integer' AND day >= 1)"],
+    ],
+    // A paren hidden in a comment or [identifier] must not truncate the
+    // clause - a truncated label would let a weakened CHECK compare equal.
+    ['CREATE TABLE t (a integer CHECK (a /* ) */ >= 1))', ['(a >= 1)']],
+    ['CREATE TABLE t (a integer CHECK (a /* ) */ >= 0))', ['(a >= 0)']],
+    ['CREATE TABLE t (a integer CHECK ([a)] >= 1))', ['([a)] >= 1)']],
+    // Whitespace INSIDE a string literal is semantic and survives verbatim.
+    ["CREATE TABLE t (a text CHECK (a = 'x  y'))", ["(a = 'x  y')"]],
+    ["CREATE TABLE t (a text CHECK (a = 'x y'))", ["(a = 'x y')"]],
+    // Comments between CHECK and its paren, and trailing inside the clause.
+    ['CREATE TABLE t (a integer CHECK -- c\n (a > 0))', ['(a > 0)']],
+    ['CREATE TABLE t (a integer CHECK (a > 0 -- tail\n))', ['(a > 0)']],
+    // JS \\s is wider than SQLite whitespace: U+00A0 is part of an
+    // IDENTIFIER to SQLite, so `a\u00A0` is a different column than `a` and
+    // the two labels must stay distinct.
+    ['CREATE TABLE t (`a\u00A0` integer CHECK (a\u00A0 >= 1))', ['(a\u00A0 >= 1)']],
+    ['CREATE TABLE t (a integer CHECK (a >= 1))', ['(a >= 1)']],
+    // `$` and codepoints above 0x7F are identifier characters to SQLite, so
+    // these REFERENCES targets contain no CHECK keyword at all - misreading
+    // their tails would mint a phantom CHECK label.
+    ['CREATE TABLE t (a integer REFERENCES parent\u00A0check(a))', []],
+    ['CREATE TABLE t (a integer REFERENCES parent$check(a))', []],
+  ]
+  for (const [sql, want] of checkCases) {
+    const got = extractCheckClauses(sql)
+    if (JSON.stringify(got) !== JSON.stringify(want)) {
+      failures.push(`extractCheckClauses(${sql}) -> ${JSON.stringify(got)}, want ${JSON.stringify(want)}`)
+    }
+  }
+  for (const sql of ["CREATE TABLE t (a text CHECK ('never", 'CREATE TABLE t (a CHECK (1']) {
+    let threw = false
+    try {
+      extractCheckClauses(sql)
+    } catch {
+      threw = true
+    }
+    if (!threw) failures.push(`did not fail closed on: ${sql}`)
+  }
+
+  // --- groupForeignKeyRows: composite FK, id renumbering, row order ---
+  const fkRows = [
+    { tbl: 'list_items', fkid: 0, seq: 1, ref: 'gear_items', fromCol: 'user_id', toCol: 'user_id', onUpdate: 'NO ACTION', onDelete: 'CASCADE' },
+    { tbl: 'list_items', fkid: 0, seq: 0, ref: 'gear_items', fromCol: 'gear_item_id', toCol: 'id', onUpdate: 'NO ACTION', onDelete: 'CASCADE' },
+    { tbl: 'list_items', fkid: 1, seq: 0, ref: 'lists', fromCol: 'list_id', toCol: 'id', onUpdate: 'NO ACTION', onDelete: 'CASCADE' },
+  ]
+  const renumbered = fkRows.map((r) => ({ ...r, fkid: r.fkid === 0 ? 7 : 3 })).reverse()
+  const a = groupForeignKeyRows(fkRows)
+  const b = groupForeignKeyRows(renumbered)
+  if (JSON.stringify([...a]) !== JSON.stringify([...b])) {
+    failures.push('groupForeignKeyRows is sensitive to fk id renumbering or row order')
+  }
+  const expectLabel = 'fk (gear_item_id,user_id) -> gear_items(id,user_id) on_update=NO ACTION on_delete=CASCADE'
+  if (!(a.get('list_items') ?? []).includes(expectLabel)) {
+    failures.push(`composite FK label wrong: ${JSON.stringify(a.get('list_items'))}`)
+  }
+
+  // --- diffConstraints ---
+  const before = new Map([
+    ['list_items', ['check (quantity > 0)', expectLabel]],
+    ['gone_table', ['check (x > 0)']],
+  ])
+  const dropFk = new Map([['list_items', ['check (quantity > 0)']], ['gone_table', ['check (x > 0)']]])
+  const dropCheck = new Map([['list_items', [expectLabel]], ['gone_table', ['check (x > 0)']]])
+  const additive = new Map([
+    ['list_items', ['check (quantity > 0)', 'check (quantity < 100)', expectLabel].sort()],
+    ['gone_table', ['check (x > 0)']],
+    ['new_table', ['check (y > 0)']],
+  ])
+  if (diffConstraints(before, dropFk, new Set()).length !== 1) {
+    failures.push('a dropped FK was not reported')
+  }
+  if (diffConstraints(before, dropCheck, new Set()).length !== 1) {
+    failures.push('a dropped CHECK was not reported')
+  }
+  if (diffConstraints(before, additive, new Set()).length !== 0) {
+    failures.push('a purely additive change was reported as a drop')
+  }
+  if (diffConstraints(before, new Map([['list_items', before.get('list_items')]]), new Set(['gone_table'])).length !== 0) {
+    failures.push('a grandfathered-dropped table was not skipped')
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      'The constraint comparator is broken - its own regression cases ' +
+        `fail:\n${failures.map((f) => `  - ${f}`).join('\n')}`,
+    )
+  }
+}
+
 const run = (command, args) => {
   try {
     return execFileSync(command, args, {
@@ -2080,6 +2194,278 @@ const describeColumnTypes = () => {
       `join pragma_table_info(m.name) p where ${appTablesFilter('m')}`,
   )
   return new Map(rows.map(({ tbl, col, type }) => [`${tbl}.${col}`, String(type).toUpperCase()]))
+}
+
+// ---------------------------------------------------------------------------
+// CHECK and FOREIGN KEY constraints. Everything above watches rows, columns,
+// types, triggers and indexes - but a hand-written rebuild that silently
+// dropped `list_items_gear_same_owner_fk` would have passed every one of
+// those assertions, and the composite same-owner FKs are the structural
+// backstop the whole authorization story leans on. These snapshots close
+// that hole. There is deliberately NO declaration list to excuse a missing
+// constraint: post-baseline migrations cannot drop or rebuild anything (the
+// DDL gate), so a constraint that vanishes means the gate was edited or
+// bypassed, and the only correct answer is a hard failure.
+
+// Composite FKs come out of pragma_foreign_key_list as one row per column
+// pair sharing an `id`. Grouping by id and sorting the LABELS makes the
+// snapshot immune to id renumbering and row order - only the constraint's
+// meaning is compared. Pure, for the self-tests.
+const groupForeignKeyRows = (rows) => {
+  const groups = new Map()
+  for (const r of rows) {
+    const key = `${r.tbl}\0${r.fkid}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(r)
+  }
+  const byTable = new Map()
+  for (const group of groups.values()) {
+    group.sort((a, b) => a.seq - b.seq)
+    const first = group[0]
+    const label =
+      `fk (${group.map((r) => r.fromCol).join(',')}) -> ` +
+      `${first.ref}(${group.map((r) => r.toCol).join(',')}) ` +
+      `on_update=${first.onUpdate} on_delete=${first.onDelete}`
+    if (!byTable.has(first.tbl)) byTable.set(first.tbl, [])
+    byTable.get(first.tbl).push(label)
+  }
+  for (const labels of byTable.values()) labels.sort()
+  return byTable
+}
+
+// SQLite's whitespace is the ASCII set (0x09-0x0D and space) - JS \s is
+// WIDER (it matches U+00A0 and friends, which SQLite treats as identifier
+// characters). Using \s here would normalize `a` and `a\u00A0` - two
+// DIFFERENT columns - to the same label, letting a swapped-column CHECK
+// compare equal. So the scanner speaks SQLite's definition, not JS's.
+const isSqlSpace = (c) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f' || c === '\v'
+
+// SQLite's unquoted-identifier characters are wider than JS \w too: `$` and
+// every codepoint above 0x7F are legal in an identifier. Scanning words with
+// [A-Za-z0-9_] alone would split `parent\u00A0check` into two words and
+// misread its tail as the CHECK keyword - turning a REFERENCES clause into a
+// phantom CHECK whose label could shadow a real one.
+const isIdentStart = (c) => /[A-Za-z_$]/.test(c) || c.charCodeAt(0) > 0x7f
+const isIdentChar = (c) => /[A-Za-z0-9_$]/.test(c) || c.charCodeAt(0) > 0x7f
+
+// CHECK clauses out of a CREATE TABLE's stored SQL. A tiny scanner rather
+// than a regex: the keyword must be found OUTSIDE strings, quoted
+// identifiers and comments (a column defaulted to the string 'check (x)'
+// must not match), and the clause is the balanced-paren group that follows.
+// The captured label is normalized token-aware: quoted sections are copied
+// VERBATIM (whitespace inside a string literal is semantic), comments are
+// dropped but act as token separators (which is what they are to SQLite),
+// and runs of outside whitespace collapse to one space. Fails closed on
+// unterminated constructs, like the DDL classifier does.
+const extractCheckClauses = (sql) => {
+  const clauses = []
+  const n = sql.length
+  let i = 0
+
+  // Consume a quoted section starting at i; returns its verbatim text.
+  const scanQuoted = (close) => {
+    const start = i
+    let text = sql[i]
+    i++
+    while (i < n) {
+      if (sql[i] === close) {
+        // Doubled close-quote is an escape everywhere SQLite quotes.
+        if (sql[i + 1] === close) {
+          text += sql[i] + sql[i + 1]
+          i += 2
+          continue
+        }
+        text += sql[i]
+        i++
+        return text
+      }
+      text += sql[i]
+      i++
+    }
+    throw new Error(`unterminated ${close}-quoted section at ${start}`)
+  }
+  const scanBracket = () => {
+    const end = sql.indexOf(']', i + 1)
+    if (end === -1) throw new Error(`unterminated [identifier] at ${i}`)
+    const text = sql.slice(i, end + 1)
+    i = end + 1
+    return text
+  }
+  const scanLineComment = () => {
+    const end = sql.indexOf('\n', i)
+    i = end === -1 ? n : end + 1
+  }
+  const scanBlockComment = () => {
+    const end = sql.indexOf('*/', i + 2)
+    if (end === -1) throw new Error(`unterminated block comment at ${i}`)
+    i = end + 2
+  }
+
+  while (i < n) {
+    const ch = sql[i]
+    if (ch === "'" || ch === '"' || ch === '`') {
+      scanQuoted(ch)
+      continue
+    }
+    if (ch === '[') {
+      scanBracket()
+      continue
+    }
+    if (ch === '-' && sql[i + 1] === '-') {
+      scanLineComment()
+      continue
+    }
+    if (ch === '/' && sql[i + 1] === '*') {
+      scanBlockComment()
+      continue
+    }
+    if (isIdentStart(ch)) {
+      let j = i
+      while (j < n && isIdentChar(sql[j])) j++
+      const word = sql.slice(i, j).toLowerCase()
+      i = j
+      if (word !== 'check') continue
+      // Whitespace AND comments may sit between CHECK and its paren.
+      for (;;) {
+        if (i < n && isSqlSpace(sql[i])) {
+          i++
+          continue
+        }
+        if (sql[i] === '-' && sql[i + 1] === '-') {
+          scanLineComment()
+          continue
+        }
+        if (sql[i] === '/' && sql[i + 1] === '*') {
+          scanBlockComment()
+          continue
+        }
+        break
+      }
+      if (sql[i] !== '(') continue
+      // Balanced capture with the SAME lexical handling as the outer loop -
+      // a paren inside a string, comment, or [identifier] must not end or
+      // truncate the clause (a truncated label would let a weakened CHECK
+      // compare equal to the original).
+      const start = i
+      const buf = []
+      let pendingSpace = false
+      const push = (text) => {
+        if (
+          pendingSpace &&
+          buf.length > 0 &&
+          text !== ')' &&
+          buf[buf.length - 1] !== '('
+        ) {
+          buf.push(' ')
+        }
+        pendingSpace = false
+        buf.push(text)
+      }
+      let depth = 0
+      while (i < n) {
+        const c = sql[i]
+        if (c === "'" || c === '"' || c === '`') {
+          push(scanQuoted(c))
+          continue
+        }
+        if (c === '[') {
+          push(scanBracket())
+          continue
+        }
+        if (c === '-' && sql[i + 1] === '-') {
+          scanLineComment()
+          pendingSpace = true
+          continue
+        }
+        if (c === '/' && sql[i + 1] === '*') {
+          scanBlockComment()
+          pendingSpace = true
+          continue
+        }
+        if (isSqlSpace(c)) {
+          pendingSpace = true
+          i++
+          continue
+        }
+        if (c === '(') {
+          depth++
+          push(c)
+          i++
+          continue
+        }
+        if (c === ')') {
+          depth--
+          push(c)
+          i++
+          if (depth === 0) {
+            clauses.push(buf.join(''))
+            break
+          }
+          continue
+        }
+        push(c)
+        i++
+      }
+      if (depth !== 0) throw new Error(`unterminated CHECK clause at ${start}`)
+      continue
+    }
+    i++
+  }
+  return clauses
+}
+
+// table -> sorted constraint labels (FKs and CHECKs together).
+//
+// Known scope limit, on purpose: pragma_foreign_key_list cannot see
+// DEFERRABLE INITIALLY DEFERRED (enforcement timing) or MATCH clauses
+// (SQLite treats every MATCH as NONE anyway). No table in this schema uses
+// either; a migration introducing one would be additive and pass, and its
+// deferrability would simply be outside this comparison. Extracting it
+// would mean parsing FK syntax out of raw DDL - not worth it for a clause
+// the schema has never used.
+const describeConstraints = () => {
+  const fkRows = query(
+    'select m.name as tbl, f.id as fkid, f.seq as seq, f."table" as ref, ' +
+      'f."from" as fromCol, f."to" as toCol, f.on_update as onUpdate, ' +
+      'f.on_delete as onDelete from sqlite_master m ' +
+      `join pragma_foreign_key_list(m.name) f where ${appTablesFilter('m')}`,
+  )
+  const byTable = groupForeignKeyRows(fkRows)
+  const tables = query(
+    `select m.name as tbl, m.sql as sql from sqlite_master m where ${appTablesFilter('m')}`,
+  )
+  for (const { tbl, sql } of tables) {
+    const checks = extractCheckClauses(String(sql)).map((c) => `check ${c}`)
+    if (checks.length === 0) continue
+    if (!byTable.has(tbl)) byTable.set(tbl, [])
+    byTable.get(tbl).push(...checks)
+  }
+  for (const labels of byTable.values()) labels.sort()
+  return byTable
+}
+
+// Pure comparison: every constraint present before must survive, except on
+// tables a GRANDFATHERED migration declared dropped (new migrations cannot
+// drop tables at all). Additions are fine - the cap triggers prove additive
+// constraints are normal life. No other exemption exists on purpose.
+const diffConstraints = (beforeByTable, afterByTable, skipTables) => {
+  const failures = []
+  for (const [table, labels] of beforeByTable) {
+    if (skipTables.has(table)) continue
+    const after = new Set(afterByTable.get(table) ?? [])
+    for (const label of labels) {
+      if (!after.has(label)) {
+        failures.push(
+          `${table}: constraint dropped or weakened: ${label}. Post-baseline ` +
+            'migrations may never remove a CHECK or FOREIGN KEY - the ' +
+            'same-owner FKs are the authorization backstop. If this appears, ' +
+            'a rebuild got past the destructive-DDL gate; fix the migration, ' +
+            'do not add an exemption.',
+        )
+      }
+    }
+  }
+  return failures
 }
 
 // Drops fixture columns the schema does not have yet, so a fixture can be
@@ -2260,6 +2646,7 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
     const before = snapshot(seededColumns)
     const schemaBefore = listSchemaObjects()
     const typesBefore = describeColumnTypes()
+    const constraintsBefore = describeConstraints()
     const seededRows = [...before.values()].reduce((n, rows) => n + rows.length, 0)
     console.log(`  seeded ${seededRows} rows across ${before.size} tables.`)
 
@@ -2397,6 +2784,13 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
       )
     }
 
+    // CHECK and FOREIGN KEY constraints that vanished. Unconditional for
+    // post-baseline migrations - see diffConstraints for why there is no
+    // declaration hatch.
+    failures.push(
+      ...diffConstraints(constraintsBefore, describeConstraints(), droppedTables),
+    )
+
     // Probes belonging to the migration under test. Run AFTER the snapshots so
     // a probe that unexpectedly succeeds cannot contaminate the row comparison
     // above.
@@ -2486,6 +2880,7 @@ const main = () => {
   // every post-baseline migration to the gate.
   selfTestDdlGate()
   selfTestExpectedValues()
+  selfTestConstraintCompare()
   verifyMigrationsDirIsPinned()
   validateExpectedChanges(
     new Set([...PRE_GATE_MIGRATIONS.keys(), ...postBaselineMigrations()]),
