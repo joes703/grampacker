@@ -14,7 +14,7 @@ import {
   type ListItemResponse,
   type ListResponse,
 } from '../../shared/lists'
-import { requireSession, type SessionVars } from '../middleware/session'
+import { type SessionVars } from '../middleware/session'
 import { dollarsToCents } from './money'
 import type { GearItemRow } from '../repos/gear-items'
 import type { ListItemWithGear, ListItemWriteResult } from '../repos/list-items'
@@ -67,12 +67,12 @@ import type { ListRow } from '../repos/lists'
 //                                                to THIS list (parent-path)
 //   DELETE /api/lists/:id/items/:itemId        - session - item must belong
 //                                                to THIS list (parent-path)
+// Session-gated by the hoisted api.use('/lists/*', requireSession) in
+// server/index.ts - one lookup for all three sub-apps on this mount.
 export const listRoutes = new Hono<{
   Bindings: Env
   Variables: SessionVars
 }>()
-
-listRoutes.use('*', requireSession)
 
 function toListResponse(row: ListRow): ListResponse {
   return {
