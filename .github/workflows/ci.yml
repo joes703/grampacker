@@ -55,3 +55,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: npm run check:action-pins
+
+      # A malformed dependabot.yml shipped twice before anything could validate
+      # it. This catches only PARSE-level mistakes - duplicate keys, tabs, bad
+      # indentation - which is what silently changes a config's meaning. It does
+      # NOT check the schema: a misspelled key is valid YAML and Dependabot just
+      # ignores it. See .yamllint.yml. Pinned so a linter release cannot fail an
+      # unrelated PR.
+      - name: Check (YAML parses as intended)
+        run: pipx install yamllint==1.37.1 && yamllint .github/ .yamllint.yml

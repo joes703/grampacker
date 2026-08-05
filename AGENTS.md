@@ -32,6 +32,7 @@ conventions do NOT apply here (see "Do not reintroduce" at the bottom).
 | Unit tests | `npm run test:unit` | Vitest over `scripts/**`, `shared/**` and `src/**`. Runs anywhere. |
 | API tests | `npm run test:api` | Vitest **workers pool** over `server/**`. |
 | Action pins | `npm run check:action-pins` | Resolves every pinned action SHA against its tag comment. **Needs network**; fails closed if it cannot reach the API. |
+| YAML parse | `npm run check:yaml` | yamllint over `.github/`. Catches duplicate keys, tabs, bad indentation - NOT schema errors. Needs `yamllint` on PATH. |
 | Dev server | `npm run dev` | Serves SPA + `/api/*` + local D1 in one process. |
 
 **`npm run test:api` will not run in a sandbox that cannot bind a local port or
