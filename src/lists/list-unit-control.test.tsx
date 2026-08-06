@@ -58,6 +58,18 @@ describe('list unit control placement', () => {
     expect(screen.queryByText('list-settings-button')).toBeNull()
   })
 
+  // Food is weights everywhere - hiding the page-level unit control there
+  // would be a regression - but list admin (Options) is not a food-view
+  // concern, same as Pack.
+  it('keeps the unit control but hides list options in Food', () => {
+    render(
+      <ListDocumentToolbar list={list} mode="food" />,
+      { wrapper: MemoryRouter },
+    )
+    expect(screen.getAllByRole('radiogroup', { name: 'Weight units' })).toHaveLength(1)
+    expect(screen.queryByText('list-settings-button')).toBeNull()
+  })
+
   it('offers List and Pack as peer views in every list mode', () => {
     // Organize was a third peer here. It merged into Pack, so the nav is two
     // destinations and nothing links to /organize any more - the retired URLs

@@ -55,13 +55,25 @@ describe('mobile action-bar contracts', () => {
 
   // Organize used to be a third mode here with only the stable destinations
   // (no Add, no Options). It merged into Pack, which keeps Add.
+  //
+  // Food gets destinations only: it has no drawer registration (nothing to
+  // add gear to there), so an Add would render permanently disabled, and
+  // list admin is not a food-view concern.
   it.each([
     ['edit', ['Gear', 'Lists', 'Add', 'Options']],
     ['pack', ['Gear', 'Lists', 'Add']],
+    ['food', ['Gear', 'Lists']],
   ] as const)('renders the deliberate %s list-mode bar', (mode, expected) => {
     render(<MobileListActionBar list={list} mode={mode} />, {
       wrapper: wrapper(`/lists/${list.id}`),
     })
     expect(labels('List navigation and actions')).toEqual(expected)
+  })
+
+  it('never renders a disabled Add in Food mode', () => {
+    render(<MobileListActionBar list={list} mode="food" />, {
+      wrapper: wrapper(`/lists/${list.id}`),
+    })
+    expect(screen.queryByLabelText('Add gear to list')).toBeNull()
   })
 })

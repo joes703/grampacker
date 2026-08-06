@@ -178,8 +178,13 @@ async function renderDetail(path: string) {
       </MemoryRouter>
     </Providers>,
   )
-  // Anchors on content that only exists past the detail loading gate.
-  await screen.findByRole('heading', { name: 'Food' })
+  // Anchors on content that only exists past the detail loading gate. Food
+  // used to render inline in Pack and was a convenient anchor for that; food
+  // now has its own route and no longer renders inline here. The packing
+  // location create form is unconditional in Pack mode (not gated on items
+  // or on the packing-locations query this file exercises), so it survives
+  // every scenario below, including the zero-items one.
+  await screen.findByLabelText('New packing location')
 }
 
 const locationInput = () => screen.getByLabelText('New packing location')

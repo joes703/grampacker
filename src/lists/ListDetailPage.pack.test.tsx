@@ -130,8 +130,15 @@ async function renderDetail(path: string) {
       </MemoryRouter>
     </Providers>,
   )
-  // Anchors on content that only exists past the detail loading gate.
-  await screen.findByRole('heading', { name: 'Food' })
+  // Anchors on content that only exists past the detail loading gate. Food
+  // used to render inline in both List and Pack (that was the regression
+  // this file's tests were written to catch), so its heading was a
+  // convenient anchor reachable from either mode; food now has its own route
+  // and does not render inline in Pack, so the anchor is the mocked gear
+  // item's name instead - present in every test in this file, in both modes.
+  // findAllBy* (not findBy*) because List view renders it twice: once in the
+  // desktop library aside, once in the item row.
+  await screen.findAllByText('Cooking pot')
 }
 
 const addGear = () => screen.queryByRole('button', { name: 'Add gear' })

@@ -25,13 +25,8 @@ const ListSidebarDrawer = lazy(() => import('./ListSidebarDrawer'))
 import {
   queryKeys,
   fetchLists,
-  createFoodItem,
-  deleteFoodItem,
-  updateFoodItem,
   fetchListFood,
   fetchListItems,
-  setFoodDays,
-  setFoodSlotNeeded,
   fetchGearItems,
   fetchCategories,
   fetchPackingLocations,
@@ -80,10 +75,9 @@ import { planPackingItemReorder } from './packing-dnd'
 const EMPTY_LIST_FOOD: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
 
 import WeightSummary from './WeightSummary'
-import FoodSection from './FoodSection'
-import { ApiError } from '../lib/api'
-import { showToast } from '../lib/toast'
-import { FOOD_ITEM_CAP, type ListFoodResponse } from '../../shared/food'
+import FoodView from './FoodView'
+import FoodSummaryRow from './FoodSummaryRow'
+import type { ListFoodResponse } from '../../shared/food'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
 import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
@@ -533,81 +527,6 @@ function ListDetailInner({
     queryFn: () => fetchListFood(listId),
   })
   const listFood = listFoodQuery.data ?? EMPTY_LIST_FOOD
-
-  // Plain mutate-and-invalidate, deliberately not optimistic. A slot toggle
-  // also clears that slot's associations server-side, and an optimistic
-  // transform that flipped only `needed` would show a state the server is
-  // never going to produce.
-  const invalidateFood = useCallback(() => {
-    void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
-  }, [qc, listId])
-  const foodDaysMut = useMutation({
-    mutationKey: mutationKeys.setFoodDays(listId),
-    // Refetch first: FoodSection decides whether to warn about losing planned
-    // meals from its cached snapshot, and that cache is up to 30s stale. This
-    // narrows the window to a single round trip. It does not close it - that
-    // needs a revision check on the write itself.
-    mutationFn: async (days: number) => {
-      await listFoodQuery.refetch()
-      return setFoodDays(listId, days)
-    },
-    meta: { errorToast: "Couldn't change the trip length. Please try again." },
-    onSuccess: invalidateFood,
-  })
-  const foodSlotMut = useMutation({
-    mutationKey: mutationKeys.setFoodSlot(listId),
-    mutationFn: (vars: { slotId: string; needed: boolean }) =>
-      setFoodSlotNeeded(listId, vars.slotId, vars.needed),
-    meta: { errorToast: "Couldn't update that meal. Please try again." },
-    onSuccess: invalidateFood,
-  })
-  const foodItemCreateMut = useMutation({
-    mutationKey: mutationKeys.createFoodItem(listId),
-    mutationFn: (input: {
-      name: string
-      weightGrams: number
-      quantity: number
-      slotIds: string[]
-    }) => createFoodItem(listId, input),
-    // Deliberately no meta.errorToast: the server's 422 at the item cap and
-    // its 400 for a stale slot each say something the generic message cannot,
-    // and the cap is the one refusal a user can act on. onError surfaces the
-    // real reason and consumes the rejection.
-    onError: (err) => {
-      const status = err instanceof ApiError ? err.status : 0
-      showToast(
-        status === 422
-          ? `Food item limit reached (${FOOD_ITEM_CAP} per list).`
-          : status === 400
-            // 400 covers a pruned slot AND a value the server rejects, and the
-            // client cannot tell which from the status alone - so the message
-            // must not assert one of them.
-            ? "Couldn't add that food - check the name, weight and meals and try again."
-            : "Couldn't add that food. Please try again.",
-        { type: 'error' },
-      )
-    },
-    onSuccess: invalidateFood,
-  })
-  const foodItemSlotsMut = useMutation({
-    mutationKey: mutationKeys.setFoodItemSlots(listId),
-    mutationFn: (vars: { itemId: string; slotIds: string[] }) =>
-      updateFoodItem(listId, vars.itemId, { slotIds: vars.slotIds }),
-    meta: { errorToast: "Couldn't reschedule that food. Please try again." },
-    onSuccess: invalidateFood,
-  })
-  const foodItemDeleteMut = useMutation({
-    mutationKey: mutationKeys.deleteFoodItem(listId),
-    mutationFn: (itemId: string) => deleteFoodItem(listId, itemId),
-    meta: { errorToast: "Couldn't remove that food. Please try again." },
-    onSuccess: invalidateFood,
-  })
-  const foodBusy =
-    foodDaysMut.isPending ||
-    foodSlotMut.isPending ||
-    foodItemCreateMut.isPending ||
-    foodItemSlotsMut.isPending ||
-    foodItemDeleteMut.isPending
 
   const gearItemsQuery = useQuery({
     queryKey: queryKeys.gearItems(),
@@ -1689,7 +1608,14 @@ function ListDetailInner({
             mode={mode}
           />
 
-          {detailDataError ? (
+          {mode === 'food' ? (
+            // Food owns its own query gates (see FoodView), branched here
+            // ABOVE the detail-data composite below: a gear/categories/items
+            // failure must not block the food route, and a food failure must
+            // reach FoodView's own retry, not the generic "Couldn't load
+            // list details" this page shows for the other two modes.
+            <FoodView listId={listId} />
+          ) : detailDataError ? (
             <StatusPanel
               title="Couldn't load list details"
               body="Check your connection and try again."
@@ -1999,34 +1925,22 @@ function ListDetailInner({
 
                   Inside, because listFood falls back to an empty-food object
                   when the query has not resolved. Rendered above that gate the
-                  section would sit under "Loading list details..." showing a
-                  0-day trip with live controls - and a day change typed into a
-                  fabricated snapshot writes against real rows.
+                  row would sit under "Loading list details..." naming a
+                  0-day trip.
 
                   Outside the empty-gear branch, because a list with food and no
                   gear yet is a real, usable list.
 
-                  It renders in BOTH views, deliberately. It first shipped gated
-                  to edit mode, on the reasoning that food carries no
-                  packed/ready state and so contributes nothing to the pack
-                  checklist. That reasoning was about the data; the consequence
-                  was that anyone working in Pack could not find the feature at
-                  all. A section reachable from only one of two peer views is a
-                  section users conclude does not exist. Food is part of what
-                  you carry, so it belongs wherever you look at what you
-                  carry. */}
-              <FoodSection
-                food={listFood}
-                weightUnit={weightUnit}
-                busy={foodBusy}
-                onSetDays={(days) => foodDaysMut.mutate(days)}
-                onSetSlotNeeded={(slotId, needed) => foodSlotMut.mutate({ slotId, needed })}
-                onAddItem={(input, onSuccess) =>
-                  foodItemCreateMut.mutate(input, { onSuccess: () => { invalidateFood(); onSuccess() } })
-                }
-                onDeleteItem={(itemId) => foodItemDeleteMut.mutate(itemId)}
-                onSetItemSlots={(itemId, slotIds) => foodItemSlotsMut.mutate({ itemId, slotIds })}
-              />
+                  LIST view only: food now has its own peer view
+                  (/lists/:id/food, see FoodView and ListViewNav), and this row
+                  is only its trace here — food weight counts toward the
+                  totals this page reports (withFoodWeight), and a weight
+                  contributor with no visible source is a trap. Pack keeps its
+                  packing focus; the Food tab in ListViewNav is Pack's path to
+                  food. */}
+              {mode === 'edit' && (
+                <FoodSummaryRow food={listFood} listId={listId} weightUnit={weightUnit} />
+              )}
             </>
           )}
 
@@ -2042,12 +1956,17 @@ function ListDetailInner({
           doesn't mount the drawer at all; React.lazy on the wrapper means
           those surfaces also never fetch the Radix Dialog chunk.
 
-          Below lg: always, since there is no room for the aside.
+          Below lg: edit and pack, since there is no room for the aside there.
           At lg+: pack only. Desktop Pack hides the left aside on purpose (see
           the aside's comment - packing wants the focus), which also removed
           the only way to put a forgotten item on the list without leaving the
-          view. The drawer restores that without giving the aside back. */}
-      {(isBelowLg || mode === 'pack') && (
+          view. The drawer restores that without giving the aside back.
+
+          Food is excluded at every width: it has no drawer registration (see
+          useRegisterSidebarDrawer above, gated the same `edit || pack` way)
+          and MobileListActionBar pushes no Add there, so mounting this would
+          only fetch the Radix Dialog chunk for a sheet that can never open. */}
+      {((isBelowLg && mode !== 'food') || mode === 'pack') && (
         <div className="print:hidden">
           <Suspense fallback={null}>
             <ListSidebarDrawer

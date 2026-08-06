@@ -97,6 +97,11 @@ describe('the authenticated area (lazy chunk, relative paths under the splat)', 
     expect(await screen.findByTestId('detail')).toHaveTextContent('abc123')
   })
 
+  it('renders food mode as a segment of the same detail page', async () => {
+    renderAt('/lists/abc123/food', SIGNED_IN)
+    expect(await screen.findByTestId('detail')).toHaveTextContent('abc123')
+  })
+
   it('still resolves the retired organize URL to the detail page', async () => {
     // Organize merged into Pack. The route stays mounted so an old bookmark
     // reaches the page (which then rewrites the URL to /pack) instead of

@@ -69,6 +69,7 @@ function renderAt() {
           <Route path="/lists" element={<div>lists-page</div>} />
           <Route path="/lists/:id" element={<Probe />} />
           <Route path="/lists/:id/pack" element={<div>pack-page</div>} />
+          <Route path="/lists/:id/food" element={<div>food-page</div>} />
           <Route path="/lists/:id/organize" element={<div>organize-page</div>} />
         </Routes>
       </MemoryRouter>
@@ -98,6 +99,14 @@ describe('RootRedirect', () => {
 
     await waitFor(() => expect(screen.getByText('pack-page')).toBeInTheDocument())
     // The cache short-circuit means fetchLists is never called.
+    expect(fetchLists).not.toHaveBeenCalled()
+  })
+
+  it('fast path: a stored food path restores to the food route', async () => {
+    writeLastListPath(`/lists/${CACHED_UUID}/food`, OWNER)
+    renderAt()
+
+    await waitFor(() => expect(screen.getByText('food-page')).toBeInTheDocument())
     expect(fetchLists).not.toHaveBeenCalled()
   })
 
