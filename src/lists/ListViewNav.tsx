@@ -4,6 +4,7 @@ import { persistedListPath } from './list-detail-mode'
 
 const VIEWS: { mode: ListDetailMode; label: string }[] = [
   { mode: 'edit', label: 'List' },
+  { mode: 'food', label: 'Food' },
   { mode: 'pack', label: 'Pack' },
 ]
 

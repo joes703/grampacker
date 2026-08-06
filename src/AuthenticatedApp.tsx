@@ -47,6 +47,7 @@ export default function AuthenticatedApp() {
         <Route path="lists" element={<ListsPage />} />
         <Route path="lists/:id" element={<ListDetailPage />} />
         <Route path="lists/:id/pack" element={<ListDetailPage />} />
+        <Route path="lists/:id/food" element={<ListDetailPage />} />
         <Route path="lists/:id/organize" element={<ListDetailPage />} />
         {/* Organize's original nesting under Pack, kept for the same reason. */}
         <Route path="lists/:id/pack/organize" element={<ListDetailPage />} />
