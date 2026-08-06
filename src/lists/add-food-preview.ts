@@ -31,30 +31,34 @@ function describeSlots(
   if (slotIds.length === 0) return 'any time'
   const selected = new Set(slotIds)
 
-  // Check if all selected slots are from a single meal and that meal is fully selected
-  const selectedSlots = slots.filter((s) => selected.has(s.id))
-  if (selectedSlots.length > 0) {
-    const meals = [...new Set(selectedSlots.map((s) => s.meal))]
-    if (meals.length === 1) {
-      // All selected slots are from the same meal
-      const meal = meals[0]!
-      const allMealSlots = slots.filter((s) => s.meal === meal)
-      if (allMealSlots.every((s) => selected.has(s.id))) {
-        // All instances of this meal are selected
-        return `every ${meal}`
-      }
+  // Identify which meals are fully selected, then collect remaining selected slots
+  const wholeMeals: string[] = []
+  const remainingSelected: FoodSlotResponse[] = []
+
+  for (const meal of MEALS) {
+    const mealSlots = slots.filter((s) => s.meal === meal)
+    if (mealSlots.length > 0 && mealSlots.every((s) => selected.has(s.id))) {
+      // All slots of this meal are selected
+      wholeMeals.push(`every ${meal}`)
+    } else {
+      // Add individual selected slots of this meal to the remaining list
+      remainingSelected.push(...mealSlots.filter((s) => selected.has(s.id)))
     }
   }
 
-  // Otherwise, list individual slots sorted by day then meal type
-  const sorted = selectedSlots.sort((a, b) => {
+  // Sort remaining slots chronologically for readability: by dayNumber first, then by meal
+  // type order (breakfast → lunch → dinner) so users read slots in trip order.
+  remainingSelected.sort((a, b) => {
     if (a.dayNumber !== b.dayNumber) return a.dayNumber - b.dayNumber
     return MEALS.indexOf(a.meal) - MEALS.indexOf(b.meal)
   })
-  const named = sorted
+
+  // Build output: whole meals first (in MEALS order), then named slots (first 3), then remainder count
+  const namedSlots = remainingSelected
     .slice(0, NAMED_SLOT_LIMIT)
     .map((s) => `Day ${s.dayNumber} ${s.meal}`)
-  const more = sorted.length - named.length
-  if (more > 0) named.push(`+ ${more} more`)
-  return named.join(', ')
+  const parts = [...wholeMeals, ...namedSlots]
+  const more = remainingSelected.length - namedSlots.length
+  if (more > 0) parts.push(`+ ${more} more`)
+  return parts.join(', ')
 }

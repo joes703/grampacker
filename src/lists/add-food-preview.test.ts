@@ -7,9 +7,9 @@ function slot(id: string, dayNumber: number, meal: FoodSlotResponse['meal']): Fo
 }
 
 const SLOTS = [
-  slot('b1', 1, 'breakfast'), slot('b2', 2, 'breakfast'),
-  slot('l1', 1, 'lunch'), slot('l2', 2, 'lunch'),
-  slot('d1', 1, 'dinner'), slot('d2', 2, 'dinner'),
+  slot('b1', 1, 'breakfast'), slot('b2', 2, 'breakfast'), slot('b3', 3, 'breakfast'),
+  slot('l1', 1, 'lunch'), slot('l2', 2, 'lunch'), slot('l3', 3, 'lunch'),
+  slot('d1', 1, 'dinner'), slot('d2', 2, 'dinner'), slot('d3', 3, 'dinner'),
 ]
 
 describe('addFoodPreview', () => {
@@ -31,7 +31,7 @@ describe('addFoodPreview', () => {
 
   it('collapses a fully selected meal', () => {
     expect(
-      addFoodPreview({ name: 'Oatmeal', weightGrams: 80, quantity: 1, slotIds: ['b1', 'b2'], slots: SLOTS, unit: 'g' }),
+      addFoodPreview({ name: 'Oatmeal', weightGrams: 80, quantity: 1, slotIds: ['b1', 'b2', 'b3'], slots: SLOTS, unit: 'g' }),
     ).toBe('Adding: Oatmeal · 80 g · every breakfast')
   })
 
@@ -45,5 +45,17 @@ describe('addFoodPreview', () => {
     expect(
       addFoodPreview({ name: 'Mystery', weightGrams: 0, quantity: 1, slotIds: [], slots: SLOTS, unit: 'g' }),
     ).toBe('Adding: Mystery · any time')
+  })
+
+  it('mixes whole-meal collapse with named slots', () => {
+    expect(
+      addFoodPreview({ name: 'Mix', weightGrams: 80, quantity: 1, slotIds: ['b1', 'b2', 'b3', 'l1'], slots: SLOTS, unit: 'g' }),
+    ).toBe('Adding: Mix · 80 g · every breakfast, Day 1 lunch')
+  })
+
+  it('collapses multiple full meals', () => {
+    expect(
+      addFoodPreview({ name: 'Lots', weightGrams: 80, quantity: 1, slotIds: ['b1', 'b2', 'b3', 'l1', 'l2', 'l3'], slots: SLOTS, unit: 'g' }),
+    ).toBe('Adding: Lots · 80 g · every breakfast, every lunch')
   })
 })
