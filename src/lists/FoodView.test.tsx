@@ -237,15 +237,25 @@ describe('FoodView days-input destructive guards', () => {
   })
 })
 
-describe('FoodView carrying card', () => {
-  it('warns that food here adds to consumable gear', async () => {
-    // Anyone keeping a "Food bag" gear row would otherwise double-count.
-    // The copy moved into FoodCarryingList (Task 10); this pins it at its new
-    // home, mounted from FoodView, since FoodCarryingList.test.tsx does not
-    // assert this line itself.
-    h.fetchListFood.mockResolvedValue(rescheduleFood)
+describe('FoodView add-food card double-count warning', () => {
+  // Controller decision (supersedes brief section 4.4): the warning used to
+  // live gated inside the Carrying card (items.length > 0), which made it
+  // invisible at the exact moment it exists for - adding the FIRST food,
+  // before any item and therefore before the Carrying card renders at all.
+  // It now lives on the add-food card, unconditionally, in both the
+  // collapsed-button and form-open states.
+  it('is visible even with zero items, before the Carrying card exists', async () => {
+    h.fetchListFood.mockResolvedValue(oneDayFood) // zero items
     await renderFoodView()
+    expect(screen.queryByRole('button', { name: 'Reschedule' })).not.toBeInTheDocument()
     expect(await screen.findByText(/not counted twice/i)).toBeInTheDocument()
+  })
+
+  it('stays visible while the add form is open', async () => {
+    h.fetchListFood.mockResolvedValue(oneDayFood)
+    await renderFoodView()
+    await user.click(await screen.findByRole('button', { name: 'Add food' }))
+    expect(screen.getByText(/not counted twice/i)).toBeInTheDocument()
   })
 })
 

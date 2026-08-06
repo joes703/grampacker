@@ -232,14 +232,13 @@ function FoodDocument({
     setSelectedSlotIds((prev) => (prev.includes(slotId) ? prev : [...prev, slotId]))
     setAdding(true)
     // Scroll after the form mounts; rAF beats the render race without a
-    // layout effect. jsdom (unit tests) implements neither rAF nor
-    // scrollIntoView, so both calls are guarded - a no-op under test, the
-    // real behavior in a browser.
-    if (typeof requestAnimationFrame === 'function') {
-      requestAnimationFrame(() =>
-        addFormRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }),
-      )
-    }
+    // layout effect. rAF itself is available everywhere we run (including
+    // jsdom); jsdom just doesn't implement Element.scrollIntoView, so that
+    // call is optional-chained - a no-op under test, real behavior in a
+    // browser.
+    requestAnimationFrame(() =>
+      addFormRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }),
+    )
   }
 
   const itemsBySlot = new Map<string, ListFoodResponse['items']>()
@@ -390,6 +389,15 @@ function FoodDocument({
             Add food
           </button>
         )}
+        {/* The app already labels gear consumables "food, fuel, water". Anyone
+            keeping a "Food bag" gear row AND listing its contents here would
+            count the same grams twice. Lives on the add-food card (not the
+            Carrying card, which is absent until the first item exists) so it
+            is visible at the exact moment it matters: adding the first food. */}
+        <p className="mt-2 text-xs text-gray-500">
+          Adds to your consumable weight. If you also have a food item in your
+          gear list, remove it so it is not counted twice.
+        </p>
       </section>
 
       {food.items.length > 0 && (

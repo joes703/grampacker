@@ -189,4 +189,15 @@ describe('FoodDaySection three states', () => {
     expect(screen.getByText('Nothing planned')).toBeInTheDocument()
     expect(screen.getByText('Trail mix')).toBeInTheDocument()
   })
+
+  it('never claims a filled slot is complete', () => {
+    // A breakfast holding only coffee is non-empty and not necessarily
+    // enough - there is deliberately no "complete" tick on a filled slot;
+    // judging that is the user's job, not the app's.
+    renderDay({
+      slots: [slot('b1', 'breakfast', false), slot('l1', 'lunch'), slot('d1', 'dinner')],
+    })
+    expect(screen.queryByLabelText(/complete/i)).toBeNull()
+    expect(screen.queryByText(/✓/)).toBeNull()
+  })
 })

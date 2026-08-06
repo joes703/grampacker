@@ -51,13 +51,6 @@ export default function FoodCarryingList({
             food eaten at several meals would count its weight once per meal. */}
         <ItemWeightValue grams={foodGramsFor(items)} unit={weightUnit} />
       </div>
-      {/* The app already labels gear consumables "food, fuel, water". Anyone
-          keeping a "Food bag" gear row AND listing its contents here would
-          count the same grams twice. */}
-      <p className="px-3 pb-2 text-xs text-gray-500">
-        Adds to your consumable weight. If you also have a food item in your
-        gear list, remove it so it is not counted twice.
-      </p>
     </>
   )
 }
