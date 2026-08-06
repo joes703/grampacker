@@ -478,3 +478,86 @@ describe('listItemFailure', () => {
     expect(listItemFailure({ ok: false, reason: 'cap_exceeded' }).status).toBe(422)
   })
 })
+
+// The server half of the pack-order 409 (review P2.2: "409 both sides" had
+// only client handling and a route branch nothing drove). Two real error
+// shapes convert to `conflict` inside production reorderPack() - a rank
+// collision on the unique index and the park guard's NOT NULL - and neither
+// can be staged through HTTP: the payload must be a permutation of the
+// cohort's CURRENT ranks, so any state that would collide is rejected as a
+// 400 before the batch. Hence the failing-db harness, same as update().
+describe('reorderPack loses a race', () => {
+  async function seedTwoItemCohort(cookie: string, listId: string) {
+    const gearA = await createGear(cookie, 'Stove A')
+    const gearB = await createGear(cookie, 'Stove B')
+    for (const gearItemId of [gearA, gearB]) {
+      const res = await apiRequest(cookie, 'POST', `/api/lists/${listId}/items`, {
+        gearItemId,
+      })
+      if (res.status !== 201) throw new Error(`add item: ${res.status}`)
+    }
+    const items = await apiRequest(cookie, 'GET', `/api/lists/${listId}/items`)
+    const rows = (await items.json()) as { id: string; packSortOrder: number }[]
+    // A genuine permutation of the current ranks: swap the two.
+    return [
+      { id: rows[0]!.id, packSortOrder: rows[1]!.packSortOrder },
+      { id: rows[1]!.id, packSortOrder: rows[0]!.packSortOrder },
+    ]
+  }
+
+  it('maps a rank collision (unique index) to conflict', async () => {
+    const { cookie, userId } = await newUser('rp1')
+    const listId = await createList(cookie, 'Trip')
+    const updates = await seedTwoItemCohort(cookie, listId)
+
+    const repo = createListItemsRepo(
+      failing(raw(), 'batch', rankCollision()),
+      userId,
+    )
+    const result = await repo.reorderPack(listId, updates)
+    expect(result).toEqual({ ok: false, reason: 'conflict' })
+  })
+
+  it('maps the park guard firing (NOT NULL) to conflict', async () => {
+    const { cookie, userId } = await newUser('rp2')
+    const listId = await createList(cookie, 'Trip')
+    const updates = await seedTwoItemCohort(cookie, listId)
+
+    const guardViolation = new Error('D1_ERROR', {
+      cause: new Error(
+        'NOT NULL constraint failed: _pack_reorder_guard.ok: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_NOTNULL)',
+      ),
+    })
+    const repo = createListItemsRepo(failing(raw(), 'batch', guardViolation), userId)
+    const result = await repo.reorderPack(listId, updates)
+    expect(result).toEqual({ ok: false, reason: 'conflict' })
+  })
+
+  it('the route answers the conflict with the 409 dialect', async () => {
+    // The real listRoutes module, with only the repos context stubbed to
+    // return the conflict result - so the route-side mapping (the branch the
+    // matrix's 409 row points at) is exercised end to end.
+    const { Hono } = await import('hono')
+    const { listRoutes } = await import('../routes/lists')
+    const testApp = new Hono<{ Variables: { repos: unknown } }>()
+    testApp.use('*', async (c, next) => {
+      c.set('repos', {
+        listItems: {
+          reorderPack: async () => ({ ok: false, reason: 'conflict' }),
+        },
+      })
+      await next()
+    })
+    testApp.route('/lists', listRoutes)
+
+    const res = await testApp.request('/lists/some-list/items/pack-order', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([{ id: 'a', packSortOrder: 0 }]),
+    })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({
+      error: 'This bag changed while you were reordering',
+    })
+  })
+})

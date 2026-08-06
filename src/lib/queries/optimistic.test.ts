@@ -13,8 +13,10 @@ import {
   makeOptimisticBulkDelete,
   makeOptimisticBulkUpdate,
   makeOptimisticReorder,
+  makeOptimisticPackReorder,
 } from './optimistic'
 import { showToast } from '../toast'
+import { ApiError } from '../api'
 
 type Row = { id: string; name: string; categoryId: string | null }
 type SortableRow = { id: string; name: string; sortOrder: number }
@@ -766,5 +768,135 @@ describe('makeOptimisticReorder', () => {
         expect.objectContaining({ type: 'error' }),
       )
     })
+  })
+})
+
+// The PACK sibling (review P2.2: zero tests against the sibling's twelve).
+// Only the DIVERGENT behavior is pinned here - the shared machinery (cancel
+// semantics, snapshot plumbing) is the sibling's suite above. What makes
+// this one different, and what these tests hold: it patches ONLY
+// packSortOrder and never re-sorts the shared cache (document order is other
+// consumers' truth), its validator speaks pack ranks, and its onError knows
+// a 409 means "a concurrent reorder of this bag won".
+describe('makeOptimisticPackReorder', () => {
+  type PackRow = { id: string; name: string; sortOrder: number; packSortOrder: number }
+  const initial: PackRow[] = [
+    { id: 'A', name: 'a', sortOrder: 0, packSortOrder: 1 },
+    { id: 'B', name: 'b', sortOrder: 1, packSortOrder: 0 },
+    { id: 'C', name: 'c', sortOrder: 2, packSortOrder: 2 },
+  ]
+
+  function makePackClient(rows: PackRow[] = initial) {
+    const qc = new QueryClient()
+    const key = ['packable'] as const
+    qc.setQueryData(key, rows)
+    return { qc, key, helper: makeOptimisticPackReorder<PackRow>(qc, key) }
+  }
+
+  afterEach(() => {
+    vi.mocked(showToast).mockReset()
+  })
+
+  it('patches packSortOrder ONLY and leaves the array in document order', () => {
+    const { qc, key, helper } = makePackClient()
+
+    // Swap A and C's pack ranks - a legal permutation of the touched subset
+    // {1, 2} whose RESULT (A=2, B=0, C=1) sorts to B,C,A by rank. That
+    // conflict is the point: a sibling-style re-sort regression would
+    // reorder the array here, so the document-order assertion below can
+    // actually catch it. (A swap that happens to END in rank order would
+    // pass even against a re-sorting implementation.)
+    helper.onMutate([
+      { id: 'A', packSortOrder: 2 },
+      { id: 'C', packSortOrder: 1 },
+    ])
+
+    const after = qc.getQueryData<PackRow[]>(key)!
+    // The divergence from the sibling: NO re-sort. Document order (A, B, C)
+    // survives - the pack renderers sort their own cohorts.
+    expect(after.map((r) => r.id)).toEqual(['A', 'B', 'C'])
+    expect(after.map((r) => r.packSortOrder)).toEqual([2, 0, 1])
+    // sortOrder untouched: this helper must never leak into List view order.
+    expect(after.map((r) => r.sortOrder)).toEqual([0, 1, 2])
+  })
+
+  it('onMutate is SYNCHRONOUS, like its sibling and for the same drag reason', () => {
+    const { helper } = makePackClient()
+    const result = helper.onMutate([{ id: 'A', packSortOrder: 1 }])
+    expect(result).not.toBeInstanceOf(Promise)
+    expect(result).toHaveProperty('previous')
+  })
+
+  it('rejects a payload that is not a permutation of the touched ranks (DEV throws)', () => {
+    const { qc, key, helper } = makePackClient()
+    // Rank 9 belongs to nobody: server-side this could collide with a row
+    // the payload never mentioned, so the validator refuses it up front.
+    expect(() =>
+      helper.onMutate([
+        { id: 'A', packSortOrder: 9 },
+        { id: 'B', packSortOrder: 1 },
+      ]),
+    ).toThrow(/not a permutation/)
+    expect(qc.getQueryData<PackRow[]>(key)).toEqual(initial)
+  })
+
+  it('production: validation aborts with the tagged error, no cache write, no toast', () => {
+    vi.stubEnv('DEV', false)
+    try {
+      const { qc, key, helper } = makePackClient()
+      let thrown: unknown
+      try {
+        helper.onMutate([{ id: 'A', packSortOrder: 9 }, { id: 'B', packSortOrder: 1 }])
+      } catch (err) {
+        thrown = err
+      }
+      expect((thrown as Error).name).toBe('OptimisticReorderValidationError')
+      expect(qc.getQueryData<PackRow[]>(key)).toEqual(initial)
+
+      // ...and onError recognizes its own tag: no rollback, NO toast.
+      helper.onError(thrown, undefined, { previous: undefined })
+      expect(showToast).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('onError rolls back and shows the generic toast for a non-409 failure', () => {
+    const { qc, key, helper } = makePackClient()
+    const ctx = helper.onMutate([
+      { id: 'A', packSortOrder: 0 },
+      { id: 'B', packSortOrder: 1 },
+    ])
+
+    helper.onError(new Error('network exploded'), undefined, ctx)
+
+    expect(qc.getQueryData<PackRow[]>(key)).toEqual(initial)
+    expect(showToast).toHaveBeenCalledWith(
+      "Couldn't save the new order. Please try again.",
+      { type: 'error' },
+    )
+  })
+
+  it('a 409 gets the conflict toast: someone else reordered this bag', () => {
+    const { qc, key, helper } = makePackClient()
+    const ctx = helper.onMutate([
+      { id: 'A', packSortOrder: 0 },
+      { id: 'B', packSortOrder: 1 },
+    ])
+
+    helper.onError(new ApiError(409, 'This bag changed while you were reordering'), undefined, ctx)
+
+    expect(qc.getQueryData<PackRow[]>(key)).toEqual(initial)
+    expect(showToast).toHaveBeenCalledWith(
+      'This bag changed somewhere else. Reloading its order.',
+      { type: 'error' },
+    )
+  })
+
+  it('onSettled invalidates so server truth wins regardless of outcome', async () => {
+    const { qc, key, helper } = makePackClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+    helper.onSettled()
+    expect(spy).toHaveBeenCalledWith({ queryKey: key })
   })
 })

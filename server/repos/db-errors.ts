@@ -39,8 +39,12 @@ export function isUniqueViolation(err: unknown, column: string): boolean {
 
 // A UNIQUE violation on ANY column - used where a repo prechecks a duplicate but
 // wants the DB's own unique index as the race backstop, and a composite/partial
-// index names several columns so a single-column match is impractical (e.g.
-// "UNIQUE constraint failed: lists.slug"). SQLITE_CONSTRAINT_UNIQUE pins the class.
+// index names several columns so a single-column match is impractical. The
+// class marker check is the bare SQLITE_CONSTRAINT prefix - a SUBSTRING of
+// every extended code (D1's real messages carry the extended
+// SQLITE_CONSTRAINT_UNIQUE, which this matches) - because the message text
+// "UNIQUE constraint failed" already names the class and the marker only has
+// to rule out non-constraint errors.
 export function isAnyUniqueViolation(err: unknown): boolean {
   const msg = rootMessage(err)
   return (
@@ -67,9 +71,11 @@ export function isForeignKeyViolation(err: unknown): boolean {
 // lost race becomes a 409 instead of a silent no-op that returns 204.
 //
 // Pinned to the guard's own column so an unrelated NOT NULL failure elsewhere
-// in the batch is not misread as a lost race. SQLITE_CONSTRAINT_NOTNULL pins
-// the class; the raw SQLite message never embeds bound values, so no
-// user-controlled text can reach this match.
+// in the batch is not misread as a lost race. The class marker is the bare
+// SQLITE_CONSTRAINT prefix (a substring of the extended
+// SQLITE_CONSTRAINT_NOTNULL that D1's real messages carry); the raw SQLite
+// message never embeds bound values, so no user-controlled text can reach
+// this match.
 export function isPackGuardViolation(err: unknown): boolean {
   const msg = rootMessage(err)
   return (

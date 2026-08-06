@@ -558,3 +558,52 @@ describe('food: the fourth state is unreachable at the database', () => {
     expect(after.items[0]!.slotIds).toEqual([slotOf(after, 1, 'breakfast').id])
   })
 })
+
+// The 200-item cap at the boundary (review P2.2: every other cap had this
+// three-sided test; food - the NEWEST trigger - had none). Same shape as the
+// gear and list suites: seed to cap-1 raw, prove the API grants the last
+// slot, refuses the next with the friendly 422, and the trigger backstops a
+// write that bypasses the repo entirely.
+describe('the food item cap (200 per list)', () => {
+  it('friendly 422 from the API, trigger backstop on raw inserts', async () => {
+    const { cookie } = await signUpVerifiedUser('food-cap@example.com', 'FCap')
+    const listId = await createList(cookie, 'Trip')
+    const me = await apiRequest(cookie, 'GET', '/api/me')
+    const { id: userId } = (await me.json()) as { id: string }
+
+    const values = Array.from(
+      { length: 199 },
+      (_, i) =>
+        `('${userId}-fseed-${i}', '${userId}', '${listId}', 'Seed ${i}', 100, 1, ${i}, 0, 0)`,
+    ).join(',')
+    await env.DB.prepare(
+      'insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, created_at, updated_at) values ' +
+        values,
+    ).run()
+
+    const atCap = await addItem(cookie, listId, {
+      name: 'The 200th',
+      weightGrams: 50,
+      quantity: 1,
+      slotIds: [],
+    })
+    expect(atCap.status).toBe(201)
+
+    const over = await addItem(cookie, listId, {
+      name: 'One too many',
+      weightGrams: 50,
+      quantity: 1,
+      slotIds: [],
+    })
+    expect(over.status).toBe(422)
+    expect(await over.json()).toEqual({
+      error: 'Food item limit reached (200 per list)',
+    })
+
+    await expect(
+      env.DB.prepare(
+        `insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, created_at, updated_at) values ('${userId}-bypass', '${userId}', '${listId}', 'Bypass', 1, 1, 999, 0, 0)`,
+      ).run(),
+    ).rejects.toThrow(/cap/)
+  })
+})

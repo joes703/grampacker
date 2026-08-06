@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { isTriggerAbort, isUniqueViolation } from './db-errors'
+import {
+  isAnyUniqueViolation,
+  isForeignKeyViolation,
+  isPackGuardViolation,
+  isPackRankRangeError,
+  isTriggerAbort,
+  isUniqueViolation,
+} from './db-errors'
 
 // Root-cause-only matching (Codex finding, PR #14): the drizzle wrapper
 // message embeds bound params, so user-controlled text that LOOKS like a
@@ -81,5 +88,95 @@ describe('isUniqueViolation', () => {
     )
     expect(isUniqueViolation(err, 'lists.food_plan_id')).toBe(true)
     expect(isUniqueViolation(err, 'lists.slug')).toBe(false)
+  })
+})
+
+// The four matchers below had no direct tests (review P2.2), and two of them
+// are the SOLE discriminators for user-facing statuses: isAnyUniqueViolation
+// and isPackGuardViolation together decide the pack-order 409, and
+// isForeignKeyViolation opens the precheck-race recovery path. Same
+// discipline as above: real root shapes match, wrapper forgeries do not.
+
+describe('isAnyUniqueViolation', () => {
+  it('matches a unique violation on ANY column at the root', () => {
+    const err = wrapped(
+      'UNIQUE constraint failed: list_items.list_id, list_items.packing_location_id, list_items.pack_sort_order: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)',
+      'Failed query: update "list_items" ...',
+    )
+    expect(isAnyUniqueViolation(err)).toBe(true)
+  })
+
+  it('ignores unique-violation text that only appears in wrapper params', () => {
+    const err = wrapped(
+      'FOREIGN KEY constraint failed: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_FOREIGNKEY)',
+      'Failed query: ... params: UNIQUE constraint failed: lists.slug: SQLITE_CONSTRAINT',
+    )
+    expect(isAnyUniqueViolation(err)).toBe(false)
+  })
+
+  it('rejects non-errors and unrelated errors', () => {
+    expect(isAnyUniqueViolation(new Error('network exploded'))).toBe(false)
+    expect(isAnyUniqueViolation(null)).toBe(false)
+  })
+})
+
+describe('isForeignKeyViolation', () => {
+  it('matches the real (anonymous) FK shape at the root', () => {
+    const err = wrapped(
+      'FOREIGN KEY constraint failed: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_FOREIGNKEY)',
+      'Failed query: insert into "list_food_item_slots" ...',
+    )
+    expect(isForeignKeyViolation(err)).toBe(true)
+  })
+
+  it('ignores FK text that only appears in wrapper params', () => {
+    const err = wrapped(
+      'UNIQUE constraint failed: lists.slug: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)',
+      'Failed query: ... params: FOREIGN KEY constraint failed: SQLITE_CONSTRAINT',
+    )
+    expect(isForeignKeyViolation(err)).toBe(false)
+  })
+
+  it('rejects a plain error with no constraint marker', () => {
+    expect(isForeignKeyViolation(new Error('FOREIGN KEY constraint failed'))).toBe(false)
+  })
+})
+
+describe('isPackGuardViolation', () => {
+  it('matches only the guard table own column', () => {
+    const guard = wrapped(
+      'NOT NULL constraint failed: _pack_reorder_guard.ok: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_NOTNULL)',
+      'Failed query: insert into "_pack_reorder_guard" ...',
+    )
+    expect(isPackGuardViolation(guard)).toBe(true)
+
+    // An unrelated NOT NULL in the same batch must NOT read as a lost race.
+    const other = wrapped(
+      'NOT NULL constraint failed: list_items.quantity: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_NOTNULL)',
+      'Failed query: update "list_items" ...',
+    )
+    expect(isPackGuardViolation(other)).toBe(false)
+  })
+
+  it('ignores guard text that only appears in wrapper params', () => {
+    const err = wrapped(
+      'FOREIGN KEY constraint failed: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_FOREIGNKEY)',
+      'Failed query: ... params: NOT NULL constraint failed: _pack_reorder_guard.ok: SQLITE_CONSTRAINT',
+    )
+    expect(isPackGuardViolation(err)).toBe(false)
+  })
+})
+
+describe('isPackRankRangeError', () => {
+  it('matches the 0019 range trigger at the root', () => {
+    const err = wrapped(
+      'pack_sort_order out of range: SQLITE_CONSTRAINT_TRIGGER',
+      'Failed query: update "list_items" ...',
+    )
+    expect(isPackRankRangeError(err)).toBe(true)
+  })
+
+  it('requires the trigger class, not just the words', () => {
+    expect(isPackRankRangeError(new Error('pack_sort_order out of range'))).toBe(false)
   })
 })
