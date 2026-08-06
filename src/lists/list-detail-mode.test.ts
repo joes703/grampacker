@@ -20,6 +20,9 @@ describe('deriveListMode', () => {
     [`/lists/${LIST_ID}/pack/organize`, '', 'pack'],
     [`/lists/${LIST_ID}`, '?mode=pack', 'pack'],
     [`/lists/${LIST_ID}`, '?mode=PACK', 'edit'],
+    [`/lists/${LIST_ID}/food`, '', 'food'],
+    // A food URL with a legacy pack query param is a food URL; path wins.
+    [`/lists/${LIST_ID}/food`, '?mode=pack', 'food'],
   ] as const)('%s%s -> %s', (pathname, search, expected) => {
     expect(deriveListMode(pathname, search, LIST_ID)).toBe(expected)
   })
@@ -45,6 +48,10 @@ describe('persistedListPath', () => {
   ] as const)('persists %s mode', (mode, expected) => {
     expect(persistedListPath(LIST_ID, mode)).toBe(expected)
   })
+
+  it('persists the food view path', () => {
+    expect(persistedListPath(LIST_ID, 'food')).toBe(`/lists/${LIST_ID}/food`)
+  })
 })
 
 describe('listDocumentTitle', () => {
@@ -53,5 +60,9 @@ describe('listDocumentTitle', () => {
     ['pack', 'Weekend Trip - Pack'],
   ] as const)('names the %s browser view', (mode, expected) => {
     expect(listDocumentTitle('Weekend Trip', mode)).toBe(expected)
+  })
+
+  it('titles the food view', () => {
+    expect(listDocumentTitle('JMT', 'food')).toBe('JMT - Food')
   })
 })
