@@ -35,6 +35,11 @@ describe('readLastListPath', () => {
     expect(readLastListPath(OWNER)).toBe(PACK_PATH)
   })
 
+  it('round-trips a food view path', () => {
+    writeLastListPath(`/lists/${UUID}/food`, OWNER)
+    expect(readLastListPath(OWNER)).toBe(`/lists/${UUID}/food`)
+  })
+
   it('returns null for a DIFFERENT owner (the cross-account guard)', () => {
     // The reason this module is owner-tagged: a pointer A wrote must never be
     // followed by B. A fresh document (magic-link switch, or a lapsed cookie on
@@ -181,6 +186,10 @@ describe('getListIdFromListPath', () => {
 
   it('extracts the UUID from a pack-mode path', () => {
     expect(getListIdFromListPath(PACK_PATH)).toBe(UUID)
+  })
+
+  it('extracts the list id from a food path', () => {
+    expect(getListIdFromListPath(`/lists/${UUID}/food`)).toBe(UUID)
   })
 
   it('does not extract a UUID from a retired organize path', () => {
