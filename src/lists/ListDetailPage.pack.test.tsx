@@ -134,11 +134,23 @@ async function renderDetail(path: string) {
   // used to render inline in both List and Pack (that was the regression
   // this file's tests were written to catch), so its heading was a
   // convenient anchor reachable from either mode; food now has its own route
-  // and does not render inline in Pack, so the anchor is the mocked gear
-  // item's name instead - present in every test in this file, in both modes.
-  // findAllBy* (not findBy*) because List view renders it twice: once in the
-  // desktop library aside, once in the item row.
-  await screen.findAllByText('Cooking pot')
+  // and does not render inline in Pack, so a Food-based anchor is gone.
+  //
+  // The gear item's own name is NOT a safe substitute here: in List (edit)
+  // view it renders in the desktop library aside too, which mounts OUTSIDE
+  // the detail gate (it needs only the gear query) - so it would let this
+  // file's negative assertions (no Add-gear button, no packing kebab, no
+  // worn-remove button) pass vacuously before the gated item rows ever
+  // render. Branch on mode instead, anchoring on something that is both
+  // unconditional in that mode AND strictly inside the loaded branch:
+  // the packing-location create form in Pack, the List-view-only Food
+  // summary row in Edit (mirrors ListDetailPage.locations-failure.test.tsx
+  // and ListDetailPage.food.test.tsx, which anchor the same way).
+  if (path.endsWith('/pack')) {
+    await screen.findByLabelText('New packing location')
+  } else {
+    await screen.findByRole('region', { name: 'Food summary' })
+  }
 }
 
 const addGear = () => screen.queryByRole('button', { name: 'Add gear' })

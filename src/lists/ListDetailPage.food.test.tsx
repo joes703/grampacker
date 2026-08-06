@@ -174,7 +174,14 @@ describe('food is reachable at its own route, and traced from List view', () => 
   // an inline section or summary row.
   it('renders neither the food editor nor the summary row in Pack view', async () => {
     await renderDetail(`/lists/${listId}/pack`)
-    await screen.findByRole('navigation', { name: 'List views' })
+    // ListViewNav (and its "List views" nav landmark) lives in
+    // ListDocumentToolbar, ABOVE the mode ternary and outside the
+    // detail-data gate - it resolves as soon as the lists query settles, so
+    // it would let the negative assertions below pass vacuously, before the
+    // loaded branch has even rendered. The packing-location create form is
+    // unconditional in Pack mode but sits INSIDE the loaded branch
+    // (ListDetailPage.tsx), so waiting on it actually proves the gate opened.
+    await screen.findByLabelText('New packing location')
     expect(foodHeading()).toBeNull()
     expect(foodSummarySection()).toBeNull()
   })
