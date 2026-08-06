@@ -6,6 +6,7 @@ import {
   importGearResponseSchema,
   type CategoryResponse,
   type GearItemResponse,
+  importGearRequestSchema,
 } from '../../shared/gear'
 import { isCapError } from '../repos/gear-items'
 import { apiRequest } from '../test/api-helpers'
@@ -551,11 +552,9 @@ describe('/api/gear-items authorization matrix', () => {
       },
       // no items
       { categories: [], items: [] },
-      // over the row cap
-      {
-        categories: [],
-        items: Array.from({ length: 2001 }, (_, i) => ({ name: `n${i}` })),
-      },
+      // (well-formed OVER-CAP bodies are deliberately NOT here: since the
+      // maxima became the real caps they answer the 422 cap dialect, and the
+      // "gear import maxima" suite below owns those cases)
       // unknown field / bad nested shapes
       { categories: [], items: [{ name: 'x' }], extra: 1 },
       { categories: [], items: [{ name: 'x', category: { kind: 'existing' } }] },
@@ -661,5 +660,99 @@ describe('/api/gear-items authorization matrix', () => {
       ids: ['same', 'same'],
     })
     expect(dupes.status).toBe(400)
+  })
+})
+
+// The import maxima (review P2.7): the DTO used to allow 2000 while the
+// triggers abort at 500, so any oversized import was a GUARANTEED late
+// failure after D1 executed 500+ statements. The bound is now the real cap,
+// and the route answers it as the trigger's own 422 dialect through a
+// two-stage parse - malformedness (structural OR relational) stays the
+// uniform 400 even when the body is also oversized.
+describe('gear import maxima match the real caps', () => {
+  const item = (i: number, category: unknown = null) => ({
+    name: `Item ${i}`,
+    ...(category === null ? {} : { category }),
+  })
+
+  it('schema: the caps are the boundary (500 passes shape, 501 rejects)', () => {
+    const at = {
+      categories: [],
+      items: Array.from({ length: 500 }, (_, i) => item(i)),
+    }
+    expect(importGearRequestSchema.safeParse(at).success).toBe(true)
+
+    const over = {
+      categories: [],
+      items: Array.from({ length: 501 }, (_, i) => item(i)),
+    }
+    expect(importGearRequestSchema.safeParse(over).success).toBe(false)
+
+    const overCats = {
+      categories: Array.from({ length: 501 }, (_, i) => ({
+        tempId: `c${i}`,
+        name: `Cat ${i}`,
+      })),
+      items: Array.from({ length: 501 }, (_, i) =>
+        item(i, { kind: 'new', tempId: `c${i}` }),
+      ),
+    }
+    expect(importGearRequestSchema.safeParse(overCats).success).toBe(false)
+  })
+
+  it('501 well-formed items answer the gear 422 dialect, not a generic 400', async () => {
+    const { cookie } = await signUpVerifiedUser('import-max-items@example.com', 'IM')
+    const res = await apiRequest(cookie, 'POST', '/api/gear-items/import', {
+      categories: [],
+      items: Array.from({ length: 501 }, (_, i) => item(i)),
+    })
+    expect(res.status).toBe(422)
+    expect(await res.json()).toEqual({
+      error: 'Gear item limit reached (500 per user)',
+    })
+  })
+
+  it('both caps blown answers the CATEGORY dialect (categories win)', async () => {
+    // Every declared category must be referenced, so 501 valid categories
+    // force >= 501 items - the category message is the actionable one.
+    const { cookie } = await signUpVerifiedUser('import-max-cats@example.com', 'IC')
+    const res = await apiRequest(cookie, 'POST', '/api/gear-items/import', {
+      categories: Array.from({ length: 501 }, (_, i) => ({
+        tempId: `c${i}`,
+        name: `Cat ${i}`,
+      })),
+      items: Array.from({ length: 501 }, (_, i) =>
+        item(i, { kind: 'new', tempId: `c${i}` }),
+      ),
+    })
+    expect(res.status).toBe(422)
+    expect(await res.json()).toEqual({
+      error: 'Category limit reached (500 per user)',
+    })
+  })
+
+  it('oversized AND malformed stays the uniform 400 - structurally or relationally', async () => {
+    const { cookie } = await signUpVerifiedUser('import-max-bad@example.com', 'IB')
+
+    // Structurally malformed at 501 entries (no name).
+    const structural = await apiRequest(cookie, 'POST', '/api/gear-items/import', {
+      categories: [],
+      items: Array.from({ length: 501 }, () => ({ weightGrams: 1 })),
+    })
+    expect(structural.status).toBe(400)
+    expect(await structural.json()).toEqual({ error: 'Invalid request body' })
+
+    // Relationally malformed at 501 entries: duplicate category tempIds.
+    const relational = await apiRequest(cookie, 'POST', '/api/gear-items/import', {
+      categories: [
+        { tempId: 'dup', name: 'A' },
+        { tempId: 'dup', name: 'B' },
+      ],
+      items: Array.from({ length: 501 }, (_, i) =>
+        item(i, { kind: 'new', tempId: 'dup' }),
+      ),
+    })
+    expect(relational.status).toBe(400)
+    expect(await relational.json()).toEqual({ error: 'Invalid request body' })
   })
 })

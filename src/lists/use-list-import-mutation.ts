@@ -52,7 +52,7 @@ export function useListImportMutation() {
       // Cap preflight BEFORE the POST: the server would 422 anyway, but
       // these messages are specific and actionable where the server's are
       // generic limit errors.
-      assertListImportWithinCaps(plan, gearItems.length)
+      assertListImportWithinCaps(plan, gearItems.length, categories.length)
       return importListFromCsv({
         name,
         categories: plan.newCategories,

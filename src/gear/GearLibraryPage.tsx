@@ -34,7 +34,7 @@ import {
 } from '../lib/queries'
 import { mutationKeys } from '../lib/queries/keys'
 import { gearItemsToCsv, parseGearCsv, downloadCsv, type GearCsvRow } from '../lib/csv'
-import { planGearImport } from '../lib/csv/import-plan'
+import { assertGearImportWithinCaps, planGearImport } from '../lib/csv/import-plan'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { showToast } from '../lib/toast'
 import type { Category, GearItem } from '../lib/types'
@@ -298,6 +298,11 @@ export default function GearLibraryPage() {
     mutationFn: async (rows: GearCsvRow[]) => {
       const plan = planGearImport(rows, categories, allItems)
       if (plan.newItems.length === 0) return
+      // Preflight BOTH caps (gear and categories) against existing + new,
+      // like the list import always did - the thrown message lands in the
+      // import-error dialog with a specific fix instead of the server's
+      // generic cap answer.
+      assertGearImportWithinCaps(plan, allItems.length, categories.length)
       await importGearItems({ categories: plan.newCategories, items: plan.newItems })
     },
     onSuccess: () => {

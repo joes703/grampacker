@@ -2,14 +2,17 @@ import { describe, it, expect } from 'vitest'
 import type { Category, GearItem } from '../types'
 import type { GearCsvRow } from './gear'
 import type { ListCsvRow } from './list'
-import { GEAR_ITEM_CAP, LIST_ITEM_CAP } from '../caps'
+import { CATEGORY_CAP, GEAR_ITEM_CAP, LIST_ITEM_CAP } from '../caps'
 import {
   planNewCategories,
   planGearResolution,
   planGearImport,
   planListImport,
+  assertGearImportWithinCaps,
   assertListImportWithinCaps,
   type CategoryRef,
+  type GearImportPlan,
+  type ListImportPlan,
 } from './import-plan'
 
 // Deterministic id generator: tempIds are predictable so plan assertions can
@@ -397,9 +400,12 @@ describe('planListImport', () => {
 })
 
 describe('assertListImportWithinCaps', () => {
-  function planOf(itemCount: number, newGearCount: number) {
+  function planOf(itemCount: number, newGearCount: number, newCategoryCount = 0): ListImportPlan {
     return {
-      newCategories: [],
+      newCategories: Array.from({ length: newCategoryCount }, (_, i) => ({
+        tempId: `c-${i}`,
+        name: `Cat ${i}`,
+      })),
       newGear: Array.from({ length: newGearCount }, (_, i) => ({
         tempId: `t-${i}`, name: `G${i}`, description: null, weightGrams: 0, category: null,
         cost: null,
@@ -413,23 +419,36 @@ describe('assertListImportWithinCaps', () => {
   }
 
   it('passes at exactly the caps', () => {
-    expect(() => assertListImportWithinCaps(planOf(LIST_ITEM_CAP, 0), 0)).not.toThrow()
-    expect(() => assertListImportWithinCaps(planOf(1, 1), GEAR_ITEM_CAP - 1)).not.toThrow()
+    expect(() => assertListImportWithinCaps(planOf(LIST_ITEM_CAP, 0), 0, 0)).not.toThrow()
+    expect(() => assertListImportWithinCaps(planOf(1, 1), GEAR_ITEM_CAP - 1, 0)).not.toThrow()
+    expect(() => assertListImportWithinCaps(planOf(1, 1, 1), 0, CATEGORY_CAP - 1)).not.toThrow()
   })
 
   it('rejects an over-cap item count with the old copy (list cap checked first)', () => {
-    expect(() => assertListImportWithinCaps(planOf(LIST_ITEM_CAP + 1, 0), GEAR_ITEM_CAP)).toThrow(
+    expect(() => assertListImportWithinCaps(planOf(LIST_ITEM_CAP + 1, 0), GEAR_ITEM_CAP, 0)).toThrow(
       `A single list can hold at most ${LIST_ITEM_CAP} items; this file has ${LIST_ITEM_CAP + 1}. Split it across multiple lists.`,
     )
   })
 
   it('rejects an import that would push the inventory over the gear cap', () => {
-    expect(() => assertListImportWithinCaps(planOf(2, 2), GEAR_ITEM_CAP - 1)).toThrow(
+    expect(() => assertListImportWithinCaps(planOf(2, 2), GEAR_ITEM_CAP - 1, 0)).toThrow(
       `This import would add 2 new gear items to your ${GEAR_ITEM_CAP - 1} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Remove some items or split the file into smaller batches.`,
     )
     // Singular form for a single new item.
-    expect(() => assertListImportWithinCaps(planOf(1, 1), GEAR_ITEM_CAP)).toThrow(
+    expect(() => assertListImportWithinCaps(planOf(1, 1), GEAR_ITEM_CAP, 0)).toThrow(
       /would add 1 new gear item to your/,
+    )
+  })
+
+  it('rejects when existing + new categories exceeds the per-user category cap', () => {
+    // The 0021 trigger caps categories per USER: the schema's per-file bound
+    // cannot see the existing library, so a valid file can still blow the cap.
+    expect(() => assertListImportWithinCaps(planOf(2, 2, 2), 0, CATEGORY_CAP - 1)).toThrow(
+      `This import would add 2 new categories to your ${CATEGORY_CAP - 1} existing, exceeding the ${CATEGORY_CAP}-category limit. Reuse existing categories or trim the file.`,
+    )
+    // Singular form for a single new category.
+    expect(() => assertListImportWithinCaps(planOf(1, 1, 1), 0, CATEGORY_CAP)).toThrow(
+      /would add 1 new category to your/,
     )
   })
 
@@ -442,6 +461,49 @@ describe('assertListImportWithinCaps', () => {
       })),
       reusedGearCount: 5,
     }
-    expect(() => assertListImportWithinCaps(plan, GEAR_ITEM_CAP)).not.toThrow()
+    expect(() => assertListImportWithinCaps(plan, GEAR_ITEM_CAP, 0)).not.toThrow()
+  })
+})
+
+describe('assertGearImportWithinCaps', () => {
+  function gearPlanOf(newItemCount: number, newCategoryCount: number): GearImportPlan {
+    return {
+      newCategories: Array.from({ length: newCategoryCount }, (_, i) => ({
+        tempId: `c-${i}`,
+        name: `Cat ${i}`,
+      })),
+      newItems: Array.from({ length: newItemCount }, (_, i) => ({
+        name: `G${i}`,
+        description: null,
+        weightGrams: 0,
+        cost: null,
+        purchaseDate: null,
+        category: null,
+      })),
+      skippedCount: 0,
+    }
+  }
+
+  it('passes at exactly both caps', () => {
+    expect(() =>
+      assertGearImportWithinCaps(gearPlanOf(1, 0), GEAR_ITEM_CAP - 1, 0),
+    ).not.toThrow()
+    expect(() =>
+      assertGearImportWithinCaps(gearPlanOf(1, 1), 0, CATEGORY_CAP - 1),
+    ).not.toThrow()
+  })
+
+  it('rejects when existing + new gear exceeds the inventory cap', () => {
+    expect(() =>
+      assertGearImportWithinCaps(gearPlanOf(2, 0), GEAR_ITEM_CAP - 1, 0),
+    ).toThrow(/inventory limit/)
+  })
+
+  it('rejects when existing + new categories exceeds the category cap', () => {
+    // The dimension only the server used to know about: a gear import can
+    // create categories, and the 0021 trigger caps those independently.
+    expect(() =>
+      assertGearImportWithinCaps(gearPlanOf(1, 2), 0, CATEGORY_CAP - 1),
+    ).toThrow(/category limit/i)
   })
 })

@@ -12,19 +12,26 @@ export const API_BODY_LIMIT_BYTES = 128 * 1024
 // because this middleware runs BEFORE any route: a route-level limit
 // registered later can never widen a global one that already refused the
 // body. Before this existed the two limits silently contradicted each
-// other - the DTOs accept 2000 rows, which no 128 KB body can carry, so
-// a legitimate CSV import 413'd.
+// other - a legitimate multi-hundred-row CSV import 413'd against the
+// 128 KB cap (the gear DTO accepts 500 rows, the list DTO 300, and a fat
+// gear row is ~300 bytes, so a full import runs well past 128 KB).
 //
 // 2 MB is a TRANSPORT bound, deliberately not derived from the DTO's
-// worst case. Deriving it would be a trap: zod's `.max()` counts
-// characters while a body limit counts BYTES, and UTF-8 runs up to 3
-// bytes per character, so the worst case a DTO accepts (2000 items x
-// 2000-char descriptions) is over 13 MB - a cap we do not want to hold
+// worst case. Deriving it would be a trap: zod's `.max()` counts UTF-16
+// code units (JS string length) while a body limit counts BYTES, and a
+// single code unit encodes to up to 3 bytes of UTF-8 (4-byte code points
+// cost two code units, so 3x is the true worst-case ratio), so the worst
+// case the gear DTO accepts (500 items
+// x 2000-char descriptions) is over 3 MB - a cap we do not want to hold
 // open in a 128 MB isolate for an endpoint that only needs to carry real
-// CSV data (a fat gear row is ~300 bytes, so 2000 rows is well under
-// 1 MB). A pathological import can therefore still 413. That is the
-// intended behavior, not a bug: the DTO bounds semantics, this bounds
-// transport, and the 413 tells the client to split the file.
+// CSV data (at ~300 bytes per fat row, 500 rows is well under 1 MB). A
+// pathological import can therefore still 413. That is the intended
+// behavior, not a bug: the DTO bounds semantics, this bounds transport,
+// and the 413 tells the client to split the file. The residual DoS shape
+// - a 2 MB body of ~160k minimal item objects that zod walks before the
+// length check rejects it - is bounded by this cap, unchanged from the
+// old .max(2000) era (zod validated every element then too), and sits
+// behind the session gate.
 export const IMPORT_BODY_LIMIT_BYTES = 2 * 1024 * 1024
 
 // Exact paths, not a prefix: a prefix match would silently hand the
