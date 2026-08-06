@@ -117,7 +117,7 @@ Without this, leaving the app from the Food view stores a path the reader reject
 
 ```ts
   it('round-trips a food view path', () => {
-    saveLastListPath(`/lists/${UUID}/food`, OWNER)
+    writeLastListPath(`/lists/${UUID}/food`, OWNER)
     expect(readLastListPath(OWNER)).toBe(`/lists/${UUID}/food`)
   })
 
@@ -219,7 +219,7 @@ git commit -m "feat: food view route and nav entry"
 
 **Interfaces:**
 - Consumes: `foodGramsFor` from `src/lib/weight-breakdown.ts`, `ItemWeightValue`, `ListFoodResponse` from `shared/food.ts`.
-- Produces: `FoodSummaryRow({ listId, food, weightUnit }: { listId: string; food: ListFoodResponse; weightUnit: WeightUnit })` — the one-line derived row on List/Pack views linking to the Food view.
+- Produces: `FoodSummaryRow({ listId, food, weightUnit }: { listId: string; food: ListFoodResponse; weightUnit: WeightUnit })` — the one-line derived row on the LIST view (only — see Task 5) linking to the Food view.
 
 - [ ] **Step 1: Write the failing test**:
 
@@ -268,6 +268,13 @@ describe('FoodSummaryRow', () => {
 
   it('reads none-yet when nothing is planned', () => {
     renderRow(EMPTY)
+    expect(screen.getByText('none yet')).toBeInTheDocument()
+  })
+
+  it('reads none-yet when days are set but nothing is carried', () => {
+    // A three-day grid with zero items is still "nothing planned" weight-wise
+    renderRow(makeFood({ dayCount: 3 }))
+    expect(screen.getByText('3 days')).toBeInTheDocument()
     expect(screen.getByText('none yet')).toBeInTheDocument()
   })
 })
@@ -323,9 +330,11 @@ export default function FoodSummaryRow({
         )}
         {food.items.length > 0 ? (
           <ItemWeightValue grams={grams} unit={weightUnit} />
-        ) : food.dayCount === 0 ? (
+        ) : (
+          // Days without items is still zero carried weight - say so rather
+          // than render a row that trails off after the day count.
           <span className={FLAT_TABLE_META_TEXT}>none yet</span>
-        ) : null}
+        )}
       </Link>
     </section>
   )
@@ -347,12 +356,14 @@ git commit -m "feat: derived food summary row for list views"
 
 **Files:**
 - Create: `src/lists/FoodView.tsx`
-- Modify: `src/lists/ListDetailPage.tsx` (mutations block ~lines 537-610, render site ~lines 1997-2029, main-column branch)
-- Test: `src/lists/ListDetailPage.food.test.tsx` (port), `src/lists/FoodView.test.tsx` (new, small)
+- Modify: `src/lists/ListDetailPage.tsx` (mutations block ~lines 537-610, render site ~lines 1997-2029, main-column branch BEFORE the detail-data gate at ~line 690)
+- Modify: `src/lists/ListDocumentToolbar.tsx:38` (split the unit selector from list settings)
+- Modify: `src/lists/MobileListActionBar.tsx` (no gear Add in food mode)
+- Test: `src/lists/ListDetailPage.food.test.tsx` (rework), `src/lists/FoodView.test.tsx` (new), `src/app-routes.test.tsx`, `src/layout/RootRedirect.test.tsx`, `src/lists/list-unit-control.test.tsx`, `src/layout/mobile-action-bars.test.tsx`
 
 **Interfaces:**
 - Consumes: `FoodSection` (unchanged in PR 1), query fns from `src/lib/queries/food.ts`, `queryKeys.listFood`, `mutationKeys.setFoodDays` etc.
-- Produces: `FoodView({ listId }: { listId: string })` — self-contained: owns `useQuery(listFood)` + the five food mutations + `foodBusy`, renders `FoodSection`. `ListDetailPage` renders `<FoodView listId={listId} />` as the main-column content when `mode === 'food'`, and `<FoodSummaryRow … />` where `<FoodSection …/>` renders today (both remaining views).
+- Produces: `FoodView({ listId }: { listId: string })` — self-contained: owns `useQuery(listFood)` + the five food mutations + `foodBusy`, renders `FoodSection`. `ListDetailPage` renders `<FoodView listId={listId} />` as the main-column content when `mode === 'food'`, branched BEFORE the `detailDataLoading`/`detailDataError` gate — the Food route must not be blocked by a gear/categories/items failure, and a food failure must reach FoodView's own retry, not the generic "Couldn't load list details". `<FoodSummaryRow … />` renders on the LIST view only (`mode === 'edit'`): the spec (docs/food-view-design.md section 3) puts the trace on the List view, and Pack keeps its packing focus — the Food tab in ListViewNav is the pack-mode path to food.
 
 - [ ] **Step 1: Create `src/lists/FoodView.tsx`** by MOVING code, not rewriting it:
 
@@ -436,26 +447,40 @@ The bracketed MOVE is literal: cut ListDetailPage lines 541-610 (from `const inv
 - [ ] **Step 2: Integrate in `ListDetailPage.tsx`:**
 
 1. Delete the moved mutations block (keep `listFoodQuery`/`listFood` at lines 531-535 — the breakdown at line 1188 and the summary row still need it; delete `foodBusy` and all five mutation consts and `invalidateFood`).
-2. Replace the `<FoodSection …/>` block (lines 2018-2029) with:
+2. Replace the `<FoodSection …/>` block (lines 2018-2029) with a LIST-view-only summary row (Pack keeps its focus; the Food tab is pack's path to food):
 
 ```tsx
-              <FoodSummaryRow food={listFood} listId={listId} weightUnit={weightUnit} />
+              {mode === 'edit' && (
+                <FoodSummaryRow food={listFood} listId={listId} weightUnit={weightUnit} />
+              )}
 ```
 
-3. In the main content column, render `FoodView` INSTEAD of the list body when `mode === 'food'`. Find the top of the loaded-branch content in the main column and branch:
+3. Render `FoodView` INSTEAD of the list body when `mode === 'food'`, branched ABOVE the `detailDataLoading`/`detailDataError` gate (line ~690's consumers). Food mode needs the lists query for the toolbar and nothing else from the detail set — `FoodView` owns its own food-query gates:
 
 ```tsx
 {mode === 'food' ? (
   <FoodView listId={listId} />
 ) : (
-  /* existing edit/pack body, untouched */
+  /* existing edit/pack body behind the detail-data gate, untouched */
 )}
 ```
 
-4. Remove now-unused imports (`FoodSection`, `ApiError`/`showToast`/`FOOD_ITEM_CAP` if food mutations were their only consumers — check with `npm run lint`, which fails on unused imports).
-5. `MobileListActionBar` and the drawer gates take the mode as-is; food mode gets Add-without-Options (the `mode === 'edit'` checks are already correct). Verify no `mode !== 'pack'` conditional accidentally includes food where it should not by grepping: `grep -n "mode ===" src/lists/ListDetailPage.tsx` and reading each site.
+The `detailDataLoading`/`detailDataError` composite (which deliberately includes food so LIST/PACK totals can never silently omit food weight) stays exactly as it is for the other two modes.
 
-- [ ] **Step 3: Port `ListDetailPage.food.test.tsx`** — its interactions now live at the food route. Update the test's initial router entry from `/lists/<id>` to `/lists/<id>/food` (read the file's render helper; it uses a MemoryRouter or route wrapper). All existing behavioral assertions (day set, slot toggle, add, delete, reschedule, cap toast) must pass unchanged. Add two assertions:
+4. Remove now-unused imports (`FoodSection`, `ApiError`/`showToast`/`FOOD_ITEM_CAP` if food mutations were their only consumers — check with `npm run lint`, which fails on unused imports).
+5. Chrome decisions, explicit (each existing gate mishandles a third mode silently):
+   - `ListDocumentToolbar.tsx:38` currently gates the unit selector AND list settings together on `mode === 'edit'`. Split them: `UnitSegmentedControl` renders when `mode === 'edit' || mode === 'food'` (the food view is weights everywhere; hiding the page-level unit control there is a regression), `ListSettingsButton` stays edit-only (list admin is not a food-view concern).
+   - `MobileListActionBar` always pushes an Add item labeled "Add gear to list", and the drawer registration (`ListDetailPage.tsx:446`, `mode === 'edit' || mode === 'pack'`) leaves it DISABLED in food mode — a dead button. In food mode push no Add and no Options: destinations only. Leave the drawer registration as-is.
+   - Then grep `grep -n "mode ===" src/lists/ListDetailPage.tsx src/lists/ListDocumentToolbar.tsx src/lists/MobileListActionBar.tsx` and read every remaining site for third-mode sanity; list any further decision in the PR description.
+6. Extend `src/lists/list-unit-control.test.tsx` (unit selector present in food mode, absent in pack) and `src/layout/mobile-action-bars.test.tsx` (food mode: destinations only, no disabled Add).
+
+- [ ] **Step 3: Rework `ListDetailPage.food.test.tsx`** — be honest about what it contains: six mounting/query-gate tests (reachable from both views; absent while loading; absent on sibling failure; absent on food failure), NOT mutation-contract tests. They rework as follows:
+  - "renders the food section in List/Pack view" → the food EDITOR renders at `/lists/<id>/food`; the List view renders the summary row; the Pack view renders neither (assert absence).
+  - "absent while detail data is still loading" → on the food route, FoodView shows its loading state, no live controls.
+  - "absent when a sibling detail query fails" → INVERTED on the food route: a failed gear/categories/items query must NOT block the food editor (this pins Task 5's before-the-gate branch). On the List view the summary row stays behind the existing composite gate — assert that too.
+  - "absent when the food query itself fails" → on the food route this now shows FoodView's retry state ("Couldn't load the food plan."), not the generic detail error.
+
+  Also add a `/lists/:id/food` case to `src/app-routes.test.tsx` (route mounts ListDetailPage) and a cached-food-path fast-path case to `src/layout/RootRedirect.test.tsx` (a stored `/lists/<uuid>/food` restores to the food route) — the Task 2 regex test proves acceptance, not that the accepted path reaches a mounted route. Then add two assertions:
 
 ```tsx
   it('shows the food summary row on the list view', async () => {
@@ -738,7 +763,12 @@ export default function AddFoodForm(props: {
   slots: readonly FoodSlotResponse[]        // needed slots only (caller filters)
   busy: boolean
   weightUnit: WeightUnit
-  initialSlotIds?: readonly string[]        // per-slot "+ Add" preselection
+  // Slot selection is CONTROLLED by the caller. A prop captured once into
+  // useState would make a second per-slot "+ Add" a no-op while the form is
+  // already open - FoodView owns the selection so it can union a slot in at
+  // any time without remounting (a remount would eat the typed name/weight).
+  selectedSlotIds: readonly string[]
+  onSelectedSlotIdsChange: (next: string[]) => void
   onCancel: () => void
   onSubmit: (
     input: { name: string; weightGrams: number; quantity: number; slotIds: string[] },
@@ -749,7 +779,7 @@ export default function AddFoodForm(props: {
 
 `onSubmit` keeps the existing success-close contract: the CALLER closes the form only via the `onSuccess` callback, so a cap rejection never eats typed input.
 
-- [ ] **Step 1: Write the failing tests** — port the add-form assertions from `FoodSection.test.tsx` (validation bounds, submit payload, stays-open-on-failure) and add:
+- [ ] **Step 1: Write the failing tests** — port the ONE existing add-form assertion from `FoodSection.test.tsx` ("defaults quantity to 1 even when every breakfast is selected"). The rest are NEW — the current suite never tested them (GATE 1 finding): validation bounds mirroring `shared/food.ts` (blank name, name > 128, weight > 100000, quantity 0 and > 9999 all disable submit), the exact submit payload shape, busy-state disabling, and typed data surviving a rejected submit (the caller not invoking `onSuccess` leaves every field intact — render with an `onSubmit` that never calls it and assert the values persist). Then add:
 
 ```tsx
   it('labels every field and shows the unit toggle', () => {
@@ -768,9 +798,16 @@ export default function AddFoodForm(props: {
     expect(screen.getByText(/Adding: Oatmeal/)).toBeInTheDocument()
   })
 
-  it('preselects the slot it was opened for', () => {
-    renderForm({ initialSlotIds: ['b2'] })
+  it('reflects the controlled slot selection', () => {
+    renderForm({ selectedSlotIds: ['b2'] })
     expect(screen.getByRole('button', { name: 'Breakfast day 2' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('reports selection changes instead of owning them', async () => {
+    const onSelectedSlotIdsChange = vi.fn()
+    renderForm({ selectedSlotIds: [], onSelectedSlotIdsChange })
+    await user.click(screen.getByRole('button', { name: 'Breakfast day 2' }))
+    expect(onSelectedSlotIdsChange).toHaveBeenCalledWith(['b2'])
   })
 ```
 
@@ -832,7 +869,7 @@ where `const preview = addFoodPreview({ name, weightGrams, quantity: quantityVal
 
 4. Validation mirrors `shared/food.ts` bounds as today, minus the string-weight parsing (grams are already a clamped number).
 5. Primary button text becomes "Add food"; keep the existing blue button classes from FoodSection's form.
-6. `initialSlotIds`: `useState<string[]>([...(initialSlotIds ?? [])])`.
+6. Slot selection: no local state — render `FoodSlotPicker` with `selected={selectedSlotIds}` and `onChange={onSelectedSlotIdsChange}` straight from props; submit reads `props.selectedSlotIds`.
 
 - [ ] **Step 4: Run tests** → PASS.
 
@@ -1016,7 +1053,7 @@ export default function FoodCarryingList(props: {
 })
 ```
 
-- [ ] **Step 1: Write the failing tests** — port `FoodItemRow` assertions (schedule/reschedule button naming, delete aria-label) and add:
+- [ ] **Step 1: Write the failing tests** — these are NEW, not ports: `FoodSection.test.tsx` never covered `FoodItemRow` (GATE 1 finding). Write: Schedule vs Reschedule button naming by `slotIds` presence, the `Remove <name>` delete aria-label, per-row quantity display (`2 × `), and:
 
 ```tsx
   it('renders one list with an Unscheduled badge instead of a duplicate section', () => {
@@ -1095,7 +1132,24 @@ git commit -m "feat: single carrying list with unscheduled badge and totals"
     await user.click(within(await findDinnerRow()).getByRole('button', { name: /add/i }))
     expect(screen.getByRole('button', { name: 'Dinner day 1' })).toHaveAttribute('aria-pressed', 'true')
   })
+
+  it('+ Add unions into an already-open form without eating typed input', async () => {
+    renderFoodView()
+    await user.click(screen.getByRole('button', { name: 'Add food' }))
+    await user.type(screen.getByLabelText('Name'), 'Oatmeal')
+    await user.click(within(await findDinnerRow()).getByRole('button', { name: /add/i }))
+    expect(screen.getByRole('button', { name: 'Dinner day 1' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')
+  })
 ```
+
+Plus the mutation-contract tests the old suites never had (GATE 1 finding — write them here, where FoodView owns the mutations, mocking the query-fn modules the way `ListDetailPage.food.test.tsx` does):
+
+- the 422 cap rejection raises exactly `Food item limit reached (200 per list).` and the form stays open with its typed values;
+- a 400 raises the check-the-fields toast, never the generic one;
+- create/delete/reschedule call `createFoodItem`/`deleteFoodItem`/`updateFoodItem` with the expected arguments;
+- unscheduling sends an explicit `slotIds: []` (the DTO distinguishes `[]` from omitted — omitted means leave-alone);
+- the add form closes ONLY after mutation success (success-only close), and every control disables while `foodBusy`.
 
 - [ ] **Step 2: Run to verify failure.**
 
@@ -1103,11 +1157,14 @@ git commit -m "feat: single carrying list with unscheduled badge and totals"
 
 ```tsx
   const [adding, setAdding] = useState(false)
-  const [prefillSlotIds, setPrefillSlotIds] = useState<string[]>([])
+  // Owned HERE, not in AddFoodForm: a per-slot "+ Add" must be able to union
+  // a slot into an ALREADY-OPEN form without remounting it (a remount would
+  // eat the typed name and weight). GATE 1 caught the captured-once version.
+  const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([])
   const addFormRef = useRef<HTMLDivElement | null>(null)
 
   function openAddForSlot(slotId: string) {
-    setPrefillSlotIds([slotId])
+    setSelectedSlotIds((prev) => (prev.includes(slotId) ? prev : [...prev, slotId]))
     setAdding(true)
     // Scroll after the form mounts; rAF beats the render race without a layout effect.
     requestAnimationFrame(() => addFormRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }))
@@ -1141,10 +1198,11 @@ Composition (structure, using the moved pieces):
       <section ref={addFormRef} className={`${FLAT_TABLE_SURFACE} px-3 py-2.5`}>
         {adding ? (
           <AddFoodForm slots={neededSlots} busy={foodBusy} weightUnit={weightUnit}
-            initialSlotIds={prefillSlotIds}
-            onCancel={() => { setAdding(false); setPrefillSlotIds([]) }}
+            selectedSlotIds={selectedSlotIds}
+            onSelectedSlotIdsChange={setSelectedSlotIds}
+            onCancel={() => { setAdding(false); setSelectedSlotIds([]) }}
             onSubmit={(input, onSuccess) =>
-              foodItemCreateMut.mutate(input, { onSuccess: () => { invalidateFood(); onSuccess(); setAdding(false); setPrefillSlotIds([]) } })
+              foodItemCreateMut.mutate(input, { onSuccess: () => { invalidateFood(); onSuccess(); setAdding(false); setSelectedSlotIds([]) } })
             } />
         ) : (
           <button type="button" disabled={foodBusy} onClick={() => setAdding(true)}
@@ -1198,3 +1256,14 @@ git commit -m "feat: compose the redesigned food view, retire FoodSection"
 - The `losesWorkBelow` shrink-confirm and KNOWN GAP comment are explicitly carried (Task 12) — Phase 8 depends on finding them.
 - Type consistency: `FoodSlotResponse`/`FoodItemResponse` names match `shared/food.ts`; `MEAL_LABELS` exported once from `FoodSlotPicker.tsx` after Task 8, consumed by Task 10.
 - Exact-string test assertions (weight labels, preview lines) are flagged to verify against `formatItemWeight` before trusting — the formatter, not the plan, is authoritative.
+
+## GATE 1 amendments (2026-08-06, Codex VERDICT: MERGE-WITH-FIXES)
+
+All six findings verified against the code and folded in above:
+
+1. `FoodView` now branches ABOVE the `detailDataLoading`/`detailDataError` composite (Task 5), with route-level tests for sibling-failure independence and FoodView's own retry.
+2. Food-mode chrome decided explicitly (Task 5 step 5): unit selector yes, list settings no, mobile bar destinations-only (no disabled gear-Add); `list-unit-control` and `mobile-action-bars` tests extended.
+3. `AddFoodForm` slot selection is controlled by `FoodView` (Tasks 9/12) so per-slot "+ Add" unions into an open form without a remount; already-open test added.
+4. `FoodSummaryRow` is List-view-only per the spec, and reads "none yet" whenever no items are carried, days or not (Tasks 4-5).
+5. Test-port language corrected to match what the old suites actually contain; the never-written mutation-contract tests (422/400 toasts, failure persistence, busy states, wiring, `[]`-vs-omitted `slotIds`, success-only close) are scheduled in Tasks 9/11/12, plus `app-routes` and `RootRedirect` route-reachability cases (Task 5).
+6. `writeLastListPath` (the real helper name) replaces the invented `saveLastListPath` in Task 2.
