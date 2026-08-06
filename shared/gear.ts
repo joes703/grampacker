@@ -12,6 +12,11 @@ import { decimalNumber } from './decimal'
 // different contracts that happen to agree today.
 export const CATEGORY_CAP = 500
 
+// Mirrors the gear_items_user_cap trigger (0003, recreated in 0013); the DB
+// is authoritative. Single source: src/lib/caps.ts re-exports this for the
+// client preflights.
+export const GEAR_ITEM_CAP = 500
+
 export const GEAR_STATUSES = [
   'active',
   'needs_repair',
@@ -176,8 +181,7 @@ export type BulkMoveRequest = z.infer<typeof bulkMoveRequestSchema>
 // non-atomically, so a mid-flight failure orphaned the categories). The
 // client plans the import (CSV parse + dedup against its library snapshot)
 // and references not-yet-created categories by a client-minted tempId; the
-// server mints the real ids. The item cap (2000) mirrors MAX_CSV_ROWS in
-// the client parser.
+// server mints the real ids.
 const tempIdSchema = z.string().min(1).max(64)
 
 export const importCategoryRefSchema = z.discriminatedUnion('kind', [
@@ -186,53 +190,83 @@ export const importCategoryRefSchema = z.discriminatedUnion('kind', [
 ])
 export type ImportCategoryRef = z.infer<typeof importCategoryRefSchema>
 
-export const importGearRequestSchema = z
+const importGearCategoryEntrySchema = z
+  .object({ tempId: tempIdSchema, name: categoryNameSchema })
+  .strict()
+const importGearItemEntrySchema = z
   .object({
-    categories: z
-      .array(z.object({ tempId: tempIdSchema, name: categoryNameSchema }).strict())
-      .max(2000),
-    items: z
-      .array(
-        z
-          .object({
-            name: gearNameSchema,
-            description: descriptionSchema.nullable().default(null),
-            weightGrams: weightGramsSchema.default(0),
-            cost: costSchema.nullable().default(null),
-            purchaseDate: isoDateSchema.nullable().default(null),
-            category: importCategoryRefSchema.nullable().default(null),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(2000),
+    name: gearNameSchema,
+    description: descriptionSchema.nullable().default(null),
+    weightGrams: weightGramsSchema.default(0),
+    cost: costSchema.nullable().default(null),
+    purchaseDate: isoDateSchema.nullable().default(null),
+    category: importCategoryRefSchema.nullable().default(null),
   })
   .strict()
-  .superRefine((req, ctx) => {
-    const tempIds = req.categories.map((c) => c.tempId)
-    if (!uniqueIds(tempIds)) {
-      ctx.addIssue({ code: 'custom', message: 'duplicate category tempIds' })
+
+// The relational half of well-formedness, shared by BOTH schema variants
+// below: an oversized body with duplicate tempIds or dangling references is
+// MALFORMED (uniform 400), never merely over-cap (422).
+function refineImportGearRelations(
+  req: {
+    categories: { tempId: string }[]
+    items: { category: { kind: string; tempId?: string } | null }[]
+  },
+  ctx: z.RefinementCtx,
+): void {
+  const tempIds = req.categories.map((c) => c.tempId)
+  if (!uniqueIds(tempIds)) {
+    ctx.addIssue({ code: 'custom', message: 'duplicate category tempIds' })
+    return
+  }
+  const declared = new Set(tempIds)
+  const referenced = new Set<string>()
+  for (const item of req.items) {
+    if (item.category?.kind !== 'new') continue
+    const tempId = item.category.tempId as string
+    if (!declared.has(tempId)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `unknown category tempId: ${tempId}`,
+      })
       return
     }
-    const declared = new Set(tempIds)
-    const referenced = new Set<string>()
-    for (const item of req.items) {
-      if (item.category?.kind !== 'new') continue
-      if (!declared.has(item.category.tempId)) {
-        ctx.addIssue({
-          code: 'custom',
-          message: `unknown category tempId: ${item.category.tempId}`,
-        })
-        return
-      }
-      referenced.add(item.category.tempId)
-    }
-    // Every declared category must be used - rejecting orphans keeps the
-    // endpoint from being a category-spam vector.
-    if (referenced.size !== declared.size) {
-      ctx.addIssue({ code: 'custom', message: 'unreferenced category tempId' })
-    }
-  })
+    referenced.add(tempId)
+  }
+  // Every declared category must be used - rejecting orphans keeps the
+  // endpoint from being a category-spam vector.
+  if (referenced.size !== declared.size) {
+    ctx.addIssue({ code: 'custom', message: 'unreferenced category tempId' })
+  }
+}
+
+// One construction, two variants differing ONLY in the array maxima - the
+// shape and every relational refinement are identical, which is what lets
+// the route parse structure first (any failure there is the uniform 400)
+// and answer the caps as their own 422 dialect afterwards.
+function importGearSchema(caps: { categories: number; items: number } | null) {
+  const categories = z.array(importGearCategoryEntrySchema)
+  const items = z.array(importGearItemEntrySchema).min(1)
+  return z
+    .object({
+      categories: caps ? categories.max(caps.categories) : categories,
+      items: caps ? items.max(caps.items) : items,
+    })
+    .strict()
+    .superRefine(refineImportGearRelations)
+}
+
+// The public contract: maxima are the REAL caps (the triggers abort at 500,
+// so anything larger was a guaranteed late failure after D1 executed 500+
+// statements - the old 2000 ceiling promised what the DB always refused).
+export const importGearRequestSchema = importGearSchema({
+  categories: CATEGORY_CAP,
+  items: GEAR_ITEM_CAP,
+})
+// The route's stage-1 parse: same schema, uncapped, so a well-formed but
+// oversized import reaches the route's own length checks and gets the
+// actionable 422 instead of a generic 400.
+export const importGearStructureSchema = importGearSchema(null)
 export type ImportGearRequest = z.infer<typeof importGearRequestSchema>
 export type ImportGearRequestInput = z.input<typeof importGearRequestSchema>
 

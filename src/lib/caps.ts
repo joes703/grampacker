@@ -17,8 +17,9 @@
 // lib/caps import the old repo established.
 export { LIST_CAP, LIST_ITEM_CAP, PACKING_LOCATION_CAP } from '../../shared/lists'
 
-// Max gear items in a user's inventory.
-export const GEAR_ITEM_CAP = 500
+// Max gear items in a user's inventory, and the category cap beside it -
+// both defined once in shared/gear.ts next to the schemas that use them.
+export { CATEGORY_CAP, GEAR_ITEM_CAP } from '../../shared/gear'
 
 // Upper bound (grams) for a single item's weight; drafts clamp to this.
 export const MAX_ITEM_WEIGHT_GRAMS = 100000

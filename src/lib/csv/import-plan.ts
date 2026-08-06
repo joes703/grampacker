@@ -48,6 +48,7 @@ import type { GearCsvRow } from './gear'
 import type { ListCsvRow } from './list'
 import type { Category, GearItem } from '../types'
 import {
+  CATEGORY_CAP,
   GEAR_ITEM_CAP,
   LIST_ITEM_CAP,
   MAX_NAME_LENGTH,
@@ -291,9 +292,34 @@ export function planListImport(
 // over-cap import never reaches the server (the DB triggers remain
 // authoritative; this just yields a specific, actionable message instead
 // of a generic limit error).
+// The gear-library twin of assertListImportWithinCaps below - and until now
+// the missing one: only LIST import had a preflight, so a 501-item gear CSV
+// went to the server and came back as a late cap error. Both dimensions are
+// checked, because a gear import can create categories too and the 0021
+// trigger caps those independently.
+export function assertGearImportWithinCaps(
+  plan: GearImportPlan,
+  existingGearCount: number,
+  existingCategoryCount: number,
+): void {
+  const newGearCount = plan.newItems.length
+  if (existingGearCount + newGearCount > GEAR_ITEM_CAP) {
+    throw new Error(
+      `This import would add ${newGearCount} new gear item${newGearCount === 1 ? '' : 's'} to your ${existingGearCount} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Remove some items or split the file into smaller batches.`,
+    )
+  }
+  const newCategoryCount = plan.newCategories.length
+  if (existingCategoryCount + newCategoryCount > CATEGORY_CAP) {
+    throw new Error(
+      `This import would add ${newCategoryCount} new categor${newCategoryCount === 1 ? 'y' : 'ies'} to your ${existingCategoryCount} existing, exceeding the ${CATEGORY_CAP}-category limit. Reuse existing categories or trim the file.`,
+    )
+  }
+}
+
 export function assertListImportWithinCaps(
   plan: ListImportPlan,
   existingGearCount: number,
+  existingCategoryCount: number,
 ): void {
   if (plan.items.length > LIST_ITEM_CAP) {
     throw new Error(
@@ -304,6 +330,15 @@ export function assertListImportWithinCaps(
   if (existingGearCount + newGearCount > GEAR_ITEM_CAP) {
     throw new Error(
       `This import would add ${newGearCount} new gear item${newGearCount === 1 ? '' : 's'} to your ${existingGearCount} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Remove some items or split the file into smaller batches.`,
+    )
+  }
+  // A list import creates categories too, and the 0021 trigger caps those
+  // per USER, not per list - so the schema's per-file bound (LIST_ITEM_CAP
+  // categories) is not enough once the existing library is large.
+  const newCategoryCount = plan.newCategories.length
+  if (existingCategoryCount + newCategoryCount > CATEGORY_CAP) {
+    throw new Error(
+      `This import would add ${newCategoryCount} new categor${newCategoryCount === 1 ? 'y' : 'ies'} to your ${existingCategoryCount} existing, exceeding the ${CATEGORY_CAP}-category limit. Reuse existing categories or trim the file.`,
     )
   }
 }

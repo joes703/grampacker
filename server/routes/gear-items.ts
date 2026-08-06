@@ -1,11 +1,12 @@
 import { Hono } from 'hono'
 import {
   CATEGORY_CAP,
+  GEAR_ITEM_CAP,
   bulkDeleteRequestSchema,
   bulkMoveRequestSchema,
   createGearItemRequestSchema,
   gearStatusSchema,
-  importGearRequestSchema,
+  importGearStructureSchema,
   reorderRequestSchema,
   updateGearItemRequestSchema,
   type CreateGearItemRequest,
@@ -120,9 +121,30 @@ gearItemRoutes.put('/order', async (c) => {
 
 gearItemRoutes.post('/import', async (c) => {
   const raw = await c.req.json().catch(() => null)
-  const parsed = importGearRequestSchema.safeParse(raw)
+  // Two-stage parse. Stage 1 validates the FULL shape - element schemas and
+  // the relational refinements - with no array maxima, so anything malformed
+  // (including a malformed OVERSIZED body) stays the uniform 400. Stage 2
+  // answers the caps in the trigger's own 422 dialect, which matters because
+  // an over-cap gear CSV is user-reachable (the parser accepts 2000 rows)
+  // and used to burn 500+ executed statements before failing. Categories
+  // are checked first on purpose: every declared category must be
+  // referenced, so 501 valid categories force >=501 items - when both caps
+  // are blown, the category message is the actionable one.
+  const parsed = importGearStructureSchema.safeParse(raw)
   if (!parsed.success) {
     return c.json({ error: 'Invalid request body' }, 400)
+  }
+  if (parsed.data.categories.length > CATEGORY_CAP) {
+    return c.json(
+      { error: `Category limit reached (${CATEGORY_CAP} per user)` },
+      422,
+    )
+  }
+  if (parsed.data.items.length > GEAR_ITEM_CAP) {
+    return c.json(
+      { error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` },
+      422,
+    )
   }
   const result = await c.get('repos').gearItems.importBatch({
     categories: parsed.data.categories,
