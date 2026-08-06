@@ -10,13 +10,10 @@ const slot = (id: string, dayNumber: number, meal: 'breakfast' | 'lunch' | 'dinn
   ({ id, dayNumber, meal, needed: true })
 
 function renderPicker(slots: readonly FoodSlotResponse[] = [], selected: string[] = []) {
-  const onChange = (_next: string[]) => {
-    // Allow controlled update in tests by re-rendering
-  }
   const { rerender } = render(
-    <FoodSlotPicker slots={slots} selected={selected} onChange={onChange} />
+    <FoodSlotPicker slots={slots} selected={selected} onChange={() => {}} />
   )
-  return { onChange, rerender }
+  return { rerender }
 }
 
 describe('FoodSlotPicker', () => {
@@ -95,10 +92,7 @@ describe('FoodSlotPicker', () => {
       slot('b2', 2, 'breakfast'),
     ]
     const selected = ['b1', 'b2']
-    const onChange = (_next: string[]) => {
-      // noop for this test
-    }
-    render(<FoodSlotPicker slots={slots} selected={selected} onChange={onChange} />)
+    render(<FoodSlotPicker slots={slots} selected={selected} onChange={() => {}} />)
 
     const dayOneBreakfast = screen.getByRole('button', { name: 'Breakfast day 1' })
     const dayTwoBreakfast = screen.getByRole('button', { name: 'Breakfast day 2' })
