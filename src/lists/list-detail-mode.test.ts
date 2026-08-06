@@ -23,6 +23,12 @@ describe('deriveListMode', () => {
     [`/lists/${LIST_ID}/food`, '', 'food'],
     // A food URL with a legacy pack query param is a food URL; path wins.
     [`/lists/${LIST_ID}/food`, '?mode=pack', 'food'],
+    // Router matching is case-insensitive and slash-tolerant; mode
+    // derivation must agree or these URLs render the wrong view.
+    [`/lists/${LIST_ID}/FOOD`, '', 'food'],
+    [`/lists/${LIST_ID}/food/`, '', 'food'],
+    [`/lists/${LIST_ID}/PACK`, '', 'pack'],
+    [`/lists/${LIST_ID}/pack/`, '', 'pack'],
   ] as const)('%s%s -> %s', (pathname, search, expected) => {
     expect(deriveListMode(pathname, search, LIST_ID)).toBe(expected)
   })

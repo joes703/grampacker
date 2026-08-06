@@ -31,14 +31,19 @@ export function deriveListMode(
   search: string,
   listId: string,
 ): ListDetailMode {
-  const base = `/lists/${listId}`
+  const base = `/lists/${listId.toLowerCase()}`
+  // React Router matches routes case-insensitively and tolerates a trailing
+  // slash, so any URL the router resolves to this page must derive the same
+  // mode here - /lists/<id>/FOOD landing on 'edit' would render the List
+  // view under a food URL.
+  const normalized = pathname.replace(/\/+$/, '').toLowerCase()
   // Organize resolves to Pack rather than to a dead route: the view it named
   // is now part of Pack, so that is where an old link should land.
-  if (isLegacyOrganizePath(pathname, listId)) return 'pack'
-  if (pathname === `${base}/food`) return 'food'
+  if (isLegacyOrganizePath(normalized, listId.toLowerCase())) return 'pack'
+  if (normalized === `${base}/food`) return 'food'
   const legacyPackMode =
-    pathname === base && new URLSearchParams(search).get('mode') === 'pack'
-  if (pathname === `${base}/pack` || legacyPackMode) return 'pack'
+    normalized === base && new URLSearchParams(search).get('mode') === 'pack'
+  if (normalized === `${base}/pack` || legacyPackMode) return 'pack'
   return 'edit'
 }
 
