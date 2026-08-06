@@ -1,6 +1,7 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db'
 import { categories, gearItems } from '../db/schema'
+import { isTriggerAbort } from './db-errors'
 
 // Selected columns are the repo's output contract - user_id stays out of
 // handler reach entirely (the client is always self).
@@ -18,6 +19,16 @@ export type CategoryRow = {
   createdAt: number // epoch ms
 }
 
+export type CategoryCreateResult =
+  | { ok: true; row: CategoryRow }
+  | { ok: false; reason: 'cap_exceeded' }
+
+// The 0021 trigger is the single enforcement point; keep in lockstep with
+// its RAISE message and CATEGORY_CAP in shared/gear.ts.
+export function isCategoryCapError(err: unknown): boolean {
+  return isTriggerAbort(err, 'category cap exceeded')
+}
+
 export function createCategoriesRepo(db: Db, userId: string) {
   return {
     async list(): Promise<CategoryRow[]> {
@@ -31,19 +42,24 @@ export function createCategoriesRepo(db: Db, userId: string) {
     // Server-authoritative sort order: appended at max+1 (the old app
     // trusted a client-computed value; same benign concurrent-create tie
     // race, one less thing for clients to get wrong).
-    async create(name: string): Promise<CategoryRow> {
-      const [row] = await db
-        .insert(categories)
-        .values({
-          id: crypto.randomUUID(),
-          userId,
-          name,
-          sortOrder: sql`coalesce((select max(${categories.sortOrder}) + 1 from ${categories} where ${categories.userId} = ${userId}), 0)`,
-          createdAt: Date.now(),
-        })
-        .returning(cols)
-      if (!row) throw new Error('category insert returned no row')
-      return row
+    async create(name: string): Promise<CategoryCreateResult> {
+      try {
+        const [row] = await db
+          .insert(categories)
+          .values({
+            id: crypto.randomUUID(),
+            userId,
+            name,
+            sortOrder: sql`coalesce((select max(${categories.sortOrder}) + 1 from ${categories} where ${categories.userId} = ${userId}), 0)`,
+            createdAt: Date.now(),
+          })
+          .returning(cols)
+        if (!row) throw new Error('category insert returned no row')
+        return { ok: true, row }
+      } catch (err) {
+        if (isCategoryCapError(err)) return { ok: false, reason: 'cap_exceeded' }
+        throw err
+      }
     },
 
     async rename(id: string, name: string): Promise<CategoryRow | null> {

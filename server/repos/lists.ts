@@ -17,6 +17,7 @@ import {
 } from './db-errors'
 import { chunkForParamCap } from './chunk-ids'
 import { isCapError as isGearCapError } from './gear-items'
+import { isCategoryCapError } from './categories'
 import { isListItemCapError } from './list-items'
 
 const cols = {
@@ -108,6 +109,7 @@ export type ImportListResult =
         | 'cap_exceeded' // list cap (100 per user)
         | 'gear_cap_exceeded' // gear inventory cap (500 per user)
         | 'item_cap_exceeded' // list item cap (300; unreachable while the DTO max matches, kept as the trigger backstop)
+        | 'category_cap_exceeded' // category cap (CATEGORY_CAP per user; an import may carry up to 300 new categories)
         | 'invalid_category'
         | 'invalid_gear'
     }
@@ -721,6 +723,9 @@ export function createListsRepo(db: Db, userId: string) {
           }
           if (isListItemCapError(err)) {
             return { ok: false, reason: 'item_cap_exceeded' }
+          }
+          if (isCategoryCapError(err)) {
+            return { ok: false, reason: 'category_cap_exceeded' }
           }
           // A referenced existing category or gear row was deleted between
           // the owned-set precheck and the batch. SQLite's FK error never

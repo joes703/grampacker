@@ -1005,6 +1005,30 @@ const POST_CHECKS = [
   { migration: '0018_pack-sort-order.sql', description: 'a duplicate rank in the unassigned cohort is rejected too',
     sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,packing_location_id,sort_order,pack_sort_order,created_at,updated_at) values ('li-dup-un','u-seed','list-seed','gear-seed',1,0,0,0,0,null,98,0,0,0)",
     expectErrorMatch: /unique/i },
+
+  // 0021: the categories cap. u-seed holds exactly one fixture category
+  // (cat-seed), so a legitimate insert must still pass, and a recursive
+  // fill toward 500 must abort - proving the trigger both exists and fires
+  // at the declared boundary rather than merely parsing.
+  { migration: '0021_categories-cap.sql', description: 'categories_user_cap trigger exists',
+    sql: "select name from sqlite_master where type='trigger' and name='categories_user_cap'",
+    expectRows: [{ name: 'categories_user_cap' }] },
+  { migration: '0021_categories-cap.sql', description: 'a legitimate category insert still passes',
+    sql: "insert into categories (id,user_id,name,sort_order,created_at) values ('cat-chk','u-seed','Chk',1,0) returning id",
+    expectRows: [{ id: 'cat-chk' }] },
+  // The boundary is proven EXACTLY, not merely "a big insert eventually
+  // aborts" (which a 499-threshold trigger would also pass): fill to
+  // precisely 500 successfully, count it, then reject one more.
+  { migration: '0021_categories-cap.sql', description: 'filling to exactly 500 categories still passes',
+    // 2 existing (cat-seed, cat-chk) + 498 = 500.
+    sql: "insert into categories (id,user_id,name,sort_order,created_at) with recursive c(x) as (select 1 union all select x+1 from c where x<498) select 'cap-'||x,'u-seed','Cap'||x,x+1,0 from c returning 1 as ok",
+    expectRows: Array.from({ length: 498 }, () => ({ ok: 1 })) },
+  { migration: '0021_categories-cap.sql', description: 'the fill landed at exactly the cap',
+    sql: "select count(*) as n from categories where user_id='u-seed'",
+    expectRows: [{ n: 500 }] },
+  { migration: '0021_categories-cap.sql', description: 'the 501st category is rejected',
+    sql: "insert into categories (id,user_id,name,sort_order,created_at) values ('cap-over','u-seed','Over',999,0)",
+    expectErrorMatch: /category cap exceeded/ },
 ]
 
 const quoteIdent = (name) => `"${name.replaceAll('"', '""')}"`

@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import {
+  CATEGORY_CAP,
   bulkDeleteRequestSchema,
   bulkMoveRequestSchema,
   createGearItemRequestSchema,
@@ -137,6 +138,12 @@ gearItemRoutes.post('/import', async (c) => {
   if (!result.ok) {
     if (result.reason === 'invalid_category') {
       return c.json({ error: 'Invalid category' }, 400)
+    }
+    if (result.reason === 'category_cap_exceeded') {
+      return c.json(
+        { error: `Category limit reached (${CATEGORY_CAP} per user)` },
+        422,
+      )
     }
     return c.json({ error: 'Gear item limit reached (500 per user)' }, 422)
   }

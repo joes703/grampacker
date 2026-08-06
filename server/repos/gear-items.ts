@@ -4,6 +4,7 @@ import type { Db } from '../db'
 import { categories, gearItems } from '../db/schema'
 import { chunkIds } from './chunk-ids'
 import { isTriggerAbort } from './db-errors'
+import { isCategoryCapError } from './categories'
 
 const cols = {
   id: gearItems.id,
@@ -59,7 +60,10 @@ export type ImportGearItemInput = {
 
 export type ImportGearResult =
   | { ok: true; createdCategories: number; createdItems: number }
-  | { ok: false; reason: 'invalid_category' | 'cap_exceeded' }
+  | {
+      ok: false
+      reason: 'invalid_category' | 'cap_exceeded' | 'category_cap_exceeded'
+    }
 
 // PATCH semantics: undefined = unchanged, null = clear (nullable fields).
 export type UpdateGearItemPatch = {
@@ -248,6 +252,11 @@ export function createGearItemsRepo(db: Db, userId: string) {
         await db.batch([first, ...rest])
       } catch (err) {
         if (isCapError(err)) return { ok: false, reason: 'cap_exceeded' }
+        // An import can carry new categories, so the 0021 category cap can
+        // abort the batch too - everything rolls back, zero partial rows.
+        if (isCategoryCapError(err)) {
+          return { ok: false, reason: 'category_cap_exceeded' }
+        }
         throw err
       }
       return {
