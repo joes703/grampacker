@@ -260,6 +260,12 @@ function FoodDocument({
 
   const days = Array.from({ length: food.dayCount }, (_, i) => i + 1)
   const neededSlots = food.slots.filter((slot) => slot.needed)
+  const neededSlotIds = new Set(neededSlots.map((s) => s.id))
+  // Selection can hold ids for slots that were skipped or trimmed after being
+  // picked (the picker no longer shows them, so the user could neither see nor
+  // clear them). Filter at the boundary: state may go stale harmlessly, but a
+  // stale id can never render or submit.
+  const activeSelectedSlotIds = selectedSlotIds.filter((id) => neededSlotIds.has(id))
 
   return (
     <div className="mt-3 space-y-3">
@@ -361,7 +367,7 @@ function FoodDocument({
             slots={neededSlots}
             busy={busy}
             weightUnit={weightUnit}
-            selectedSlotIds={selectedSlotIds}
+            selectedSlotIds={activeSelectedSlotIds}
             onSelectedSlotIdsChange={setSelectedSlotIds}
             onCancel={() => {
               setAdding(false)

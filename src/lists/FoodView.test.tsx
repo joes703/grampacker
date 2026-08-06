@@ -394,6 +394,58 @@ describe('FoodView add food', () => {
   })
 })
 
+describe('FoodView stale slot ids', () => {
+  // GATE 2 finding: FoodView owns selectedSlotIds while the picker only
+  // renders currently-needed slots. Skip a selected meal while the add form
+  // is open and the id used to vanish from the picker but survive in state,
+  // so the raw array still reached the server and 400'd on the pruned slot
+  // (server/routes/food.ts). Filtering at the boundary (activeSelectedSlotIds
+  // in FoodView.tsx) must keep the stale id out of both the picker and the
+  // submit payload, without touching the typed name.
+  it('drops a slot that goes not-needed after selection from both the picker and the submit', async () => {
+    h.fetchListFood.mockResolvedValueOnce(oneDayFood).mockResolvedValue({
+      ...oneDayFood,
+      slots: oneDayFood.slots.map((s) => (s.id === 'd1' ? { ...s, needed: false } : s)),
+    })
+    await renderFoodView()
+
+    // Select dinner (d1) via the per-slot "+ Add" affordance, then type a name.
+    await user.click(within(await findDinnerRow()).getByRole('button', { name: /add/i }))
+    expect(screen.getByRole('button', { name: 'Dinner day 1' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await user.type(screen.getByLabelText('Name'), 'Oatmeal')
+    expect(screen.getByText(/Adding: Oatmeal/)).toHaveTextContent('dinner')
+
+    // Skip a DIFFERENT slot (breakfast) - its mutation's onSuccess invalidates
+    // the food query, and the refetch above is what makes dinner not-needed.
+    const breakfastRow = within(
+      await screen.findByRole('region', { name: 'Day 1' }),
+    ).getByText('Breakfast').closest('div') as HTMLElement
+    await user.click(within(breakfastRow).getByRole('button', { name: 'Skip' }))
+
+    // The picker no longer renders a slot for dinner at all (it is filtered
+    // out of neededSlots), so there is no stale "pressed" chip anywhere.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Dinner day 1' })).not.toBeInTheDocument(),
+    )
+    // The preview line derives from the same filtered prop - it must stop
+    // naming the vanished slot too.
+    expect(screen.getByText(/Adding: Oatmeal/)).not.toHaveTextContent('dinner')
+    // Typed input survives untouched throughout.
+    expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')
+
+    await user.click(screen.getByRole('button', { name: 'Add food' }))
+    expect(h.createFoodItem).toHaveBeenCalledWith(listId, {
+      name: 'Oatmeal',
+      weightGrams: 0,
+      quantity: 1,
+      slotIds: [],
+    })
+  })
+})
+
 describe('FoodView delete', () => {
   it('calls deleteFoodItem with the list and item id', async () => {
     h.fetchListFood.mockResolvedValue(rescheduleFood)

@@ -1418,10 +1418,11 @@ Tests: a barrier-driven two-client API test that interleaves a write immediately
 before the batch (not merely a stale snapshot); a component test for
 refetch-and-reconfirm; a test that a 409 raises no generic toast; and the
 control above proving the unguarded form loses data. Remove the "KNOWN GAP"
-comment at `FoodSection.tsx:149-155` when it lands.
+comment in `src/lists/FoodView.tsx` (the days-input `onBlur` block) when it
+lands.
 
-Same treatment applies to marking a populated slot not needed
-(`FoodSection.tsx:225-242`, `server/repos/food.ts:211-263`).
+Same treatment applies to marking a populated slot not needed (the confirm
+in `src/lists/FoodDaySection.tsx`, `server/repos/food.ts:211-263`).
 
 ### N2. RESOLVED 2026-07-31 - retire the dead flags, no staging
 
