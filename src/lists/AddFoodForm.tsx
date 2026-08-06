@@ -6,7 +6,8 @@ import type { FoodSlotResponse } from '../../shared/food'
 import type { WeightUnit } from '../lib/weight'
 
 // Labeled, unit-aware add-food form with a live preview. Replaces the
-// placeholder-only inline row that used to live inside FoodSection.
+// placeholder-only inline row that used to live inside the retired inline
+// food section.
 //
 // Slot selection is CONTROLLED by the caller (FoodView, Task 12+), not owned
 // here. A prop captured once into useState would make a second per-slot

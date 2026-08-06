@@ -11,11 +11,11 @@ import type { FoodItemResponse } from '../../shared/food'
 import type { WeightUnit } from '../lib/weight'
 
 // The single carrying list for the Food view: every carried item, scheduled
-// or not, in one list. Replaces FoodSection's old split into a "Carrying"
-// section and a duplicate "Unscheduled" section - an item was never in both,
-// so the split bought nothing but a second heading. An unscheduled item is
-// marked inline with a badge instead of a "Any time" text that read as if
-// it were a real schedule choice.
+// or not, in one list. Replaces the retired inline food section's old split
+// into a "Carrying" section and a duplicate "Unscheduled" section - an item
+// was never in both, so the split bought nothing but a second heading. An
+// unscheduled item is marked inline with a badge instead of a "Any time"
+// text that read as if it were a real schedule choice.
 export default function FoodCarryingList({
   items,
   weightUnit,

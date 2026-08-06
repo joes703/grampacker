@@ -12,8 +12,9 @@ import type { WeightUnit } from '../lib/weight'
 
 // One day of the food grid: every meal slot for `day`, in MEALS order,
 // showing the food scheduled at each and letting the user Skip a meal they
-// will not eat or Restore one they skipped by mistake. See FoodSection.tsx
-// for the fuller rationale behind the three-state grid this replaces.
+// will not eat or Restore one they skipped by mistake. Replaces the
+// three-state grid from the retired inline food section that FoodView
+// rendered before this redesign.
 type Props = {
   day: number
   slots: readonly FoodSlotResponse[]

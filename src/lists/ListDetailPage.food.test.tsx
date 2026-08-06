@@ -26,7 +26,7 @@ import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
 // block it, while a food failure must surface FoodView's OWN retry rather
 // than the page's generic "Couldn't load list details".
 //
-// None of these faults are visible from FoodSection's or FoodView's own unit
+// None of these faults are visible from FoodView's own component-level unit
 // tests - each component is correct in isolation. Only mounting the page
 // catches where it is wired.
 
