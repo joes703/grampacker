@@ -172,6 +172,39 @@ describe('FoodView header', () => {
   })
 })
 
+describe('FoodView meal counts', () => {
+  it('derives the meal counts and offers no way to type them', async () => {
+    // Breakfast is skipped; lunch and dinner remain needed - one of each.
+    h.fetchListFood.mockResolvedValue({
+      dayCount: 1,
+      slots: [
+        { id: 'b1', dayNumber: 1, meal: 'breakfast', needed: false },
+        { id: 'l1', dayNumber: 1, meal: 'lunch', needed: true },
+        { id: 'd1', dayNumber: 1, meal: 'dinner', needed: true },
+      ],
+      items: [],
+    })
+    await renderFoodView()
+    expect(await screen.findByText(/1 lunch · 1 dinner/)).toBeInTheDocument()
+    const numbers = screen.getAllByRole('spinbutton')
+    expect(numbers.map((n) => n.getAttribute('aria-label'))).toEqual(['Trip length in days'])
+  })
+})
+
+describe('FoodView skip', () => {
+  it('reaches the mutation without confirming on an empty slot', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    h.fetchListFood.mockResolvedValue(oneDayFood)
+    await renderFoodView()
+    const dinnerRow = await findDinnerRow()
+    await user.click(within(dinnerRow).getByRole('button', { name: 'Skip' }))
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(h.setFoodSlotNeeded).toHaveBeenCalledWith(listId, 'd1', false)
+    confirmSpy.mockRestore()
+  })
+})
+
 describe('FoodView empty state', () => {
   it('explains what setting a trip length does when there are zero days', async () => {
     h.fetchListFood.mockResolvedValue({ dayCount: 0, slots: [], items: [] })

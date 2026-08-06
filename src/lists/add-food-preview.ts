@@ -47,7 +47,7 @@ function describeSlots(
   }
 
   // Sort remaining slots chronologically for readability: by dayNumber first, then by meal
-  // type order (breakfast → lunch → dinner) so users read slots in trip order.
+  // type order (breakfast -> lunch -> dinner) so users read slots in trip order.
   remainingSelected.sort((a, b) => {
     if (a.dayNumber !== b.dayNumber) return a.dayNumber - b.dayNumber
     return MEALS.indexOf(a.meal) - MEALS.indexOf(b.meal)

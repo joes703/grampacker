@@ -76,7 +76,7 @@ function FoodSlotPicker({
                           : [...selected, slot.id],
                       )
                     }
-                    className={`min-h-9 rounded-full border px-3 text-sm font-medium ${
+                    className={`min-h-10 rounded-full border px-3 text-sm font-medium ${
                       on
                         ? 'border-blue-500 bg-blue-50 text-blue-700'
                         : 'border-gray-300 text-gray-600 hover:bg-gray-50'

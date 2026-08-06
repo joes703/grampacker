@@ -263,7 +263,7 @@ function FoodDocument({
 
   return (
     <div className="mt-3 space-y-3">
-      <section className={FLAT_TABLE_SURFACE}>
+      <section aria-labelledby="food-heading" className={FLAT_TABLE_SURFACE}>
         <div className={`${FLAT_TABLE_HEADER} ${FLAT_TABLE_HEADER_PADDING} flex-wrap gap-2`}>
           <h3 id="food-heading" className={FLAT_TABLE_HEADER_TITLE}>
             Food

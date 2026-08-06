@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import AddFoodForm from './AddFoodForm'
-import type { FoodSlotResponse } from '../../shared/food'
+import { foodWeightSchema, type FoodSlotResponse } from '../../shared/food'
+import { MAX_ITEM_WEIGHT_GRAMS } from '../lib/caps'
 
 afterEach(cleanup)
 
@@ -224,5 +225,16 @@ describe('AddFoodForm controlled slot selection', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Breakfast day 2' }))
     expect(onSelectedSlotIdsChange).toHaveBeenCalledWith(['b2'])
+  })
+})
+
+describe('AddFoodForm weight clamp coupling', () => {
+  // The comment above (line 46-47) claims WeightInput's client clamp equals
+  // the server's foodWeightSchema max. Nothing enforces that but a comment -
+  // pin it so a change to either constant fails a test instead of silently
+  // drifting.
+  it('pins MAX_ITEM_WEIGHT_GRAMS to the foodWeightSchema max', () => {
+    expect(foodWeightSchema.safeParse(MAX_ITEM_WEIGHT_GRAMS).success).toBe(true)
+    expect(foodWeightSchema.safeParse(MAX_ITEM_WEIGHT_GRAMS + 1).success).toBe(false)
   })
 })
