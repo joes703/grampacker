@@ -311,6 +311,35 @@ export const PANEL_TOGGLE_LABEL = 'text-sm lg:text-[13px] font-medium text-gray-
 export const PANEL_EMPTY_TEXT = 'text-sm lg:text-[13px] italic text-gray-500'
 
 // ---------------------------------------------------------------------------
+// Form field tokens
+// ---------------------------------------------------------------------------
+// The canonical text/number/select field: rounded-lg shell, gray hairline,
+// comfortable py-2 target, blue focus ring. This exact string was repeated
+// as a literal across every dialog form (GearItemDialog, QuickAddItemModal,
+// ListsEmptyState, ...) before it was hoisted here; new forms should compose
+// this token instead of re-typing it. Call sites add width (`w-full`),
+// alignment (`text-right tabular-nums`), and shape extras (`resize-none`,
+// `appearance-none`) around it. Fields with asymmetric padding (e.g. the
+// price input's `pl-6` currency inset) stay inline as documented variants.
+// Labels belong to the FormLabel component, not a token here.
+export const FORM_INPUT =
+  'rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+
+// ---------------------------------------------------------------------------
+// Toggle chip tokens
+// ---------------------------------------------------------------------------
+// Pill-shaped pressed/unpressed multi-select chips (the food slot picker's
+// whole-meal and per-day toggles). Density follows the standing rule: 40px
+// touch floor on mobile, desktop shrinks to the 28px pointer tier and the
+// shared 13px body scale. Selected state is the blue tint pair used by
+// aria-pressed controls elsewhere; compose the ON/OFF variant beside the
+// base at the call site.
+export const TOGGLE_CHIP =
+  'inline-flex min-h-10 lg:min-h-7 items-center rounded-full border px-3 text-sm lg:text-[13px] font-medium'
+export const TOGGLE_CHIP_ON = 'border-blue-500 bg-blue-50 text-blue-700'
+export const TOGGLE_CHIP_OFF = 'border-gray-300 text-gray-600 hover:bg-gray-50'
+
+// ---------------------------------------------------------------------------
 // Popover surface
 // ---------------------------------------------------------------------------
 // Floating popover/menu chrome: rounded card with a hairline border, white

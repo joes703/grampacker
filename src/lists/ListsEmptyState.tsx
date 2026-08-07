@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { Plus, Upload } from 'lucide-react'
+import { FORM_INPUT } from '../components/flat-table-styles'
 import {
   queryKeys,
   createList,
@@ -88,7 +89,7 @@ export default function ListsEmptyState() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') submit() }}
-            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={`flex-1 ${FORM_INPUT}`}
           />
           <PrimaryButton
             onClick={submit}
