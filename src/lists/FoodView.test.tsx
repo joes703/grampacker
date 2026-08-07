@@ -477,7 +477,7 @@ describe('FoodView busy', () => {
 })
 
 describe('FoodView + Add on a slot', () => {
-  it('opens the form with that slot preselected', async () => {
+  it('opens the form with that slot preselected and moves focus to Name', async () => {
     h.fetchListFood.mockResolvedValue(oneDayFood)
     await renderFoodView()
     await user.click(within(await findDinnerRow()).getByRole('button', { name: /add/i }))
@@ -485,12 +485,19 @@ describe('FoodView + Add on a slot', () => {
       'aria-pressed',
       'true',
     )
+    // The form precedes the day grid in DOM order, so Tab from the clicked
+    // "+ Add" walks away from it - the focus handoff is what makes the form
+    // reachable for keyboard users at all.
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
   })
 
   it('unions into an already-open form without eating typed input', async () => {
     h.fetchListFood.mockResolvedValue(oneDayFood)
     await renderFoodView()
     await user.click(await screen.findByRole('button', { name: 'Add food' }))
+    // The open button unmounts in favor of the form; focus must not be
+    // dropped on body.
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
     await user.type(screen.getByLabelText('Name'), 'Oatmeal')
     await user.click(within(await findDinnerRow()).getByRole('button', { name: /add/i }))
 
@@ -499,5 +506,7 @@ describe('FoodView + Add on a slot', () => {
       'true',
     )
     expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')
+    // Focus returns to Name on the union as well, not just first open.
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
   })
 })

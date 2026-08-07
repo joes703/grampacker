@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type RefObject } from 'react'
 import WeightInput from '../components/WeightInput'
 import FoodSlotPicker from './FoodSlotPicker'
 import { addFoodPreview } from './add-food-preview'
@@ -18,6 +18,7 @@ export default function AddFoodForm({
   slots,
   busy,
   weightUnit,
+  nameInputRef,
   selectedSlotIds,
   onSelectedSlotIdsChange,
   onCancel,
@@ -26,6 +27,11 @@ export default function AddFoodForm({
   slots: readonly FoodSlotResponse[]
   busy: boolean
   weightUnit: WeightUnit
+  /** Lets the caller move focus into the form when it opens the form or
+   *  unions a slot into it - the form precedes the day grid in DOM order,
+   *  so without the handoff, keyboard focus is left stranded behind it.
+   *  The `| null` is load-bearing for useRef(null) (AGENTS.md). */
+  nameInputRef?: RefObject<HTMLInputElement | null>
   selectedSlotIds: readonly string[]
   onSelectedSlotIdsChange: (next: string[]) => void
   onCancel: () => void
@@ -93,6 +99,7 @@ export default function AddFoodForm({
         <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-gray-700">
           Name
           <input
+            ref={nameInputRef}
             value={name}
             onChange={(e) => setName(e.target.value)}
             maxLength={128}

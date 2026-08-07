@@ -227,17 +227,30 @@ function FoodDocument({
   // eat the typed name and weight). GATE 1 caught the captured-once version.
   const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([])
   const addFormRef = useRef<HTMLDivElement | null>(null)
+  const nameInputRef = useRef<HTMLInputElement | null>(null)
+
+  // Focus is not a courtesy here: the form sits BEFORE the day sections in
+  // DOM order, so after clicking "+ Add" (or the button the form replaces)
+  // Tab walks AWAY from the form and a keyboard user can never reach it
+  // forward (GATE 2 finding). preventScroll keeps the focus jump from
+  // fighting the smooth scroll below.
+  function focusNameSoon() {
+    requestAnimationFrame(() => nameInputRef.current?.focus({ preventScroll: true }))
+  }
 
   function openAddForSlot(slotId: string) {
     setSelectedSlotIds((prev) => (prev.includes(slotId) ? prev : [...prev, slotId]))
     setAdding(true)
+    focusNameSoon()
     // Scroll after the form mounts; rAF beats the render race without a
     // layout effect. rAF itself is available everywhere we run (including
     // jsdom); jsdom just doesn't implement Element.scrollIntoView, so that
     // call is optional-chained - a no-op under test, real behavior in a
-    // browser.
+    // browser. block 'start', not 'center': the card can be taller than the
+    // rail's scrollport (30-day picker), and centering an oversized element
+    // lands the user mid-picker with the Name field scrolled out of view.
     requestAnimationFrame(() =>
-      addFormRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }),
+      addFormRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }),
     )
   }
 
@@ -268,7 +281,15 @@ function FoodDocument({
   const activeSelectedSlotIds = selectedSlotIds.filter((id) => neededSlotIds.has(id))
 
   return (
-    <div className="mt-3 space-y-3">
+    // Desktop (lg+) is a two-column grid: the add-food card + Carrying card
+    // live in a sticky left rail (tools left of the document, matching the
+    // edit-mode aside) so the per-slot "+ Add" always has the form in view,
+    // and the day sections take the flexible width. Below lg the grid
+    // collapses to a stack with that panel ABOVE the day sections - the add
+    // action stays reachable without scrolling a long trip (D4 as revised
+    // 2026-08-07, docs/food-view-design.md). max-w-6xl keeps ultra-wide
+    // monitors from stretching the day rows into a corridor.
+    <div className="mt-3 max-w-6xl space-y-3">
       <section aria-labelledby="food-heading" className={FLAT_TABLE_SURFACE}>
         <div className={`${FLAT_TABLE_HEADER} ${FLAT_TABLE_HEADER_PADDING} flex-wrap gap-2`}>
           <h3 id="food-heading" className={FLAT_TABLE_HEADER_TITLE}>
@@ -339,103 +360,126 @@ function FoodDocument({
         </p>
       </section>
 
-      {food.dayCount === 0 ? (
-        <p className="px-3 py-3 text-sm text-gray-500">
-          Set a trip length and every meal appears. Strike the ones you will not
-          eat; what is left is what you need to pack.
-        </p>
-      ) : (
-        <section className={FLAT_TABLE_SURFACE}>
-          {days.map((day) => (
-            <FoodDaySection
-              key={day}
-              day={day}
-              slots={slotsForDay(food, day)}
-              itemsBySlot={itemsBySlot}
-              weightUnit={weightUnit}
-              busy={busy}
-              onSetSlotNeeded={onSetSlotNeeded}
-              onAddToSlot={openAddForSlot}
-            />
-          ))}
-        </section>
-      )}
-
-      <section ref={addFormRef} className={`${FLAT_TABLE_SURFACE} px-3 py-2.5`}>
-        {adding ? (
-          <AddFoodForm
-            slots={neededSlots}
-            busy={busy}
-            weightUnit={weightUnit}
-            selectedSlotIds={activeSelectedSlotIds}
-            onSelectedSlotIdsChange={setSelectedSlotIds}
-            onCancel={() => {
-              setAdding(false)
-              setSelectedSlotIds([])
-            }}
-            // The form closes only once the add SUCCEEDS. Closing on submit
-            // threw the typed name, weight and slot selection away whenever
-            // the write failed - including at the item cap, where the user
-            // is most likely to be told no.
-            onSubmit={(input, onSuccess) =>
-              onAddItem(input, () => {
-                onSuccess()
-                setAdding(false)
-                setSelectedSlotIds([])
-              })
-            }
-          />
-        ) : (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setAdding(true)}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            Add food
-          </button>
-        )}
-        {/* The app already labels gear consumables "food, fuel, water". Anyone
-            keeping a "Food bag" gear row AND listing its contents here would
-            count the same grams twice. Lives on the add-food card (not the
-            Carrying card, which is absent until the first item exists) so it
-            is visible at the exact moment it matters: adding the first food. */}
-        <p className="mt-2 text-xs text-gray-500">
-          Adds to your consumable weight. If you also have a food item in your
-          gear list, remove it so it is not counted twice.
-        </p>
-      </section>
-
-      {food.items.length > 0 && (
-        <section className={FLAT_TABLE_SURFACE}>
-          <div className={`px-3 pt-2 ${FLAT_TABLE_EYEBROW}`}>Carrying</div>
-          <FoodCarryingList
-            items={food.items}
-            weightUnit={weightUnit}
-            busy={busy}
-            onReschedule={setEditingItemId}
-            onDelete={onDeleteItem}
-          />
-          {editingItem && (
-            <div className="border-t border-gray-100 bg-blue-50/40 px-3 py-2">
-              <p className="mb-1.5 text-xs font-medium text-gray-700">
-                When are you eating {editingItem.name}?
-              </p>
-              <RescheduleForm
-                key={editingItem.id}
+      {/* gap (not space-y) so spacing holds in both the stacked flex layout
+          and the lg grid, where child margins would land inside the cells.
+          DOM order = mobile visual order (panel first, days second); the lg
+          grid reads the same order into rail-left, days-right. */}
+      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[22.5rem_minmax(0,1fr)] lg:items-start">
+        {/* top-4 matches the edit-mode aside's 1rem offset. The max-h +
+            overflow pair is load-bearing, not polish: a top-only sticky
+            element taller than the viewport stays pinned with its overflow
+            unreachable until the end of the scroll container, and a 30-day
+            trip's slot picker alone exceeds any viewport - without an
+            internal scroll the form's Submit/Cancel could not be reached
+            (GATE 2 finding). */}
+        <div className="space-y-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+          <section ref={addFormRef} className={`${FLAT_TABLE_SURFACE} px-3 py-2.5`}>
+            {adding ? (
+              <AddFoodForm
                 slots={neededSlots}
-                initialSlotIds={editingItem.slotIds}
                 busy={busy}
-                onCancel={() => setEditingItemId(null)}
-                onSave={(slotIds) => {
-                  onSetItemSlots(editingItem.id, slotIds)
-                  setEditingItemId(null)
+                weightUnit={weightUnit}
+                nameInputRef={nameInputRef}
+                selectedSlotIds={activeSelectedSlotIds}
+                onSelectedSlotIdsChange={setSelectedSlotIds}
+                onCancel={() => {
+                  setAdding(false)
+                  setSelectedSlotIds([])
                 }}
+                // The form closes only once the add SUCCEEDS. Closing on submit
+                // threw the typed name, weight and slot selection away whenever
+                // the write failed - including at the item cap, where the user
+                // is most likely to be told no.
+                onSubmit={(input, onSuccess) =>
+                  onAddItem(input, () => {
+                    onSuccess()
+                    setAdding(false)
+                    setSelectedSlotIds([])
+                  })
+                }
               />
-            </div>
+            ) : (
+              <button
+                type="button"
+                disabled={busy}
+                // The form mounts in this button's place, so the button's
+                // focus dies with it - hand it to the Name field.
+                onClick={() => {
+                  setAdding(true)
+                  focusNameSoon()
+                }}
+                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                Add food
+              </button>
+            )}
+            {/* The app already labels gear consumables "food, fuel, water". Anyone
+                keeping a "Food bag" gear row AND listing its contents here would
+                count the same grams twice. Lives on the add-food card (not the
+                Carrying card, which is absent until the first item exists) so it
+                is visible at the exact moment it matters: adding the first food. */}
+            <p className="mt-2 text-xs text-gray-500">
+              Adds to your consumable weight. If you also have a food item in your
+              gear list, remove it so it is not counted twice.
+            </p>
+          </section>
+
+          {food.items.length > 0 && (
+            <section className={FLAT_TABLE_SURFACE}>
+              <div className={`px-3 pt-2 ${FLAT_TABLE_EYEBROW}`}>Carrying</div>
+              <FoodCarryingList
+                items={food.items}
+                weightUnit={weightUnit}
+                busy={busy}
+                onReschedule={setEditingItemId}
+                onDelete={onDeleteItem}
+              />
+              {editingItem && (
+                <div className="border-t border-gray-100 bg-blue-50/40 px-3 py-2">
+                  <p className="mb-1.5 text-xs font-medium text-gray-700">
+                    When are you eating {editingItem.name}?
+                  </p>
+                  <RescheduleForm
+                    key={editingItem.id}
+                    slots={neededSlots}
+                    initialSlotIds={editingItem.slotIds}
+                    busy={busy}
+                    onCancel={() => setEditingItemId(null)}
+                    onSave={(slotIds) => {
+                      onSetItemSlots(editingItem.id, slotIds)
+                      setEditingItemId(null)
+                    }}
+                  />
+                </div>
+              )}
+            </section>
           )}
-        </section>
-      )}
+        </div>
+
+        <div className="min-w-0">
+          {food.dayCount === 0 ? (
+            <p className="px-3 py-3 text-sm text-gray-500">
+              Set a trip length and every meal appears. Strike the ones you will not
+              eat; what is left is what you need to pack.
+            </p>
+          ) : (
+            <section className={FLAT_TABLE_SURFACE}>
+              {days.map((day) => (
+                <FoodDaySection
+                  key={day}
+                  day={day}
+                  slots={slotsForDay(food, day)}
+                  itemsBySlot={itemsBySlot}
+                  weightUnit={weightUnit}
+                  busy={busy}
+                  onSetSlotNeeded={onSetSlotNeeded}
+                  onAddToSlot={openAddForSlot}
+                />
+              ))}
+            </section>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
