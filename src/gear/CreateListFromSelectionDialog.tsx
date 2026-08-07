@@ -3,7 +3,7 @@ import { X } from 'lucide-react'
 import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
-import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import { FORM_INPUT, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import { LIST_CAP, LIST_ITEM_CAP, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
 
 type Props = {
@@ -86,7 +86,7 @@ export default function CreateListFromSelectionDialog({
               maxLength={MAX_NAME_LENGTH}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full ${FORM_INPUT}`}
             />
           </div>
 
@@ -100,7 +100,7 @@ export default function CreateListFromSelectionDialog({
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className={`w-full ${FORM_INPUT} resize-none`}
             />
           </div>
 

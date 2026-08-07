@@ -1,5 +1,8 @@
 import {
   FLAT_TABLE_META_TEXT,
+  TOGGLE_CHIP,
+  TOGGLE_CHIP_OFF,
+  TOGGLE_CHIP_ON,
 } from '../components/flat-table-styles'
 import { MEALS, type FoodSlotResponse, type Meal } from '../../shared/food'
 
@@ -43,11 +46,7 @@ function FoodSlotPicker({
               type="button"
               aria-pressed={allOn}
               onClick={() => toggleMeal(meal)}
-              className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
-                allOn
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-              }`}
+              className={`${TOGGLE_CHIP} ${allOn ? TOGGLE_CHIP_ON : TOGGLE_CHIP_OFF}`}
             >
               Every {MEAL_LABELS[meal].toLowerCase()}
             </button>
@@ -76,11 +75,7 @@ function FoodSlotPicker({
                           : [...selected, slot.id],
                       )
                     }
-                    className={`min-h-10 rounded-full border px-3 text-sm font-medium ${
-                      on
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-                    }`}
+                    className={`${TOGGLE_CHIP} ${on ? TOGGLE_CHIP_ON : TOGGLE_CHIP_OFF}`}
                   >
                     {MEAL_LABELS[meal]}
                   </button>

@@ -3,7 +3,7 @@ import { Minus, Plus, Shirt, UtensilsCrossed, X } from 'lucide-react'
 import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
-import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import { FORM_INPUT, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import WeightInput from '../components/WeightInput'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
@@ -87,7 +87,7 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
               maxLength={MAX_NAME_LENGTH}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full ${FORM_INPUT}`}
               autoFocus
             />
           </div>
@@ -102,7 +102,7 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
               rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full resize-none ${FORM_INPUT}`}
             />
           </div>
 

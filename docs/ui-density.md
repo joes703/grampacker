@@ -290,6 +290,27 @@ Rows separated by a container-level `divide-y` must not use `FLAT_TABLE_ROW`
 `INLINE_EDIT_FOCUS_RING` exists because inline-edit controls already use a
 blue border to mean "editing", so keyboard focus needs a separate ring.
 
+### Form fields
+
+`FORM_INPUT` is the canonical text/number/select field: `rounded-lg` shell,
+gray hairline, `py-2` target, blue focus ring. It was the same literal string
+copy-pasted across every dialog form until the food view's add form invented
+a smaller private variant and shipped looking like a different app - which is
+exactly the drift tokens exist to prevent, so the literal is now hoisted.
+Call sites compose width, alignment (`text-right tabular-nums`), and shape
+extras (`resize-none`, `appearance-none`) around it. Documented variants that
+stay inline: the price field's `pl-6` currency inset (asymmetric padding) and
+`DeleteAccountSection`'s red focus ring (danger form). Labels are the
+`FormLabel` component, not a token.
+
+### Toggle chips
+
+`TOGGLE_CHIP` + `TOGGLE_CHIP_ON` / `TOGGLE_CHIP_OFF` are pill-shaped
+pressed/unpressed multi-select chips (the food slot picker). Density follows
+the standing rule: `min-h-10` touch floor on mobile, desktop shrinks to the
+28px pointer tier and the shared 13px body scale. The ON state is the blue
+tint pair used by `aria-pressed` controls.
+
 ### Popover surface
 
 `POPOVER_SURFACE` is the floating menu chrome: rounded card, hairline border,

@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import PrimaryButton from '../components/PrimaryButton'
 import FoodDaySection from './FoodDaySection'
 import AddFoodForm from './AddFoodForm'
 import FoodCarryingList from './FoodCarryingList'
@@ -399,8 +400,8 @@ function FoodDocument({
                 }
               />
             ) : (
-              <button
-                type="button"
+              <PrimaryButton
+                size="sm"
                 disabled={busy}
                 // The form mounts in this button's place, so the button's
                 // focus dies with it - hand it to the Name field.
@@ -408,10 +409,9 @@ function FoodDocument({
                   setAdding(true)
                   focusNameSoon()
                 }}
-                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
                 Add food
-              </button>
+              </PrimaryButton>
             )}
             {/* The app already labels gear consumables "food, fuel, water". Anyone
                 keeping a "Food bag" gear row AND listing its contents here would
@@ -507,18 +507,13 @@ function RescheduleForm({
     <div className="space-y-2">
       <FoodSlotPicker slots={slots} selected={selected} onChange={setSelected} />
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onSave(selected)}
-          className="rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
+        <PrimaryButton size="sm" disabled={busy} onClick={() => onSave(selected)}>
           Save
-        </button>
+        </PrimaryButton>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-md px-2 py-1 text-sm text-gray-600 hover:bg-gray-100"
+          className="rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
         >
           Cancel
         </button>

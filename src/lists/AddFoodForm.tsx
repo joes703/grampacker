@@ -1,5 +1,8 @@
 import { useState, type RefObject } from 'react'
+import FormLabel from '../components/FormLabel'
+import PrimaryButton from '../components/PrimaryButton'
 import WeightInput from '../components/WeightInput'
+import { FLAT_TABLE_BODY_TEXT, FORM_INPUT } from '../components/flat-table-styles'
 import FoodSlotPicker from './FoodSlotPicker'
 import { addFoodPreview } from './add-food-preview'
 import type { FoodSlotResponse } from '../../shared/food'
@@ -95,57 +98,62 @@ export default function AddFoodForm({
         )
       }}
     >
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-gray-700">
-          Name
+      {/* FormLabel + FORM_INPUT are the app-wide form vocabulary (see
+          flat-table-styles.ts) - this form briefly had its own smaller
+          one-off label/field treatment and read as a different app.
+          Deterministic two-row stack, NOT flex-wrap: the form lives in a
+          22.5rem rail on desktop and phone-width cards on mobile, and a
+          flex-1 basis-0 Name beside two fixed-width fields collapses to
+          nothing at 320px instead of wrapping (GATE 2 finding). */}
+      <div className="space-y-2">
+        <div>
+          <FormLabel htmlFor="add-food-name">Name</FormLabel>
           <input
+            id="add-food-name"
             ref={nameInputRef}
             value={name}
             onChange={(e) => setName(e.target.value)}
             maxLength={128}
-            className="rounded border border-gray-300 px-2 py-1.5 text-sm font-normal"
-          />
-        </label>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="add-food-weight" className="text-xs font-medium text-gray-700">
-            Weight
-          </label>
-          <WeightInput
-            grams={weightGrams}
-            onChange={setWeightGrams}
-            className="w-32"
-            inputClassName="w-full rounded border border-gray-300 px-2 py-1.5 text-right text-sm font-normal tabular-nums"
-            inputId="add-food-weight"
+            className={`${FORM_INPUT} w-full`}
           />
         </div>
-        <label className="flex flex-col gap-1 text-xs font-medium text-gray-700">
-          Qty
-          <input
-            type="number"
-            min={1}
-            max={9999}
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            className="w-16 rounded border border-gray-300 px-2 py-1.5 text-right text-sm font-normal tabular-nums"
-          />
-        </label>
+        <div className="flex gap-3">
+          <div>
+            <FormLabel htmlFor="add-food-weight">Weight</FormLabel>
+            <WeightInput
+              grams={weightGrams}
+              onChange={setWeightGrams}
+              className="w-36"
+              inputClassName={`${FORM_INPUT} w-full text-right tabular-nums`}
+              inputId="add-food-weight"
+            />
+          </div>
+          <div>
+            <FormLabel htmlFor="add-food-qty">Qty</FormLabel>
+            <input
+              id="add-food-qty"
+              type="number"
+              min={1}
+              max={9999}
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              className={`${FORM_INPUT} w-20 text-right tabular-nums`}
+            />
+          </div>
+        </div>
       </div>
       {/* Direct multi-select. Whole-meal buttons for the common case, per-day
           toggles for the days that differ. No templates, no inheritance. */}
       <FoodSlotPicker slots={slots} selected={selectedSlotIds} onChange={onSelectedSlotIdsChange} />
-      {preview && <p className="text-sm text-gray-600">{preview}</p>}
+      {preview && <p className={`${FLAT_TABLE_BODY_TEXT} text-gray-600`}>{preview}</p>}
       <div className="flex items-center gap-2">
-        <button
-          type="submit"
-          disabled={busy || !valid}
-          className="rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
+        <PrimaryButton type="submit" size="sm" disabled={busy || !valid}>
           Add food
-        </button>
+        </PrimaryButton>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-md px-2 py-1 text-sm text-gray-600 hover:bg-gray-100"
+          className="rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
         >
           Cancel
         </button>

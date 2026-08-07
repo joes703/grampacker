@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Category } from '../lib/types'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
+import { FORM_INPUT } from '../components/flat-table-styles'
 
 type Props = {
   categories: Category[]
@@ -21,7 +22,7 @@ export default function BulkMoveCategoryDialog({ categories, count, onMove, onCl
         <select
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className={`w-full ${FORM_INPUT}`}
         >
           <option value="">Uncategorized</option>
           {categories.map((c) => (

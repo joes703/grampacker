@@ -3,7 +3,7 @@ import { Check, CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } fr
 import type { Category, GearItem } from '../../lib/types'
 import { DEFAULT_GEAR_STATUS, type GearStatus } from '../../lib/gear-status'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../../lib/row-indicator-styles'
-import { FLAT_TABLE_EYEBROW, ROW_CONTROL_TARGET } from '../flat-table-styles'
+import { FLAT_TABLE_EYEBROW, FORM_INPUT, ROW_CONTROL_TARGET } from '../flat-table-styles'
 import FormLabel from '../FormLabel'
 import Modal from '../Modal'
 import PrimaryButton from '../PrimaryButton'
@@ -219,7 +219,7 @@ export default function GearItemDialog({
               maxLength={MAX_NAME_LENGTH}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full ${FORM_INPUT}`}
               autoFocus
             />
           </div>
@@ -233,7 +233,7 @@ export default function GearItemDialog({
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className={`w-full ${FORM_INPUT} resize-none`}
             />
           </div>
           <div className="flex gap-4">
@@ -246,7 +246,7 @@ export default function GearItemDialog({
                 grams={weightGrams}
                 onChange={setWeightGrams}
                 className="w-full"
-                inputClassName="flex-1 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+                inputClassName={`flex-1 min-w-0 ${FORM_INPUT} tabular-nums`}
               />
             </div>
             <div className="flex-1 min-w-0">
@@ -264,7 +264,7 @@ export default function GearItemDialog({
                     setCategoryId(e.target.value || null)
                   }
                 }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full ${FORM_INPUT}`}
               >
                 <option value="">Uncategorized</option>
                 {categories.map((c) => (
@@ -294,7 +294,7 @@ export default function GearItemDialog({
                         setCategoryError(null)
                       }
                     }}
-                    className="w-full min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={`w-full min-w-0 ${FORM_INPUT}`}
                   />
                   <PrimaryButton
                     type="button"
@@ -357,7 +357,7 @@ export default function GearItemDialog({
                 type="date"
                 value={purchaseDate}
                 onChange={(e) => setPurchaseDate(e.target.value)}
-                className="block w-full min-w-0 max-w-full appearance-none rounded-lg border border-gray-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`block w-full min-w-0 max-w-full appearance-none ${FORM_INPUT} tabular-nums`}
               />
             </div>
           </div>
@@ -369,7 +369,7 @@ export default function GearItemDialog({
               id="gi-status"
               value={status}
               onChange={(e) => setStatus(e.target.value as GearStatus)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full ${FORM_INPUT}`}
             >
               <option value="active">Active</option>
               <option value="needs_repair">Needs repair</option>

@@ -2,6 +2,8 @@ import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
   FLAT_TABLE_META_TEXT,
+  FLAT_TABLE_NUMERIC_TEXT,
+  FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_ROW,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
@@ -54,7 +56,11 @@ export default function FoodDaySection({
         return (
           <div
             key={slot.id}
-            className={`${FLAT_TABLE_ROW} flex items-start gap-2 ${slot.needed ? '' : 'bg-gray-50'}`}
+            // Padding is the canonical row inset horizontally; vertically a
+            // documented variant (py-2 lg:py-1, not the token's lg:py-0)
+            // because a slot stacks multiple food lines and items-start
+            // content would sit flush against the row border without it.
+            className={`${FLAT_TABLE_ROW} flex items-start gap-2 px-2 lg:px-3 py-2 lg:py-1 ${slot.needed ? '' : 'bg-gray-50'}`}
           >
             <span
               className={`w-20 shrink-0 pt-0.5 ${FLAT_TABLE_META_TEXT} ${
@@ -76,7 +82,7 @@ export default function FoodDaySection({
                     type="button"
                     disabled={busy}
                     onClick={() => onAddToSlot(slot.id)}
-                    className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                    className={`${FLAT_TABLE_BODY_TEXT} font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50`}
                   >
                     + Add
                   </button>
@@ -89,14 +95,20 @@ export default function FoodDaySection({
                         {item.name}
                       </span>
                       {item.quantity > 1 && (
-                        <span className={FLAT_TABLE_META_TEXT}>× {item.quantity}</span>
+                        <span className={FLAT_TABLE_QUANTITY_TEXT}>× {item.quantity}</span>
                       )}
-                      <ItemWeightValue grams={item.weightGrams * item.quantity} unit={weightUnit} />
+                      {/* Weight values always ride the numeric token -
+                          ItemWeightValue inherits its font, and bare it
+                          renders at the 16px page default (mono + tabular is
+                          also what makes its ch-grid columns line up). */}
+                      <span className={`${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
+                        <ItemWeightValue grams={item.weightGrams * item.quantity} unit={weightUnit} />
+                      </span>
                     </span>
                   ))}
                   {slotItems.length > 1 && (
                     <span
-                      className={`flex justify-end border-t border-gray-100 pt-0.5 ${FLAT_TABLE_META_TEXT}`}
+                      className={`flex justify-end border-t border-gray-100 pt-0.5 ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}
                     >
                       <ItemWeightValue grams={slotGrams} unit={weightUnit} />
                     </span>
@@ -121,16 +133,18 @@ export default function FoodDaySection({
                 }
                 onSetSlotNeeded(slot.id, !slot.needed)
               }}
-              className="shrink-0 rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
+              className={`shrink-0 rounded px-2 py-1 ${FLAT_TABLE_META_TEXT} font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50`}
             >
               {slot.needed ? 'Skip' : 'Restore'}
             </button>
           </div>
         )
       })}
-      <div className={`flex justify-end gap-2 px-3 pb-2 ${FLAT_TABLE_META_TEXT}`}>
+      <div className={`flex items-baseline justify-end gap-2 px-3 pb-2 ${FLAT_TABLE_META_TEXT}`}>
         <span>Day total</span>
-        <ItemWeightValue grams={dayGrams} unit={weightUnit} />
+        <span className={`${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
+          <ItemWeightValue grams={dayGrams} unit={weightUnit} />
+        </span>
       </div>
     </section>
   )

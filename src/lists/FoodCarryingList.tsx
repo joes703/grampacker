@@ -2,6 +2,7 @@ import { Trash2 } from 'lucide-react'
 import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_META_TEXT,
+  FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_ROW,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
@@ -42,14 +43,16 @@ export default function FoodCarryingList({
         />
       ))}
       <div
-        className={`flex items-center justify-end gap-2 border-t border-gray-100 px-3 py-2 ${FLAT_TABLE_META_TEXT}`}
+        className={`flex items-baseline justify-end gap-2 border-t border-gray-100 px-3 py-2 ${FLAT_TABLE_META_TEXT}`}
       >
         <span>
           {items.length} {items.length === 1 ? 'item' : 'items'}
         </span>
         {/* foodGramsFor sums items alone - never joined through slots, or a
             food eaten at several meals would count its weight once per meal. */}
-        <ItemWeightValue grams={foodGramsFor(items)} unit={weightUnit} />
+        <span className={`${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
+          <ItemWeightValue grams={foodGramsFor(items)} unit={weightUnit} />
+        </span>
       </div>
     </>
   )
@@ -73,7 +76,10 @@ function FoodItemRow({
   onDelete: () => void
 }) {
   return (
-    <div className={`${FLAT_TABLE_ROW} flex items-center gap-2`}>
+    // Vertical padding is a documented variant (py-2 lg:py-1, not the row
+    // token's lg:py-0): the row stacks a name line over a meta line, so
+    // desktop needs real breathing room above min-h.
+    <div className={`${FLAT_TABLE_ROW} flex items-center gap-2 px-2 lg:px-3 py-2 lg:py-1`}>
       <span className="min-w-0 flex-1">
         <span className={`block truncate ${FLAT_TABLE_BODY_TEXT}`}>{item.name}</span>
         <span className={`block ${FLAT_TABLE_META_TEXT}`}>
@@ -87,12 +93,15 @@ function FoodItemRow({
           )}
         </span>
       </span>
-      <ItemWeightValue grams={item.weightGrams * item.quantity} unit={weightUnit} />
+      {/* Numeric token, never bare - see FoodDaySection's weight comment. */}
+      <span className={`${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
+        <ItemWeightValue grams={item.weightGrams * item.quantity} unit={weightUnit} />
+      </span>
       <button
         type="button"
         disabled={busy}
         onClick={onReschedule}
-        className="shrink-0 rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
+        className={`shrink-0 rounded px-2 py-1 ${FLAT_TABLE_META_TEXT} font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50`}
       >
         {item.slotIds.length > 0 ? 'Reschedule' : 'Schedule'}
       </button>

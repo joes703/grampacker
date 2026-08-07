@@ -2,7 +2,9 @@ import { Link } from 'react-router'
 import {
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_META_TEXT,
+  FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_ROW,
+  FLAT_TABLE_ROW_PADDING,
   FLAT_TABLE_SURFACE,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
@@ -28,7 +30,7 @@ export default function FoodSummaryRow({
     <section aria-label="Food summary" className={`mt-3 ${FLAT_TABLE_SURFACE}`}>
       <Link
         to={`/lists/${listId}/food`}
-        className={`${FLAT_TABLE_ROW} flex items-center gap-2 hover:bg-gray-50`}
+        className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_ROW_PADDING} flex items-center gap-2 hover:bg-gray-50`}
       >
         <span className={`flex-1 ${FLAT_TABLE_HEADER_TITLE}`}>Food</span>
         {food.dayCount > 0 && (
@@ -37,7 +39,9 @@ export default function FoodSummaryRow({
           </span>
         )}
         {food.items.length > 0 ? (
-          <ItemWeightValue grams={grams} unit={weightUnit} />
+          <span className={`${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
+            <ItemWeightValue grams={grams} unit={weightUnit} />
+          </span>
         ) : (
           // Days without items is still zero carried weight - say so rather
           // than render a row that trails off after the day count.
