@@ -29,7 +29,7 @@ const KEY = 'lastListPath'
 // account-deletion teardown for last-list state.
 const LEGACY_KEY = 'lastListId'
 const LIST_PATH_RE =
-  /^\/lists\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\/pack)?$/i
+  /^\/lists\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\/(?:pack|food))?$/i
 
 // The stored shape: `p` the validated path, `o` the owning account id. Kept
 // terse because it lives in localStorage; parsed defensively on read (anything

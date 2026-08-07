@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, cleanup, screen } from '@testing-library/react'
+import { render, cleanup, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ReactNode } from 'react'
@@ -9,20 +9,26 @@ import type { ListFoodResponse } from '../../shared/food'
 import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
 import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
 
-// The first page-level test for ListDetailPage. It exists for one invariant
-// that unit tests structurally cannot reach: WHERE in the page the food
-// section is mounted.
+// The first page-level test for ListDetailPage. It exists for invariants that
+// unit tests structurally cannot reach: WHERE in the page food is mounted,
+// and which of List/Pack/Food's query gates a given failure surfaces behind.
 //
-// Food has been misplaced twice. It first shipped gated to `mode === 'edit'`,
-// which made it unreachable for anyone working in Pack - they concluded the
-// feature did not exist. Removing that gate then exposed a second fault that
-// had been hiding in List view: the section sat outside the detail
-// loading/error branch, so it rendered its controls over a fabricated
+// Food has been misplaced three times now. It first shipped gated to
+// `mode === 'edit'`, which made it unreachable for anyone working in Pack -
+// they concluded the feature did not exist. Removing that gate then exposed a
+// second fault that had been hiding in List view: the section sat outside the
+// detail loading/error branch, so it rendered its controls over a fabricated
 // zero-day snapshot while the real food was still in flight, and a day change
-// typed into that snapshot writes against real rows.
+// typed into that snapshot writes against real rows. Food then got its own
+// route (/lists/:id/food, see FoodView) - the third fault this file guards
+// against is the route sharing ListDetailPage's detail-data gate: a
+// gear/categories/items failure has nothing to do with food and must not
+// block it, while a food failure must surface FoodView's OWN retry rather
+// than the page's generic "Couldn't load list details".
 //
-// Neither fault is visible from FoodSection's own tests - the component is
-// correct in both. Only mounting the page catches them.
+// None of these faults are visible from FoodSection's or FoodView's own unit
+// tests - each component is correct in isolation. Only mounting the page
+// catches where it is wired.
 
 const listId = 'list-1'
 
@@ -107,6 +113,7 @@ async function renderDetail(path: string) {
         <Routes>
           <Route path="/lists/:id" element={<ListDetailPage />} />
           <Route path="/lists/:id/pack" element={<ListDetailPage />} />
+          <Route path="/lists/:id/food" element={<ListDetailPage />} />
         </Routes>
       </MemoryRouter>
     </Providers>,
@@ -114,6 +121,12 @@ async function renderDetail(path: string) {
 }
 
 const foodHeading = () => screen.queryByRole('heading', { name: 'Food' })
+// Scoped to FoodSummaryRow's own labeled section, not a bare link name: the
+// ListViewNav "Food" tab (part of ListDocumentToolbar, rendered in every
+// mode outside the detail-data gate) links to the exact same
+// /lists/:id/food href and would otherwise make a name- or href-based query
+// ambiguous between the two.
+const foodSummarySection = () => screen.queryByRole('region', { name: 'Food summary' })
 
 beforeEach(() => {
   stubViewport(1280)
@@ -131,32 +144,55 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('food is reachable from both list views', () => {
-  it('renders the food section in List view', async () => {
+describe('food is reachable at its own route, and traced from List view', () => {
+  it('renders the food editor at /lists/<id>/food', async () => {
+    await renderDetail(`/lists/${listId}/food`)
+    expect(await screen.findByRole('heading', { name: 'Food' })).toBeTruthy()
+    expect(await screen.findByLabelText('Trip length in days')).toBeTruthy()
+  })
+
+  it('shows the food summary row on the list view', async () => {
     await renderDetail(`/lists/${listId}`)
-    expect(await screen.findByRole('heading', { name: 'Food' })).toBeTruthy()
+    const section = await screen.findByRole('region', { name: 'Food summary' })
+    expect(within(section).getByRole('link')).toHaveAttribute(
+      'href',
+      `/lists/${listId}/food`,
+    )
   })
 
-  // The regression this file was created for. Pack is where the list is
-  // actually used, and food was invisible there.
-  it('renders the food section in Pack view', async () => {
-    await renderDetail(`/lists/${listId}/pack`)
-    expect(await screen.findByRole('heading', { name: 'Food' })).toBeTruthy()
+  it('does not render the food editor inline on the list view', async () => {
+    await renderDetail(`/lists/${listId}`)
+    // Something the list view always shows once loaded, so the wait settles
+    // past the detail-data gate before the negative assertion below.
+    await screen.findByRole('region', { name: 'Food summary' })
+    expect(screen.queryByLabelText('Trip length in days')).not.toBeInTheDocument()
+    expect(foodHeading()).toBeNull()
   })
 
-  it('offers the trip-length control in Pack view, not just a read-only echo', async () => {
+  // Pack keeps its packing focus. The Food tab in ListViewNav (part of
+  // ListDocumentToolbar, rendered in every mode) is Pack's path to food, not
+  // an inline section or summary row.
+  it('renders neither the food editor nor the summary row in Pack view', async () => {
     await renderDetail(`/lists/${listId}/pack`)
-    const days = await screen.findByLabelText('Trip length in days')
-    expect((days as HTMLInputElement).disabled).toBe(false)
-    expect((days as HTMLInputElement).value).toBe('3')
+    // ListViewNav (and its "List views" nav landmark) lives in
+    // ListDocumentToolbar, ABOVE the mode ternary and outside the
+    // detail-data gate - it resolves as soon as the lists query settles, so
+    // it would let the negative assertions below pass vacuously, before the
+    // loaded branch has even rendered. The packing-location create form is
+    // unconditional in Pack mode but sits INSIDE the loaded branch
+    // (ListDetailPage.tsx), so waiting on it actually proves the gate opened.
+    await screen.findByLabelText('New packing location')
+    expect(foodHeading()).toBeNull()
+    expect(foodSummarySection()).toBeNull()
   })
 })
 
-describe('food never renders over unresolved detail data', () => {
+describe('the Food route owns its own query gates, separate from the detail-data composite', () => {
   // A pending food query must not fall through to the empty-food fallback
   // with live controls: the day input would read 0 for a 3-day trip, and
-  // committing that value deletes every slot on the list.
-  it('is absent while detail data is still loading', async () => {
+  // committing that value deletes every slot on the list. FoodView's own
+  // pending gate is what prevents that now that food has its own route.
+  it('shows FoodView\'s own loading state, not the page\'s generic detail loader', async () => {
     let release: (value: ListFoodResponse) => void = () => {}
     h.fetchListFood.mockReturnValue(
       new Promise<ListFoodResponse>((resolve) => {
@@ -164,27 +200,50 @@ describe('food never renders over unresolved detail data', () => {
       }),
     )
 
-    await renderDetail(`/lists/${listId}/pack`)
-    expect(await screen.findByText('Loading list details...')).toBeTruthy()
-    expect(foodHeading()).toBeNull()
+    await renderDetail(`/lists/${listId}/food`)
+    expect(await screen.findByText('Loading food…')).toBeTruthy()
+    expect(screen.queryByText('Loading list details...')).toBeNull()
+    expect(screen.queryByLabelText('Trip length in days')).not.toBeInTheDocument()
 
     release(food)
     expect(await screen.findByRole('heading', { name: 'Food' })).toBeTruthy()
   })
 
-  it('is absent when a sibling detail query fails', async () => {
+  // INVERTED from the pre-Task-5 behavior: a gear/categories/items failure
+  // has nothing to do with food, and food is reachable from the same trip
+  // whether or not gear ever loaded. Before FoodView had its own route this
+  // sibling failure blocked food outright (it shared the composite gate) -
+  // that coupling is exactly what this test now forbids.
+  it('food editor stays reachable when a sibling detail query fails', async () => {
     h.fetchListItems.mockRejectedValue(new Error('offline'))
 
-    await renderDetail(`/lists/${listId}/pack`)
-    expect(await screen.findByText("Couldn't load list details")).toBeTruthy()
-    expect(foodHeading()).toBeNull()
+    await renderDetail(`/lists/${listId}/food`)
+    expect(await screen.findByRole('heading', { name: 'Food' })).toBeTruthy()
+    expect(screen.queryByText("Couldn't load list details")).toBeNull()
   })
 
-  it('is absent when the food query itself fails', async () => {
+  // The List view keeps the OLD behavior: the summary row is derived from
+  // the same detail-data set the weight totals need, so it still sits behind
+  // the composite gate - a sibling failure there is a real reason to
+  // withhold a row that claims to summarize food weight.
+  it('on the List view, the summary row stays behind the composite detail-data gate', async () => {
+    h.fetchListItems.mockRejectedValue(new Error('offline'))
+
+    await renderDetail(`/lists/${listId}`)
+    expect(await screen.findByText("Couldn't load list details")).toBeTruthy()
+    expect(foodSummarySection()).toBeNull()
+  })
+
+  // A food-query failure is now FoodView's own retry state, not the page's
+  // generic detail error - the two used to be the same message because food
+  // shared the composite gate; now they diverge on purpose so a food-only
+  // outage doesn't imply a gear/categories/items outage.
+  it('shows FoodView\'s own retry state when the food query itself fails', async () => {
     h.fetchListFood.mockRejectedValue(new Error('offline'))
 
-    await renderDetail(`/lists/${listId}/pack`)
-    expect(await screen.findByText("Couldn't load list details")).toBeTruthy()
-    expect(foodHeading()).toBeNull()
+    await renderDetail(`/lists/${listId}/food`)
+    expect(await screen.findByText("Couldn't load the food plan.")).toBeTruthy()
+    expect(screen.queryByText("Couldn't load list details")).toBeNull()
+    expect(screen.queryByLabelText('Trip length in days')).not.toBeInTheDocument()
   })
 })

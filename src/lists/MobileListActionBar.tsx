@@ -24,7 +24,10 @@ type Props = {
 // Mobile-only bottom action bar for List Detail. Edit uses destinations plus
 // Add and Options. Pack keeps Add but drops list-admin Options: rename,
 // share, export and delete are not things you do mid-pack, and pack's own
-// controls live inline in PackingProgress and on each section.
+// controls live inline in PackingProgress and on each section. Food is
+// destinations only - it has no drawer registration (see ListDetailPage's
+// useRegisterSidebarDrawer gate), so an Add here would sit permanently
+// disabled, and list admin is not a food-view concern either.
 //
 // Pack mode used to live as a fifth slot here, but pack is URL state on
 // a list (/lists/:id/pack), not a global destination — it would have
@@ -43,18 +46,22 @@ export default function MobileListActionBar({ list, mode }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const items: MobileBottomBarItem[] = buildMobileDestinationItems(pathname)
-  // Add is available in both views. It used to be suppressed in Organize,
+  // Add is available in Edit and Pack. It used to be suppressed in Organize,
   // where adding gear was outside that view's one job; Pack absorbed Organize
   // and Pack has always kept Add, so the "I forgot the water filter" flow
-  // stays one tap from anywhere on the list.
-  items.push({
-    type: 'button',
-    label: 'Add',
-    icon: <Plus size={18} />,
-    onClick: () => drawer.setOpen(true),
-    disabled: !drawer.available,
-    ariaLabel: 'Add gear to list',
-  })
+  // stays one tap from anywhere on the list. Withheld in Food: the drawer
+  // isn't registered there (nothing to add gear to), so the button would be
+  // a dead, permanently-disabled control.
+  if (mode !== 'food') {
+    items.push({
+      type: 'button',
+      label: 'Add',
+      icon: <Plus size={18} />,
+      onClick: () => drawer.setOpen(true),
+      disabled: !drawer.available,
+      ariaLabel: 'Add gear to list',
+    })
+  }
   if (mode === 'edit') {
     items.push({
       type: 'button',

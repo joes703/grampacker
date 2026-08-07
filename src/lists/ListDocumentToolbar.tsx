@@ -21,6 +21,10 @@ type Props = {
 // PackingProgress; the remaining List options (Sharing,
 // Rename/Duplicate/Export/Delete) are list-admin concerns the user
 // doesn't need while actively packing, so the button isn't shown.
+//
+// Food mode keeps the unit selector - the food view is weights everywhere,
+// so hiding the page-level unit control there would be a regression - but
+// drops List options: list admin is not a food-view concern.
 export default function ListDocumentToolbar({
   list,
   mode,
@@ -35,12 +39,12 @@ export default function ListDocumentToolbar({
         <ListViewNav listId={list.id} mode={mode} />
       </div>
 
-      {mode === 'edit' && (
+      {(mode === 'edit' || mode === 'food') && (
         <div className="order-2 ml-auto flex items-center gap-2 lg:order-3">
           <div>
             <UnitSegmentedControl idPrefix="list-toolbar" />
           </div>
-          <ListSettingsButton list={list} />
+          {mode === 'edit' && <ListSettingsButton list={list} />}
         </div>
       )}
     </div>

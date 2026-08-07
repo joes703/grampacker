@@ -184,7 +184,14 @@ describe('ListDetailPage when the lists query fails', () => {
     h.fetchLists.mockResolvedValue([list])
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 
-    await screen.findByRole('heading', { name: 'Food' })
+    // Anchors on content that only exists past the detail loading gate. Food
+    // used to render inline here and was a convenient anchor for that; food
+    // now has its own route, so the List view's trace of it (FoodSummaryRow,
+    // mode === 'edit' only - this file renders no other mode) is what's left
+    // to anchor on. Scoped to the row's own labeled section, not a bare link
+    // name: ListViewNav's "Food" tab (rendered in every mode) links to the
+    // same href and would make an unscoped query ambiguous.
+    await screen.findByRole('region', { name: 'Food summary' })
     expect(screen.queryByText("Couldn't load your lists")).toBeNull()
   })
 
@@ -231,12 +238,12 @@ describe('ListDetailPage when the lists query fails', () => {
   it('keeps rendering the open list when a refetch fails but the list is still cached', async () => {
     h.fetchLists.mockResolvedValueOnce([list])
     const qc = await renderDetail()
-    await screen.findByRole('heading', { name: 'Food' })
+    await screen.findByRole('region', { name: 'Food summary' })
 
     h.fetchLists.mockRejectedValue(new Error('offline'))
     await failingRefetch(qc)
 
-    expect(screen.getByRole('heading', { name: 'Food' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Food summary' })).toBeTruthy()
     expect(screen.queryByText("Couldn't load your lists")).toBeNull()
   })
 
