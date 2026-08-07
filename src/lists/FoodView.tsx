@@ -227,10 +227,21 @@ function FoodDocument({
   // eat the typed name and weight). GATE 1 caught the captured-once version.
   const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([])
   const addFormRef = useRef<HTMLDivElement | null>(null)
+  const nameInputRef = useRef<HTMLInputElement | null>(null)
+
+  // Focus is not a courtesy here: the form sits BEFORE the day sections in
+  // DOM order, so after clicking "+ Add" (or the button the form replaces)
+  // Tab walks AWAY from the form and a keyboard user can never reach it
+  // forward (GATE 2 finding). preventScroll keeps the focus jump from
+  // fighting the smooth scroll below.
+  function focusNameSoon() {
+    requestAnimationFrame(() => nameInputRef.current?.focus({ preventScroll: true }))
+  }
 
   function openAddForSlot(slotId: string) {
     setSelectedSlotIds((prev) => (prev.includes(slotId) ? prev : [...prev, slotId]))
     setAdding(true)
+    focusNameSoon()
     // Scroll after the form mounts; rAF beats the render race without a
     // layout effect. rAF itself is available everywhere we run (including
     // jsdom); jsdom just doesn't implement Element.scrollIntoView, so that
@@ -270,12 +281,14 @@ function FoodDocument({
   const activeSelectedSlotIds = selectedSlotIds.filter((id) => neededSlotIds.has(id))
 
   return (
-    // Desktop (lg+) is a two-column grid: the day sections take the flexible
-    // width, and the add-food card + Carrying card live in a sticky right
-    // rail so the per-slot "+ Add" always has the form in view. Below lg the
-    // grid collapses to the original stacked order (D4 as revised 2026-08-07,
-    // docs/food-view-design.md). max-w-6xl keeps ultra-wide monitors from
-    // stretching the day rows into a corridor.
+    // Desktop (lg+) is a two-column grid: the add-food card + Carrying card
+    // live in a sticky left rail (tools left of the document, matching the
+    // edit-mode aside) so the per-slot "+ Add" always has the form in view,
+    // and the day sections take the flexible width. Below lg the grid
+    // collapses to a stack with that panel ABOVE the day sections - the add
+    // action stays reachable without scrolling a long trip (D4 as revised
+    // 2026-08-07, docs/food-view-design.md). max-w-6xl keeps ultra-wide
+    // monitors from stretching the day rows into a corridor.
     <div className="mt-3 max-w-6xl space-y-3">
       <section aria-labelledby="food-heading" className={FLAT_TABLE_SURFACE}>
         <div className={`${FLAT_TABLE_HEADER} ${FLAT_TABLE_HEADER_PADDING} flex-wrap gap-2`}>
@@ -348,32 +361,10 @@ function FoodDocument({
       </section>
 
       {/* gap (not space-y) so spacing holds in both the stacked flex layout
-          and the lg grid, where child margins would land inside the cells. */}
-      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_22.5rem] lg:items-start">
-        <div className="min-w-0">
-          {food.dayCount === 0 ? (
-            <p className="px-3 py-3 text-sm text-gray-500">
-              Set a trip length and every meal appears. Strike the ones you will not
-              eat; what is left is what you need to pack.
-            </p>
-          ) : (
-            <section className={FLAT_TABLE_SURFACE}>
-              {days.map((day) => (
-                <FoodDaySection
-                  key={day}
-                  day={day}
-                  slots={slotsForDay(food, day)}
-                  itemsBySlot={itemsBySlot}
-                  weightUnit={weightUnit}
-                  busy={busy}
-                  onSetSlotNeeded={onSetSlotNeeded}
-                  onAddToSlot={openAddForSlot}
-                />
-              ))}
-            </section>
-          )}
-        </div>
-
+          and the lg grid, where child margins would land inside the cells.
+          DOM order = mobile visual order (panel first, days second); the lg
+          grid reads the same order into rail-left, days-right. */}
+      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[22.5rem_minmax(0,1fr)] lg:items-start">
         {/* top-4 matches the edit-mode aside's 1rem offset. The max-h +
             overflow pair is load-bearing, not polish: a top-only sticky
             element taller than the viewport stays pinned with its overflow
@@ -388,6 +379,7 @@ function FoodDocument({
                 slots={neededSlots}
                 busy={busy}
                 weightUnit={weightUnit}
+                nameInputRef={nameInputRef}
                 selectedSlotIds={activeSelectedSlotIds}
                 onSelectedSlotIdsChange={setSelectedSlotIds}
                 onCancel={() => {
@@ -410,7 +402,12 @@ function FoodDocument({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => setAdding(true)}
+                // The form mounts in this button's place, so the button's
+                // focus dies with it - hand it to the Name field.
+                onClick={() => {
+                  setAdding(true)
+                  focusNameSoon()
+                }}
                 className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
                 Add food
@@ -455,6 +452,30 @@ function FoodDocument({
                   />
                 </div>
               )}
+            </section>
+          )}
+        </div>
+
+        <div className="min-w-0">
+          {food.dayCount === 0 ? (
+            <p className="px-3 py-3 text-sm text-gray-500">
+              Set a trip length and every meal appears. Strike the ones you will not
+              eat; what is left is what you need to pack.
+            </p>
+          ) : (
+            <section className={FLAT_TABLE_SURFACE}>
+              {days.map((day) => (
+                <FoodDaySection
+                  key={day}
+                  day={day}
+                  slots={slotsForDay(food, day)}
+                  itemsBySlot={itemsBySlot}
+                  weightUnit={weightUnit}
+                  busy={busy}
+                  onSetSlotNeeded={onSetSlotNeeded}
+                  onAddToSlot={openAddForSlot}
+                />
+              ))}
             </section>
           )}
         </div>
