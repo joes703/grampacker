@@ -65,6 +65,12 @@ Stacked full-width sections, in order: header, day sections, add-food card,
 Carrying card. (Decided 2026-08-06 over a grid-with-right-rail composition
 and over meals-as-columns; Joe picked the flat-table-shaped options.)
 
+Revised 2026-08-07 for desktop only: at `lg` and up the day sections keep the
+flexible width and the add-food card + Carrying card move into a sticky
+~360px right rail, with the whole view capped at `max-w-6xl`. Joe found the
+shipped full-width stack wasteful on desktop and asked for the right-rail
+composition originally proposed. Below `lg` the stacked order is unchanged.
+
 ### 4.1 Header
 
 The existing trip-length control, restyled into the view header: "Food for
@@ -167,7 +173,8 @@ Phase 8 (releases 8A/8B) follows PR 2.
 - **D3 - Wide day sections, not meals-as-columns.** Flat-table idiom,
   weight/qty inline per food (chosen 2026-08-06).
 - **D4 - Stacked full-width composition**, no right rail, no add dialog
-  (chosen 2026-08-06).
+  (chosen 2026-08-06). REVISED 2026-08-07: right rail on desktop after all
+  (see section 4); the stacked composition remains the below-`lg` layout.
 - **D5 - "Skip / Restore" replaces "Not needed / Need it".** The three-state
   model is load-bearing and stays; only the language and prominence change.
 - **D6 - Unscheduled merges into Carrying as a badge.** Two lists showing
