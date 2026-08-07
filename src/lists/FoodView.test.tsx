@@ -164,11 +164,22 @@ describe('FoodView query gate', () => {
 })
 
 describe('FoodView header', () => {
-  it('shows the explainer line', async () => {
+  it('renders the trip-length control inside the rail, beside the add card', async () => {
     await renderFoodView()
+    // The header card lives IN the rail panel (shared container with the
+    // add-food card), and the day grid lives outside it. .space-y-3 is the
+    // rail's own class - a structural coupling, accepted so the test pins
+    // the composition rather than just global presence.
+    const daysInput = await screen.findByLabelText('Trip length in days')
+    const rail = daysInput.closest('.space-y-3') as HTMLElement
+    expect(rail).not.toBeNull()
+    expect(within(rail).getByRole('button', { name: 'Add food' })).toBeInTheDocument()
+    expect(within(rail).queryByRole('region', { name: 'Day 1' })).not.toBeInTheDocument()
+    // The explainer line was removed 2026-08-07 (Joe: the header card is
+    // compact rail chrome now, not a place for onboarding copy).
     expect(
-      await screen.findByText("Skip meals you'll eat in town or on the road."),
-    ).toBeInTheDocument()
+      screen.queryByText("Skip meals you'll eat in town or on the road."),
+    ).not.toBeInTheDocument()
   })
 })
 
