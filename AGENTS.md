@@ -209,6 +209,31 @@ time. Never delete or recreate the D1 database.
   means don't expand scope, not leave a change half-finished: if a type
   tightening implies cleanup at five sites, those sites are in scope.
 
+## UI styling: compose the vocabulary, never re-type it
+
+All row/table/panel/form styling flows from the shared tokens in
+`src/components/flat-table-styles.ts` and the shared components
+(`FormLabel`, `PrimaryButton`, `WeightInput`, `RowIconButton`, `Modal`,
+`ToggleSwitch`). Rationale and the full map: `docs/ui-density.md`. Read
+BOTH before building or restyling any UI surface - the food view shipped
+half-wired into this system and had to be re-done (weights at the 16px
+page default, rows with no inset, a private form style).
+
+- Never hand-roll a `text-*`/`px-*`/`rounded-*` recipe a token owns. The
+  frequent traps: `ItemWeightValue` styles nothing - always wrap it in
+  `FLAT_TABLE_NUMERIC_TEXT`; `FLAT_TABLE_ROW` does not include padding -
+  compose `FLAT_TABLE_ROW_PADDING` (or a commented variant); form fields
+  are `FormLabel` + `FORM_INPUT`; primary actions are `PrimaryButton`.
+- Density is a system: 40px touch floor on mobile, 28px pointer tier +
+  13px body text on desktop (`lg:`). Tuning desktop must never change
+  mobile sizing.
+- A genuinely new repeated style gets hoisted into `flat-table-styles.ts`
+  with a comment and a `docs/ui-density.md` note - not inlined at the
+  call site for the next page to copy-paste.
+- Tailwind v4 scans whole class tokens only: composing `${TOKEN}` into a
+  template string is safe; interpolating a class *fragment* silently
+  produces no CSS.
+
 ## Do not reintroduce (Supabase-era patterns)
 
 These do not exist here and must not be assumed: PostgREST `.upsert()`, RLS
