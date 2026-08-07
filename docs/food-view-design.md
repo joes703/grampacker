@@ -65,11 +65,15 @@ Stacked full-width sections, in order: header, day sections, add-food card,
 Carrying card. (Decided 2026-08-06 over a grid-with-right-rail composition
 and over meals-as-columns; Joe picked the flat-table-shaped options.)
 
-Revised 2026-08-07: at `lg` and up the add-food card + Carrying card move
-into a sticky ~360px LEFT rail (tools left of the document, matching the
-edit-mode aside) and the day sections keep the flexible width, with the
-whole view capped at `max-w-6xl`. Below `lg` that panel stacks ABOVE the day
-sections so the add action is reachable without scrolling a long trip. Joe
+Revised 2026-08-07: at `lg` and up the header card, add-food card, and
+Carrying card stack in a sticky ~360px LEFT rail (tools left of the
+document, matching the edit-mode aside) and the day sections take the
+flexible width from the top of the view, capped at `max-w-6xl` overall.
+The header no longer spans both columns, and its explainer line ("Skip
+meals you'll eat in town or on the road") was removed with it - the header
+is compact rail chrome now, not an onboarding surface. Below `lg` that
+panel stacks ABOVE the day sections so the add action is reachable without
+scrolling a long trip. Joe
 found the shipped full-width stack wasteful on desktop and picked the rail
 composition originally proposed, then chose left-of-days and panel-on-top
 over the first-cut right rail / panel-below. Known trade-off, accepted: a

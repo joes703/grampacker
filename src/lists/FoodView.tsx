@@ -10,7 +10,6 @@ import {
   FLAT_TABLE_HEADER,
   FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
-  FLAT_TABLE_META_TEXT,
   FLAT_TABLE_SURFACE,
 } from '../components/flat-table-styles'
 import { queryKeys, mutationKeys } from '../lib/queries/keys'
@@ -197,10 +196,11 @@ type FoodDocumentProps = {
   onSetItemSlots: (itemId: string, slotIds: string[]) => void
 }
 
-// The resolved food document: header (title, days input, meal counts,
-// explainer), the day grid, the add-food card, and the carrying list with its
-// inline reschedule. Everything here only ever runs once FoodView's query
-// gate above has confirmed real data - see the comment on that gate.
+// The resolved food document: a rail of cards (header with title, days
+// input and meal counts; the add-food card; the carrying list with its
+// inline reschedule) beside the day grid. Everything here only ever runs
+// once FoodView's query gate above has confirmed real data - see the
+// comment on that gate.
 function FoodDocument({
   food,
   weightUnit,
@@ -282,85 +282,17 @@ function FoodDocument({
   const activeSelectedSlotIds = selectedSlotIds.filter((id) => neededSlotIds.has(id))
 
   return (
-    // Desktop (lg+) is a two-column grid: the add-food card + Carrying card
-    // live in a sticky left rail (tools left of the document, matching the
-    // edit-mode aside) so the per-slot "+ Add" always has the form in view,
-    // and the day sections take the flexible width. Below lg the grid
-    // collapses to a stack with that panel ABOVE the day sections - the add
-    // action stays reachable without scrolling a long trip (D4 as revised
-    // 2026-08-07, docs/food-view-design.md). max-w-6xl keeps ultra-wide
-    // monitors from stretching the day rows into a corridor.
-    <div className="mt-3 max-w-6xl space-y-3">
-      <section aria-labelledby="food-heading" className={FLAT_TABLE_SURFACE}>
-        <div className={`${FLAT_TABLE_HEADER} ${FLAT_TABLE_HEADER_PADDING} flex-wrap gap-2`}>
-          <h3 id="food-heading" className={FLAT_TABLE_HEADER_TITLE}>
-            Food
-          </h3>
-          <label className="flex items-center gap-1.5 text-sm text-gray-600">
-            <span>for</span>
-            <input
-              type="number"
-              min={0}
-              max={FOOD_DAY_CAP}
-              value={daysDraft}
-              disabled={busy}
-              onChange={(e) => setDaysDraft(e.target.value)}
-              onBlur={() => {
-                // An EMPTY field is not zero. Number('') is 0, and 0 days deletes
-                // every slot and every placement on the list - so clearing the
-                // box to retype it would silently destroy the trip.
-                const trimmed = daysDraft.trim()
-                const next = Number(trimmed)
-                if (
-                  trimmed === '' ||
-                  !Number.isInteger(next) ||
-                  next < 0 ||
-                  next > FOOD_DAY_CAP
-                ) {
-                  setDaysDraft(String(food.dayCount))
-                  return
-                }
-                if (next === food.dayCount) return
-                // Shrinking throws away the slots beyond the new count, and with
-                // them their placements and any "not needed" decisions. Ask, but
-                // only when there is actually something to lose.
-                //
-                // KNOWN GAP, stated rather than papered over: this decides from
-                // the client's cached food, which is up to 30 seconds stale and
-                // does not refetch on focus. Another tab that schedules food onto
-                // a later day inside that window would be silently trimmed. The
-                // refetch below shrinks the window to the round trip; closing it
-                // properly needs a revision check on the write, which is more
-                // machinery than a single-user app has earned yet.
-                if (next < food.dayCount && losesWorkBelow(food, next)) {
-                  const ok = window.confirm(
-                    `Shortening the trip to ${next} ${next === 1 ? 'day' : 'days'} removes ` +
-                      'the later meals, including what you had planned for them. ' +
-                      'Your food items stay on the list. Continue?',
-                  )
-                  if (!ok) {
-                    setDaysDraft(String(food.dayCount))
-                    return
-                  }
-                }
-                onSetDays(next)
-              }}
-              className="w-14 rounded border border-gray-300 px-1.5 py-0.5 text-right tabular-nums"
-              aria-label="Trip length in days"
-            />
-            <span>days</span>
-          </label>
-          {counts.length > 0 && (
-            <span className={`shrink-0 ${FLAT_TABLE_EYEBROW}`}>
-              {counts.map((entry) => `${entry.count} ${MEAL_LABELS[entry.meal].toLowerCase()}`).join(' · ')}
-            </span>
-          )}
-        </div>
-        <p className={`px-3 pb-2 ${FLAT_TABLE_META_TEXT}`}>
-          Skip meals you'll eat in town or on the road.
-        </p>
-      </section>
-
+    // Desktop (lg+) is a two-column grid: the header card ("Food for N
+    // days"), add-food card, and Carrying card stack in a sticky left rail
+    // (tools left of the document, matching the edit-mode aside) so the
+    // trip-length control and the per-slot "+ Add" form are always in view,
+    // and the day sections take the full flexible width from the top. Below
+    // lg the grid collapses to a stack with that panel ABOVE the day
+    // sections - the add action stays reachable without scrolling a long
+    // trip (D4 as revised 2026-08-07, docs/food-view-design.md). max-w-6xl
+    // keeps ultra-wide monitors from stretching the day rows into a
+    // corridor.
+    <div className="mt-3 max-w-6xl">
       {/* gap (not space-y) so spacing holds in both the stacked flex layout
           and the lg grid, where child margins would land inside the cells.
           DOM order = mobile visual order (panel first, days second); the lg
@@ -374,6 +306,72 @@ function FoodDocument({
             internal scroll the form's Submit/Cancel could not be reached
             (GATE 2 finding). */}
         <div className="space-y-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+          <section aria-labelledby="food-heading" className={FLAT_TABLE_SURFACE}>
+            <div className={`${FLAT_TABLE_HEADER} ${FLAT_TABLE_HEADER_PADDING} flex-wrap gap-2`}>
+              <h3 id="food-heading" className={FLAT_TABLE_HEADER_TITLE}>
+                Food
+              </h3>
+              <label className="flex items-center gap-1.5 text-sm text-gray-600">
+                <span>for</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={FOOD_DAY_CAP}
+                  value={daysDraft}
+                  disabled={busy}
+                  onChange={(e) => setDaysDraft(e.target.value)}
+                  onBlur={() => {
+                    // An EMPTY field is not zero. Number('') is 0, and 0 days deletes
+                    // every slot and every placement on the list - so clearing the
+                    // box to retype it would silently destroy the trip.
+                    const trimmed = daysDraft.trim()
+                    const next = Number(trimmed)
+                    if (
+                      trimmed === '' ||
+                      !Number.isInteger(next) ||
+                      next < 0 ||
+                      next > FOOD_DAY_CAP
+                    ) {
+                      setDaysDraft(String(food.dayCount))
+                      return
+                    }
+                    if (next === food.dayCount) return
+                    // Shrinking throws away the slots beyond the new count, and with
+                    // them their placements and any "not needed" decisions. Ask, but
+                    // only when there is actually something to lose.
+                    //
+                    // KNOWN GAP, stated rather than papered over: this decides from
+                    // the client's cached food, which is up to 30 seconds stale and
+                    // does not refetch on focus. Another tab that schedules food onto
+                    // a later day inside that window would be silently trimmed. The
+                    // refetch below shrinks the window to the round trip; closing it
+                    // properly needs a revision check on the write, which is more
+                    // machinery than a single-user app has earned yet.
+                    if (next < food.dayCount && losesWorkBelow(food, next)) {
+                      const ok = window.confirm(
+                        `Shortening the trip to ${next} ${next === 1 ? 'day' : 'days'} removes ` +
+                          'the later meals, including what you had planned for them. ' +
+                          'Your food items stay on the list. Continue?',
+                      )
+                      if (!ok) {
+                        setDaysDraft(String(food.dayCount))
+                        return
+                      }
+                    }
+                    onSetDays(next)
+                  }}
+                  className="w-14 rounded border border-gray-300 px-1.5 py-0.5 text-right tabular-nums"
+                  aria-label="Trip length in days"
+                />
+                <span>days</span>
+              </label>
+              {counts.length > 0 && (
+                <span className={`shrink-0 ${FLAT_TABLE_EYEBROW}`}>
+                  {counts.map((entry) => `${entry.count} ${MEAL_LABELS[entry.meal].toLowerCase()}`).join(' · ')}
+                </span>
+              )}
+            </div>
+          </section>
           <section ref={addFormRef} className={`${FLAT_TABLE_SURFACE} px-3 py-2.5`}>
             {adding ? (
               <AddFoodForm
