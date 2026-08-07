@@ -2,7 +2,7 @@ import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
 
 export default tseslint.config(
-  { ignores: ['dist', '.wrangler', 'worker-configuration.d.ts'] },
+  { ignores: ['dist', '.wrangler', '.superpowers', 'worker-configuration.d.ts'] },
   ...tseslint.configs.recommended,
   {
     // A dropped promise in a Worker is a silently swallowed error (and
