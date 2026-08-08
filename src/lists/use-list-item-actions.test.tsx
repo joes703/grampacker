@@ -86,7 +86,7 @@ function renderWith(qc: QueryClient, listItems: ListItemWithGear[] = []) {
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   )
   return renderHook(
-    () => useListItemActions(LIST_ID, { listItems }),
+    () => useListItemActions(LIST_ID, { listItems, foodItems: [] }),
     { wrapper },
   ).result
 }

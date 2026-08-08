@@ -28,7 +28,7 @@ export function buildTakeoutFiles(input: TakeoutInput): Record<string, string> {
   files['gear-library.csv'] = gearItemsToCsv(gearItems, categories)
   files['food.json'] = JSON.stringify(buildFoodJson({ lists, foodByListId }), null, 2)
   files['packing.json'] = JSON.stringify(
-    buildPackingJson({ lists, allItems, packingLocationsByListId }),
+    buildPackingJson({ lists, allItems, packingLocationsByListId, foodByListId }),
     null,
     2,
   )

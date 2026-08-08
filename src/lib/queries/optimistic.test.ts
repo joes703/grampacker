@@ -13,7 +13,7 @@ import {
   makeOptimisticBulkDelete,
   makeOptimisticBulkUpdate,
   makeOptimisticReorder,
-  makeOptimisticPackReorder,
+  makeOptimisticUnionPackReorder,
 } from './optimistic'
 import { showToast } from '../toast'
 import { ApiError } from '../api'
@@ -771,132 +771,99 @@ describe('makeOptimisticReorder', () => {
   })
 })
 
-// The PACK sibling (review P2.2: zero tests against the sibling's twelve).
-// Only the DIVERGENT behavior is pinned here - the shared machinery (cancel
-// semantics, snapshot plumbing) is the sibling's suite above. What makes
-// this one different, and what these tests hold: it patches ONLY
-// packSortOrder and never re-sorts the shared cache (document order is other
-// consumers' truth), its validator speaks pack ranks, and its onError knows
-// a 409 means "a concurrent reorder of this bag won".
-describe('makeOptimisticPackReorder', () => {
-  type PackRow = { id: string; name: string; sortOrder: number; packSortOrder: number }
-  const initial: PackRow[] = [
-    { id: 'A', name: 'a', sortOrder: 0, packSortOrder: 1 },
-    { id: 'B', name: 'b', sortOrder: 1, packSortOrder: 0 },
-    { id: 'C', name: 'c', sortOrder: 2, packSortOrder: 2 },
-  ]
+// The union pack-reorder lifecycle (0022: one drag permutes gear and food
+// ranks together, so the helper spans BOTH caches). Only the divergent
+// behavior is pinned - shared machinery (cancel semantics, snapshot
+// plumbing) is makeOptimisticReorder's suite above. What these hold: the
+// apply writes ONLY packSortOrder into each cache and never re-sorts
+// (document order is other consumers' truth), validation runs over the
+// UNION multiset (an interleaving payload is valid even though neither
+// half is a permutation of its own subset), rollback is FIELD-SCOPED (a
+// checkbox write that landed mid-reorder survives the reorder failing),
+// and a 409 gets the "concurrent reorder won" toast.
+describe('makeOptimisticUnionPackReorder', () => {
+  type GearRow = { id: string; name: string; packSortOrder: number; isPacked: boolean }
+  type FoodCache = {
+    dayCount: number
+    slots: unknown[]
+    items: { id: string; packSortOrder: number; isPacked: boolean }[]
+  }
+  const GEAR_KEY = ['list-items', 'L'] as const
+  const FOOD_KEY = ['list-food', 'L'] as const
 
-  function makePackClient(rows: PackRow[] = initial) {
+  function setup() {
     const qc = new QueryClient()
-    const key = ['packable'] as const
-    qc.setQueryData(key, rows)
-    return { qc, key, helper: makeOptimisticPackReorder<PackRow>(qc, key) }
+    qc.setQueryData<GearRow[]>(GEAR_KEY, [
+      { id: 'g1', name: 'Stove', packSortOrder: 0, isPacked: false },
+      { id: 'g2', name: 'Pot', packSortOrder: 4, isPacked: false },
+    ])
+    qc.setQueryData<FoodCache>(FOOD_KEY, {
+      dayCount: 1,
+      slots: [],
+      items: [{ id: 'f1', packSortOrder: 2, isPacked: false }],
+    })
+    const helper = makeOptimisticUnionPackReorder<GearRow, FoodCache>(qc, GEAR_KEY, FOOD_KEY)
+    return { qc, helper }
   }
 
-  afterEach(() => {
-    vi.mocked(showToast).mockReset()
+  it('applies an interleaving permutation across both caches, ranks only', () => {
+    const { qc, helper } = setup()
+    // Move the food row to the front: it takes g1 rank 0, gear shifts.
+    helper.onMutate({
+      items: [
+        { id: 'g1', packSortOrder: 2 },
+        { id: 'g2', packSortOrder: 4 },
+      ],
+      foodItems: [{ id: 'f1', packSortOrder: 0 }],
+    })
+    const gear = qc.getQueryData<GearRow[]>(GEAR_KEY)!
+    // No re-sort: array order (document order) is untouched.
+    expect(gear.map((r) => r.id)).toEqual(['g1', 'g2'])
+    expect(gear.map((r) => r.packSortOrder)).toEqual([2, 4])
+    expect(qc.getQueryData<FoodCache>(FOOD_KEY)!.items[0]!.packSortOrder).toBe(0)
   })
 
-  it('patches packSortOrder ONLY and leaves the array in document order', () => {
-    const { qc, key, helper } = makePackClient()
-
-    // Swap A and C's pack ranks - a legal permutation of the touched subset
-    // {1, 2} whose RESULT (A=2, B=0, C=1) sorts to B,C,A by rank. That
-    // conflict is the point: a sibling-style re-sort regression would
-    // reorder the array here, so the document-order assertion below can
-    // actually catch it. (A swap that happens to END in rank order would
-    // pass even against a re-sorting implementation.)
-    helper.onMutate([
-      { id: 'A', packSortOrder: 2 },
-      { id: 'C', packSortOrder: 1 },
-    ])
-
-    const after = qc.getQueryData<PackRow[]>(key)!
-    // The divergence from the sibling: NO re-sort. Document order (A, B, C)
-    // survives - the pack renderers sort their own cohorts.
-    expect(after.map((r) => r.id)).toEqual(['A', 'B', 'C'])
-    expect(after.map((r) => r.packSortOrder)).toEqual([2, 0, 1])
-    // sortOrder untouched: this helper must never leak into List view order.
-    expect(after.map((r) => r.sortOrder)).toEqual([0, 1, 2])
-  })
-
-  it('onMutate is SYNCHRONOUS, like its sibling and for the same drag reason', () => {
-    const { helper } = makePackClient()
-    const result = helper.onMutate([{ id: 'A', packSortOrder: 1 }])
-    expect(result).not.toBeInstanceOf(Promise)
-    expect(result).toHaveProperty('previous')
-  })
-
-  it('rejects a payload that is not a permutation of the touched ranks (DEV throws)', () => {
-    const { qc, key, helper } = makePackClient()
-    // Rank 9 belongs to nobody: server-side this could collide with a row
-    // the payload never mentioned, so the validator refuses it up front.
+  it('rejects a payload whose ranks are not a permutation of the union', () => {
+    const { helper } = setup()
     expect(() =>
-      helper.onMutate([
-        { id: 'A', packSortOrder: 9 },
-        { id: 'B', packSortOrder: 1 },
-      ]),
-    ).toThrow(/not a permutation/)
-    expect(qc.getQueryData<PackRow[]>(key)).toEqual(initial)
+      helper.onMutate({
+        items: [],
+        foodItems: [{ id: 'f1', packSortOrder: 99 }],
+      }),
+    ).toThrowError(/not a permutation of the touched union/i)
   })
 
-  it('production: validation aborts with the tagged error, no cache write, no toast', () => {
-    vi.stubEnv('DEV', false)
-    try {
-      const { qc, key, helper } = makePackClient()
-      let thrown: unknown
-      try {
-        helper.onMutate([{ id: 'A', packSortOrder: 9 }, { id: 'B', packSortOrder: 1 }])
-      } catch (err) {
-        thrown = err
-      }
-      expect((thrown as Error).name).toBe('OptimisticReorderValidationError')
-      expect(qc.getQueryData<PackRow[]>(key)).toEqual(initial)
-
-      // ...and onError recognizes its own tag: no rollback, NO toast.
-      helper.onError(thrown, undefined, { previous: undefined })
-      expect(showToast).not.toHaveBeenCalled()
-    } finally {
-      vi.unstubAllEnvs()
+  it('rolls back ONLY the touched ranks, preserving a mid-flight checkbox write', () => {
+    const { qc, helper } = setup()
+    const updates = {
+      items: [
+        { id: 'g1', packSortOrder: 2 },
+        { id: 'g2', packSortOrder: 4 },
+      ],
+      foodItems: [{ id: 'f1', packSortOrder: 0 }],
     }
+    const ctx = helper.onMutate(updates)
+    // A packed-checkbox write lands while the reorder is in flight.
+    qc.setQueryData<FoodCache>(FOOD_KEY, (curr) => ({
+      ...curr!,
+      items: curr!.items.map((i) => ({ ...i, isPacked: true })),
+    }))
+    helper.onError(new Error('network 500'), updates, ctx)
+    const food = qc.getQueryData<FoodCache>(FOOD_KEY)!
+    // Rank rewound, checkbox NOT rewound.
+    expect(food.items[0]!.packSortOrder).toBe(2)
+    expect(food.items[0]!.isPacked).toBe(true)
+    expect(qc.getQueryData<GearRow[]>(GEAR_KEY)!.map((r) => r.packSortOrder)).toEqual([0, 4])
   })
 
-  it('onError rolls back and shows the generic toast for a non-409 failure', () => {
-    const { qc, key, helper } = makePackClient()
-    const ctx = helper.onMutate([
-      { id: 'A', packSortOrder: 0 },
-      { id: 'B', packSortOrder: 1 },
-    ])
-
-    helper.onError(new Error('network exploded'), undefined, ctx)
-
-    expect(qc.getQueryData<PackRow[]>(key)).toEqual(initial)
+  it('names the concurrent-reorder cause on a 409', () => {
+    const { helper } = setup()
+    const updates = { items: [], foodItems: [{ id: 'f1', packSortOrder: 2 }] }
+    const ctx = helper.onMutate(updates)
+    helper.onError(new ApiError(409, 'conflict'), updates, ctx)
     expect(showToast).toHaveBeenCalledWith(
-      "Couldn't save the new order. Please try again.",
-      { type: 'error' },
+      expect.stringMatching(/changed somewhere else/i),
+      expect.objectContaining({ type: 'error' }),
     )
-  })
-
-  it('a 409 gets the conflict toast: someone else reordered this bag', () => {
-    const { qc, key, helper } = makePackClient()
-    const ctx = helper.onMutate([
-      { id: 'A', packSortOrder: 0 },
-      { id: 'B', packSortOrder: 1 },
-    ])
-
-    helper.onError(new ApiError(409, 'This bag changed while you were reordering'), undefined, ctx)
-
-    expect(qc.getQueryData<PackRow[]>(key)).toEqual(initial)
-    expect(showToast).toHaveBeenCalledWith(
-      'This bag changed somewhere else. Reloading its order.',
-      { type: 'error' },
-    )
-  })
-
-  it('onSettled invalidates so server truth wins regardless of outcome', async () => {
-    const { qc, key, helper } = makePackClient()
-    const spy = vi.spyOn(qc, 'invalidateQueries')
-    helper.onSettled()
-    expect(spy).toHaveBeenCalledWith({ queryKey: key })
   })
 })

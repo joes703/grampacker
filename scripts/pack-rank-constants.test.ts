@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { LIST_ITEM_CAP, PACK_RANK_MAX } from '../shared/lists'
+import { FOOD_ITEM_CAP } from '../shared/food'
 
 // PACK_RANK_MAX and LIST_ITEM_CAP are declared once in shared/lists.ts, but two
 // things outside TypeScript's reach hold copies of the same numbers:
@@ -55,6 +56,17 @@ describe('pack rank constants stay in step outside TypeScript', () => {
     // (FOOD_ITEM_CAP scratch band + the ceiling) live in 0023 and get their
     // own assertion when that migration ships.
     expect(significantNumbers(sql)).toEqual(new Set([PACK_RANK_MAX]))
+  })
+
+  it("migration 0023's food enforcement uses exactly the bounds shared/ declares", () => {
+    const sql = stripSqlComments(readRepoFile('migrations/0023_food-pack-rank-enforcement.sql'))
+
+    // The 0019 mirror for food: the ceiling and the FOOD_ITEM_CAP-wide
+    // scratch band. Unlike 0019 there is no headroom-floor literal - the
+    // repair's dirty predicate is duplicate-based, not threshold-based.
+    expect(significantNumbers(sql)).toEqual(
+      new Set([FOOD_ITEM_CAP, PACK_RANK_MAX]),
+    )
   })
 
   it('the pack-rank audit workflow probes the bounds shared/lists.ts declares', () => {

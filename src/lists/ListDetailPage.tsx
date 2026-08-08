@@ -59,7 +59,6 @@ import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
 import {
   assignPackRankSlots,
   assignSortOrderSlots,
-  nextPackRankInCohort,
 } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
@@ -677,6 +676,7 @@ function ListDetailInner({
   // writes live in useListGearActions, above.)
   const { addItem, updateItem, deleteItem, addNewItem } = useListItemActions(listId, {
     listItems,
+    foodItems: listFood.items,
   })
 
   // DOCUMENT order. List view only.
@@ -968,10 +968,12 @@ function ListDetailInner({
     moveItemMut.mutate({
       itemId,
       locationId,
-      // The DESTINATION cohort's next rank, mirroring the server. A move no
-      // longer touches sortOrder at all, so the row keeps its place in List
-      // view and on the share link.
-      nextPackSortOrder: nextPackRankInCohort(listItems, locationId),
+      // The DESTINATION cohort's next UNION rank (gear and food - 0022),
+      // mirroring the server. A gear-only maximum here would park the row
+      // visually above food already in the bag until the refetch corrected
+      // it (GATE 2 finding). A move never touches sortOrder, so the row
+      // keeps its place in List view and on the share link.
+      nextPackSortOrder: nextUnionPackRankFor(listItems, listFood.items, locationId),
     }, {
       onSuccess: () => {
         if (item && destination) setAnnouncement(`Moved ${item.gearItem.name} to ${destination}.`)
@@ -1050,6 +1052,15 @@ function ListDetailInner({
         activeParsed.kind === 'packing-item'
           ? listItemsById.get(activeParsed.id)?.gearItem.name
           : foodById.get(activeParsed.id)?.name
+      // In the no-locations category fallback, gear renders grouped by
+      // category and food in its own section - the union is never displayed
+      // as one sequence there. Excluding ALL gear makes a food drag permute
+      // the food subsequence the user is actually looking at (a subset
+      // permutation of the union, which the server accepts) instead of
+      // computing indices against invisible gear rows.
+      const reorderExclusions = grouping.kind === 'category'
+        ? new Set([...packingReorderExclusions, ...listItems.map((i) => i.id)])
+        : packingReorderExclusions
       const plan = planPackingRowDragEnd(
         draggedId,
         overId,
@@ -1058,7 +1069,7 @@ function ListDetailInner({
         realLocationIds,
         containerItemIdByLocation,
         containerMoveExclusions,
-        packingReorderExclusions,
+        reorderExclusions,
         packFilteredFoodIds,
       )
       if (plan?.kind === 'reorder') {

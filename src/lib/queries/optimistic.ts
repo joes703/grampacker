@@ -325,99 +325,6 @@ export function makeOptimisticBulkUpdate<TList extends { id: string }, TInput>(o
 
 // ── Reorder mutation lifecycle ────────────────────────────────────────────────
 
-// Dev-only invariant check on the reorder payload. The helper accepts
-// SUBSET permutations (only the dragged category's rows for /lists/:id
-// within-category DnD), so we explicitly do NOT require the payload to
-// cover every cached row. What we do require:
-//
-//   1. No duplicate ids in the payload. A duplicate silently overwrites
-//      itself in the byId map (last write wins) and the first write is
-//      lost; the resulting cache state isn't a permutation of any valid
-//      server state.
-//   2. Every payload id must exist in the cache. An unknown id (typo,
-//      stale snapshot, wrong cache key) silently no-ops in the current
-//      map-and-spread code: cached rows keep their original sortOrder
-//      and the visual order ends up wrong but the helper can't see it.
-//   3. The payload's sortOrder multiset must equal the touched cache
-//      subset's existing sortOrder multiset. This is the "permutation
-//      of an existing subset" invariant documented above: passing
-//      "arbitrary values" instead of a valid permutation corrupts the
-//      cache until the next refetch.
-//
-// Note on the spec language "no cached item omitted": that would block
-// the legitimate within-category DnD path, where the dragged category's
-// items are reordered while other categories' items stay in their slots.
-// `assignSortOrderSlots()` in grouping.ts is the canonical builder for
-// these subset payloads — by construction it returns a permutation of
-// the input subset's sort_orders, so the multiset check above is the
-// invariant the helper actually needs.
-//
-// Throw (not warn): a bad payload is always a caller bug, never a
-// runtime condition. Throwing in onMutate makes TanStack treat the
-// mutation as failed — onError still fires (with ctx=undefined since
-// onMutate never returned), which rolls back nothing (no optimistic
-// write happened) and surfaces the existing reorder toast. A stack
-// trace at the throw site points at the bad caller in seconds. The
-// alternative (console.warn) buries the signal in a busy dev console
-// and lets the corrupted optimistic state propagate until refetch.
-//
-// Wrapped in `if (import.meta.env.DEV)` so the helper, its closures,
-// and the if-branch tree-shake out of prod bundles via Vite's static
-// replacement of `import.meta.env.DEV` → `false`. Zero prod overhead.
-//
-// Pure validator: returns null if the payload is structurally sound, or an
-// error message describing the violation. Used both by the DEV branch
-// (throws a plain Error — surfaces the bug loudly in tests/dev) AND by
-// the prod safety branch (logs + throws a tagged sentinel error onError
-// recognizes, so the user sees onSettled's refetch instead of a corrupted
-// optimistic cache).
-// The pack twin of validateReorderPayload. Same three checks - no duplicate
-// ids, every id present in the cache, and the payload's ranks a permutation of
-// what those rows already hold - read against packSortOrder.
-function validatePackReorderPayload<
-  T extends { id: string; packSortOrder: number },
->(
-  updates: { id: string; packSortOrder: number }[],
-  cached: T[] | undefined,
-): string | null {
-  if (!cached) return null
-
-  const seen = new Set<string>()
-  for (const u of updates) {
-    if (seen.has(u.id)) {
-      return `makeOptimisticPackReorder: duplicate id "${u.id}" in payload. Each id must appear at most once.`
-    }
-    seen.add(u.id)
-  }
-
-  const cachedById = new Map(cached.map((row) => [row.id, row.packSortOrder]))
-  for (const u of updates) {
-    if (!cachedById.has(u.id)) {
-      return (
-        `makeOptimisticPackReorder: payload id "${u.id}" is not in the cached list. ` +
-        'Either the cache was invalidated between snapshot and dispatch, ' +
-        'or the payload was built from a stale view.'
-      )
-    }
-  }
-
-  const payloadOrders = updates.map((u) => u.packSortOrder).sort((a, b) => a - b)
-  const subsetOrders = updates
-    .map((u) => cachedById.get(u.id) as number)
-    .sort((a, b) => a - b)
-  for (let i = 0; i < payloadOrders.length; i++) {
-    if (payloadOrders[i] !== subsetOrders[i]) {
-      return (
-        `makeOptimisticPackReorder: payload packSortOrder values [${payloadOrders.join(', ')}] ` +
-        `are not a permutation of the touched subset's existing pack ranks ` +
-        `[${subsetOrders.join(', ')}]. ` +
-        'Use assignPackRankSlots() (src/lib/grouping.ts) to build safe payloads.'
-      )
-    }
-  }
-  return null
-}
-
 function validateReorderPayload<T extends { id: string; sortOrder: number }>(
   updates: { id: string; sortOrder: number }[],
   cached: T[] | undefined,
@@ -476,83 +383,7 @@ class OptimisticReorderValidationError extends Error {
   }
 }
 
-// The PACK-order sibling of makeOptimisticReorder below.
-//
-// It is a separate function rather than a field parameter on that one, and the
-// difference is not stylistic. makeOptimisticReorder re-sorts the WHOLE cached
-// array by the field it writes; parameterizing it would sort the shared
-// list-items cache by packSortOrder, which would corrupt List view order and
-// CSV export for every consumer of that same cache. It would also put lists,
-// categories, gear items and packing-location reorders in the blast radius of
-// a change that is only about one view.
-//
-// So this one patches ONLY packSortOrder and deliberately leaves the array in
-// its canonical document order. The pack renderers sort their own cohorts
-// (packing-tree.ts), so they pick the change up without the cache ever
-// pretending pack order is the list's order.
-export function makeOptimisticPackReorder<
-  T extends { id: string; packSortOrder: number },
->(qc: QueryClient, queryKey: QueryKey) {
-  return {
-    // Synchronous and un-awaited cancel, for the same drag-animation reason as
-    // makeOptimisticReorder - see the long note there.
-    onMutate: (updates: { id: string; packSortOrder: number }[]) => {
-      void qc.cancelQueries({ queryKey })
-      const previous = qc.getQueryData<T[]>(queryKey)
-
-      // Same permutation rule, read against packSortOrder. It matters more
-      // here: pack ranks carry a unique index per cohort server-side, so a
-      // non-permutation payload does not merely look wrong, it can collide
-      // with a row the payload never mentioned and be rejected wholesale.
-      const validationError = validatePackReorderPayload(updates, previous)
-      if (validationError) {
-        if (import.meta.env.DEV) throw new Error(validationError)
-        console.error(
-          'makeOptimisticPackReorder validation failed:',
-          validationError,
-          { updates },
-        )
-        throw new OptimisticReorderValidationError(validationError)
-      }
-
-      const byId = new Map(updates.map((u) => [u.id, u.packSortOrder]))
-      qc.setQueryData<T[]>(queryKey, (curr) => {
-        if (!curr) return curr
-        // No .sort(): the cache stays in document order on purpose.
-        return curr.map((item) =>
-          byId.has(item.id)
-            ? { ...item, packSortOrder: byId.get(item.id)! }
-            : item,
-        )
-      })
-      return { previous }
-    },
-    onError: (
-      err: unknown,
-      _vars: unknown,
-      ctx: { previous: T[] | undefined } | undefined,
-    ) => {
-      if (err instanceof OptimisticReorderValidationError) return
-      if (ctx?.previous) qc.setQueryData(queryKey, ctx.previous)
-      // A 409 means a concurrent reorder of this same bag won and the server
-      // rolled ours back whole. Same recovery either way - onSettled refetches
-      // - but say which happened, because "try again" is genuinely the fix for
-      // one and not the other.
-      const conflict = err instanceof ApiError && err.status === 409
-      showToast(
-        conflict
-          ? 'This bag changed somewhere else. Reloading its order.'
-          : "Couldn't save the new order. Please try again.",
-        { type: 'error' },
-      )
-    },
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey })
-    },
-  }
-}
-
-// The union twin of makeOptimisticPackReorder (0022: a bag's contents are
+// The pack-reorder optimistic lifecycle (0022: a bag's contents are
 // gear rows AND food rows). One mutation writes both halves - the server
 // applies them in one batch - so the optimistic apply, rollback and refetch
 // must span both caches or a failed drop would roll back half a drag.
@@ -676,14 +507,51 @@ export function makeOptimisticUnionPackReorder<
       })
       return { previousGear, previousFood }
     },
+    // FIELD-SCOPED rollback: restore only the touched rows' packSortOrder
+    // from the snapshots, onto the CURRENT cache. Restoring the whole
+    // snapshot would also rewind any packed/ready checkbox write that
+    // succeeded while this reorder was in flight (GATE 2 finding) - the
+    // same composition rule use-list-item-actions and the reset actions
+    // follow. onSettled's refetch remains the final authority either way.
     onError: (
       err: unknown,
-      _vars: unknown,
+      updates: UnionPackReorderUpdates,
       ctx: { previousGear: T[] | undefined; previousFood: F | undefined } | undefined,
     ) => {
       if (err instanceof OptimisticReorderValidationError) return
-      if (ctx?.previousGear) qc.setQueryData(gearQueryKey, ctx.previousGear)
-      if (ctx?.previousFood) qc.setQueryData(foodQueryKey, ctx.previousFood)
+      if (ctx?.previousGear) {
+        const prevRank = new Map(
+          ctx.previousGear.map((row) => [row.id, row.packSortOrder]),
+        )
+        const touched = new Set(updates.items.map((u) => u.id))
+        qc.setQueryData<T[]>(gearQueryKey, (curr) =>
+          curr
+            ? curr.map((item) =>
+                touched.has(item.id) && prevRank.has(item.id)
+                  ? { ...item, packSortOrder: prevRank.get(item.id)! }
+                  : item,
+              )
+            : curr,
+        )
+      }
+      if (ctx?.previousFood) {
+        const prevRank = new Map(
+          ctx.previousFood.items.map((row) => [row.id, row.packSortOrder]),
+        )
+        const touched = new Set(updates.foodItems.map((u) => u.id))
+        qc.setQueryData<F>(foodQueryKey, (curr) =>
+          curr
+            ? {
+                ...curr,
+                items: curr.items.map((item) =>
+                  touched.has(item.id) && prevRank.has(item.id)
+                    ? { ...item, packSortOrder: prevRank.get(item.id)! }
+                    : item,
+                ),
+              }
+            : curr,
+        )
+      }
       const conflict = err instanceof ApiError && err.status === 409
       showToast(
         conflict

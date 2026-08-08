@@ -302,6 +302,34 @@ describe('planPackingRowDragEnd over the union', () => {
     )).toEqual({ kind: 'move-gear', itemId: 'gear-low', locationId: 'loc-b' })
   })
 
+  it('permutes only the food subsequence when every gear row is excluded (category fallback)', () => {
+    // The no-locations fallback renders food in its own section; the page
+    // excludes ALL gear so a food drag reorders exactly what that section
+    // shows - a subset permutation of the union, which the server accepts.
+    const foodTop = food('food-top', null, 1)
+    const foodBottom = food('food-bottom', null, 6)
+    const gearBetween = item('gear-between', null, 3)
+    expect(planPackingRowDragEnd(
+      makeDnDId('packing-food-item', foodBottom.id),
+      makeDnDId('packing-food-item', foodTop.id),
+      [gearBetween],
+      [foodTop, foodBottom],
+      new Set(),
+      noContainerItems,
+      noExcludedLocations,
+      new Set([gearBetween.id]),
+    )).toEqual({
+      kind: 'reorder',
+      updates: {
+        items: [],
+        foodItems: [
+          { id: 'food-bottom', packSortOrder: 1 },
+          { id: 'food-top', packSortOrder: 6 },
+        ],
+      },
+    })
+  })
+
   it('never blocks a food move on gear-only container rules', () => {
     // loc-b is backed by a container item; food can still be dropped into it
     // (food cannot create a nesting cycle or contain itself).
