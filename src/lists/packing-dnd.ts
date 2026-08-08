@@ -56,18 +56,24 @@ function parsePackRowId(raw: string): ParsedPackRowId {
   return null
 }
 
-// Resolve a parsed row ref against the caches. Returns the row's location,
-// or undefined when the ref names a row that is not there (stale drag).
+// Resolve a parsed row ref against the caches. Returns the row's location -
+// NORMALIZED through the rendered-location set when one is supplied, the
+// same lens buildPackingTree and the sections use: during an optimistic bag
+// delete the cache still carries the dead bag's id while its rows render
+// under Unassigned, and planning against the raw id would misclassify a
+// within-Unassigned reorder as a cross-location move (round-7 finding).
+// Returns undefined when the ref names a row that is not there (stale drag).
 function locateRow(
   ref: NonNullable<ParsedPackRowId>,
   items: ListItemWithGear[],
   foodItems: FoodItemResponse[],
+  normalize: (locationId: string | null) => string | null,
 ): { locationId: string | null } | undefined {
   const row =
     ref.rowKind === 'gear'
       ? items.find((item) => item.id === ref.id)
       : foodItems.find((item) => item.id === ref.id)
-  return row ? { locationId: row.packingLocationId } : undefined
+  return row ? { locationId: normalize(row.packingLocationId) } : undefined
 }
 
 function planUnionReorder(
@@ -77,6 +83,7 @@ function planUnionReorder(
   foodItems: FoodItemResponse[],
   excludedItemIds: ReadonlySet<string>,
   excludedFoodIds: ReadonlySet<string>,
+  normalize: (locationId: string | null) => string | null,
 ): UnionRankUpdates | null {
   if (overId === undefined || activeId === overId) return null
   const active = parsePackRowId(activeId)
@@ -87,8 +94,8 @@ function planUnionReorder(
   if (active.rowKind === 'food' && excludedFoodIds.has(active.id)) return null
   if (over.rowKind === 'food' && excludedFoodIds.has(over.id)) return null
 
-  const activeRow = locateRow(active, items, foodItems)
-  const overRow = locateRow(over, items, foodItems)
+  const activeRow = locateRow(active, items, foodItems, normalize)
+  const overRow = locateRow(over, items, foodItems, normalize)
   if (!activeRow || !overRow) return null
   if (activeRow.locationId !== overRow.locationId) return null
 
@@ -99,14 +106,14 @@ function planUnionReorder(
   const cohortRows = unionPackRows(
     items.filter(
       (item) =>
-        item.packingLocationId === activeRow.locationId &&
+        normalize(item.packingLocationId) === activeRow.locationId &&
         !excludedItemIds.has(item.id),
     ),
     // Filtered food rows are excluded for the same reason filtered gear is:
     // the plan must be computed against the rows the user is looking at.
     foodItems.filter(
       (item) =>
-        item.packingLocationId === activeRow.locationId &&
+        normalize(item.packingLocationId) === activeRow.locationId &&
         !excludedFoodIds.has(item.id),
     ),
   )
@@ -125,14 +132,14 @@ function planUnionReorder(
     ...items
       .filter(
         (item) =>
-          item.packingLocationId === activeRow.locationId &&
+          normalize(item.packingLocationId) === activeRow.locationId &&
           excludedItemIds.has(item.id),
       )
       .map((item) => item.packSortOrder),
     ...foodItems
       .filter(
         (item) =>
-          item.packingLocationId === activeRow.locationId &&
+          normalize(item.packingLocationId) === activeRow.locationId &&
           excludedFoodIds.has(item.id),
       )
       .map((item) => item.packSortOrder),
@@ -151,11 +158,12 @@ function planUnionDrop(
   validLocationIds: ReadonlySet<string>,
   containerItemIdByLocation: ReadonlyMap<string, string>,
   excludedLocationIdsByItem: ReadonlyMap<string, ReadonlySet<string>>,
+  normalize: (locationId: string | null) => string | null,
 ): PackingRowDragPlan | null {
   if (overId === undefined) return null
   const active = parsePackRowId(activeId)
   if (!active) return null
-  const activeRow = locateRow(active, items, foodItems)
+  const activeRow = locateRow(active, items, foodItems, normalize)
   if (!activeRow) return null
 
   const over = parseDnDId(overId)
@@ -166,7 +174,7 @@ function planUnionDrop(
   } else {
     const overRef = parsePackRowId(overId)
     if (!overRef) return null
-    const overRow = locateRow(overRef, items, foodItems)
+    const overRow = locateRow(overRef, items, foodItems, normalize)
     if (!overRow) return null
     locationId = overRow.locationId
   }
@@ -200,7 +208,18 @@ export function planPackingRowDragEnd(
   excludedLocationIdsByItem: ReadonlyMap<string, ReadonlySet<string>>,
   excludedReorderItemIds: ReadonlySet<string> = new Set(),
   excludedReorderFoodIds: ReadonlySet<string> = new Set(),
+  /** The location ids the page actually RENDERED. Cached assignments to any
+   *  other id (an optimistically deleted bag) plan as Unassigned, matching
+   *  what the user sees. Omitted (tests, callers without optimistic state):
+   *  every cached id is trusted. */
+  renderedLocationIds?: ReadonlySet<string>,
 ): PackingRowDragPlan | null {
+  const normalize = (locationId: string | null) =>
+    locationId === null ||
+    renderedLocationIds === undefined ||
+    renderedLocationIds.has(locationId)
+      ? locationId
+      : null
   const excludedItemIds = new Set([
     ...containerItemIdByLocation.values(),
     ...excludedReorderItemIds,
@@ -212,6 +231,7 @@ export function planPackingRowDragEnd(
     foodItems,
     excludedItemIds,
     excludedReorderFoodIds,
+    normalize,
   )
   if (updates) return { kind: 'reorder', updates }
 
@@ -223,5 +243,6 @@ export function planPackingRowDragEnd(
     validLocationIds,
     containerItemIdByLocation,
     excludedLocationIdsByItem,
+    normalize,
   )
 }

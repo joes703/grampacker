@@ -893,7 +893,10 @@ function ListDetailInner({
     moveItemMut.isPending ||
     moveFoodMut.isPending ||
     anyItemReorderPending ||
-    locationCreationPending
+    locationCreationPending ||
+    // A pending optimistic bag delete makes cached locations lie about what
+    // is rendered; structural writes wait for it to settle (round-7).
+    removeLocation.isPending
 
   const notesMut = useMutation({
     mutationKey: mutationKeys.updateListNotes(listId),
@@ -1164,6 +1167,7 @@ function ListDetailInner({
         containerMoveExclusions,
         reorderExclusions,
         packFilteredFoodIds,
+        renderedLocationIds,
       )
       if (plan?.kind === 'reorder') {
         if (draggedName) setAnnouncement(`Reordering ${draggedName}.`)
