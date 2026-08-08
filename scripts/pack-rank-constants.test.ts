@@ -58,6 +58,17 @@ describe('pack rank constants stay in step outside TypeScript', () => {
     expect(significantNumbers(sql)).toEqual(new Set([PACK_RANK_MAX]))
   })
 
+  it("migration 0023's food enforcement uses exactly the bounds shared/ declares", () => {
+    const sql = stripSqlComments(readRepoFile('migrations/0023_food-pack-rank-enforcement.sql'))
+
+    // The 0019 mirror for food: the ceiling, the FOOD_ITEM_CAP-wide scratch
+    // band, and the headroom floor (PACK_RANK_MAX - FOOD_ITEM_CAP) in the
+    // repair's dirty predicate.
+    expect(significantNumbers(sql)).toEqual(
+      new Set([FOOD_ITEM_CAP, PACK_RANK_MAX, PACK_RANK_MAX - FOOD_ITEM_CAP]),
+    )
+  })
+
   it('the pack-rank audit workflow probes the bounds shared/lists.ts declares', () => {
     const workflow = readRepoFile('.github/workflows/audit-pack-ranks.yml')
 
