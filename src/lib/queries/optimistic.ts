@@ -399,12 +399,12 @@ export type UnionPackReorderUpdates = {
 type FoodCacheShape = {
   dayCount: number
   slots: unknown[]
-  items: { id: string; packSortOrder: number }[]
+  items: { id: string; packSortOrder: number; packingLocationId?: string | null }[]
 }
 
 function validateUnionPackReorderPayload(
   updates: UnionPackReorderUpdates,
-  cachedGear: { id: string; packSortOrder: number }[] | undefined,
+  cachedGear: { id: string; packSortOrder: number; packingLocationId?: string | null }[] | undefined,
   cachedFood: FoodCacheShape | undefined,
 ): string | null {
   const total = updates.items.length + updates.foodItems.length
@@ -413,41 +413,57 @@ function validateUnionPackReorderPayload(
   // is a no-op there (the cache updaters short-circuit on missing data).
   if (!cachedGear && !cachedFood) return null
 
-  const halves: [string, { id: string; packSortOrder: number }[], Map<string, number>][] = [
-    ['items', updates.items, new Map((cachedGear ?? []).map((r) => [r.id, r.packSortOrder]))],
-    ['foodItems', updates.foodItems, new Map((cachedFood?.items ?? []).map((r) => [r.id, r.packSortOrder]))],
+  // INDEX-SAFETY, mirroring the server (pack-reorder.ts): per table half,
+  // payload ranks must be unique and clear of untouched same-cohort rows in
+  // the SAME table. Deliberately NOT the old multiset-permutation rule - a
+  // tied cohort heals via a dense renumber, which is not a permutation.
+  const cohortOf = (id: string): string | null | undefined => {
+    const gearRow = cachedGear?.find((r) => r.id === id)
+    if (gearRow) return gearRow.packingLocationId ?? null
+    return cachedFood?.items.find((r) => r.id === id)?.packingLocationId ?? null
+  }
+  const firstTouched = updates.items[0] ?? updates.foodItems[0]
+  const cohort = firstTouched ? cohortOf(firstTouched.id) : null
+  const halves: [
+    string,
+    { id: string; packSortOrder: number }[],
+    { id: string; packSortOrder: number; packingLocationId?: string | null }[],
+  ][] = [
+    ['items', updates.items, cachedGear ?? []],
+    ['foodItems', updates.foodItems, cachedFood?.items ?? []],
   ]
-  const subsetRanks: number[] = []
-  for (const [half, entries, cachedById] of halves) {
-    const seen = new Set<string>()
+  for (const [half, entries, cachedRows] of halves) {
+    const cachedById = new Map(cachedRows.map((r) => [r.id, r]))
+    const payloadIds = new Set<string>()
+    const payloadRanks = new Set<number>()
     for (const u of entries) {
-      if (seen.has(u.id)) {
+      if (payloadIds.has(u.id)) {
         return `makeOptimisticUnionPackReorder: duplicate id "${u.id}" in ${half}.`
       }
-      seen.add(u.id)
-      const rank = cachedById.get(u.id)
-      if (rank === undefined) {
+      payloadIds.add(u.id)
+      if (payloadRanks.has(u.packSortOrder)) {
+        return `makeOptimisticUnionPackReorder: duplicate rank ${u.packSortOrder} in ${half}.`
+      }
+      payloadRanks.add(u.packSortOrder)
+      if (!cachedById.has(u.id)) {
         return (
           `makeOptimisticUnionPackReorder: ${half} id "${u.id}" is not in its cache. ` +
           'Either the cache was invalidated between snapshot and dispatch, ' +
           'or the payload was built from a stale view.'
         )
       }
-      subsetRanks.push(rank)
     }
-  }
-  const payloadRanks = [...updates.items, ...updates.foodItems]
-    .map((u) => u.packSortOrder)
-    .sort((a, b) => a - b)
-  subsetRanks.sort((a, b) => a - b)
-  for (let i = 0; i < payloadRanks.length; i++) {
-    if (payloadRanks[i] !== subsetRanks[i]) {
-      return (
-        `makeOptimisticUnionPackReorder: payload ranks [${payloadRanks.join(', ')}] ` +
-        `are not a permutation of the touched union's existing ranks ` +
-        `[${subsetRanks.join(', ')}]. ` +
-        'Use assignUnionPackRankSlots() (src/lists/pack-rows.ts) to build safe payloads.'
-      )
+    for (const row of cachedRows) {
+      if (payloadIds.has(row.id)) continue
+      if ((row.packingLocationId ?? null) !== cohort) continue
+      if (payloadRanks.has(row.packSortOrder)) {
+        return (
+          `makeOptimisticUnionPackReorder: ${half} rank ${row.packSortOrder} ` +
+          `collides with untouched cohort row "${row.id}" - the unique index ` +
+          'would reject the settle. Use assignUnionPackRankSlots() ' +
+          '(src/lists/pack-rows.ts) to build safe payloads.'
+        )
+      }
     }
   }
   return null

@@ -823,14 +823,20 @@ describe('makeOptimisticUnionPackReorder', () => {
     expect(qc.getQueryData<FoodCache>(FOOD_KEY)!.items[0]!.packSortOrder).toBe(0)
   })
 
-  it('rejects a payload whose ranks are not a permutation of the union', () => {
-    const { helper } = setup()
+  it('rejects a rank colliding with an untouched same-table cohort row', () => {
+    // Index-safety, not multiset permutation: a MINTED free rank is legal
+    // (99 collides with nothing), but landing on an untouched gear row's
+    // rank without touching that row is the write the unique index rejects.
+    const { qc, helper } = setup()
     expect(() =>
       helper.onMutate({
-        items: [],
-        foodItems: [{ id: 'f1', packSortOrder: 99 }],
+        items: [{ id: 'g1', packSortOrder: 4 }], // g2 holds 4, untouched
+        foodItems: [],
       }),
-    ).toThrowError(/not a permutation of the touched union/i)
+    ).toThrowError(/collides with untouched cohort row/i)
+    // The minted-rank payload passes and applies.
+    helper.onMutate({ items: [], foodItems: [{ id: 'f1', packSortOrder: 99 }] })
+    expect(qc.getQueryData<FoodCache>(FOOD_KEY)!.items[0]!.packSortOrder).toBe(99)
   })
 
   it('rolls back ONLY the touched ranks, preserving a mid-flight checkbox write', () => {

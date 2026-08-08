@@ -91,6 +91,29 @@ describe('assignUnionPackRankSlots', () => {
   })
 })
 
+describe('assignUnionPackRankSlots with a cross-table tie', () => {
+  it('densifies instead of permuting, avoiding reserved ranks', () => {
+    // gear and food tied at 0 (degraded-interval signature), plus a worn row
+    // parked at rank 1 that is NOT in the array and must keep its slot.
+    const rows = unionPackRows([gear('g', 0)], [food('f', 0)])
+    const updates = assignUnionPackRankSlots(rows, new Set([1]))
+    // Dense slots skipping the reserved 1: 0 and 2. The tie is healed.
+    expect(updates).toEqual({
+      items: [{ id: 'g', packSortOrder: 0 }],
+      foodItems: [{ id: 'f', packSortOrder: 2 }],
+    })
+  })
+
+  it('still permutes exactly when no tie exists', () => {
+    const rows = unionPackRows([gear('a', 3)], [food('x', 9)])
+    const updates = assignUnionPackRankSlots([rows[1]!, rows[0]!])
+    expect(updates).toEqual({
+      items: [{ id: 'a', packSortOrder: 9 }],
+      foodItems: [{ id: 'x', packSortOrder: 3 }],
+    })
+  })
+})
+
 describe('nextUnionPackRankFor', () => {
   it('is one past the union maximum of the destination cohort', () => {
     const gearRows = [gear('a', 2, 'bag'), gear('b', 9, null)]

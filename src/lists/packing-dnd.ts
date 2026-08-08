@@ -119,7 +119,28 @@ function planUnionReorder(
   const newIndex = indexOf(over)
   if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return null
 
-  return assignUnionPackRankSlots(arrayMove(cohortRows, oldIndex, newIndex))
+  // Excluded cohort rows (worn gear, filtered rows) keep their reserved
+  // ranks; the densify path must not mint one of them.
+  const avoidRanks = new Set([
+    ...items
+      .filter(
+        (item) =>
+          item.packingLocationId === activeRow.locationId &&
+          excludedItemIds.has(item.id),
+      )
+      .map((item) => item.packSortOrder),
+    ...foodItems
+      .filter(
+        (item) =>
+          item.packingLocationId === activeRow.locationId &&
+          excludedFoodIds.has(item.id),
+      )
+      .map((item) => item.packSortOrder),
+  ])
+  return assignUnionPackRankSlots(
+    arrayMove(cohortRows, oldIndex, newIndex),
+    avoidRanks,
+  )
 }
 
 function planUnionDrop(

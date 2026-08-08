@@ -63,14 +63,33 @@ export type UnionRankUpdates = {
 
 // The union twin of assignPackRankSlots (src/lib/grouping.ts): redistribute
 // the cohort's EXISTING ranks - both tables' together - over the newly
-// ordered rows, split back into per-table payload halves. Permuting rather
-// than minting for the same reason as the gear-only version: any value not
-// already held by one of these rows risks colliding with a row the payload
-// does not mention, and the server enforces the union-permutation rule.
+// ordered rows, split back into per-table payload halves. Permuting keeps
+// untouched rows' slots untouched, which is what the server's index-safety
+// rule demands.
+//
+// EXCEPT when the rows hold a duplicate rank (a cross-table tie, left by a
+// degraded old-worker interval or 0023's dense repair fallback): permuting
+// would preserve the tie forever and some assignments would put both tied
+// rows in one table, which the unique index rejects. So a tied cohort gets
+// DENSE slots instead - the smallest nonnegative integers that avoid
+// `avoidRanks` (the ranks of cohort rows NOT in this array: worn gear and
+// filtered rows keep their reserved slots). The server accepts either shape;
+// this is what makes "the next reorder dissolves the tie" true.
 export function assignUnionPackRankSlots(
   reorderedRows: PackRow[],
+  avoidRanks: ReadonlySet<number> = new Set(),
 ): UnionRankUpdates {
-  const slots = reorderedRows.map(packRowRank).sort((a, b) => a - b)
+  const existing = reorderedRows.map(packRowRank).sort((a, b) => a - b)
+  const hasTie = existing.some((rank, i) => i > 0 && rank === existing[i - 1])
+  let slots: number[]
+  if (hasTie) {
+    slots = []
+    for (let candidate = 0; slots.length < reorderedRows.length; candidate++) {
+      if (!avoidRanks.has(candidate)) slots.push(candidate)
+    }
+  } else {
+    slots = existing
+  }
   const updates: UnionRankUpdates = { items: [], foodItems: [] }
   reorderedRows.forEach((row, idx) => {
     // Non-null assertion: `slots` and `reorderedRows` have identical length
