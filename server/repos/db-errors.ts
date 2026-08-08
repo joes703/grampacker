@@ -85,6 +85,22 @@ export function isPackGuardViolation(err: unknown): boolean {
   )
 }
 
+// A chunked park/settle statement matched a row by id but not by its
+// expected rank: the SET subquery yielded NULL into the NOT NULL rank
+// column. Per-row drift detection for the union reorder - the row moved
+// between the pre-read and the batch, so the whole batch must roll back.
+export function isPackRankNotNullViolation(err: unknown): boolean {
+  const msg = rootMessage(err)
+  return (
+    msg !== null &&
+    (msg.includes('NOT NULL constraint failed: list_items.pack_sort_order') ||
+      msg.includes(
+        'NOT NULL constraint failed: list_food_items.pack_sort_order',
+      )) &&
+    msg.includes('SQLITE_CONSTRAINT')
+  )
+}
+
 // The food half of the union reorder guard, 0022's mirror of the above.
 export function isFoodPackGuardViolation(err: unknown): boolean {
   const msg = rootMessage(err)

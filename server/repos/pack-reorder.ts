@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import type { SQL } from 'drizzle-orm'
 import type { Db } from '../db'
 import {
@@ -11,6 +11,7 @@ import {
   isAnyUniqueViolation,
   isFoodPackGuardViolation,
   isPackGuardViolation,
+  isPackRankNotNullViolation,
 } from './db-errors'
 
 // The ONE implementation of "permute a packing cohort safely", shared by both
@@ -187,52 +188,79 @@ export function createPackReorderRepo(db: Db, userId: string) {
         return { ok: false, reason: 'not_a_permutation' }
       }
 
-      const cohortPredicate = (col: {
-        packingLocationId:
-          | typeof listItems.packingLocationId
-          | typeof listFoodItems.packingLocationId
-      }) =>
-        cohort === null
-          ? isNull(col.packingLocationId)
-          : eq(col.packingLocationId, cohort)
-
       // Park/settle per table, each inside its own scratch band (-300 wide
-      // for gear, -200 for food - each exactly its cap, so `i` always fits).
-      // Every predicate RE-ASSERTS what the pre-read saw (id, list, cohort,
-      // current rank, not-worn) so a row that moved between the read and the
-      // batch is not written with a rank computed for a different bag.
-      const scratch = (i: number) => -1 - i
-      const gearPark = payload.items.map((u, i) =>
-        db
-          .update(listItems)
-          .set({ packSortOrder: scratch(i) })
-          .where(
-            and(
-              eq(listItems.id, u.id),
-              eq(listItems.userId, userId),
-              eq(listItems.listId, listId),
-              eq(listItems.isWorn, false),
-              eq(listItems.packSortOrder, gearById.get(u.id)!.packSortOrder),
-              cohortPredicate(listItems),
-            ),
-          ),
-      )
-      const foodPark = payload.foodItems.map((u, i) =>
-        db
-          .update(listFoodItems)
-          .set({ packSortOrder: scratch(i) })
-          .where(
-            and(
-              eq(listFoodItems.id, u.id),
-              eq(listFoodItems.userId, userId),
-              eq(listFoodItems.listId, listId),
-              eq(
-                listFoodItems.packSortOrder,
-                foodById.get(u.id)!.packSortOrder,
+      // for gear, -200 for food - each exactly its cap, so the index always
+      // fits). CHUNKED multi-row statements rather than one statement per
+      // row: D1 counts every batch statement against its ~1000
+      // queries-per-invocation ceiling, and the accepted payload allows 500
+      // rows - per-row statements put a full-cohort reorder
+      // deterministically over the limit (GATE 2 round-3 finding; also the
+      // AGENTS.md trap about keeping batch statement counts low). At 20
+      // rows per statement the worst case is ~54 statements.
+      //
+      // Each chunk still RE-ASSERTS what the pre-read saw, per row: the SET
+      // subquery matches on (id, current rank) and yields NULL when a row
+      // has drifted - and pack_sort_order is NOT NULL, so a drifted row
+      // ABORTS the whole batch instead of being silently skipped. That is
+      // per-row exactness on top of the census guards below. Identifiers
+      // are hand-written throughout (the unqualified-rendering trap).
+      const cohortMatch =
+        cohort === null
+          ? sql`packing_location_id is null`
+          : sql`packing_location_id = ${cohort}`
+      // The row mapping travels as ONE JSON parameter unpacked by
+      // json_each(): a UNION ALL of per-row SELECTs tripped D1's
+      // compound-SELECT term limit well below the payload caps, and
+      // per-row bound params would fight the 100-param statement cap.
+      // Two params per statement regardless of chunk size; 100 rows per
+      // chunk keeps any single statement's row fan-out modest.
+      const RANK_CHUNK = 100
+      function chunkedRankWrites(
+        tableName: 'list_items' | 'list_food_items',
+        table: typeof listItems | typeof listFoodItems,
+        entries: { id: string; from: number; to: number }[],
+        requireNotWorn: boolean,
+      ) {
+        const tbl = sql.raw(tableName)
+        const statements = []
+        for (let i = 0; i < entries.length; i += RANK_CHUNK) {
+          const chunk = JSON.stringify(entries.slice(i, i + RANK_CHUNK))
+          statements.push(
+            db
+              .update(table)
+              .set({
+                packSortOrder: sql`(select json_extract(je.value, '$.to') from json_each(${chunk}) as je where json_extract(je.value, '$.id') = ${tbl}.id and json_extract(je.value, '$.from') = ${tbl}.pack_sort_order)`,
+              })
+              .where(
+                sql`${tbl}.user_id = ${userId} and ${tbl}.list_id = ${listId}${
+                  requireNotWorn ? sql` and ${tbl}.is_worn = 0` : sql``
+                } and ${cohortMatch} and ${tbl}.id in (select json_extract(value, '$.id') from json_each(${chunk}))`,
               ),
-              cohortPredicate(listFoodItems),
-            ),
-          ),
+          )
+        }
+        return statements
+      }
+
+      const scratch = (i: number) => -1 - i
+      const gearPark = chunkedRankWrites(
+        'list_items',
+        listItems,
+        payload.items.map((u, i) => ({
+          id: u.id,
+          from: gearById.get(u.id)!.packSortOrder,
+          to: scratch(i),
+        })),
+        true,
+      )
+      const foodPark = chunkedRankWrites(
+        'list_food_items',
+        listFoodItems,
+        payload.foodItems.map((u, i) => ({
+          id: u.id,
+          from: foodById.get(u.id)!.packSortOrder,
+          to: scratch(i),
+        })),
+        false,
       )
 
       // One fail-loud guard per table (each table's negative count is an
@@ -240,12 +268,7 @@ export function createPackReorderRepo(db: Db, userId: string) {
       // half of the payload is empty: count(*) = 0 still has to hold, and an
       // unconditional shape keeps the batch statement list deterministic.
       // Raw SQL rides insert builders because db.run(sql) typechecks as a
-      // batch item and then crashes the D1 driver; identifiers hand-written
-      // (unqualified-rendering trap).
-      const cohortMatch =
-        cohort === null
-          ? sql`packing_location_id is null`
-          : sql`packing_location_id = ${cohort}`
+      // batch item and then crashes the D1 driver.
       const gearGuard = db.insert(packReorderGuard).select(
         sql`select ${listId}, (select case when count(*) = ${payload.items.length} then 1 end
               from list_items
@@ -261,34 +284,25 @@ export function createPackReorderRepo(db: Db, userId: string) {
                and pack_sort_order < 0)`,
       )
 
-      const gearSettle = payload.items.map((u, i) =>
-        db
-          .update(listItems)
-          .set({ packSortOrder: u.packSortOrder })
-          .where(
-            and(
-              eq(listItems.id, u.id),
-              eq(listItems.userId, userId),
-              eq(listItems.listId, listId),
-              eq(listItems.isWorn, false),
-              eq(listItems.packSortOrder, scratch(i)),
-              cohortPredicate(listItems),
-            ),
-          ),
+      const gearSettle = chunkedRankWrites(
+        'list_items',
+        listItems,
+        payload.items.map((u, i) => ({
+          id: u.id,
+          from: scratch(i),
+          to: u.packSortOrder,
+        })),
+        true,
       )
-      const foodSettle = payload.foodItems.map((u, i) =>
-        db
-          .update(listFoodItems)
-          .set({ packSortOrder: u.packSortOrder })
-          .where(
-            and(
-              eq(listFoodItems.id, u.id),
-              eq(listFoodItems.userId, userId),
-              eq(listFoodItems.listId, listId),
-              eq(listFoodItems.packSortOrder, scratch(i)),
-              cohortPredicate(listFoodItems),
-            ),
-          ),
+      const foodSettle = chunkedRankWrites(
+        'list_food_items',
+        listFoodItems,
+        payload.foodItems.map((u, i) => ({
+          id: u.id,
+          from: scratch(i),
+          to: u.packSortOrder,
+        })),
+        false,
       )
 
       // Not optional: both guard tables key on list_id, so a leftover row
@@ -313,15 +327,17 @@ export function createPackReorderRepo(db: Db, userId: string) {
       try {
         await db.batch([first, ...rest])
       } catch (err) {
-        // Someone beat us, in one of three shapes: a concurrent reorder took
-        // a rank first (unique violation on either table's cohort index), or
-        // one of the guards counted a missing park (NOT NULL violation on
-        // that guard's `ok`). All three rolled the whole batch back; the
+        // Someone beat us, in one of four shapes: a concurrent reorder took
+        // a rank first (unique violation on either table's cohort index), a
+        // drifted row fed NULL into its NOT NULL rank column inside a chunk,
+        // or one of the guards counted a missing park (NOT NULL violation on
+        // that guard's `ok`). All rolled the whole batch back; the
         // client refetches and retries.
         if (
           isAnyUniqueViolation(err) ||
           isPackGuardViolation(err) ||
-          isFoodPackGuardViolation(err)
+          isFoodPackGuardViolation(err) ||
+          isPackRankNotNullViolation(err)
         ) {
           return { ok: false, reason: 'conflict' }
         }

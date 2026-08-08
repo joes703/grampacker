@@ -1,3 +1,4 @@
+import { env } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
@@ -314,6 +315,71 @@ describe('the union pack-order permutation', () => {
       { foodItems: [{ id: ownerFood.id, packSortOrder: 0 }] },
     )
     expect(res.status).toBe(404)
+  })
+})
+
+describe('a full-cohort union reorder at the caps', () => {
+  it('reorders 300 gear + 200 food rows in one request (chunked batch)', async () => {
+    // The D1 platform counts every batch statement against its per-invocation
+    // query ceiling, so a full-cohort permutation must ship as chunked
+    // multi-row statements. This seeds a list AT both caps and reverses the
+    // whole 500-row union - the payload shape the drag planner actually
+    // submits for a worst-case drag.
+    const { cookie } = await signUpVerifiedUser('cap1@example.com', 'CAP')
+    const list = await createList(cookie, 'Everything')
+    const me = await apiRequest(cookie, 'GET', '/api/me')
+    const { id: userId } = (await me.json()) as { id: string }
+
+    const gearValues = Array.from({ length: 300 }, (_, i) =>
+      `('${userId}-g-${i}', '${userId}', 'Seed gear ${i}', 100, ${i}, 0, 0)`)
+    for (let i = 0; i < gearValues.length; i += 50) {
+      await env.DB.prepare(
+        'insert into gear_items (id, user_id, name, weight_grams, sort_order, created_at, updated_at) values ' +
+          gearValues.slice(i, i + 50).join(','),
+      ).run()
+    }
+    const itemValues = Array.from({ length: 300 }, (_, i) =>
+      `('${userId}-li-${i}', '${userId}', '${list.id}', '${userId}-g-${i}', 1, 0, 0, 0, 0, ${i}, ${i}, 0, 0)`)
+    for (let i = 0; i < itemValues.length; i += 40) {
+      await env.DB.prepare(
+        'insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, pack_sort_order, created_at, updated_at) values ' +
+          itemValues.slice(i, i + 40).join(','),
+      ).run()
+    }
+    const foodValues = Array.from({ length: 200 }, (_, i) =>
+      `('${userId}-f-${i}', '${userId}', '${list.id}', 'Seed food ${i}', 100, 1, ${i}, 0, 0, ${300 + i}, 0, 0)`)
+    for (let i = 0; i < foodValues.length; i += 40) {
+      await env.DB.prepare(
+        'insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, is_packed, is_ready, pack_sort_order, created_at, updated_at) values ' +
+          foodValues.slice(i, i + 40).join(','),
+      ).run()
+    }
+
+    // Reverse the union: rank r -> 499 - r across both tables.
+    const res = await apiRequest(
+      cookie,
+      'PUT',
+      `/api/lists/${list.id}/items/pack-order`,
+      {
+        items: Array.from({ length: 300 }, (_, i) => ({
+          id: `${userId}-li-${i}`,
+          packSortOrder: 499 - i,
+        })),
+        foodItems: Array.from({ length: 200 }, (_, i) => ({
+          id: `${userId}-f-${i}`,
+          packSortOrder: 499 - (300 + i),
+        })),
+      },
+    )
+    expect(res.status).toBe(204)
+
+    const foodRows = await getFoodItems(cookie, list.id)
+    expect(foodRows.find((r) => r.id === `${userId}-f-0`)?.packSortOrder).toBe(199)
+    expect(foodRows.find((r) => r.id === `${userId}-f-199`)?.packSortOrder).toBe(0)
+    const itemsRes = await apiRequest(cookie, 'GET', `/api/lists/${list.id}/items`)
+    const items = (await itemsRes.json()) as ItemBody[]
+    expect(items.find((r) => r.id === `${userId}-li-0`)?.packSortOrder).toBe(499)
+    expect(items.find((r) => r.id === `${userId}-li-299`)?.packSortOrder).toBe(200)
   })
 })
 
