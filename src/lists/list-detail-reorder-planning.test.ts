@@ -55,10 +55,10 @@ const locations: PackingLocation[] = [{
 // what these tests pin is that hidden rows keep their slots.
 const expectedPackSwap = {
   kind: 'pack',
-  updates: [
+  updates: { items: [
     { id: 'visible-last', packSortOrder: 1 },
     { id: 'visible-first', packSortOrder: 3 },
-  ],
+  ], foodItems: [] },
 }
 const expectedListSwap = {
   kind: 'list',

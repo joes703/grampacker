@@ -59,8 +59,11 @@ type BaseProps = {
 
 type Props = BaseProps & (
   | {
+      // Gear rows: promotable to a container. Food rows pass no
+      // onUseAsContainer - food cannot back a container - and the action row
+      // simply does not render.
       isContainer: false
-      onUseAsContainer: () => void
+      onUseAsContainer?: () => void
       onStopUsingAsContainer?: never
     }
   | {
@@ -133,7 +136,7 @@ export default function MoveToLocationMenu({
           <div className="my-1 border-t border-gray-100" />
         </>
       ) : null}
-      {!isContainer ? (
+      {!isContainer && onUseAsContainer ? (
         <>
           <RowMenuItem
             icon={<PackagePlus size={13} />}

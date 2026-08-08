@@ -59,6 +59,7 @@ const listItem = {
   // enabled "Unassigned" is a wrong write rather than a no-op.
   packingLocationId: 'loc-1',
   sortOrder: 0,
+  packSortOrder: 0,
 } as unknown as ListItemWithGear
 
 const secondItem = {
@@ -67,6 +68,7 @@ const secondItem = {
   gearItemId: 'gear-2',
   gearItem: { ...gear, id: 'gear-2', name: 'Stove' },
   sortOrder: 1,
+  packSortOrder: 1,
 } as unknown as ListItemWithGear
 
 const emptyFood: ListFoodResponse = { dayCount: 0, slots: [], items: [] }

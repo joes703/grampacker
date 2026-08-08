@@ -30,6 +30,10 @@ export function packRowIsPacked(row: PackRow): boolean {
   return row.kind === 'gear' ? row.gear.isPacked : row.food.isPacked
 }
 
+export function packRowName(row: PackRow): string {
+  return row.kind === 'gear' ? row.gear.gearItem.name : row.food.name
+}
+
 // Display order within a cohort: rank first, gear before food on a
 // cross-table tie (per-table unique indexes cannot rule ties out across
 // tables), id as the total-order backstop. Must match the server's

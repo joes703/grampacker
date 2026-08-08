@@ -76,6 +76,7 @@ function planUnionReorder(
   items: ListItemWithGear[],
   foodItems: FoodItemResponse[],
   excludedItemIds: ReadonlySet<string>,
+  excludedFoodIds: ReadonlySet<string>,
 ): UnionRankUpdates | null {
   if (overId === undefined || activeId === overId) return null
   const active = parsePackRowId(activeId)
@@ -83,6 +84,8 @@ function planUnionReorder(
   if (!active || !over) return null
   if (active.rowKind === 'gear' && excludedItemIds.has(active.id)) return null
   if (over.rowKind === 'gear' && excludedItemIds.has(over.id)) return null
+  if (active.rowKind === 'food' && excludedFoodIds.has(active.id)) return null
+  if (over.rowKind === 'food' && excludedFoodIds.has(over.id)) return null
 
   const activeRow = locateRow(active, items, foodItems)
   const overRow = locateRow(over, items, foodItems)
@@ -99,8 +102,12 @@ function planUnionReorder(
         item.packingLocationId === activeRow.locationId &&
         !excludedItemIds.has(item.id),
     ),
+    // Filtered food rows are excluded for the same reason filtered gear is:
+    // the plan must be computed against the rows the user is looking at.
     foodItems.filter(
-      (item) => item.packingLocationId === activeRow.locationId,
+      (item) =>
+        item.packingLocationId === activeRow.locationId &&
+        !excludedFoodIds.has(item.id),
     ),
   )
   const indexOf = (ref: NonNullable<ParsedPackRowId>) =>
@@ -171,6 +178,7 @@ export function planPackingRowDragEnd(
   containerItemIdByLocation: ReadonlyMap<string, string> = new Map(),
   excludedLocationIdsByItem: ReadonlyMap<string, ReadonlySet<string>>,
   excludedReorderItemIds: ReadonlySet<string> = new Set(),
+  excludedReorderFoodIds: ReadonlySet<string> = new Set(),
 ): PackingRowDragPlan | null {
   const excludedItemIds = new Set([
     ...containerItemIdByLocation.values(),
@@ -182,6 +190,7 @@ export function planPackingRowDragEnd(
     items,
     foodItems,
     excludedItemIds,
+    excludedReorderFoodIds,
   )
   if (updates) return { kind: 'reorder', updates }
 

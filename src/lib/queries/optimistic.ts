@@ -552,6 +552,153 @@ export function makeOptimisticPackReorder<
   }
 }
 
+// The union twin of makeOptimisticPackReorder (0022: a bag's contents are
+// gear rows AND food rows). One mutation writes both halves - the server
+// applies them in one batch - so the optimistic apply, rollback and refetch
+// must span both caches or a failed drop would roll back half a drag.
+//
+// The permutation rule is validated over the UNION: an interleaving drag
+// hands a food row a rank a gear row held, so neither half is a permutation
+// of its own subset on its own.
+export type UnionPackReorderUpdates = {
+  items: { id: string; packSortOrder: number }[]
+  foodItems: { id: string; packSortOrder: number }[]
+}
+
+type FoodCacheShape = {
+  dayCount: number
+  slots: unknown[]
+  items: { id: string; packSortOrder: number }[]
+}
+
+function validateUnionPackReorderPayload(
+  updates: UnionPackReorderUpdates,
+  cachedGear: { id: string; packSortOrder: number }[] | undefined,
+  cachedFood: FoodCacheShape | undefined,
+): string | null {
+  const total = updates.items.length + updates.foodItems.length
+  if (total === 0) return null
+  // No cache yet means there is no subset to validate against; prod behavior
+  // is a no-op there (the cache updaters short-circuit on missing data).
+  if (!cachedGear && !cachedFood) return null
+
+  const halves: [string, { id: string; packSortOrder: number }[], Map<string, number>][] = [
+    ['items', updates.items, new Map((cachedGear ?? []).map((r) => [r.id, r.packSortOrder]))],
+    ['foodItems', updates.foodItems, new Map((cachedFood?.items ?? []).map((r) => [r.id, r.packSortOrder]))],
+  ]
+  const subsetRanks: number[] = []
+  for (const [half, entries, cachedById] of halves) {
+    const seen = new Set<string>()
+    for (const u of entries) {
+      if (seen.has(u.id)) {
+        return `makeOptimisticUnionPackReorder: duplicate id "${u.id}" in ${half}.`
+      }
+      seen.add(u.id)
+      const rank = cachedById.get(u.id)
+      if (rank === undefined) {
+        return (
+          `makeOptimisticUnionPackReorder: ${half} id "${u.id}" is not in its cache. ` +
+          'Either the cache was invalidated between snapshot and dispatch, ' +
+          'or the payload was built from a stale view.'
+        )
+      }
+      subsetRanks.push(rank)
+    }
+  }
+  const payloadRanks = [...updates.items, ...updates.foodItems]
+    .map((u) => u.packSortOrder)
+    .sort((a, b) => a - b)
+  subsetRanks.sort((a, b) => a - b)
+  for (let i = 0; i < payloadRanks.length; i++) {
+    if (payloadRanks[i] !== subsetRanks[i]) {
+      return (
+        `makeOptimisticUnionPackReorder: payload ranks [${payloadRanks.join(', ')}] ` +
+        `are not a permutation of the touched union's existing ranks ` +
+        `[${subsetRanks.join(', ')}]. ` +
+        'Use assignUnionPackRankSlots() (src/lists/pack-rows.ts) to build safe payloads.'
+      )
+    }
+  }
+  return null
+}
+
+export function makeOptimisticUnionPackReorder<
+  T extends { id: string; packSortOrder: number },
+  F extends FoodCacheShape,
+>(qc: QueryClient, gearQueryKey: QueryKey, foodQueryKey: QueryKey) {
+  return {
+    // Synchronous, un-awaited cancels: same drag-animation reason as
+    // makeOptimisticReorder (see the long note there).
+    onMutate: (updates: UnionPackReorderUpdates) => {
+      void qc.cancelQueries({ queryKey: gearQueryKey })
+      void qc.cancelQueries({ queryKey: foodQueryKey })
+      const previousGear = qc.getQueryData<T[]>(gearQueryKey)
+      const previousFood = qc.getQueryData<F>(foodQueryKey)
+
+      const validationError = validateUnionPackReorderPayload(
+        updates,
+        previousGear,
+        previousFood,
+      )
+      if (validationError) {
+        if (import.meta.env.DEV) throw new Error(validationError)
+        console.error(
+          'makeOptimisticUnionPackReorder validation failed:',
+          validationError,
+          { updates },
+        )
+        throw new OptimisticReorderValidationError(validationError)
+      }
+
+      const gearById = new Map(updates.items.map((u) => [u.id, u.packSortOrder]))
+      qc.setQueryData<T[]>(gearQueryKey, (curr) => {
+        if (!curr) return curr
+        // No .sort(): the cache stays in document order on purpose.
+        return curr.map((item) =>
+          gearById.has(item.id)
+            ? { ...item, packSortOrder: gearById.get(item.id)! }
+            : item,
+        )
+      })
+      const foodById = new Map(
+        updates.foodItems.map((u) => [u.id, u.packSortOrder]),
+      )
+      qc.setQueryData<F>(foodQueryKey, (curr) => {
+        if (!curr) return curr
+        return {
+          ...curr,
+          items: curr.items.map((item) =>
+            foodById.has(item.id)
+              ? { ...item, packSortOrder: foodById.get(item.id)! }
+              : item,
+          ),
+        }
+      })
+      return { previousGear, previousFood }
+    },
+    onError: (
+      err: unknown,
+      _vars: unknown,
+      ctx: { previousGear: T[] | undefined; previousFood: F | undefined } | undefined,
+    ) => {
+      if (err instanceof OptimisticReorderValidationError) return
+      if (ctx?.previousGear) qc.setQueryData(gearQueryKey, ctx.previousGear)
+      if (ctx?.previousFood) qc.setQueryData(foodQueryKey, ctx.previousFood)
+      const conflict = err instanceof ApiError && err.status === 409
+      showToast(
+        conflict
+          ? 'This bag changed somewhere else. Reloading its order.'
+          : "Couldn't save the new order. Please try again.",
+        { type: 'error' },
+      )
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: gearQueryKey })
+      void qc.invalidateQueries({ queryKey: foodQueryKey })
+    },
+  }
+}
+
 export function makeOptimisticReorder<T extends { id: string; sortOrder: number }>(
   qc: QueryClient,
   queryKey: QueryKey,

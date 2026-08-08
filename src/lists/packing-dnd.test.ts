@@ -51,6 +51,7 @@ function food(
     quantity: 1,
     sortOrder: 0,
     isPacked: false,
+    isReady: false,
     packingLocationId: locationId,
     packSortOrder,
     slotIds: [],

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { FoodItemResponse } from '../../shared/food'
 import type { ListItemWithGear } from '../lib/types'
 import {
   isNoOpSlot,
@@ -6,6 +7,27 @@ import {
   planPlacementWithinLocation,
   visualSlotToInsertIndex,
 } from './placement-plan'
+import type { PackRow, UnionRankUpdates } from './pack-rows'
+
+function gearRow(id: string, sortOrder: number): PackRow {
+  return { kind: 'gear', gear: item(id, sortOrder) }
+}
+
+function foodRow(id: string, packSortOrder: number): PackRow {
+  const food: FoodItemResponse = {
+    id,
+    name: id,
+    weightGrams: 100,
+    quantity: 1,
+    sortOrder: 0,
+    isPacked: false,
+    isReady: false,
+    packingLocationId: 'loc-1',
+    packSortOrder,
+    slotIds: [],
+  }
+  return { kind: 'food', food }
+}
 
 function item(id: string, sortOrder: number): ListItemWithGear {
   return {
@@ -39,15 +61,22 @@ function item(id: string, sortOrder: number): ListItemWithGear {
 }
 
 // A B C D E, ranks deliberately sparse: nothing constrains them to be dense
-// and imports leave gaps on purpose.
-const rows = [item('A', 0), item('B', 10), item('C', 20), item('D', 30), item('E', 45)]
+// and imports leave gaps on purpose. C is a FOOD row (0022: placement spans
+// the union), so every move through it exercises the cross-kind path.
+const rows = [gearRow('A', 0), gearRow('B', 10), foodRow('C', 20), gearRow('D', 30), gearRow('E', 45)]
 // Click-to-place is a Pack action, so the plan it returns permutes PACK ranks
-// now. The assertions below are unchanged - what they pin is the resulting
-// order, which is the point.
-const order = (updates: { id: string; packSortOrder: number }[] | null) =>
+// across both payload halves. The assertions below pin the resulting ORDER of
+// the union, which is the point.
+const order = (updates: UnionRankUpdates | null) =>
   updates === null
     ? null
-    : [...updates].sort((x, y) => x.packSortOrder - y.packSortOrder).map((u) => u.id)
+    : [...updates.items, ...updates.foodItems]
+        .sort((x, y) => x.packSortOrder - y.packSortOrder)
+        .map((u) => u.id)
+const allEntries = (updates: UnionRankUpdates) => [
+  ...updates.items,
+  ...updates.foodItems,
+]
 
 describe('visualSlotToInsertIndex', () => {
   // The moving row occupies a position in the VISUAL list but not in the
@@ -124,9 +153,11 @@ describe('planPlacementWithinLocation', () => {
     // and the optimistic reorder validator rejects any update set that is not
     // a permutation of the ranks it touched.
     const updates = planPlacementWithinLocation('C', 0, rows)!
-    expect(updates.map((u) => u.packSortOrder).sort((a, b) => a - b))
-      .toEqual(rows.map((r) => r.packSortOrder).sort((a, b) => a - b))
-    expect(updates.map((u) => u.id).sort()).toEqual(['A', 'B', 'C', 'D', 'E'])
+    expect(allEntries(updates).map((u) => u.packSortOrder).sort((a, b) => a - b))
+      .toEqual([0, 10, 20, 30, 45])
+    expect(allEntries(updates).map((u) => u.id).sort()).toEqual(['A', 'B', 'C', 'D', 'E'])
+    // The food row's new rank rides the food half of the payload.
+    expect(updates.foodItems).toEqual([{ id: 'C', packSortOrder: 0 }])
   })
 
   it('operates on the array it is GIVEN, hidden rows already absent', () => {
@@ -136,13 +167,13 @@ describe('planPlacementWithinLocation', () => {
     const visible = [rows[0]!, rows[2]!, rows[4]!] // A, C, E
     const updates = planPlacementWithinLocation('E', 0, visible)!
     expect(order(updates)).toEqual(['E', 'A', 'C'])
-    expect(updates.map((u) => u.id).sort()).toEqual(['A', 'C', 'E'])
+    expect(allEntries(updates).map((u) => u.id).sort()).toEqual(['A', 'C', 'E'])
     // B and D are untouched entirely.
-    expect(updates.map((u) => u.packSortOrder).sort((a, b) => a - b)).toEqual([0, 20, 45])
+    expect(allEntries(updates).map((u) => u.packSortOrder).sort((a, b) => a - b)).toEqual([0, 20, 45])
   })
 
   it('handles a two-row bag, where every real move is a swap', () => {
-    const two = [item('A', 5), item('B', 9)]
+    const two = [gearRow('A', 5), gearRow('B', 9)]
     expect(order(planPlacementWithinLocation('B', 0, two))).toEqual(['B', 'A'])
     expect(order(planPlacementWithinLocation('A', 1, two))).toEqual(['B', 'A'])
   })

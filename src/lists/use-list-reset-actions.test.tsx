@@ -19,6 +19,7 @@ const KEY = ['list-items', LIST_ID] as const
 const h = vi.hoisted(() => ({
   queryKeys: {
     listItems: (id: string) => ['list-items', id] as const,
+    listFood: (id: string) => ['list-food', id] as const,
   },
   resetPackedForList: vi.fn<(listId: string) => Promise<void>>(),
   resetReadyForList: vi.fn<(listId: string) => Promise<void>>(),

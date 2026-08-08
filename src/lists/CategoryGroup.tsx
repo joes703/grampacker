@@ -1,5 +1,7 @@
 import { memo, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, ChevronRight, Plus } from 'lucide-react'
+// Type-only: erases at build time, so the share view's bundle is unaffected.
+import type { FoodItemResponse } from '../../shared/food'
 import type { ListItemWithGear } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import type { ListItemPatch } from '../lib/queries'
@@ -77,10 +79,29 @@ export type RowProps = Omit<ItemRowProps, 'dragHandle' | 'outerRef' | 'outerStyl
  */
 export type SectionIdentity = { key: string; name: string }
 
+/** Props for one pack-mode food row - built here (plain data + handlers, no
+ *  @dnd-kit) and rendered by the injected union renderRows, which wraps them
+ *  in SortableFoodRow on the authenticated side. */
+export type PackFoodRowProps = {
+  food: FoodItemResponse
+  readyChecksEnabled: boolean
+  reorderPending: boolean
+  onUpdate: (patch: { isPacked?: boolean; isReady?: boolean }) => void
+  rowAction?: ReactNode
+}
+
 export type RenderRows = (
   items: ListItemWithGear[],
   rowPropsFor: (item: ListItemWithGear) => RowProps,
   section: SectionIdentity,
+  /** Pack mode only (0022): this section's food rows plus their per-row
+   *  props builder. The injected renderer merges them with the gear rows
+   *  into union display order; plain (share/edit) rendering never sees
+   *  food. */
+  packFood?: {
+    rows: FoodItemResponse[]
+    rowPropsFor: (food: FoodItemResponse) => PackFoodRowProps
+  },
 ) => ReactNode
 
 type GroupPropsBase = {
@@ -179,6 +200,23 @@ type GroupPropsBase = {
   renderRowAction?: (
     item: ListItemWithGear,
     cohort: ListItemWithGear[],
+    section: SectionIdentity,
+    /** Rendered gear + food rows in this section. The row menu withholds
+     *  click-to-place when fewer than two rows are visible, and with food in
+     *  the bag the gear cohort alone under-counts. */
+    unionRowCount?: number,
+  ) => ReactNode
+  /** Pack-mode only (0022): this section's food rows. Food is filtered by the
+   *  same pack filters as gear, counted into the header progress, and handed
+   *  to renderRows for union-ordered rendering. */
+  packFoodRows?: FoodItemResponse[]
+  onUpdateFood?: (
+    foodId: string,
+    patch: { isPacked?: boolean; isReady?: boolean },
+  ) => void
+  renderFoodRowAction?: (
+    food: FoodItemResponse,
+    unionRowCount: number,
     section: SectionIdentity,
   ) => ReactNode
   /** The one section allowed to render worn rows. Every ordinary category or
@@ -279,6 +317,9 @@ function CategoryGroup({
   headerAction,
   titleContent,
   renderRowAction,
+  packFoodRows,
+  onUpdateFood,
+  renderFoodRowAction,
   wornSection = false,
   baseSubtotalGrams,
   consumableSubtotalGrams,
@@ -323,10 +364,18 @@ function CategoryGroup({
   // off each item; that field is excluded from the public read path.
   const progressItems = packProgressItems
     ?? (containerItem ? [containerItem, ...sectionItems] : sectionItems)
-  const packedCount = packMode ? progressItems.filter((i) => i.isPacked).length : 0
+  // Food counts into the header progress exactly like gear (0022: the
+  // section's contents are the union). Full arrays, not filtered ones -
+  // header counts always reflect everything the section holds.
+  const sectionFood = packFoodRows ?? []
+  const packedCount = packMode
+    ? progressItems.filter((i) => i.isPacked).length +
+      sectionFood.filter((f) => f.isPacked).length
+    : 0
+  const progressTotal = progressItems.length + sectionFood.length
   const showKebabSlot = !packMode && Boolean(onDelete)
-  // "Complete" = pack mode, has section items, every section item packed.
-  const complete = packMode && progressItems.length > 0 && packedCount === progressItems.length
+  // "Complete" = pack mode, has contents, every one of them packed.
+  const complete = packMode && progressTotal > 0 && packedCount === progressTotal
   // Filters hide finished rows from the rendered list. Applied AFTER the
   // section split so packed-but-worn items don't sneak through.
   //
@@ -357,6 +406,13 @@ function CategoryGroup({
         (i) => (!showUnpackedOnly || !i.isPacked) && (!showUnreadyOnly || !i.isReady),
       )
     : sectionItems
+  // Same filter rules, same ANDing, applied to the food half of the union.
+  const visibleFood = filtering
+    ? sectionFood.filter(
+        (f) => (!showUnpackedOnly || !f.isPacked) && (!showUnreadyOnly || !f.isReady),
+      )
+    : sectionFood
+  const unionRowCount = visibleItems.length + visibleFood.length
 
   // Per-row props builder — same shape for SortableItemRow and ItemRow.
   // reorderPending is read by SortableItemRow's useSortable (`disabled`);
@@ -378,7 +434,7 @@ function CategoryGroup({
       onDeleteGearItem: onDeleteGearItem ? () => onDeleteGearItem(gearId) : undefined,
       onSetGearStatus: onSetGearStatus ? (s: GearStatus) => onSetGearStatus(gearId, s) : undefined,
       onDelete: onDelete ? () => onDelete(item.id) : undefined,
-      rowAction: renderRowAction?.(item, visibleItems, section),
+      rowAction: renderRowAction?.(item, visibleItems, section, unionRowCount),
     }
   }
 
@@ -555,7 +611,24 @@ function CategoryGroup({
         // referenced by nothing.
         <div id={collapsible ? regionId : undefined}>
           {renderRows
-            ? renderRows(visibleItems, rowPropsFor, section)
+            ? renderRows(
+                visibleItems,
+                rowPropsFor,
+                section,
+                packMode && packFoodRows !== undefined
+                  ? {
+                      rows: visibleFood,
+                      rowPropsFor: (food: FoodItemResponse) => ({
+                        food,
+                        readyChecksEnabled,
+                        reorderPending,
+                        onUpdate: (patch: { isPacked?: boolean; isReady?: boolean }) =>
+                          onUpdateFood?.(food.id, patch),
+                        rowAction: renderFoodRowAction?.(food, unionRowCount, section),
+                      }),
+                    }
+                  : undefined,
+              )
             : visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}
           {/* An empty pack section says WHY it is empty. Without this a
               section can render as a bare header with nothing under it, and
@@ -566,11 +639,11 @@ function CategoryGroup({
               Organize view carried this line; the filters make it matter
               more, not less.) Only pack sections: an empty CATEGORY in edit
               mode is self-evident from the add-item row beneath it. */}
-          {packMode && visibleItems.length === 0 && !children && (
+          {packMode && unionRowCount === 0 && !children && (
             <p className="px-3 py-3 text-sm text-gray-500">
-              {sectionItems.length === 0
+              {sectionItems.length + sectionFood.length === 0
                 ? emptySectionLabel
-                : `All ${sectionItems.length} ${sectionItems.length === 1 ? 'item' : 'items'} here are hidden by the filters above.`}
+                : `All ${sectionItems.length + sectionFood.length} ${sectionItems.length + sectionFood.length === 1 ? 'item' : 'items'} here are hidden by the filters above.`}
             </p>
           )}
           {children}

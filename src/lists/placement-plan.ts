@@ -1,8 +1,16 @@
-import { assignPackRankSlots } from '../lib/grouping'
-import type { ListItemWithGear } from '../lib/types'
+import {
+  assignUnionPackRankSlots,
+  packRowId,
+  packRowName,
+  type PackRow,
+  type UnionRankUpdates,
+} from './pack-rows'
 
 // The ordering half of click-to-place: reordering a row inside its bag without
-// dragging (WCAG 2.5.7 wants a single-pointer path that is not a drag).
+// dragging (WCAG 2.5.7 wants a single-pointer path that is not a drag). Since
+// 0022 the rows are the UNION of gear and food - a placement can put tortillas
+// between the stove and the pot - so the plan operates on PackRow[] and
+// returns both payload halves.
 //
 // Two coordinate systems meet here and confusing them is the whole risk.
 //
@@ -38,7 +46,7 @@ export function isNoOpSlot(slot: number, sourceIndex: number): boolean {
 /**
  * Plan a placement.
  *
- * `eligibleItems` MUST be the exact array the section rendered - the one
+ * `eligibleRows` MUST be the exact array the section rendered - the one
  * `renderRows` was handed. It is deliberately not rebuilt from a location id:
  * the displayed cohort and the drag planner's cohort agree on settled data but
  * diverge while a location delete is still optimistic, when rows whose location
@@ -47,30 +55,30 @@ export function isNoOpSlot(slot: number, sourceIndex: number): boolean {
  * rendered array through means the plan always describes what the user was
  * actually looking at.
  *
- * Ranks come from assignPackRankSlots, which permutes the values the cohort
- * already holds. That keeps the list-wide multiset unchanged (so rows outside
+ * Ranks come from assignUnionPackRankSlots, which permutes the values the
+ * union cohort already holds. That keeps the list-wide multiset unchanged (so rows outside
  * this bag never renumber) and satisfies the optimistic reorder validator,
  * which requires exactly that permutation property.
  */
 export function planPlacementWithinLocation(
-  itemId: string,
+  rowId: string,
   insertIndex: number,
-  eligibleItems: readonly ListItemWithGear[],
-): { id: string; packSortOrder: number }[] | null {
-  const sourceIndex = eligibleItems.findIndex((item) => item.id === itemId)
+  eligibleRows: readonly PackRow[],
+): UnionRankUpdates | null {
+  const sourceIndex = eligibleRows.findIndex((row) => packRowId(row) === rowId)
   if (sourceIndex === -1) return null
 
-  const reduced = eligibleItems.filter((item) => item.id !== itemId)
+  const reduced = eligibleRows.filter((row) => packRowId(row) !== rowId)
   if (insertIndex < 0 || insertIndex > reduced.length) return null
   // The row is already there. Callers suppress these slots, so reaching this
   // is a bug rather than a user action - but returning null keeps a stray
   // click from issuing a write that changes nothing.
   if (insertIndex === sourceIndex) return null
 
-  const moving = eligibleItems[sourceIndex]
+  const moving = eligibleRows[sourceIndex]
   if (!moving) return null
   const next = [...reduced.slice(0, insertIndex), moving, ...reduced.slice(insertIndex)]
-  return assignPackRankSlots(next)
+  return assignUnionPackRankSlots(next)
 }
 
 /**
@@ -81,11 +89,11 @@ export function planPlacementWithinLocation(
 export function placementSlotLabel(
   movingName: string,
   slot: number,
-  eligibleItems: readonly ListItemWithGear[],
+  eligibleRows: readonly PackRow[],
   bagName: string,
 ): string {
-  const before = eligibleItems[slot]
+  const before = eligibleRows[slot]
   return before
-    ? `Place ${movingName} before ${before.gearItem.name}`
+    ? `Place ${movingName} before ${packRowName(before)}`
     : `Place ${movingName} at the end of ${bagName}`
 }

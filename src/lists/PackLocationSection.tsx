@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react'
+import type { FoodItemResponse } from '../../shared/food'
 import type { ListItemWithGear } from '../lib/types'
 import CategoryGroup, { type SectionIdentity } from './CategoryGroup'
 import type { PackingTreeLocation } from './packing-tree'
@@ -32,6 +33,15 @@ export type PackSectionProps = {
   renderRowAction?: (
     item: ListItemWithGear,
     cohort: ListItemWithGear[],
+    section: SectionIdentity,
+    unionRowCount?: number,
+  ) => ReactNode
+  /** This location's food rows (0022 union) plus their menu, forwarded to
+   *  CategoryGroup unchanged. */
+  packFoodRows?: FoodItemResponse[]
+  renderFoodRowAction?: (
+    food: FoodItemResponse,
+    unionRowCount: number,
     section: SectionIdentity,
   ) => ReactNode
   containerAction?: ReactNode
@@ -69,6 +79,8 @@ function PackPlainSection({
   depth,
   groupProps,
   renderRowAction,
+  packFoodRows,
+  renderFoodRowAction,
   itemReorderPending,
   locationReorderPending,
   renaming,
@@ -110,6 +122,8 @@ function PackPlainSection({
           packProgressItems={node.packProgressItems}
           reorderPending={itemReorderPending}
           renderRowAction={renderRowAction}
+          packFoodRows={packFoodRows}
+          renderFoodRowAction={renderFoodRowAction}
           headerLeading={dragHandle}
           titleContent={renaming ? (
             <PackSectionRenameInput
@@ -139,6 +153,8 @@ function PackContainerSection({
   depth,
   groupProps,
   renderRowAction,
+  packFoodRows,
+  renderFoodRowAction,
   containerAction,
   itemReorderPending,
   locationReorderPending,
@@ -172,6 +188,8 @@ function PackContainerSection({
           packProgressItems={node.packProgressItems}
           reorderPending={itemReorderPending}
           renderRowAction={renderRowAction}
+          packFoodRows={packFoodRows}
+          renderFoodRowAction={renderFoodRowAction}
           headerLeading={dragHandle}
           // An item-backed section has no rename (its name IS the gear item's
           // name) and no delete - only "stop using as container", which the

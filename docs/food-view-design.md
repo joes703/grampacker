@@ -23,8 +23,18 @@ is visually flat text links and cramped one-letter checkboxes; and on desktop
 the narrow mobile layout just stretches.
 
 Non-goals, stated so they are not re-litigated mid-build: no food library, no
-nutrition, no reusable plans (all deliberately deleted in 0016), no food in
-Pack mode, no share changes, no schema or API changes.
+nutrition, no reusable plans (all deliberately deleted in 0016), no share
+changes, no schema or API changes.
+
+REVERSED 2026-08-08: "no food in Pack mode" was listed as a non-goal here.
+That exclusion was scope containment added during doc drafting, not something
+Joe asked for, and it was wrong on the merits: Pack mode's job is checking
+off everything that goes in the bag, and food goes in the bag. Migration 0022
+plus the union pack-cohort work (server/repos/pack-reorder.ts,
+src/lists/pack-rows.ts) make food a full peer of gear in Pack mode - packable,
+ready-checkable, bag-assignable, drag- and click-to-place-reorderable,
+counted in progress. Food EDITING (name/weight/qty/schedule) stays in the
+Food view; Pack packs, it does not author.
 
 ## 2. Route and navigation
 
