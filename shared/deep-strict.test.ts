@@ -98,6 +98,7 @@ const foodItemFixture = {
   quantity: 1,
   sortOrder: 0,
   isPacked: false,
+  isReady: false,
   packingLocationId: null,
   packSortOrder: 0,
   slotIds: ['s1'],

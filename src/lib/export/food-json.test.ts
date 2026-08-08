@@ -38,6 +38,7 @@ describe('buildFoodJson', () => {
           quantity: 1,
           sortOrder: 0,
           isPacked: false,
+          isReady: false,
           packingLocationId: null,
           packSortOrder: 0,
           slotIds: ['l1', 'l2', 'l3', 'l4', 'l5'],

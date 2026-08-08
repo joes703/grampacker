@@ -47,6 +47,7 @@ export const foodItemResponseSchema = z.object({
   // a per-cohort rank in the UNION rank space shared with gear - see
   // server/repos/pack-reorder.ts.
   isPacked: z.boolean(),
+  isReady: z.boolean(),
   packingLocationId: z.string().nullable(),
   packSortOrder: z.number().int(),
   slotIds: z.array(z.string()),
@@ -108,6 +109,7 @@ export const updateFoodItemRequestSchema = z
     // as everything else. packSortOrder is deliberately NOT patchable here:
     // ranks move only through the pack-order permutation endpoint.
     isPacked: z.boolean().optional(),
+    isReady: z.boolean().optional(),
     packingLocationId: idSchema.nullable().optional(),
   })
   .strict()

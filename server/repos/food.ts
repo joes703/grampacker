@@ -42,6 +42,7 @@ export type FoodItemRow = {
   // semantics live on pack-reorder.ts; weight stays summed over items alone
   // regardless of where they are packed.
   isPacked: boolean
+  isReady: boolean
   packingLocationId: string | null
   packSortOrder: number
   slotIds: string[]
@@ -189,6 +190,7 @@ export function createFoodRepo(db: Db, userId: string) {
             quantity: listFoodItems.quantity,
             sortOrder: listFoodItems.sortOrder,
             isPacked: listFoodItems.isPacked,
+            isReady: listFoodItems.isReady,
             packingLocationId: listFoodItems.packingLocationId,
             packSortOrder: listFoodItems.packSortOrder,
           })
@@ -450,6 +452,7 @@ export function createFoodRepo(db: Db, userId: string) {
           quantity: input.quantity,
           sortOrder: (maxRow?.max ?? -1) + 1,
           isPacked: false,
+          isReady: false,
           packingLocationId: null,
           packSortOrder: inserted.packSortOrder,
           slotIds: usable,
@@ -466,6 +469,7 @@ export function createFoodRepo(db: Db, userId: string) {
         quantity?: number
         slotIds?: string[]
         isPacked?: boolean
+        isReady?: boolean
         packingLocationId?: string | null
       },
     ): Promise<FoodWriteResult<FoodItemRow>> {
@@ -479,6 +483,7 @@ export function createFoodRepo(db: Db, userId: string) {
           quantity: listFoodItems.quantity,
           sortOrder: listFoodItems.sortOrder,
           isPacked: listFoodItems.isPacked,
+          isReady: listFoodItems.isReady,
           packingLocationId: listFoodItems.packingLocationId,
           packSortOrder: listFoodItems.packSortOrder,
         })
@@ -506,6 +511,7 @@ export function createFoodRepo(db: Db, userId: string) {
       if (patch.weightGrams !== undefined) set.weightGrams = patch.weightGrams
       if (patch.quantity !== undefined) set.quantity = patch.quantity
       if (patch.isPacked !== undefined) set.isPacked = patch.isPacked
+      if (patch.isReady !== undefined) set.isReady = patch.isReady
       if (patch.packingLocationId !== undefined) {
         set.packingLocationId = patch.packingLocationId
         // Mirrors the gear move exactly (list-items.ts update): a move
@@ -561,6 +567,7 @@ export function createFoodRepo(db: Db, userId: string) {
           )
           .returning({
             isPacked: listFoodItems.isPacked,
+            isReady: listFoodItems.isReady,
             packingLocationId: listFoodItems.packingLocationId,
             packSortOrder: listFoodItems.packSortOrder,
           }),
@@ -581,7 +588,12 @@ export function createFoodRepo(db: Db, userId: string) {
       }
       const [first, ...rest] = statements
       let updated:
-        | { isPacked: boolean; packingLocationId: string | null; packSortOrder: number }
+        | {
+            isPacked: boolean
+            isReady: boolean
+            packingLocationId: string | null
+            packSortOrder: number
+          }
         | undefined
       try {
         if (first) {
@@ -659,6 +671,7 @@ export function createFoodRepo(db: Db, userId: string) {
           // pre-read row covers the vanished-concurrently case, where the
           // stale values are as good as answers get.
           isPacked: updated?.isPacked ?? item.isPacked,
+          isReady: updated?.isReady ?? item.isReady,
           packingLocationId:
             updated !== undefined
               ? updated.packingLocationId

@@ -567,16 +567,29 @@ export function createListItemsRepo(db: Db, userId: string) {
 
     async resetReady(listId: string): Promise<boolean> {
       if (!(await ownsList(listId))) return false
-      await db
-        .update(listItems)
-        .set({ isReady: false, updatedAt: Date.now() })
-        .where(
-          and(
-            eq(listItems.listId, listId),
-            eq(listItems.userId, userId),
-            eq(listItems.isReady, true),
+      const now = Date.now()
+      await db.batch([
+        db
+          .update(listItems)
+          .set({ isReady: false, updatedAt: now })
+          .where(
+            and(
+              eq(listItems.listId, listId),
+              eq(listItems.userId, userId),
+              eq(listItems.isReady, true),
+            ),
           ),
-        )
+        db
+          .update(listFoodItems)
+          .set({ isReady: false, updatedAt: now })
+          .where(
+            and(
+              eq(listFoodItems.listId, listId),
+              eq(listFoodItems.userId, userId),
+              eq(listFoodItems.isReady, true),
+            ),
+          ),
+      ])
       return true
     },
   }

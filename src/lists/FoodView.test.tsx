@@ -69,7 +69,7 @@ const guardFood: ListFoodResponse = {
     { id: 'b1', dayNumber: 1, meal: 'breakfast', needed: true },
     { id: 'l3', dayNumber: 3, meal: 'lunch', needed: true },
   ],
-  items: [{ id: 'i1', name: 'Ramen', weightGrams: 120, quantity: 1, sortOrder: 0, isPacked: false, packingLocationId: null, packSortOrder: 0, slotIds: ['l3'] }],
+  items: [{ id: 'i1', name: 'Ramen', weightGrams: 120, quantity: 1, sortOrder: 0, isPacked: false, isReady: false, packingLocationId: null, packSortOrder: 0, slotIds: ['l3'] }],
 }
 
 const rescheduleFood: ListFoodResponse = {
@@ -78,7 +78,7 @@ const rescheduleFood: ListFoodResponse = {
     { id: 'b1', dayNumber: 1, meal: 'breakfast', needed: true },
     { id: 'd2', dayNumber: 2, meal: 'dinner', needed: true },
   ],
-  items: [{ id: 'i1', name: 'Ramen', weightGrams: 120, quantity: 1, sortOrder: 0, isPacked: false, packingLocationId: null, packSortOrder: 0, slotIds: ['b1'] }],
+  items: [{ id: 'i1', name: 'Ramen', weightGrams: 120, quantity: 1, sortOrder: 0, isPacked: false, isReady: false, packingLocationId: null, packSortOrder: 0, slotIds: ['b1'] }],
 }
 
 function renderFoodView() {

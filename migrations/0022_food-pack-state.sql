@@ -36,6 +36,8 @@
 
 ALTER TABLE `list_food_items` ADD COLUMN `is_packed` integer NOT NULL DEFAULT 0;--> statement-breakpoint
 
+ALTER TABLE `list_food_items` ADD COLUMN `is_ready` integer NOT NULL DEFAULT 0;--> statement-breakpoint
+
 -- Nullable with a NULL default, which is what makes ADD COLUMN with a
 -- REFERENCES clause legal in SQLite. SET NULL matches list_items: deleting a
 -- bag returns its food to Unassigned rather than deleting it.

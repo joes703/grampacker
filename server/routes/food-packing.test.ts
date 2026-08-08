@@ -11,6 +11,7 @@ type ListBody = { id: string }
 type FoodItemBody = {
   id: string
   isPacked: boolean
+  isReady: boolean
   packingLocationId: string | null
   packSortOrder: number
 }
@@ -190,6 +191,28 @@ describe('food pack state on the item PATCH', () => {
       isPacked: true,
     })
     expect(res.status).toBe(404)
+  })
+})
+
+describe('food ready state on the item PATCH', () => {
+  it('marks and clears ready, and reset-ready clears food too', async () => {
+    const { cookie } = await signUpVerifiedUser('fr1@example.com', 'FR')
+    const list = await createList(cookie, 'Trip')
+    const food = await createFood(cookie, list.id, 'Oats')
+    expect(food.isReady).toBe(false)
+
+    const ready = await patchFood(cookie, list.id, food.id, { isReady: true })
+    expect(ready.status).toBe(200)
+    expect(((await ready.json()) as FoodItemBody).isReady).toBe(true)
+
+    const reset = await apiRequest(
+      cookie,
+      'POST',
+      `/api/lists/${list.id}/items/reset-ready`,
+    )
+    expect(reset.status).toBe(204)
+    const [row] = await getFoodItems(cookie, list.id)
+    expect(row?.isReady).toBe(false)
   })
 })
 

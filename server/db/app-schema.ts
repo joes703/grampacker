@@ -426,6 +426,7 @@ export const listFoodItems = sqliteTable(
     // scratch band, the union rank space shared with gear at read time) are
     // documented on list_items.packSortOrder and in migration 0022's header.
     isPacked: integer('is_packed', { mode: 'boolean' }).notNull().default(false),
+    isReady: integer('is_ready', { mode: 'boolean' }).notNull().default(false),
     packingLocationId: text('packing_location_id').references(
       () => packingLocations.id,
       { onDelete: 'set null' },
