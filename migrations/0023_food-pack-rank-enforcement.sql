@@ -16,25 +16,31 @@
 -- dirty means EITHER of:
 --
 --   * a duplicate rank (the old-worker DEFAULT-0 signature), or
---   * no headroom - max(pack_sort_order) > PACK_RANK_MAX - FOOD_ITEM_CAP
---     (999999800), 0019's normalization predicate one table over. This also
---     sweeps up any out-of-range value the unconstrained 0022 interval could
---     have committed: unique-but-wedged is still wedged, because every
---     arrival computes max+1 and the range trigger below would refuse it
---     forever (GATE 2 re-review finding).
+--   * no headroom - max(pack_sort_order) > the SAFE floor, PACK_RANK_MAX -
+--     (LIST_ITEM_CAP + FOOD_ITEM_CAP) = 999999500. The budget is the UNION
+--     append (a location delete can move up to 500 rows to base+i), not just
+--     the food cap. This also sweeps up any out-of-range value the
+--     unconstrained 0022 interval could have committed: unique-but-wedged is
+--     still wedged, because every arrival computes max+1 and the range
+--     trigger below would refuse it forever (GATE 2 re-review finding).
 --
 -- Dirty cohorts are renumbered densely in their current display order (rank,
--- then sort_order, then id), starting one past the cohort's GEAR maximum so
--- the repaired rows keep reading "after the gear" the way 0022's backfill
--- arranged. Clean cohorts keep their exact ranks, gaps included.
+-- then sort_order, then id). The starting rank GUARANTEES the floor rather
+-- than assuming it (round-3 finding: an offset from a gear cohort sitting
+-- near ITS floor could carry the repaired food back above ours):
 --
--- RESIDUAL, stated rather than hidden: the gear-max offset assumes the GEAR
--- cohort itself has headroom. 0019 normalized every gear cohort above the
--- same floor, and the pack-rank audit workflow probes both tables' headroom
--- before any migration in this family merges - a gear cohort parked exactly
--- AT the floor with ~200 food rows on top could still land near the ceiling,
--- where the cascade triggers' dense backstop (not this repair) is the
--- correctness net.
+--   * one past the cohort's GEAR maximum when that keeps the whole cohort at
+--     or under the SAFE floor - the repaired rows keep reading "after the
+--     gear" the way 0022's backfill arranged;
+--   * dense from 0 otherwise. Cross-table rank ties are legal (per-table
+--     indexes; deterministic display tiebreak), so this is always safe -
+--     the pathological cohort merely interleaves until the next reorder.
+--
+-- RESIDUAL, stated rather than hidden: GEAR cohorts may legally sit as high
+-- as 0019's own floor (999999700), so a union append there can still cross
+-- the ceiling and 422 a location delete. That boundary is 0019's, predates
+-- food, and is probed by the audit workflow; repairing it means renumbering
+-- gear ranks, which belongs to a 0019-family migration, not this one.
 --
 -- MATERIALIZE-FIRST, for the 0020 reason in a new costume: both the dirty
 -- predicate and the ordering read pack_sort_order, the column being written,
@@ -57,23 +63,33 @@ CREATE TABLE `_food_rank_repair` (
 
 INSERT INTO `_food_rank_repair` (`food_item_id`, `new_rank`)
 SELECT `id`,
-       (SELECT coalesce(max(`li`.`pack_sort_order`), -1) + 1
-          FROM `list_items` AS `li`
-         WHERE `li`.`list_id` = `ranked`.`list_id`
-           AND `li`.`packing_location_id` IS `ranked`.`packing_location_id`)
-       + `rn`
+       CASE
+         WHEN (SELECT coalesce(max(`li`.`pack_sort_order`), -1) + 1
+                 FROM `list_items` AS `li`
+                WHERE `li`.`list_id` = `ranked`.`list_id`
+                  AND `li`.`packing_location_id` IS `ranked`.`packing_location_id`)
+              + `cohort_count` <= 999999500
+         THEN (SELECT coalesce(max(`li`.`pack_sort_order`), -1) + 1
+                 FROM `list_items` AS `li`
+                WHERE `li`.`list_id` = `ranked`.`list_id`
+                  AND `li`.`packing_location_id` IS `ranked`.`packing_location_id`)
+              + `rn`
+         ELSE `rn`
+       END
   FROM (
     SELECT `id`, `list_id`, `packing_location_id`,
            ROW_NUMBER() OVER (
              PARTITION BY `list_id`, `packing_location_id`
-             ORDER BY `pack_sort_order`, `sort_order`, `id`) - 1 AS `rn`
+             ORDER BY `pack_sort_order`, `sort_order`, `id`) - 1 AS `rn`,
+           count(*) OVER (
+             PARTITION BY `list_id`, `packing_location_id`) AS `cohort_count`
       FROM `list_food_items`
      WHERE (`list_id`, coalesce(`packing_location_id`, '')) IN (
        SELECT `list_id`, coalesce(`packing_location_id`, '')
          FROM `list_food_items`
         GROUP BY `list_id`, coalesce(`packing_location_id`, '')
        HAVING count(*) > count(DISTINCT `pack_sort_order`)
-           OR max(`pack_sort_order`) > 999999800)
+           OR max(`pack_sort_order`) > 999999500)
   ) AS `ranked`;--> statement-breakpoint
 
 UPDATE `list_food_items`

@@ -1113,7 +1113,7 @@ const POST_CHECKS = [
   // before the indexes can even be created. list-seed's Unassigned gear max
   // is 1, its three food rows order by (rank=0 tie, sort_order: 0, 5, 20) ->
   // ranks 2, 3, 4. list-seed-3's single food row is NOT dirty (no duplicate,
-  // rank well under the headroom floor) and keeps its seeded 0.
+  // rank well under the SAFE floor) and keeps its seeded 0.
   { migration: '0023_food-pack-rank-enforcement.sql', description: 'repair renumbers dirty cohorts past the gear maximum',
     sql: "select id, pack_sort_order as rank from list_food_items where id in ('lfi-seed','lfi-canary-b','lfi-canary-c','lfi-other-list') order by id",
     expectRows: [
@@ -1150,12 +1150,13 @@ const POST_CHECKS = [
     sql: "update list_food_items set pack_sort_order = 0 where id='lfi-located' returning id",
     expectRows: [{ id: 'lfi-located' }] },
   // The widened dirty predicate's second arm: a unique-but-wedged cohort
-  // (max above the headroom floor) must also have been repaired. Proven by
+  // (max above the SAFE floor) must also have been repaired. Proven by
   // CONTRAPOSITIVE here: after repair + triggers, no food rank may sit above
-  // the floor at all - the repair renumbers dense from the gear max, far
-  // below it, and the range trigger keeps later writes inside the ceiling.
-  { migration: '0023_food-pack-rank-enforcement.sql', description: 'no food rank sits above the headroom floor after repair',
-    sql: "select count(*) as wedged from list_food_items where pack_sort_order > 999999800",
+  // the floor at all - the repair's CASE guarantees it (gear offset only
+  // when the whole cohort fits under the floor, dense from 0 otherwise), and
+  // the range trigger keeps later writes inside the ceiling.
+  { migration: '0023_food-pack-rank-enforcement.sql', description: 'no food rank sits above the SAFE floor after repair',
+    sql: "select count(*) as wedged from list_food_items where pack_sort_order > 999999500",
     expectRows: [{ wedged: 0 }] },
 
   // 0021: the categories cap. u-seed holds exactly one fixture category
