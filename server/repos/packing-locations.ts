@@ -14,7 +14,8 @@ import {
   isTriggerAbort,
   isUniqueViolation,
 } from './db-errors'
-import { unionOrder } from './pack-reorder'
+import { PACK_RANK_MAX } from '../../shared/lists'
+import { chunkedRankWrites, unionOrder } from './pack-reorder'
 
 const containerItems = alias(listItems, 'container_items')
 const containerGear = alias(gearItems, 'container_gear')
@@ -312,6 +313,104 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
         Math.max(gearMaxRows[0]?.max ?? -1, foodMaxRows[0]?.max ?? -1) + 1
 
       const now = Date.now()
+
+      // DENSE FALLBACK (GATE 2 round-4 finding 2). The append below claims
+      // base + i for each orphan, and a legacy Unassigned cohort may legally
+      // sit as high as 0019's floor - the old 300-rank reserve budgeted
+      // gear-only appends, and the union can move up to 500 rows. When the
+      // append would step past PACK_RANK_MAX, renumber the ENTIRE merged
+      // cohort (Unassigned block first, then the bag's block, both in union
+      // display order) densely from 0 instead of failing the delete forever.
+      // Two-phase park/settle via the shared chunked writer: dense
+      // renumbering moves rows DOWN, and per-statement uniqueness would
+      // collide mid-chunk without the park. Worn gear rows are included -
+      // this is an administrative renumber of the whole cohort, and skipping
+      // them would land a settle on a reserved slot.
+      if (base + orphans.length - 1 > PACK_RANK_MAX && orphans.length > 0) {
+        const [unassignedGear, unassignedFood] = await db.batch([
+          db
+            .select({ id: listItems.id, packSortOrder: listItems.packSortOrder })
+            .from(listItems)
+            .where(
+              and(
+                eq(listItems.listId, listId),
+                eq(listItems.userId, userId),
+                isNull(listItems.packingLocationId),
+              ),
+            )
+            .orderBy(asc(listItems.packSortOrder), asc(listItems.id)),
+          db
+            .select({
+              id: listFoodItems.id,
+              packSortOrder: listFoodItems.packSortOrder,
+            })
+            .from(listFoodItems)
+            .where(
+              and(
+                eq(listFoodItems.listId, listId),
+                eq(listFoodItems.userId, userId),
+                isNull(listFoodItems.packingLocationId),
+              ),
+            )
+            .orderBy(asc(listFoodItems.packSortOrder), asc(listFoodItems.id)),
+        ])
+        const merged = [
+          ...unionOrder(unassignedGear, unassignedFood).map((row) => ({
+            ...row,
+            orphan: false,
+          })),
+          ...orphans.map((row) => ({ ...row, orphan: true })),
+        ]
+        // Per-table scratch sequences; per-list caps bound both bands.
+        let gearSeq = 0
+        let foodSeq = 0
+        type Entry = { id: string; from: number; to: number }
+        const parks = { gear: [] as Entry[], food: [] as Entry[] }
+        const settles = {
+          gear: [] as Entry[],
+          food: [] as Entry[],
+          orphanGear: [] as Entry[],
+          orphanFood: [] as Entry[],
+        }
+        merged.forEach((row, dense) => {
+          const scratch = row.kind === 'gear' ? -1 - gearSeq++ : -1 - foodSeq++
+          const park = { id: row.row.id, from: row.row.packSortOrder, to: scratch }
+          const settle = { id: row.row.id, from: scratch, to: dense }
+          if (row.kind === 'gear') {
+            parks.gear.push(park)
+            ;(row.orphan ? settles.orphanGear : settles.gear).push(settle)
+          } else {
+            parks.food.push(park)
+            ;(row.orphan ? settles.orphanFood : settles.food).push(settle)
+          }
+        })
+        const writeOpts = { db, userId, listId, requireNotWorn: false }
+        const statements = [
+          ...chunkedRankWrites({ ...writeOpts, tableName: 'list_items', table: listItems, entries: parks.gear }),
+          ...chunkedRankWrites({ ...writeOpts, tableName: 'list_food_items', table: listFoodItems, entries: parks.food }),
+          ...chunkedRankWrites({ ...writeOpts, tableName: 'list_items', table: listItems, entries: settles.gear }),
+          ...chunkedRankWrites({ ...writeOpts, tableName: 'list_food_items', table: listFoodItems, entries: settles.food }),
+          // Orphan settles also unassign and bump updatedAt - they are the
+          // rows actually leaving the deleted bag.
+          ...chunkedRankWrites({ ...writeOpts, tableName: 'list_items', table: listItems, entries: settles.orphanGear, alsoUnassign: true, touchUpdatedAt: now }),
+          ...chunkedRankWrites({ ...writeOpts, tableName: 'list_food_items', table: listFoodItems, entries: settles.orphanFood, alsoUnassign: true, touchUpdatedAt: now }),
+          db
+            .delete(packingLocations)
+            .where(
+              and(
+                eq(packingLocations.id, id),
+                eq(packingLocations.listId, listId),
+                eq(packingLocations.userId, userId),
+              ),
+            )
+            .returning({ id: packingLocations.id }),
+        ]
+        const [firstStmt, ...restStmts] = statements
+        if (!firstStmt) return 'not_found' // unreachable: delete is present
+        const denseResults = await db.batch([firstStmt, ...restStmts])
+        const denseDeleted = denseResults[denseResults.length - 1] as { id: string }[]
+        return denseDeleted.length > 0 ? 'deleted' : 'not_found'
+      }
       // Appending, so no two-phase write is needed: every rank claimed here is
       // above every rank Unassigned currently holds. If a concurrent write
       // takes one first the unique index rejects the batch and the whole

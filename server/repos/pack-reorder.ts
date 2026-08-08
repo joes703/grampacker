@@ -106,6 +106,71 @@ export function unionOrder<
   )
 }
 
+// Chunked rank writes, shared by the union reorder and by
+// packingLocations.remove()'s dense fallback. The row mapping travels as ONE
+// JSON parameter unpacked by json_each(): a UNION ALL of per-row SELECTs
+// tripped D1's compound-SELECT term limit well below the payload caps, and
+// per-row bound params would fight the 100-param statement cap. Two or three
+// params per statement regardless of chunk size.
+//
+// DRIFT DETECTION is per row: the SET subquery matches on (id, expected
+// current rank) and yields NULL when the row has moved - and pack_sort_order
+// is NOT NULL, so a drifted row ABORTS the whole batch instead of being
+// silently skipped.
+//
+// `cohortMatch` is optional: the reorder pins one cohort; the location-delete
+// fallback renumbers rows across TWO cohorts (Unassigned plus the doomed
+// bag), where (id, from-rank) plus user/list scoping identify each row
+// exactly. `alsoUnassign` additionally clears packing_location_id, for the
+// fallback's orphan settle.
+const RANK_CHUNK = 100
+export function chunkedRankWrites(opts: {
+  db: Db
+  tableName: 'list_items' | 'list_food_items'
+  table: typeof listItems | typeof listFoodItems
+  entries: { id: string; from: number; to: number }[]
+  userId: string
+  listId: string
+  cohortMatch?: ReturnType<typeof sql>
+  requireNotWorn: boolean
+  alsoUnassign?: boolean
+  touchUpdatedAt?: number
+}) {
+  const {
+    db,
+    tableName,
+    table,
+    entries,
+    userId,
+    listId,
+    cohortMatch,
+    requireNotWorn,
+    alsoUnassign,
+    touchUpdatedAt,
+  } = opts
+  const tbl = sql.raw(tableName)
+  const statements = []
+  for (let i = 0; i < entries.length; i += RANK_CHUNK) {
+    const chunk = JSON.stringify(entries.slice(i, i + RANK_CHUNK))
+    const set: Record<string, unknown> = {
+      packSortOrder: sql`(select json_extract(je.value, '$.to') from json_each(${chunk}) as je where json_extract(je.value, '$.id') = ${tbl}.id and json_extract(je.value, '$.from') = ${tbl}.pack_sort_order)`,
+    }
+    if (alsoUnassign) set.packingLocationId = null
+    if (touchUpdatedAt !== undefined) set.updatedAt = touchUpdatedAt
+    statements.push(
+      db
+        .update(table)
+        .set(set)
+        .where(
+          sql`${tbl}.user_id = ${userId} and ${tbl}.list_id = ${listId}${
+            requireNotWorn ? sql` and ${tbl}.is_worn = 0` : sql``
+          }${cohortMatch ? sql` and ${cohortMatch}` : sql``} and ${tbl}.id in (select json_extract(value, '$.id') from json_each(${chunk}))`,
+        ),
+    )
+  }
+  return statements
+}
+
 export function createPackReorderRepo(db: Db, userId: string) {
   return {
     // packSortOrder ONLY - reorders must not bump updatedAt (product rule).
@@ -176,15 +241,51 @@ export function createPackReorderRepo(db: Db, userId: string) {
         return { ok: false, reason: 'cross_cohort' }
       }
 
-      // UNION permutation: the multiset of incoming ranks (both tables
-      // together) must equal the multiset the touched rows currently hold.
-      // Per-table multisets deliberately NOT compared - interleaving means a
-      // food row may take a rank a gear row held.
-      const before = touched.map((r) => r.packSortOrder).sort((a, b) => a - b)
-      const after = [...payload.items, ...payload.foodItems]
-        .map((u) => u.packSortOrder)
-        .sort((a, b) => a - b)
-      if (before.some((rank, i) => rank !== after[i])) {
+      // INDEX-SAFETY validation, which is what the unique indexes actually
+      // demand - the exact multiset-permutation rule this replaced was both
+      // stricter and weaker than needed (GATE 2 round-4 finding 1):
+      //
+      //   * stricter: a permutation PRESERVES cross-table rank ties, so a
+      //     cohort holding one (a degraded old-worker interval, or 0023's
+      //     dense fallback) could never be healed by reordering - and some
+      //     otherwise-valid drags deterministically 409ed when both tied
+      //     rows landed in one table.
+      //   * weaker than it looked: its real job was only ever to keep the
+      //     settle writes off ranks that live rows outside the payload hold.
+      //
+      // So check THAT directly, per table: payload ranks must be unique
+      // within their table's half, and must not equal the CURRENT rank of
+      // any same-cohort row in the SAME table that the payload does not
+      // touch (including worn gear, whose reserved slots must stay
+      // reserved). A permutation always satisfies this; so does the dense
+      // renumber the client sends when it detects ties - which is what
+      // makes "the next reorder dissolves the tie" true.
+      const validateHalf = (
+        entries: { id: string; packSortOrder: number }[],
+        cohortRows: { id: string; packSortOrder: number }[],
+      ): boolean => {
+        const payloadIds = new Set(entries.map((u) => u.id))
+        const payloadRanks = new Set<number>()
+        for (const u of entries) {
+          if (payloadRanks.has(u.packSortOrder)) return false
+          payloadRanks.add(u.packSortOrder)
+        }
+        for (const row of cohortRows) {
+          if (payloadIds.has(row.id)) continue
+          if (payloadRanks.has(row.packSortOrder)) return false
+        }
+        return true
+      }
+      const gearCohortRows = gearRows.filter(
+        (r) => r.packingLocationId === cohort,
+      )
+      const foodCohortRows = foodRows.filter(
+        (r) => r.packingLocationId === cohort,
+      )
+      if (
+        !validateHalf(payload.items, gearCohortRows) ||
+        !validateHalf(payload.foodItems, foodCohortRows)
+      ) {
         return { ok: false, reason: 'not_a_permutation' }
       }
 
@@ -208,60 +309,30 @@ export function createPackReorderRepo(db: Db, userId: string) {
         cohort === null
           ? sql`packing_location_id is null`
           : sql`packing_location_id = ${cohort}`
-      // The row mapping travels as ONE JSON parameter unpacked by
-      // json_each(): a UNION ALL of per-row SELECTs tripped D1's
-      // compound-SELECT term limit well below the payload caps, and
-      // per-row bound params would fight the 100-param statement cap.
-      // Two params per statement regardless of chunk size; 100 rows per
-      // chunk keeps any single statement's row fan-out modest.
-      const RANK_CHUNK = 100
-      function chunkedRankWrites(
-        tableName: 'list_items' | 'list_food_items',
-        table: typeof listItems | typeof listFoodItems,
-        entries: { id: string; from: number; to: number }[],
-        requireNotWorn: boolean,
-      ) {
-        const tbl = sql.raw(tableName)
-        const statements = []
-        for (let i = 0; i < entries.length; i += RANK_CHUNK) {
-          const chunk = JSON.stringify(entries.slice(i, i + RANK_CHUNK))
-          statements.push(
-            db
-              .update(table)
-              .set({
-                packSortOrder: sql`(select json_extract(je.value, '$.to') from json_each(${chunk}) as je where json_extract(je.value, '$.id') = ${tbl}.id and json_extract(je.value, '$.from') = ${tbl}.pack_sort_order)`,
-              })
-              .where(
-                sql`${tbl}.user_id = ${userId} and ${tbl}.list_id = ${listId}${
-                  requireNotWorn ? sql` and ${tbl}.is_worn = 0` : sql``
-                } and ${cohortMatch} and ${tbl}.id in (select json_extract(value, '$.id') from json_each(${chunk}))`,
-              ),
-          )
-        }
-        return statements
-      }
-
       const scratch = (i: number) => -1 - i
-      const gearPark = chunkedRankWrites(
-        'list_items',
-        listItems,
-        payload.items.map((u, i) => ({
+      const writeOpts = { db, userId, listId, cohortMatch }
+      const gearPark = chunkedRankWrites({
+        ...writeOpts,
+        tableName: 'list_items',
+        table: listItems,
+        entries: payload.items.map((u, i) => ({
           id: u.id,
           from: gearById.get(u.id)!.packSortOrder,
           to: scratch(i),
         })),
-        true,
-      )
-      const foodPark = chunkedRankWrites(
-        'list_food_items',
-        listFoodItems,
-        payload.foodItems.map((u, i) => ({
+        requireNotWorn: true,
+      })
+      const foodPark = chunkedRankWrites({
+        ...writeOpts,
+        tableName: 'list_food_items',
+        table: listFoodItems,
+        entries: payload.foodItems.map((u, i) => ({
           id: u.id,
           from: foodById.get(u.id)!.packSortOrder,
           to: scratch(i),
         })),
-        false,
-      )
+        requireNotWorn: false,
+      })
 
       // One fail-loud guard per table (each table's negative count is an
       // exact park census - see 0019/0022). Both run even when that table's
@@ -284,26 +355,28 @@ export function createPackReorderRepo(db: Db, userId: string) {
                and pack_sort_order < 0)`,
       )
 
-      const gearSettle = chunkedRankWrites(
-        'list_items',
-        listItems,
-        payload.items.map((u, i) => ({
+      const gearSettle = chunkedRankWrites({
+        ...writeOpts,
+        tableName: 'list_items',
+        table: listItems,
+        entries: payload.items.map((u, i) => ({
           id: u.id,
           from: scratch(i),
           to: u.packSortOrder,
         })),
-        true,
-      )
-      const foodSettle = chunkedRankWrites(
-        'list_food_items',
-        listFoodItems,
-        payload.foodItems.map((u, i) => ({
+        requireNotWorn: true,
+      })
+      const foodSettle = chunkedRankWrites({
+        ...writeOpts,
+        tableName: 'list_food_items',
+        table: listFoodItems,
+        entries: payload.foodItems.map((u, i) => ({
           id: u.id,
           from: scratch(i),
           to: u.packSortOrder,
         })),
-        false,
-      )
+        requireNotWorn: false,
+      })
 
       // Not optional: both guard tables key on list_id, so a leftover row
       // makes the NEXT reorder of this list collide on the primary key.

@@ -286,7 +286,11 @@ describe('the union pack-order permutation', () => {
     expect(res.status).toBe(400)
   })
 
-  it('rejects a non-permutation of the union with 400', async () => {
+  it('accepts a collision-free minted rank (the index-safety contract)', async () => {
+    // The old multiset-permutation rule rejected this; the index-safety rule
+    // accepts any payload the unique indexes would accept - unique within
+    // its table half and clear of untouched same-table cohort rows. Minting
+    // a gap rank collides with nothing here.
     const { cookie } = await signUpVerifiedUser('up4@example.com', 'UP')
     const list = await createList(cookie, 'Trip')
     const food = await createFood(cookie, list.id, 'Oats')
@@ -297,7 +301,7 @@ describe('the union pack-order permutation', () => {
       `/api/lists/${list.id}/items/pack-order`,
       { foodItems: [{ id: food.id, packSortOrder: food.packSortOrder + 7 }] },
     )
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(204)
   })
 
   it("404s a food id that is not the caller's", async () => {
@@ -380,6 +384,129 @@ describe('a full-cohort union reorder at the caps', () => {
     const items = (await itemsRes.json()) as ItemBody[]
     expect(items.find((r) => r.id === `${userId}-li-0`)?.packSortOrder).toBe(499)
     expect(items.find((r) => r.id === `${userId}-li-299`)?.packSortOrder).toBe(200)
+  })
+})
+
+describe('index-safety validation heals degraded rank states', () => {
+  it('accepts a full-cohort dense renumber over a cross-table tie', async () => {
+    // A degraded old-worker interval can leave a food row tied with a gear
+    // row at the same rank (legal per the per-table indexes). A strict
+    // multiset permutation PRESERVES the tie forever; the index-safety rule
+    // accepts the dense renumber the client sends instead, which is what
+    // heals it.
+    const { cookie } = await signUpVerifiedUser('tie1@example.com', 'TIE')
+    const list = await createList(cookie, 'Trip')
+    const me = await apiRequest(cookie, 'GET', '/api/me')
+    const { id: userId } = (await me.json()) as { id: string }
+    await env.DB.prepare(
+      `insert into gear_items (id, user_id, name, weight_grams, sort_order, created_at, updated_at) values ('${userId}-tg', '${userId}', 'Stove', 100, 0, 0, 0)`,
+    ).run()
+    await env.DB.prepare(
+      `insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, pack_sort_order, created_at, updated_at) values ('${userId}-tli', '${userId}', '${list.id}', '${userId}-tg', 1, 0, 0, 0, 0, 0, 0, 0, 0)`,
+    ).run()
+    // The TIE: food also at rank 0 in the same (Unassigned) cohort.
+    await env.DB.prepare(
+      `insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, is_packed, is_ready, pack_sort_order, created_at, updated_at) values ('${userId}-tf', '${userId}', '${list.id}', 'Oats', 100, 1, 0, 0, 0, 0, 0, 0)`,
+    ).run()
+
+    // Dense full-cohort renumber: food first (0), gear second (1). Not a
+    // permutation of the union multiset {0, 0} - exactly the payload the old
+    // rule rejected.
+    const res = await apiRequest(
+      cookie,
+      'PUT',
+      `/api/lists/${list.id}/items/pack-order`,
+      {
+        items: [{ id: `${userId}-tli`, packSortOrder: 1 }],
+        foodItems: [{ id: `${userId}-tf`, packSortOrder: 0 }],
+      },
+    )
+    expect(res.status).toBe(204)
+    const [foodRow] = await getFoodItems(cookie, list.id)
+    expect(foodRow?.packSortOrder).toBe(0)
+    const itemsRes = await apiRequest(cookie, 'GET', `/api/lists/${list.id}/items`)
+    const items = (await itemsRes.json()) as ItemBody[]
+    expect(items[0]?.packSortOrder).toBe(1)
+  })
+
+  it('still rejects a payload that would land on an untouched row of the same table', async () => {
+    const { cookie } = await signUpVerifiedUser('tie2@example.com', 'TIE')
+    const list = await createList(cookie, 'Trip')
+    const a = await createGearOnList(cookie, list.id, 'Stove')
+    await createGearOnList(cookie, list.id, 'Pot')
+
+    // Move gear A onto gear B's rank WITHOUT touching B: per-table collision
+    // with an outside row - the exact write the unique index would reject.
+    const res = await apiRequest(
+      cookie,
+      'PUT',
+      `/api/lists/${list.id}/items/pack-order`,
+      [{ id: a.id, packSortOrder: a.packSortOrder + 1 }],
+    )
+    expect(res.status).toBe(400)
+  })
+})
+
+describe('location deletion near the rank ceiling', () => {
+  it('falls back to a dense renumber instead of wedging the delete', async () => {
+    // Legacy state the audit tolerates: an Unassigned gear row sitting AT
+    // 0019's floor. The append path would need ranks past PACK_RANK_MAX and
+    // 422 forever; the dense fallback renumbers the merged cohort and the
+    // delete succeeds.
+    const { cookie } = await signUpVerifiedUser('ceil1@example.com', 'CL')
+    const list = await createList(cookie, 'Trip')
+    const location = await createLocation(cookie, list.id, 'Bag')
+    const me = await apiRequest(cookie, 'GET', '/api/me')
+    const { id: userId } = (await me.json()) as { id: string }
+    await env.DB.prepare(
+      `insert into gear_items (id, user_id, name, weight_grams, sort_order, created_at, updated_at) values ('${userId}-cg', '${userId}', 'Legacy', 100, 0, 0, 0)`,
+    ).run()
+    await env.DB.prepare(
+      `insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, pack_sort_order, created_at, updated_at) values ('${userId}-cli', '${userId}', '${list.id}', '${userId}-cg', 1, 0, 0, 0, 0, 0, 999999700, 0, 0)`,
+    ).run()
+    // 299 bag gear rows (the 300-item list cap minus the legacy row) plus
+    // TWO food rows = 301 orphans: appended from 999999701 they would end
+    // past PACK_RANK_MAX, which is what forces the fallback (300 orphans
+    // would end exactly AT the ceiling and still fit).
+    const bagGearValues = Array.from({ length: 299 }, (_, i) =>
+      `('${userId}-bg-${i}', '${userId}', 'Bag gear ${i}', 100, ${i + 1}, 0, 0)`)
+    for (let i = 0; i < bagGearValues.length; i += 50) {
+      await env.DB.prepare(
+        'insert into gear_items (id, user_id, name, weight_grams, sort_order, created_at, updated_at) values ' +
+          bagGearValues.slice(i, i + 50).join(','),
+      ).run()
+    }
+    const bagItemValues = Array.from({ length: 299 }, (_, i) =>
+      `('${userId}-bli-${i}', '${userId}', '${list.id}', '${userId}-bg-${i}', 1, 0, 0, 0, 0, ${i + 1}, ${i}, 0, 0)`)
+    for (let i = 0; i < bagItemValues.length; i += 40) {
+      await env.DB.prepare(
+        'insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, pack_sort_order, created_at, updated_at) values ' +
+          bagItemValues.slice(i, i + 40).join(','),
+      ).run()
+    }
+    await env.DB.prepare(
+      `update list_items set packing_location_id = '${location.id}' where user_id = '${userId}' and id like '${userId}-bli-%'`,
+    ).run()
+    const food = await createFood(cookie, list.id, 'Oats')
+    await patchFood(cookie, list.id, food.id, { packingLocationId: location.id })
+    const food2 = await createFood(cookie, list.id, 'Bars')
+    await patchFood(cookie, list.id, food2.id, { packingLocationId: location.id })
+
+    const del = await apiRequest(
+      cookie,
+      'DELETE',
+      `/api/lists/${list.id}/packing-locations/${location.id}`,
+    )
+    expect(del.status).toBe(204)
+
+    // Everything is back in Unassigned with small dense ranks - including
+    // the legacy row.
+    const itemsRes = await apiRequest(cookie, 'GET', `/api/lists/${list.id}/items`)
+    const items = (await itemsRes.json()) as ItemBody[]
+    for (const row of items) expect(row.packSortOrder).toBeLessThan(400)
+    const [foodRow] = await getFoodItems(cookie, list.id)
+    expect(foodRow?.packingLocationId).toBeNull()
+    expect(foodRow?.packSortOrder).toBeLessThan(400)
   })
 })
 
