@@ -1,12 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import type { FoodItemResponse } from '../../shared/food'
 import type { ListItemWithGear } from '../lib/types'
 import { makeDnDId } from '../lib/dnd-ids'
-import {
-  isPackingCollisionTarget,
-  planPackingItemDragEnd,
-  planPackingItemDrop,
-  planPackingItemReorder,
-} from './packing-dnd'
+import { isPackingCollisionTarget, planPackingRowDragEnd } from './packing-dnd'
 
 function item(
   id: string,
@@ -43,118 +39,136 @@ function item(
   }
 }
 
+function food(
+  id: string,
+  locationId: string | null,
+  packSortOrder = 0,
+): FoodItemResponse {
+  return {
+    id,
+    name: id,
+    weightGrams: 100,
+    quantity: 1,
+    sortOrder: 0,
+    isPacked: false,
+    packingLocationId: locationId,
+    packSortOrder,
+    slotIds: [],
+  }
+}
+
 const source = item('source', 'loc-a')
 const target = item('target', 'loc-b')
 const items = [source, target]
+const noFood: FoodItemResponse[] = []
 const validLocationIds = new Set(['loc-a', 'loc-b'])
 const containerItemIdByLocation = new Map([['loc-b', 'source']])
 const noContainerItems = new Map<string, string>()
 const noExcludedLocations = new Map<string, ReadonlySet<string>>()
 
-describe('planPackingItemReorder', () => {
+// Gear-only payloads keep the historical shapes: same-location row drop is a
+// union reorder with an empty food half; cross-location drop is a gear move.
+describe('planPackingRowDragEnd over gear rows', () => {
   const first = item('first', 'loc-a', 2)
   const second = item('second', 'loc-a', 8)
   const elsewhere = item('elsewhere', 'loc-b', 5)
   const reorderItems = [first, elsewhere, second]
 
   it('reorders rows within the same packing location', () => {
-    expect(planPackingItemReorder(
+    expect(planPackingRowDragEnd(
       makeDnDId('packing-item', first.id),
       makeDnDId('packing-item', second.id),
       reorderItems,
-    )).toEqual([
-      { id: 'second', packSortOrder: 2 },
-      { id: 'first', packSortOrder: 8 },
-    ])
-  })
-
-  it('supports the checklist item id kind used in Pack Mode', () => {
-    expect(planPackingItemReorder(
-      makeDnDId('item', first.id),
-      makeDnDId('item', second.id),
-      reorderItems,
-      'item',
-    )).toEqual([
-      { id: 'second', packSortOrder: 2 },
-      { id: 'first', packSortOrder: 8 },
-    ])
+      noFood,
+      validLocationIds,
+      noContainerItems,
+      noExcludedLocations,
+    )).toEqual({
+      kind: 'reorder',
+      updates: {
+        items: [
+          { id: 'second', packSortOrder: 2 },
+          { id: 'first', packSortOrder: 8 },
+        ],
+        foodItems: [],
+      },
+    })
   })
 
   it('does not reorder hidden backing items that render as container headers', () => {
     const hiddenContainer = item('hidden-container', 'loc-a', 5)
-    expect(planPackingItemReorder(
+    expect(planPackingRowDragEnd(
       makeDnDId('packing-item', first.id),
       makeDnDId('packing-item', second.id),
       [first, hiddenContainer, second],
-      'packing-item',
-      new Set([hiddenContainer.id]),
-    )).toEqual([
-      { id: 'second', packSortOrder: 2 },
-      { id: 'first', packSortOrder: 8 },
-    ])
-  })
-
-  it('leaves cross-location and location-section drops for the move planner', () => {
-    expect(planPackingItemReorder(
-      makeDnDId('packing-item', first.id),
-      makeDnDId('packing-item', elsewhere.id),
-      reorderItems,
-    )).toBeNull()
-    expect(planPackingItemReorder(
-      makeDnDId('packing-item', first.id),
-      makeDnDId('packing-location', 'loc-a'),
-      reorderItems,
-    )).toBeNull()
-  })
-})
-
-describe('planPackingItemDrop', () => {
-  it('assigns when dropped on a location section', () => {
-    expect(planPackingItemDrop(
-      makeDnDId('packing-item', source.id),
-      makeDnDId('packing-location', 'loc-b'),
-      items,
+      noFood,
       validLocationIds,
       noContainerItems,
       noExcludedLocations,
-    )).toEqual({ itemId: 'source', locationId: 'loc-b' })
+      new Set([hiddenContainer.id]),
+    )).toEqual({
+      kind: 'reorder',
+      updates: {
+        items: [
+          { id: 'second', packSortOrder: 2 },
+          { id: 'first', packSortOrder: 8 },
+        ],
+        foodItems: [],
+      },
+    })
+  })
+
+  it('assigns when dropped on a location section', () => {
+    expect(planPackingRowDragEnd(
+      makeDnDId('packing-item', source.id),
+      makeDnDId('packing-location', 'loc-b'),
+      items,
+      noFood,
+      validLocationIds,
+      noContainerItems,
+      noExcludedLocations,
+    )).toEqual({ kind: 'move-gear', itemId: 'source', locationId: 'loc-b' })
   })
 
   it('uses the target row location when dropped on another item', () => {
-    expect(planPackingItemDrop(
+    expect(planPackingRowDragEnd(
       makeDnDId('packing-item', source.id),
       makeDnDId('packing-item', target.id),
       items,
+      noFood,
       validLocationIds,
       noContainerItems,
       noExcludedLocations,
-    )).toEqual({ itemId: 'source', locationId: 'loc-b' })
+    )).toEqual({ kind: 'move-gear', itemId: 'source', locationId: 'loc-b' })
   })
 
   it('supports the Unassigned droppable', () => {
-    expect(planPackingItemDrop(
+    expect(planPackingRowDragEnd(
       makeDnDId('packing-item', source.id),
       makeDnDId('packing-location', 'unassigned'),
       items,
+      noFood,
       validLocationIds,
       noContainerItems,
       noExcludedLocations,
-    )).toEqual({ itemId: 'source', locationId: null })
+    )).toEqual({ kind: 'move-gear', itemId: 'source', locationId: null })
   })
 
-  it('rejects a same-location drop and non-item active ids', () => {
-    expect(planPackingItemDrop(
+  it('rejects a same-location drop and non-row active ids', () => {
+    expect(planPackingRowDragEnd(
       makeDnDId('packing-item', source.id),
       makeDnDId('packing-location', 'loc-a'),
       items,
+      noFood,
       validLocationIds,
       noContainerItems,
       noExcludedLocations,
     )).toBeNull()
-    expect(planPackingItemDrop(
+    expect(planPackingRowDragEnd(
       makeDnDId('packing-location', 'loc-a'),
       makeDnDId('packing-location', 'loc-b'),
       items,
+      noFood,
       validLocationIds,
       noContainerItems,
       noExcludedLocations,
@@ -162,10 +176,11 @@ describe('planPackingItemDrop', () => {
   })
 
   it('rejects an optimistic location that does not have a server id yet', () => {
-    expect(planPackingItemDrop(
+    expect(planPackingRowDragEnd(
       makeDnDId('packing-item', source.id),
       makeDnDId('packing-location', 'temp-pending'),
       items,
+      noFood,
       validLocationIds,
       noContainerItems,
       noExcludedLocations,
@@ -173,10 +188,11 @@ describe('planPackingItemDrop', () => {
   })
 
   it('rejects dropping an item into the location it backs', () => {
-    expect(planPackingItemDrop(
+    expect(planPackingRowDragEnd(
       makeDnDId('packing-item', source.id),
       makeDnDId('packing-location', 'loc-b'),
       items,
+      noFood,
       validLocationIds,
       containerItemIdByLocation,
       noExcludedLocations,
@@ -184,10 +200,11 @@ describe('planPackingItemDrop', () => {
   })
 
   it('rejects dropping a container into one of its descendants', () => {
-    expect(planPackingItemDrop(
+    expect(planPackingRowDragEnd(
       makeDnDId('packing-item', source.id),
       makeDnDId('packing-location', 'loc-child'),
       items,
+      noFood,
       new Set([...validLocationIds, 'loc-child']),
       containerItemIdByLocation,
       new Map([['source', new Set(['loc-b', 'loc-child'])]]),
@@ -195,36 +212,107 @@ describe('planPackingItemDrop', () => {
   })
 })
 
-describe('planPackingItemDragEnd', () => {
-  const sibling = item('sibling', 'loc-a', 3)
-  const dragItems = [item('dragged', 'loc-a', 1), sibling, target]
+describe('planPackingRowDragEnd over the union', () => {
+  // One bag, interleaved: gear at 2, food at 5, gear at 8.
+  const gearLow = item('gear-low', 'loc-a', 2)
+  const gearHigh = item('gear-high', 'loc-a', 8)
+  const foodMid = food('food-mid', 'loc-a', 5)
+  const unionItems = [gearLow, gearHigh, target]
+  const unionFood = [foodMid]
 
-  it('prioritizes a same-location row drop as a reorder', () => {
-    expect(planPackingItemDragEnd(
-      makeDnDId('packing-item', 'dragged'),
-      makeDnDId('packing-item', sibling.id),
-      dragItems,
+  it('permutes ranks ACROSS gear and food in one reorder', () => {
+    // Drag the food row onto the top gear row: food takes rank 2, the two
+    // gear rows shift to 5 and 8.
+    expect(planPackingRowDragEnd(
+      makeDnDId('packing-food-item', foodMid.id),
+      makeDnDId('packing-item', gearLow.id),
+      unionItems,
+      unionFood,
       validLocationIds,
       noContainerItems,
       noExcludedLocations,
     )).toEqual({
       kind: 'reorder',
-      updates: [
-        { id: 'sibling', packSortOrder: 1 },
-        { id: 'dragged', packSortOrder: 3 },
-      ],
+      updates: {
+        items: [
+          { id: 'gear-low', packSortOrder: 5 },
+          { id: 'gear-high', packSortOrder: 8 },
+        ],
+        foodItems: [{ id: 'food-mid', packSortOrder: 2 }],
+      },
     })
   })
 
-  it('keeps a cross-location row drop as a move', () => {
-    expect(planPackingItemDragEnd(
-      makeDnDId('packing-item', 'dragged'),
-      makeDnDId('packing-item', target.id),
-      dragItems,
+  it('reorders gear onto a food target within the bag', () => {
+    expect(planPackingRowDragEnd(
+      makeDnDId('packing-item', gearLow.id),
+      makeDnDId('packing-food-item', foodMid.id),
+      unionItems,
+      unionFood,
       validLocationIds,
       noContainerItems,
       noExcludedLocations,
-    )).toEqual({ kind: 'move', itemId: 'dragged', locationId: 'loc-b' })
+    )).toEqual({
+      kind: 'reorder',
+      updates: {
+        items: [
+          { id: 'gear-low', packSortOrder: 5 },
+          { id: 'gear-high', packSortOrder: 8 },
+        ],
+        foodItems: [{ id: 'food-mid', packSortOrder: 2 }],
+      },
+    })
+  })
+
+  it('moves a food row dropped on a location section', () => {
+    expect(planPackingRowDragEnd(
+      makeDnDId('packing-food-item', foodMid.id),
+      makeDnDId('packing-location', 'loc-b'),
+      unionItems,
+      unionFood,
+      validLocationIds,
+      noContainerItems,
+      noExcludedLocations,
+    )).toEqual({ kind: 'move-food', foodItemId: 'food-mid', locationId: 'loc-b' })
+  })
+
+  it('moves a food row dropped on a gear row in another bag', () => {
+    expect(planPackingRowDragEnd(
+      makeDnDId('packing-food-item', foodMid.id),
+      makeDnDId('packing-item', target.id),
+      unionItems,
+      unionFood,
+      validLocationIds,
+      noContainerItems,
+      noExcludedLocations,
+    )).toEqual({ kind: 'move-food', foodItemId: 'food-mid', locationId: 'loc-b' })
+  })
+
+  it('moves a gear row dropped on a food row in another bag', () => {
+    const foodElsewhere = food('food-elsewhere', 'loc-b', 0)
+    expect(planPackingRowDragEnd(
+      makeDnDId('packing-item', gearLow.id),
+      makeDnDId('packing-food-item', foodElsewhere.id),
+      unionItems,
+      [foodMid, foodElsewhere],
+      validLocationIds,
+      noContainerItems,
+      noExcludedLocations,
+    )).toEqual({ kind: 'move-gear', itemId: 'gear-low', locationId: 'loc-b' })
+  })
+
+  it('never blocks a food move on gear-only container rules', () => {
+    // loc-b is backed by a container item; food can still be dropped into it
+    // (food cannot create a nesting cycle or contain itself).
+    expect(planPackingRowDragEnd(
+      makeDnDId('packing-food-item', foodMid.id),
+      makeDnDId('packing-location', 'loc-b'),
+      unionItems,
+      unionFood,
+      validLocationIds,
+      containerItemIdByLocation,
+      noExcludedLocations,
+    )).toEqual({ kind: 'move-food', foodItemId: 'food-mid', locationId: 'loc-b' })
   })
 })
 
@@ -252,23 +340,31 @@ describe('isPackingCollisionTarget', () => {
     )).toBe(false)
   })
 
-  it('retains item, location, and Unassigned targets while moving an item', () => {
-    const active = makeDnDId('packing-item', source.id)
-
-    expect(isPackingCollisionTarget(
-      active,
-      makeDnDId('packing-item', target.id),
-      new Map(),
-    )).toBe(true)
-    expect(isPackingCollisionTarget(
-      active,
-      makeDnDId('packing-location', 'loc-b'),
-      new Map(),
-    )).toBe(true)
-    expect(isPackingCollisionTarget(
-      active,
-      makeDnDId('packing-location', 'unassigned'),
-      new Map(),
-    )).toBe(true)
+  it('retains item, food, location, and Unassigned targets while moving a row', () => {
+    for (const active of [
+      makeDnDId('packing-item', source.id),
+      makeDnDId('packing-food-item', 'food-x'),
+    ]) {
+      expect(isPackingCollisionTarget(
+        active,
+        makeDnDId('packing-item', target.id),
+        new Map(),
+      )).toBe(true)
+      expect(isPackingCollisionTarget(
+        active,
+        makeDnDId('packing-food-item', 'food-y'),
+        new Map(),
+      )).toBe(true)
+      expect(isPackingCollisionTarget(
+        active,
+        makeDnDId('packing-location', 'loc-b'),
+        new Map(),
+      )).toBe(true)
+      expect(isPackingCollisionTarget(
+        active,
+        makeDnDId('packing-location', 'unassigned'),
+        new Map(),
+      )).toBe(true)
+    }
   })
 })
