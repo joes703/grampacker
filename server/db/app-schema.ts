@@ -575,12 +575,3 @@ export const foodLocationDeleteState = sqliteTable(
     seq: integer('seq').notNull(),
   },
 )
-
-// TRANSIENT. Used exactly once, by migration 0023's repair step, then emptied
-// - it persists only because the destructive-DDL gate (correctly) refuses a
-// DROP TABLE in post-baseline migrations. Nothing at runtime reads or writes
-// it; declared so drizzle-kit's snapshot matches the deployed schema.
-export const foodRankRepair = sqliteTable('_food_rank_repair', {
-  foodItemId: text('food_item_id').primaryKey(),
-  newRank: integer('new_rank').notNull(),
-})

@@ -894,11 +894,6 @@ const TRANSIENT_TABLES = [
     table: '_food_location_delete_state',
     why: 'the food cascade re-rank mapping; rows live only inside the delete trigger',
   },
-  {
-    migration: '0023_food-pack-rank-enforcement.sql',
-    table: '_food_rank_repair',
-    why: "0023's one-shot repair mapping; emptied by the same migration, kept only because post-baseline migrations cannot DROP",
-  },
 ]
 
 // Columns 0016 dropped, and the schema objects that went with them. Indexes and
@@ -1105,50 +1100,6 @@ const POST_CHECKS = [
   { migration: '0022_food-pack-state.sql', description: 'orphaned food appended after the Unassigned maximum',
     sql: "select packing_location_id as loc, pack_sort_order as rank from list_food_items where id='lfi-located'",
     expectRows: [{ loc: null, rank: 5 }] },
-
-  // 0023: food pack-rank enforcement. In this pass the food fixture rows
-  // seed AFTER 0022 without declaring pack_sort_order, so they all sit at
-  // DEFAULT 0 - exactly the dirty state a degraded old-worker interval would
-  // leave - and the repair step must renumber them past the gear maximum
-  // before the indexes can even be created. list-seed's Unassigned gear max
-  // is 1, its three food rows order by (rank=0 tie, sort_order: 0, 5, 20) ->
-  // ranks 2, 3, 4. list-seed-3's single food row is NOT dirty (no duplicate)
-  // and keeps its seeded 0.
-  { migration: '0023_food-pack-rank-enforcement.sql', description: 'repair renumbers dirty cohorts past the gear maximum',
-    sql: "select id, pack_sort_order as rank from list_food_items where id in ('lfi-seed','lfi-canary-b','lfi-canary-c','lfi-other-list') order by id",
-    expectRows: [
-      { id: 'lfi-canary-b', rank: 4 },
-      { id: 'lfi-canary-c', rank: 3 },
-      { id: 'lfi-other-list', rank: 0 },
-      { id: 'lfi-seed', rank: 2 },
-    ] },
-  { migration: '0023_food-pack-rank-enforcement.sql', description: 'both food uniqueness indexes exist',
-    sql: "select name from sqlite_master where type='index' and name in ('list_food_items_pack_cohort_uq','list_food_items_pack_unassigned_uq') order by name",
-    expectRows: [{ name: 'list_food_items_pack_cohort_uq' }, { name: 'list_food_items_pack_unassigned_uq' }] },
-  { migration: '0023_food-pack-rank-enforcement.sql', description: 'a duplicate food rank in the unassigned cohort is rejected',
-    sql: "insert into list_food_items (id,user_id,list_id,name,weight_grams,quantity,sort_order,is_packed,is_ready,packing_location_id,pack_sort_order,created_at,updated_at) values ('lfi-dup-un','u-seed','list-seed','Dup',1,1,90,0,0,null,2,0,0)",
-    expectErrorMatch: /unique/i },
-  { migration: '0023_food-pack-rank-enforcement.sql', description: 'setup: food assigned to a location',
-    sql: "insert into list_food_items (id,user_id,list_id,name,weight_grams,quantity,sort_order,is_packed,is_ready,packing_location_id,pack_sort_order,created_at,updated_at) values ('lfi-located','u-seed','list-seed','Located',1,1,91,0,0,'pl-seed',0,0,0) returning id",
-    expectRows: [{ id: 'lfi-located' }] },
-  { migration: '0023_food-pack-rank-enforcement.sql', description: 'a duplicate food rank in a located cohort is rejected',
-    sql: "insert into list_food_items (id,user_id,list_id,name,weight_grams,quantity,sort_order,is_packed,is_ready,packing_location_id,pack_sort_order,created_at,updated_at) values ('lfi-dup-loc','u-seed','list-seed','Dup',1,1,92,0,0,'pl-seed',0,0,0)",
-    expectErrorMatch: /unique/i },
-  // The 0019-pattern range triggers. INSERT permits 0..PACK_RANK_MAX only;
-  // UPDATE additionally permits the -200..-1 scratch band (FOOD_ITEM_CAP
-  // wide) because parking is an update.
-  { migration: '0023_food-pack-rank-enforcement.sql', description: 'a negative food rank cannot be INSERTed',
-    sql: "insert into list_food_items (id,user_id,list_id,name,weight_grams,quantity,sort_order,is_packed,is_ready,packing_location_id,pack_sort_order,created_at,updated_at) values ('lfi-neg','u-seed','list-seed','Neg',1,1,93,0,0,null,-1,0,0)",
-    expectErrorMatch: /food pack_sort_order out of range/ },
-  { migration: '0023_food-pack-rank-enforcement.sql', description: 'an UPDATE below the scratch band aborts',
-    sql: "update list_food_items set pack_sort_order = -201 where id='lfi-located'",
-    expectErrorMatch: /food pack_sort_order out of range/ },
-  { migration: '0023_food-pack-rank-enforcement.sql', description: 'an UPDATE into the scratch band is permitted (parking)',
-    sql: "update list_food_items set pack_sort_order = -200 where id='lfi-located' returning id",
-    expectRows: [{ id: 'lfi-located' }] },
-  { migration: '0023_food-pack-rank-enforcement.sql', description: 'setup: unpark the parked row',
-    sql: "update list_food_items set pack_sort_order = 0 where id='lfi-located' returning id",
-    expectRows: [{ id: 'lfi-located' }] },
 
   // 0021: the categories cap. u-seed holds exactly one fixture category
   // (cat-seed), so a legitimate insert must still pass, and a recursive

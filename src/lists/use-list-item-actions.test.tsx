@@ -31,6 +31,7 @@ const h = vi.hoisted(() => ({
     gearItems: () => ['gear-items'] as const,
     listItems: (id: string) => ['list-items', id] as const,
     packingLocations: (id: string) => ['packing-locations', id] as const,
+    listFood: (id: string) => ['list-food', id] as const,
   },
   addListItem: vi.fn<(listId: string, gearItemId: string) => Promise<unknown>>(),
   quickAddListItem: vi.fn<(listId: string, input: Record<string, unknown>) => Promise<void>>(),
@@ -281,16 +282,17 @@ describe('useListItemActions', () => {
       )
     })
 
-    it('also invalidates packing locations, which the delete can cascade', async () => {
+    it('also invalidates packing locations and food, which the delete can cascade', async () => {
       // A list item can BACK a packing location, and that FK is ON DELETE
       // CASCADE, so this delete can remove a location row the client never
-      // touched. Without the second key the pack view kept rendering a
-      // section whose backing item was gone.
+      // touched - and since 0022 that location's SET NULL + rerank cascade
+      // moves FOOD rows too. Without these keys the pack view kept
+      // rendering stale sections and stale food placement.
       setup()
 
       expect(h.makeOptimisticDelete).toHaveBeenCalledWith(
         expect.objectContaining({
-          invalidateKeys: [['packing-locations', LIST_ID]],
+          invalidateKeys: [['packing-locations', LIST_ID], ['list-food', LIST_ID]],
         }),
       )
     })

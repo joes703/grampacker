@@ -179,7 +179,10 @@ export function useListItemActions(
       qc,
       queryKey: queryKeys.listItems(listId),
       id: (itemId) => itemId,
-      invalidateKeys: [queryKeys.packingLocations(listId)],
+      // listFood too (0022): deleting a container-backing row deletes its
+      // location, whose SET NULL + rerank cascade now moves FOOD rows as
+      // well as gear.
+      invalidateKeys: [queryKeys.packingLocations(listId), queryKeys.listFood(listId)],
       errorToast: "Couldn't confirm that item was removed. Refresh to check before trying again.",
     }),
   })

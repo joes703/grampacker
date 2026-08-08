@@ -711,13 +711,26 @@ function ListDetailInner({
     foodId: string
     patch: { isPacked?: boolean; isReady?: boolean }
   }
+  // FIELD-SCOPED snapshot + rollback, the same composition rule as
+  // use-list-item-actions' gear patches and the union reorder: only the
+  // fields THIS patch touched are snapshotted, and on failure only those
+  // fields rewind onto the CURRENT row - so a reorder or the sibling
+  // checkbox that succeeded while this was in flight survives the rollback.
   const foodPackPatchMut = useMutation({
     mutationKey: mutationKeys.updateFoodPackState(listId),
     mutationFn: ({ foodId, patch }: FoodPatchVars) =>
       updateFoodItem(listId, foodId, patch),
     onMutate: async ({ foodId, patch }: FoodPatchVars) => {
       await qc.cancelQueries({ queryKey: queryKeys.listFood(listId) })
-      const previous = qc.getQueryData<ListFoodResponse>(queryKeys.listFood(listId))
+      const row = qc
+        .getQueryData<ListFoodResponse>(queryKeys.listFood(listId))
+        ?.items.find((item) => item.id === foodId)
+      const previousFields = row
+        ? {
+            ...(patch.isPacked !== undefined ? { isPacked: row.isPacked } : {}),
+            ...(patch.isReady !== undefined ? { isReady: row.isReady } : {}),
+          }
+        : undefined
       qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
         curr
           ? {
@@ -728,14 +741,25 @@ function ListDetailInner({
             }
           : curr,
       )
-      return { previous }
+      return { previousFields }
     },
     onError: (
       _err: unknown,
-      _vars: FoodPatchVars,
-      ctx: { previous: ListFoodResponse | undefined } | undefined,
+      { foodId }: FoodPatchVars,
+      ctx: { previousFields: { isPacked?: boolean; isReady?: boolean } | undefined } | undefined,
     ) => {
-      if (ctx?.previous) qc.setQueryData(queryKeys.listFood(listId), ctx.previous)
+      const previousFields = ctx?.previousFields
+      if (!previousFields) return
+      qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
+        curr
+          ? {
+              ...curr,
+              items: curr.items.map((item) =>
+                item.id === foodId ? { ...item, ...previousFields } : item,
+              ),
+            }
+          : curr,
+      )
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
@@ -751,13 +775,21 @@ function ListDetailInner({
     locationId: string | null
     nextPackSortOrder: number
   }
+  // Field-scoped like the patch above: a failed move rewinds ONLY the moved
+  // row's location + rank, so a Packed/Ready tick that landed mid-flight
+  // survives.
   const moveFoodMut = useMutation({
     mutationKey: mutationKeys.moveFoodItem(listId),
     mutationFn: ({ foodId, locationId }: MoveFoodVars) =>
       updateFoodItem(listId, foodId, { packingLocationId: locationId }),
     onMutate: async ({ foodId, locationId, nextPackSortOrder }: MoveFoodVars) => {
       await qc.cancelQueries({ queryKey: queryKeys.listFood(listId) })
-      const previous = qc.getQueryData<ListFoodResponse>(queryKeys.listFood(listId))
+      const row = qc
+        .getQueryData<ListFoodResponse>(queryKeys.listFood(listId))
+        ?.items.find((item) => item.id === foodId)
+      const previousPlacement = row
+        ? { packingLocationId: row.packingLocationId, packSortOrder: row.packSortOrder }
+        : undefined
       qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
         curr
           ? {
@@ -774,14 +806,30 @@ function ListDetailInner({
             }
           : curr,
       )
-      return { previous }
+      return { previousPlacement }
     },
     onError: (
       _err: unknown,
-      _vars: MoveFoodVars,
-      ctx: { previous: ListFoodResponse | undefined } | undefined,
+      { foodId }: MoveFoodVars,
+      ctx: {
+        previousPlacement:
+          | { packingLocationId: string | null; packSortOrder: number }
+          | undefined
+      } | undefined,
     ) => {
-      if (ctx?.previous) qc.setQueryData(queryKeys.listFood(listId), ctx.previous)
+      const previousPlacement = ctx?.previousPlacement
+      if (previousPlacement) {
+        qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
+          curr
+            ? {
+                ...curr,
+                items: curr.items.map((item) =>
+                  item.id === foodId ? { ...item, ...previousPlacement } : item,
+                ),
+              }
+            : curr,
+        )
+      }
       // Same toast rule as moveItemMut: this is the write behind a drag, and
       // a silent rollback is indistinguishable from the user dragging back.
       showToast("Couldn't move that item. Please try again.", { type: 'error' })
