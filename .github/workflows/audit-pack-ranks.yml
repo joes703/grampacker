@@ -150,9 +150,21 @@ jobs:
           over=$(probe "select count(*) as c from list_items where pack_sort_order > ${headroom_floor}")
           dupes=$(probe "select count(*) as c from (select list_id, pack_sort_order from list_items where packing_location_id is null group by list_id, pack_sort_order having count(*) > 1)")
 
-          echo "negative ranks:        $negatives"
-          echo "ranks without headroom: $over"
-          echo "duplicate unassigned:  $dupes"
+          # Food ranks, the 0022 mirror. Same ceiling, headroom subtrahend is
+          # FOOD_ITEM_CAP (200) - the food cohort cap - matching 0022's scratch
+          # band the way 300 matches 0019's. The constants test pins this
+          # literal against shared/food.ts.
+          food_headroom_floor=$(( pack_rank_max - 200 ))
+          food_negatives=$(probe "select count(*) as c from list_food_items where pack_sort_order < 0")
+          food_over=$(probe "select count(*) as c from list_food_items where pack_sort_order > ${food_headroom_floor}")
+          food_dupes=$(probe "select count(*) as c from (select list_id, pack_sort_order from list_food_items where packing_location_id is null group by list_id, pack_sort_order having count(*) > 1)")
+
+          echo "negative ranks:              $negatives"
+          echo "ranks without headroom:      $over"
+          echo "duplicate unassigned:        $dupes"
+          echo "food negative ranks:         $food_negatives"
+          echo "food ranks without headroom: $food_over"
+          echo "food duplicate unassigned:   $food_dupes"
 
           {
             echo "### Pack-rank audit"
@@ -162,9 +174,13 @@ jobs:
             echo "| \`pack_sort_order < 0\` | $negatives |"
             echo "| \`pack_sort_order > $headroom_floor\` (no headroom) | $over |"
             echo "| duplicate Unassigned ranks | $dupes |"
+            echo "| food \`pack_sort_order < 0\` | $food_negatives |"
+            echo "| food \`pack_sort_order > $food_headroom_floor\` (no headroom) | $food_over |"
+            echo "| food duplicate Unassigned ranks | $food_dupes |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "$negatives" != "0" ] || [ "$over" != "0" ] || [ "$dupes" != "0" ]; then
+          if [ "$negatives" != "0" ] || [ "$over" != "0" ] || [ "$dupes" != "0" ] \
+            || [ "$food_negatives" != "0" ] || [ "$food_over" != "0" ] || [ "$food_dupes" != "0" ]; then
             echo "state=failure" >> "$GITHUB_OUTPUT"
             echo "::error::Production pack ranks are DIRTY. Phase 2B must not merge."
             exit 1
