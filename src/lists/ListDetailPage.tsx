@@ -956,7 +956,37 @@ function ListDetailInner({
   // optimistic.
   const { placement, actions: placementActions } = usePlacement(
     (rowId, insertIndex, eligibleRows) => {
-      const updates = planPlacementWithinLocation(rowId, insertIndex, eligibleRows)
+      // Reserved ranks: same-cohort rows the section did NOT render (worn
+      // gear, filtered rows, container headers). The densify path that heals
+      // a cross-table tie must not mint one of their slots.
+      const renderedIds = new Set(
+        eligibleRows.map((row) => (row.kind === 'gear' ? row.gear.id : row.food.id)),
+      )
+      const cohortLocation = eligibleRows[0]
+        ? eligibleRows[0].kind === 'gear'
+          ? eligibleRows[0].gear.packingLocationId
+          : eligibleRows[0].food.packingLocationId
+        : null
+      const avoidRanks = new Set([
+        ...listItems
+          .filter(
+            (item) =>
+              item.packingLocationId === cohortLocation && !renderedIds.has(item.id),
+          )
+          .map((item) => item.packSortOrder),
+        ...listFood.items
+          .filter(
+            (item) =>
+              item.packingLocationId === cohortLocation && !renderedIds.has(item.id),
+          )
+          .map((item) => item.packSortOrder),
+      ])
+      const updates = planPlacementWithinLocation(
+        rowId,
+        insertIndex,
+        eligibleRows,
+        avoidRanks,
+      )
       if (!updates) return
       const movedRow = eligibleRows.find(
         (row) => (row.kind === 'gear' ? row.gear.id : row.food.id) === rowId,

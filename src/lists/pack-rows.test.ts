@@ -104,6 +104,19 @@ describe('assignUnionPackRankSlots with a cross-table tie', () => {
     })
   })
 
+  it('densifies when a visible rank collides with a RESERVED rank', () => {
+    // The tie's other half is hidden (worn or filtered): no duplicate among
+    // the rendered rows, but permuting would land a row back on the hidden
+    // row's slot. avoidRanks intersecting the existing ranks forces the
+    // dense path, which skips the reserved slots.
+    const rows = unionPackRows([gear('g', 0)], [food('f', 1)])
+    const updates = assignUnionPackRankSlots(rows, new Set([0]))
+    expect(updates).toEqual({
+      items: [{ id: 'g', packSortOrder: 1 }],
+      foodItems: [{ id: 'f', packSortOrder: 2 }],
+    })
+  })
+
   it('still permutes exactly when no tie exists', () => {
     const rows = unionPackRows([gear('a', 3)], [food('x', 9)])
     const updates = assignUnionPackRankSlots([rows[1]!, rows[0]!])

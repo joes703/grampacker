@@ -64,6 +64,10 @@ export function planPlacementWithinLocation(
   rowId: string,
   insertIndex: number,
   eligibleRows: readonly PackRow[],
+  /** Ranks of cohort rows NOT rendered here (worn gear, filtered rows,
+   *  container headers) - the densify path must not mint one of them.
+   *  Supplied by the page, which holds the caches (round-5 finding 2). */
+  avoidRanks: ReadonlySet<number> = new Set(),
 ): UnionRankUpdates | null {
   const sourceIndex = eligibleRows.findIndex((row) => packRowId(row) === rowId)
   if (sourceIndex === -1) return null
@@ -78,7 +82,7 @@ export function planPlacementWithinLocation(
   const moving = eligibleRows[sourceIndex]
   if (!moving) return null
   const next = [...reduced.slice(0, insertIndex), moving, ...reduced.slice(insertIndex)]
-  return assignUnionPackRankSlots(next)
+  return assignUnionPackRankSlots(next, avoidRanks)
 }
 
 /**

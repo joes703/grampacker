@@ -179,6 +179,21 @@ describe('planPlacementWithinLocation', () => {
   })
 })
 
+describe('planPlacementWithinLocation over a tied cohort', () => {
+  it('heals a cross-table tie densely, avoiding reserved ranks', () => {
+    // Visible gear and food tied at 0, hidden worn row reserving 1 (passed
+    // as avoidRanks). Placing the food row first must produce unique ranks
+    // that skip the reserved slot - round-5 finding 2: without the avoid
+    // set this path minted the worn row's rank.
+    const tied = [gearRow('G', 0), foodRow('F', 0)]
+    const updates = planPlacementWithinLocation('F', 0, tied, new Set([1]))!
+    expect(updates).toEqual({
+      items: [{ id: 'G', packSortOrder: 2 }],
+      foodItems: [{ id: 'F', packSortOrder: 0 }],
+    })
+  })
+})
+
 describe('placementSlotLabel', () => {
   it('names the row, the destination and the bag', () => {
     expect(placementSlotLabel('Tarp', 1, rows, 'Main pack')).toBe('Place Tarp before B')

@@ -80,7 +80,13 @@ export function assignUnionPackRankSlots(
   avoidRanks: ReadonlySet<number> = new Set(),
 ): UnionRankUpdates {
   const existing = reorderedRows.map(packRowRank).sort((a, b) => a - b)
-  const hasTie = existing.some((rank, i) => i > 0 && rank === existing[i - 1])
+  // A tie needing the dense path is EITHER a duplicate among these rows OR a
+  // collision between one of their ranks and a reserved rank (a hidden or
+  // worn row can be the other half of a cross-table tie - round-5 finding 1:
+  // permuting would land a visible row on the hidden row's slot).
+  const hasTie =
+    existing.some((rank, i) => i > 0 && rank === existing[i - 1]) ||
+    existing.some((rank) => avoidRanks.has(rank))
   let slots: number[]
   if (hasTie) {
     slots = []
