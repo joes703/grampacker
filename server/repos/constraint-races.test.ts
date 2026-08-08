@@ -539,6 +539,24 @@ describe('reorderPack loses a race', () => {
     expect(result).toEqual({ ok: false, reason: 'conflict' })
   })
 
+  it('the location-delete route answers a fallback conflict with 409', async () => {
+    const { Hono } = await import('hono')
+    const { packingLocationRoutes } = await import('../routes/packing-locations')
+    const testApp = new Hono<{ Variables: { repos: unknown } }>()
+    testApp.use('*', async (c, next) => {
+      c.set('repos', {
+        packingLocations: { remove: async () => 'conflict' as const },
+      })
+      await next()
+    })
+    testApp.route('/lists', packingLocationRoutes)
+
+    const res = await testApp.request('/lists/some-list/packing-locations/some-loc', {
+      method: 'DELETE',
+    })
+    expect(res.status).toBe(409)
+  })
+
   it('the route answers the conflict with the 409 dialect', async () => {
     // The real listRoutes module, with only the repos context stubbed to
     // return the conflict result - so the route-side mapping (the branch the

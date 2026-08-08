@@ -440,12 +440,17 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       // takes one first the unique index rejects the batch and the whole
       // delete rolls back, which is the outcome we want - a loud retry beats a
       // half-deleted bag.
-      // Each reassign asserts the row is STILL IN THE DOOMED BAG (round-6
-      // finding: keyed on id alone, a row concurrently moved to another bag
-      // was silently yanked back to Unassigned while both requests returned
-      // success). A row that left simply isn't matched - its base+i rank
-      // goes unused, which is a harmless gap - and a row that ARRIVED after
-      // the read still falls to the cascade triggers' SET NULL + rerank.
+      // Each reassign asserts the row is STILL IN THE DOOMED BAG at its
+      // PRE-READ RANK (rounds 6-7: keyed on id alone, a row concurrently
+      // moved to another bag was yanked back; keyed without the rank, a
+      // concurrent in-bag reorder was overwritten with the stale pre-read
+      // ordering - both with 204s all round). An unmatched row simply stays
+      // put - its base+i rank goes unused, a harmless gap - and the cascade
+      // triggers' SET NULL + rerank still catch every row remaining in the
+      // bag when the DELETE lands, so nothing is lost or stranded either
+      // way. That trigger backstop is why no fail-loud guard is needed
+      // here: a drifted row's outcome is the trigger's rerank, not a
+      // silent skip.
       const reassign = orphans.map((orphan, i) =>
         orphan.kind === 'gear'
           ? db
@@ -461,6 +466,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
                   eq(listItems.listId, listId),
                   eq(listItems.userId, userId),
                   eq(listItems.packingLocationId, id),
+                  eq(listItems.packSortOrder, orphan.row.packSortOrder),
                 ),
               )
           : db
@@ -476,6 +482,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
                   eq(listFoodItems.listId, listId),
                   eq(listFoodItems.userId, userId),
                   eq(listFoodItems.packingLocationId, id),
+                  eq(listFoodItems.packSortOrder, orphan.row.packSortOrder),
                 ),
               ),
       )
@@ -507,6 +514,10 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
         // roughly a billion arrivals - but an unclassified abort here would be
         // a 500 on an ordinary delete, and the condition is understood.
         if (isPackRankRangeError(err)) return 'pack_rank_exhausted'
+        // A concurrent arrival claimed base+i first: the unique index rolled
+        // the whole batch back. Retryable, so a 409 rather than a 500
+        // (round-7 finding).
+        if (isAnyUniqueViolation(err)) return 'conflict'
         throw err
       }
       const deleted = results[results.length - 1] as { id: string }[]
