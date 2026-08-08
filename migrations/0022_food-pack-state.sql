@@ -1,7 +1,9 @@
 -- Food joins Pack mode as a full peer of gear: packable, bag-assignable,
--- rank-ordered. Mirrors the list_items machinery (0018 columns + indexes,
--- 0019 range triggers + guard table, 0020 cascade-rerank trigger) onto
--- list_food_items.
+-- rank-ordered. This is the EXPAND half - columns, backfill, same-list
+-- triggers (0014 pattern), reorder-guard table (0019 pattern), and the
+-- cascade-rerank trigger (0020 pattern). The ENFORCE half - the cohort
+-- unique indexes and range triggers mirroring 0018/0019 - is migration 0023,
+-- one release later; see the sequencing note below.
 --
 -- MIRROR, NOT ABSTRACTION - deliberately. SQL cannot be generic over a table
 -- the way TypeScript can, and the no-rebuild rule forbids consolidating both
@@ -13,22 +15,26 @@
 --
 -- RANK SPACE IS SHARED WITH GEAR at read time. A bag's contents are the UNION
 -- of its list_items cohort and its list_food_items cohort, merged by
--- (pack_sort_order, kind, id). Each table's unique index enforces uniqueness
--- within its own rows; a cross-table duplicate cannot corrupt anything - it
+-- (pack_sort_order, kind, id). Each table's unique index (once 0023 lands)
+-- enforces uniqueness within its own rows; a cross-table duplicate cannot
+-- corrupt anything - it
 -- displays by the deterministic tiebreak and dissolves on the next reorder,
 -- which always rewrites the union densely. A reorder batch writes BOTH tables
 -- in one D1 transaction, so a concurrent reorder of the same cohort still
 -- collides on one of the two indexes and rolls the whole batch back (409).
 --
--- DEPLOY WINDOW, accepted and bounded: between this migration applying and
--- the new worker rolling out (seconds - deploy.yml runs them back to back),
--- the OLD worker still inserts food rows with pack_sort_order DEFAULT 0. On a
--- list that already has food, the unique index below rejects that insert; the
--- batch rolls back, the user sees one failed food-add and retries after the
--- rollout. No corruption is reachable - the failure mode is a loud 500 for a
--- window measured in seconds. This is the first post-baseline migration, so
--- 0018 offers no precedent here; the trade was judged acceptable against the
--- alternative of splitting enforcement into a second release.
+-- OLD-WORKER COMPATIBLE, deliberately: this migration adds columns and
+-- backfills ranks but creates NO unique indexes and NO range triggers. An old
+-- worker (if the post-migration deploy fails and the previous release stays
+-- live) inserts food rows at pack_sort_order DEFAULT 0; without enforcement
+-- those inserts SUCCEED - duplicate ranks merely display by the deterministic
+-- tiebreak until repaired. Enforcement ships in migration 0023, in a LATER
+-- release, whose repair step renumbers any cohort the degraded interval
+-- dirtied before creating the indexes - by which time the live worker already
+-- writes proper union ranks. This is expand (0022) / enforce (0023)
+-- sequencing; the GATE 2 review caught that a single-release version left an
+-- unbounded failure window if the worker deploy failed after the migration
+-- applied.
 --
 -- Additive throughout. ADD COLUMN needs no table rebuild, so the D1 cascade
 -- trap that bit 0009 and 0016 does not apply. The backfill touches no FK or
@@ -45,39 +51,32 @@ ALTER TABLE `list_food_items` ADD COLUMN `packing_location_id` text REFERENCES `
 
 ALTER TABLE `list_food_items` ADD COLUMN `pack_sort_order` integer NOT NULL DEFAULT 0;--> statement-breakpoint
 
--- Per-cohort ROW_NUMBER, same as 0018's backfill. Every existing row has a
--- NULL location, so each list's food forms one Unassigned cohort ranked by
--- the document order the user already arranged. Ranks start at 0; committed
--- ranks are always nonnegative.
---
--- Food ranks start dense from 0 and so do gear ranks in the same cohort -
--- cross-table duplicates on day one, resolved by the display tiebreak (gear
--- before food), which reads as "food appended after gear" until the first
--- union reorder densifies it. Intended.
+-- Per-cohort ROW_NUMBER, the 0018 pattern, OFFSET past the list's Unassigned
+-- GEAR maximum. Ranks are a union space now: starting food at 0 would tie
+-- every dense gear rank index-for-index and the display tiebreak would
+-- interleave them (gear0, food0, gear1, food1...). Offsetting makes the
+-- post-migration read "your food, appended after your gear, in the order you
+-- arranged it" - which is what a user who has never seen food in Pack mode
+-- should find. Every existing food row has a NULL location, so the partition
+-- is effectively per list.
 UPDATE `list_food_items` SET `pack_sort_order` = (
-  SELECT `rn` FROM (
-    SELECT `id`, ROW_NUMBER() OVER (
-      PARTITION BY `list_id`, `packing_location_id`
-      ORDER BY `sort_order`, `id`
-    ) - 1 AS `rn`
-    FROM `list_food_items`
-  ) AS `ranked` WHERE `ranked`.`id` = `list_food_items`.`id`
+  SELECT (SELECT coalesce(max(`li`.`pack_sort_order`), -1) + 1
+            FROM `list_items` AS `li`
+           WHERE `li`.`list_id` = `ranked`.`list_id`
+             AND `li`.`packing_location_id` IS NULL)
+         + `ranked`.`rn`
+    FROM (
+      SELECT `id`, `list_id`, ROW_NUMBER() OVER (
+        PARTITION BY `list_id`, `packing_location_id`
+        ORDER BY `sort_order`, `id`
+      ) - 1 AS `rn`
+      FROM `list_food_items`
+    ) AS `ranked` WHERE `ranked`.`id` = `list_food_items`.`id`
 );--> statement-breakpoint
 
 -- FK lookup path for the SET NULL action and the cohort reads; mirrors
 -- list_items_packing_location_idx.
 CREATE INDEX `list_food_items_packing_location_idx` ON `list_food_items` (`packing_location_id`);--> statement-breakpoint
-
--- Created AFTER the backfill (every row shares DEFAULT 0 until it runs).
--- UNIQUE is load-bearing for the same reason as 0018: it is what turns a lost
--- concurrent-reorder race into a rolled-back batch and a 409 instead of a
--- silently corrupted cohort.
-CREATE UNIQUE INDEX `list_food_items_pack_cohort_uq` ON `list_food_items` (`list_id`,`packing_location_id`,`pack_sort_order`);--> statement-breakpoint
-
--- SQLite treats every NULL as DISTINCT in a unique index, so the index above
--- does not constrain the Unassigned cohort at all. Same partial-index fix as
--- 0018.
-CREATE UNIQUE INDEX `list_food_items_pack_unassigned_uq` ON `list_food_items` (`list_id`,`pack_sort_order`) WHERE `packing_location_id` IS NULL;--> statement-breakpoint
 
 -- Same-list assignment triggers, the 0014 pattern. The FK above proves the
 -- location EXISTS; these prove it belongs to THIS list and THIS user, so a
@@ -103,32 +102,6 @@ WHEN NEW.`packing_location_id` IS NOT NULL
                     AND `user_id` = NEW.`user_id`)
 BEGIN
   SELECT RAISE(ABORT, 'packing location does not belong to this list');
-END;--> statement-breakpoint
-
--- Range triggers, the 0019 pattern. Scratch band is -FOOD_ITEM_CAP..-1
--- (-200..-1): the food cap is 200 per list, so a full-cohort payload fits and
--- no wider payload can exist. Keep in lockstep with FOOD_ITEM_CAP in
--- shared/food.ts and PACK_RANK_MAX in shared/lists.ts
--- (scripts/pack-rank-constants.test.ts pins these copies).
---
--- Asymmetric on purpose, exactly like 0019: nothing is ever CREATED negative;
--- parking IS an update, and nothing else that updates this column can go
--- below zero. So a negative food rank was parked by an in-flight reorder, and
--- counting negatives in one cohort is an EXACT check that every park landed.
-CREATE TRIGGER `list_food_items_pack_rank_range_ins`
-BEFORE INSERT ON `list_food_items`
-FOR EACH ROW
-WHEN NEW.`pack_sort_order` < 0 OR NEW.`pack_sort_order` > 1000000000
-BEGIN
-  SELECT RAISE(ABORT, 'food pack_sort_order out of range (0..1000000000)');
-END;--> statement-breakpoint
-
-CREATE TRIGGER `list_food_items_pack_rank_range_upd`
-BEFORE UPDATE OF `pack_sort_order` ON `list_food_items`
-FOR EACH ROW
-WHEN NEW.`pack_sort_order` < -200 OR NEW.`pack_sort_order` > 1000000000
-BEGIN
-  SELECT RAISE(ABORT, 'food pack_sort_order out of range (-200..1000000000)');
 END;--> statement-breakpoint
 
 -- TRANSIENT. Correct only when empty: a row exists solely between the park

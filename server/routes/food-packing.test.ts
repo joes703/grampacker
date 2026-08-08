@@ -381,6 +381,7 @@ describe('duplicate copies food pack state', () => {
       packingLocationId: location.id,
       isPacked: true,
     })
+    await patchFood(cookie, list.id, food.id, { isReady: true })
 
     const dup = await apiRequest(cookie, 'POST', `/api/lists/${list.id}/duplicate`)
     expect(dup.status).toBe(201)
@@ -388,6 +389,8 @@ describe('duplicate copies food pack state', () => {
 
     const [copiedFood] = await getFoodItems(cookie, copy.id)
     expect(copiedFood?.isPacked).toBe(true)
+    // Ready state copies too (GATE 2 caught the original dropping it).
+    expect(copiedFood?.isReady).toBe(true)
     expect(copiedFood?.packingLocationId).not.toBeNull()
     expect(copiedFood?.packingLocationId).not.toBe(location.id)
   })

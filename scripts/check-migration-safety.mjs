@@ -1060,30 +1060,26 @@ const POST_CHECKS = [
     sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,packing_location_id,sort_order,pack_sort_order,created_at,updated_at) values ('li-dup-un','u-seed','list-seed','gear-seed',1,0,0,0,0,null,98,0,0,0)",
     expectErrorMatch: /unique/i },
 
-  // 0022: food pack state. The backfill pin mirrors 0018's: exact ranks, per
-  // LIST (the only partition boundary that can be wrong pre-0022, since no
-  // food row can carry a location yet). list-seed's food ordered by
-  // sort_order: lfi-seed (0) -> 0, lfi-canary-c (5) -> 1, lfi-canary-b (20)
-  // -> 2; lfi-other-list restarting at 0 on list-seed-3 proves per-list
-  // partitioning, and its gapped source rank (50) proves ranking by ORDER
-  // rather than copying sort_order across.
-  { migration: '0022_food-pack-state.sql', description: 'food backfill ranks each list from 0 by sort_order',
+  // 0022: food pack state (the EXPAND half; enforcement checks live on
+  // 0023's entries). The backfill pin mirrors 0018's, with the 0022 twist:
+  // food ranks are OFFSET past each list's Unassigned gear maximum, so the
+  // union display reads "food appended after gear". list-seed's Unassigned
+  // gear holds ranks 0 and 1 (li-seed, li-cohort-u1), so its food ordered by
+  // sort_order lands at: lfi-seed (0) -> 2, lfi-canary-c (5) -> 3,
+  // lfi-canary-b (20) -> 4. list-seed-3's Unassigned gear max is 0
+  // (li-nearceiling-u after 0019's normalize), so lfi-other-list -> 1 -
+  // proving per-list partitioning AND the per-list offset in one row.
+  { migration: '0022_food-pack-state.sql', description: 'food backfill offsets each list past its gear maximum',
     sql: "select id, pack_sort_order as rank from list_food_items where id in ('lfi-seed','lfi-canary-b','lfi-canary-c','lfi-other-list') order by id",
     expectRows: [
-      { id: 'lfi-canary-b', rank: 2 },
-      { id: 'lfi-canary-c', rank: 1 },
-      { id: 'lfi-other-list', rank: 0 },
-      { id: 'lfi-seed', rank: 0 },
+      { id: 'lfi-canary-b', rank: 4 },
+      { id: 'lfi-canary-c', rank: 3 },
+      { id: 'lfi-other-list', rank: 1 },
+      { id: 'lfi-seed', rank: 2 },
     ] },
   { migration: '0022_food-pack-state.sql', description: 'no committed food rank is negative',
     sql: "select count(*) as negatives from list_food_items where pack_sort_order < 0",
     expectRows: [{ negatives: 0 }] },
-  { migration: '0022_food-pack-state.sql', description: 'both food uniqueness indexes exist',
-    sql: "select name from sqlite_master where type='index' and name in ('list_food_items_pack_cohort_uq','list_food_items_pack_unassigned_uq') order by name",
-    expectRows: [{ name: 'list_food_items_pack_cohort_uq' }, { name: 'list_food_items_pack_unassigned_uq' }] },
-  { migration: '0022_food-pack-state.sql', description: 'a duplicate food rank in the unassigned cohort is rejected',
-    sql: "insert into list_food_items (id,user_id,list_id,name,weight_grams,quantity,sort_order,is_packed,packing_location_id,pack_sort_order,created_at,updated_at) values ('lfi-dup-un','u-seed','list-seed','Dup',1,1,90,0,null,0,0,0)",
-    expectErrorMatch: /unique/i },
   // The 0014-pattern same-list triggers, food edition.
   { migration: '0022_food-pack-state.sql', description: 'food insert with unknown location aborts',
     sql: "insert into list_food_items (id,user_id,list_id,name,weight_grams,quantity,sort_order,is_packed,packing_location_id,pack_sort_order,created_at,updated_at) values ('lfi-bad-loc','u-seed','list-seed','Bad',1,1,94,0,'nonexistent',50,0,0)",
@@ -1094,34 +1090,16 @@ const POST_CHECKS = [
   { migration: '0022_food-pack-state.sql', description: 'setup: food assigned to a location',
     sql: "insert into list_food_items (id,user_id,list_id,name,weight_grams,quantity,sort_order,is_packed,packing_location_id,pack_sort_order,created_at,updated_at) values ('lfi-located','u-seed','list-seed','Located',1,1,91,0,'pl-seed-exhausted',0,0,0) returning id",
     expectRows: [{ id: 'lfi-located' }] },
-  { migration: '0022_food-pack-state.sql', description: 'a duplicate food rank in a located cohort is rejected',
-    sql: "insert into list_food_items (id,user_id,list_id,name,weight_grams,quantity,sort_order,is_packed,packing_location_id,pack_sort_order,created_at,updated_at) values ('lfi-dup-loc','u-seed','list-seed','Dup',1,1,92,0,'pl-seed-exhausted',0,0,0)",
-    expectErrorMatch: /unique/i },
-  // The 0019-pattern range triggers. INSERT permits 0..PACK_RANK_MAX only;
-  // UPDATE additionally permits the -200..-1 scratch band (FOOD_ITEM_CAP
-  // wide) because parking is an update.
-  { migration: '0022_food-pack-state.sql', description: 'a negative food rank cannot be INSERTed',
-    sql: "insert into list_food_items (id,user_id,list_id,name,weight_grams,quantity,sort_order,is_packed,packing_location_id,pack_sort_order,created_at,updated_at) values ('lfi-neg','u-seed','list-seed','Neg',1,1,93,0,null,-1,0,0)",
-    expectErrorMatch: /food pack_sort_order out of range/ },
-  { migration: '0022_food-pack-state.sql', description: 'an UPDATE below the scratch band aborts',
-    sql: "update list_food_items set pack_sort_order = -201 where id='lfi-located'",
-    expectErrorMatch: /food pack_sort_order out of range/ },
-  { migration: '0022_food-pack-state.sql', description: 'an UPDATE into the scratch band is permitted (parking)',
-    sql: "update list_food_items set pack_sort_order = -200 where id='lfi-located' returning id",
-    expectRows: [{ id: 'lfi-located' }] },
-  { migration: '0022_food-pack-state.sql', description: 'setup: unpark the parked row',
-    sql: "update list_food_items set pack_sort_order = 0 where id='lfi-located' returning id",
-    expectRows: [{ id: 'lfi-located' }] },
   // The cascade path: deleting a location must return its food to Unassigned
-  // as a contiguous block appended after the existing maximum (the offset
-  // path), not carrying ranks that collide. list-seed's Unassigned food max
-  // is 2 (lfi-canary-b), so lfi-located lands at 3.
+  // as a contiguous block appended after the food maximum (the offset path),
+  // not carrying ranks that collide. list-seed's Unassigned food max after
+  // the offset backfill is 4 (lfi-canary-b), so lfi-located lands at 5.
   { migration: '0022_food-pack-state.sql', description: 'deleting a location reranks its food into Unassigned',
     sql: "delete from packing_locations where id='pl-seed-exhausted' returning id",
     expectRows: [{ id: 'pl-seed-exhausted' }] },
   { migration: '0022_food-pack-state.sql', description: 'orphaned food appended after the Unassigned maximum',
     sql: "select packing_location_id as loc, pack_sort_order as rank from list_food_items where id='lfi-located'",
-    expectRows: [{ loc: null, rank: 3 }] },
+    expectRows: [{ loc: null, rank: 5 }] },
 
   // 0021: the categories cap. u-seed holds exactly one fixture category
   // (cat-seed), so a legitimate insert must still pass, and a recursive

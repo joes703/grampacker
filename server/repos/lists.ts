@@ -359,6 +359,7 @@ export function createListsRepo(db: Db, userId: string) {
             quantity: listFoodItems.quantity,
             sortOrder: listFoodItems.sortOrder,
             isPacked: listFoodItems.isPacked,
+            isReady: listFoodItems.isReady,
             packingLocationId: listFoodItems.packingLocationId,
             packSortOrder: listFoodItems.packSortOrder,
           })
@@ -500,6 +501,7 @@ export function createListsRepo(db: Db, userId: string) {
           // remapped, rank verbatim (whole cohorts move as sets, so each
           // rank stays unique within its new cohort).
           isPacked: item.isPacked,
+          isReady: item.isReady,
           packingLocationId: remapPackingLocationId(
             item.packingLocationId,
             locationIdMap,

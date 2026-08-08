@@ -643,6 +643,12 @@ export function createFoodRepo(db: Db, userId: string) {
         throw err
       }
 
+      // The UPDATE matching zero rows means the item was deleted between the
+      // pre-read and the batch. Without this check a slot-free patch would
+      // commit an empty batch and answer 200 with the stale pre-read values
+      // for a row that no longer exists (GATE 2 finding).
+      if (updated === undefined) return { ok: false, reason: 'not_found' }
+
       const links =
         usable ??
         (

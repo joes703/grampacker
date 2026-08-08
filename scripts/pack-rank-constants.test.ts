@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { LIST_ITEM_CAP, PACK_RANK_MAX } from '../shared/lists'
-import { FOOD_ITEM_CAP } from '../shared/food'
 
 // PACK_RANK_MAX and LIST_ITEM_CAP are declared once in shared/lists.ts, but two
 // things outside TypeScript's reach hold copies of the same numbers:
@@ -47,16 +46,15 @@ describe('pack rank constants stay in step outside TypeScript', () => {
     )
   })
 
-  it("migration 0022's food triggers enforce exactly the bounds shared/ declares", () => {
+  it("migration 0022's cascade trigger uses exactly the ceiling shared/lists.ts declares", () => {
     const sql = stripSqlComments(readRepoFile('migrations/0022_food-pack-state.sql'))
 
-    // 0022 mirrors 0019 onto list_food_items: same ceiling, scratch band
-    // FOOD_ITEM_CAP wide instead of LIST_ITEM_CAP. Unlike 0019 it contains no
-    // headroom-floor repair (no food cohort can predate the triggers), so
-    // only two values are entitled to appear.
-    expect(significantNumbers(sql)).toEqual(
-      new Set([FOOD_ITEM_CAP, PACK_RANK_MAX]),
-    )
+    // 0022 is the EXPAND half: no range triggers, no indexes. The only
+    // literal it is entitled to carry is PACK_RANK_MAX, in the cascade
+    // trigger's offset-vs-dense decision. The enforcement literals
+    // (FOOD_ITEM_CAP scratch band + the ceiling) live in 0023 and get their
+    // own assertion when that migration ships.
+    expect(significantNumbers(sql)).toEqual(new Set([PACK_RANK_MAX]))
   })
 
   it('the pack-rank audit workflow probes the bounds shared/lists.ts declares', () => {
