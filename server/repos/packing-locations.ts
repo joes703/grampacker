@@ -409,6 +409,23 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
           // rows actually leaving the deleted bag.
           ...chunkedRankWrites({ ...writeOpts, tableName: 'list_items', table: listItems, entries: settles.orphanGear, alsoUnassign: true, touchUpdatedAt: now }),
           ...chunkedRankWrites({ ...writeOpts, tableName: 'list_food_items', table: listFoodItems, entries: settles.orphanFood, alsoUnassign: true, touchUpdatedAt: now }),
+          // The same fail-loud census as the append path (round-9): the
+          // per-row park/settle assertions catch drift among rows the
+          // pre-read SAW, but a row ARRIVING in the doomed bag after it is
+          // unmapped and would fall to the cascade triggers' silent-order
+          // salvage. Zero rows of either table may remain once the settles
+          // have run, or the whole batch aborts into the retryable 409.
+          db.insert(packReorderGuard).select(
+            sql`select ${listId}, (select case when
+                  (select count(*) from list_items
+                    where list_id = ${listId} and user_id = ${userId}
+                      and packing_location_id = ${id})
+                  + (select count(*) from list_food_items
+                      where list_id = ${listId} and user_id = ${userId}
+                        and packing_location_id = ${id})
+                  = 0 then 1 end)`,
+          ),
+          db.delete(packReorderGuard).where(eq(packReorderGuard.listId, listId)),
           db
             .delete(packingLocations)
             .where(
@@ -426,10 +443,14 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
         try {
           denseResults = await db.batch([firstStmt, ...restStmts])
         } catch (err) {
-          // A drifted row (concurrently moved/reordered) fed NULL into its
-          // NOT NULL rank column, or a settle lost a rank race. Known,
+          // A drifted row fed NULL into its NOT NULL rank column, a settle
+          // lost a rank race, or the census counted a late arrival. Known,
           // retryable, and the whole batch rolled back - a 409, not a 500.
-          if (isPackRankNotNullViolation(err) || isAnyUniqueViolation(err)) {
+          if (
+            isPackRankNotNullViolation(err) ||
+            isAnyUniqueViolation(err) ||
+            isPackGuardViolation(err)
+          ) {
             return 'conflict'
           }
           throw err
