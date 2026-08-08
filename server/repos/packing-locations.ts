@@ -9,7 +9,9 @@ import {
   packingLocations,
 } from '../db/schema'
 import {
+  isAnyUniqueViolation,
   isForeignKeyViolation,
+  isPackRankNotNullViolation,
   isPackRankRangeError,
   isTriggerAbort,
   isUniqueViolation,
@@ -237,7 +239,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
     async remove(
       listId: string,
       id: string,
-    ): Promise<'deleted' | 'not_found' | 'pack_rank_exhausted'> {
+    ): Promise<'deleted' | 'not_found' | 'pack_rank_exhausted' | 'conflict'> {
       // Read BOTH halves of the bag - the cohort is a union since 0022 - in
       // one batch so the interleaved order is a consistent snapshot. Ordering
       // the read is what makes "keep their relative order" true rather than
@@ -418,7 +420,18 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
         ]
         const [firstStmt, ...restStmts] = statements
         if (!firstStmt) return 'not_found' // unreachable: delete is present
-        const denseResults = await db.batch([firstStmt, ...restStmts])
+        let denseResults
+        try {
+          denseResults = await db.batch([firstStmt, ...restStmts])
+        } catch (err) {
+          // A drifted row (concurrently moved/reordered) fed NULL into its
+          // NOT NULL rank column, or a settle lost a rank race. Known,
+          // retryable, and the whole batch rolled back - a 409, not a 500.
+          if (isPackRankNotNullViolation(err) || isAnyUniqueViolation(err)) {
+            return 'conflict'
+          }
+          throw err
+        }
         const denseDeleted = denseResults[denseResults.length - 1] as { id: string }[]
         return denseDeleted.length > 0 ? 'deleted' : 'not_found'
       }
@@ -427,6 +440,12 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       // takes one first the unique index rejects the batch and the whole
       // delete rolls back, which is the outcome we want - a loud retry beats a
       // half-deleted bag.
+      // Each reassign asserts the row is STILL IN THE DOOMED BAG (round-6
+      // finding: keyed on id alone, a row concurrently moved to another bag
+      // was silently yanked back to Unassigned while both requests returned
+      // success). A row that left simply isn't matched - its base+i rank
+      // goes unused, which is a harmless gap - and a row that ARRIVED after
+      // the read still falls to the cascade triggers' SET NULL + rerank.
       const reassign = orphans.map((orphan, i) =>
         orphan.kind === 'gear'
           ? db
@@ -441,6 +460,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
                   eq(listItems.id, orphan.row.id),
                   eq(listItems.listId, listId),
                   eq(listItems.userId, userId),
+                  eq(listItems.packingLocationId, id),
                 ),
               )
           : db
@@ -455,6 +475,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
                   eq(listFoodItems.id, orphan.row.id),
                   eq(listFoodItems.listId, listId),
                   eq(listFoodItems.userId, userId),
+                  eq(listFoodItems.packingLocationId, id),
                 ),
               ),
       )
