@@ -7,10 +7,12 @@ import {
   listItems,
   lists,
   packingLocations,
+  packReorderGuard,
 } from '../db/schema'
 import {
   isAnyUniqueViolation,
   isForeignKeyViolation,
+  isPackGuardViolation,
   isPackRankNotNullViolation,
   isPackRankRangeError,
   isTriggerAbort,
@@ -441,16 +443,15 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       // delete rolls back, which is the outcome we want - a loud retry beats a
       // half-deleted bag.
       // Each reassign asserts the row is STILL IN THE DOOMED BAG at its
-      // PRE-READ RANK (rounds 6-7: keyed on id alone, a row concurrently
+      // PRE-READ RANK (rounds 6-8: keyed on id alone, a row concurrently
       // moved to another bag was yanked back; keyed without the rank, a
       // concurrent in-bag reorder was overwritten with the stale pre-read
-      // ordering - both with 204s all round). An unmatched row simply stays
-      // put - its base+i rank goes unused, a harmless gap - and the cascade
-      // triggers' SET NULL + rerank still catch every row remaining in the
-      // bag when the DELETE lands, so nothing is lost or stranded either
-      // way. That trigger backstop is why no fail-loud guard is needed
-      // here: a drifted row's outcome is the trigger's rerank, not a
-      // silent skip.
+      // ordering - both with 204s all round). And a partial match is NOT
+      // left to the cascade triggers: they preserve every row but would
+      // interleave drifted rows in an order nobody chose, silently (round-8
+      // finding). The census guard below makes any miss - drift OR a fresh
+      // arrival after the pre-read - abort the whole batch into the
+      // retryable 409 instead.
       const reassign = orphans.map((orphan, i) =>
         orphan.kind === 'gear'
           ? db
@@ -486,6 +487,31 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
                 ),
               ),
       )
+      // FAIL-LOUD CENSUS, the reorder guard's mechanism reused: after every
+      // reassign has run, ZERO rows of either table may remain in the doomed
+      // bag - a leftover means a reassign missed (concurrent reorder, move,
+      // or arrival) and the pre-read plan is stale. A batch statement cannot
+      // branch, so the abort is a NULL fed into the guard's NOT NULL `ok`
+      // column, rolling the whole batch back; the route answers 409 and the
+      // client retries against fresh state. Guard rows never outlive their
+      // batch (D1 serializes batches and the cleanup below runs in this
+      // one), so sharing _pack_reorder_guard with reorderPack cannot
+      // collide. Identifiers hand-written; raw SQL rides an insert builder
+      // (db.run crashes the D1 driver as a batch item).
+      const census = db.insert(packReorderGuard).select(
+        sql`select ${listId}, (select case when
+              (select count(*) from list_items
+                where list_id = ${listId} and user_id = ${userId}
+                  and packing_location_id = ${id})
+              + (select count(*) from list_food_items
+                  where list_id = ${listId} and user_id = ${userId}
+                    and packing_location_id = ${id})
+              = 0 then 1 end)`,
+      )
+      const censusCleanup = db
+        .delete(packReorderGuard)
+        .where(eq(packReorderGuard.listId, listId))
+
       const remove = db
         .delete(packingLocations)
         .where(
@@ -502,7 +528,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       // falls to Unassigned via the FK's SET NULL - keeping its old rank, and
       // failing the unique index if that rank is taken, which again rolls the
       // whole thing back rather than corrupting the cohort.
-      const [first, ...rest] = [...reassign, remove]
+      const [first, ...rest] = [...reassign, census, censusCleanup, remove]
       if (!first) return 'not_found' // unreachable: `remove` is always present
       let results
       try {
@@ -514,10 +540,13 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
         // roughly a billion arrivals - but an unclassified abort here would be
         // a 500 on an ordinary delete, and the condition is understood.
         if (isPackRankRangeError(err)) return 'pack_rank_exhausted'
-        // A concurrent arrival claimed base+i first: the unique index rolled
-        // the whole batch back. Retryable, so a 409 rather than a 500
-        // (round-7 finding).
-        if (isAnyUniqueViolation(err)) return 'conflict'
+        // A concurrent arrival claimed base+i first (unique index), or the
+        // census counted a row the reassigns missed (guard NOT NULL). Either
+        // way the whole batch rolled back. Retryable, so a 409 rather than a
+        // 500 (rounds 7-8).
+        if (isAnyUniqueViolation(err) || isPackGuardViolation(err)) {
+          return 'conflict'
+        }
         throw err
       }
       const deleted = results[results.length - 1] as { id: string }[]

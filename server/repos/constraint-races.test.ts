@@ -4,6 +4,7 @@ import { createDb, type Db } from '../db'
 import { createFoodRepo } from './food'
 import { createListItemsRepo } from './list-items'
 import { createPackReorderRepo } from './pack-reorder'
+import { createPackingLocationsRepo } from './packing-locations'
 import { createListsRepo } from './lists'
 import { listItemFailure } from '../routes/lists'
 import { apiRequest } from '../test/api-helpers'
@@ -537,6 +538,70 @@ describe('reorderPack loses a race', () => {
     )
     const result = await repo.reorder(listId, { items: updates, foodItems: [] })
     expect(result).toEqual({ ok: false, reason: 'conflict' })
+  })
+
+  it('location delete answers conflict when a bag row drifts between read and write', async () => {
+    // The append path's fail-loud census (round-8): a concurrent in-bag
+    // reorder between remove()'s pre-read and its write batch makes a
+    // reassign miss its (bag, rank) assertion; the leftover row trips the
+    // census guard and the WHOLE batch - including the location delete -
+    // rolls back into the retryable conflict. Injected deterministically:
+    // a Proxy defers remove()'s SECOND batch (the writes) until after a
+    // raw rank bump simulates the concurrent reorder.
+    const { cookie, userId } = await newUser('ld-census')
+    const listId = await createList(cookie, 'Trip')
+    const locRes = await apiRequest(
+      cookie,
+      'POST',
+      `/api/lists/${listId}/packing-locations`,
+      { name: 'Bag' },
+    )
+    const { id: locationId } = (await locRes.json()) as { id: string }
+    const updates = await seedTwoItemCohort(cookie, listId)
+    for (const u of updates) {
+      await apiRequest(cookie, 'PATCH', `/api/lists/${listId}/items/${u.id}`, {
+        packingLocationId: locationId,
+      })
+    }
+
+    const underlying = raw()
+    let batchCalls = 0
+    const drifting = new Proxy(underlying, {
+      get(target, prop, receiver) {
+        if (prop === 'batch') {
+          return async (stmts: Parameters<Db['batch']>[0]) => {
+            batchCalls += 1
+            if (batchCalls === 2) {
+              // The concurrent reorder: swap the two bag rows' ranks.
+              const rows = await env.DB.prepare(
+                `select id, pack_sort_order from list_items where list_id = ? and packing_location_id = ? order by pack_sort_order`,
+              ).bind(listId, locationId).all<{ id: string; pack_sort_order: number }>()
+              const [a, b] = rows.results
+              await env.DB.prepare(
+                `update list_items set pack_sort_order = -1 where id = ?`,
+              ).bind(a!.id).run()
+              await env.DB.prepare(
+                `update list_items set pack_sort_order = ? where id = ?`,
+              ).bind(a!.pack_sort_order, b!.id).run()
+              await env.DB.prepare(
+                `update list_items set pack_sort_order = ? where id = ?`,
+              ).bind(b!.pack_sort_order, a!.id).run()
+            }
+            return target.batch(stmts)
+          }
+        }
+        return Reflect.get(target, prop, receiver)
+      },
+    })
+
+    const repo = createPackingLocationsRepo(drifting, userId)
+    const result = await repo.remove(listId, locationId)
+    expect(result).toBe('conflict')
+    // Nothing partial landed: the location still exists with both rows.
+    const stillThere = await env.DB.prepare(
+      `select count(*) as c from list_items where packing_location_id = ?`,
+    ).bind(locationId).all<{ c: number }>()
+    expect(stillThere.results[0]?.c).toBe(2)
   })
 
   it('the location-delete route answers a fallback conflict with 409', async () => {
