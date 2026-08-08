@@ -959,25 +959,40 @@ function ListDetailInner({
       // Reserved ranks: same-cohort rows the section did NOT render (worn
       // gear, filtered rows, container headers). The densify path that heals
       // a cross-table tie must not mint one of their slots.
+      //
+      // Locations are NORMALIZED through the rendered-location set, exactly
+      // like buildPackingTree and foodByLocation normalize rows: during an
+      // optimistic location delete the cache still carries the dead bag's
+      // id while the rows RENDER under Unassigned, and comparing raw cached
+      // ids would drop the genuine-Unassigned hidden rows from the avoid
+      // set (round-6 finding 2).
       const renderedIds = new Set(
         eligibleRows.map((row) => (row.kind === 'gear' ? row.gear.id : row.food.id)),
       )
+      const normalizeLocation = (locationId: string | null) =>
+        locationId !== null && renderedLocationIds.has(locationId)
+          ? locationId
+          : null
       const cohortLocation = eligibleRows[0]
-        ? eligibleRows[0].kind === 'gear'
-          ? eligibleRows[0].gear.packingLocationId
-          : eligibleRows[0].food.packingLocationId
+        ? normalizeLocation(
+            eligibleRows[0].kind === 'gear'
+              ? eligibleRows[0].gear.packingLocationId
+              : eligibleRows[0].food.packingLocationId,
+          )
         : null
       const avoidRanks = new Set([
         ...listItems
           .filter(
             (item) =>
-              item.packingLocationId === cohortLocation && !renderedIds.has(item.id),
+              normalizeLocation(item.packingLocationId) === cohortLocation &&
+              !renderedIds.has(item.id),
           )
           .map((item) => item.packSortOrder),
         ...listFood.items
           .filter(
             (item) =>
-              item.packingLocationId === cohortLocation && !renderedIds.has(item.id),
+              normalizeLocation(item.packingLocationId) === cohortLocation &&
+              !renderedIds.has(item.id),
           )
           .map((item) => item.packSortOrder),
       ])
