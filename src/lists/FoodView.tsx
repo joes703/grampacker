@@ -411,15 +411,6 @@ function FoodDocument({
                 Add food
               </PrimaryButton>
             )}
-            {/* The app already labels gear consumables "food, fuel, water". Anyone
-                keeping a "Food bag" gear row AND listing its contents here would
-                count the same grams twice. Lives on the add-food card (not the
-                Carrying card, which is absent until the first item exists) so it
-                is visible at the exact moment it matters: adding the first food. */}
-            <p className="mt-2 text-xs text-gray-500">
-              Adds to your consumable weight. If you also have a food item in your
-              gear list, remove it so it is not counted twice.
-            </p>
           </section>
 
           {food.items.length > 0 && (
