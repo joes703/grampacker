@@ -97,6 +97,9 @@ const foodItemFixture = {
   weightGrams: 90,
   quantity: 1,
   sortOrder: 0,
+  isPacked: false,
+  packingLocationId: null,
+  packSortOrder: 0,
   slotIds: ['s1'],
 }
 const listFoodFixture = {

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { createDb, type Db } from '../db'
 import { createFoodRepo } from './food'
 import { createListItemsRepo } from './list-items'
+import { createPackReorderRepo } from './pack-reorder'
 import { createListsRepo } from './lists'
 import { listItemFailure } from '../routes/lists'
 import { apiRequest } from '../test/api-helpers'
@@ -510,11 +511,13 @@ describe('reorderPack loses a race', () => {
     const listId = await createList(cookie, 'Trip')
     const updates = await seedTwoItemCohort(cookie, listId)
 
-    const repo = createListItemsRepo(
-      failing(raw(), 'batch', rankCollision()),
+    // skip = 1: the union reorder's FIRST batch is the cohort read; the
+    // injected failure must land on the write batch that follows it.
+    const repo = createPackReorderRepo(
+      failing(raw(), 'batch', rankCollision(), 1),
       userId,
     )
-    const result = await repo.reorderPack(listId, updates)
+    const result = await repo.reorder(listId, { items: updates, foodItems: [] })
     expect(result).toEqual({ ok: false, reason: 'conflict' })
   })
 
@@ -528,8 +531,11 @@ describe('reorderPack loses a race', () => {
         'NOT NULL constraint failed: _pack_reorder_guard.ok: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_NOTNULL)',
       ),
     })
-    const repo = createListItemsRepo(failing(raw(), 'batch', guardViolation), userId)
-    const result = await repo.reorderPack(listId, updates)
+    const repo = createPackReorderRepo(
+      failing(raw(), 'batch', guardViolation, 1),
+      userId,
+    )
+    const result = await repo.reorder(listId, { items: updates, foodItems: [] })
     expect(result).toEqual({ ok: false, reason: 'conflict' })
   })
 
@@ -542,8 +548,8 @@ describe('reorderPack loses a race', () => {
     const testApp = new Hono<{ Variables: { repos: unknown } }>()
     testApp.use('*', async (c, next) => {
       c.set('repos', {
-        listItems: {
-          reorderPack: async () => ({ ok: false, reason: 'conflict' }),
+        packReorder: {
+          reorder: async () => ({ ok: false, reason: 'conflict' }),
         },
       })
       await next()

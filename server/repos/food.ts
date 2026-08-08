@@ -1,9 +1,21 @@
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
 import type { Db } from '../db'
-import { listFoodItemSlots, listFoodItems, listFoodSlots, lists } from '../db/schema'
+import {
+  listFoodItemSlots,
+  listFoodItems,
+  listFoodSlots,
+  lists,
+  packingLocations,
+} from '../db/schema'
 import { MEALS, type Meal } from '../../shared/food'
 import { chunkForParamCap } from './chunk-ids'
-import { isForeignKeyViolation, isTriggerAbort } from './db-errors'
+import {
+  isAnyUniqueViolation,
+  isForeignKeyViolation,
+  isPackRankRangeError,
+  isTriggerAbort,
+} from './db-errors'
+import { nextUnionPackRank } from './pack-reorder'
 
 // The food estimate: slots are the trip's eating periods, items are what you
 // CARRY, and the association between them expresses intent only.
@@ -26,6 +38,12 @@ export type FoodItemRow = {
   weightGrams: number
   quantity: number
   sortOrder: number
+  // Pack state (0022): food is a full peer of gear in Pack mode. Rank
+  // semantics live on pack-reorder.ts; weight stays summed over items alone
+  // regardless of where they are packed.
+  isPacked: boolean
+  packingLocationId: string | null
+  packSortOrder: number
   slotIds: string[]
 }
 
@@ -37,7 +55,16 @@ export type ListFood = {
 
 export type FoodWriteResult<T> =
   | { ok: true; row: T }
-  | { ok: false; reason: 'not_found' | 'cap_exceeded' | 'invalid_slots' }
+  | {
+      ok: false
+      reason:
+        | 'not_found'
+        | 'cap_exceeded'
+        | 'invalid_slots'
+        | 'invalid_location'
+        | 'pack_rank_exhausted'
+        | 'conflict'
+    }
 
 export function isFoodItemCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'food item cap exceeded')
@@ -161,6 +188,9 @@ export function createFoodRepo(db: Db, userId: string) {
             weightGrams: listFoodItems.weightGrams,
             quantity: listFoodItems.quantity,
             sortOrder: listFoodItems.sortOrder,
+            isPacked: listFoodItems.isPacked,
+            packingLocationId: listFoodItems.packingLocationId,
+            packSortOrder: listFoodItems.packSortOrder,
           })
           .from(listFoodItems)
           .where(and(eq(listFoodItems.listId, listId), eq(listFoodItems.userId, userId)))
@@ -357,27 +387,48 @@ export function createFoodRepo(db: Db, userId: string) {
         .from(listFoodItems)
         .where(and(eq(listFoodItems.listId, listId), eq(listFoodItems.userId, userId)))
 
-      const insertItem = db.insert(listFoodItems).values({
-        id,
-        userId,
-        listId,
-        name: input.name,
-        weightGrams: input.weightGrams,
-        // Exactly what the caller asked for. Never the slot count.
-        quantity: input.quantity,
-        sortOrder: (maxRow?.max ?? -1) + 1,
-        createdAt: now,
-        updatedAt: now,
-      })
+      const insertItem = db
+        .insert(listFoodItems)
+        .values({
+          id,
+          userId,
+          listId,
+          name: input.name,
+          weightGrams: input.weightGrams,
+          // Exactly what the caller asked for. Never the slot count.
+          quantity: input.quantity,
+          sortOrder: (maxRow?.max ?? -1) + 1,
+          // A new food item arrives Unassigned, one past that cohort's UNION
+          // maximum (gear and food - see pack-reorder.ts). DEFAULT 0 would
+          // collide with whatever already holds rank 0 there.
+          packSortOrder: nextUnionPackRank(listId, userId, null),
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning({ packSortOrder: listFoodItems.packSortOrder })
 
       // Item and associations in ONE batch: a failed association must not leave
       // an orphaned item behind.
       const linkInserts = linkStatements(db, listId, userId, id, usable)
+      let inserted: { packSortOrder: number } | undefined
       try {
-        await db.batch([insertItem, ...linkInserts])
+        const [insertRows] = await db.batch([insertItem, ...linkInserts])
+        inserted = insertRows[0]
       } catch (err) {
         if (isFoodItemCapError(err)) return { ok: false, reason: 'cap_exceeded' }
         if (isSlotNotNeededError(err)) return { ok: false, reason: 'invalid_slots' }
+        // 0022's range trigger: the Unassigned cohort sits at PACK_RANK_MAX,
+        // so the max+1 above would step past it.
+        if (isPackRankRangeError(err)) {
+          return { ok: false, reason: 'pack_rank_exhausted' }
+        }
+        // The only unique constraint this batch can trip is the food pack
+        // cohort index: a concurrent arrival claimed the same rank first.
+        // Defensive on serialized D1 (the subquery runs inside the
+        // statement), but a classified 409 beats an unexplained 500.
+        if (isAnyUniqueViolation(err)) {
+          return { ok: false, reason: 'conflict' }
+        }
         // A concurrent delete beat the batch: the list itself (cascade took
         // the slots with it) or a day-trim that removed a slot this item was
         // being placed into. classifyFoodFk re-probes and says which; an FK
@@ -388,6 +439,7 @@ export function createFoodRepo(db: Db, userId: string) {
         }
         throw err
       }
+      if (!inserted) throw new Error('food item insert returned no row')
 
       return {
         ok: true,
@@ -397,6 +449,9 @@ export function createFoodRepo(db: Db, userId: string) {
           weightGrams: input.weightGrams,
           quantity: input.quantity,
           sortOrder: (maxRow?.max ?? -1) + 1,
+          isPacked: false,
+          packingLocationId: null,
+          packSortOrder: inserted.packSortOrder,
           slotIds: usable,
         },
       }
@@ -410,6 +465,8 @@ export function createFoodRepo(db: Db, userId: string) {
         weightGrams?: number
         quantity?: number
         slotIds?: string[]
+        isPacked?: boolean
+        packingLocationId?: string | null
       },
     ): Promise<FoodWriteResult<FoodItemRow>> {
       if (!(await ownsList(listId))) return { ok: false, reason: 'not_found' }
@@ -421,6 +478,9 @@ export function createFoodRepo(db: Db, userId: string) {
           weightGrams: listFoodItems.weightGrams,
           quantity: listFoodItems.quantity,
           sortOrder: listFoodItems.sortOrder,
+          isPacked: listFoodItems.isPacked,
+          packingLocationId: listFoodItems.packingLocationId,
+          packSortOrder: listFoodItems.packSortOrder,
         })
         .from(listFoodItems)
         .where(
@@ -445,6 +505,48 @@ export function createFoodRepo(db: Db, userId: string) {
       if (patch.name !== undefined) set.name = patch.name
       if (patch.weightGrams !== undefined) set.weightGrams = patch.weightGrams
       if (patch.quantity !== undefined) set.quantity = patch.quantity
+      if (patch.isPacked !== undefined) set.isPacked = patch.isPacked
+      if (patch.packingLocationId !== undefined) {
+        set.packingLocationId = patch.packingLocationId
+        // Mirrors the gear move exactly (list-items.ts update): a move
+        // rebases the PACK rank only, landing the row LAST in its
+        // destination's union cohort; the did-it-actually-change test lives
+        // INSIDE the statement so a re-assignment to the current bag does
+        // not walk the row to the bottom of its own bag. `IS` because the
+        // target may be null (Unassigned). Appends need no two-phase write.
+        set.packSortOrder = sql`case
+          when ${listFoodItems.packingLocationId} is ${patch.packingLocationId}
+          then ${listFoodItems.packSortOrder}
+          else ${nextUnionPackRank(listId, userId, patch.packingLocationId)}
+        end`
+      }
+      // A real assignment is accepted only when the target location belongs
+      // to this same list and user. PRECHECKED rather than gated inside the
+      // UPDATE's where-clause (the gear shape): this batch may also carry the
+      // slot-link rewrite, and an in-statement gate that misses would let the
+      // slot statements apply while the location write silently did not - a
+      // partially-applied patch. A location cannot move lists (0014's
+      // immutability trigger), so the only race left after the precheck is
+      // deletion, which the FK catches below. Food cannot back a container,
+      // so there is no cycle to check, unlike the gear gate. Null
+      // (Unassigned) deliberately skips the gate.
+      if (
+        patch.packingLocationId !== undefined &&
+        patch.packingLocationId !== null
+      ) {
+        const [location] = await db
+          .select({ id: packingLocations.id })
+          .from(packingLocations)
+          .where(
+            and(
+              eq(packingLocations.id, patch.packingLocationId),
+              eq(packingLocations.listId, listId),
+              eq(packingLocations.userId, userId),
+            ),
+          )
+          .limit(1)
+        if (!location) return { ok: false, reason: 'invalid_location' }
+      }
 
       const statements: Parameters<Db['batch']>[0][number][] = [
         db
@@ -456,7 +558,12 @@ export function createFoodRepo(db: Db, userId: string) {
               eq(listFoodItems.listId, listId),
               eq(listFoodItems.userId, userId),
             ),
-          ),
+          )
+          .returning({
+            isPacked: listFoodItems.isPacked,
+            packingLocationId: listFoodItems.packingLocationId,
+            packSortOrder: listFoodItems.packSortOrder,
+          }),
       ]
       if (usable !== null) {
         statements.push(
@@ -473,15 +580,51 @@ export function createFoodRepo(db: Db, userId: string) {
         )
       }
       const [first, ...rest] = statements
+      let updated:
+        | { isPacked: boolean; packingLocationId: string | null; packSortOrder: number }
+        | undefined
       try {
-        if (first) await db.batch([first, ...rest])
+        if (first) {
+          const [updateRows] = await db.batch([first, ...rest])
+          updated = (updateRows as typeof updated[])[0]
+        }
       } catch (err) {
         if (isSlotNotNeededError(err)) return { ok: false, reason: 'invalid_slots' }
-        // Same recovery as createItem, plus the item itself as a probed
-        // parent: the association inserts reference it, and a concurrent
-        // delete of the item (or the whole list) fires the same anonymous FK
-        // error a trimmed slot does.
+        // 0022's range trigger: the destination cohort's rank space is
+        // exhausted, so the move's union max+1 stepped past PACK_RANK_MAX.
+        if (isPackRankRangeError(err)) {
+          return { ok: false, reason: 'pack_rank_exhausted' }
+        }
+        // A concurrent move claimed the destination rank first; the unique
+        // cohort index rejected the batch. Defensive on serialized D1, but a
+        // classified 409 beats an unexplained 500.
+        if (isAnyUniqueViolation(err)) {
+          return { ok: false, reason: 'conflict' }
+        }
+        // Same recovery as createItem, plus the item itself and (when a
+        // location was being assigned) the prechecked location: a concurrent
+        // location delete between precheck and batch fires the same
+        // anonymous FK error a trimmed slot does.
         if (isForeignKeyViolation(err)) {
+          if (
+            patch.packingLocationId !== undefined &&
+            patch.packingLocationId !== null
+          ) {
+            const [locationStillThere] = await db
+              .select({ id: packingLocations.id })
+              .from(packingLocations)
+              .where(
+                and(
+                  eq(packingLocations.id, patch.packingLocationId),
+                  eq(packingLocations.listId, listId),
+                  eq(packingLocations.userId, userId),
+                ),
+              )
+              .limit(1)
+            if (!locationStillThere) {
+              return { ok: false, reason: 'invalid_location' }
+            }
+          }
           const reason = await classifyFoodFk(listId, itemId, usable ?? [])
           if (reason !== null) return { ok: false, reason }
         }
@@ -511,6 +654,16 @@ export function createFoodRepo(db: Db, userId: string) {
           weightGrams: patch.weightGrams ?? item.weightGrams,
           quantity: patch.quantity ?? item.quantity,
           sortOrder: item.sortOrder,
+          // From the write's RETURNING when it landed (the moved-to rank is
+          // computed inside the statement and unknowable beforehand); the
+          // pre-read row covers the vanished-concurrently case, where the
+          // stale values are as good as answers get.
+          isPacked: updated?.isPacked ?? item.isPacked,
+          packingLocationId:
+            updated !== undefined
+              ? updated.packingLocationId
+              : item.packingLocationId,
+          packSortOrder: updated?.packSortOrder ?? item.packSortOrder,
           slotIds: links,
         },
       }

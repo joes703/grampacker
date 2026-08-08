@@ -84,6 +84,18 @@ foodRoutes.patch('/:id/food/items/:itemId', async (c) => {
     .food.updateItem(c.req.param('id'), c.req.param('itemId'), parsed.data)
   if (!result.ok) {
     if (result.reason === 'invalid_slots') return c.json({ error: 'Invalid slots' }, 400)
+    // A location id that is not on this list or not this user's. Same
+    // wording and status as the gear item PATCH uses for the same failure.
+    if (result.reason === 'invalid_location') {
+      return c.json({ error: 'Invalid packing location' }, 400)
+    }
+    // Lost a race for the destination rank; nothing partial landed.
+    if (result.reason === 'conflict') {
+      return c.json({ error: 'This bag changed while you were moving' }, 409)
+    }
+    if (result.reason === 'pack_rank_exhausted') {
+      return c.json({ error: 'This bag cannot accept more items' }, 422)
+    }
     return c.json({ error: 'Not found' }, 404)
   }
   return c.json(result.row)

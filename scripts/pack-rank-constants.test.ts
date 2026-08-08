@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { LIST_ITEM_CAP, PACK_RANK_MAX } from '../shared/lists'
+import { FOOD_ITEM_CAP } from '../shared/food'
 
 // PACK_RANK_MAX and LIST_ITEM_CAP are declared once in shared/lists.ts, but two
 // things outside TypeScript's reach hold copies of the same numbers:
@@ -43,6 +44,18 @@ describe('pack rank constants stay in step outside TypeScript', () => {
     // every orphan at base+i.
     expect(significantNumbers(sql)).toEqual(
       new Set([LIST_ITEM_CAP, PACK_RANK_MAX, PACK_RANK_MAX - LIST_ITEM_CAP]),
+    )
+  })
+
+  it("migration 0022's food triggers enforce exactly the bounds shared/ declares", () => {
+    const sql = stripSqlComments(readRepoFile('migrations/0022_food-pack-state.sql'))
+
+    // 0022 mirrors 0019 onto list_food_items: same ceiling, scratch band
+    // FOOD_ITEM_CAP wide instead of LIST_ITEM_CAP. Unlike 0019 it contains no
+    // headroom-floor repair (no food cohort can predate the triggers), so
+    // only two values are entitled to appear.
+    expect(significantNumbers(sql)).toEqual(
+      new Set([FOOD_ITEM_CAP, PACK_RANK_MAX]),
     )
   })
 

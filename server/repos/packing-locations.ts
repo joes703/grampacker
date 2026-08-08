@@ -1,13 +1,20 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import type { Db } from '../db'
-import { gearItems, listItems, lists, packingLocations } from '../db/schema'
+import {
+  gearItems,
+  listFoodItems,
+  listItems,
+  lists,
+  packingLocations,
+} from '../db/schema'
 import {
   isForeignKeyViolation,
   isPackRankRangeError,
   isTriggerAbort,
   isUniqueViolation,
 } from './db-errors'
+import { unionOrder } from './pack-reorder'
 
 const containerItems = alias(listItems, 'container_items')
 const containerGear = alias(gearItems, 'container_gear')
@@ -230,34 +237,79 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       listId: string,
       id: string,
     ): Promise<'deleted' | 'not_found' | 'pack_rank_exhausted'> {
-      // Read the orphans in their current pack order. Ordering the read is
-      // what makes "keep their relative order" true rather than incidental.
-      const orphans = await db
-        .select({ id: listItems.id })
-        .from(listItems)
-        .where(
-          and(
-            eq(listItems.packingLocationId, id),
-            eq(listItems.listId, listId),
-            eq(listItems.userId, userId),
-          ),
-        )
-        .orderBy(asc(listItems.packSortOrder), asc(listItems.id))
+      // Read BOTH halves of the bag - the cohort is a union since 0022 - in
+      // one batch so the interleaved order is a consistent snapshot. Ordering
+      // the read is what makes "keep their relative order" true rather than
+      // incidental.
+      const [gearOrphans, foodOrphans, gearMaxRows, foodMaxRows] =
+        await db.batch([
+          db
+            .select({
+              id: listItems.id,
+              packSortOrder: listItems.packSortOrder,
+            })
+            .from(listItems)
+            .where(
+              and(
+                eq(listItems.packingLocationId, id),
+                eq(listItems.listId, listId),
+                eq(listItems.userId, userId),
+              ),
+            )
+            .orderBy(asc(listItems.packSortOrder), asc(listItems.id)),
+          db
+            .select({
+              id: listFoodItems.id,
+              packSortOrder: listFoodItems.packSortOrder,
+            })
+            .from(listFoodItems)
+            .where(
+              and(
+                eq(listFoodItems.packingLocationId, id),
+                eq(listFoodItems.listId, listId),
+                eq(listFoodItems.userId, userId),
+              ),
+            )
+            .orderBy(asc(listFoodItems.packSortOrder), asc(listFoodItems.id)),
+          // The Unassigned cohort's per-table maxima, in the SAME batch as
+          // the orphan reads so base is computed from the snapshot the
+          // reassignments will land on. Worn rows count: they render outside
+          // the packing tree but keep their slot reserved, so ignoring them
+          // would drop an orphan onto a rank a worn row owns.
+          db
+            .select({
+              max: sql<number | null>`max(${listItems.packSortOrder})`,
+            })
+            .from(listItems)
+            .where(
+              and(
+                eq(listItems.listId, listId),
+                eq(listItems.userId, userId),
+                isNull(listItems.packingLocationId),
+              ),
+            ),
+          db
+            .select({
+              max: sql<number | null>`max(${listFoodItems.packSortOrder})`,
+            })
+            .from(listFoodItems)
+            .where(
+              and(
+                eq(listFoodItems.listId, listId),
+                eq(listFoodItems.userId, userId),
+                isNull(listFoodItems.packingLocationId),
+              ),
+            ),
+        ])
+      // The bag's contents in display order, so the block that lands at the
+      // end of Unassigned reads exactly as the bag did - food interleaved
+      // where it was, not sorted to the back.
+      const orphans = unionOrder(gearOrphans, foodOrphans)
 
-      // One past the Unassigned cohort's current maximum. Worn rows count:
-      // they render outside the packing tree but keep their slot reserved, so
-      // ignoring them here would drop an orphan onto a rank a worn row owns.
-      const [maxRow] = await db
-        .select({ max: sql<number | null>`max(${listItems.packSortOrder})` })
-        .from(listItems)
-        .where(
-          and(
-            eq(listItems.listId, listId),
-            eq(listItems.userId, userId),
-            isNull(listItems.packingLocationId),
-          ),
-        )
-      const base = (maxRow?.max ?? -1) + 1
+      // One past the Unassigned cohort's UNION maximum (the bag's contents
+      // are the union since 0022).
+      const base =
+        Math.max(gearMaxRows[0]?.max ?? -1, foodMaxRows[0]?.max ?? -1) + 1
 
       const now = Date.now()
       // Appending, so no two-phase write is needed: every rank claimed here is
@@ -266,20 +318,35 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       // delete rolls back, which is the outcome we want - a loud retry beats a
       // half-deleted bag.
       const reassign = orphans.map((orphan, i) =>
-        db
-          .update(listItems)
-          .set({
-            packingLocationId: null,
-            packSortOrder: base + i,
-            updatedAt: now,
-          })
-          .where(
-            and(
-              eq(listItems.id, orphan.id),
-              eq(listItems.listId, listId),
-              eq(listItems.userId, userId),
-            ),
-          ),
+        orphan.kind === 'gear'
+          ? db
+              .update(listItems)
+              .set({
+                packingLocationId: null,
+                packSortOrder: base + i,
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  eq(listItems.id, orphan.row.id),
+                  eq(listItems.listId, listId),
+                  eq(listItems.userId, userId),
+                ),
+              )
+          : db
+              .update(listFoodItems)
+              .set({
+                packingLocationId: null,
+                packSortOrder: base + i,
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  eq(listFoodItems.id, orphan.row.id),
+                  eq(listFoodItems.listId, listId),
+                  eq(listFoodItems.userId, userId),
+                ),
+              ),
       )
       const remove = db
         .delete(packingLocations)

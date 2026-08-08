@@ -1,14 +1,14 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db'
-import { categories, gearItems, listItems, lists, packReorderGuard } from '../db/schema'
+import { categories, gearItems, listFoodItems, listItems, lists } from '../db/schema'
 import {
   isAnyUniqueViolation,
   isForeignKeyViolation,
-  isPackGuardViolation,
   isPackRankRangeError,
   isTriggerAbort,
 } from './db-errors'
 import type { GearItemRow } from './gear-items'
+import { nextUnionPackRank } from './pack-reorder'
 
 const itemCols = {
   id: listItems.id,
@@ -96,22 +96,6 @@ export type ListItemWriteResult =
         | 'conflict'
     }
 
-// A pack reorder fails in more distinguishable ways than a list reorder, and
-// the route maps each to a different status: an unowned id is a 404, a
-// malformed payload is a 400, and losing a race is a 409 the client can retry
-// after refetching.
-export type PackReorderResult =
-  | { ok: true }
-  | {
-      ok: false
-      reason:
-        | 'not_found'
-        | 'cross_cohort'
-        | 'not_a_permutation'
-        | 'worn_row'
-        | 'conflict'
-    }
-
 // The 0004 trigger is the single enforcement point; keep in lockstep
 // with its WHEN clause and message.
 export const LIST_ITEM_CAP = 300
@@ -153,15 +137,11 @@ export function createListItemsRepo(db: Db, userId: string) {
     return sql`coalesce((select max(${listItems.sortOrder}) + 1 from ${listItems} where ${listItems.listId} = ${listId} and ${listItems.userId} = ${userId}), 0)`
   }
 
-  // The pack rank a row takes when it ARRIVES in a cohort: one past that
-  // cohort's current maximum. Cohort-scoped, not list-scoped - a list-wide
-  // maximum would make a location's orphans interleave into Unassigned by
-  // ranks that mean nothing to the user.
-  //
-  // `is not distinct from` rather than `=` because the Unassigned cohort is
-  // keyed by a NULL location, and `null = null` is null in SQL - the ordinary
-  // comparison would match no rows and hand every new Unassigned arrival rank
-  // 0, colliding with whatever already holds it.
+  // The pack rank a row takes when it ARRIVES in a cohort: one past the
+  // cohort's current UNION maximum (gear and food together - the bag's
+  // contents are the union since 0022; see pack-reorder.ts). Cohort-scoped,
+  // not list-scoped - a list-wide maximum would make a location's orphans
+  // interleave into Unassigned by ranks that mean nothing to the user.
   //
   // Worn rows are counted. They render outside the packing tree but keep their
   // rank reserved, so excluding them here would let an arrival land on a slot a
@@ -170,7 +150,7 @@ export function createListItemsRepo(db: Db, userId: string) {
     listId: string,
     locationId: string | null,
   ) {
-    return sql`coalesce((select max(${listItems.packSortOrder}) + 1 from ${listItems} where ${listItems.listId} = ${listId} and ${listItems.userId} = ${userId} and ${listItems.packingLocationId} is not distinct from ${locationId}), 0)`
+    return nextUnionPackRank(listId, userId, locationId)
   }
 
   // Joined same-owner read; the FK guarantees item.userId == gear.userId,
@@ -553,208 +533,35 @@ export function createListItemsRepo(db: Db, userId: string) {
       return true
     },
 
-    // packSortOrder ONLY. Same product rule: no updatedAt bump.
-    //
-    // Three things make this different from reorder() above, and all three are
-    // consequences of packSortOrder being a per-COHORT rank under a unique
-    // index rather than a free-floating list-wide number.
-    //
-    // 1. The payload must stay inside ONE cohort. A pack reorder is a
-    //    within-bag operation by definition, and a payload spanning two bags
-    //    would be writing ranks that mean different things.
-    // 2. It must be a PERMUTATION of the touched rows' current ranks. Any
-    //    other value set can collide with a row the payload does not mention,
-    //    and the unique index would reject the whole batch - a 409 for what is
-    //    really a malformed request.
-    // 3. Worn rows are rejected. They render outside the packing tree and
-    //    cannot be dragged, so their presence means a stale or hand-made
-    //    client, and honouring it would move a slot a worn row has reserved.
-    //
-    // Returns a reason rather than a bare boolean so the route can tell
-    // "not yours" (404) from "malformed" (400) from "someone beat you" (409).
-    async reorderPack(
-      listId: string,
-      updates: { id: string; packSortOrder: number }[],
-    ): Promise<PackReorderResult> {
-      // Owned-set membership rather than inArray over the input, for the same
-      // reason as reorder(): D1 caps bound parameters at 100 per query and the
-      // DTO allows LIST_ITEM_CAP ids. The per-list cap bounds this scan.
-      const rows = await db
-        .select({
-          id: listItems.id,
-          packingLocationId: listItems.packingLocationId,
-          packSortOrder: listItems.packSortOrder,
-          isWorn: listItems.isWorn,
-        })
-        .from(listItems)
-        .where(and(eq(listItems.listId, listId), eq(listItems.userId, userId)))
-      const byId = new Map(rows.map((r) => [r.id, r]))
-
-      const touched = []
-      for (const u of updates) {
-        const row = byId.get(u.id)
-        if (!row) return { ok: false, reason: 'not_found' }
-        if (row.isWorn) return { ok: false, reason: 'worn_row' }
-        touched.push(row)
-      }
-
-      const [firstTouched] = touched
-      if (!firstTouched) return { ok: true } // unreachable: DTO enforces min(1)
-      const cohort = firstTouched.packingLocationId
-      if (touched.some((r) => r.packingLocationId !== cohort)) {
-        return { ok: false, reason: 'cross_cohort' }
-      }
-
-      // Permutation check: the multiset of incoming ranks must equal the
-      // multiset the touched rows already hold. Sorted comparison is enough -
-      // duplicates in the payload show up as a mismatch against a set of
-      // ranks that is unique by construction.
-      const before = touched.map((r) => r.packSortOrder).sort((a, b) => a - b)
-      const after = updates.map((u) => u.packSortOrder).sort((a, b) => a - b)
-      if (before.some((rank, i) => rank !== after[i])) {
-        return { ok: false, reason: 'not_a_permutation' }
-      }
-
-      // TWO-PHASE, and it is not optional. SQLite enforces uniqueness per
-      // STATEMENT, so writing a permutation as a sequence of updates collides
-      // the moment one row takes a rank another still holds. Phase 1 parks
-      // every touched row on a scratch rank; phase 2 writes the finals.
-      //
-      // THE SCRATCH RANGE IS NEGATIVE, and migration 0019 is what makes that a
-      // fact rather than a hope. It always was `-1 - i`, but its safety rested
-      // on "committed ranks are never negative" - an invariant nothing enforced.
-      // 0019 enforces it: INSERT allows 0..PACK_RANK_MAX, UPDATE additionally
-      // allows -LIST_ITEM_CAP..-1 because parking IS an update.
-      //
-      // Negative specifically, NOT a band above PACK_RANK_MAX. That alternative
-      // was tried and is broken: arrivals compute `max + 1`, and import can
-      // legitimately create a row at exactly PACK_RANK_MAX, so an ordinary move
-      // COMMITS a row above it - which the guard below would then count as one
-      // of our parks. Every writer of this column produces a nonnegative value
-      // by construction, so only a park can go below zero.
-      //
-      // The range is exactly LIST_ITEM_CAP wide and the DTO caps a payload at
-      // the same number, so `i` always fits.
-      //
-      // Everything is ONE db.batch, which D1 runs as a single transaction: if
-      // anything fails - including a concurrent writer taking a rank first -
-      // the scratch values roll back with everything else and never survive.
-      //
-      // Both phases RE-ASSERT what the pre-read saw. Without that the writes
-      // key on id alone, and the pre-read is a separate query - so a row that
-      // moved cohorts, became worn, or was reordered by someone else between
-      // the two would still be written. The batch is atomic, but atomic
-      // application of a stale payload is still wrong: it would land a rank
-      // computed for one bag onto a row now sitting in another.
-      const byIdCohortAndRank = (u: { id: string; packSortOrder: number }) => {
-        const seen = byId.get(u.id)!
-        return and(
-          eq(listItems.id, u.id),
-          eq(listItems.userId, userId),
-          eq(listItems.listId, listId),
-          eq(listItems.isWorn, false),
-          eq(listItems.packSortOrder, seen.packSortOrder),
-          cohort === null
-            ? isNull(listItems.packingLocationId)
-            : eq(listItems.packingLocationId, cohort),
-        )
-      }
-      const scratch = (i: number) => -1 - i
-      const park = updates.map((u, i) =>
-        db
-          .update(listItems)
-          .set({ packSortOrder: scratch(i) })
-          .where(byIdCohortAndRank(u)),
-      )
-
-      // THE GUARD. A precondition that no longer holds matches zero rows, and
-      // SQLite does not treat that as an error - so without this, losing a race
-      // is SILENT. When a concurrent reorder rewrites the cohort first, every
-      // park misses AND every settle misses, the batch commits having changed
-      // nothing, and the route returns 204 claiming success. The client
-      // announces the move and snaps back on the next refetch.
-      //
-      // A batch statement cannot branch on an earlier one, so aborting has to
-      // be a statement that FAILS. This yields NULL into a NOT NULL column
-      // exactly when the number of parked rows in this cohort is not the number
-      // of rows we tried to park, and D1 rolls the whole batch back.
-      //
-      // Counting negatives is EXACT rather than heuristic, because 0019 makes
-      // a negative rank unreachable by every other writer. Counting also means
-      // no ids in the predicate - a per-id join would breach D1's
-      // 100-parameter cap at 300 items.
-      //
-      // Raw SQL rides an insert builder deliberately: `db.run(sql)` typechecks
-      // as a batch item and then crashes the D1 driver. The select renders
-      // verbatim after the column list in DEFINITION order, so it must yield
-      // (list_id, ok) in that order. Identifiers are hand-written so the
-      // unqualified-rendering trap cannot reach them.
-      const cohortMatch = cohort === null
-        ? sql`packing_location_id is null`
-        : sql`packing_location_id = ${cohort}`
-      const guard = db.insert(packReorderGuard).select(
-        sql`select ${listId}, (select case when count(*) = ${updates.length} then 1 end
-              from list_items
-             where list_id = ${listId} and user_id = ${userId}
-               and ${cohortMatch}
-               and pack_sort_order < 0)`,
-      )
-
-      const settle = updates.map((u, i) =>
-        db
-          .update(listItems)
-          .set({ packSortOrder: u.packSortOrder })
-          .where(
-            and(
-              eq(listItems.id, u.id),
-              eq(listItems.userId, userId),
-              eq(listItems.listId, listId),
-              eq(listItems.isWorn, false),
-              eq(listItems.packSortOrder, scratch(i)),
-              cohort === null
-                ? isNull(listItems.packingLocationId)
-                : eq(listItems.packingLocationId, cohort),
-            ),
-          ),
-      )
-
-      // Not optional. The guard table is keyed on list_id, so leaving the row
-      // behind makes the NEXT reorder of this list collide on the primary key.
-      const cleanup = db
-        .delete(packReorderGuard)
-        .where(eq(packReorderGuard.listId, listId))
-
-      const [first, ...rest] = [...park, guard, ...settle, cleanup]
-      if (!first) return { ok: true }
-      try {
-        await db.batch([first, ...rest])
-      } catch (err) {
-        // Two shapes of the same answer: someone beat us. Either a concurrent
-        // reorder took a rank so the finals collide (unique violation), or the
-        // guard fired because a park did not land (NOT NULL violation). Both
-        // rolled the batch back; the client refetches and retries.
-        if (isAnyUniqueViolation(err) || isPackGuardViolation(err)) {
-          return { ok: false, reason: 'conflict' }
-        }
-        throw err
-      }
-      return { ok: true }
-    },
-
     // Pack-mode resets. Only touches rows where the flag is set, so an
-    // untouched item's updatedAt stays honest.
+    // untouched item's updatedAt stays honest. Food is cleared in the same
+    // batch: "start packing over" means the whole pack, and a reset that
+    // left food checked would be a lie the UI repeats.
     async resetPacked(listId: string): Promise<boolean> {
       if (!(await ownsList(listId))) return false
-      await db
-        .update(listItems)
-        .set({ isPacked: false, updatedAt: Date.now() })
-        .where(
-          and(
-            eq(listItems.listId, listId),
-            eq(listItems.userId, userId),
-            eq(listItems.isPacked, true),
+      const now = Date.now()
+      await db.batch([
+        db
+          .update(listItems)
+          .set({ isPacked: false, updatedAt: now })
+          .where(
+            and(
+              eq(listItems.listId, listId),
+              eq(listItems.userId, userId),
+              eq(listItems.isPacked, true),
+            ),
           ),
-        )
+        db
+          .update(listFoodItems)
+          .set({ isPacked: false, updatedAt: now })
+          .where(
+            and(
+              eq(listFoodItems.listId, listId),
+              eq(listFoodItems.userId, userId),
+              eq(listFoodItems.isPacked, true),
+            ),
+          ),
+      ])
       return true
     },
 

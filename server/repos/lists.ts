@@ -358,6 +358,9 @@ export function createListsRepo(db: Db, userId: string) {
             weightGrams: listFoodItems.weightGrams,
             quantity: listFoodItems.quantity,
             sortOrder: listFoodItems.sortOrder,
+            isPacked: listFoodItems.isPacked,
+            packingLocationId: listFoodItems.packingLocationId,
+            packSortOrder: listFoodItems.packSortOrder,
           })
           .from(listFoodItems)
           .where(
@@ -493,6 +496,15 @@ export function createListsRepo(db: Db, userId: string) {
           weightGrams: item.weightGrams,
           quantity: item.quantity,
           sortOrder: item.sortOrder,
+          // Pack state copies like gear's: packed flag verbatim, location
+          // remapped, rank verbatim (whole cohorts move as sets, so each
+          // rank stays unique within its new cohort).
+          isPacked: item.isPacked,
+          packingLocationId: remapPackingLocationId(
+            item.packingLocationId,
+            locationIdMap,
+          ),
+          packSortOrder: item.packSortOrder,
           createdAt: now,
           updatedAt: now,
         }))

@@ -20,6 +20,9 @@ const item = (
   weightGrams: 100,
   quantity: 1,
   sortOrder: 0,
+  isPacked: false,
+  packingLocationId: null,
+  packSortOrder: 0,
   slotIds: [],
   ...over,
 })

@@ -85,6 +85,16 @@ export function isPackGuardViolation(err: unknown): boolean {
   )
 }
 
+// The food half of the union reorder guard, 0022's mirror of the above.
+export function isFoodPackGuardViolation(err: unknown): boolean {
+  const msg = rootMessage(err)
+  return (
+    msg !== null &&
+    msg.includes('NOT NULL constraint failed: _food_pack_reorder_guard.ok') &&
+    msg.includes('SQLITE_CONSTRAINT')
+  )
+}
+
 // Migration 0019's range triggers. Reachable only when a cohort has exhausted
 // the rank space (its maximum is already PACK_RANK_MAX, so the `max + 1` every
 // arrival computes would step past it).

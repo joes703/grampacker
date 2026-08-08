@@ -5,6 +5,7 @@ import {
   createListFromSelectionRequestSchema,
   createListRequestSchema,
   importListRequestSchema,
+  normalizeReorderPackRequest,
   quickAddListItemRequestSchema,
   reorderListItemsRequestSchema,
   reorderPackListItemsRequestSchema,
@@ -349,9 +350,15 @@ listRoutes.put('/:id/items/pack-order', async (c) => {
   const raw = await c.req.json().catch(() => null)
   const parsed = reorderPackListItemsRequestSchema.safeParse(raw)
   if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  // Union reorder since 0022: gear and food halves written in one batch.
+  // normalizeReorderPackRequest maps the legacy bare-array shape (gear only)
+  // onto the same payload.
   const result = await c
     .get('repos')
-    .listItems.reorderPack(c.req.param('id'), parsed.data)
+    .packReorder.reorder(
+      c.req.param('id'),
+      normalizeReorderPackRequest(parsed.data),
+    )
   if (result.ok) return c.body(null, 204)
   // An id that is not on this list (or not this user's) is indistinguishable
   // from a list that does not exist, deliberately - the same 404 either way,

@@ -35,7 +35,7 @@ describe('FoodSummaryRow', () => {
       makeFood({
         dayCount: 3,
         items: [
-          { id: 'f1', name: 'Ramen', weightGrams: 85, quantity: 2, sortOrder: 0, slotIds: [] },
+          { id: 'f1', name: 'Ramen', weightGrams: 85, quantity: 2, sortOrder: 0, isPacked: false, packingLocationId: null, packSortOrder: 0, slotIds: [] },
         ],
       }),
     )

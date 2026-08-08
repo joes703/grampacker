@@ -43,6 +43,12 @@ export const foodItemResponseSchema = z.object({
   // inflates the pack weight silently.
   quantity: z.number().int(),
   sortOrder: z.number().int(),
+  // Pack state (0022): food is a full peer of gear in Pack mode. The rank is
+  // a per-cohort rank in the UNION rank space shared with gear - see
+  // server/repos/pack-reorder.ts.
+  isPacked: z.boolean(),
+  packingLocationId: z.string().nullable(),
+  packSortOrder: z.number().int(),
   slotIds: z.array(z.string()),
 })
 export type FoodItemResponse = z.infer<typeof foodItemResponseSchema>
@@ -97,6 +103,12 @@ export const updateFoodItemRequestSchema = z
     weightGrams: foodWeightSchema.optional(),
     quantity: foodQuantitySchema.optional(),
     slotIds: slotIdsSchema.optional(),
+    // Pack state. packingLocationId null means Unassigned; omitted means
+    // "leave the assignment alone" - the same absent-vs-null PATCH semantics
+    // as everything else. packSortOrder is deliberately NOT patchable here:
+    // ranks move only through the pack-order permutation endpoint.
+    isPacked: z.boolean().optional(),
+    packingLocationId: idSchema.nullable().optional(),
   })
   .strict()
   .refine((patch) => Object.keys(patch).length > 0, {
