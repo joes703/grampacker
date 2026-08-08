@@ -374,8 +374,19 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
         }
         merged.forEach((row, dense) => {
           const scratch = row.kind === 'gear' ? -1 - gearSeq++ : -1 - foodSeq++
-          const park = { id: row.row.id, from: row.row.packSortOrder, to: scratch }
-          const settle = { id: row.row.id, from: scratch, to: dense }
+          // `loc` pins each row's expected SOURCE cohort in the mapping: an
+          // orphan concurrently moved to a third bag (possibly keeping its
+          // rank) must abort the batch, not be yanked back to Unassigned.
+          const sourceLoc = row.orphan ? id : null
+          const park = {
+            id: row.row.id,
+            from: row.row.packSortOrder,
+            to: scratch,
+            loc: sourceLoc,
+          }
+          // Parked rows still sit in their source cohort (parking changes
+          // only the rank), so the settle asserts the same loc.
+          const settle = { id: row.row.id, from: scratch, to: dense, loc: sourceLoc }
           if (row.kind === 'gear') {
             parks.gear.push(park)
             ;(row.orphan ? settles.orphanGear : settles.gear).push(settle)

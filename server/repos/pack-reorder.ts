@@ -118,17 +118,21 @@ export function unionOrder<
 // is NOT NULL, so a drifted row ABORTS the whole batch instead of being
 // silently skipped.
 //
-// `cohortMatch` is optional: the reorder pins one cohort; the location-delete
-// fallback renumbers rows across TWO cohorts (Unassigned plus the doomed
-// bag), where (id, from-rank) plus user/list scoping identify each row
-// exactly. `alsoUnassign` additionally clears packing_location_id, for the
-// fallback's orphan settle.
+// `cohortMatch` is optional: the reorder pins one cohort for the whole
+// statement; the location-delete fallback renumbers rows across TWO cohorts
+// and instead pins each row's EXPECTED SOURCE COHORT inside the mapping (the
+// entry's `loc`). Without that per-row assertion, an orphan concurrently
+// moved to another bag while KEEPING its rank would still match on
+// (id, rank) and be silently yanked back to Unassigned (GATE 2 round-5
+// finding 3) - with it, the drifted row's subquery yields NULL and the NOT
+// NULL rank column aborts the whole batch. `alsoUnassign` additionally
+// clears packing_location_id, for the fallback's orphan settle.
 const RANK_CHUNK = 100
 export function chunkedRankWrites(opts: {
   db: Db
   tableName: 'list_items' | 'list_food_items'
   table: typeof listItems | typeof listFoodItems
-  entries: { id: string; from: number; to: number }[]
+  entries: { id: string; from: number; to: number; loc?: string | null }[]
   userId: string
   listId: string
   cohortMatch?: ReturnType<typeof sql>
@@ -150,10 +154,13 @@ export function chunkedRankWrites(opts: {
   } = opts
   const tbl = sql.raw(tableName)
   const statements = []
+  const matchLocation = entries.some((e) => e.loc !== undefined)
   for (let i = 0; i < entries.length; i += RANK_CHUNK) {
     const chunk = JSON.stringify(entries.slice(i, i + RANK_CHUNK))
     const set: Record<string, unknown> = {
-      packSortOrder: sql`(select json_extract(je.value, '$.to') from json_each(${chunk}) as je where json_extract(je.value, '$.id') = ${tbl}.id and json_extract(je.value, '$.from') = ${tbl}.pack_sort_order)`,
+      packSortOrder: matchLocation
+        ? sql`(select json_extract(je.value, '$.to') from json_each(${chunk}) as je where json_extract(je.value, '$.id') = ${tbl}.id and json_extract(je.value, '$.from') = ${tbl}.pack_sort_order and json_extract(je.value, '$.loc') is ${tbl}.packing_location_id)`
+        : sql`(select json_extract(je.value, '$.to') from json_each(${chunk}) as je where json_extract(je.value, '$.id') = ${tbl}.id and json_extract(je.value, '$.from') = ${tbl}.pack_sort_order)`,
     }
     if (alsoUnassign) set.packingLocationId = null
     if (touchUpdatedAt !== undefined) set.updatedAt = touchUpdatedAt
