@@ -64,6 +64,8 @@ export const mutationKeys = {
   updateListItem: (listId: string) => ['update-list-item', listId] as const,
   deleteListItem: (listId: string) => ['delete-list-item', listId] as const,
   moveListItem: (listId: string) => ['move-list-item', listId] as const,
+  moveFoodItem: (listId: string) => ['move-food-item', listId] as const,
+  updateFoodPackState: (listId: string) => ['update-food-pack-state', listId] as const,
   reorderListItems: (listId: string) => ['reorder-list-items', listId] as const,
   reorderPackItems: (listId: string) => ['reorder-pack-items', listId] as const,
 

@@ -11,7 +11,8 @@ import {
   type ListItemPatch,
 } from '../lib/queries'
 import { mutationKeys } from '../lib/queries/keys'
-import { nextPackRankInCohort } from '../lib/grouping'
+import { nextUnionPackRankFor } from './pack-rows'
+import type { FoodItemResponse } from '../../shared/food'
 import { randomTempId } from '../lib/random-temp-id'
 import type { GearItem, ListItemWithGear } from '../lib/types'
 import { type AddItemData } from './use-quick-add-form'
@@ -46,7 +47,18 @@ import { type AddItemData } from './use-quick-add-form'
 // positions the placeholder where the server row will land.
 export function useListItemActions(
   listId: string,
-  { listItems }: { listItems: ListItemWithGear[] },
+  {
+    listItems,
+    foodItems,
+  }: {
+    listItems: ListItemWithGear[]
+    // The placeholder pack rank is one past the Unassigned UNION maximum
+    // (0022: gear and food share the rank space), mirroring the server's
+    // nextUnionPackRank - a gear-only maximum would park the placeholder
+    // above food already sitting in Unassigned for the frame before the
+    // settled refetch corrected it.
+    foodItems: FoodItemResponse[]
+  },
 ) {
   const qc = useQueryClient()
 
@@ -79,7 +91,7 @@ export function useListItemActions(
           // cohort - mirroring what the server assigns. Reusing the document
           // rank here would put the row in the wrong place in Pack for the one
           // frame before the settled refetch corrects it.
-          packSortOrder: nextPackRankInCohort(listItems, null),
+          packSortOrder: nextUnionPackRankFor(listItems, foodItems, null),
           createdAt: now,
           updatedAt: now,
         }
@@ -167,7 +179,10 @@ export function useListItemActions(
       qc,
       queryKey: queryKeys.listItems(listId),
       id: (itemId) => itemId,
-      invalidateKeys: [queryKeys.packingLocations(listId)],
+      // listFood too (0022): deleting a container-backing row deletes its
+      // location, whose SET NULL + rerank cascade now moves FOOD rows as
+      // well as gear.
+      invalidateKeys: [queryKeys.packingLocations(listId), queryKeys.listFood(listId)],
       errorToast: "Couldn't confirm that item was removed. Refresh to check before trying again.",
     }),
   })

@@ -8,8 +8,8 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { ListItemWithGear } from '../lib/types'
 import type { SectionIdentity } from './CategoryGroup'
+import { packRowId, packRowName, type PackRow } from './pack-rows'
 import {
   isNoOpSlot,
   placementSlotLabel,
@@ -53,7 +53,7 @@ type PlacementActions = {
    *  returns there when the mode closes, because the slot that had focus is
    *  about to unmount and focus would otherwise fall to the document. */
   start: (
-    item: ListItemWithGear,
+    row: PackRow,
     section: SectionIdentity,
     origin: HTMLElement | null,
   ) => void
@@ -63,9 +63,9 @@ type PlacementActions = {
    *  pulling focus to the kebab would strand the drag mid-flight. */
   cancel: (options?: { returnFocus?: boolean }) => void
   commit: (
-    itemId: string,
+    rowId: string,
     insertIndex: number,
-    eligibleItems: readonly ListItemWithGear[],
+    eligibleRows: readonly PackRow[],
   ) => void
 }
 
@@ -85,9 +85,9 @@ const PlacementRegisterContext = createContext<RegisterUsableSlot | null>(null)
  */
 export function usePlacement(
   onCommit: (
-    itemId: string,
+    rowId: string,
     insertIndex: number,
-    eligibleItems: readonly ListItemWithGear[],
+    eligibleRows: readonly PackRow[],
   ) => void,
 ): { placement: Placement | null; actions: PlacementActions } {
   const [placement, setPlacement] = useState<Placement | null>(null)
@@ -113,12 +113,12 @@ export function usePlacement(
       if (origin?.isConnected) origin.focus({ preventScroll: true })
     }
     return {
-      start: (item, section, origin) => {
+      start: (row, section, origin) => {
         instanceRef.current += 1
         originRef.current = origin
         setPlacement({
-          itemId: item.id,
-          movingName: item.gearItem.name,
+          itemId: packRowId(row),
+          movingName: packRowName(row),
           sectionKey: section.key,
           instance: instanceRef.current,
         })
@@ -128,12 +128,12 @@ export function usePlacement(
         else restoreFocus()
         setPlacement(null)
       },
-      commit: (itemId, insertIndex, eligibleItems) => {
+      commit: (rowId, insertIndex, eligibleRows) => {
         restoreFocus()
         // Clear FIRST. The mutation is optimistic, so leaving the mode open
         // would briefly render slots against a cohort that is already moving.
         setPlacement(null)
-        onCommitRef.current(itemId, insertIndex, eligibleItems)
+        onCommitRef.current(rowId, insertIndex, eligibleRows)
       },
     }
   }, [])
@@ -227,10 +227,10 @@ export function useIsPlacing(itemId: string): boolean {
  * ALWAYS mounted, for the same reason the slots are - see PlacementSlot.
  */
 export function PlacementBanner({
-  items,
+  rows,
   section,
 }: {
-  items: ListItemWithGear[]
+  rows: readonly PackRow[]
   section: SectionIdentity
 }) {
   const placement = useContext(PlacementStateContext)
@@ -238,7 +238,7 @@ export function PlacementBanner({
   const active =
     placement !== null &&
     placement.sectionKey === section.key &&
-    items.some((item) => item.id === placement.itemId)
+    rows.some((row) => packRowId(row) === placement.itemId)
 
   if (!active || !actions || !placement) return null
 
@@ -274,13 +274,13 @@ export function PlacementBanner({
  */
 export function PlacementSlot({
   slot,
-  items,
+  rows,
   section,
 }: {
   slot: number
   /** The exact array this section rendered. The plan is computed against it
    *  rather than against a rebuilt cohort - see planPlacementWithinLocation. */
-  items: ListItemWithGear[]
+  rows: readonly PackRow[]
   section: SectionIdentity
 }) {
   const placement = useContext(PlacementStateContext)
@@ -297,7 +297,7 @@ export function PlacementSlot({
   // cohort the user never chose.
   const inThisSection = placement !== null && placement.sectionKey === section.key
   const sourceIndex = inThisSection
-    ? items.findIndex((item) => item.id === placement.itemId)
+    ? rows.findIndex((row) => packRowId(row) === placement.itemId)
     : -1
   const active = inThisSection && sourceIndex !== -1
   const usable = active && !isNoOpSlot(slot, sourceIndex)
@@ -326,11 +326,11 @@ export function PlacementSlot({
       // WCAG 2.5.8 applies, and a hairline strip between interactive rows
       // would not clear the spacing exception either.
       className="flex h-6 w-full items-center px-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 group"
-      aria-label={placementSlotLabel(placement.movingName, slot, items, section.name)}
+      aria-label={placementSlotLabel(placement.movingName, slot, rows, section.name)}
       onClick={() => actions.commit(
         placement.itemId,
         visualSlotToInsertIndex(slot, sourceIndex),
-        items,
+        rows,
       )}
     >
       <span

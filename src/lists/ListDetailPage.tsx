@@ -36,10 +36,12 @@ import {
   reorderPackListItems,
   reorderPackingLocations,
   makeOptimisticReorder,
-  makeOptimisticPackReorder,
   makeOptimisticUpdate,
   type ListItemPatch,
 } from '../lib/queries'
+import { makeOptimisticUnionPackReorder } from '../lib/queries/optimistic'
+import { showToast } from '../lib/toast'
+import { updateFoodItem } from '../lib/queries/food'
 import { mutationKeys } from '../lib/queries/keys'
 import type { Category, GearItem, ListItemWithGear, List, PackingLocation } from '../lib/types'
 import { authClient } from '../lib/auth-client'
@@ -57,7 +59,6 @@ import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
 import {
   assignPackRankSlots,
   assignSortOrderSlots,
-  nextPackRankInCohort,
 } from '../lib/grouping'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
@@ -68,16 +69,16 @@ import {
   withFoodWeight,
   consumableGramsForCategory,
 } from '../lib/weight-breakdown'
-import { planPackingItemReorder } from './packing-dnd'
 
 // Stable empty value so the food-derived memos below do not see a fresh object
 // on every render while the query is still cold.
 const EMPTY_LIST_FOOD: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
+const EMPTY_FOOD_ITEMS: FoodItemResponse[] = []
 
 import WeightSummary from './WeightSummary'
 import FoodView from './FoodView'
 import FoodSummaryRow from './FoodSummaryRow'
-import type { ListFoodResponse } from '../../shared/food'
+import type { FoodItemResponse, ListFoodResponse } from '../../shared/food'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
 import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
@@ -117,7 +118,12 @@ import {
   type PackingTreeLocation,
 } from './packing-tree'
 import { usePackingLocationActions } from './use-packing-location-actions'
-import { isPackingCollisionTarget, planPackingItemDragEnd } from './packing-dnd'
+import { isPackingCollisionTarget, planPackingRowDragEnd } from './packing-dnd'
+import {
+  nextUnionPackRankFor,
+  packRowName,
+  type UnionRankUpdates,
+} from './pack-rows'
 import MoveToLocationMenu from './MoveToLocationMenu'
 import { PackLocationSection } from './PackLocationSection'
 import { PlacementProvider, usePlacement } from './placement-context'
@@ -232,25 +238,46 @@ export function planListItemReorder({
   // deriveFilteredItemIds). Empty set = nothing hidden.
   hiddenItemIds: ReadonlySet<string>
 }):
-  | { kind: 'pack'; updates: { id: string; packSortOrder: number }[] }
+  | { kind: 'pack'; updates: UnionRankUpdates }
   | { kind: 'list'; updates: { id: string; sortOrder: number }[] }
   | null {
   if (groupingKind === 'location') {
     const excludedItemIds = derivePackReorderExclusions(items, locations)
     for (const itemId of hiddenItemIds) excludedItemIds.add(itemId)
-    const updates = planPackingItemReorder(
-      activeId,
-      overId,
-      items,
-      'item',
-      excludedItemIds,
-    )
+    // `item:`-kind ids in location grouping: a gear-only cohort reorder
+    // (packing rows carry `packing-item:` ids and never reach this branch).
+    // A gear-only permutation is still a valid UNION permutation - a subset's
+    // ranks are a subset of the union multiset - so the food half is empty.
+    if (overId === undefined || activeId === overId) return null
+    const active = parseDnDId(activeId)
+    const over = parseDnDId(overId)
+    if (active?.kind !== 'item' || over?.kind !== 'item') return null
+    const activeItem = items.find((i) => i.id === active.id)
+    const overItem = items.find((i) => i.id === over.id)
+    if (!activeItem || !overItem) return null
+    if (excludedItemIds.has(activeItem.id) || excludedItemIds.has(overItem.id)) return null
+    if (activeItem.packingLocationId !== overItem.packingLocationId) return null
+    const locationItems = items
+      .filter((i) =>
+        i.packingLocationId === activeItem.packingLocationId &&
+        !excludedItemIds.has(i.id),
+      )
+      .toSorted((a, b) => a.packSortOrder - b.packSortOrder)
+    const oldIndex = locationItems.findIndex((i) => i.id === active.id)
+    const newIndex = locationItems.findIndex((i) => i.id === over.id)
+    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return null
     // Location grouping is Pack view, so this writes the PACK rank. Tagging
     // the result rather than returning a bare array is what keeps the caller
     // from posting a pack permutation to the document-order endpoint - the two
     // payloads are structurally similar enough that an untagged union would be
     // an easy mistake to make and a hard one to see.
-    return updates ? { kind: 'pack' as const, updates } : null
+    return {
+      kind: 'pack' as const,
+      updates: {
+        items: assignPackRankSlots(arrayMove(locationItems, oldIndex, newIndex)),
+        foodItems: [],
+      },
+    }
   }
 
   const active = parseDnDId(activeId)
@@ -303,7 +330,10 @@ export function planListItemReorder({
   // valid cohort permutation: a subset's ranks are a subset of the multiset,
   // so redistributing them among themselves leaves the cohort intact.
   return mode === 'pack'
-    ? { kind: 'pack' as const, updates: assignPackRankSlots(moved) }
+    ? {
+        kind: 'pack' as const,
+        updates: { items: assignPackRankSlots(moved), foodItems: [] },
+      }
     : { kind: 'list' as const, updates: assignSortOrderSlots(moved) }
 }
 
@@ -646,6 +676,7 @@ function ListDetailInner({
   // writes live in useListGearActions, above.)
   const { addItem, updateItem, deleteItem, addNewItem } = useListItemActions(listId, {
     listItems,
+    foodItems: listFood.items,
   })
 
   // DOCUMENT order. List view only.
@@ -662,12 +693,150 @@ function ListDetailInner({
   // share link you sent someone.
   const reorderPackItemsMut = useMutation({
     mutationKey: mutationKeys.reorderPackItems(listId),
-    mutationFn: (updates: { id: string; packSortOrder: number }[]) =>
+    mutationFn: (updates: UnionRankUpdates) =>
       reorderPackListItems(listId, updates),
-    ...makeOptimisticPackReorder<ListItemWithGear>(
+    // The union helper spans both caches (0022: one drag can permute gear and
+    // food ranks together, and the server applies both halves in one batch).
+    ...makeOptimisticUnionPackReorder<ListItemWithGear, ListFoodResponse>(
       qc,
       queryKeys.listItems(listId),
+      queryKeys.listFood(listId),
     ),
+  })
+
+  // Pack state on a food row: the Packed/Ready checkboxes. Optimistic on the
+  // food cache; hand-rolled rather than makeOptimisticUpdate because the food
+  // cache is one object holding an items array, not a bare collection.
+  type FoodPatchVars = {
+    foodId: string
+    patch: { isPacked?: boolean; isReady?: boolean }
+  }
+  // FIELD-SCOPED snapshot + rollback, the same composition rule as
+  // use-list-item-actions' gear patches and the union reorder: only the
+  // fields THIS patch touched are snapshotted, and on failure only those
+  // fields rewind onto the CURRENT row - so a reorder or the sibling
+  // checkbox that succeeded while this was in flight survives the rollback.
+  const foodPackPatchMut = useMutation({
+    mutationKey: mutationKeys.updateFoodPackState(listId),
+    mutationFn: ({ foodId, patch }: FoodPatchVars) =>
+      updateFoodItem(listId, foodId, patch),
+    onMutate: async ({ foodId, patch }: FoodPatchVars) => {
+      await qc.cancelQueries({ queryKey: queryKeys.listFood(listId) })
+      const row = qc
+        .getQueryData<ListFoodResponse>(queryKeys.listFood(listId))
+        ?.items.find((item) => item.id === foodId)
+      const previousFields = row
+        ? {
+            ...(patch.isPacked !== undefined ? { isPacked: row.isPacked } : {}),
+            ...(patch.isReady !== undefined ? { isReady: row.isReady } : {}),
+          }
+        : undefined
+      qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
+        curr
+          ? {
+              ...curr,
+              items: curr.items.map((item) =>
+                item.id === foodId ? { ...item, ...patch } : item,
+              ),
+            }
+          : curr,
+      )
+      return { previousFields }
+    },
+    onError: (
+      _err: unknown,
+      { foodId }: FoodPatchVars,
+      ctx: { previousFields: { isPacked?: boolean; isReady?: boolean } | undefined } | undefined,
+    ) => {
+      const previousFields = ctx?.previousFields
+      if (!previousFields) return
+      qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
+        curr
+          ? {
+              ...curr,
+              items: curr.items.map((item) =>
+                item.id === foodId ? { ...item, ...previousFields } : item,
+              ),
+            }
+          : curr,
+      )
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
+    },
+  })
+
+  // Moving a food row between packing locations - the write behind both a
+  // cross-location drag of a food row and its row menu. Mirrors moveItemMut:
+  // the caller supplies the destination's next UNION rank so the optimistic
+  // row lands where the refetch will confirm it.
+  type MoveFoodVars = {
+    foodId: string
+    locationId: string | null
+    nextPackSortOrder: number
+  }
+  // Field-scoped like the patch above: a failed move rewinds ONLY the moved
+  // row's location + rank, so a Packed/Ready tick that landed mid-flight
+  // survives.
+  const moveFoodMut = useMutation({
+    mutationKey: mutationKeys.moveFoodItem(listId),
+    mutationFn: ({ foodId, locationId }: MoveFoodVars) =>
+      updateFoodItem(listId, foodId, { packingLocationId: locationId }),
+    onMutate: async ({ foodId, locationId, nextPackSortOrder }: MoveFoodVars) => {
+      await qc.cancelQueries({ queryKey: queryKeys.listFood(listId) })
+      const row = qc
+        .getQueryData<ListFoodResponse>(queryKeys.listFood(listId))
+        ?.items.find((item) => item.id === foodId)
+      const previousPlacement = row
+        ? { packingLocationId: row.packingLocationId, packSortOrder: row.packSortOrder }
+        : undefined
+      qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
+        curr
+          ? {
+              ...curr,
+              items: curr.items.map((item) =>
+                item.id === foodId
+                  ? {
+                      ...item,
+                      packingLocationId: locationId,
+                      packSortOrder: nextPackSortOrder,
+                    }
+                  : item,
+              ),
+            }
+          : curr,
+      )
+      return { previousPlacement }
+    },
+    onError: (
+      _err: unknown,
+      { foodId }: MoveFoodVars,
+      ctx: {
+        previousPlacement:
+          | { packingLocationId: string | null; packSortOrder: number }
+          | undefined
+      } | undefined,
+    ) => {
+      const previousPlacement = ctx?.previousPlacement
+      if (previousPlacement) {
+        qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
+          curr
+            ? {
+                ...curr,
+                items: curr.items.map((item) =>
+                  item.id === foodId ? { ...item, ...previousPlacement } : item,
+                ),
+              }
+            : curr,
+        )
+      }
+      // Same toast rule as moveItemMut: this is the write behind a drag, and
+      // a silent rollback is indistinguishable from the user dragging back.
+      showToast("Couldn't move that item. Please try again.", { type: 'error' })
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
+    },
   })
 
   // Packing-location admin (create / rename / delete / promote an item to a
@@ -721,7 +890,13 @@ function ListDetailInner({
   const anyItemReorderPending =
     reorderItemsMut.isPending || reorderPackItemsMut.isPending
   const itemDragPending =
-    moveItemMut.isPending || anyItemReorderPending || locationCreationPending
+    moveItemMut.isPending ||
+    moveFoodMut.isPending ||
+    anyItemReorderPending ||
+    locationCreationPending ||
+    // A pending optimistic bag delete makes cached locations lie about what
+    // is rendered; structural writes wait for it to settle (round-7).
+    removeLocation.isPending
 
   const notesMut = useMutation({
     mutationKey: mutationKeys.updateListNotes(listId),
@@ -783,20 +958,68 @@ function ListDetailInner({
   // packingLocationId scan diverge while a location delete is still
   // optimistic.
   const { placement, actions: placementActions } = usePlacement(
-    (itemId, insertIndex, eligibleItems) => {
-      const updates = planPlacementWithinLocation(itemId, insertIndex, eligibleItems)
+    (rowId, insertIndex, eligibleRows) => {
+      // Reserved ranks: same-cohort rows the section did NOT render (worn
+      // gear, filtered rows, container headers). The densify path that heals
+      // a cross-table tie must not mint one of their slots.
+      //
+      // Locations are NORMALIZED through the rendered-location set, exactly
+      // like buildPackingTree and foodByLocation normalize rows: during an
+      // optimistic location delete the cache still carries the dead bag's
+      // id while the rows RENDER under Unassigned, and comparing raw cached
+      // ids would drop the genuine-Unassigned hidden rows from the avoid
+      // set (round-6 finding 2).
+      const renderedIds = new Set(
+        eligibleRows.map((row) => (row.kind === 'gear' ? row.gear.id : row.food.id)),
+      )
+      const normalizeLocation = (locationId: string | null) =>
+        locationId !== null && renderedLocationIds.has(locationId)
+          ? locationId
+          : null
+      const cohortLocation = eligibleRows[0]
+        ? normalizeLocation(
+            eligibleRows[0].kind === 'gear'
+              ? eligibleRows[0].gear.packingLocationId
+              : eligibleRows[0].food.packingLocationId,
+          )
+        : null
+      const avoidRanks = new Set([
+        ...listItems
+          .filter(
+            (item) =>
+              normalizeLocation(item.packingLocationId) === cohortLocation &&
+              !renderedIds.has(item.id),
+          )
+          .map((item) => item.packSortOrder),
+        ...listFood.items
+          .filter(
+            (item) =>
+              normalizeLocation(item.packingLocationId) === cohortLocation &&
+              !renderedIds.has(item.id),
+          )
+          .map((item) => item.packSortOrder),
+      ])
+      const updates = planPlacementWithinLocation(
+        rowId,
+        insertIndex,
+        eligibleRows,
+        avoidRanks,
+      )
       if (!updates) return
-      const moved = listItemsById.get(itemId)
-      if (moved) setAnnouncement(`Moving ${moved.gearItem.name}.`)
+      const movedRow = eligibleRows.find(
+        (row) => (row.kind === 'gear' ? row.gear.id : row.food.id) === rowId,
+      )
+      const movedName = movedRow ? packRowName(movedRow) : undefined
+      if (movedName) setAnnouncement(`Moving ${movedName}.`)
       // Pack rank: click-to-place is offered only inside a bag (the menu
       // withholds it outside location grouping), so it is always a pack
-      // reorder.
+      // reorder - a union one since 0022.
       reorderPackItemsMut.mutate(updates, {
         onSuccess: () => {
-          if (moved) setAnnouncement(`Moved ${moved.gearItem.name}.`)
+          if (movedName) setAnnouncement(`Moved ${movedName}.`)
         },
         onError: () => {
-          if (moved) setAnnouncement(`Could not move ${moved.gearItem.name}.`)
+          if (movedName) setAnnouncement(`Could not move ${movedName}.`)
         },
       })
     },
@@ -813,11 +1036,15 @@ function ListDetailInner({
     placementActions.cancel({ returnFocus: false })
     handleLocationDragStart(e)
     const parsed = parseDnDId(String(e.active.id))
-    if (parsed?.kind !== 'packing-item') return
-    const item = listItemsById.get(parsed.id)
-    if (item) {
+    const draggedName =
+      parsed?.kind === 'packing-item'
+        ? listItemsById.get(parsed.id)?.gearItem.name
+        : parsed?.kind === 'packing-food-item'
+          ? foodById.get(parsed.id)?.name
+          : undefined
+    if (draggedName) {
       setAnnouncement(
-        `Dragging ${item.gearItem.name}. Reorder it here or choose another packing location.`,
+        `Dragging ${draggedName}. Reorder it here or choose another packing location.`,
       )
     }
   }
@@ -837,10 +1064,12 @@ function ListDetailInner({
     moveItemMut.mutate({
       itemId,
       locationId,
-      // The DESTINATION cohort's next rank, mirroring the server. A move no
-      // longer touches sortOrder at all, so the row keeps its place in List
-      // view and on the share link.
-      nextPackSortOrder: nextPackRankInCohort(listItems, locationId),
+      // The DESTINATION cohort's next UNION rank (gear and food - 0022),
+      // mirroring the server. A gear-only maximum here would park the row
+      // visually above food already in the bag until the refetch corrected
+      // it (GATE 2 finding). A move never touches sortOrder, so the row
+      // keeps its place in List view and on the share link.
+      nextPackSortOrder: nextUnionPackRankFor(listItems, listFood.items, locationId),
     }, {
       onSuccess: () => {
         if (item && destination) setAnnouncement(`Moved ${item.gearItem.name} to ${destination}.`)
@@ -851,12 +1080,33 @@ function ListDetailInner({
     })
   }
 
-  // Single page-level drag handler over three id kinds.
+  function requestMoveFood(foodId: string, locationId: string | null) {
+    const food = foodById.get(foodId)
+    const destination = locationId === null
+      ? 'Unassigned'
+      : realLocations.find((location) => location.id === locationId)?.name
+    if (food && destination) setAnnouncement(`Moving ${food.name} to ${destination}.`)
+    moveFoodMut.mutate({
+      foodId,
+      locationId,
+      // The destination cohort's next UNION rank, mirroring the server.
+      nextPackSortOrder: nextUnionPackRankFor(listItems, packFoodItems, locationId),
+    }, {
+      onSuccess: () => {
+        if (food && destination) setAnnouncement(`Moved ${food.name} to ${destination}.`)
+      },
+      onError: () => {
+        if (food) setAnnouncement(`Could not move ${food.name}.`)
+      },
+    })
+  }
+
+  // Single page-level drag handler over four id kinds.
   //
   // Order matters. locationReorder.handleDragEnd runs FIRST and strictly
   // self-gates on the packing-location kind, so it no-ops for item drags and
   // the item planners below never see a section drag. That gating is why a
-  // section reorder cannot be routed through planPackingItemDragEnd, which
+  // section reorder cannot be routed through planPackingRowDragEnd, which
   // only understands a packing-item as the active id: dropping a section
   // would animate and write nothing at all.
   //
@@ -890,25 +1140,43 @@ function ListDetailInner({
       return
     }
 
-    if (activeParsed?.kind === 'packing-item') {
-      const draggedItem = listItemsById.get(activeParsed.id)
-      const plan = planPackingItemDragEnd(
+    if (
+      activeParsed?.kind === 'packing-item' ||
+      activeParsed?.kind === 'packing-food-item'
+    ) {
+      const draggedName =
+        activeParsed.kind === 'packing-item'
+          ? listItemsById.get(activeParsed.id)?.gearItem.name
+          : foodById.get(activeParsed.id)?.name
+      // In the no-locations category fallback, gear renders grouped by
+      // category and food in its own section - the union is never displayed
+      // as one sequence there. Excluding ALL gear makes a food drag permute
+      // the food subsequence the user is actually looking at (a subset
+      // permutation of the union, which the server accepts) instead of
+      // computing indices against invisible gear rows.
+      const reorderExclusions = grouping.kind === 'category'
+        ? new Set([...packingReorderExclusions, ...listItems.map((i) => i.id)])
+        : packingReorderExclusions
+      const plan = planPackingRowDragEnd(
         draggedId,
         overId,
         listItems,
+        packFoodItems,
         realLocationIds,
         containerItemIdByLocation,
         containerMoveExclusions,
-        packingReorderExclusions,
+        reorderExclusions,
+        packFilteredFoodIds,
+        renderedLocationIds,
       )
       if (plan?.kind === 'reorder') {
-        if (draggedItem) setAnnouncement(`Reordering ${draggedItem.gearItem.name}.`)
+        if (draggedName) setAnnouncement(`Reordering ${draggedName}.`)
         reorderPackItemsMut.mutate(plan.updates, {
           onSuccess: () => {
-            if (draggedItem) setAnnouncement(`Reordered ${draggedItem.gearItem.name}.`)
+            if (draggedName) setAnnouncement(`Reordered ${draggedName}.`)
           },
           onError: () => {
-            if (draggedItem) setAnnouncement(`Could not reorder ${draggedItem.gearItem.name}.`)
+            if (draggedName) setAnnouncement(`Could not reorder ${draggedName}.`)
           },
         })
         return
@@ -917,7 +1185,8 @@ function ListDetailInner({
         setAnnouncement('Move cancelled.')
         return
       }
-      requestMove(plan.itemId, plan.locationId)
+      if (plan.kind === 'move-gear') requestMove(plan.itemId, plan.locationId)
+      else requestMoveFood(plan.foodItemId, plan.locationId)
       return
     }
 
@@ -1044,6 +1313,41 @@ function ListDetailInner({
     ...packFilteredItemIds,
   ])
 
+  // ── Food in Pack mode (0022: a bag's contents are the gear+food union) ──
+  // The page already holds the food query for weight totals; Pack renders it.
+  const packFoodItems = mode === 'pack' ? listFood.items : EMPTY_FOOD_ITEMS
+  const foodById = new Map(packFoodItems.map((food) => [food.id, food]))
+  // Filtered food rows, mirroring packFilteredItemIds for gear: hidden rows
+  // must not participate in reorder planning.
+  const packFilteredFoodIds = new Set(
+    packFoodItems
+      .filter(
+        (food) =>
+          (showUnpackedOnly && food.isPacked) ||
+          (showUnreadyOnly && food.isReady),
+      )
+      .map((food) => food.id),
+  )
+  // Food rows grouped by the location the page will actually RENDER. An
+  // assignment to a location that is not on screen (optimistically deleted,
+  // or still loading) folds into Unassigned, mirroring what buildPackingTree
+  // does for gear rows - a row must never vanish because its bag did.
+  const renderedLocationIds = new Set(
+    (packingTree?.roots ?? []).flatMap(function collect(node): string[] {
+      return [node.location.id, ...node.children.flatMap(collect)]
+    }),
+  )
+  const foodByLocation = new Map<string | null, FoodItemResponse[]>()
+  for (const food of packFoodItems) {
+    const key =
+      food.packingLocationId !== null && renderedLocationIds.has(food.packingLocationId)
+        ? food.packingLocationId
+        : null
+    const bucket = foodByLocation.get(key)
+    if (bucket) bucket.push(food)
+    else foodByLocation.set(key, [food])
+  }
+
   // Placement is a MODE, and a mode that outlives its subject acts on the
   // wrong thing. ListDetailInner is keyed only by list id, so switching to
   // List view does not remount it, and collapsing a section merely stops
@@ -1069,9 +1373,11 @@ function ListDetailInner({
     placingItemId === undefined ||
     (grouping.kind === 'location' &&
       mode === 'pack' &&
-      listItemsById.has(placingItemId) &&
-      !packFilteredItemIds.has(placingItemId) &&
-      !packingReorderExclusions.has(placingItemId))
+      (foodById.has(placingItemId)
+        ? !packFilteredFoodIds.has(placingItemId)
+        : listItemsById.has(placingItemId) &&
+          !packFilteredItemIds.has(placingItemId) &&
+          !packingReorderExclusions.has(placingItemId)))
   useEffect(() => {
     if (!placingStillEligible) placementCancel()
   }, [placingStillEligible, placementCancel])
@@ -1298,6 +1604,8 @@ function ListDetailInner({
       showUnpackedOnly,
       showUnreadyOnly,
       onUpdate: (itemId: string, patch: ListItemPatch) => updateItem.mutate({ itemId, patch }),
+      onUpdateFood: (foodId: string, patch: { isPacked?: boolean; isReady?: boolean }) =>
+        foodPackPatchMut.mutate({ foodId, patch }),
       onDelete: (itemId: string) => {
         const li = listItemsRef.current.find((item) => item.id === itemId)
         if (li) requestRemoveListItem(li)
@@ -1357,6 +1665,7 @@ function ListDetailInner({
     item: ListItemWithGear,
     cohort: ListItemWithGear[],
     section: SectionIdentity,
+    unionRowCount?: number,
   ) => (
     <MoveToLocationMenu
       itemId={item.id}
@@ -1383,8 +1692,11 @@ function ListDetailInner({
       // which is the right test: a bag of ten rows showing one is just as
       // unreorderable as a bag holding one.
       onStartReorder={
-        grouping.kind === 'location' && !anyItemReorderPending && cohort.length > 1
-          ? (origin: HTMLElement | null) => placementActions.start(item, section, origin)
+        grouping.kind === 'location' &&
+        !anyItemReorderPending &&
+        (unionRowCount ?? cohort.length) > 1
+          ? (origin: HTMLElement | null) =>
+              placementActions.start({ kind: 'gear', gear: item }, section, origin)
           : undefined
       }
       // Membership, not authoring: this drops the row from the list and
@@ -1398,6 +1710,36 @@ function ListDetailInner({
       })}
     />
   )
+
+  // The food row's menu: move between bags, click-to-place within one. No
+  // container promotion (food cannot back a container) and no removal - food
+  // membership is authored in the Food view, and a checklist row losing its
+  // delete is the same rule worn gear rows follow for structure actions.
+  const renderFoodRowAction = (
+    food: FoodItemResponse,
+    unionRowCount: number,
+    section: SectionIdentity,
+  ) => (
+    <MoveToLocationMenu
+      itemId={food.id}
+      itemName={food.name}
+      currentLocationId={food.packingLocationId}
+      locations={realLocations}
+      mobile={isBelowLg}
+      disabled={itemDragPending}
+      locationsUnavailable={!packingLocationsResolved}
+      containerCreationDisabled
+      isContainer={false}
+      onMove={(locationId) => requestMoveFood(food.id, locationId)}
+      onStartReorder={
+        grouping.kind === 'location' && !anyItemReorderPending && unionRowCount > 1
+          ? (origin: HTMLElement | null) =>
+              placementActions.start({ kind: 'food', food }, section, origin)
+          : undefined
+      }
+    />
+  )
+  const packFoodRowAction = mode === 'pack' ? renderFoodRowAction : undefined
 
   // The same action, for the category-grouped sections. Those sections are
   // NOT pack-only - they are what List view renders too - so the mode test is
@@ -1447,6 +1789,8 @@ function ListDetailInner({
         depth={depth}
         groupProps={sharedGroupProps}
         renderRowAction={renderPackRowAction}
+        packFoodRows={foodByLocation.get(location.id) ?? EMPTY_FOOD_ITEMS}
+        renderFoodRowAction={packFoodRowAction}
         containerAction={containerItem ? (
           <MoveToLocationMenu
             itemId={containerItem.id}
@@ -1626,19 +1970,27 @@ function ListDetailInner({
             <StatusPanel title="Loading list details..." busy />
           ) : (
             <>
-              {mode === 'pack' && listItems.length > 0 && (
+              {mode === 'pack' && listItems.length + packFoodItems.length > 0 && (
                 <div className="print:hidden">
+                  {/* Union counts (0022): the pack is gear plus food, and a
+                      progress bar that ignored food would read 100% with the
+                      tortillas still on the counter. */}
                   <PackingProgress
-                    total={listItems.length}
-                    packed={listItems.filter((i) => i.isPacked).length}
+                    total={listItems.length + packFoodItems.length}
+                    packed={
+                      listItems.filter((i) => i.isPacked).length +
+                      packFoodItems.filter((f) => f.isPacked).length
+                    }
                     onReset={resetPacked}
                     showUnpackedOnly={showUnpackedOnly}
                     onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
                     showUnreadyOnly={showUnreadyOnly}
                     onToggleShowUnreadyOnly={() => setShowUnreadyOnly((v) => !v)}
                     readyChecks={{
-                      ready: listItems.filter((i) => i.isReady).length,
-                      total: listItems.length,
+                      ready:
+                        listItems.filter((i) => i.isReady).length +
+                        packFoodItems.filter((f) => f.isReady).length,
+                      total: listItems.length + packFoodItems.length,
                       onResetReady: resetReady,
                     }}
                   />
@@ -1749,7 +2101,8 @@ function ListDetailInner({
               )}
 
               {/* Items grouped by category */}
-              {listItems.length === 0 ? (
+              {listItems.length === 0 &&
+              (mode !== 'pack' || packFoodItems.length === 0) ? (
                 <EmptyListCell onMobileAdd={() => setDrawerOpen(true)} />
               ) : (() => {
                 const activeParsed = activeId ? parseDnDId(activeId) : null
@@ -1758,6 +2111,10 @@ function ListDetailInner({
                 const activePackingItem =
                   activeParsed?.kind === 'packing-item'
                     ? (listItemsById.get(activeParsed.id) ?? null)
+                    : null
+                const activePackingFood =
+                  activeParsed?.kind === 'packing-food-item'
+                    ? (foodById.get(activeParsed.id) ?? null)
                     : null
                 return (
                   <div className="flex flex-col gap-3">
@@ -1796,6 +2153,8 @@ function ListDetailInner({
                               items={packingTree.unassignedItems}
                               {...sharedGroupProps}
                               renderRowAction={renderPackRowAction}
+                              packFoodRows={foodByLocation.get(null) ?? EMPTY_FOOD_ITEMS}
+                              renderFoodRowAction={packFoodRowAction}
                               reorderPending={anyItemReorderPending}
                             />
                           </DroppableUnassignedSection>
@@ -1808,7 +2167,9 @@ function ListDetailInner({
                             {packingTree.roots.map((node) => renderPackingLocationNode(node))}
                           </SortableContext>
                         </>
-                      ) : orderedPackGroups.map((group) => {
+                      ) : (
+                        <>
+                        {orderedPackGroups.map((group) => {
                           const definition = group.group
                           if (definition) {
                             return (
@@ -1841,6 +2202,27 @@ function ListDetailInner({
                             />
                           )
                         })}
+                        {/* Pack's no-locations fallback groups gear by
+                            category; food gets its own section so the
+                            checklist still covers the whole pack. Rows check
+                            off and drag-reorder among themselves (the union
+                            planner handles `packing-food-item:` ids in any
+                            grouping); bag assignment starts existing once
+                            the first location does. */}
+                        {mode === 'pack' && packFoodItems.length > 0 && (
+                          <CategoryGroup
+                            key="__pack_food__"
+                            name="Food"
+                            regionKey="packing-food-fallback"
+                            items={EMPTY_LIST_ITEMS}
+                            {...sharedGroupProps}
+                            packFoodRows={packFoodItems}
+                            renderFoodRowAction={packFoodRowAction}
+                            reorderPending={anyItemReorderPending}
+                          />
+                        )}
+                        </>
+                      )}
                       <DragOverlay dropAnimation={null}>
                         {activeItem ? (
                           <ItemRow item={activeItem} weightUnit={weightUnit} isBelowLg={isBelowLg} />
@@ -1851,6 +2233,11 @@ function ListDetailInner({
                           // slot. A name chip is the whole payload.
                           <div className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm shadow-lg">
                             {activePackingItem.gearItem.name}
+                          </div>
+                        ) : activePackingFood ? (
+                          // Same chip treatment as a gear packing drag.
+                          <div className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm shadow-lg">
+                            {activePackingFood.name}
                           </div>
                         ) : activeLocation ? (
                           <div className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold shadow-lg">

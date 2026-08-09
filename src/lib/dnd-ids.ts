@@ -36,6 +36,7 @@ const DND_KINDS = [
   'list-card',
   'packing-location',
   'packing-item',
+  'packing-food-item',
 ] as const
 
 export type DnDIdKind = (typeof DND_KINDS)[number]

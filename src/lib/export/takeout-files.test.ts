@@ -179,7 +179,24 @@ describe('buildTakeoutFiles', () => {
       lists,
       allItems: [assigned, unassigned],
       packingLocationsByListId,
-      foodByListId: new Map(),
+      foodByListId: new Map([
+        ['l-1', {
+          dayCount: 1,
+          slots: [],
+          items: [
+            {
+              id: 'food-2', name: 'Oats', weightGrams: 90, quantity: 1,
+              sortOrder: 1, isPacked: true, isReady: false,
+              packingLocationId: null, packSortOrder: 7, slotIds: [],
+            },
+            {
+              id: 'food-1', name: 'Tortillas', weightGrams: 300, quantity: 2,
+              sortOrder: 0, isPacked: false, isReady: false,
+              packingLocationId: 'loc-b', packSortOrder: 3, slotIds: [],
+            },
+          ],
+        }],
+      ]),
     })
     const packing = JSON.parse(files['packing.json'] ?? '') as {
       version: number
@@ -197,10 +214,16 @@ describe('buildTakeoutFiles', () => {
           packingLocationId: string | null
           packSortOrder: number
         }>
+        foodItems: Array<{
+          foodItemId: string
+          name: string
+          packingLocationId: string | null
+          packSortOrder: number
+        }>
       }>
     }
 
-    expect(packing.version).toBe(3)
+    expect(packing.version).toBe(4)
     expect(packing.lists[0]?.list).toEqual({ id: 'l-1', name: 'JMT section' })
     expect(packing.lists[0]?.locations.map((location) => location.id)).toEqual([
       'loc-a', 'loc-b', 'loc-empty',
@@ -209,6 +232,12 @@ describe('buildTakeoutFiles', () => {
       .toHaveLength(2)
     expect(packing.lists[0]?.locations.find((location) => location.id === 'loc-a'))
       .toMatchObject({ containerListItemId: 'i-2' })
+    // The food half of the union (0022): organization only (bag + rank),
+    // emitted in pack order. Authoring data stays in food.json.
+    expect(packing.lists[0]?.foodItems).toEqual([
+      { foodItemId: 'food-1', name: 'Tortillas', packingLocationId: 'loc-b', packSortOrder: 3 },
+      { foodItemId: 'food-2', name: 'Oats', packingLocationId: null, packSortOrder: 7 },
+    ])
 
     const locationIds = new Set(packing.lists[0]?.locations.map((location) => location.id))
     for (const item of packing.lists[0]?.items ?? []) {

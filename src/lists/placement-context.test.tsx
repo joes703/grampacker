@@ -6,6 +6,7 @@ import { DndContext } from '@dnd-kit/core'
 import { memo, useRef, useState } from 'react'
 import type { ListItemWithGear } from '../lib/types'
 import { PlacementProvider, PlacementSlot, usePlacement } from './placement-context'
+import type { PackRow } from './pack-rows'
 import { packingSortableRows, sortableRows } from './SortableCategoryRows'
 
 afterEach(cleanup)
@@ -41,7 +42,9 @@ function item(id: string, name: string, sortOrder: number): ListItemWithGear {
   }
 }
 
-const rows = [item('a', 'Tarp', 0), item('b', 'Stove', 10), item('c', 'Pot', 20)]
+const gearItems = [item('a', 'Tarp', 0), item('b', 'Stove', 10), item('c', 'Pot', 20)]
+const asRow = (i: ListItemWithGear): PackRow => ({ kind: 'gear', gear: i })
+const rows = gearItems.map(asRow)
 
 // regionKey is what CategoryGroup passes: a packing location id, or a sentinel
 // for the Unassigned and Worn buckets.
@@ -59,11 +62,11 @@ const rowProps = (i: ListItemWithGear) => ({
 // way MoveToLocationMenu hands over its kebab.
 function Harness({
   onCommit,
-  items = rows,
+  items = gearItems,
   startId = 'b',
   render: renderRows = packingSortableRows,
 }: {
-  onCommit: (itemId: string, insertIndex: number, items: readonly ListItemWithGear[]) => void
+  onCommit: (rowId: string, insertIndex: number, rows: readonly PackRow[]) => void
   items?: ListItemWithGear[]
   startId?: string
   render?: typeof packingSortableRows
@@ -76,7 +79,7 @@ function Harness({
       <button
         type="button"
         ref={startRef}
-        onClick={() => actions.start(subject, mainPack, startRef.current)}
+        onClick={() => actions.start(asRow(subject), mainPack, startRef.current)}
       >
         start
       </button>
@@ -131,7 +134,11 @@ describe('click-to-place slots', () => {
     const [itemId, insertIndex, passedItems] = onCommit.mock.calls[0]!
     expect(itemId).toBe('b')
     expect(insertIndex).toBe(2)
-    expect(passedItems).toBe(rows)
+    // Structural rather than identity: the union renderer builds the PackRow
+    // wrappers itself, so the CONTRACT is "the rows this section rendered, in
+    // the order it rendered them" - which the ids pin exactly.
+    expect((passedItems as PackRow[]).map((row) => row.kind === 'gear' ? row.gear.id : row.food.id))
+      .toEqual(['a', 'b', 'c'])
   })
 
   it('closes the mode once a slot is used', async () => {
@@ -212,7 +219,7 @@ describe('section membership', () => {
       <PlacementProvider placement={placement} actions={actions}>
         <button type="button" onClick={() => actions.start(rows[1]!, mainPack, null)}>start</button>
         <DndContext>
-          <div data-testid="main">{packingSortableRows(rows, rowProps, mainPack)}</div>
+          <div data-testid="main">{packingSortableRows(gearItems, rowProps, mainPack)}</div>
           <div data-testid="side">{packingSortableRows(otherBag, rowProps, sidePocket)}</div>
         </DndContext>
       </PlacementProvider>
@@ -263,7 +270,7 @@ describe('focus', () => {
             start
           </button>
           <button type="button" onClick={() => actions.cancel()}>abandon</button>
-          <DndContext>{packingSortableRows(rows, rowProps, mainPack)}</DndContext>
+          <DndContext>{packingSortableRows(gearItems, rowProps, mainPack)}</DndContext>
         </PlacementProvider>
       )
     }
@@ -297,7 +304,7 @@ describe('focus', () => {
           >
             drag
           </button>
-          <DndContext>{packingSortableRows(rows, rowProps, mainPack)}</DndContext>
+          <DndContext>{packingSortableRows(gearItems, rowProps, mainPack)}</DndContext>
         </PlacementProvider>
       )
     }
@@ -340,7 +347,7 @@ describe('the mode closes when its slots go away', () => {
           <button type="button" onClick={() => setCollapsed(true)}>collapse</button>
           <span data-testid="state">{placement ? 'placing' : 'idle'}</span>
           <DndContext>
-            {collapsed ? null : packingSortableRows(rows, rowProps, mainPack)}
+            {collapsed ? null : packingSortableRows(gearItems, rowProps, mainPack)}
           </DndContext>
         </PlacementProvider>
       )
@@ -365,7 +372,7 @@ describe('the mode closes when its slots go away', () => {
     function RehomingHarness() {
       const { placement, actions } = usePlacement(vi.fn())
       const [rehomed, setRehomed] = useState(false)
-      const here = rehomed ? [rows[0]!, rows[2]!] : rows
+      const here = rehomed ? [gearItems[0]!, gearItems[2]!] : gearItems
       const there = rehomed ? [item('x', 'Fuel', 0), moved] : [item('x', 'Fuel', 0)]
       return (
         <PlacementProvider placement={placement} actions={actions}>
@@ -413,13 +420,13 @@ describe('placement reaches slots through a memo bailout', () => {
     // Hoisted: an inline rows.slice() would be a fresh array every render and
     // would defeat the memo by itself, which is the very failure being tested.
     const stableItems = rows.slice(0, 2)
-    const Section = memo(function Section({ items }: { items: ListItemWithGear[] }) {
+    const Section = memo(function Section({ items }: { items: PackRow[] }) {
       parentRenders()
       return (
         <>
-          <PlacementSlot slot={0} items={items} section={mainPack} />
-          <PlacementSlot slot={1} items={items} section={mainPack} />
-          <PlacementSlot slot={2} items={items} section={mainPack} />
+          <PlacementSlot slot={0} rows={items} section={mainPack} />
+          <PlacementSlot slot={1} rows={items} section={mainPack} />
+          <PlacementSlot slot={2} rows={items} section={mainPack} />
         </>
       )
     })

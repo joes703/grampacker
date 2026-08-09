@@ -5,6 +5,7 @@ import {
   resetReadyForList,
 } from '../lib/queries'
 import { showToast } from '../lib/toast'
+import type { ListFoodResponse } from '../../shared/food'
 import type { ListItemWithGear } from '../lib/types'
 
 // Pack/Ready reset actions for ListDetailPage. These are hand-rolled async
@@ -22,59 +23,87 @@ import type { ListItemWithGear } from '../lib/types'
 // The fix: each reset only snapshots the ids whose own field was true at the
 // moment of clear, and on failure flips ONLY that field back. The other reset's
 // writes pass through untouched. No mutex needed; the operations compose.
+//
+// Since 0022 each reset clears BOTH caches: the server clears gear and food in
+// one batch, so the optimistic clear, the rollback, and the invalidate all
+// span ['list-items', listId] AND ['list-food', listId] - a reset that left
+// the food checkboxes ticked would contradict what the server just did.
 export function useListResetActions(listId: string) {
   const qc = useQueryClient()
 
-  async function resetPacked() {
-    // Optimistic clear - flip isPacked=false on every cached item so the UI
-    // updates immediately, then issue the call and invalidate to settle.
+  async function resetFlag(
+    flag: 'isPacked' | 'isReady',
+    serverReset: (listId: string) => Promise<void>,
+    failureToast: string,
+  ) {
     await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
-    const snapshot = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
-    const wasPackedIds = snapshot
-      ? new Set(snapshot.filter((i) => i.isPacked).map((i) => i.id))
+    await qc.cancelQueries({ queryKey: queryKeys.listFood(listId) })
+    const gearSnapshot = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
+    const foodSnapshot = qc.getQueryData<ListFoodResponse>(queryKeys.listFood(listId))
+    const wasSetGearIds = gearSnapshot
+      ? new Set(gearSnapshot.filter((i) => i[flag]).map((i) => i.id))
+      : new Set<string>()
+    const wasSetFoodIds = foodSnapshot
+      ? new Set(foodSnapshot.items.filter((i) => i[flag]).map((i) => i.id))
       : new Set<string>()
     qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-      curr ? curr.map((i) => (i.isPacked ? { ...i, isPacked: false } : i)) : curr,
+      curr ? curr.map((i) => (i[flag] ? { ...i, [flag]: false } : i)) : curr,
+    )
+    qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
+      curr
+        ? {
+            ...curr,
+            items: curr.items.map((i) => (i[flag] ? { ...i, [flag]: false } : i)),
+          }
+        : curr,
     )
 
     try {
-      await resetPackedForList(listId)
+      await serverReset(listId)
     } catch {
-      // Restore only isPacked=true on the ids we cleared. Any concurrent
-      // resetReady write on those same rows survives because we never
-      // touch isReady here.
+      // Restore only this flag on the ids we cleared. Any concurrent write to
+      // the OTHER flag on those same rows survives untouched.
       qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-        curr ? curr.map((i) => (wasPackedIds.has(i.id) ? { ...i, isPacked: true } : i)) : curr,
+        curr
+          ? curr.map((i) => (wasSetGearIds.has(i.id) ? { ...i, [flag]: true } : i))
+          : curr,
       )
-      // Non-optimistic action: surface the failure and CONSUME it. onReset() is
-      // called fire-and-forget from PackingProgress (() => void), so rethrowing
-      // would be an unhandled rejection.
-      showToast("Couldn't reset packed items. Please try again.", { type: 'error' })
+      qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
+        curr
+          ? {
+              ...curr,
+              items: curr.items.map((i) =>
+                wasSetFoodIds.has(i.id) ? { ...i, [flag]: true } : i,
+              ),
+            }
+          : curr,
+      )
+      // Non-optimistic action: surface the failure and CONSUME it. The reset
+      // handlers are called fire-and-forget from PackingProgress (() => void),
+      // so rethrowing would be an unhandled rejection.
+      showToast(failureToast, { type: 'error' })
+    } finally {
+      void qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+      void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
     }
-    void qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+  }
+
+  async function resetPacked() {
+    await resetFlag(
+      'isPacked',
+      resetPackedForList,
+      "Couldn't reset packed items. Please try again.",
+    )
   }
 
   // Mirror of resetPacked for Ready Checks. Reset Ready and Reset Packed
   // are independent: clearing one MUST NOT clear the other on the cache.
   async function resetReady() {
-    await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
-    const snapshot = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
-    const wasReadyIds = snapshot
-      ? new Set(snapshot.filter((i) => i.isReady).map((i) => i.id))
-      : new Set<string>()
-    qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-      curr ? curr.map((i) => (i.isReady ? { ...i, isReady: false } : i)) : curr,
+    await resetFlag(
+      'isReady',
+      resetReadyForList,
+      "Couldn't reset ready checks. Please try again.",
     )
-    try {
-      await resetReadyForList(listId)
-    } catch {
-      qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-        curr ? curr.map((i) => (wasReadyIds.has(i.id) ? { ...i, isReady: true } : i)) : curr,
-      )
-      showToast("Couldn't reset ready checks. Please try again.", { type: 'error' })
-    } finally {
-      void qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
-    }
   }
 
   return { resetPacked, resetReady }
