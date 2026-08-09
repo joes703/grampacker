@@ -12,6 +12,10 @@ function item(over: Partial<FoodItemResponse> & { id: string; name: string }): F
     weightGrams: 100,
     quantity: 1,
     sortOrder: 0,
+    isPacked: false,
+    isReady: false,
+    packingLocationId: null,
+    packSortOrder: 0,
     slotIds: [],
     ...over,
   }

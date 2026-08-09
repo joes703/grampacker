@@ -420,6 +420,18 @@ export const listFoodItems = sqliteTable(
     // shared bag, and guessing inflates the pack weight silently.
     quantity: integer('quantity').notNull().default(1),
     sortOrder: integer('sort_order').notNull().default(0),
+    // Pack state, added by 0022. Food is a full peer of gear in Pack mode:
+    // packable, bag-assignable, rank-ordered. The columns and their indexes
+    // mirror list_items exactly; the semantics (cohort ranks, the negative
+    // scratch band, the union rank space shared with gear at read time) are
+    // documented on list_items.packSortOrder and in migration 0022's header.
+    isPacked: integer('is_packed', { mode: 'boolean' }).notNull().default(false),
+    isReady: integer('is_ready', { mode: 'boolean' }).notNull().default(false),
+    packingLocationId: text('packing_location_id').references(
+      () => packingLocations.id,
+      { onDelete: 'set null' },
+    ),
+    packSortOrder: integer('pack_sort_order').notNull().default(0),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -427,6 +439,18 @@ export const listFoodItems = sqliteTable(
     unique('list_food_items_id_user_unique').on(t.id, t.userId),
     unique('list_food_items_id_list_user_unique').on(t.id, t.listId, t.userId),
     index('list_food_items_list_sort_idx').on(t.listId, t.sortOrder),
+    index('list_food_items_packing_location_idx').on(t.packingLocationId),
+    // Mirrors list_items_pack_cohort_uq / list_items_pack_unassigned_uq; the
+    // full rationale (why UNIQUE is load-bearing, why the partial index for
+    // NULL locations) lives on those.
+    uniqueIndex('list_food_items_pack_cohort_uq').on(
+      t.listId,
+      t.packingLocationId,
+      t.packSortOrder,
+    ),
+    uniqueIndex('list_food_items_pack_unassigned_uq')
+      .on(t.listId, t.packSortOrder)
+      .where(sql`${t.packingLocationId} is null`),
     foreignKey({
       name: 'list_food_items_list_same_owner_fk',
       columns: [t.listId, t.userId],
@@ -526,6 +550,28 @@ export const packingLocationDeleteState = sqliteTable(
     // A small dense ordinal for the negative park slot. `newRank` cannot serve
     // as one: on the offset path it can be far larger than the reserved
     // scratch range allows.
+    seq: integer('seq').notNull(),
+  },
+)
+
+// TRANSIENT, same contract as _pack_reorder_guard, for the food half of a
+// union pack reorder. A separate table because one reorder batch parks BOTH
+// list_items and list_food_items rows and each table's park count must be
+// checked independently - and the gear guard's PRIMARY KEY is already the
+// list id. Created by migration 0022.
+export const foodPackReorderGuard = sqliteTable('_food_pack_reorder_guard', {
+  listId: text('list_id').primaryKey(),
+  ok: integer('ok').notNull(),
+})
+
+// TRANSIENT, same contract as _packing_location_delete_state, owned entirely
+// by the packing_locations_rerank_food_orphans trigger. Created by migration
+// 0022.
+export const foodLocationDeleteState = sqliteTable(
+  '_food_location_delete_state',
+  {
+    foodItemId: text('food_item_id').primaryKey(),
+    newRank: integer('new_rank').notNull(),
     seq: integer('seq').notNull(),
   },
 )

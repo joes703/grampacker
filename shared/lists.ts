@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { FOOD_ITEM_CAP } from './food'
 import {
   costSchema,
   gearItemResponseSchema,
@@ -308,16 +309,51 @@ export type ReorderListItemsRequest = z.infer<
 // The server additionally requires the ranks to be a permutation of what the
 // touched rows already hold, and requires them all to be in one cohort. Those
 // are relational facts this schema cannot see, so they live in the repo.
-export const reorderPackListItemsRequestSchema = z
-  .array(z.object({ id: idSchema, packSortOrder: packRankSchema }).strict())
-  .min(1)
-  .max(LIST_ITEM_CAP)
-  .refine((entries) => uniqueIds(entries.map((e) => e.id)), {
-    message: 'duplicate ids',
-  })
+const packRankEntriesSchema = (cap: number) =>
+  z
+    .array(z.object({ id: idSchema, packSortOrder: packRankSchema }).strict())
+    .max(cap)
+    .refine((entries) => uniqueIds(entries.map((e) => e.id)), {
+      message: 'duplicate ids',
+    })
+
+// Since 0022 a bag's contents are the UNION of gear rows and food rows, and a
+// reorder permutes ranks across that union - so the payload carries both
+// halves and the server writes them in one batch. The legacy bare-array shape
+// (gear only) is still accepted: a browser holding the previous SPA bundle
+// keeps working across the deploy, and a gear-only reorder is a legitimate
+// union reorder with an empty food half. parseReorderPackRequest normalizes
+// both shapes to the object form.
+export const reorderPackListItemsRequestSchema = z.union([
+  packRankEntriesSchema(LIST_ITEM_CAP).refine((e) => e.length >= 1, {
+    message: 'at least one entry is required',
+  }),
+  z
+    .object({
+      items: packRankEntriesSchema(LIST_ITEM_CAP).optional(),
+      foodItems: packRankEntriesSchema(FOOD_ITEM_CAP).optional(),
+    })
+    .strict()
+    .refine(
+      (body) => (body.items?.length ?? 0) + (body.foodItems?.length ?? 0) >= 1,
+      { message: 'at least one entry is required' },
+    ),
+])
 export type ReorderPackListItemsRequest = z.infer<
   typeof reorderPackListItemsRequestSchema
 >
+
+export type ReorderPackPayload = {
+  items: { id: string; packSortOrder: number }[]
+  foodItems: { id: string; packSortOrder: number }[]
+}
+
+export function normalizeReorderPackRequest(
+  parsed: ReorderPackListItemsRequest,
+): ReorderPackPayload {
+  if (Array.isArray(parsed)) return { items: parsed, foodItems: [] }
+  return { items: parsed.items ?? [], foodItems: parsed.foodItems ?? [] }
+}
 
 export const reorderPackingLocationsRequestSchema = reorderSchema(
   PACKING_LOCATION_CAP,

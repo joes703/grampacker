@@ -67,6 +67,14 @@ foodRoutes.post('/:id/food/items', async (c) => {
     if (result.reason === 'cap_exceeded') {
       return c.json({ error: 'Food item limit reached (200 per list)' }, 422)
     }
+    // The arrival rank claims one past the Unassigned union maximum, so
+    // these are reachable here exactly as they are on the PATCH move path.
+    if (result.reason === 'conflict') {
+      return c.json({ error: 'This bag changed while you were moving' }, 409)
+    }
+    if (result.reason === 'pack_rank_exhausted') {
+      return c.json({ error: 'This bag cannot accept more items' }, 422)
+    }
     // A slot id that is not on this list, not this user's, or already marked
     // not-needed. Rejecting beats silently dropping the placement.
     return c.json({ error: 'Invalid slots' }, 400)
@@ -84,6 +92,18 @@ foodRoutes.patch('/:id/food/items/:itemId', async (c) => {
     .food.updateItem(c.req.param('id'), c.req.param('itemId'), parsed.data)
   if (!result.ok) {
     if (result.reason === 'invalid_slots') return c.json({ error: 'Invalid slots' }, 400)
+    // A location id that is not on this list or not this user's. Same
+    // wording and status as the gear item PATCH uses for the same failure.
+    if (result.reason === 'invalid_location') {
+      return c.json({ error: 'Invalid packing location' }, 400)
+    }
+    // Lost a race for the destination rank; nothing partial landed.
+    if (result.reason === 'conflict') {
+      return c.json({ error: 'This bag changed while you were moving' }, 409)
+    }
+    if (result.reason === 'pack_rank_exhausted') {
+      return c.json({ error: 'This bag cannot accept more items' }, 422)
+    }
     return c.json({ error: 'Not found' }, 404)
   }
   return c.json(result.row)

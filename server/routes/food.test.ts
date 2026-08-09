@@ -571,13 +571,15 @@ describe('the food item cap (200 per list)', () => {
     const me = await apiRequest(cookie, 'GET', '/api/me')
     const { id: userId } = (await me.json()) as { id: string }
 
+    // Distinct pack ranks per row: DEFAULT 0 would collide on the 0022
+    // Unassigned cohort unique index by the second row.
     const values = Array.from(
       { length: 199 },
       (_, i) =>
-        `('${userId}-fseed-${i}', '${userId}', '${listId}', 'Seed ${i}', 100, 1, ${i}, 0, 0)`,
+        `('${userId}-fseed-${i}', '${userId}', '${listId}', 'Seed ${i}', 100, 1, ${i}, ${i}, 0, 0)`,
     ).join(',')
     await env.DB.prepare(
-      'insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, created_at, updated_at) values ' +
+      'insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, pack_sort_order, created_at, updated_at) values ' +
         values,
     ).run()
 

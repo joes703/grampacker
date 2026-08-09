@@ -114,6 +114,11 @@ packingLocationRoutes.delete(
         422,
       )
     }
+    // The dense fallback lost a race with a concurrent move or reorder; the
+    // whole batch rolled back. Retry after a refetch.
+    if (result === 'conflict') {
+      return c.json({ error: 'This list changed while deleting. Try again.' }, 409)
+    }
     return c.body(null, 204)
   },
 )

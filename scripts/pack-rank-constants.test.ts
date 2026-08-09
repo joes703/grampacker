@@ -46,6 +46,17 @@ describe('pack rank constants stay in step outside TypeScript', () => {
     )
   })
 
+  it("migration 0022's cascade trigger uses exactly the ceiling shared/lists.ts declares", () => {
+    const sql = stripSqlComments(readRepoFile('migrations/0022_food-pack-state.sql'))
+
+    // 0022 is the EXPAND half: no range triggers, no indexes. The only
+    // literal it is entitled to carry is PACK_RANK_MAX, in the cascade
+    // trigger's offset-vs-dense decision. The enforcement literals
+    // (FOOD_ITEM_CAP scratch band + the ceiling) live in 0023 and get their
+    // own assertion when that migration ships.
+    expect(significantNumbers(sql)).toEqual(new Set([PACK_RANK_MAX]))
+  })
+
   it('the pack-rank audit workflow probes the bounds shared/lists.ts declares', () => {
     const workflow = readRepoFile('.github/workflows/audit-pack-ranks.yml')
 

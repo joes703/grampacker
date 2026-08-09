@@ -397,6 +397,50 @@ const FIXTURES = [
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
   }],
+  // 0022's backfill canaries, the 0018 pattern one table over. Pre-0022 no
+  // food row can carry a location, so the only partition boundary the
+  // backfill can be wrong about is the LIST: these give list-seed three food
+  // rows with gapped sort_order in non-insertion order, and list-seed-3 one
+  // row with a large sort_order, so the post-check can pin that ranks follow
+  // sort_order (not insertion, not a copy of sort_order's values) and start
+  // at 0 per list (not globally).
+  //
+  // Deliberately NOT carrying the 0022 columns: they do not exist at fixture
+  // time in 0022's own pass. That is the point - these rows are what the
+  // migration has to rank.
+  ['list_food_items', {
+    id: 'lfi-canary-b',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    name: 'Canary Jerky',
+    weight_grams: 200,
+    quantity: 1,
+    sort_order: 20,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  ['list_food_items', {
+    id: 'lfi-canary-c',
+    user_id: 'u-seed',
+    list_id: 'list-seed',
+    name: 'Canary Oats',
+    weight_grams: 300,
+    quantity: 2,
+    sort_order: 5,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
+  ['list_food_items', {
+    id: 'lfi-other-list',
+    user_id: 'u-seed',
+    list_id: 'list-seed-3',
+    name: 'Other-List Bars',
+    weight_grams: 400,
+    quantity: 1,
+    sort_order: 50,
+    created_at: FIXED_TS,
+    updated_at: FIXED_TS,
+  }],
   ['list_food_item_slots', {
     food_item_id: 'lfi-seed',
     slot_id: 'lfs-seed',
@@ -840,6 +884,16 @@ const TRANSIENT_TABLES = [
     table: '_packing_location_delete_state',
     why: 'the cascade re-rank mapping; rows live only inside the delete trigger',
   },
+  {
+    migration: '0022_food-pack-state.sql',
+    table: '_food_pack_reorder_guard',
+    why: "the food half of a union pack reorder's fail-loud guard; a row lives only between park and settle",
+  },
+  {
+    migration: '0022_food-pack-state.sql',
+    table: '_food_location_delete_state',
+    why: 'the food cascade re-rank mapping; rows live only inside the delete trigger',
+  },
 ]
 
 // Columns 0016 dropped, and the schema objects that went with them. Indexes and
@@ -1005,6 +1059,47 @@ const POST_CHECKS = [
   { migration: '0018_pack-sort-order.sql', description: 'a duplicate rank in the unassigned cohort is rejected too',
     sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,packing_location_id,sort_order,pack_sort_order,created_at,updated_at) values ('li-dup-un','u-seed','list-seed','gear-seed',1,0,0,0,0,null,98,0,0,0)",
     expectErrorMatch: /unique/i },
+
+  // 0022: food pack state (the EXPAND half; enforcement checks live on
+  // 0023's entries). The backfill pin mirrors 0018's, with the 0022 twist:
+  // food ranks are OFFSET past each list's Unassigned gear maximum, so the
+  // union display reads "food appended after gear". list-seed's Unassigned
+  // gear holds ranks 0 and 1 (li-seed, li-cohort-u1), so its food ordered by
+  // sort_order lands at: lfi-seed (0) -> 2, lfi-canary-c (5) -> 3,
+  // lfi-canary-b (20) -> 4. list-seed-3's Unassigned gear max is 0
+  // (li-nearceiling-u after 0019's normalize), so lfi-other-list -> 1 -
+  // proving per-list partitioning AND the per-list offset in one row.
+  { migration: '0022_food-pack-state.sql', description: 'food backfill offsets each list past its gear maximum',
+    sql: "select id, pack_sort_order as rank from list_food_items where id in ('lfi-seed','lfi-canary-b','lfi-canary-c','lfi-other-list') order by id",
+    expectRows: [
+      { id: 'lfi-canary-b', rank: 4 },
+      { id: 'lfi-canary-c', rank: 3 },
+      { id: 'lfi-other-list', rank: 1 },
+      { id: 'lfi-seed', rank: 2 },
+    ] },
+  { migration: '0022_food-pack-state.sql', description: 'no committed food rank is negative',
+    sql: "select count(*) as negatives from list_food_items where pack_sort_order < 0",
+    expectRows: [{ negatives: 0 }] },
+  // The 0014-pattern same-list triggers, food edition.
+  { migration: '0022_food-pack-state.sql', description: 'food insert with unknown location aborts',
+    sql: "insert into list_food_items (id,user_id,list_id,name,weight_grams,quantity,sort_order,is_packed,packing_location_id,pack_sort_order,created_at,updated_at) values ('lfi-bad-loc','u-seed','list-seed','Bad',1,1,94,0,'nonexistent',50,0,0)",
+    expectErrorMatch: /does not belong to this list/ },
+  { migration: '0022_food-pack-state.sql', description: "food assignment to another list's location aborts",
+    sql: "update list_food_items set packing_location_id='pl-seed' where id='lfi-other-list'",
+    expectErrorMatch: /does not belong to this list/ },
+  { migration: '0022_food-pack-state.sql', description: 'setup: food assigned to a location',
+    sql: "insert into list_food_items (id,user_id,list_id,name,weight_grams,quantity,sort_order,is_packed,packing_location_id,pack_sort_order,created_at,updated_at) values ('lfi-located','u-seed','list-seed','Located',1,1,91,0,'pl-seed-exhausted',0,0,0) returning id",
+    expectRows: [{ id: 'lfi-located' }] },
+  // The cascade path: deleting a location must return its food to Unassigned
+  // as a contiguous block appended after the food maximum (the offset path),
+  // not carrying ranks that collide. list-seed's Unassigned food max after
+  // the offset backfill is 4 (lfi-canary-b), so lfi-located lands at 5.
+  { migration: '0022_food-pack-state.sql', description: 'deleting a location reranks its food into Unassigned',
+    sql: "delete from packing_locations where id='pl-seed-exhausted' returning id",
+    expectRows: [{ id: 'pl-seed-exhausted' }] },
+  { migration: '0022_food-pack-state.sql', description: 'orphaned food appended after the Unassigned maximum',
+    sql: "select packing_location_id as loc, pack_sort_order as rank from list_food_items where id='lfi-located'",
+    expectRows: [{ loc: null, rank: 5 }] },
 
   // 0021: the categories cap. u-seed holds exactly one fixture category
   // (cat-seed), so a legitimate insert must still pass, and a recursive

@@ -1056,16 +1056,26 @@ describe('pack-order route contract', () => {
     expect(await getItems(cookie, list.id)).toEqual(before)
   })
 
-  it('rejects ranks that are not a permutation of what those rows hold', async () => {
+  it('accepts collision-free minted ranks, rejects a landing on an untouched row', async () => {
+    // The contract moved from exact multiset permutation to INDEX-SAFETY
+    // (see pack-reorder.ts): free ranks are legal - they collide with
+    // nothing and ordering is what the column means - but a payload rank
+    // equal to an UNTOUCHED same-table cohort row's rank is still the write
+    // the unique index would reject, and still 400s with zero writes.
     const { cookie, list, inBag } = await bagOfTwo('pack-perm@example.com')
-    const before = await getItems(cookie, list.id)
-    // 7 and 8 are free, so a naive implementation would happily write them -
-    // and leave a cohort whose ranks no longer describe positions.
-    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+    const minted = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
       { id: inBag[0]!.id, packSortOrder: 7 },
       { id: inBag[1]!.id, packSortOrder: 8 },
     ])
-    expect(res.status).toBe(400)
+    expect(minted.status).toBe(204)
+
+    const before = await getItems(cookie, list.id)
+    // inBag[1] now holds 8; moving inBag[0] onto it without touching it
+    // must be refused.
+    const collision = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+      { id: inBag[0]!.id, packSortOrder: 8 },
+    ])
+    expect(collision.status).toBe(400)
     expect(await getItems(cookie, list.id)).toEqual(before)
   })
 
