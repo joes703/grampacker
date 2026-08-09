@@ -16,8 +16,12 @@ conventions do NOT apply (see "Do not reintroduce" at the bottom).
   claims. Codex may push a branch and open/update a PR, and may merge only
   when the human explicitly authorizes that exact PR head ("push and merge"
   covers shepherding through CI plus one final landing confirmation).
-- No force-push, history rewrite, or remote-branch deletion without explicit
-  approval.
+- No force-push, history rewrite, or deletion of an UNMERGED remote branch
+  without explicit approval. Deleting a branch whose PR has merged is routine
+  cleanup, no approval needed (the repo auto-deletes heads on merge anyway,
+  and the PR keeps its commits reachable). Force-pushing a never-merged
+  feature branch you own this session - e.g. after rebasing a stacked PR -
+  is likewise routine; say so in the transcript.
 - Do NOT deploy. There is no preview or staging environment. Deploy is
   CI-only: a merge to `main` triggers `.github/workflows/deploy.yml`, which
   applies remote D1 migrations and then runs `wrangler deploy`. The Cloudflare
