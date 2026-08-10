@@ -11,6 +11,7 @@ import { makeDnDId } from '../lib/dnd-ids'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
 import ItemWeightValue from '../components/ItemWeightValue'
+import InlineWeight from '../components/InlineWeight'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
@@ -38,7 +39,7 @@ type Props = {
   // stable callback identity per action to every row, so memo(SortableGearItemRow)
   // is a real barrier instead of being busted by fresh per-row closures.
   onToggleSelect: (id: string) => void
-  onInlineSave: (id: string, patch: Partial<Pick<GearItem, 'name' | 'description'>>) => void
+  onInlineSave: (id: string, patch: Partial<Pick<GearItem, 'name' | 'description' | 'weightGrams'>>) => void
   onEdit: (item: GearItem) => void
   onDelete: (item: GearItem) => void
   onSetStatus: (id: string, status: GearStatus) => void
@@ -170,9 +171,18 @@ export default function GearItemRow({
           <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
             {formatPurchaseDate(item.purchaseDate)}
           </span>
-          <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
-            <ItemWeightValue grams={item.weightGrams} unit={weightUnit} />
-          </span>
+          {/* The same control the list rows use. This page could only edit a
+              weight through the dialog, while a list row edited it in place -
+              the two surfaces had drifted apart for no reason beyond which PR
+              built them. Select mode drops to static: the row's affordances
+              belong to the selection while it is on. */}
+          <InlineWeight
+            grams={item.weightGrams}
+            unit={weightUnit}
+            onSave={selectMode ? undefined : (w) => onInlineSave(item.id, { weightGrams: w })}
+            itemName={item.name}
+            className="shrink-0 w-24 text-gray-600"
+          />
           {!selectMode && (
             <GearRowKebab
               status={item.status}

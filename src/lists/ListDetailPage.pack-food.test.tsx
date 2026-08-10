@@ -204,7 +204,15 @@ describe('food rows in Pack mode', () => {
     const gearWeight = rowCell('210 g')
 
     expect(foodWeight).toBeDefined()
-    expect(foodWeight?.className).toBe(gearWeight?.className)
+    expect(gearWeight).toBeDefined()
+    // Compare what governs alignment, not the whole class string: the gear
+    // cell is a button (its weight is editable in place) and the food cell is
+    // a span (food weight is authored in the Food view), so they legitimately
+    // differ in affordance styling while their column geometry must not.
+    for (const token of ['shrink-0', 'w-24', 'text-right', 'hidden', 'lg:inline-block', 'print:hidden']) {
+      expect(foodWeight?.className).toContain(token)
+      expect(gearWeight?.className).toContain(token)
+    }
   })
 
   // Gear rows reach the gear editor from this menu. Food does not: food is
