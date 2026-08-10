@@ -46,7 +46,7 @@ import { mutationKeys } from '../lib/queries/keys'
 import type { Category, GearItem, ListItemWithGear, List, PackingLocation } from '../lib/types'
 import { authClient } from '../lib/auth-client'
 import { useWeightUnit } from '../lib/use-weight-unit'
-import { useIsBelowLg } from '../lib/use-breakpoint'
+import { useIsBelowLg, useIsBelowXl } from '../lib/use-breakpoint'
 import { useReorderable } from '../lib/use-reorderable'
 import { useLatestRef } from '../lib/use-latest-ref'
 import {
@@ -449,6 +449,12 @@ function ListDetailInner({
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
   // long list registers ONE matchMedia subscription instead of one per row.
   const isBelowLg = useIsBelowLg()
+  // Only the Pack "Add gear" trigger reads this: it exists exactly in the
+  // band where Pack has neither the aside (xl+) nor the mobile action bar's
+  // Add (below lg). A JS gate rather than `xl:hidden` so the control is
+  // absent from the DOM where it does not apply - a CSS-hidden button still
+  // answers queries, and this file's viewport tests would pass vacuously.
+  const isBelowXl = useIsBelowXl()
   // Pack-mode filter: when true, hide already-packed items from each
   // category. Header counts and the "complete" affordance still reflect the
   // full items array. Lifted here because both PackingProgress (the toggle)
@@ -2074,15 +2080,19 @@ function ListDetailInner({
                 </div>
               )}
 
-              {/* Desktop Pack's way back to the gear library. Below lg the
-                  bottom action bar already carries Add, so rendering this
-                  there would be a second button for one action on the surface
-                  with the least room for it.
+              {/* Pack's way back to the gear library, for the ONE width band
+                  that has no other path to it: lg to xl.
 
-                  It opens the same library panel the aside shows in List view,
-                  so adding gear behaves identically in both views - only the
-                  container differs. */}
-              {mode === 'pack' && !isBelowLg && (
+                  Below lg the bottom action bar already carries Add, so
+                  rendering this there would be a second button for one action
+                  on the surface with the least room for it. At xl and up the
+                  picker aside is on screen permanently, so this would be a
+                  drawer trigger for a panel the user can already see.
+
+                  It opens the same library panel the aside shows, so adding
+                  gear behaves identically either way - only the container
+                  differs. */}
+              {mode === 'pack' && !isBelowLg && isBelowXl && (
                 <div className="print:hidden flex justify-end">
                   <button
                     type="button"

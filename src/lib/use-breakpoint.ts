@@ -1,10 +1,12 @@
 import { useSyncExternalStore } from 'react'
 
-// Two breakpoints used by the app. Keep the strings here as the single
-// source of truth — Tailwind's `lg:` is 1024px and Tailwind's `md:` is
-// 768px, so `useIsBelowLg()` matches the negation of `lg:` and
-// `useIsMobile()` matches the negation of `md:`.
+// Three breakpoints used by the app. Keep the strings here as the single
+// source of truth — Tailwind's `xl:` is 1280px, `lg:` is 1024px and `md:` is
+// 768px, so `useIsBelowXl()` matches the negation of `xl:`,
+// `useIsBelowLg()` matches the negation of `lg:` and `useIsMobile()` matches
+// the negation of `md:`.
 const QUERIES = {
+  belowXl: '(max-width: 1279px)',
   belowLg: '(max-width: 1023px)',
   mobile: '(max-width: 767px)',
 } as const
@@ -33,10 +35,20 @@ function getServerSnapshot(): boolean {
   return false
 }
 
+const belowXlSubscribe = makeSubscribe(QUERIES.belowXl)
+const belowXlGetSnapshot = makeGetSnapshot(QUERIES.belowXl)
 const belowLgSubscribe = makeSubscribe(QUERIES.belowLg)
 const belowLgGetSnapshot = makeGetSnapshot(QUERIES.belowLg)
 const mobileSubscribe = makeSubscribe(QUERIES.mobile)
 const mobileGetSnapshot = makeGetSnapshot(QUERIES.mobile)
+
+// True at <1280px. Use where a control must exist only in the band the
+// Pack picker aside does not cover — the aside is `xl:flex`, so a JS gate is
+// what keeps DOM presence honest at 1024-1279px rather than leaving an
+// element mounted-but-CSS-hidden that tests would read as present.
+export function useIsBelowXl(): boolean {
+  return useSyncExternalStore(belowXlSubscribe, belowXlGetSnapshot, getServerSnapshot)
+}
 
 // True at <1024px. Use for sites that swap behavior at Tailwind's `lg:`
 // boundary (rows with desktop+mobile bodies, the sidebar drawer, etc.).

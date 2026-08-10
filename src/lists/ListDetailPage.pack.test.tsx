@@ -172,14 +172,17 @@ afterEach(() => {
 })
 
 describe('adding gear from Pack view', () => {
-  it('offers Add gear on desktop Pack, where the library aside is hidden', async () => {
-    stubViewport(1280)
+  // The band between lg and xl is the one width where Pack has neither the
+  // aside (xl and up) nor the mobile action bar's Add (below lg). Remove this
+  // button and that band has no path to the picker at all.
+  it('offers Add gear between lg and xl, where Pack has no aside', async () => {
+    stubViewport(1100)
     await renderDetail(`/lists/${listId}/pack`)
     expect(addGear()).toBeTruthy()
   })
 
   it('opens the gear library from that button', async () => {
-    stubViewport(1280)
+    stubViewport(1100)
     const user = userEvent.setup()
     await renderDetail(`/lists/${listId}/pack`)
 
@@ -193,6 +196,14 @@ describe('adding gear from Pack view', () => {
   // be two controls for one action on the surface with the least room.
   it('omits the button below lg, where the action bar already has Add', async () => {
     stubViewport(500)
+    await renderDetail(`/lists/${listId}/pack`)
+    expect(addGear()).toBeNull()
+  })
+
+  // At xl the picker is on screen permanently, so a button that opens the
+  // same panel in a drawer is a second control for a visible surface.
+  it('omits the button at xl, where the picker aside is already there', async () => {
+    stubViewport(1280)
     await renderDetail(`/lists/${listId}/pack`)
     expect(addGear()).toBeNull()
   })
