@@ -27,11 +27,12 @@ const locations: PackingLocation[] = [
 
 function stubViewport(width: number) {
   vi.stubGlobal('matchMedia', (query: string) => {
-    const max = /width\s*<\s*([\d.]+)px/.exec(query)?.[1]
+    const max = /width\s*<\s*([\d.]+)rem/.exec(query)?.[1]
     return {
-      // Strict, matching the range syntax in use-breakpoint.ts: at exactly
-      // 1024px `(width < 1024px)` is false and Tailwind's `lg:` takes over.
-      matches: max !== undefined && width < Number(max),
+      // Queries are rem (Tailwind's own unit); *16 converts to the px
+      // widths these tests pass. Strict, matching use-breakpoint.ts: at
+      // exactly 64rem the query is false and Tailwind's `lg:` takes over.
+      matches: max !== undefined && width < Number(max) * 16,
       media: query,
       onchange: null,
       addEventListener: () => {},
@@ -144,7 +145,7 @@ describe('MoveToLocationMenu removal', () => {
         itemName="Cooking pot"
         currentLocationId={null}
         locations={locations}
-        mobile={width <= 1023}
+        mobile={width < 1024}
         disabled={false}
         containerCreationDisabled={false}
         isContainer={false}

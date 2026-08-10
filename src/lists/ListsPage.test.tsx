@@ -21,10 +21,11 @@ import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
 // hidden desktop header and never rendered on this path at all.
 function stubViewport(width: number) {
   vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /width\s*<\s*([\d.]+)px/.exec(query)
-    // Strict, matching the range syntax in use-breakpoint.ts: at exactly
-    // 768px `(width < 768px)` is false and Tailwind's `md:` takes over.
-    const matches = m ? width < Number(m[1]) : false
+    const m = /width\s*<\s*([\d.]+)rem/.exec(query)
+    // Queries are rem (Tailwind's own unit); *16 converts to the px widths
+    // these tests pass. Strict, matching use-breakpoint.ts: at exactly
+    // 48rem the query is false and Tailwind's `md:` takes over.
+    const matches = m ? width < Number(m[1]) * 16 : false
     return {
       matches,
       media: query,
