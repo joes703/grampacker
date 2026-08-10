@@ -261,3 +261,55 @@ describe('removing gear from Pack view', () => {
     ).toBeNull()
   })
 })
+
+// Pack used to hide the gear picker so packing got the focus. A real trip
+// showed that costs more than it buys: adding or reweighing one item meant
+// leaving the view. The picker now sits beside Pack too - but at xl, not lg,
+// because at 1024px a 320px aside leaves 656px for a row dense enough to
+// truncate item names to ~113px rather than overflow (docs/one-page-list-design.md).
+describe('the gear picker beside Pack', () => {
+  const listsPanel = () =>
+    screen.queryByRole('button', { name: 'New list or import CSV' })
+
+  it('renders the picker aside in Pack, gated at xl rather than lg', async () => {
+    stubViewport(1280)
+    await renderDetail(`/lists/${listId}/pack`)
+
+    const aside = screen.getByTestId('list-side-panel')
+    expect(aside.className).toContain('xl:flex')
+    expect(aside.className).not.toContain('lg:flex')
+  })
+
+  it('keeps Category view on the lg gate it already had', async () => {
+    stubViewport(1280)
+    await renderDetail(`/lists/${listId}`)
+
+    const aside = screen.getByTestId('list-side-panel')
+    expect(aside.className).toContain('lg:flex')
+    expect(aside.className).not.toContain('xl:flex')
+  })
+
+  // max-w-3xl is unprefixed, so it governs paper as well as screen. Screen
+  // gets the width back now the aside fills it; print keeps the 768px measure
+  // the checklist was designed around.
+  it('constrains the Pack document for print only', async () => {
+    stubViewport(1280)
+    await renderDetail(`/lists/${listId}/pack`)
+
+    const column = screen.getByTestId('list-document-column')
+    expect(column.className).toContain('print:max-w-3xl')
+    expect(column.className).not.toMatch(/(^|\s)max-w-3xl(\s|$)/)
+  })
+
+  // Nobody switches lists mid-pack, and the switcher's max-h-72 is height the
+  // picker wants back.
+  it('drops the lists switcher in Pack but keeps it in Category', async () => {
+    stubViewport(1280)
+    await renderDetail(`/lists/${listId}/pack`)
+    expect(listsPanel()).toBeNull()
+
+    cleanup()
+    await renderDetail(`/lists/${listId}`)
+    expect(listsPanel()).toBeTruthy()
+  })
+})

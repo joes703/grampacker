@@ -1912,27 +1912,46 @@ function ListDetailInner({
 
   return (
     <div className="flex flex-col gap-4 print:pb-0">
-      {/* Two-column grid (sidebar renders only in Edit; Organize returned
-          through its exclusive branch above and Pack stays focused). */}
+      {/* Two-column grid. The aside serves BOTH gear arrangements now
+          (Organize returned through its exclusive branch above; Food keeps
+          its own left rail and is excluded here). */}
       <div className="flex gap-4 items-start">
         {/* LEFT column — Lists switcher above the gear library picker.
-            Hidden in pack mode on desktop so the user can focus on packing.
             DesktopListsPanel is the primary desktop workflow for list
             switching/management; /lists remains the mobile management page
-            and a desktop fallback (e.g. when no lists exist). */}
-        {mode === 'edit' && (
+            and a desktop fallback (e.g. when no lists exist).
+
+            Pack used to hide this entirely so packing got the focus. A real
+            trip retired that argument: adding or reweighing one item meant
+            leaving the view and coming back. See docs/one-page-list-design.md.
+
+            But Pack's aside starts at xl, not lg. At 1024px the shell's 32px
+            padding leaves 992px; minus a 320px aside and the 16px gap the
+            document is 656px, and a pack row (grip, two checkboxes, name,
+            description, two icon slots, quantity, weight, menu) does not
+            overflow there - every flexible cell is min-w-0 truncate, so the
+            name silently shrinks to ~113px instead. Information disappearing
+            quietly is worse than a missing panel, and between lg and xl Pack
+            still reaches the picker through the Add gear drawer button below.
+            Category rows are far less dense and stay on lg. */}
+        {(mode === 'edit' || mode === 'pack') && (
           <aside
-            className="hidden lg:flex w-80 shrink-0 flex-col gap-3 sticky self-start print:hidden"
+            data-testid="list-side-panel"
+            className={`hidden ${mode === 'pack' ? 'xl:flex' : 'lg:flex'} w-80 xl:w-96 shrink-0 flex-col gap-3 sticky self-start print:hidden`}
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
           >
-            {/* shrink-0 + max-h-72 keeps the lists switcher compact even
+            {/* Category only. Nobody switches lists mid-pack, and max-h-72 is
+                vertical room the picker wants back.
+                shrink-0 + max-h-72 keeps the lists switcher compact even
                 with many lists: the panel scrolls internally beyond that
                 cap and the gear picker below always has room. */}
-            <DesktopListsPanel
-              lists={lists}
-              currentListId={listId}
-              className="shrink-0 max-h-72"
-            />
+            {mode === 'edit' && (
+              <DesktopListsPanel
+                lists={lists}
+                currentListId={listId}
+                className="shrink-0 max-h-72"
+              />
+            )}
 
             <div className={`flex flex-col min-h-0 flex-1 ${FLAT_TABLE_SURFACE}`}>
               {libraryPane}
@@ -1942,11 +1961,22 @@ function ListDetailInner({
 
         {/* RIGHT column — list document. Title toolbar + weight table +
             items (always visible; packing checkbox column appears in pack
-            mode). Pack mode narrows from 7xl (AppShell main) to 3xl +
-            mx-auto so the sparser layout reads as focused rather than
-            stretched across the full width the missing sidebar leaves
-            behind. */}
-        <div className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'max-w-3xl mx-auto' : ''}`}>
+            mode).
+
+            Pack used to narrow from 7xl (AppShell main) to 3xl + mx-auto so
+            the sparser layout read as focused rather than stretched across
+            the width the missing sidebar left behind. The sidebar is back at
+            xl, so on screen that compensation is now wrong.
+
+            It survives for PRINT, and not by inertia: max-w-3xl is an
+            unprefixed utility, so it always governed paper too. Dropping it
+            outright would widen the printed checklist on any print config
+            whose content area exceeds 768px - a silent regression in the one
+            output nobody re-checks. */}
+        <div
+          data-testid="list-document-column"
+          className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'print:max-w-3xl print:mx-auto' : ''}`}
+        >
           <ListDocumentToolbar
             list={list}
             mode={mode}
