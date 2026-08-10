@@ -27,9 +27,11 @@ const locations: PackingLocation[] = [
 
 function stubViewport(width: number) {
   vi.stubGlobal('matchMedia', (query: string) => {
-    const max = /max-width:\s*([\d.]+)px/.exec(query)?.[1]
+    const max = /width\s*<\s*([\d.]+)px/.exec(query)?.[1]
     return {
-      matches: max !== undefined && width <= Number(max),
+      // Strict, matching the range syntax in use-breakpoint.ts: at exactly
+      // 1024px `(width < 1024px)` is false and Tailwind's `lg:` takes over.
+      matches: max !== undefined && width < Number(max),
       media: query,
       onchange: null,
       addEventListener: () => {},

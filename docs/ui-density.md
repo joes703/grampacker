@@ -80,9 +80,12 @@ more than it reads sentences.
 ## Breakpoints
 
 Three hooks in `src/lib/use-breakpoint.ts` mirror Tailwind exactly. They use
-fractional upper bounds (`max-width: 1023.98px`) on purpose: Tailwind's
-prefixes are min-width rules, and an integer negation leaves a hole at
-fractional widths, which browsers produce under zoom and device emulation.
+Media Queries Level 4 range syntax (`(width < 1024px)`) on purpose, not
+`max-width`: Tailwind's prefixes are min-width rules, and NO `max-width` value
+is their exact complement - `1023px` misses from 1023.01 up and even
+`1023.98px` misses at 1023.99. Browsers produce those widths under zoom and
+device emulation, and in the gap a JS-gated control and its CSS counterpart
+are both absent, or at the other boundary both present.
 
 - `useIsBelowXl()` - true below 1280px, the negation of `xl:`. Used only for
   Pack's Add gear trigger, which exists exactly where the picker aside does not

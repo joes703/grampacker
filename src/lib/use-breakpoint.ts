@@ -6,17 +6,20 @@ import { useSyncExternalStore } from 'react'
 // `useIsBelowLg()` matches the negation of `lg:` and `useIsMobile()` matches
 // the negation of `md:`. See the note on the query strings below: those
 // negations are only exact because of the fractional bounds.
-// The fractional upper bounds are load-bearing, not sloppiness. Tailwind's
-// prefixes are min-width rules, so `xl:` is `(min-width: 1280px)`. An integer
-// negation of `(max-width: 1279px)` LEAVES A HOLE: at 1279.5px - which real
-// browsers produce under zoom and device emulation - neither rule matches, so
-// a control gated in JS and its CSS counterpart can both be absent. The same
-// hole at 1023.5px let the mobile action bar and the desktop Add gear button
-// exist at once. `.98` closes both without overlapping the next breakpoint.
+// Range syntax, not max-width, and that is load-bearing. Tailwind's prefixes
+// are min-width rules, so `xl:` is `(min-width: 1280px)`. Any `max-width`
+// negation leaves a hole at fractional widths, which browsers produce under
+// zoom and device emulation: `1279px` misses from 1279.01 up, and even the
+// conventional `1279.98px` misses at 1279.99. In that hole a JS-gated control
+// and its CSS counterpart are BOTH absent - or, at the lg boundary, both
+// present. `(width < 1280px)` is the exact complement of `(min-width: 1280px)`
+// at every width, fractional included.
+//
+// Media Queries Level 4 range syntax; Safari 16.4+, Chrome 104+, Firefox 102+.
 const QUERIES = {
-  belowXl: '(max-width: 1279.98px)',
-  belowLg: '(max-width: 1023.98px)',
-  mobile: '(max-width: 767.98px)',
+  belowXl: '(width < 1280px)',
+  belowLg: '(width < 1024px)',
+  mobile: '(width < 768px)',
 } as const
 
 // useSyncExternalStore + a single subscribe factory per query keep React
