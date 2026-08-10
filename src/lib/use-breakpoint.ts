@@ -4,11 +4,19 @@ import { useSyncExternalStore } from 'react'
 // source of truth — Tailwind's `xl:` is 1280px, `lg:` is 1024px and `md:` is
 // 768px, so `useIsBelowXl()` matches the negation of `xl:`,
 // `useIsBelowLg()` matches the negation of `lg:` and `useIsMobile()` matches
-// the negation of `md:`.
+// the negation of `md:`. See the note on the query strings below: those
+// negations are only exact because of the fractional bounds.
+// The fractional upper bounds are load-bearing, not sloppiness. Tailwind's
+// prefixes are min-width rules, so `xl:` is `(min-width: 1280px)`. An integer
+// negation of `(max-width: 1279px)` LEAVES A HOLE: at 1279.5px - which real
+// browsers produce under zoom and device emulation - neither rule matches, so
+// a control gated in JS and its CSS counterpart can both be absent. The same
+// hole at 1023.5px let the mobile action bar and the desktop Add gear button
+// exist at once. `.98` closes both without overlapping the next breakpoint.
 const QUERIES = {
-  belowXl: '(max-width: 1279px)',
-  belowLg: '(max-width: 1023px)',
-  mobile: '(max-width: 767px)',
+  belowXl: '(max-width: 1279.98px)',
+  belowLg: '(max-width: 1023.98px)',
+  mobile: '(max-width: 767.98px)',
 } as const
 
 // useSyncExternalStore + a single subscribe factory per query keep React

@@ -27,7 +27,7 @@ const locations: PackingLocation[] = [
 
 function stubViewport(width: number) {
   vi.stubGlobal('matchMedia', (query: string) => {
-    const max = /max-width:\s*(\d+)px/.exec(query)?.[1]
+    const max = /max-width:\s*([\d.]+)px/.exec(query)?.[1]
     return {
       matches: max !== undefined && width <= Number(max),
       media: query,

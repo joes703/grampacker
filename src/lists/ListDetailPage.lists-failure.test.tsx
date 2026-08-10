@@ -79,7 +79,7 @@ vi.mock('../lib/queries', async (importOriginal) => {
 
 function stubViewport(width: number) {
   vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /max-width:\s*(\d+)px/.exec(query)
+    const m = /max-width:\s*([\d.]+)px/.exec(query)
     return {
       matches: m ? width <= Number(m[1]) : false,
       media: query,

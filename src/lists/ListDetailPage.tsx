@@ -1552,7 +1552,15 @@ function ListDetailInner({
         // in Pack it lands Uncategorized too while the list has no bags
         // (Pack falls back to category grouping there) or Unassigned once it
         // does. Worn items go to the Worn section either way.
-        onCreateNew={(data) => onAddNewItem(null, data)}
+        onCreateNew={(data) => {
+          // Close the drawer too, not just the modal. Below lg this panel
+          // lives inside the sidebar drawer, whose 88vw content is z-50 -
+          // the same layer as the toast, and painted after it. A failed
+          // create would report into a toast the drawer covers, which is the
+          // same class of bug as reporting behind an open <dialog>.
+          setDrawerOpen(false)
+          onAddNewItem(null, data)
+        }}
         // The panel sits outside the detail gate below, so it stays
         // interactive during exactly the failure that would hide the result.
         // Creating is what must not proceed blind - adding EXISTING gear is

@@ -92,7 +92,7 @@ vi.mock('../lib/queries', async (importOriginal) => {
 
 function stubViewport(width: number) {
   vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /max-width:\s*(\d+)px/.exec(query)
+    const m = /max-width:\s*([\d.]+)px/.exec(query)
     return {
       matches: m ? width <= Number(m[1]) : false,
       media: query,
@@ -257,6 +257,30 @@ describe('removing gear from Pack view', () => {
 
     await user.click(
       screen.getByRole('button', { name: 'Open Cooking pot packing options' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Edit item' }))
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  // A container's own row lives in the section HEADER, with a separately
+  // constructed menu - so it is reachable by neither the row kebab nor the
+  // worn button. Without this the bag itself would be the one item you cannot
+  // edit from Pack.
+  it('opens the gear editor from a container section header', async () => {
+    stubViewport(1280)
+    h.fetchPackingLocations.mockResolvedValue([{
+      id: 'loc-1',
+      name: 'Cooking pot',
+      sortOrder: 0,
+      parentLocationId: null,
+      containerListItemId: 'li-1',
+    }] as unknown as PackingLocation[])
+    const user = userEvent.setup()
+    await renderDetail(`/lists/${listId}/pack`)
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Open Cooking pot packing options' }),
     )
     await user.click(screen.getByRole('button', { name: 'Edit item' }))
 

@@ -79,8 +79,13 @@ more than it reads sentences.
 
 ## Breakpoints
 
-Two hooks in `src/lib/use-breakpoint.ts` mirror Tailwind exactly:
+Three hooks in `src/lib/use-breakpoint.ts` mirror Tailwind exactly. They use
+fractional upper bounds (`max-width: 1023.98px`) on purpose: Tailwind's
+prefixes are min-width rules, and an integer negation leaves a hole at
+fractional widths, which browsers produce under zoom and device emulation.
 
+- `useIsBelowXl()` - true below 1280px, the negation of `xl:`. Used only for
+  Pack's Add gear trigger, which exists exactly where the picker aside does not
 - `useIsBelowLg()` - true below 1024px, the negation of `lg:`
 - `useIsMobile()` - true below 768px, the negation of `md:`
 
