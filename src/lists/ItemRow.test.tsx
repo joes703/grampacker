@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ListItemWithGear } from '../lib/types'
 import ItemRow from './ItemRow'
 import SortableItemRow from './SortableItemRow'
@@ -80,6 +81,61 @@ describe('ItemRow pack-mode weight', () => {
 
     const cell = screen.getByLabelText('1200 g').parentElement
     expect(cell?.className).toContain('print:hidden')
+  })
+
+  // Fixing a weight is the edit you actually want mid-pack, and it works here
+  // for a structural reason: the weight cell is OUTSIDE the wrapping label, so
+  // an input in it cannot steal the toggle-packed gesture. Name and
+  // description are inside that label and stay in the dialog.
+  it('edits the weight in place when a save handler is supplied', async () => {
+    const onSaveWeight = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <ItemRow
+        item={item}
+        weightUnit="g"
+        isBelowLg={false}
+        packMode
+        onSaveWeight={onSaveWeight}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Edit weight 1200 g for Backpack' }))
+    const input = screen.getByRole('spinbutton')
+    await user.clear(input)
+    await user.type(input, '950')
+    // Enter, not Tab: WeightInput contains its own g/oz toggle button, so Tab
+    // moves focus WITHIN the component and its onBlur deliberately does not
+    // fire. Enter is the commit path a keyboard user actually takes.
+    await user.keyboard('{Enter}')
+
+    expect(onSaveWeight).toHaveBeenCalledWith(950)
+  })
+
+  it('does not toggle packed when the weight is clicked', async () => {
+    const onUpdate = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <ItemRow
+        item={item}
+        weightUnit="g"
+        isBelowLg={false}
+        packMode
+        onUpdate={onUpdate}
+        onSaveWeight={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Edit weight 1200 g for Backpack' }))
+
+    expect(onUpdate).not.toHaveBeenCalled()
+  })
+
+  // The share view passes no handler. A static weight there must stay static.
+  it('leaves the weight static when no save handler is supplied', () => {
+    render(<ItemRow item={item} weightUnit="g" isBelowLg={false} packMode />)
+
+    expect(screen.queryByRole('button', { name: /Edit weight/ })).toBeNull()
   })
 })
 

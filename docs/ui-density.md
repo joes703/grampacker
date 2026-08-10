@@ -103,6 +103,27 @@ Px figures below are therefore "at a 16px initial font", not fixed truths.
 Comments elsewhere in the tree still name px bounds from before this changed.
 They are stale in wording only; the queries themselves are all rem.
 
+## Editing in place
+
+Weight is edited through one control, `src/components/InlineWeight.tsx`, on
+every surface that shows one: the Category row, the Pack row, and the gear
+library row. Do not hand-roll a fourth.
+
+It exists because those surfaces had drifted - the list row could edit a
+weight in place, the gear library could only reach it through a dialog, and
+the Pack row showed no weight at all. Three copies of the same state machine
+(draft, prop-sync, focus, clamp, commit-once) is how that happened.
+
+- Omit `onSave` for read-only: the public share view, and food rows in Pack
+  (food weight is authored in the Food view).
+- Pass text colour and width/visibility through `className`; the control owns
+  the numeric token and the hover affordance, not the row's colour.
+- Name and description are edited inline by `InlineText`. On a Pack row they
+  deliberately are NOT: those sit inside the label that toggles Packed, and an
+  input there would fight the gesture. Weight sits outside it, which is the
+  whole reason weight can be edited in Pack and the other fields cannot - the
+  dialog covers them.
+
 **Layout swaps that hand off to a touch presentation must use
 `useIsBelowLg()`**, because every touch-sized token in this file compacts at
 `lg`, not `md`. A surface that swaps at `md` renders its dense desktop

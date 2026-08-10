@@ -25,11 +25,11 @@ import {
 import ItemWeightValue from '../components/ItemWeightValue'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
-import WeightInput from '../components/WeightInput'
+import InlineWeight from '../components/InlineWeight'
 import GearStatusBadge from '../components/gear/GearStatusBadge'
 import GearStatusMenuItems from '../components/gear/GearStatusMenuItems'
 import { WornIcon, ConsumableIcon } from './list-item-flags'
-import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY } from '../lib/caps'
+import { MAX_LIST_ITEM_QUANTITY } from '../lib/caps'
 import { useCommitOnce } from '../lib/use-commit-once'
 import PackModeCheckbox from './PackModeCheckbox'
 
@@ -126,20 +126,9 @@ export default function ItemRow({
   outerStyle,
 }: ItemRowProps) {
   const itemWeight = item.gearItem.weightGrams
-  const [editingWeight, setEditingWeight] = useState(false)
-  const [weightDraftGrams, setWeightDraftGrams] = useState(itemWeight)
-  // Sync drafts to external prop changes via the React-docs "store-previous-prop"
-  // pattern (https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes).
-  // Drafts follow optimistic updates / cross-tab edits without remounting
-  // the row mid-edit, and without the cascading-render pitfall flagged by
-  // react-hooks/set-state-in-effect.
-  const [prevItemWeight, setPrevItemWeight] = useState(itemWeight)
-  if (itemWeight !== prevItemWeight) {
-    setPrevItemWeight(itemWeight)
-    setWeightDraftGrams(itemWeight)
-  }
-  const weightInputRef = useRef<HTMLInputElement>(null)
-
+  // Weight editing lives in InlineWeight now (one control for the Category
+  // row, the Pack row and the gear library row). Quantity keeps its state
+  // here: it is list-membership data, not gear data, and has no second home.
   const [editingQty, setEditingQty] = useState(false)
   const [qtyDraft, setQtyDraft] = useState(String(item.quantity))
   const [prevQty, setPrevQty] = useState(item.quantity)
@@ -151,17 +140,8 @@ export default function ItemRow({
   const commitOnce = useCommitOnce()
 
   useEffect(() => {
-    if (editingWeight) weightInputRef.current?.focus()
-  }, [editingWeight])
-  useEffect(() => {
     if (editingQty) { qtyInputRef.current?.focus(); qtyInputRef.current?.select() }
   }, [editingQty])
-
-  function commitWeight() {
-    const clamped = Math.max(0, Math.min(weightDraftGrams, MAX_ITEM_WEIGHT_GRAMS))
-    if (clamped !== itemWeight && onSaveWeight) onSaveWeight(clamped)
-    setEditingWeight(false)
-  }
 
   function commitQty() {
     const parsed = parseInt(qtyDraft, 10)
@@ -294,8 +274,13 @@ export default function ItemRow({
         </span>
         {/* Weight. Deliberately a SIBLING of the label above, never a child:
             that label wraps the Packed checkbox, so anything inside it
-            becomes part of the toggle gesture and clicking a weight would
-            mark the item packed.
+            becomes part of the toggle gesture - a weight there would mark the
+            item packed on click, and an INPUT there would be unusable.
+
+            That boundary is what makes editing in place possible here at all.
+            Name and description sit inside the label and so stay in the
+            dialog; weight is the one field you actually want to fix while
+            packing, and it happens to be the one that can be.
 
             lg+ only. The mobile pack row already drops its description for
             room, and a w-24 cell at 375px would crush the name - mobile Pack
@@ -304,9 +289,16 @@ export default function ItemRow({
             print:hidden because the printed checklist keeps its existing
             geometry (the document column retains max-w-3xl under print: for
             the same reason). */}
-        <span className={`hidden lg:inline-block shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500 print:hidden`}>
-          <ItemWeightValue grams={itemWeight} unit={weightUnit} />
-        </span>
+        <InlineWeight
+          grams={itemWeight}
+          unit={weightUnit}
+          onSave={onSaveWeight}
+          itemName={name}
+          className="hidden lg:inline-block shrink-0 w-24 text-gray-500 print:hidden"
+          // While editing the cell becomes a flex row (input + unit toggle),
+          // so it cannot keep inline-block.
+          editingClassName="hidden lg:flex shrink-0 w-24 print:hidden"
+        />
         {/* Packing menu (move to location / use as container). print:hidden
             is applied by the injected control itself. */}
         {rowAction}
@@ -471,33 +463,13 @@ export default function ItemRow({
         )}
 
         {/* Weight — clickable when editable, static otherwise */}
-        {onSaveWeight && editingWeight ? (
-          <WeightInput
-            inputRef={weightInputRef}
-            grams={weightDraftGrams}
-            onChange={setWeightDraftGrams}
-            onBlur={() => commitOnce(commitWeight)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitOnce(commitWeight)
-              if (e.key === 'Escape') commitOnce(() => { setWeightDraftGrams(itemWeight); setEditingWeight(false) })
-            }}
-            className="shrink-0 w-24"
-            inputClassName={`flex-1 min-w-0 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums ${INLINE_EDIT_FOCUS_RING}`}
-          />
-        ) : onSaveWeight ? (
-          <button
-            onClick={() => setEditingWeight(true)}
-            title="Edit weight"
-            aria-label={`Edit weight ${formatItemWeight(itemWeight, weightUnit)} for ${name}`}
-            className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600 hover:text-blue-600`}
-          >
-            <ItemWeightValue grams={itemWeight} unit={weightUnit} />
-          </button>
-        ) : (
-          <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
-            <ItemWeightValue grams={itemWeight} unit={weightUnit} />
-          </span>
-        )}
+        <InlineWeight
+          grams={itemWeight}
+          unit={weightUnit}
+          onSave={onSaveWeight}
+          itemName={name}
+          className="shrink-0 w-24 text-gray-600"
+        />
 
         {/* Kebab — Remove from list (always when handler present), Edit + Delete
             from inventory (only when handlers present). Hidden entirely on

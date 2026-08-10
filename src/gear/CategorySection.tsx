@@ -37,7 +37,7 @@ type CategorySectionProps = {
   selectMode: boolean
   selectedIds: Set<string>
   onToggleSelect: (id: string) => void
-  onInlineSave: (id: string, patch: Partial<Pick<GearItem, 'name' | 'description'>>) => void
+  onInlineSave: (id: string, patch: Partial<Pick<GearItem, 'name' | 'description' | 'weightGrams'>>) => void
   onEditItem: (item: GearItem) => void
   onDeleteItem: (item: GearItem) => void
   onSetItemStatus: (id: string, status: GearItem['status']) => void

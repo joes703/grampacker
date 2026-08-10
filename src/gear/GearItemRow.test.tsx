@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import GearItemRow, { SortableGearItemRow } from './GearItemRow'
 import type { GearItem } from '../lib/types'
 
@@ -112,5 +113,34 @@ describe('SortableGearItemRow activator', () => {
 
     const handle = screen.getByRole('button', { name: 'Reorder Tent' })
     expect(handle).toHaveAttribute('tabindex', '0')
+  })
+})
+
+// Joe's first complaint of the packing-workflow review: "I should be able to
+// inline add or edit grams in gear page." The list row could already do this;
+// this page could only reach a weight through the dialog. Both now go through
+// the shared InlineWeight control.
+describe('GearItemRow inline weight', () => {
+  it('saves a weight edited in place', async () => {
+    const user = userEvent.setup()
+    const props = baseProps()
+    render(<GearItemRow item={gear()} {...props} />)
+
+    await user.click(screen.getByRole('button', { name: 'Edit weight 1200 g for Tent' }))
+    const input = screen.getByRole('spinbutton')
+    await user.clear(input)
+    await user.type(input, '850')
+    // Enter rather than Tab: WeightInput contains its own g/oz toggle, so Tab
+    // moves focus within the component and its onBlur deliberately holds.
+    await user.keyboard('{Enter}')
+
+    expect(props.onInlineSave).toHaveBeenCalledWith('gear-1', { weightGrams: 850 })
+  })
+
+  it('leaves the weight static in select mode, where the row belongs to the selection', () => {
+    render(<GearItemRow item={gear()} {...baseProps()} selectMode />)
+
+    expect(screen.queryByRole('button', { name: /Edit weight/ })).toBeNull()
+    expect(screen.getByLabelText('1200 g')).toBeInTheDocument()
   })
 })

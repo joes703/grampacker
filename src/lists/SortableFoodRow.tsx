@@ -6,11 +6,10 @@ import type { FoodItemResponse } from '../../shared/food'
 import { asButtonRef } from '../lib/dnd'
 import { makeDnDId } from '../lib/dnd-ids'
 import type { WeightUnit } from '../lib/weight'
-import ItemWeightValue from '../components/ItemWeightValue'
+import InlineWeight from '../components/InlineWeight'
 import RowIconButton from '../components/RowIconButton'
 import {
   FLAT_TABLE_BODY_TEXT,
-  FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
@@ -141,13 +140,20 @@ export default function SortableFoodRow({
       <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
         {food.quantity}
       </span>
-      {/* Matches the gear pack row's weight cell exactly - same width, same
-          lg+ gate, same print:hidden. A bag holds gear and food in one
-          cohort, so a cell on one and not the other misaligns every column
-          to its right in a mixed section. */}
-      <span className={`hidden lg:inline-block shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500 print:hidden`}>
-        <ItemWeightValue grams={food.weightGrams} unit={weightUnit} />
-      </span>
+      {/* Same component and the same layout utilities as the gear pack row:
+          a bag holds gear and food in one cohort, so a cell on one and not
+          the other misaligns every column to its right in a mixed section.
+
+          READ-ONLY on purpose - no onSave. A food item's weight is authored
+          in the Food view, the same reason these rows carry no Remove and no
+          Edit. Routing it through InlineWeight anyway means the two cells
+          cannot drift apart the next time the control changes. */}
+      <InlineWeight
+        grams={food.weightGrams}
+        unit={weightUnit}
+        itemName={food.name}
+        className="hidden lg:inline-block shrink-0 w-24 text-gray-500 print:hidden"
+      />
       {rowAction}
     </div>
   )

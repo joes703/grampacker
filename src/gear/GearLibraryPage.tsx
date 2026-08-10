@@ -522,7 +522,7 @@ export default function GearLibraryPage() {
   const { mutate: editItemMutate } = editItem
   const { mutate: renameCategoryMutate } = renameCategory
   const handleInlineSave = useCallback(
-    (id: string, patch: Partial<Pick<GearItem, 'name' | 'description'>>) =>
+    (id: string, patch: Partial<Pick<GearItem, 'name' | 'description' | 'weightGrams'>>) =>
       editItemMutate({ id, patch }),
     [editItemMutate],
   )
