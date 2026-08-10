@@ -100,7 +100,33 @@ A new item created this way lands Uncategorized in Category view and
 Unassigned in Pack view - the existing defaults for anything new. Moving it
 is one drag or one Move-to.
 
-### 3.5 The redundant button goes
+### 3.5 Pack rows show weight and can be edited
+
+Pack rows today render grip, ready checkbox, packed checkbox, status badge,
+name, description, worn/consumable icons, quantity and the Move-to menu
+(`ItemRow.tsx:183-299`). No weight, and no way to change anything about the
+item.
+
+That makes Pack incoherent on its own: "adjust weight of things" was one of
+the four jobs that forced the three-tab shuffle, so a Pack view you still
+cannot fix a weight from does not solve the problem this design exists for.
+Two additions, both small because the wiring already exists:
+
+- **A weight cell**, matching the Category row's column: `ItemWeightValue`
+  wrapped in `FLAT_TABLE_NUMERIC_TEXT` per `docs/ui-density.md`.
+- **"Edit item" in the row menu**, beside the existing Move-to, Stop using as
+  container and Remove from list entries (`MoveToLocationMenu.tsx:155-184`).
+  It calls `onEditGearItem`, which `sharedGroupProps` already passes to every
+  section in both views (`ListDetailPage.tsx:1619`) and which Pack simply
+  never surfaced. It opens the same dialog the Category view opens.
+
+**Inline editing in Pack is not part of this.** Typing into a Pack row
+competes with the wrapping `<label>` that makes clicking the name toggle
+Packed - that gesture is deliberate and load-bearing
+(`ItemRow.tsx:230-238`). Pack gets the dialog; Category keeps its inline
+fields. Making both surfaces use one editor is the next piece.
+
+### 3.6 The redundant button goes
 
 `ListDetailPage.tsx:2055` renders a desktop-only "Add gear" button in Pack
 that opens the picker in a drawer. With the picker permanently on screen at
@@ -148,6 +174,11 @@ into a feature PR. It is worth its own PR later.
   both Category and Pack, and the row appears Uncategorized/Unassigned.
 - Creating from Pack does not send a packing-location id as a category id.
 - Pack still renders its rows, checkboxes, drag and Move-to menu unchanged.
+- Pack rows show the item weight, and it matches what Category shows.
+- "Edit item" in the Pack row menu opens the same dialog Category opens, and
+  saving from Pack updates the row without leaving the view.
+- Clicking a Pack row's name still toggles Packed - the new menu entry and
+  weight cell do not steal that gesture.
 - Print snapshot of Pack is unchanged.
 - Existing `ListDetailPage.pack.test.tsx` and `ListDetailPage.pack-food.test.tsx`
   keep passing untouched.
@@ -160,11 +191,11 @@ authorized and tested.
 
 Named so they are not assumed to be included:
 
-- **Editing gear from a Pack row.** Pack rows today show no weight and carry
-  no editor (`ItemRow.tsx:183-299`). Joe asked for editing in both views. It
-  is excluded here because it belongs with unifying the two add screens and
-  the two edit screens into one - a separate piece of work, and the larger
-  half of Joe's complaint.
+- **One editor everywhere.** Pack reaches the edit dialog (3.5) but Category
+  still has inline fields and `/gear` still has its own dialog, and adding has
+  two implementations too (`QuickAddItemModal` versus `GearItemDialog`).
+  Collapsing those into one editor used by all three surfaces is the next
+  piece, and it is what finally puts inline grams on the gear page.
 - **Selecting several rows and moving them to a bag.** Wanted, and gear
   already has the machinery (`use-gear-bulk-actions.ts`) that lists have
   never had.
