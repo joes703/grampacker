@@ -207,6 +207,20 @@ describe('food rows in Pack mode', () => {
     expect(foodWeight?.className).toBe(gearWeight?.className)
   })
 
+  // Gear rows reach the gear editor from this menu. Food does not: food is
+  // authored in the Food view, which is the same reason food rows carry no
+  // "Remove from list" either.
+  it('offers no Edit item on a food row', async () => {
+    const user = userEvent.setup()
+    await renderDetail(`/lists/${listId}/pack`)
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Open Tortillas packing options' }),
+    )
+
+    expect(screen.queryByRole('button', { name: 'Edit item' })).toBeNull()
+  })
+
   it('counts food in the packing progress header', async () => {
     await renderDetail(`/lists/${listId}/pack`)
 

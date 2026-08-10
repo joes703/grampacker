@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { ArrowUpDown, MapPin, MoreVertical, PackageMinus, PackagePlus, Trash2 } from 'lucide-react'
+import { ArrowUpDown, MapPin, MoreVertical, PackageMinus, PackagePlus, Pencil, Trash2 } from 'lucide-react'
 import type { PackingLocation } from '../lib/types'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import RowIconButton from '../components/RowIconButton'
@@ -47,14 +47,28 @@ type BaseProps = {
    *  rearrange what was already there, so noticing "I am not taking this"
    *  while packing meant leaving for List view and finding the row again.
    *
-   *  This stays a MEMBERSHIP operation: it removes the row from this list and
-   *  never touches the gear item in the library. Authoring gear belongs to the
-   *  library, not to a packing checklist.
+   *  This is a MEMBERSHIP operation: it removes the row from this list and
+   *  never touches the gear item in the library. That distinction is still
+   *  real - it is why this sits behind its own rule at the foot of the menu,
+   *  away from the destinations - but it no longer implies that authoring is
+   *  out of scope here. See onEdit.
    *
    *  Optional because the caller owns the consequences - removing an item that
    *  backs a container also destroys the container, and the page confirms that
    *  case before it happens. */
   onRemoveFromList?: () => void
+  /** Opens the gear editor for this row.
+   *
+   *  This menu was written under the rule "authoring gear belongs to the
+   *  library, not to a packing checklist". That rule is deliberately
+   *  overturned: a real trip showed that noticing a wrong weight while
+   *  packing meant leaving the view, fixing it elsewhere and finding your
+   *  place again - which is exactly the shuffle the one-page work exists to
+   *  end (docs/one-page-list-design.md).
+   *
+   *  Optional, and food rows pass none: food is authored in the Food view,
+   *  the same reason they pass no onRemoveFromList. */
+  onEdit?: () => void
 }
 
 type Props = BaseProps & (
@@ -87,6 +101,7 @@ export default function MoveToLocationMenu({
   onMove,
   onStartReorder,
   onRemoveFromList,
+  onEdit,
   onUseAsContainer,
   onStopUsingAsContainer,
 }: Props) {
@@ -117,6 +132,24 @@ export default function MoveToLocationMenu({
   ))
   const rows = (
     <>
+      {/* Leads the menu, behind its own rule. Editing is the only entry that
+          changes the ITEM rather than where it sits, so it does not want to
+          be adjacent to a destination in the move list. */}
+      {onEdit ? (
+        <>
+          <RowMenuItem
+            icon={<Pencil size={13} />}
+            disabled={disabled}
+            onClick={() => {
+              close()
+              onEdit()
+            }}
+          >
+            Edit item
+          </RowMenuItem>
+          <div className="my-1 border-t border-gray-100" />
+        </>
+      ) : null}
       {onStartReorder ? (
         <>
           <RowMenuItem

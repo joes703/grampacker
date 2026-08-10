@@ -1570,6 +1570,24 @@ function ListDetailInner({
     [],
   )
 
+  // Opens the gear editor for one item. Hoisted out of sharedGroupProps
+  // because Pack reaches it from three places the category sections never
+  // touch - the packing kebab, a container's section header, and the worn
+  // row's own button - and duplicating the ref lookups at each would be four
+  // copies of one rule about which dialog to open.
+  //
+  // Refs, not state, so this is stable for the life of the page: rebuilding
+  // it would rebuild sharedGroupProps and re-render every section on each
+  // checkbox tick.
+  const openGearEditor = useCallback((gearId: string) => {
+    const g = gearItemsRef.current.find((x) => x.id === gearId)
+    const li = listItemsRef.current.find((l) => l.gearItem.id === gearId)
+    if (g) setDialog({ type: 'edit-gear', gear: g, listItem: li ?? null, saveError: null })
+    // Both are useRef objects and setDialog is a useState setter, so all three
+    // identities are stable for the life of the page - listing the refs keeps
+    // the lint rule satisfied without changing when this rebuilds (never).
+  }, [gearItemsRef, listItemsRef])
+
   // Per-row handler bag passed to every CategoryGroup. Memoized so each
   // category section doesn't re-render on every parent state change.
   //
@@ -1622,11 +1640,7 @@ function ListDetailInner({
         updateGearItem.mutate({ id: gearId, patch: { description: d } }),
       onSaveGearWeight: (gearId: string, w: number) =>
         updateGearItem.mutate({ id: gearId, patch: { weightGrams: w } }),
-      onEditGearItem: (gearId: string) => {
-        const g = gearItemsRef.current.find((x) => x.id === gearId)
-        const li = listItemsRef.current.find((l) => l.gearItem.id === gearId)
-        if (g) setDialog({ type: 'edit-gear', gear: g, listItem: li ?? null, saveError: null })
-      },
+      onEditGearItem: openGearEditor,
       onDeleteGearItem: (gearId: string) => {
         const g = gearItemsRef.current.find((x) => x.id === gearId)
         if (g) setDialog({ type: 'delete-gear', candidate: g })
@@ -1705,11 +1719,16 @@ function ListDetailInner({
               placementActions.start({ kind: 'gear', gear: item }, section, origin)
           : undefined
       }
-      // Membership, not authoring: this drops the row from the list and
-      // leaves the gear item in the library. requestRemoveListItem owns the
-      // container-backing case, which needs a confirm because it destroys
-      // more than the row.
+      // Membership: this drops the row from the list and leaves the gear item
+      // in the library. requestRemoveListItem owns the container-backing
+      // case, which needs a confirm because it destroys more than the row.
+      //
+      // Authoring now lives here too (onEdit below). Pack used to be
+      // membership-only on the grounds that gear is authored in the library;
+      // a real trip showed that a wrong weight noticed while packing then
+      // cost a round trip through two other views.
       onRemoveFromList={() => requestRemoveListItem(item)}
+      onEdit={() => openGearEditor(item.gearItem.id)}
       onUseAsContainer={() => createItemContainer.mutate({
         itemId: item.id,
         name: item.gearItem.name,
@@ -1769,17 +1788,28 @@ function ListDetailInner({
   // without this the Worn section is the one place in Pack you cannot drop an
   // item from.
   //
-  // A button rather than a kebab: one applicable action does not want a menu
-  // hiding it behind a second click.
+  // Buttons rather than a kebab. Editing joined removal here so that "you can
+  // edit an item from Pack" is true of the Worn section too - it has no
+  // packing kebab to hang a menu entry on. Two direct controls beat a menu:
+  // hiding Remove behind an extra click costs more than the ~28px.
   const renderWornPackRowAction = (item: ListItemWithGear) => (
-    <RowIconButton
-      touchSafe
-      disabled={itemDragPending}
-      onClick={() => requestRemoveListItem(item)}
-      ariaLabel={`Remove ${item.gearItem.name} from list`}
-      title="Remove from list"
-      icon={<Trash2 size={14} />}
-    />
+    <>
+      <RowIconButton
+        touchSafe
+        onClick={() => openGearEditor(item.gearItem.id)}
+        ariaLabel={`Edit ${item.gearItem.name}`}
+        title="Edit item"
+        icon={<Pencil size={14} />}
+      />
+      <RowIconButton
+        touchSafe
+        disabled={itemDragPending}
+        onClick={() => requestRemoveListItem(item)}
+        ariaLabel={`Remove ${item.gearItem.name} from list`}
+        title="Remove from list"
+        icon={<Trash2 size={14} />}
+      />
+    </>
   )
 
   function renderPackingLocationNode(
@@ -1817,6 +1847,10 @@ function ListDetailInner({
             // contents to Unassigned - requestRemoveListItem routes exactly
             // this case through a confirm that names both consequences.
             onRemoveFromList={() => requestRemoveListItem(containerItem)}
+            // A container's own row lives in the section header, so the
+            // ordinary row kebab never renders for it. Without this, the one
+            // item you cannot edit from Pack would be the bag itself.
+            onEdit={() => openGearEditor(containerItem.gearItem.id)}
             onStopUsingAsContainer={() => setDeleteLocationTarget(location)}
           />
         ) : undefined}

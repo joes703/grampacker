@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, cleanup, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -155,6 +155,17 @@ async function renderDetail(path: string) {
 
 const addGear = () => screen.queryByRole('button', { name: 'Add gear' })
 
+// jsdom implements <dialog> without its modal methods, and the gear editor is
+// a Modal. Same shim ListDetailPage.edit-gear.test.tsx uses.
+beforeAll(() => {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () { this.open = true }
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () { this.open = false }
+  }
+})
+
 beforeEach(() => {
   h.fetchLists.mockResolvedValue([list])
   h.fetchListItems.mockResolvedValue([listItem])
@@ -231,6 +242,40 @@ describe('removing gear from Pack view', () => {
     await user.click(screen.getByRole('button', { name: 'Remove from list' }))
 
     expect(h.deleteListItem).toHaveBeenCalledWith(listId, 'li-1')
+  })
+
+  // Adjusting a weight mid-pack was one of the jobs that forced a three-view
+  // shuffle. Pack now reaches the gear editor, which deliberately overturns
+  // the "authoring belongs to the library, not to a packing checklist" rule
+  // this menu was written under.
+  it('opens the gear editor from an ordinary pack row', async () => {
+    stubViewport(1280)
+    const user = userEvent.setup()
+    await renderDetail(`/lists/${listId}/pack`)
+
+    await user.click(
+      screen.getByRole('button', { name: 'Open Cooking pot packing options' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Edit item' }))
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  // Worn rows have no packing kebab at all, so the menu entry above cannot
+  // reach them - they need their own control or "you can edit from Pack" is
+  // false for a whole section.
+  it('opens the gear editor from a worn pack row, which has no kebab', async () => {
+    stubViewport(1280)
+    h.fetchListItems.mockResolvedValue([listItem, wornItem])
+    // The editor resolves the row's gear out of the gear query, so the worn
+    // item's gear has to be in the library for the dialog to open at all.
+    h.fetchGearItems.mockResolvedValue([gear, wornItem.gearItem])
+    const user = userEvent.setup()
+    await renderDetail(`/lists/${listId}/pack`)
+
+    await user.click(screen.getByRole('button', { name: 'Edit Sun hoody' }))
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
   })
 
   // Worn rows sit outside the packing tree, so they never receive the packing
