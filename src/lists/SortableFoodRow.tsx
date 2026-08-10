@@ -5,9 +5,12 @@ import { GripVertical } from 'lucide-react'
 import type { FoodItemResponse } from '../../shared/food'
 import { asButtonRef } from '../lib/dnd'
 import { makeDnDId } from '../lib/dnd-ids'
+import type { WeightUnit } from '../lib/weight'
+import ItemWeightValue from '../components/ItemWeightValue'
 import RowIconButton from '../components/RowIconButton'
 import {
   FLAT_TABLE_BODY_TEXT,
+  FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
@@ -28,6 +31,7 @@ type Props = {
   food: FoodItemResponse
   readyChecksEnabled: boolean
   reorderPending: boolean
+  weightUnit: WeightUnit
   onUpdate: (patch: { isPacked?: boolean; isReady?: boolean }) => void
   /** The move-to-location menu, injected like ItemRow's rowAction. */
   rowAction?: ReactNode
@@ -37,6 +41,7 @@ export default function SortableFoodRow({
   food,
   readyChecksEnabled,
   reorderPending,
+  weightUnit,
   onUpdate,
   rowAction,
 }: Props) {
@@ -135,6 +140,13 @@ export default function SortableFoodRow({
       </span>
       <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
         {food.quantity}
+      </span>
+      {/* Matches the gear pack row's weight cell exactly - same width, same
+          lg+ gate, same print:hidden. A bag holds gear and food in one
+          cohort, so a cell on one and not the other misaligns every column
+          to its right in a mixed section. */}
+      <span className={`hidden lg:inline-block shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500 print:hidden`}>
+        <ItemWeightValue grams={food.weightGrams} unit={weightUnit} />
       </span>
       {rowAction}
     </div>

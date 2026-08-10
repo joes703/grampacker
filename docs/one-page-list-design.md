@@ -160,6 +160,12 @@ the four jobs that forced the three-tab shuffle.
   sits - inside the label it would become part of the toggle-Packed gesture
   (`ItemRow.tsx:230`). It is `print:hidden`, so the printed checklist keeps
   its current row content (see 3.2 and section 6).
+
+  **`lg+` only** (narrowed during implementation, 2026-08-09). The mobile pack
+  row already drops its description for room; a 96px cell at 375px would crush
+  the name, and mobile Pack is the densest surface in the app. Mobile Pack
+  keeps the layout it has, and the weight stays reachable there through the
+  Food and Category views.
 - **The same weight cell on food rows** (`SortableFoodRow.tsx:68`, which
   already carries `weightGrams`). Without it, a bag holding both gear and food
   renders misaligned columns.
@@ -244,8 +250,8 @@ own PR later.
 - "+ New item" is disabled while detail data is pending or errored.
 - The modal closes before the mutation settles, and a failure raises a visible
   toast rather than one trapped behind the dialog.
-- Pack rows show weight matching Category; food rows in the same bag align
-  with gear rows.
+- Pack rows show weight matching Category at `lg+` and nothing new below it;
+  food rows in the same bag carry the identical cell.
 - "Edit item" opens the dialog from all three Pack shapes: ordinary row, worn
   row, container item.
 - Clicking a Pack row's name still toggles Packed - the weight cell and menu

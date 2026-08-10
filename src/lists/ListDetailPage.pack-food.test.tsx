@@ -184,6 +184,29 @@ describe('food rows in Pack mode', () => {
     ))
   })
 
+  // A bag is one cohort of gear and food rows. A weight cell on one and not
+  // the other pushes every column to its right out of alignment in a mixed
+  // section, so the two rows carry the identical cell.
+  it('gives food rows the same weight cell as the gear rows beside them', async () => {
+    await renderDetail(`/lists/${listId}/pack`)
+
+    // The gear weight appears twice now - once in the pack row, once in the
+    // picker aside, which renders in Pack since the one-page change. Pick the
+    // row cell by the column width only the row uses.
+    const rowCell = (label: string) =>
+      screen
+        .getAllByLabelText(label)
+        .map((el) => el.parentElement)
+        .find((el) => el?.className.includes('w-24'))
+
+    await screen.findByLabelText('300 g')
+    const foodWeight = rowCell('300 g')
+    const gearWeight = rowCell('210 g')
+
+    expect(foodWeight).toBeDefined()
+    expect(foodWeight?.className).toBe(gearWeight?.className)
+  })
+
   it('counts food in the packing progress header', async () => {
     await renderDetail(`/lists/${listId}/pack`)
 
