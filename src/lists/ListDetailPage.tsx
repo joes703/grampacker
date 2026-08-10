@@ -1548,6 +1548,22 @@ function ListDetailInner({
         weightUnit={weightUnit}
         onAdd={onLibraryAdd}
         onRemove={onLibraryRemove}
+        // null category: the item lands Uncategorized in Category view, and
+        // in Pack it lands Uncategorized too while the list has no bags
+        // (Pack falls back to category grouping there) or Unassigned once it
+        // does. Worn items go to the Worn section either way.
+        onCreateNew={(data) => onAddNewItem(null, data)}
+        // The panel sits outside the detail gate below, so it stays
+        // interactive during exactly the failure that would hide the result.
+        // Creating is what must not proceed blind - adding EXISTING gear is
+        // separately protected by membershipUnknown.
+        createDisabledReason={
+          detailDataError
+            ? "Couldn't load this list, so a new item can't be confirmed."
+            : detailDataLoading
+              ? 'Still loading this list.'
+              : undefined
+        }
       />
     </div>
   )

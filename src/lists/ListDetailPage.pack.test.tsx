@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, cleanup, screen } from '@testing-library/react'
+import { render, cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -71,6 +71,7 @@ const h = vi.hoisted(() => ({
   fetchPackingLocations: vi.fn(),
   fetchListFood: vi.fn(),
   deleteListItem: vi.fn(),
+  quickAddListItem: vi.fn(),
 }))
 
 // The page calls authClient.useSession(), which mounts better-auth's nanostores
@@ -174,6 +175,7 @@ beforeEach(() => {
   h.fetchPackingLocations.mockResolvedValue([] as PackingLocation[])
   h.fetchListFood.mockResolvedValue(emptyFood)
   h.deleteListItem.mockResolvedValue(undefined)
+  h.quickAddListItem.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -315,6 +317,27 @@ describe('removing gear from Pack view', () => {
     expect(
       screen.queryByRole('button', { name: 'Remove Sun hoody from list' }),
     ).toBeNull()
+  })
+})
+
+// Creating a brand-new item mid-pack was impossible: CategoryGroup gates its
+// "+ Add new item" footer on !packMode, so the only path was Gear view ->
+// List view picker -> back to Pack to place it. The picker now carries the
+// control, in both arrangements.
+describe('creating a new item while packing', () => {
+  it('creates from Pack with a null category, never a location id', async () => {
+    stubViewport(1280)
+    const user = userEvent.setup()
+    await renderDetail(`/lists/${listId}/pack`)
+
+    await user.click(screen.getByRole('button', { name: 'New item' }))
+    await user.type(screen.getByLabelText(/^Name/), 'Titanium spork')
+    await user.click(screen.getByRole('button', { name: 'Add item' }))
+
+    await waitFor(() => expect(h.quickAddListItem).toHaveBeenCalledWith(
+      listId,
+      expect.objectContaining({ name: 'Titanium spork', categoryId: null }),
+    ))
   })
 })
 
