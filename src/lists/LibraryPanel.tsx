@@ -1,5 +1,5 @@
 import { memo, useCallback, useId, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { groupByCategory } from '../lib/grouping'
 import type { WeightUnit } from '../lib/weight'
@@ -8,6 +8,7 @@ import {
   FLAT_TABLE_HEADER,
   FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
+  FLAT_TABLE_META_TEXT,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_ROW,
   ROW_CONTROL_TARGET,
@@ -15,6 +16,8 @@ import {
 import ItemWeightValue from '../components/ItemWeightValue'
 import GearStatusBadge from '../components/gear/GearStatusBadge'
 import PickerEmptyState from './PickerEmptyState'
+import QuickAddItemModal from './QuickAddItemModal'
+import { type AddItemData } from './use-quick-add-form'
 
 type Props = {
   gearItems: GearItem[]
@@ -30,12 +33,33 @@ type Props = {
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
   onRemove: (item: GearItem) => void
+  /** Creates a gear item AND this list's row for it in one atomic call.
+   *
+   *  The control lives in the picker rather than in a section footer because
+   *  the picker means the same thing in both gear arrangements. A Pack
+   *  section is a BAG, and CategoryGroup's footer add takes a category id -
+   *  so an add there has no category to offer and would quietly file
+   *  everything as Uncategorized while appearing to add "to this bag".
+   *
+   *  Optional: render paths with no list to add to pass none, and the
+   *  control does not render. */
+  onCreateNew?: (data: AddItemData) => void
+  /** Non-empty when creating is unavailable: the button is disabled and this
+   *  becomes its accessible description.
+   *
+   *  This panel mounts OUTSIDE the page's detail loading/error gate - it
+   *  needs only the gear query. Without this, a create could succeed while
+   *  the document beside it says it could not load the list, leaving the user
+   *  no way to confirm what happened. */
+  createDisabledReason?: string
 }
 
-export default function LibraryPanel({ gearItems, categories, listItemGearIds, membershipUnknown = false, weightUnit, onAdd, onRemove }: Props) {
+export default function LibraryPanel({ gearItems, categories, listItemGearIds, membershipUnknown = false, weightUnit, onAdd, onRemove, onCreateNew, createDisabledReason }: Props) {
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState(new Set<string>())
+  const [creating, setCreating] = useState(false)
   const searchId = useId()
+  const createReasonId = useId()
 
   // Stable across renders: setCollapsed from useState is referentially
   // stable, and the closure captures only that. Stability matters because
@@ -106,7 +130,43 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, m
             className={`w-full rounded-lg border border-gray-300 pl-8 pr-3 py-1.5 ${FLAT_TABLE_BODY_TEXT} focus:outline-none focus:ring-2 focus:ring-blue-500`}
           />
         </div>
+
+        {/* Creating, beneath searching, because searching is what this panel
+            is mostly for - you reach for New item after a search comes up
+            empty. */}
+        {onCreateNew && (
+          <>
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              disabled={Boolean(createDisabledReason)}
+              aria-describedby={createDisabledReason ? createReasonId : undefined}
+              className={`mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 ${FLAT_TABLE_BODY_TEXT} font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400 disabled:hover:bg-white`}
+            >
+              <Plus size={14} /> New item
+            </button>
+            {createDisabledReason && (
+              <p id={createReasonId} className={`mt-1 ${FLAT_TABLE_META_TEXT} text-gray-500`}>
+                {createDisabledReason}
+              </p>
+            )}
+          </>
+        )}
       </div>
+
+      {creating && onCreateNew && (
+        <QuickAddItemModal
+          onSubmit={(data) => {
+            // Close FIRST, then hand off. This modal has no pending or
+            // inline-error surface, and a toast raised while a <dialog> is
+            // open renders behind it - so a failed create would report into a
+            // layer the user cannot see.
+            setCreating(false)
+            onCreateNew(data)
+          }}
+          onClose={() => setCreating(false)}
+        />
+      )}
 
       {/* Category groups */}
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -116,17 +176,21 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, m
             body="Adding gear is unavailable until it loads, so nothing gets added twice."
           />
         ) : groups.length === 0 ? (
-          // Gear-first empty state. Whether the user is searching for
-          // something that isn't in their library yet or they have no
-          // gear at all, the answer is the same: create gear on the
-          // Gear page, then come back here to add it. The mobile bottom
-          // bar has a Gear destination so we don't restate that
+          // Whether the user is searching for something not in their library
+          // yet or they have no gear at all, the answer is the same - create
+          // it. Where that happens depends on whether this panel can: with
+          // onCreateNew the New item button above is the shortest path and
+          // sending them to another page would be the exact trip this work
+          // exists to remove. Without it, the Gear page still is. The mobile
+          // bottom bar has a Gear destination so we don't restate that
           // navigation path here.
           <PickerEmptyState
             heading={searchFiltered.length === 0 && !q
               ? 'No gear yet.'
               : 'No matching gear.'}
-            body="Add it on the Gear page, then return here."
+            body={onCreateNew
+              ? 'Use New item above to create it without leaving this list.'
+              : 'Add it on the Gear page, then return here.'}
           />
         ) : (
           <>

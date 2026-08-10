@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, cleanup, screen } from '@testing-library/react'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -71,6 +71,7 @@ const h = vi.hoisted(() => ({
   fetchPackingLocations: vi.fn(),
   fetchListFood: vi.fn(),
   deleteListItem: vi.fn(),
+  quickAddListItem: vi.fn(),
 }))
 
 // The page calls authClient.useSession(), which mounts better-auth's nanostores
@@ -91,9 +92,9 @@ vi.mock('../lib/queries', async (importOriginal) => {
 
 function stubViewport(width: number) {
   vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /max-width:\s*(\d+)px/.exec(query)
+    const m = /width\s*<\s*([\d.]+)rem/.exec(query)
     return {
-      matches: m ? width <= Number(m[1]) : false,
+      matches: m ? width < Number(m[1]) * 16 : false,
       media: query,
       onchange: null,
       addEventListener: () => {},
@@ -155,6 +156,17 @@ async function renderDetail(path: string) {
 
 const addGear = () => screen.queryByRole('button', { name: 'Add gear' })
 
+// jsdom implements <dialog> without its modal methods, and the gear editor is
+// a Modal. Same shim ListDetailPage.edit-gear.test.tsx uses.
+beforeAll(() => {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () { this.open = true }
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () { this.open = false }
+  }
+})
+
 beforeEach(() => {
   h.fetchLists.mockResolvedValue([list])
   h.fetchListItems.mockResolvedValue([listItem])
@@ -163,6 +175,7 @@ beforeEach(() => {
   h.fetchPackingLocations.mockResolvedValue([] as PackingLocation[])
   h.fetchListFood.mockResolvedValue(emptyFood)
   h.deleteListItem.mockResolvedValue(undefined)
+  h.quickAddListItem.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -172,14 +185,17 @@ afterEach(() => {
 })
 
 describe('adding gear from Pack view', () => {
-  it('offers Add gear on desktop Pack, where the library aside is hidden', async () => {
-    stubViewport(1280)
+  // The band between lg and xl is the one width where Pack has neither the
+  // aside (xl and up) nor the mobile action bar's Add (below lg). Remove this
+  // button and that band has no path to the picker at all.
+  it('offers Add gear between lg and xl, where Pack has no aside', async () => {
+    stubViewport(1100)
     await renderDetail(`/lists/${listId}/pack`)
     expect(addGear()).toBeTruthy()
   })
 
   it('opens the gear library from that button', async () => {
-    stubViewport(1280)
+    stubViewport(1100)
     const user = userEvent.setup()
     await renderDetail(`/lists/${listId}/pack`)
 
@@ -193,6 +209,14 @@ describe('adding gear from Pack view', () => {
   // be two controls for one action on the surface with the least room.
   it('omits the button below lg, where the action bar already has Add', async () => {
     stubViewport(500)
+    await renderDetail(`/lists/${listId}/pack`)
+    expect(addGear()).toBeNull()
+  })
+
+  // At xl the picker is on screen permanently, so a button that opens the
+  // same panel in a drawer is a second control for a visible surface.
+  it('omits the button at xl, where the picker aside is already there', async () => {
+    stubViewport(1280)
     await renderDetail(`/lists/${listId}/pack`)
     expect(addGear()).toBeNull()
   })
@@ -220,6 +244,64 @@ describe('removing gear from Pack view', () => {
     await user.click(screen.getByRole('button', { name: 'Remove from list' }))
 
     expect(h.deleteListItem).toHaveBeenCalledWith(listId, 'li-1')
+  })
+
+  // Adjusting a weight mid-pack was one of the jobs that forced a three-view
+  // shuffle. Pack now reaches the gear editor, which deliberately overturns
+  // the "authoring belongs to the library, not to a packing checklist" rule
+  // this menu was written under.
+  it('opens the gear editor from an ordinary pack row', async () => {
+    stubViewport(1280)
+    const user = userEvent.setup()
+    await renderDetail(`/lists/${listId}/pack`)
+
+    await user.click(
+      screen.getByRole('button', { name: 'Open Cooking pot packing options' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Edit item' }))
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  // A container's own row lives in the section HEADER, with a separately
+  // constructed menu - so it is reachable by neither the row kebab nor the
+  // worn button. Without this the bag itself would be the one item you cannot
+  // edit from Pack.
+  it('opens the gear editor from a container section header', async () => {
+    stubViewport(1280)
+    h.fetchPackingLocations.mockResolvedValue([{
+      id: 'loc-1',
+      name: 'Cooking pot',
+      sortOrder: 0,
+      parentLocationId: null,
+      containerListItemId: 'li-1',
+    }] as unknown as PackingLocation[])
+    const user = userEvent.setup()
+    await renderDetail(`/lists/${listId}/pack`)
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Open Cooking pot packing options' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Edit item' }))
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  // Worn rows have no packing kebab at all, so the menu entry above cannot
+  // reach them - they need their own control or "you can edit from Pack" is
+  // false for a whole section.
+  it('opens the gear editor from a worn pack row, which has no kebab', async () => {
+    stubViewport(1280)
+    h.fetchListItems.mockResolvedValue([listItem, wornItem])
+    // The editor resolves the row's gear out of the gear query, so the worn
+    // item's gear has to be in the library for the dialog to open at all.
+    h.fetchGearItems.mockResolvedValue([gear, wornItem.gearItem])
+    const user = userEvent.setup()
+    await renderDetail(`/lists/${listId}/pack`)
+
+    await user.click(screen.getByRole('button', { name: 'Edit Sun hoody' }))
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
   })
 
   // Worn rows sit outside the packing tree, so they never receive the packing
@@ -259,5 +341,78 @@ describe('removing gear from Pack view', () => {
     expect(
       screen.queryByRole('button', { name: 'Remove Sun hoody from list' }),
     ).toBeNull()
+  })
+})
+
+// Creating a brand-new item mid-pack was impossible: CategoryGroup gates its
+// "+ Add new item" footer on !packMode, so the only path was Gear view ->
+// List view picker -> back to Pack to place it. The picker now carries the
+// control, in both arrangements.
+describe('creating a new item while packing', () => {
+  it('creates from Pack with a null category, never a location id', async () => {
+    stubViewport(1280)
+    const user = userEvent.setup()
+    await renderDetail(`/lists/${listId}/pack`)
+
+    await user.click(screen.getByRole('button', { name: 'New item' }))
+    await user.type(screen.getByLabelText(/^Name/), 'Titanium spork')
+    await user.click(screen.getByRole('button', { name: 'Add item' }))
+
+    await waitFor(() => expect(h.quickAddListItem).toHaveBeenCalledWith(
+      listId,
+      expect.objectContaining({ name: 'Titanium spork', categoryId: null }),
+    ))
+  })
+})
+
+// Pack used to hide the gear picker so packing got the focus. A real trip
+// showed that costs more than it buys: adding or reweighing one item meant
+// leaving the view. The picker now sits beside Pack too - but at xl, not lg,
+// because at 1024px a 320px aside leaves 656px for a row dense enough to
+// truncate item names to ~113px rather than overflow (docs/one-page-list-design.md).
+describe('the gear picker beside Pack', () => {
+  const listsPanel = () =>
+    screen.queryByRole('button', { name: 'New list or import CSV' })
+
+  it('renders the picker aside in Pack, gated at xl rather than lg', async () => {
+    stubViewport(1280)
+    await renderDetail(`/lists/${listId}/pack`)
+
+    const aside = screen.getByTestId('list-side-panel')
+    expect(aside.className).toContain('xl:flex')
+    expect(aside.className).not.toContain('lg:flex')
+  })
+
+  it('keeps Category view on the lg gate it already had', async () => {
+    stubViewport(1280)
+    await renderDetail(`/lists/${listId}`)
+
+    const aside = screen.getByTestId('list-side-panel')
+    expect(aside.className).toContain('lg:flex')
+    expect(aside.className).not.toContain('xl:flex')
+  })
+
+  // max-w-3xl is unprefixed, so it governs paper as well as screen. Screen
+  // gets the width back now the aside fills it; print keeps the 768px measure
+  // the checklist was designed around.
+  it('constrains the Pack document for print only', async () => {
+    stubViewport(1280)
+    await renderDetail(`/lists/${listId}/pack`)
+
+    const column = screen.getByTestId('list-document-column')
+    expect(column.className).toContain('print:max-w-3xl')
+    expect(column.className).not.toMatch(/(^|\s)max-w-3xl(\s|$)/)
+  })
+
+  // Nobody switches lists mid-pack, and the switcher's max-h-72 is height the
+  // picker wants back.
+  it('drops the lists switcher in Pack but keeps it in Category', async () => {
+    stubViewport(1280)
+    await renderDetail(`/lists/${listId}/pack`)
+    expect(listsPanel()).toBeNull()
+
+    cleanup()
+    await renderDetail(`/lists/${listId}`)
+    expect(listsPanel()).toBeTruthy()
   })
 })

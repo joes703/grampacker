@@ -77,9 +77,9 @@ vi.mock('../lib/queries', async (importOriginal) => {
 // mobile/desktop surfaces to mount. Answer as a desktop viewport.
 function stubViewport(width: number) {
   vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /max-width:\s*(\d+)px/.exec(query)
+    const m = /width\s*<\s*([\d.]+)rem/.exec(query)
     return {
-      matches: m ? width <= Number(m[1]) : false,
+      matches: m ? width < Number(m[1]) * 16 : false,
       media: query,
       onchange: null,
       addEventListener: () => {},

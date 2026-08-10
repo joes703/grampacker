@@ -3,7 +3,9 @@ import type { ListDetailMode } from './list-detail-mode'
 import { persistedListPath } from './list-detail-mode'
 
 const VIEWS: { mode: ListDetailMode; label: string }[] = [
-  { mode: 'edit', label: 'List' },
+  // Keep in step with LIST_VIEW_LABELS in list-detail-mode.ts, which feeds the
+  // document title from the same strings.
+  { mode: 'edit', label: 'Category' },
   { mode: 'food', label: 'Food' },
   { mode: 'pack', label: 'Pack' },
 ]

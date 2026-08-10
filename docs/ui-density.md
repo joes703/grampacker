@@ -79,10 +79,29 @@ more than it reads sentences.
 
 ## Breakpoints
 
-Two hooks in `src/lib/use-breakpoint.ts` mirror Tailwind exactly:
+Three hooks in `src/lib/use-breakpoint.ts` mirror Tailwind exactly. Two things
+make that "exactly" true, and both look like fussiness until they break:
 
-- `useIsBelowLg()` - true below 1024px, the negation of `lg:`
-- `useIsMobile()` - true below 768px, the negation of `md:`
+- **Range syntax, not `max-width`.** Tailwind's prefixes are min-width rules,
+  and no `max-width` value is their complement - `63.9375rem` misses just above
+  itself, and any fractional bound misses just above *itself*. Browsers produce
+  those widths under zoom and device emulation, and in the gap a JS-gated
+  control and its CSS counterpart are both absent, or at the other boundary
+  both present.
+- **rem, not px.** Tailwind v4 emits `md`/`lg`/`xl` as `48rem`/`64rem`/`80rem`.
+  Those equal 768/1024/1280px only at a 16px initial font; raise the browser's
+  default text size and every Tailwind breakpoint moves while a px-based hook
+  stays put.
+
+Px figures below are therefore "at a 16px initial font", not fixed truths.
+
+- `useIsBelowXl()` - the negation of `xl:` (80rem, 1280px). Used only for
+  Pack's Add gear trigger, which exists exactly where the picker aside does not
+- `useIsBelowLg()` - the negation of `lg:` (64rem, 1024px)
+- `useIsMobile()` - the negation of `md:` (48rem, 768px)
+
+Comments elsewhere in the tree still name px bounds from before this changed.
+They are stale in wording only; the queries themselves are all rem.
 
 **Layout swaps that hand off to a touch presentation must use
 `useIsBelowLg()`**, because every touch-sized token in this file compacts at

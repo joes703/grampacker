@@ -292,6 +292,21 @@ export default function ItemRow({
         <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
           {item.quantity}
         </span>
+        {/* Weight. Deliberately a SIBLING of the label above, never a child:
+            that label wraps the Packed checkbox, so anything inside it
+            becomes part of the toggle gesture and clicking a weight would
+            mark the item packed.
+
+            lg+ only. The mobile pack row already drops its description for
+            room, and a w-24 cell at 375px would crush the name - mobile Pack
+            keeps the layout it has.
+
+            print:hidden because the printed checklist keeps its existing
+            geometry (the document column retains max-w-3xl under print: for
+            the same reason). */}
+        <span className={`hidden lg:inline-block shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500 print:hidden`}>
+          <ItemWeightValue grams={itemWeight} unit={weightUnit} />
+        </span>
         {/* Packing menu (move to location / use as container). print:hidden
             is applied by the injected control itself. */}
         {rowAction}

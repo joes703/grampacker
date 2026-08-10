@@ -46,7 +46,7 @@ import { mutationKeys } from '../lib/queries/keys'
 import type { Category, GearItem, ListItemWithGear, List, PackingLocation } from '../lib/types'
 import { authClient } from '../lib/auth-client'
 import { useWeightUnit } from '../lib/use-weight-unit'
-import { useIsBelowLg } from '../lib/use-breakpoint'
+import { useIsBelowLg, useIsBelowXl } from '../lib/use-breakpoint'
 import { useReorderable } from '../lib/use-reorderable'
 import { useLatestRef } from '../lib/use-latest-ref'
 import {
@@ -449,6 +449,12 @@ function ListDetailInner({
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
   // long list registers ONE matchMedia subscription instead of one per row.
   const isBelowLg = useIsBelowLg()
+  // Only the Pack "Add gear" trigger reads this: it exists exactly in the
+  // band where Pack has neither the aside (xl+) nor the mobile action bar's
+  // Add (below lg). A JS gate rather than `xl:hidden` so the control is
+  // absent from the DOM where it does not apply - a CSS-hidden button still
+  // answers queries, and this file's viewport tests would pass vacuously.
+  const isBelowXl = useIsBelowXl()
   // Pack-mode filter: when true, hide already-packed items from each
   // category. Header counts and the "complete" affordance still reflect the
   // full items array. Lifted here because both PackingProgress (the toggle)
@@ -1542,6 +1548,30 @@ function ListDetailInner({
         weightUnit={weightUnit}
         onAdd={onLibraryAdd}
         onRemove={onLibraryRemove}
+        // null category: the item lands Uncategorized in Category view, and
+        // in Pack it lands Uncategorized too while the list has no bags
+        // (Pack falls back to category grouping there) or Unassigned once it
+        // does. Worn items go to the Worn section either way.
+        onCreateNew={(data) => {
+          // Close the drawer too, not just the modal. Below lg this panel
+          // lives inside the sidebar drawer, whose 88vw content is z-50 -
+          // the same layer as the toast, and painted after it. A failed
+          // create would report into a toast the drawer covers, which is the
+          // same class of bug as reporting behind an open <dialog>.
+          setDrawerOpen(false)
+          onAddNewItem(null, data)
+        }}
+        // The panel sits outside the detail gate below, so it stays
+        // interactive during exactly the failure that would hide the result.
+        // Creating is what must not proceed blind - adding EXISTING gear is
+        // separately protected by membershipUnknown.
+        createDisabledReason={
+          detailDataError
+            ? "Couldn't load this list, so a new item can't be confirmed."
+            : detailDataLoading
+              ? 'Still loading this list.'
+              : undefined
+        }
       />
     </div>
   )
@@ -1563,6 +1593,24 @@ function ListDetailInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- addNewItem: see addItem note
     [],
   )
+
+  // Opens the gear editor for one item. Hoisted out of sharedGroupProps
+  // because Pack reaches it from three places the category sections never
+  // touch - the packing kebab, a container's section header, and the worn
+  // row's own button - and duplicating the ref lookups at each would be four
+  // copies of one rule about which dialog to open.
+  //
+  // Refs, not state, so this is stable for the life of the page: rebuilding
+  // it would rebuild sharedGroupProps and re-render every section on each
+  // checkbox tick.
+  const openGearEditor = useCallback((gearId: string) => {
+    const g = gearItemsRef.current.find((x) => x.id === gearId)
+    const li = listItemsRef.current.find((l) => l.gearItem.id === gearId)
+    if (g) setDialog({ type: 'edit-gear', gear: g, listItem: li ?? null, saveError: null })
+    // Both are useRef objects and setDialog is a useState setter, so all three
+    // identities are stable for the life of the page - listing the refs keeps
+    // the lint rule satisfied without changing when this rebuilds (never).
+  }, [gearItemsRef, listItemsRef])
 
   // Per-row handler bag passed to every CategoryGroup. Memoized so each
   // category section doesn't re-render on every parent state change.
@@ -1616,11 +1664,7 @@ function ListDetailInner({
         updateGearItem.mutate({ id: gearId, patch: { description: d } }),
       onSaveGearWeight: (gearId: string, w: number) =>
         updateGearItem.mutate({ id: gearId, patch: { weightGrams: w } }),
-      onEditGearItem: (gearId: string) => {
-        const g = gearItemsRef.current.find((x) => x.id === gearId)
-        const li = listItemsRef.current.find((l) => l.gearItem.id === gearId)
-        if (g) setDialog({ type: 'edit-gear', gear: g, listItem: li ?? null, saveError: null })
-      },
+      onEditGearItem: openGearEditor,
       onDeleteGearItem: (gearId: string) => {
         const g = gearItemsRef.current.find((x) => x.id === gearId)
         if (g) setDialog({ type: 'delete-gear', candidate: g })
@@ -1699,11 +1743,16 @@ function ListDetailInner({
               placementActions.start({ kind: 'gear', gear: item }, section, origin)
           : undefined
       }
-      // Membership, not authoring: this drops the row from the list and
-      // leaves the gear item in the library. requestRemoveListItem owns the
-      // container-backing case, which needs a confirm because it destroys
-      // more than the row.
+      // Membership: this drops the row from the list and leaves the gear item
+      // in the library. requestRemoveListItem owns the container-backing
+      // case, which needs a confirm because it destroys more than the row.
+      //
+      // Authoring now lives here too (onEdit below). Pack used to be
+      // membership-only on the grounds that gear is authored in the library;
+      // a real trip showed that a wrong weight noticed while packing then
+      // cost a round trip through two other views.
       onRemoveFromList={() => requestRemoveListItem(item)}
+      onEdit={() => openGearEditor(item.gearItem.id)}
       onUseAsContainer={() => createItemContainer.mutate({
         itemId: item.id,
         name: item.gearItem.name,
@@ -1763,17 +1812,28 @@ function ListDetailInner({
   // without this the Worn section is the one place in Pack you cannot drop an
   // item from.
   //
-  // A button rather than a kebab: one applicable action does not want a menu
-  // hiding it behind a second click.
+  // Buttons rather than a kebab. Editing joined removal here so that "you can
+  // edit an item from Pack" is true of the Worn section too - it has no
+  // packing kebab to hang a menu entry on. Two direct controls beat a menu:
+  // hiding Remove behind an extra click costs more than the ~28px.
   const renderWornPackRowAction = (item: ListItemWithGear) => (
-    <RowIconButton
-      touchSafe
-      disabled={itemDragPending}
-      onClick={() => requestRemoveListItem(item)}
-      ariaLabel={`Remove ${item.gearItem.name} from list`}
-      title="Remove from list"
-      icon={<Trash2 size={14} />}
-    />
+    <>
+      <RowIconButton
+        touchSafe
+        onClick={() => openGearEditor(item.gearItem.id)}
+        ariaLabel={`Edit ${item.gearItem.name}`}
+        title="Edit item"
+        icon={<Pencil size={14} />}
+      />
+      <RowIconButton
+        touchSafe
+        disabled={itemDragPending}
+        onClick={() => requestRemoveListItem(item)}
+        ariaLabel={`Remove ${item.gearItem.name} from list`}
+        title="Remove from list"
+        icon={<Trash2 size={14} />}
+      />
+    </>
   )
 
   function renderPackingLocationNode(
@@ -1811,6 +1871,10 @@ function ListDetailInner({
             // contents to Unassigned - requestRemoveListItem routes exactly
             // this case through a confirm that names both consequences.
             onRemoveFromList={() => requestRemoveListItem(containerItem)}
+            // A container's own row lives in the section header, so the
+            // ordinary row kebab never renders for it. Without this, the one
+            // item you cannot edit from Pack would be the bag itself.
+            onEdit={() => openGearEditor(containerItem.gearItem.id)}
             onStopUsingAsContainer={() => setDeleteLocationTarget(location)}
           />
         ) : undefined}
@@ -1912,27 +1976,46 @@ function ListDetailInner({
 
   return (
     <div className="flex flex-col gap-4 print:pb-0">
-      {/* Two-column grid (sidebar renders only in Edit; Organize returned
-          through its exclusive branch above and Pack stays focused). */}
+      {/* Two-column grid. The aside serves BOTH gear arrangements now
+          (Organize returned through its exclusive branch above; Food keeps
+          its own left rail and is excluded here). */}
       <div className="flex gap-4 items-start">
         {/* LEFT column — Lists switcher above the gear library picker.
-            Hidden in pack mode on desktop so the user can focus on packing.
             DesktopListsPanel is the primary desktop workflow for list
             switching/management; /lists remains the mobile management page
-            and a desktop fallback (e.g. when no lists exist). */}
-        {mode === 'edit' && (
+            and a desktop fallback (e.g. when no lists exist).
+
+            Pack used to hide this entirely so packing got the focus. A real
+            trip retired that argument: adding or reweighing one item meant
+            leaving the view and coming back. See docs/one-page-list-design.md.
+
+            But Pack's aside starts at xl, not lg. At 1024px the shell's 32px
+            padding leaves 992px; minus a 320px aside and the 16px gap the
+            document is 656px, and a pack row (grip, two checkboxes, name,
+            description, two icon slots, quantity, weight, menu) does not
+            overflow there - every flexible cell is min-w-0 truncate, so the
+            name silently shrinks to ~113px instead. Information disappearing
+            quietly is worse than a missing panel, and between lg and xl Pack
+            still reaches the picker through the Add gear drawer button below.
+            Category rows are far less dense and stay on lg. */}
+        {(mode === 'edit' || mode === 'pack') && (
           <aside
-            className="hidden lg:flex w-80 shrink-0 flex-col gap-3 sticky self-start print:hidden"
+            data-testid="list-side-panel"
+            className={`hidden ${mode === 'pack' ? 'xl:flex' : 'lg:flex'} w-80 xl:w-96 shrink-0 flex-col gap-3 sticky self-start print:hidden`}
             style={{ top: '1rem', height: 'calc(100vh - 2rem)' }}
           >
-            {/* shrink-0 + max-h-72 keeps the lists switcher compact even
+            {/* Category only. Nobody switches lists mid-pack, and max-h-72 is
+                vertical room the picker wants back.
+                shrink-0 + max-h-72 keeps the lists switcher compact even
                 with many lists: the panel scrolls internally beyond that
                 cap and the gear picker below always has room. */}
-            <DesktopListsPanel
-              lists={lists}
-              currentListId={listId}
-              className="shrink-0 max-h-72"
-            />
+            {mode === 'edit' && (
+              <DesktopListsPanel
+                lists={lists}
+                currentListId={listId}
+                className="shrink-0 max-h-72"
+              />
+            )}
 
             <div className={`flex flex-col min-h-0 flex-1 ${FLAT_TABLE_SURFACE}`}>
               {libraryPane}
@@ -1942,11 +2025,22 @@ function ListDetailInner({
 
         {/* RIGHT column — list document. Title toolbar + weight table +
             items (always visible; packing checkbox column appears in pack
-            mode). Pack mode narrows from 7xl (AppShell main) to 3xl +
-            mx-auto so the sparser layout reads as focused rather than
-            stretched across the full width the missing sidebar leaves
-            behind. */}
-        <div className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'max-w-3xl mx-auto' : ''}`}>
+            mode).
+
+            Pack used to narrow from 7xl (AppShell main) to 3xl + mx-auto so
+            the sparser layout read as focused rather than stretched across
+            the width the missing sidebar left behind. The sidebar is back at
+            xl, so on screen that compensation is now wrong.
+
+            It survives for PRINT, and not by inertia: max-w-3xl is an
+            unprefixed utility, so it always governed paper too. Dropping it
+            outright would widen the printed checklist on any print config
+            whose content area exceeds 768px - a silent regression in the one
+            output nobody re-checks. */}
+        <div
+          data-testid="list-document-column"
+          className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'print:max-w-3xl print:mx-auto' : ''}`}
+        >
           <ListDocumentToolbar
             list={list}
             mode={mode}
@@ -2044,15 +2138,19 @@ function ListDetailInner({
                 </div>
               )}
 
-              {/* Desktop Pack's way back to the gear library. Below lg the
-                  bottom action bar already carries Add, so rendering this
-                  there would be a second button for one action on the surface
-                  with the least room for it.
+              {/* Pack's way back to the gear library, for the ONE width band
+                  that has no other path to it: lg to xl.
 
-                  It opens the same library panel the aside shows in List view,
-                  so adding gear behaves identically in both views - only the
-                  container differs. */}
-              {mode === 'pack' && !isBelowLg && (
+                  Below lg the bottom action bar already carries Add, so
+                  rendering this there would be a second button for one action
+                  on the surface with the least room for it. At xl and up the
+                  picker aside is on screen permanently, so this would be a
+                  drawer trigger for a panel the user can already see.
+
+                  It opens the same library panel the aside shows, so adding
+                  gear behaves identically either way - only the container
+                  differs. */}
+              {mode === 'pack' && !isBelowLg && isBelowXl && (
                 <div className="print:hidden flex justify-end">
                   <button
                     type="button"

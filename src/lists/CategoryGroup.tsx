@@ -86,6 +86,7 @@ export type PackFoodRowProps = {
   food: FoodItemResponse
   readyChecksEnabled: boolean
   reorderPending: boolean
+  weightUnit: WeightUnit
   onUpdate: (patch: { isPacked?: boolean; isReady?: boolean }) => void
   rowAction?: ReactNode
 }
@@ -622,6 +623,10 @@ function CategoryGroup({
                         food,
                         readyChecksEnabled,
                         reorderPending,
+                        // Required, not optional: a food row without the
+                        // unit would format grams against a different scale
+                        // than the gear row beside it in the same bag.
+                        weightUnit,
                         onUpdate: (patch: { isPacked?: boolean; isReady?: boolean }) =>
                           onUpdateFood?.(food.id, patch),
                         rowAction: renderFoodRowAction?.(food, unionRowCount, section),

@@ -62,7 +62,7 @@ describe('persistedListPath', () => {
 
 describe('listDocumentTitle', () => {
   it.each([
-    ['edit', 'Weekend Trip - List'],
+    ['edit', 'Weekend Trip - Category'],
     ['pack', 'Weekend Trip - Pack'],
   ] as const)('names the %s browser view', (mode, expected) => {
     expect(listDocumentTitle('Weekend Trip', mode)).toBe(expected)

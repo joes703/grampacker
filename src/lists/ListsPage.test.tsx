@@ -8,7 +8,7 @@ import type { List } from '../lib/types'
 import { queryKeys, fetchLists } from '../lib/queries'
 import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
 
-// jsdom has no matchMedia; ListsPage reads useIsMobile() (max-width: 767px)
+// jsdom has no matchMedia; ListsPage reads useIsMobile() (width < 768px)
 // to pick where the "New list" create input renders. stubViewport(width)
 // answers the media queries from a pretend viewport width so we can drive the
 // mobile (<768px) and desktop (>=1024px) paths.
@@ -21,8 +21,11 @@ import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
 // hidden desktop header and never rendered on this path at all.
 function stubViewport(width: number) {
   vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /max-width:\s*(\d+)px/.exec(query)
-    const matches = m ? width <= Number(m[1]) : false
+    const m = /width\s*<\s*([\d.]+)rem/.exec(query)
+    // Queries are rem (Tailwind's own unit); *16 converts to the px widths
+    // these tests pass. Strict, matching use-breakpoint.ts: at exactly
+    // 48rem the query is false and Tailwind's `md:` takes over.
+    const matches = m ? width < Number(m[1]) * 16 : false
     return {
       matches,
       media: query,

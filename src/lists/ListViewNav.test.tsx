@@ -8,7 +8,7 @@ afterEach(cleanup)
 
 describe('ListViewNav', () => {
   it.each([
-    ['edit', 'List'],
+    ['edit', 'Category'],
     ['food', 'Food'],
     ['pack', 'Pack'],
   ] as const)('offers direct links with %s marked current', (mode, currentLabel) => {
@@ -20,7 +20,7 @@ describe('ListViewNav', () => {
 
     const nav = screen.getByRole('navigation', { name: 'List views' })
     const links = screen.getAllByRole('link')
-    expect(links.map((link) => link.textContent)).toEqual(['List', 'Food', 'Pack'])
+    expect(links.map((link) => link.textContent)).toEqual(['Category', 'Food', 'Pack'])
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       '/lists/list-1',
       '/lists/list-1/food',
