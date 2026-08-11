@@ -158,7 +158,7 @@ describe('CategoryGroup worn extraction', () => {
 // toggle changed what the number meant.
 //
 // The section no longer computes it. The parent, which already holds the
-// canonical computeWeightBreakdown result, passes it down. These tests pin
+// canonical computeListWeightBreakdown result, passes it down. These tests pin
 // that the section RENDERS what it is handed and never re-derives it.
 describe('CategoryGroup footer subtotal', () => {
   function consumable(id: string, name: string): ListItemWithGear {
@@ -698,7 +698,7 @@ describe('CategoryGroup footer subtotal', () => {
   })
 
   it('keeps the subtotal out of the rows when an item is both worn and consumable', () => {
-    // computeWeightBreakdown buckets the defensive isConsumable+isWorn state as
+    // The breakdown buckets the defensive isConsumable+isWorn state as
     // consumable, while the Worn section's grouper selects on isWorn. So such a
     // row can render in Worn while its weight sits in consumableGrams. A DB
     // CHECK forbids the state; this locks in that the SECTION still renders

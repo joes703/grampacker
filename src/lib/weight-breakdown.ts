@@ -3,7 +3,17 @@ import type { ListItemWithGear, Category } from './types'
 // Stable row identity for React keys. Real categories use their uuid;
 // the synthetic Uncategorized row uses the same '__uncategorized__'
 // sentinel as GearLibraryPage to avoid colliding with any real id.
+// Branded, and that brand is load-bearing rather than ceremony. Without it
+// this is a plain structural type: any caller could assemble an object with
+// the right fields and hand it to WeightTable, which is exactly the shape of
+// the bug this module was reorganized to prevent - a total that looks
+// finished and is not. The symbol is not exported, so the only way to obtain
+// one is computeListWeightBreakdown, which cannot be called without stating
+// what every contributor adds.
+declare const COMPLETE: unique symbol
+
 export type WeightBreakdown = {
+  readonly [COMPLETE]: true
   catRows: { id: string; name: string; grams: number }[]
   consumableCatRows: { id: string; name: string; grams: number }[]
   baseGrams: number
@@ -12,14 +22,22 @@ export type WeightBreakdown = {
   totalPackGrams: number
 }
 
-// Shared aggregation used by the detailed WeightTable and the mobile
-// WeightSummary strip. Single source of truth for what counts as
-// Base / Consumable / Worn / Total so the strip and table can never
-// disagree on the headline number.
-export function computeWeightBreakdown(
+// The GEAR-ONLY reducer. Deliberately NOT exported: its result is an
+// incomplete pack weight, and the wrong-number bug this module was
+// reorganized around came from treating a partial breakdown as a finished
+// one - the public share called this directly and nothing said it was
+// unfinished, so a shared list reported a lighter pack than its owner saw.
+//
+// Reach it through computeListWeightBreakdown, which cannot be called without
+// deciding what every contributor adds.
+// The gear reducer's own result: the same fields WITHOUT the completeness
+// brand, so it cannot reach a display component by accident.
+type GearOnlyBreakdown = Omit<WeightBreakdown, typeof COMPLETE>
+
+function computeGearWeightBreakdown(
   items: ListItemWithGear[],
   categories: Category[],
-): WeightBreakdown {
+): GearOnlyBreakdown {
   const basePerCat = new Map<string | null, number>()
   const consumablePerCat = new Map<string | null, number>()
   const knownCategoryIds = new Set(categories.map((category) => category.id))
@@ -63,7 +81,7 @@ export function computeWeightBreakdown(
 
   const catRows = sortedCats.map((c) => {
     const grams = basePerCat.get(c.id)
-    if (grams === undefined) throw new Error('computeWeightBreakdown: filtered key missing (unreachable)')
+    if (grams === undefined) throw new Error('weight-breakdown: filtered key missing (unreachable)')
     return { id: c.id, name: c.name, grams }
   })
   const uncatGrams = basePerCat.get(null)
@@ -148,21 +166,45 @@ export function foodGramsFor(
 }
 
 /**
- * Compose carried food into a gear breakdown.
+ * Every contributor to a pack's weight. One entry per kind, all REQUIRED.
+ *
+ * Requiredness is the whole point. `food` used to be an optional second step
+ * a caller could forget, and the public share forgot it - so a shared list
+ * reported a lighter pack than the same list did to its owner, silently, for
+ * as long as food has existed. Adding a third contributor here breaks every
+ * call site until each one says what it does with it, which is the behaviour
+ * a convention could never guarantee.
+ *
+ * `food.grams` is 0 when there is no food, never omitted and never null.
+ */
+export type ListWeightInputs = {
+  gear: {
+    items: ListItemWithGear[]
+    categories: Category[]
+  }
+  food: {
+    grams: number
+  }
+}
+
+/**
+ * The only way to obtain a WeightBreakdown. Display components accept nothing
+ * else, so a partial total cannot reach a screen.
  *
  * Food is ALWAYS consumable - by definition, not by user choice - so only
  * consumableGrams and totalPackGrams move. baseGrams, wornGrams and every
  * per-category row are untouched: food is not gear, has no category, and is
  * not a list_items row, so it can never belong in a category footer.
  */
-export function withFoodWeight(
-  breakdown: WeightBreakdown,
-  foodGrams: number,
-): WeightBreakdown {
-  if (foodGrams === 0) return breakdown
+export function computeListWeightBreakdown(inputs: ListWeightInputs): WeightBreakdown {
+  const gear = computeGearWeightBreakdown(inputs.gear.items, inputs.gear.categories)
+  const foodGrams = inputs.food.grams
+  // The cast is the single place completeness is asserted, and it is sound
+  // exactly here: every contributor in ListWeightInputs has been folded in
+  // above. Nowhere else may produce this type.
   return {
-    ...breakdown,
-    consumableGrams: breakdown.consumableGrams + foodGrams,
-    totalPackGrams: breakdown.totalPackGrams + foodGrams,
-  }
+    ...gear,
+    consumableGrams: gear.consumableGrams + foodGrams,
+    totalPackGrams: gear.totalPackGrams + foodGrams,
+  } as WeightBreakdown
 }

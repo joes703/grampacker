@@ -8,7 +8,7 @@ import {
 } from './gear'
 
 // DTO contracts for /api/lists, /api/lists/:id/items and the public
-// /api/shares/:slug read. Same rules as shared/gear.ts: response schemas
+// /api/shares/v2/:slug read. Same rules as shared/gear.ts: response schemas
 // are the allowlist (user_id never leaves the server), the DB re-enforces
 // every bound below, and PATCH semantics are absent = unchanged, null =
 // clear.
@@ -76,7 +76,7 @@ export const updateListRequestSchema = z
     description: descriptionSchema.nullable().optional(),
     // Flipping isShared is the whole share/unshare mechanism: the slug is
     // minted at creation and never changes, so the toggle alone controls
-    // whether /api/shares/:slug answers. To break a leaked link, duplicate
+    // whether /api/shares/v2/:slug answers. To break a leaked link, duplicate
     // the list (fresh slug) and unshare the original.
     isShared: z.boolean().optional(),
     groupWorn: z.boolean().optional(),
@@ -222,7 +222,7 @@ export type UpdatePackingLocationRequest = z.infer<
 
 // ---------------------------------------------------------- public share read
 
-// GET /api/shares/:slug response - the ONE anonymous read surface. These
+// GET /api/shares/v2/:slug response - the ONE anonymous read surface. These
 // schemas ARE the public allowlist (the port of the old app's curated
 // public_gear_* views; see SECURITY.md "Public read paths" there): strictly
 // narrower than the authed DTOs above, and every widening is a security
@@ -272,10 +272,25 @@ export const publicListItemSchema = z.object({
 })
 export type PublicListItem = z.infer<typeof publicListItemSchema>
 
+// Food's ONLY appearance on the anonymous surface: one aggregate. No names,
+// no quantities, no day count, no meal slots, no packing state.
+//
+// Publishing it is a deliberate widening of this contract, made 2026-08-10.
+// The owner's own totals count food (computeListWeightBreakdown), so a share
+// that omitted it reported a lighter pack for the same list - the number
+// disagreed with itself across two views of one thing. A reader who can see
+// "Total pack weight" is better served by a true number than by a private
+// one, and the aggregate discloses far less than the rows would.
+export const publicFoodSchema = z.object({
+  weightGrams: z.number(),
+})
+export type PublicFood = z.infer<typeof publicFoodSchema>
+
 export const sharedListResponseSchema = z.object({
   list: publicListSchema,
   categories: z.array(publicCategorySchema),
   items: z.array(publicListItemSchema),
+  food: publicFoodSchema,
 })
 export type SharedListResponse = z.infer<typeof sharedListResponseSchema>
 

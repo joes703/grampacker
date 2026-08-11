@@ -444,11 +444,17 @@ describe('food: list duplication', () => {
   })
 })
 
-describe('food never crosses the public share boundary', () => {
-  it('is absent from a shared list, with food populated', async () => {
-    // Food is a private planning aid. The projection is field-by-field, so this
-    // asserts the EXACT key set of the raw JSON rather than banning names I
-    // happened to think of - a `foodItems` array would slip past a deny-list.
+describe('food crosses the public share boundary as an aggregate and nothing else', () => {
+  it('publishes total food grams, and no other trace of food', async () => {
+    // The contract CHANGED on 2026-08-10. It used to be "no food whatsoever",
+    // which contradicted the owner's own view: their total counted food, so a
+    // share of the same list reported a lighter pack. One number now crosses;
+    // everything that makes food personal - names, quantities, day count, meal
+    // slots, packing state - still does not.
+    //
+    // The projection is field-by-field, so this asserts the EXACT key set of
+    // the raw JSON rather than banning names I happened to think of: a
+    // `foodItems` array would slip past a deny-list.
     const { cookie } = await signUpVerifiedUser('food-share@example.com', 'FS')
     const listId = await createList(cookie, 'Shared trip')
 
@@ -470,7 +476,15 @@ describe('food never crosses the public share boundary', () => {
       name: 'Secret snacks',
       weightGrams: 500,
       quantity: 2,
-      slotIds: [slotOf(food, 1, 'lunch').id],
+      // THREE slots for one item. The aggregate below must be 1000 g
+      // (500 x 2), not 3000: the associations say when you plan to eat it,
+      // not how many you carry. This is the most dangerous query in the
+      // feature and the share is now one of its callers.
+      slotIds: [
+        slotOf(food, 1, 'lunch').id,
+        slotOf(food, 2, 'lunch').id,
+        slotOf(food, 3, 'lunch').id,
+      ],
     })
 
     const shared = await apiRequest(cookie, 'PATCH', `/api/lists/${listId}`, {
@@ -479,11 +493,16 @@ describe('food never crosses the public share boundary', () => {
     expect(shared.status).toBe(200)
     const slug = ((await shared.json()) as { slug: string }).slug
 
-    const res = await apiRequest('', 'GET', `/api/shares/${slug}`)
+    const res = await apiRequest('', 'GET', `/api/shares/v2/${slug}`)
     expect(res.status).toBe(200)
     const raw = (await res.json()) as Record<string, unknown>
 
-    expect(Object.keys(raw).sort()).toEqual(['categories', 'items', 'list'])
+    expect(Object.keys(raw).sort()).toEqual(['categories', 'food', 'items', 'list'])
+
+    // The aggregate, and ONLY the aggregate.
+    expect(Object.keys(raw.food as object)).toEqual(['weightGrams'])
+    // 500 g x quantity 2, counted once despite three meal slots.
+    expect((raw.food as { weightGrams: number }).weightGrams).toBe(1000)
     // Nested too: a `food` key hanging off the list or an item would sail past
     // a root-only assertion.
     expect(Object.keys(raw.list as object).sort()).toEqual([
@@ -514,8 +533,13 @@ describe('food never crosses the public share boundary', () => {
     for (const category of raw.categories as Record<string, unknown>[]) {
       expect(Object.keys(category).sort()).toEqual(['id', 'name', 'sortOrder'])
     }
-    // And nothing anywhere in the payload mentions the food we just added.
-    expect(JSON.stringify(raw)).not.toContain('Secret snacks')
+    // And nothing anywhere in the payload names the food, or says how many
+    // days, meals or slots it spans.
+    const serialized = JSON.stringify(raw)
+    expect(serialized).not.toContain('Secret snacks')
+    expect(serialized).not.toContain('lunch')
+    expect(serialized).not.toContain('dayNumber')
+    expect(serialized).not.toContain('slotIds')
   })
 })
 

@@ -64,9 +64,8 @@ import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
 import {
   baseGramsForCategory,
-  computeWeightBreakdown,
+  computeListWeightBreakdown,
   foodGramsFor,
-  withFoodWeight,
   consumableGramsForCategory,
 } from '../lib/weight-breakdown'
 
@@ -1418,7 +1417,10 @@ function ListDetailInner({
   // associations, which would multiply a shared bag by the meals it covers.
   const foodGrams = useMemo(() => foodGramsFor(listFood.items), [listFood.items])
   const weightBreakdown = useMemo(
-    () => withFoodWeight(computeWeightBreakdown(listItems, categories), foodGrams),
+    () => computeListWeightBreakdown({
+      gear: { items: listItems, categories },
+      food: { grams: foodGrams },
+    }),
     [categories, listItems, foodGrams],
   )
   // Mirrors WeightSummary's own render guard.
@@ -2385,7 +2387,7 @@ function ListDetailInner({
                         // categoryId, and a null lookup would hand it
                         // Uncategorized's base figure.
                         //
-                        // Caveat, deliberately accepted: computeWeightBreakdown
+                        // Caveat, deliberately accepted: the weight breakdown
                         // buckets the defensive isConsumable+isWorn state as
                         // consumable, while this section's grouper selects on
                         // isWorn. So a dual-flagged row would render here while
@@ -2419,7 +2421,8 @@ function ListDetailInner({
                   LIST view only: food now has its own peer view
                   (/lists/:id/food, see FoodView and ListViewNav), and this row
                   is only its trace here — food weight counts toward the
-                  totals this page reports (withFoodWeight), and a weight
+                  totals this page reports (computeListWeightBreakdown counts
+                  food), and a weight
                   contributor with no visible source is a trap. Pack keeps its
                   packing focus; the Food tab in ListViewNav is Pack's path to
                   food. */}

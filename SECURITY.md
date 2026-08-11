@@ -357,23 +357,42 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   delete. Worst case for a user with no passkey and no working mailbox is
   loss of access to their own gear list, which is recoverable by support
   (there is one user, and he is the maintainer).
-- **Public share endpoint** (`/api/share/:slug`, phase 4): dedicated
+- **Public share endpoint** (`GET /api/shares/v2/:slug`, phase 4): dedicated
   repository + DTO allowlist + private-column ABSENCE tests + uniform
   404 for unknown and inactive slugs. The re-sweep of this file happens
-  before it ships.
-- **Public share endpoint is UNMETERED** (`GET /api/shares/:slug`). The
-  rate limiter is mounted on `/api/auth/*` only, so every non-auth route
-  is unmetered - but the rest are session-gated, and this one is
-  anonymous by design. It is therefore the app's one unauthenticated,
-  uncounted database read: the obvious scraping surface, and a cheap way
-  to make the Worker do work for free. Slugs are random, so this is not
-  an enumeration oracle in any practical sense, and the response is a
-  DTO-allowlisted read-only document - which is why it is a gap and not a
-  hole. Trigger: any public-endpoint abuse review, any sign of scraping,
-  or the first time a share link is posted somewhere public. Fix shape:
-  a generous per-IP bucket (a legitimate viewer makes 1-3 requests; the
-  budget must survive a link going around a large NAT). Raised by review,
-  2026-07-11.
+  before it ships. Food crosses this boundary only as an aggregate
+  (`food.weightGrams`) - see the metering entry below for the rest of the
+  endpoint's posture.
+- **Public share endpoint is UNMETERED, and the control when it is needed
+  belongs at the edge** (`GET /api/shares/v2/:slug`). Raised by review
+  2026-07-11; still open by decision, 2026-08-11. There is no rate limit on
+  this endpoint today.
+
+  When one is wanted, it is a Cloudflare rate limiting rule, not application
+  code: the rule refuses before the Worker runs and before D1 is touched,
+  where an application counter would add a database write to every anonymous
+  view in order to protect a read, and could not stop the invocation it was
+  counting. An app-level limiter was written and then removed for exactly
+  that reason (2026-08-11).
+
+  This intentionally departs from `REWRITE_PLAN.md` rule 4 ("WAF is
+  hardening on top, never the only control"), whose stated justification was
+  portability to a Node target - a goal that is retired. Where a budget is
+  SEMANTIC the rule still holds and the limiter stays in code: "5 magic
+  links per email address" needs to see the address, and the edge cannot.
+  This budget is purely volumetric, which is the edge's job.
+
+  **Trigger for creating the rule:** any sign of scraping, or a share link
+  being posted somewhere public. Until then, unmetered is the accepted
+  position for an app with one user and a 62^6 slug space - a stated
+  decision, not an oversight. Dashboard config is invisible to code review,
+  so this entry is the authoritative record of both the absence and the
+  trigger; `server/routes/shares.ts` and `docs/authz-matrix.md` note the
+  absence too, and point here.
+
+  `/api/health` is unmetered for the same reason and is even less
+  interesting: it returns a single boolean.
+
 - **Web Analytics**: `https://static.cloudflareinsights.com/beacon.min.js` (and
   its `/`-suffixed prefix form) is allowed in **script-src**, and only there.
   Cloudflare Web Analytics is enabled

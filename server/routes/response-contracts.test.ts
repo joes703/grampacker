@@ -131,7 +131,7 @@ describe('every response schema, strict against the raw wire shape', () => {
     })
     expect(share.status).toBe(200)
     await strictJson(
-      await apiRequest(null, 'GET', `/api/shares/${listRaw.slug}`),
+      await apiRequest(null, 'GET', `/api/shares/v2/${listRaw.slug}`),
       sharedListResponseSchema,
       200,
     )

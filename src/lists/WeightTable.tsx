@@ -1,6 +1,5 @@
-import { useMemo } from 'react'
 import type { ListItemWithGear, Category } from '../lib/types'
-import { computeWeightBreakdown, type WeightBreakdown } from '../lib/weight-breakdown'
+import { type WeightBreakdown } from '../lib/weight-breakdown'
 import {
   COMPACT_PANEL_BODY_TEXT,
   TABLE_DIVIDER_LINE,
@@ -11,7 +10,10 @@ import TotalWeightValue from '../components/TotalWeightValue'
 type Props = {
   items: ListItemWithGear[]
   categories: Category[]
-  breakdown?: WeightBreakdown
+  /** REQUIRED, and only obtainable from computeListWeightBreakdown. This used
+   *  to be optional with a gear-only fallback computed here, which meant any
+   *  caller that forgot to pass one silently rendered a total missing food. */
+  breakdown: WeightBreakdown
 }
 
 // The summary table intentionally presents gram aggregates as whole numbers.
@@ -21,19 +23,7 @@ function fmtG(grams: number): string {
   return `${Math.round(grams)} g`
 }
 
-export default function WeightTable({ items, categories, breakdown: providedBreakdown }: Props) {
-  // Hook must be called unconditionally; the empty-list early return moved
-  // below the memo. The memo guards against unrelated parent re-renders
-  // (notes editor keystroke, dialog open/close) recomputing the breakdown
-  // — pack-mode toggles still rebuild because `items` reference changes
-  // there, but those are the renders where the breakdown legitimately
-  // changes anyway.
-  const computedBreakdown = useMemo(
-    () => computeWeightBreakdown(items, categories),
-    [items, categories],
-  )
-  const breakdown = providedBreakdown ?? computedBreakdown
-
+export default function WeightTable({ items, breakdown }: Props) {
   if (items.length === 0 && breakdown.totalPackGrams === 0 && breakdown.wornGrams === 0) return null
 
   const { catRows, baseGrams, consumableGrams, wornGrams, totalPackGrams } = breakdown

@@ -75,7 +75,7 @@ async function createPackingLocation(
 async function getShare(slug: string): Promise<Response> {
   // No cookie, no CSRF header: a plain anonymous GET, exactly what a
   // share viewer's browser sends.
-  return apiRequest(null, 'GET', `/api/shares/${slug}`)
+  return apiRequest(null, 'GET', `/api/shares/v2/${slug}`)
 }
 
 const FORBIDDEN_KEYS = new Set([
@@ -117,7 +117,7 @@ function collectKeys(value: unknown, into: Set<string>): Set<string> {
   return into
 }
 
-describe('GET /api/shares/:slug', () => {
+describe('GET /api/shares/v2/:slug', () => {
   it('serves a shared list to anon with the exact public allowlist', async () => {
     const { cookie } = await signUpVerifiedUser('share-owner@example.com', 'O')
     const list = await createList(cookie, 'JMT Loop')
@@ -241,12 +241,17 @@ describe('GET /api/shares/:slug', () => {
       list: object
       categories: object[]
       items: { gear: object }[]
+      food: object
     }
     expect(Object.keys(rawShape).toSorted()).toEqual([
       'categories',
+      'food',
       'items',
       'list',
     ])
+    // Food's entire public surface. This list having exactly one entry is the
+    // assertion: an aggregate is publishable, a food ROW is not.
+    expect(Object.keys(rawShape.food)).toEqual(['weightGrams'])
     expect(Object.keys(rawShape.list).toSorted()).toEqual([
       'description',
       'groupWorn',
@@ -357,3 +362,41 @@ describe('PATCH /api/lists/:id isShared authorization', () => {
   })
 })
 
+// Unsharing flips is_shared server-side. Without a no-store policy the
+// response could still be sitting in a reader's browser cache, so "I made it
+// private again" was true of the server and false of anyone who already had
+// the link open.
+describe('share responses are never stored', () => {
+  it('sends private, no-store on a served share', async () => {
+    const { cookie } = await signUpVerifiedUser('nostore-hit@example.com', 'N')
+    const list = await createList(cookie, 'Cached trip')
+    await setShared(cookie, list.id, true)
+
+    const res = await getShare(list.slug)
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
+  })
+
+  // The 404 too: a slug fetched before its owner shared it must not cache a
+  // denial that outlives the decision to share.
+  it('sends private, no-store on a 404', async () => {
+    const res = await getShare('nosuchslug')
+
+    expect(res.status).toBe(404)
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
+  })
+
+  // The old path is GONE, not left mounted beside the new one. Leaving it
+  // would keep serving cacheable responses under the policy this change
+  // exists to replace, which is the entire reason the path moved.
+  it('no longer answers on the unversioned path', async () => {
+    const { cookie } = await signUpVerifiedUser('oldpath@example.com', 'O')
+    const list = await createList(cookie, 'Old path trip')
+    await setShared(cookie, list.id, true)
+
+    const res = await apiRequest(null, 'GET', `/api/shares/${list.slug}`)
+
+    expect(res.status).toBe(404)
+  })
+})

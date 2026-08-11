@@ -55,7 +55,7 @@ Standing invariants to name in every GATE 2 review prompt:
   better-auth session's user_id. Deliberate exceptions: the anonymous
   public-share read (slug-gated on is_shared) and system tables like
   rate-limit buckets.
-- Locked public share projection: `GET /api/shares/:slug` returns only the
+- Locked public share projection: `GET /api/shares/v2/:slug` returns only the
   strict share DTO (constants + wire-shape tests on RAW json).
 - Ownership prechecks on writes taking client-supplied ids, under the D1
   100-param limit (owned-set membership in JS, chunked batches - never an

@@ -229,7 +229,7 @@ type GroupPropsBase = {
    *  which put consumable and worn weight into the subtotal, so the subtotals never summed to
    *  the summary panel's Base weight, and flipping an unrelated display toggle
    *  silently changed what the number meant. The parents already hold the
-   *  canonical computeWeightBreakdown result; they pass the answers down
+   *  canonical computeListWeightBreakdown result; they pass the answers down
    *  (see baseGramsForCategory and consumableGramsForCategory) so there is one
    *  definition of each weight bucket.
    *
