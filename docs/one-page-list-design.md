@@ -279,7 +279,8 @@ client-side composition over queries and mutations that already exist.
 - **Food items as rows in Category view** instead of the single summary line.
   Small once this lands.
 
-Separately, and not part of any of the above: the public share view carries no
-food at all (`server/routes/shares.ts` never selects it), while the owner's
-totals run through `withFoodWeight`. A shared list therefore reads lighter
-than the same list reads to its owner. That needs its own small fix.
+Separately, and not part of any of the above: the public share view carried no
+food at all while the owner's totals counted it, so a shared list read lighter
+than the same list read to its owner. FIXED 2026-08-11 - the share now
+publishes `food.weightGrams` (an aggregate, never rows) and both surfaces
+compute through one required compositor.

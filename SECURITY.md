@@ -363,14 +363,17 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   before it ships. Food crosses this boundary only as an aggregate
   (`food.weightGrams`) - see the metering entry below for the rest of the
   endpoint's posture.
-- **Public share endpoint is metered AT THE EDGE, not in the app**
-  (`GET /api/shares/v2/:slug`). Raised by review 2026-07-11; resolved
-  2026-08-11 by putting the control where it belongs rather than in code.
+- **Public share endpoint is UNMETERED, and the control when it is needed
+  belongs at the edge** (`GET /api/shares/v2/:slug`). Raised by review
+  2026-07-11; still open by decision, 2026-08-11. There is no rate limit on
+  this endpoint today.
 
-  A Cloudflare rate limiting rule refuses before the Worker runs and before
-  D1 is touched. An application counter cannot: it would add a database
-  write to every anonymous view of a shared list in order to protect a read,
-  and it cannot stop the invocation it is counting.
+  When one is wanted, it is a Cloudflare rate limiting rule, not application
+  code: the rule refuses before the Worker runs and before D1 is touched,
+  where an application counter would add a database write to every anonymous
+  view in order to protect a read, and could not stop the invocation it was
+  counting. An app-level limiter was written and then removed for exactly
+  that reason (2026-08-11).
 
   This intentionally departs from `REWRITE_PLAN.md` rule 4 ("WAF is
   hardening on top, never the only control"), whose stated justification was
@@ -379,12 +382,11 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   links per email address" needs to see the address, and the edge cannot.
   This budget is purely volumetric, which is the edge's job.
 
-  **What that means operationally, because dashboard config is invisible to
-  code review:** there is no rate limit on this endpoint until a rule is
-  created in the Cloudflare dashboard. Trigger for creating one: any sign of
-  scraping, or a share link being posted somewhere public. Until then the
-  endpoint is unmetered, which is the accepted position for an app with one
-  user and a 62^6 slug space - not an oversight.
+  **Trigger for creating the rule:** any sign of scraping, or a share link
+  being posted somewhere public. Until then, unmetered is the accepted
+  position for an app with one user and a 62^6 slug space - a stated
+  decision, not an oversight. Dashboard config is invisible to code review,
+  so this entry is the only place the absence is recorded.
 
   `/api/health` is unmetered for the same reason and is even less
   interesting: it returns a single boolean.

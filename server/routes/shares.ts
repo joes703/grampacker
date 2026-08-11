@@ -12,11 +12,10 @@ import type { PublicShare } from '../repos/public-shares'
 //                           and unshared list are the same 404
 //
 // The public read surface. GET-only (csrfProtection ignores safe methods),
-// no session, and no application rate limit: a counter here would add a D1
-// write to every anonymous view in order to protect a read, and could not
-// stop the invocation it was counting. The budget for this route is a
-// Cloudflare edge rule instead (SECURITY.md says when to create one and what
-// is accepted until then).
+// no session, and UNMETERED: a counter here would add a D1 write to every
+// anonymous view in order to protect a read, and could not stop the
+// invocation it was counting. If this ever needs a budget it belongs at the
+// edge; SECURITY.md records the trigger and the fact that none exists yet.
 export const shareRoutes = new Hono<{
   Bindings: Env
   Variables: PublicShareVars

@@ -104,10 +104,11 @@ api.route('/lists', foodRoutes)
 // Anonymous by design: the public share read (see routes/shares.ts for
 // the trust model). Everything else API-shaped stays session-gated.
 //
-// Deliberately NOT metered in application code. Its budget is a Cloudflare
-// rate limiting rule at the edge, which refuses before the Worker runs and
-// before D1 is touched - an app-level counter would add a write to every
-// anonymous view to protect a read. See SECURITY.md.
+// Deliberately NOT metered in application code, and UNMETERED today. If a
+// budget is ever needed it belongs at the edge, where a rule refuses before
+// the Worker runs and before D1 is touched - an app-level counter would add
+// a write to every anonymous view to protect a read. SECURITY.md records the
+// trigger for creating one.
 api.route('/shares', shareRoutes)
 
 api.get('/health', async (c) => {
