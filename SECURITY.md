@@ -440,12 +440,13 @@ of it:
   of live gaps and the plan that describes it in full is a dated record.
 
   What is lost: the day x meal SLOTS and their placements - which food is
-  eaten when, and any "not needed" decisions. On three of the four paths below
-  the food ITEMS survive, because only `list_food_item_slots` cascades. The
-  fourth deletes an item outright, and its placements with it.
+  eaten when, and any "not needed" decisions. Two of the paths below delete
+  placements DIRECTLY; the other two delete a parent row and let the
+  placements cascade. Three leave the food items themselves alone; one removes
+  an item outright.
 
-  All three paths below decide from a cached snapshot that can be
-  **arbitrarily old**. `staleTime` is 30s, but that only marks data stale - it
+  Every path below decides from a cached snapshot that can be **arbitrarily
+  old**. `staleTime` is 30s, but that only marks data stale - it
   does not refetch. With `refetchOnWindowFocus: false` and no polling
   (`src/App.tsx`), a tab left open re-reads nothing until something else
   invalidates it. The day-trim path does refetch, but AFTER the confirm
@@ -467,6 +468,15 @@ of it:
     item). This is the one path that destroys the item too, so a stale client
     can remove something another client had just rescheduled - and the guard
     in Release B has to cover this delete, not only the trim.
+
+  A fifth path exists and is deliberately out of scope: **deleting the list**
+  cascades its food entirely (`server/repos/lists.ts`), reachable from three
+  cached-list surfaces. It belongs to a different problem - it destroys the
+  whole list, its confirm is unconditional rather than snapshot-derived, and a
+  food-revision guard is the wrong instrument for it. Noted so the omission is
+  a decision rather than an oversight. Account deletion cascades everything
+  too and does not act from a cached snapshot at all. Deleting a packing
+  location only unassigns and re-ranks food; it destroys nothing.
 
   In each case a second client's work is deleted by a write that never saw it.
   A conditional UPDATE matching zero rows does not abort the rest of a D1

@@ -23,7 +23,15 @@ is a rule that will disagree with itself.
 - `overrides` exist here for transitive advisories rather than preference; see
   AGENTS.md for how they must be written.
 
-## Installed at phase 0 (HISTORICAL - versions here are the scaffold's, not today's)
+## Installed at phase 0 - HISTORICAL
+
+Everything below is the scaffold's own notes from 2026-07-07, preserved as a
+record of why each dependency was chosen. **The versions are the scaffold's,
+not today's, and any instruction-shaped sentence in it ("generate-only",
+"pin at install time", "no core infra on beta/RC", "gate upgrades on...") is a
+scaffold-era note, not a current rule.** `AGENTS.md` governs what you may do;
+if a line here reads like policy, that is this section failing to sound as
+historical as it is.
 
 | Package | Version | Why / notes |
 | --- | --- | --- |
@@ -59,19 +67,15 @@ is a rule that will disagree with itself.
   react-markdown - with the gear UI transplant (phase 2 step 3) and later
   slices.
 
-## Upgrade notes
+## Upgrade history
 
-**Not policy.** `AGENTS.md` "Git and supply chain" is binding; if these ever
-disagree, AGENTS.md wins and this file is the bug. What follows is context
-specific to this dependency set, not rules:
+Context, not rules - `AGENTS.md` "Git and supply chain" is binding.
 
-- No core infra on beta/RC. The one-day drizzle RC experiment (adopted and
-  reversed 2026-07-07 when better-auth's peer range rejected it) is the only
-  time that was tried, and it was reversed because better-auth's peer range
-  rejected it rather than on principle.
-- A major bump is worth a clean `rm -rf node_modules && npm ci` before
-  merging: peer-dep failures fail closed, which is the point of not reaching
-  for `--legacy-peer-deps`.
+The only time a core dependency ran on a pre-release here was a one-day
+drizzle RC in 2026-07-07, reversed the same day because better-auth's peer
+range rejected it. That is the whole history; it is recorded because "we tried
+it once and it failed for a specific reason" is more useful than a
+prohibition.
 
 ## Watch list
 
