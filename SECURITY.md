@@ -435,29 +435,41 @@ of it:
 
 ## Deferred - known gaps with triggers
 
-- **Concurrent food edits can silently destroy work.** Not a security hole -
-  an integrity one, recorded here because this is the maintained list of live
-  gaps and the plan that describes it in full is a dated record, not an
-  authority.
+- **Concurrent food edits can silently destroy scheduling.** Not a security
+  hole - an integrity one, recorded here because this is the maintained list
+  of live gaps and the plan that describes it in full is a dated record.
 
-  Trimming the day count deletes the slots past the new end. That decision is
-  made from a client-side snapshot, so a second tab that added food in the
-  meantime loses it: the destructive write commits against state it never saw.
-  A conditional UPDATE matching zero rows does not abort the rest of a D1
-  batch, so nothing stops it today. The `KNOWN GAP` comment at
-  `src/lists/FoodView.tsx:343` marks the decision point.
+  What is lost, precisely: the day x meal SLOTS and their placements - which
+  food is eaten when, and any "not needed" decisions. The food ITEMS
+  themselves survive; only `list_food_item_slots` cascades. So this destroys a
+  plan, not a pantry.
 
-  The fix is designed and prototyped but unbuilt: a `lists.food_revision`
-  column plus a guard table whose NOT NULL column takes a NULL on mismatch,
-  which forces D1 to roll the whole batch back, mapped to a 409 the client
-  consumes as control flow. It needs two releases separated by a deploy so the
-  column is trustworthy before anything enforces it. Full design:
-  `docs/review-remediation-plan.md` section N1 (dated record - verify against
-  the code before trusting any of it).
+  Two ways in, both deciding from a client snapshot that can be up to 30
+  seconds stale and does not refetch on focus:
 
-  Trigger: a second person using the app, a second device used concurrently,
-  or any report of food disappearing. Until then the blast radius is one user
-  with two tabs open.
+  - **Trimming the day count** drops every slot past the new end
+    (`src/lists/FoodView.tsx:343` carries the KNOWN GAP comment).
+  - **Marking a meal not needed** clears that slot's placements, and the
+    confirm that guards it is skipped when the cached snapshot says the slot
+    is empty (`src/lists/FoodDaySection.tsx`).
+
+  In both cases a second client that scheduled food inside that window has its
+  work deleted by a write that never saw it. A conditional UPDATE matching
+  zero rows does not abort the rest of a D1 batch, so nothing stops it today.
+
+  The fix is designed and prototyped but unbuilt, and needs two releases
+  separated by a deploy. Release A adds `lists.food_revision` and makes
+  **every** food mutation bump it - that part is load-bearing, because a
+  revision only some writes touch cannot detect the concurrent create or
+  reschedule this is meant to catch. Release B adds a guard table whose NOT
+  NULL column takes a NULL on mismatch, which forces D1 to roll the whole
+  batch back, mapped to a 409 the client consumes as control flow. Full
+  design: `docs/review-remediation-plan.md` section N1 (dated record - verify
+  against the code before trusting any of it).
+
+  Trigger: a second person using the app, or any report of a meal plan losing
+  entries. Until then the blast radius is one account with concurrent clients
+  - two tabs, or a phone and a laptop.
 
 - **Fresh-auth proofs**: CLOSED. See "Fresh auth" above - passkey
   mutations and account deletion both require a fresh session. Email

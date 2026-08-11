@@ -21,7 +21,9 @@ platform, not as an implementation detail behind an abstraction.
 Sign-in is passwordless: magic link or passkey. There is no email/password path,
 and that absence is deliberate.
 
-- Pinned versions and upgrade policy: [STACK.md](./STACK.md)
+- Dependency rationale and upgrade notes: [STACK.md](./STACK.md)
+  (`package.json` is authoritative for versions; `AGENTS.md` holds the binding
+  supply-chain rules)
 - What is enforced, and what is knowingly deferred: [SECURITY.md](./SECURITY.md)
 - Rules every agent follows in this repo: [AGENTS.md](./AGENTS.md)
 

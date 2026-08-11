@@ -60,14 +60,21 @@ it is, what would trigger moving it, and which constraints are non-obvious:
   react-markdown - with the gear UI transplant (phase 2 step 3) and later
   slices.
 
-## Upgrade policy
+## Upgrade notes
 
-- Exact pins, no ranges. Renovate/deps PRs bump deliberately.
-- No core infra on beta/RC. No exceptions remain: the one-day drizzle RC
-  experiment (adopted and reversed 2026-07-07 when better-auth's peer range
-  rejected it) is recorded in REWRITE_PLAN.md section 13.
+Not policy - `AGENTS.md` "Git and supply chain" is the binding version. These
+are the notes specific to this dependency set:
+
+- Direct dependencies are pinned exact (`.npmrc` sets `save-exact`), and
+  Dependabot raises the bumps. **`overrides` are the exception and must stay
+  RANGES** tracking their parent - Dependabot does not update overrides, so an
+  exact pin there rots silently. An earlier version of this file said "exact
+  pins, no ranges" flatly, which contradicted that.
+- No core infra on beta/RC. The one-day drizzle RC experiment (adopted and
+  reversed 2026-07-07 when better-auth's peer range rejected it) is the only
+  time that was tried.
 - Major bumps re-verify `rm -rf node_modules && npm ci` before merging
-  (peer-dep failures fail closed; never --legacy-peer-deps).
+  (peer-dep failures fail closed; never `--legacy-peer-deps`).
 
 ## Watch list
 
