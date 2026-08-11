@@ -23,10 +23,10 @@ export type WeightBreakdown = {
 }
 
 // The GEAR-ONLY reducer. Deliberately NOT exported: its result is an
-// incomplete pack weight, and every historical wrong-number bug on this app
-// came from something treating a partial breakdown as a finished one. The
-// public share still reports a gear-only total today for exactly that reason
-// - it called this and nothing said it was unfinished.
+// incomplete pack weight, and the wrong-number bug this module was
+// reorganized around came from treating a partial breakdown as a finished
+// one - the public share called this directly and nothing said it was
+// unfinished, so a shared list reported a lighter pack than its owner saw.
 //
 // Reach it through computeListWeightBreakdown, which cannot be called without
 // deciding what every contributor adds.
@@ -81,7 +81,7 @@ function computeGearWeightBreakdown(
 
   const catRows = sortedCats.map((c) => {
     const grams = basePerCat.get(c.id)
-    if (grams === undefined) throw new Error('computeWeightBreakdown: filtered key missing (unreachable)')
+    if (grams === undefined) throw new Error('weight-breakdown: filtered key missing (unreachable)')
     return { id: c.id, name: c.name, grams }
   })
   const uncatGrams = basePerCat.get(null)

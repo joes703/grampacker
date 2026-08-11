@@ -7,7 +7,7 @@ import {
 } from './weight-breakdown'
 import type { Category, ListItemWithGear } from './types'
 
-// computeWeightBreakdown coverage (moved here from lists/WeightTable.test.ts,
+// computeListWeightBreakdown coverage (moved here from lists/WeightTable.test.ts,
 // which named the WeightTable component but only exercised this helper). The
 // component now has its own render test; this is the single home for the
 // weight-breakdown module's pure-function coverage.
@@ -58,7 +58,7 @@ const shelter: Category = {
   createdAt: '2024-01-01',
 }
 
-describe('computeWeightBreakdown', () => {
+describe('computeListWeightBreakdown', () => {
   // Regression test for B-1: when an item references a category id not present
   // in `categories` (cache drift between ['categories'] and ['list-items']),
   // its weight must route to Uncategorized so it still contributes to base.
@@ -130,7 +130,7 @@ describe('computeWeightBreakdown', () => {
 
 
 // baseGramsForCategory is the lookup that puts each rendered category section's
-// footer subtotal onto computeWeightBreakdown, instead of the section summing
+// footer subtotal onto the shared breakdown, instead of the section summing
 // its own rows (which counted consumables and worn items into the subtotal).
 //
 // The three traps this owns, all of which produce a plausible-looking wrong

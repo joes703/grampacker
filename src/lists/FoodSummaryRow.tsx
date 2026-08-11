@@ -13,7 +13,7 @@ import type { ListFoodResponse } from '../../shared/food'
 import type { WeightUnit } from '../lib/weight'
 
 // The List/Pack-view trace of the Food view. Food weight counts toward the
-// totals shown on those views (withFoodWeight), and a weight contributor with
+// totals shown on those views (computeListWeightBreakdown counts food), and a weight contributor with
 // no visible source is a trap - so the row stays behind when the planner
 // moves to /lists/:id/food. Derived, never editable here.
 export default function FoodSummaryRow({

@@ -14,7 +14,6 @@ const MAGIC_SEND_EMAIL_LIMIT = 5
 const MAGIC_SEND_GLOBAL_LIMIT = 90
 const MAGIC_VERIFY_LIMIT = 10
 const DELETE_USER_LIMIT = 5
-const PUBLIC_SHARE_LIMIT = 600
 const SIGN_IN_WINDOW_MS = 10 * 60 * 1000
 const SENSITIVE_WINDOW_MS = 10 * 60 * 1000
 const MAGIC_SEND_EMAIL_WINDOW_MS = 60 * 60 * 1000
@@ -705,54 +704,5 @@ describe('auth rate limiting', () => {
       env,
     )
     expect(session.status).toBe(200)
-  })
-})
-
-// The public share read was the app's ONE data-returning route with no budget:
-// the limiter is mounted on /auth/*, and shares are not under it. Anonymous
-// and unmetered is a bad pair for the only endpoint that answers without a
-// session.
-//
-// One loose bucket. These tests pin that it exists and is scoped separately -
-// NOT that it is tight, which it deliberately is not.
-describe('public share rate limiting', () => {
-  function getShare(ip: string, slug = 'nosuchslug') {
-    return app.request(
-      `/api/shares/v2/${slug}`,
-      { method: 'GET', headers: { 'cf-connecting-ip': ip } },
-      env,
-    )
-  }
-
-  // Seeded to the brim rather than exhausted honestly: 600 real requests is
-  // slow enough to blow the test timeout, and the same seeding pattern is what
-  // the magic-link global quota above uses for the same reason. The IPv6 /64
-  // bucketing means the key is the plain IPv4 address here.
-  async function fillBucket(ip: string) {
-    await env.DB.prepare(
-      'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
-    )
-      .bind(`public-share:${ip}`, PUBLIC_SHARE_LIMIT, Date.now())
-      .run()
-  }
-
-  it('serves normally until the budget is spent, then 429s', async () => {
-    const ip = '203.0.113.90'
-
-    expect((await getShare(ip)).status).toBe(404)
-
-    await fillBucket(ip)
-
-    expect((await getShare(ip)).status).toBe(429)
-  })
-
-  // Its own scope. Sharing a bucket with auth would let someone's share links
-  // being read spend the sign-in budget they need to get into their account.
-  it('does not spend the auth budget', async () => {
-    const ip = '203.0.113.91'
-    await fillBucket(ip)
-    expect((await getShare(ip)).status).toBe(429)
-
-    expect((await signIn(ip)).status).not.toBe(429)
   })
 })

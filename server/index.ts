@@ -6,7 +6,7 @@ import { assetCache, forceValidatedAssetResponse } from './middleware/asset-cach
 import { apiBodyLimit } from './middleware/body-limit'
 import { csrfProtection } from './middleware/csrf'
 import { errorHandler, withAuthErrorCorrelation } from './middleware/error-handler'
-import { authRateLimit, publicShareRateLimit } from './middleware/rate-limit'
+import { authRateLimit } from './middleware/rate-limit'
 import { requireSession } from './middleware/session'
 import { securityHeaders } from './middleware/security-headers'
 import { categoryRoutes } from './routes/categories'
@@ -104,11 +104,10 @@ api.route('/lists', foodRoutes)
 // Anonymous by design: the public share read (see routes/shares.ts for
 // the trust model). Everything else API-shaped stays session-gated.
 //
-// It carries the ONLY budget on a data-returning anonymous route. The auth
-// limiter above is mounted on /auth/* and has never covered this path, so
-// until now the app's one unauthenticated read was also its one unmetered
-// one.
-api.use('/shares/*', publicShareRateLimit)
+// Deliberately NOT metered in application code. Its budget is a Cloudflare
+// rate limiting rule at the edge, which refuses before the Worker runs and
+// before D1 is touched - an app-level counter would add a write to every
+// anonymous view to protect a read. See SECURITY.md.
 api.route('/shares', shareRoutes)
 
 api.get('/health', async (c) => {

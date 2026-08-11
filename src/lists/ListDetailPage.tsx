@@ -2387,7 +2387,7 @@ function ListDetailInner({
                         // categoryId, and a null lookup would hand it
                         // Uncategorized's base figure.
                         //
-                        // Caveat, deliberately accepted: computeWeightBreakdown
+                        // Caveat, deliberately accepted: the weight breakdown
                         // buckets the defensive isConsumable+isWorn state as
                         // consumable, while this section's grouper selects on
                         // isWorn. So a dual-flagged row would render here while
@@ -2421,7 +2421,8 @@ function ListDetailInner({
                   LIST view only: food now has its own peer view
                   (/lists/:id/food, see FoodView and ListViewNav), and this row
                   is only its trace here — food weight counts toward the
-                  totals this page reports (withFoodWeight), and a weight
+                  totals this page reports (computeListWeightBreakdown counts
+                  food), and a weight
                   contributor with no visible source is a trap. Pack keeps its
                   packing focus; the Food tab in ListViewNav is Pack's path to
                   food. */}

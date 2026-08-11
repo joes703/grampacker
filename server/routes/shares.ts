@@ -12,14 +12,11 @@ import type { PublicShare } from '../repos/public-shares'
 //                           and unshared list are the same 404
 //
 // The public read surface. GET-only (csrfProtection ignores safe methods),
-// no session - and, since 2026-08-10, METERED. It used to argue itself out
-// of a budget on the grounds that a counter adds a D1 write per anonymous
-// view, which is true and still the cost; what that argument missed is that
-// this is the ONE route where an unmetered read is also an unauthenticated
-// one. The budget is two per-IP buckets mounted in server/index.ts (generous
-// on every request, tight on misses) - see the rules in
-// middleware/rate-limit.ts for why one bucket could not do both jobs. The
-// WAF remains the volumetric layer (SECURITY.md trust model).
+// no session, and no application rate limit: a counter here would add a D1
+// write to every anonymous view in order to protect a read, and could not
+// stop the invocation it was counting. The budget for this route is a
+// Cloudflare edge rule instead (SECURITY.md says when to create one and what
+// is accepted until then).
 export const shareRoutes = new Hono<{
   Bindings: Env
   Variables: PublicShareVars

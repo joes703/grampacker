@@ -363,36 +363,31 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   before it ships. Food crosses this boundary only as an aggregate
   (`food.weightGrams`) - see the metering entry below for the rest of the
   endpoint's posture.
-- **Public share endpoint is METERED** (`GET /api/shares/v2/:slug`).
-  Raised by review 2026-07-11, closed 2026-08-10. It was the app's one
-  unauthenticated, uncounted database read.
+- **Public share endpoint is metered AT THE EDGE, not in the app**
+  (`GET /api/shares/v2/:slug`). Raised by review 2026-07-11; resolved
+  2026-08-11 by putting the control where it belongs rather than in code.
 
-  One per-IP bucket, 600 per 10 minutes, its own scope so share traffic
-  cannot spend a sign-in budget. Opening a shared link costs one request, so
-  this is a ceiling that stops the endpoint being free forever - not a
-  throttle, and nobody using the app should ever feel it.
+  A Cloudflare rate limiting rule refuses before the Worker runs and before
+  D1 is touched. An application counter cannot: it would add a database
+  write to every anonymous view of a shared list in order to protect a read,
+  and it cannot stop the invocation it is counting.
 
-  Two limits of that choice, recorded so they are not re-derived as defects:
+  This intentionally departs from `REWRITE_PLAN.md` rule 4 ("WAF is
+  hardening on top, never the only control"), whose stated justification was
+  portability to a Node target - a goal that is retired. Where a budget is
+  SEMANTIC the rule still holds and the limiter stays in code: "5 magic
+  links per email address" needs to see the address, and the edge cannot.
+  This budget is purely volumetric, which is the edge's job.
 
-  - It does not distinguish a scraper walking the slug space from readers.
-    A tighter miss-only budget would, but classifying a request needs its
-    outcome, which means either refusing legitimate hits early or letting
-    refused probes run anyway. That machinery was judged more moving parts
-    than a 62^6 slug space and one user warrant (2026-08-10).
-  - It does not survive a determined prober on a shared address: 600
-    requests from one NAT deny readers behind it for the rest of the window.
-    This file previously required any fix to "survive a link going around a
-    large NAT" - that is met for ordinary traffic and NOT met against
-    deliberate abuse from the same address. Accepted: at that point there is
-    a real abuse problem, and the edge is the layer for it.
+  **What that means operationally, because dashboard config is invisible to
+  code review:** there is no rate limit on this endpoint until a rule is
+  created in the Cloudflare dashboard. Trigger for creating one: any sign of
+  scraping, or a share link being posted somewhere public. Until then the
+  endpoint is unmetered, which is the accepted position for an app with one
+  user and a 62^6 slug space - not an oversight.
 
-  `/api/health` remains unmetered. It returns a single boolean; the D1 ping
-  behind it is the cheapest query in the app, and a budget there protects
-  little. Revisit if it is ever pointed at by something noisy.
-
-  What metering costs: the limiter is D1-backed, so it adds a write per
-  anonymous view and a refused request still performs that write. It bounds
-  the share projection and its four queries, not the Worker invocation.
+  `/api/health` is unmetered for the same reason and is even less
+  interesting: it returns a single boolean.
 
 - **Web Analytics**: `https://static.cloudflareinsights.com/beacon.min.js` (and
   its `/`-suffixed prefix form) is allowed in **script-src**, and only there.

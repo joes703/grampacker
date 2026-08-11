@@ -101,35 +101,6 @@ const MAGIC_LINK_VERIFY: Rule = {
 // Irreversible, and now gated on session freshness rather than a password.
 const DELETE_USER: Rule = { scope: 'delete-user', limit: 5, windowMs: 10 * MINUTE }
 
-// The public share read: the only anonymous endpoint that returns list data,
-// and until now the only data-returning route with no budget at all - the
-// limiter above is mounted on /auth/* and never saw it.
-//
-// ONE bucket, and deliberately loose. 600 per 10 minutes is about a request a
-// second sustained; opening a shared link costs one. This is a ceiling so the
-// endpoint is not free forever - not a throttle, and nobody using the app
-// should ever feel it. Its own scope, so share traffic cannot spend a user's
-// sign-in budget.
-//
-// Two things it deliberately does NOT do, recorded so they are not re-derived
-// as defects:
-//
-//   It does not separate misses from hits. A tight miss-only budget bounds
-//   slug-walking more precisely, but classifying a request needs its outcome,
-//   which means either refusing hits early or letting refused probes run
-//   anyway. That machinery is more moving parts than a 62^6 slug space and one
-//   user warrant.
-//
-//   It does not survive a determined prober on a shared address: 600 requests
-//   from one NAT deny readers behind it for the rest of the window. Accepted -
-//   at that point there is a real abuse problem, and the edge is the layer for
-//   it (SECURITY.md trust model).
-//
-// The cost it accepts: the limiter is D1-backed, so metering adds a write per
-// anonymous view, and a refused request still performs that write. It bounds
-// the share projection and its four queries, not the Worker invocation.
-const PUBLIC_SHARE: Rule = { scope: 'public-share', limit: 600, windowMs: 10 * MINUTE }
-
 // Longest window; rows older than this are dead and get swept.
 const MAX_WINDOW_MS = DAY
 
@@ -357,20 +328,6 @@ async function consume(
   const verdict = await charge(db, rule, keySuffix, now)
   return verdict.ok ? null : tooManyRequests(verdict)
 }
-
-// Per-IP budget for the anonymous share read. Same charging machinery and the
-// same IPv6 /64 bucketing as the auth limiter; its own scope, its own budget.
-// Charged before the handler, so a refused request costs the limiter write and
-// nothing else.
-export const publicShareRateLimit = createMiddleware<{ Bindings: Env }>(
-  async (c, next) => {
-    const rawIp = c.req.header('cf-connecting-ip')
-    const ip = rawIp === undefined ? 'local' : rateLimitIpKey(rawIp)
-    const refused = await consume(createDb(c.env.DB), PUBLIC_SHARE, ip, Date.now())
-    if (refused) return refused
-    return next()
-  },
-)
 
 // Limits auth requests per client IP, every method except allowlisted
 // read-only GETs. CF-Connecting-IP is set by Cloudflare's edge and
