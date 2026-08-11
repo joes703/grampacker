@@ -386,7 +386,9 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   being posted somewhere public. Until then, unmetered is the accepted
   position for an app with one user and a 62^6 slug space - a stated
   decision, not an oversight. Dashboard config is invisible to code review,
-  so this entry is the only place the absence is recorded.
+  so this entry is the authoritative record of both the absence and the
+  trigger; `server/routes/shares.ts` and `docs/authz-matrix.md` note the
+  absence too, and point here.
 
   `/api/health` is unmetered for the same reason and is even less
   interesting: it returns a single boolean.
