@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import WeightTable from './WeightTable'
+import { computeListWeightBreakdown } from '../lib/weight-breakdown'
 import type { Category, ListItemWithGear } from '../lib/types'
 import type { WeightBreakdown } from '../lib/weight-breakdown'
 
@@ -62,9 +63,20 @@ function rowFor(label: string): HTMLElement {
   return row
 }
 
+// The component no longer computes anything: a breakdown is required and can
+// only come from computeListWeightBreakdown. These tests therefore build one
+// the same way production does, which is also the only way to state what food
+// contributes.
+function breakdownFor(items: ListItemWithGear[], categories: Category[], foodGrams = 0) {
+  return computeListWeightBreakdown({
+    gear: { items, categories },
+    food: { grams: foodGrams },
+  })
+}
+
 describe('WeightTable', () => {
   it('renders a category row plus the base and total footer for a simple base item', () => {
-    render(<WeightTable items={[listItem({ id: '1', categoryId: shelter.id, weightGrams: 250 })]} categories={[shelter]} />)
+    render(<WeightTable items={[listItem({ id: '1', categoryId: shelter.id, weightGrams: 250 })]} categories={[shelter]} breakdown={breakdownFor([listItem({ id: '1', categoryId: shelter.id, weightGrams: 250 })], [shelter])} />)
 
     // Category row carries its name and gram weight.
     expect(within(rowFor('Shelter')).getByText('250 g')).toBeInTheDocument()
@@ -87,6 +99,11 @@ describe('WeightTable', () => {
           listItem({ id: '3', categoryId: shelter.id, weightGrams: 100.1 }),
         ]}
         categories={[shelter]}
+        breakdown={breakdownFor([
+          listItem({ id: '1', categoryId: shelter.id, weightGrams: 100.1 }),
+          listItem({ id: '2', categoryId: shelter.id, weightGrams: 100.1 }),
+          listItem({ id: '3', categoryId: shelter.id, weightGrams: 100.1 }),
+        ], [shelter])}
       />,
     )
 
@@ -105,6 +122,11 @@ describe('WeightTable', () => {
           listItem({ id: '3', categoryId: shelter.id, weightGrams: 30, isWorn: true }),
         ]}
         categories={[shelter]}
+        breakdown={breakdownFor([
+          listItem({ id: '1', categoryId: shelter.id, weightGrams: 100 }),
+          listItem({ id: '2', categoryId: shelter.id, weightGrams: 50, isConsumable: true }),
+          listItem({ id: '3', categoryId: shelter.id, weightGrams: 30, isWorn: true }),
+        ], [shelter])}
       />,
     )
 
@@ -116,7 +138,7 @@ describe('WeightTable', () => {
   })
 
   it('renders nothing for an empty list with no projected weight', () => {
-    const { container } = render(<WeightTable items={[]} categories={[shelter]} />)
+    const { container } = render(<WeightTable items={[]} categories={[shelter]} breakdown={breakdownFor([], [shelter])} />)
     expect(container).toBeEmptyDOMElement()
   })
 

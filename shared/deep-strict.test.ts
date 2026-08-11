@@ -88,6 +88,7 @@ const sharedListFixture = {
       gear: { name: 'Tent', description: null, weightGrams: 900, categoryId: null },
     },
   ],
+  food: { weightGrams: 450 },
 }
 
 const foodSlotFixture = { id: 's1', dayNumber: 1, meal: 'breakfast', needed: true }
@@ -129,7 +130,7 @@ const cases: [string, Parameters<typeof deepStrict>[0], unknown, string[]][] = [
     'sharedListResponseSchema',
     sharedListResponseSchema,
     sharedListFixture,
-    ['', 'list', 'categories[0]', 'items[0]', 'items[0].gear'],
+    ['', 'list', 'categories[0]', 'items[0]', 'items[0].gear', 'food'],
   ],
   ['categoryResponseSchema', categoryResponseSchema, {
     id: 'c1',

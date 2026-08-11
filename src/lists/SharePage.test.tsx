@@ -42,6 +42,7 @@ function share(over: {
   list?: Partial<SharedListResponse['list']>
   categories?: SharedListResponse['categories']
   items?: SharedListResponse['items']
+  food?: SharedListResponse['food']
 } = {}): SharedListResponse {
   return {
     list: {
@@ -53,6 +54,7 @@ function share(over: {
     },
     categories: over.categories ?? [],
     items: over.items ?? [],
+    food: over.food ?? { weightGrams: 0 },
   }
 }
 

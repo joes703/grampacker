@@ -101,6 +101,22 @@ const MAGIC_LINK_VERIFY: Rule = {
 // Irreversible, and now gated on session freshness rather than a password.
 const DELETE_USER: Rule = { scope: 'delete-user', limit: 5, windowMs: 10 * MINUTE }
 
+// The public share read: the only anonymous endpoint that returns list data,
+// and until now the only data-returning route with no budget at all - the
+// limiter above is mounted on /auth/* and never saw it.
+//
+// Its own scope, deliberately. Sharing a bucket with auth would let a burst of
+// share views eat a user's sign-in budget, and a shared scope makes the two
+// budgets impossible to reason about separately.
+//
+// Generous on purpose: opening a shared list is ONE request, so a real reader
+// refreshing hard never approaches this, while a scraper walking slugs does.
+// Note the cost this accepts - the limiter is D1-backed, so metering adds a
+// write per anonymous view, and a refused request still performs that write.
+// It bounds the expensive part (the share projection and its four queries),
+// not the Worker invocation.
+const PUBLIC_SHARE: Rule = { scope: 'public-share', limit: 120, windowMs: 10 * MINUTE }
+
 // Longest window; rows older than this are dead and get swept.
 const MAX_WINDOW_MS = DAY
 
@@ -328,6 +344,24 @@ async function consume(
   const verdict = await charge(db, rule, keySuffix, now)
   return verdict.ok ? null : tooManyRequests(verdict)
 }
+
+// Per-IP budget for the anonymous share read. Same charging machinery and the
+// same IPv6 /64 bucketing as the auth limiter; separate scope, separate
+// budget.
+//
+// NOT applied to /api/health, deliberately: it returns no user data, it is the
+// endpoint the deploy liveness check depends on, and metering it would add a
+// D1 write to the cheapest route in the app to protect a response that is a
+// single boolean. If it ever needs a budget, it needs its own scope too.
+export const publicShareRateLimit = createMiddleware<{ Bindings: Env }>(
+  async (c, next) => {
+    const rawIp = c.req.header('cf-connecting-ip')
+    const ip = rawIp === undefined ? 'local' : rateLimitIpKey(rawIp)
+    const refused = await consume(createDb(c.env.DB), PUBLIC_SHARE, ip, Date.now())
+    if (refused) return refused
+    return next()
+  },
+)
 
 // Limits auth requests per client IP, every method except allowlisted
 // read-only GETs. CF-Connecting-IP is set by Cloudflare's edge and

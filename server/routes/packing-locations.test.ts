@@ -989,7 +989,7 @@ describe('pack ordering is independent of document ordering', () => {
     expect(after.map((i) => i.id)).toEqual(documentOrder)
 
     // Nor did the link already sent to someone else.
-    const anon = await apiRequest(null, 'GET', `/api/shares/${slug}`)
+    const anon = await apiRequest(null, 'GET', `/api/shares/v2/${slug}`)
     expect(anon.status).toBe(200)
     const body = (await anon.json()) as { items: { gear: { name: string } }[] }
     expect(body.items.map((i) => i.gear.name)).toEqual(['Alpha', 'Bravo', 'Charlie'])

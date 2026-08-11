@@ -13,7 +13,7 @@ import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useDocumentTitle } from '../lib/use-document-title'
 import {
   baseGramsForCategory,
-  computeWeightBreakdown,
+  computeListWeightBreakdown,
   consumableGramsForCategory,
 } from '../lib/weight-breakdown'
 import WeightTable from './WeightTable'
@@ -148,9 +148,20 @@ export default function SharePage() {
     createdAt: '',
   }))
 
-  const weightBreakdown = computeWeightBreakdown(itemsForRender, categoriesForRender)
+  // The share's own totals used to call the gear-only reducer, so a shared
+  // list reported a lighter pack than the same list did to its owner. The
+  // compositor cannot be called without a food figure, and the DTO now
+  // carries one.
+  const weightBreakdown = computeListWeightBreakdown({
+    gear: { items: itemsForRender, categories: categoriesForRender },
+    food: { grams: share.food.weightGrams },
+  })
 
-  const showWeightSummary = items.length > 0
+  // A list can weigh something with no GEAR rows on it - food-only is a real
+  // shape now that food contributes to the total. Keying this on items.length
+  // alone hid the whole summary for exactly that list, so the one number a
+  // reader came for disappeared.
+  const showWeightSummary = items.length > 0 || weightBreakdown.totalPackGrams > 0
 
   // Group items by category, ordered by category.sortOrder; uncategorized
   // last. Read-only view - no `prior` stability arg (renders once per

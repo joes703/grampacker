@@ -36,6 +36,7 @@ const SHARED_ROW = {
   list: { name: 'Trip', description: null, groupWorn: false, isDraft: false },
   categories: [],
   items: [],
+  food: { weightGrams: 0 },
 }
 
 function mockFetch(status: number, body?: unknown) {
@@ -182,11 +183,11 @@ describe('list queries hit the documented endpoints', () => {
     })
   })
 
-  it('fetchSharedList: GET /api/shares/:slug, 404 maps to null', async () => {
+  it('fetchSharedList: GET /api/shares/v2/:slug, 404 maps to null', async () => {
     const fn = mockFetch(200, SHARED_ROW)
     expect(await fetchSharedList('abc123')).toEqual(SHARED_ROW)
     expect(requestOf(fn)).toMatchObject({
-      url: '/api/shares/abc123',
+      url: '/api/shares/v2/abc123',
       method: 'GET',
       csrf: undefined,
     })

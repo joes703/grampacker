@@ -14,6 +14,7 @@ const MAGIC_SEND_EMAIL_LIMIT = 5
 const MAGIC_SEND_GLOBAL_LIMIT = 90
 const MAGIC_VERIFY_LIMIT = 10
 const DELETE_USER_LIMIT = 5
+const PUBLIC_SHARE_LIMIT = 120
 const SIGN_IN_WINDOW_MS = 10 * 60 * 1000
 const SENSITIVE_WINDOW_MS = 10 * 60 * 1000
 const MAGIC_SEND_EMAIL_WINDOW_MS = 60 * 60 * 1000
@@ -704,5 +705,42 @@ describe('auth rate limiting', () => {
       env,
     )
     expect(session.status).toBe(200)
+  })
+})
+
+// The public share read was the app's ONE data-returning route with no budget:
+// the limiter is mounted on /auth/*, and shares are not under it. Anonymous
+// and unmetered is a bad pair for the only endpoint that answers without a
+// session.
+describe('public share rate limiting', () => {
+  function getShare(ip: string) {
+    return app.request(
+      '/api/shares/v2/nosuchslug',
+      { method: 'GET', headers: { 'cf-connecting-ip': ip } },
+      env,
+    )
+  }
+
+  // A 404 is charged too, on purpose: walking the slug space is exactly the
+  // traffic this budget exists to bound, and every probe of it misses.
+  it('cuts off after the budget, counting misses', async () => {
+    const ip = '203.0.113.90'
+    for (let i = 0; i < PUBLIC_SHARE_LIMIT; i++) {
+      expect((await getShare(ip)).status, `request ${i}`).not.toBe(429)
+    }
+
+    expect((await getShare(ip)).status).toBe(429)
+  })
+
+  // Its own scope. Sharing a bucket with auth would let someone's share links
+  // being read spend the sign-in budget they need to get into their account.
+  it('does not spend the auth budget', async () => {
+    const ip = '203.0.113.91'
+    for (let i = 0; i < PUBLIC_SHARE_LIMIT; i++) {
+      await getShare(ip)
+    }
+    expect((await getShare(ip)).status).toBe(429)
+
+    expect((await signIn(ip)).status).not.toBe(429)
   })
 })

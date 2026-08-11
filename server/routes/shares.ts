@@ -8,7 +8,7 @@ import {
 import type { PublicShare } from '../repos/public-shares'
 
 // Authz matrix rows (docs/authz-matrix.md):
-//   GET /api/shares/:slug - anon - gated on lists.is_shared; unknown slug
+//   GET /api/shares/v2/:slug - anon - gated on lists.is_shared; unknown slug
 //                           and unshared list are the same 404
 //
 // The public read surface. GET-only (csrfProtection ignores safe methods),
@@ -55,6 +55,12 @@ function toSharedListResponse(share: PublicShare): SharedListResponse {
         categoryId: row.gearCategoryId,
       },
     })),
+    // Aggregate only - see publicFoodSchema. The repo sums the food items
+    // table alone; joining to slots would multiply one bag of trail mix by
+    // the number of meals it is scheduled for.
+    food: {
+      weightGrams: share.foodWeightGrams,
+    },
   }
 }
 
@@ -66,10 +72,30 @@ function toSharedListResponse(share: PublicShare): SharedListResponse {
 // bypassed (review P2.13).
 const strictShareResponse = deepStrict(sharedListResponseSchema)
 
-shareRoutes.get('/:slug', async (c) => {
+// Every outcome, 200 and 404 alike. Unsharing flips is_shared server-side,
+// but a response already sitting in a browser cache keeps being served from
+// there - so "I made this private again" was true of the server and false of
+// anyone who had already loaded the link. no-store is the only value that
+// prevents the store outright; private alone still permits a browser cache.
+//
+// The 404 carries it too: without that, a not-yet-shared slug could cache a
+// 404 and keep denying a list its owner has since shared.
+//
+// This does NOT repair responses cached under the OLD policy - a stored entry
+// keeps the headers it was stored with, and our 304s carry no Cache-Control
+// either (AGENTS.md). That is why the path moved to /v2 in the same change:
+// a new URL is a new cache key, so every reader starts clean. Public /r/:slug
+// links are untouched - this is the internal API path, not the share link.
+const NO_STORE = 'private, no-store'
+
+shareRoutes.get('/v2/:slug', async (c) => {
   const share = await c.get('publicShares').getBySlug(c.req.param('slug'))
-  if (!share) return c.json({ error: 'Not found' }, 404)
+  if (!share) {
+    c.header('Cache-Control', NO_STORE)
+    return c.json({ error: 'Not found' }, 404)
+  }
   const body = toSharedListResponse(share)
   strictShareResponse.parse(body)
+  c.header('Cache-Control', NO_STORE)
   return c.json(body)
 })

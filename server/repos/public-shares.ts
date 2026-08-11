@@ -1,13 +1,14 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db'
 import {
   categories,
   gearItems,
+  listFoodItems,
   listItems,
   lists,
 } from '../db/schema'
 
-// Anonymous read access for the public share surface (/api/shares/:slug).
+// Anonymous read access for the public share surface (/api/shares/v2/:slug).
 // Deliberately NOT part of reposForUser: there is no user. This is the
 // port of the old app's curated public_gear_* views - every select below
 // names its public columns explicitly (never the full table), and every
@@ -49,6 +50,17 @@ export type PublicShare = {
   list: PublicListRow
   categories: PublicCategoryRow[]
   items: PublicListItemRow[]
+  /** Total grams of carried food, and NOTHING else about it. Names,
+   *  quantities, day count, meal slots and packing state all stay private -
+   *  "Tuesday dinner: leftover curry" says more about a person than "tent"
+   *  does, and a share is anonymous.
+   *
+   *  It is published at all because the owner's own total counts food, so a
+   *  share that omitted it reported a lighter pack for the same list. A
+   *  number that disagrees with itself across two views is worse than an
+   *  aggregate a reader can already estimate from the day count they cannot
+   *  see. */
+  foodWeightGrams: number
 }
 
 export function createPublicSharesRepo(db: Db) {
@@ -110,10 +122,25 @@ export function createPublicSharesRepo(db: Db) {
         .where(shareGate)
         .orderBy(asc(categories.sortOrder), asc(categories.name))
 
-      const [listRows, itemRows, categoryRows] = await db.batch([
+      // Food's contribution as ONE number, summed over the food items table
+      // alone. Never join to list_food_slots to get here: one 500 g bag of
+      // trail mix scheduled across five lunches would return 2500 g. The
+      // associations say WHEN you plan to eat something, not how much of it
+      // you carry (see foodGramsFor in lib/weight-breakdown.ts, which is the
+      // client-side statement of the same rule).
+      const foodQuery = db
+        .select({
+          grams: sql<number>`coalesce(sum(${listFoodItems.weightGrams} * ${listFoodItems.quantity}), 0)`,
+        })
+        .from(listFoodItems)
+        .innerJoin(lists, eq(lists.id, listFoodItems.listId))
+        .where(shareGate)
+
+      const [listRows, itemRows, categoryRows, foodRows] = await db.batch([
         listQuery,
         itemsQuery,
         categoriesQuery,
+        foodQuery,
       ])
 
       const list = listRows[0]
@@ -122,6 +149,9 @@ export function createPublicSharesRepo(db: Db) {
         list,
         categories: categoryRows,
         items: itemRows,
+        // sum() over zero rows is NULL, which coalesce already turns into 0;
+        // the ?? covers the batch returning no aggregate row at all.
+        foodWeightGrams: foodRows[0]?.grams ?? 0,
       }
     },
   }

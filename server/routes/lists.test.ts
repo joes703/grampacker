@@ -1127,7 +1127,7 @@ describe('replacing the share link', () => {
     const before = await shareLinkFor(cookie, 'Trip')
 
     // The old link works while it is the current one.
-    expect((await apiRequest(null, 'GET', `/api/shares/${before.slug}`)).status).toBe(200)
+    expect((await apiRequest(null, 'GET', `/api/shares/v2/${before.slug}`)).status).toBe(200)
 
     const res = await apiRequest(cookie, 'POST', `/api/lists/${before.id}/share-link`)
     expect(res.status).toBe(200)
@@ -1138,14 +1138,14 @@ describe('replacing the share link', () => {
 
     // The old link is now simply an unknown slug. Same 404 an invented one
     // gets - nothing tells a stranger the pack ever existed.
-    const stale = await apiRequest(null, 'GET', `/api/shares/${before.slug}`)
+    const stale = await apiRequest(null, 'GET', `/api/shares/v2/${before.slug}`)
     expect(stale.status).toBe(404)
-    const invented = await apiRequest(null, 'GET', '/api/shares/zzzzzz')
+    const invented = await apiRequest(null, 'GET', '/api/shares/v2/zzzzzz')
     expect(stale.status).toBe(invented.status)
     expect(await stale.json()).toEqual(await invented.json())
 
     // ...and the new one serves the same list.
-    expect((await apiRequest(null, 'GET', `/api/shares/${after.slug}`)).status).toBe(200)
+    expect((await apiRequest(null, 'GET', `/api/shares/v2/${after.slug}`)).status).toBe(200)
   })
 
   it('does not touch sharing either way', async () => {
@@ -1162,7 +1162,7 @@ describe('replacing the share link', () => {
     expect(rotatedPriv.status).toBe(200)
     const body = (await rotatedPriv.json()) as { slug: string; isShared: boolean }
     expect(body.isShared).toBe(false)
-    expect((await apiRequest(null, 'GET', `/api/shares/${body.slug}`)).status).toBe(404)
+    expect((await apiRequest(null, 'GET', `/api/shares/v2/${body.slug}`)).status).toBe(404)
   })
 
   it('rotating twice strands both earlier links', async () => {
@@ -1176,9 +1176,9 @@ describe('replacing the share link', () => {
 
     expect(new Set([first.slug, second.slug, third.slug]).size).toBe(3)
     for (const dead of [first.slug, second.slug]) {
-      expect((await apiRequest(null, 'GET', `/api/shares/${dead}`)).status, dead).toBe(404)
+      expect((await apiRequest(null, 'GET', `/api/shares/v2/${dead}`)).status, dead).toBe(404)
     }
-    expect((await apiRequest(null, 'GET', `/api/shares/${third.slug}`)).status).toBe(200)
+    expect((await apiRequest(null, 'GET', `/api/shares/v2/${third.slug}`)).status).toBe(200)
   })
 
   // The retry on a slug collision is unreachable from here - two 6-char base62

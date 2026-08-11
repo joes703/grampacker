@@ -12,11 +12,15 @@ export type WeightBreakdown = {
   totalPackGrams: number
 }
 
-// Shared aggregation used by the detailed WeightTable and the mobile
-// WeightSummary strip. Single source of truth for what counts as
-// Base / Consumable / Worn / Total so the strip and table can never
-// disagree on the headline number.
-export function computeWeightBreakdown(
+// The GEAR-ONLY reducer. Deliberately NOT exported: its result is an
+// incomplete pack weight, and every historical wrong-number bug on this app
+// came from something treating a partial breakdown as a finished one. The
+// public share still reports a gear-only total today for exactly that reason
+// - it called this and nothing said it was unfinished.
+//
+// Reach it through computeListWeightBreakdown, which cannot be called without
+// deciding what every contributor adds.
+function computeGearWeightBreakdown(
   items: ListItemWithGear[],
   categories: Category[],
 ): WeightBreakdown {
@@ -148,21 +152,43 @@ export function foodGramsFor(
 }
 
 /**
- * Compose carried food into a gear breakdown.
+ * Every contributor to a pack's weight. One entry per kind, all REQUIRED.
+ *
+ * Requiredness is the whole point. `food` used to be an optional second step
+ * a caller could forget, and the public share forgot it - so a shared list
+ * reported a lighter pack than the same list did to its owner, silently, for
+ * as long as food has existed. Adding a third contributor here breaks every
+ * call site until each one says what it does with it, which is the behaviour
+ * a convention could never guarantee.
+ *
+ * `food.grams` is 0 when there is no food, never omitted and never null.
+ */
+export type ListWeightInputs = {
+  gear: {
+    items: ListItemWithGear[]
+    categories: Category[]
+  }
+  food: {
+    grams: number
+  }
+}
+
+/**
+ * The only way to obtain a WeightBreakdown. Display components accept nothing
+ * else, so a partial total cannot reach a screen.
  *
  * Food is ALWAYS consumable - by definition, not by user choice - so only
  * consumableGrams and totalPackGrams move. baseGrams, wornGrams and every
  * per-category row are untouched: food is not gear, has no category, and is
  * not a list_items row, so it can never belong in a category footer.
  */
-export function withFoodWeight(
-  breakdown: WeightBreakdown,
-  foodGrams: number,
-): WeightBreakdown {
-  if (foodGrams === 0) return breakdown
+export function computeListWeightBreakdown(inputs: ListWeightInputs): WeightBreakdown {
+  const gear = computeGearWeightBreakdown(inputs.gear.items, inputs.gear.categories)
+  const foodGrams = inputs.food.grams
+  if (foodGrams === 0) return gear
   return {
-    ...breakdown,
-    consumableGrams: breakdown.consumableGrams + foodGrams,
-    totalPackGrams: breakdown.totalPackGrams + foodGrams,
+    ...gear,
+    consumableGrams: gear.consumableGrams + foodGrams,
+    totalPackGrams: gear.totalPackGrams + foodGrams,
   }
 }

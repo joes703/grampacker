@@ -97,7 +97,13 @@ export async function fetchSharedList(
   slug: string,
 ): Promise<SharedListResponse | null> {
   try {
-    return await apiFetch(`/shares/${slug}`, sharedListResponseSchema)
+    // /v2 is a cache-busting rename, not a versioned API. Share responses
+    // used to carry no Cache-Control, so a browser that loaded a list before
+    // it was unshared could keep serving it from its own cache; adding
+    // no-store cannot reach an entry already stored under the old policy, but
+    // a new URL is a new cache key. The public /r/:slug link people actually
+    // hold is unchanged - only this internal path moved.
+    return await apiFetch(`/shares/v2/${slug}`, sharedListResponseSchema)
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) return null
     throw err

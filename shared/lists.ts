@@ -272,10 +272,25 @@ export const publicListItemSchema = z.object({
 })
 export type PublicListItem = z.infer<typeof publicListItemSchema>
 
+// Food's ONLY appearance on the anonymous surface: one aggregate. No names,
+// no quantities, no day count, no meal slots, no packing state.
+//
+// Publishing it is a deliberate widening of this contract, made 2026-08-10.
+// The owner's own totals count food (computeListWeightBreakdown), so a share
+// that omitted it reported a lighter pack for the same list - the number
+// disagreed with itself across two views of one thing. A reader who can see
+// "Total pack weight" is better served by a true number than by a private
+// one, and the aggregate discloses far less than the rows would.
+export const publicFoodSchema = z.object({
+  weightGrams: z.number(),
+})
+export type PublicFood = z.infer<typeof publicFoodSchema>
+
 export const sharedListResponseSchema = z.object({
   list: publicListSchema,
   categories: z.array(publicCategorySchema),
   items: z.array(publicListItemSchema),
+  food: publicFoodSchema,
 })
 export type SharedListResponse = z.infer<typeof sharedListResponseSchema>
 

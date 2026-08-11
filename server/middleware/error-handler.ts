@@ -26,7 +26,7 @@ const PRESERVED_HEADERS = ['Retry-After']
 // Stacks are the bulk of an entry's bytes; the identity of the incident is not.
 const STACK_LIMIT_BYTES = 2048
 
-// Anonymous, unmetered routes exist (/api/health, /api/shares/:slug), so without
+// Anonymous, unmetered routes exist (/api/health, /api/shares/v2/:slug), so without
 // a ceiling anyone can drive unbounded log writes - and a D1 outage makes every
 // one of those requests fail at once, which is exactly when the logs need to be
 // readable.

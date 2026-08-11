@@ -64,9 +64,8 @@ import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
 import {
   baseGramsForCategory,
-  computeWeightBreakdown,
+  computeListWeightBreakdown,
   foodGramsFor,
-  withFoodWeight,
   consumableGramsForCategory,
 } from '../lib/weight-breakdown'
 
@@ -1418,7 +1417,10 @@ function ListDetailInner({
   // associations, which would multiply a shared bag by the meals it covers.
   const foodGrams = useMemo(() => foodGramsFor(listFood.items), [listFood.items])
   const weightBreakdown = useMemo(
-    () => withFoodWeight(computeWeightBreakdown(listItems, categories), foodGrams),
+    () => computeListWeightBreakdown({
+      gear: { items: listItems, categories },
+      food: { grams: foodGrams },
+    }),
     [categories, listItems, foodGrams],
   )
   // Mirrors WeightSummary's own render guard.

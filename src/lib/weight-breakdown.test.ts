@@ -1,9 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   baseGramsForCategory,
-  computeWeightBreakdown,
+  computeListWeightBreakdown,
   foodGramsFor,
-  withFoodWeight,
   consumableGramsForCategory,
 } from './weight-breakdown'
 import type { Category, ListItemWithGear } from './types'
@@ -69,7 +68,7 @@ describe('computeWeightBreakdown', () => {
     const items = [
       listItem({ id: '1', categoryId: 'orphan-uuid', weightGrams: 250 }),
     ]
-    const result = computeWeightBreakdown(items, [shelter])
+    const result = computeListWeightBreakdown({ gear: { items: items, categories: [shelter] }, food: { grams: 0 } })
 
     expect(result.baseGrams).toBe(250)
     expect(result.catRows).toEqual([{ id: '__uncategorized__', name: 'Uncategorized', grams: 250 }])
@@ -79,7 +78,7 @@ describe('computeWeightBreakdown', () => {
     const items = [
       listItem({ id: '1', categoryId: shelter.id, weightGrams: 100, quantity: 3 }),
     ]
-    const result = computeWeightBreakdown(items, [shelter])
+    const result = computeListWeightBreakdown({ gear: { items: items, categories: [shelter] }, food: { grams: 0 } })
 
     expect(result.baseGrams).toBe(300)
     expect(result.catRows).toEqual([{ id: shelter.id, name: 'Shelter', grams: 300 }])
@@ -88,7 +87,7 @@ describe('computeWeightBreakdown', () => {
   // Component returns null on items.length === 0, so this just confirms the
   // helper produces a coherent zero-state in that case.
   it('returns zeroes and no rows for an empty items array', () => {
-    const result = computeWeightBreakdown([], [shelter])
+    const result = computeListWeightBreakdown({ gear: { items: [], categories: [shelter] }, food: { grams: 0 } })
 
     expect(result.baseGrams).toBe(0)
     expect(result.consumableGrams).toBe(0)
@@ -115,7 +114,7 @@ describe('computeWeightBreakdown', () => {
       }),
     ]
 
-    const result = computeWeightBreakdown(items, [shelter])
+    const result = computeListWeightBreakdown({ gear: { items: items, categories: [shelter] }, food: { grams: 0 } })
 
     expect(warnSpy).toHaveBeenCalledWith(
       '[weight-breakdown] list_item has both isConsumable and isWorn; bucketing as consumable',
@@ -147,20 +146,23 @@ describe('baseGramsForCategory', () => {
   const consumables: Category = { id: 'cat-food', name: 'Food', sortOrder: 1, createdAt: '2024-01-01' }
 
   function breakdown() {
-    return computeWeightBreakdown(
-      [
-        listItem({ id: 'tarp', categoryId: shelter.id, weightGrams: 400 }),
-        // Same category, but consumable: must NOT reach the Shelter subtotal.
-        listItem({ id: 'gas', categoryId: shelter.id, weightGrams: 230, isConsumable: true }),
-        // Same category, worn: must NOT reach it either, regardless of any
-        // display toggle. This is the half of the bug that was invisible.
-        listItem({ id: 'jacket', categoryId: shelter.id, weightGrams: 550, isWorn: true }),
-        // A category whose every item is consumable - absent from catRows.
-        listItem({ id: 'bar', categoryId: consumables.id, weightGrams: 90, isConsumable: true }),
-        listItem({ id: 'spork', categoryId: null, weightGrams: 17 }),
-      ],
-      [shelter, consumables],
-    )
+    return computeListWeightBreakdown({
+      gear: {
+        items: [
+            listItem({ id: 'tarp', categoryId: shelter.id, weightGrams: 400 }),
+            // Same category, but consumable: must NOT reach the Shelter subtotal.
+            listItem({ id: 'gas', categoryId: shelter.id, weightGrams: 230, isConsumable: true }),
+            // Same category, worn: must NOT reach it either, regardless of any
+            // display toggle. This is the half of the bug that was invisible.
+            listItem({ id: 'jacket', categoryId: shelter.id, weightGrams: 550, isWorn: true }),
+            // A category whose every item is consumable - absent from catRows.
+            listItem({ id: 'bar', categoryId: consumables.id, weightGrams: 90, isConsumable: true }),
+            listItem({ id: 'spork', categoryId: null, weightGrams: 17 }),
+          ],
+        categories: [shelter, consumables],
+      },
+      food: { grams: 0 },
+    })
   }
 
   it('returns only the category base weight, excluding consumable and worn', () => {
@@ -183,21 +185,27 @@ describe('baseGramsForCategory', () => {
   })
 
   it('counts quantity and fractional gram weights', () => {
-    const b = computeWeightBreakdown(
-      [listItem({ id: 'stake', categoryId: shelter.id, weightGrams: 12.5, quantity: 4 })],
-      [shelter],
-    )
+    const b = computeListWeightBreakdown({
+      gear: {
+        items: [listItem({ id: 'stake', categoryId: shelter.id, weightGrams: 12.5, quantity: 4 })],
+        categories: [shelter],
+      },
+      food: { grams: 0 },
+    })
     expect(baseGramsForCategory(b, shelter.id)).toBe(50)
   })
 
   it('routes an orphan category id to Uncategorized, matching the grouper', () => {
-    const b = computeWeightBreakdown(
-      [
-        listItem({ id: 'ghost', categoryId: 'cat-deleted', weightGrams: 60 }),
-        listItem({ id: 'spork', categoryId: null, weightGrams: 17 }),
-      ],
-      [shelter],
-    )
+    const b = computeListWeightBreakdown({
+      gear: {
+        items: [
+          listItem({ id: 'ghost', categoryId: 'cat-deleted', weightGrams: 60 }),
+          listItem({ id: 'spork', categoryId: null, weightGrams: 17 }),
+        ],
+        categories: [shelter],
+      },
+      food: { grams: 0 },
+    })
     expect(baseGramsForCategory(b, null)).toBe(77)
     expect(baseGramsForCategory(b, 'cat-deleted')).toBe(0)
   })
@@ -215,16 +223,19 @@ describe('consumableGramsForCategory', () => {
   const food: Category = { id: 'cat-food', name: 'Food', sortOrder: 1, createdAt: '2024-01-01' }
 
   function breakdown() {
-    return computeWeightBreakdown(
-      [
-        listItem({ id: 'tent', categoryId: shelter.id, weightGrams: 1200 }),
-        listItem({ id: 'gas', categoryId: shelter.id, weightGrams: 230, isConsumable: true }),
-        listItem({ id: 'bar', categoryId: food.id, weightGrams: 45, quantity: 2, isConsumable: true }),
-        listItem({ id: 'orphan', categoryId: 'cat-deleted', weightGrams: 20, isConsumable: true }),
-        listItem({ id: 'uncat', categoryId: null, weightGrams: 15, isConsumable: true }),
-      ],
-      [shelter, food],
-    )
+    return computeListWeightBreakdown({
+      gear: {
+        items: [
+            listItem({ id: 'tent', categoryId: shelter.id, weightGrams: 1200 }),
+            listItem({ id: 'gas', categoryId: shelter.id, weightGrams: 230, isConsumable: true }),
+            listItem({ id: 'bar', categoryId: food.id, weightGrams: 45, quantity: 2, isConsumable: true }),
+            listItem({ id: 'orphan', categoryId: 'cat-deleted', weightGrams: 20, isConsumable: true }),
+            listItem({ id: 'uncat', categoryId: null, weightGrams: 15, isConsumable: true }),
+          ],
+        categories: [shelter, food],
+      },
+      food: { grams: 0 },
+    })
   }
 
   it('returns only consumable gear in the requested category', () => {
@@ -238,25 +249,41 @@ describe('consumableGramsForCategory', () => {
   })
 
   it('returns zero when a category contains no consumables', () => {
-    const result = computeWeightBreakdown(
-      [listItem({ id: 'tent', categoryId: shelter.id, weightGrams: 1200 })],
-      [shelter],
-    )
+    const result = computeListWeightBreakdown({
+      gear: {
+        items: [listItem({ id: 'tent', categoryId: shelter.id, weightGrams: 1200 })],
+        categories: [shelter],
+      },
+      food: { grams: 0 },
+    })
     expect(consumableGramsForCategory(result, shelter.id)).toBe(0)
   })
 
 })
 
 describe('food weight', () => {
+  const GEAR = {
+    items: [
+      listItem({ id: 'a', categoryId: 'cat-1', weightGrams: 1200 }),
+      listItem({ id: 'b', categoryId: 'cat-1', weightGrams: 230, isConsumable: true }),
+    ],
+    categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0, createdAt: '2024-01-01' }],
+  }
+  const withFood = (grams: number) =>
+    computeListWeightBreakdown({ gear: GEAR, food: { grams } })
+
   // Local fixture: the other describes each scope their own `breakdown()`.
   const breakdown = () =>
-    computeWeightBreakdown(
-      [
-        listItem({ id: 'a', categoryId: 'cat-1', weightGrams: 1200 }),
-        listItem({ id: 'b', categoryId: 'cat-1', weightGrams: 230, isConsumable: true }),
-      ],
-      [{ id: 'cat-1', name: 'Shelter', sortOrder: 0, createdAt: '2024-01-01' }],
-    )
+    computeListWeightBreakdown({
+      gear: {
+        items: [
+          listItem({ id: 'a', categoryId: 'cat-1', weightGrams: 1200 }),
+          listItem({ id: 'b', categoryId: 'cat-1', weightGrams: 230, isConsumable: true }),
+        ],
+        categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0, createdAt: '2024-01-01' }],
+      },
+      food: { grams: 0 },
+    })
 
   it('counts an item once no matter how many slots it is associated with', () => {
     // THE invariant. One 500 g bag of trail mix eaten across five lunches
@@ -289,7 +316,7 @@ describe('food weight', () => {
     // Food is not gear: it has no category and must never land in a category
     // footer, or the per-section subtotals stop summing to the whole.
     const before = breakdown()
-    const after = withFoodWeight(before, 800)
+    const after = withFood(800)
 
     expect(after.consumableGrams).toBe(before.consumableGrams + 800)
     expect(after.totalPackGrams).toBe(before.totalPackGrams + 800)
@@ -299,8 +326,20 @@ describe('food weight', () => {
     expect(after.consumableCatRows).toEqual(before.consumableCatRows)
   })
 
-  it('returns the same object when there is no food', () => {
-    const before = breakdown()
-    expect(withFoodWeight(before, 0)).toBe(before)
+  it('is identical to the gear-only result when there is no food', () => {
+    expect(withFood(0)).toEqual(breakdown())
+  })
+
+  // The regression this whole contract exists for: the public share reported
+  // a lighter pack than the owner saw, because its call omitted food and
+  // nothing said the result was unfinished. Food is now a REQUIRED input, so
+  // the two surfaces cannot compute different totals from the same list
+  // without someone deliberately passing a different number.
+  it('cannot be computed without stating what food contributes', () => {
+    const owner = withFood(800)
+    const share = withFood(800)
+
+    expect(share.totalPackGrams).toBe(owner.totalPackGrams)
+    expect(share.consumableGrams).toBe(owner.consumableGrams)
   })
 })

@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { Category, ListItemWithGear } from '../lib/types'
-import { computeWeightBreakdown, type WeightBreakdown } from '../lib/weight-breakdown'
+import { type WeightBreakdown } from '../lib/weight-breakdown'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import {
   COMPACT_PANEL_META_TEXT,
@@ -19,7 +19,8 @@ import WeightTable from './WeightTable'
 type Props = {
   items: ListItemWithGear[]
   categories: Category[]
-  breakdown?: WeightBreakdown
+  /** REQUIRED, and only obtainable from computeListWeightBreakdown. */
+  breakdown: WeightBreakdown
 }
 
 // Weight summary rendered below Notes on the list detail page (normal
@@ -38,19 +39,16 @@ type Props = {
 // Empty lists collapse to nothing on every viewport (ListDetailPage
 // already widens Notes to full width in that case via grid-cols).
 //
-// Math is shared with the desktop table via computeWeightBreakdown in
-// lib/weight-breakdown.ts; this component owns presentation only.
+// Math comes in already finished, from computeListWeightBreakdown in
+// lib/weight-breakdown.ts; this component owns presentation only. It does NOT
+// compute a fallback - that fallback was gear-only, so forgetting to pass a
+// breakdown used to render a total quietly missing food.
 //
 export default function WeightSummary({
   items,
   categories,
-  breakdown: providedBreakdown,
+  breakdown,
 }: Props) {
-  const computedBreakdown = useMemo(
-    () => computeWeightBreakdown(items, categories),
-    [items, categories],
-  )
-  const breakdown = providedBreakdown ?? computedBreakdown
   const [breakdownOpen, setBreakdownOpen] = useState(false)
 
   if (items.length === 0 && breakdown.totalPackGrams === 0) return null
