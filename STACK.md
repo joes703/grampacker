@@ -1,10 +1,27 @@
 # Stack
 
-Versions pinned exact at scaffold time (2026-07-07), verified against npm
-dist-tags the same day. `npm ci` for CI/deploy installs; `.npmrc` sets
-`ignore-scripts=true` (verified: install + dev + build all work under it).
+**`package.json` and the lockfile are authoritative for versions.** This file
+is not, and the table below has NOT been kept in step - by 2026-08-11 nearly
+every number in it was behind (hono 4.12.28 documented vs 4.13.1 installed,
+better-auth 1.6.23 vs 1.6.26, wrangler 4.107.0 vs 4.120.0, and several
+"arriving later" entries that arrived). Duplicating a machine-readable fact in
+prose guarantees the prose rots.
 
-## Installed at phase 0
+What is worth keeping here is the RATIONALE - why a dependency is pinned where
+it is, what would trigger moving it, and which constraints are non-obvious:
+
+- Exact pins everywhere: `.npmrc` sets `save-exact`. `npm ci` for CI and
+  deploy installs; `ignore-scripts=true` (verified: install, dev and build all
+  work under it - re-test a clean `npm ci` + build before ever removing it).
+- `overrides` entries are RANGES tracking their parent, never exact pins.
+  Dependabot does not update overrides, so an exact pin there rots silently.
+- TypeScript stays on 6.x: 7.0 typechecks this repo cleanly but
+  typescript-eslint declares `<6.1.0` and throws at load. Move when its peer
+  range admits 7.
+- drizzle-orm stays on 0.45.x: better-auth peers on `^0.45.2`. Upgrade trigger
+  is better-auth's peer range admitting drizzle 1.x.
+
+## Installed at phase 0 (HISTORICAL - versions here are the scaffold's, not today's)
 
 | Package | Version | Why / notes |
 | --- | --- | --- |

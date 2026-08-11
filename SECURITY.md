@@ -49,13 +49,21 @@ reasoning behind them. Where the two overlap, the matrix wins on detail.
 
 ## CSRF
 
-Four independent layers, tested in `server/routes/me.test.ts`:
+Four layers, tested in `server/middleware/csrf.test.ts` (with route-level
+coverage in `server/routes/me.test.ts`):
 
 - No CORS headers are emitted, ever - cross-origin scripts cannot read
   responses, and custom headers force a preflight that can never pass.
 - SameSite=Strict cookies.
 - Unsafe methods on non-auth routes require the `x-grampacker-request`
-  header plus a matching `Origin` (`server/middleware/csrf.ts`).
+  header. That header IS the control: a cross-origin script cannot set it
+  without triggering a preflight that can never pass, since no CORS headers
+  are emitted.
+- `Origin`, **when present**, must match `BETTER_AUTH_URL`. An ABSENT Origin
+  is permitted (`csrf.ts` checks `origin && origin !== expected`) - so this
+  is defense in depth on top of the header, not a second independent gate.
+  Stated precisely because this file previously claimed a matching Origin was
+  required, which is stronger than what the code does.
 - `/api/auth/*` is origin-validated by better-auth itself against
   `BETTER_AUTH_URL` (verified: forged origin -> 403 INVALID_ORIGIN).
 
@@ -387,6 +395,30 @@ a restatement of the general posture.
   a lost race answers 409 with the whole batch rolled back rather than a
   partial write. Ownership prechecks are owned-set membership in JS, never an
   unbounded `inArray`, because D1 caps bound parameters at 100.
+
+## The app has TWO public origins
+
+`wrangler.jsonc` routes `grampacker.app` as a custom domain and does NOT set
+`workers_dev: false`, so the Worker also answers on its `*.workers.dev`
+hostname. Both serve the same code.
+
+What that does and does not mean, because the config comment only covers half
+of it:
+
+- **Writes are refused there.** `BETTER_AUTH_URL` is the single canonical
+  origin, and both better-auth's origin validation and our CSRF middleware
+  check against it, so an unsafe request carrying the workers.dev Origin is
+  rejected. WebAuthn additionally requires the real domain.
+- **Anonymous reads are NOT.** `GET /api/shares/v2/:slug` takes no session and
+  no CSRF header, so a share link works on the workers.dev hostname too. It
+  publishes exactly what the real domain publishes - the same allowlisted DTO
+  - so this is a second address for public data, not a second trust level.
+- **Accepted**, not overlooked. Setting `workers_dev: false` would close it;
+  the reason not to bother is that it exposes nothing the canonical origin
+  does not already expose to the same anonymous audience. Revisit if the share
+  DTO ever carries something whose distribution should be tied to a hostname,
+  or if the second origin starts showing up where a user could mistake it for
+  the real one.
 
 ## Deferred - known gaps with triggers
 

@@ -1,9 +1,16 @@
 # Parked
 
-Ideas deliberately deferred until the rewrite reaches parity and the
-Supabase version is dead (REWRITE_PLAN.md section 2: scope freeze). Nothing
-here is rejected - rejected ideas are recorded in DECISIONS/ADRs instead.
-One line per idea, date it, say why it waits.
+Ideas deliberately deferred, each with the condition that would un-defer it.
+Nothing here is rejected - an idea with no trigger does not belong on this
+list, it belongs in the bin.
+
+The original framing said these waited for "the rewrite to reach parity and
+the Supabase version to die". That happened; the framing was replaced
+2026-08-11 with the per-idea triggers below, which are the part that was
+actually load-bearing. (It also pointed at DECISIONS/ADRs, which have never
+existed.)
+
+One line per idea, date it, say what would change your mind.
 
 Format: `- YYYY-MM-DD <idea> - <why it waits>`
 
