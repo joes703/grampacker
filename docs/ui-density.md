@@ -200,6 +200,40 @@ The three mistakes worth naming:
   column and obeys the row control target rules, so it never uses
   `ToggleSwitch`, whose sizing is tuned for panel chrome.
 
+### Reserved space
+
+Restored 2026-08-11 - a compression pass deleted this section while three
+code sites still cite it by name (`flat-table-styles.ts`,
+`CategorySection.tsx`, `CategorySection.alignment.test.tsx`).
+
+A control hidden with `opacity-0` still occupies its box, so rows that
+hover-reveal a drag handle reserve its width on every row. Everything below
+follows from one goal: **a section title and the item names beneath it start
+at the same x, in the normal read state.**
+
+- **Content aligns per breakpoint, in the NORMAL state.** Select mode and
+  rename mode are knowingly exempt - each reshapes the row rather than the
+  header. Do not "fix" either by re-tightening the header; that breaks the
+  state almost all viewing happens in.
+- **A leading header control may reserve a row-control slot only if the rows
+  reserve an equivalent slot at that breakpoint.** The collapse chevron
+  qualifies because every row leads with a drag handle of the same width.
+- **Section-only controls go after the title, before the trailing rail.** They
+  have no per-row counterpart, so they must not lead; and the trailing
+  columns are width-matched to the row's, so anything inserted there shifts
+  every label off-column. After a `flex-1 min-w-0` title, the control takes
+  its width from the flexible region instead.
+- **The kebab stays last.** That is what keeps the trailing rail aligned.
+- **Never buy alignment by taxing the rows.** A stub on every data row to
+  match a section-only control moves the problem and spends horizontal space
+  on every row.
+- **Disclosure stays an explicit button.** A fully-clickable header strip was
+  removed deliberately, for mobile mistaps.
+
+The frame is **column alignment, not tree indentation**: a section header is
+not a parent node, and these strips are treated as column headers whose
+trailing labels align to row values on purpose.
+
 ## Typography
 
 ### Headings and labels

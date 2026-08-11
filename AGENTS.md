@@ -123,9 +123,12 @@ An unqualified "this works" that rests on an unrun test is the failure; an
 honest "build and unit tests pass, API suite ran in CI, I could not check the
 browser" is not.
 
-What that usually means here: build, the suites relevant to what you touched,
-and a read of the complete diff. `npm run test:migrations` is the one people
-forget, and schema changes are exactly where a miss is expensive.
+The minimum, so "I disclosed it" cannot substitute for running it: read the
+COMPLETE diff, always. `npm run build` and `npm run test:unit` for any code
+change. `npm run test:api` for anything under `server/**`.
+`npm run test:migrations` when migrations or the schema move - that is the one
+people forget, and it is where a miss is expensive. Beyond that minimum, use
+judgement about what the change actually risks.
 
 Two things that make verification lie, both learned the hard way:
 
@@ -206,8 +209,11 @@ database is never deleted or recreated.
   (`server/index.ts`, which owns the `/api/health` db ping), and tests as the
   only exemptions. Do not work around the rule - if it blocks you, the design
   is wrong.
-- Every route proves its boundary holds: who may call it, what happens to a
-  caller who owns nothing, and what happens to an anonymous one. The row in
+- Every route proves its boundary holds, against three callers specifically:
+  the OWNER, a NON-OWNER (an authenticated user reaching for someone else's
+  row - not merely an empty account, which tests nothing), and an ANONYMOUS
+  one. Child resources add a fourth: a caller reaching a valid id through the
+  wrong parent, including another of their own lists. The row in
   `docs/authz-matrix.md` and the tests behind it are how that proof is
   recorded. Nothing machine-enforces this, so a row that no longer matches its
   handler is worse than no row.
@@ -240,13 +246,18 @@ The through-line: **never commit or install something you did not look at.**
 - `npm ci` installs exactly from the lockfile and fails closed on drift. A
   deliberate dependency change is an explicit `npm install <pkg>` with a
   reason and a lockfile-diff read. `.npmrc` pins `save-exact` and
-  `ignore-scripts`.
+  `ignore-scripts`; removing `ignore-scripts` means re-testing a clean
+  `npm ci` + build first, since that is what proves nothing depended on a
+  postinstall.
 - `npm audit fix --force` has downgraded this repo badly before
   (docs/incidents.md). Looking with plain `npm audit` is fine.
 - `overrides` entries are RANGES tracking their parent, never exact pins -
   Dependabot does not update overrides, so a pin there rots silently.
-- Pin third-party GitHub Actions to a commit SHA, and use `pull_request`
-  rather than `pull_request_target` for anything running fork code.
+- Pin third-party GitHub Actions to a full commit SHA with the verified tag in
+  a trailing comment - `check:action-pins` checks the pair, and the comment is
+  what makes a pin auditable. Use `pull_request`, never `pull_request_target`,
+  for anything running fork code.
+- No `target="_blank"` without `rel="noopener noreferrer"`.
 - A constant TypeScript owns but SQL or shell copies gets a test asserting the
   copies, not a comment asking someone to remember.
 
@@ -282,6 +293,12 @@ view shipped looking like a different app and had to be redone.
 
 Density is a system, not a set of numbers to copy: a touch floor on mobile, a
 tighter pointer tier at `lg`. Changing one tier must not move the other.
+
+Four traps that have each cost a rework, because using a shared component is
+not the same as using it correctly: `ItemWeightValue` styles nothing - wrap it
+in `FLAT_TABLE_NUMERIC_TEXT`. `FLAT_TABLE_ROW` carries no padding - compose
+`FLAT_TABLE_ROW_PADDING`. Form fields are `FormLabel` + `FORM_INPUT`. Primary
+actions are `PrimaryButton`.
 
 A genuinely new repeated style gets hoisted into the token file rather than
 inlined for the next page to copy.

@@ -40,7 +40,9 @@ diff; for a fix-list, once on the diff is enough. The point is an independent
 reader who has to actually follow the reasoning - not a ceremony to perform.
 
 Run it yourself: `codex exec -s read-only "<framing>"`, in the background, and
-report the verdict. Do NOT hand the human a slash command to paste - that
+report the verdict. **Name the scope in the framing** - the exact commit, or
+`git diff main...HEAD`, or the working tree. Without that, a review of a clean
+feature branch can look at nothing and still answer. Do NOT hand the human a slash command to paste - that
 makes them the transport for work they delegated. (`/codex:adversarial-review`
 is user-invocation-only and cannot be called on their behalf.) Ask for a
 one-line `VERDICT:` so the outcome is unambiguous.
