@@ -357,31 +357,43 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   delete. Worst case for a user with no passkey and no working mailbox is
   loss of access to their own gear list, which is recoverable by support
   (there is one user, and he is the maintainer).
-- **Public share endpoint** (`/api/share/:slug`, phase 4): dedicated
+- **Public share endpoint** (`GET /api/shares/v2/:slug`, phase 4): dedicated
   repository + DTO allowlist + private-column ABSENCE tests + uniform
   404 for unknown and inactive slugs. The re-sweep of this file happens
-  before it ships.
+  before it ships. Food crosses this boundary only as an aggregate
+  (`food.weightGrams`) - see the metering entry below for the rest of the
+  endpoint's posture.
 - **Public share endpoint is METERED** (`GET /api/shares/v2/:slug`).
   Raised by review 2026-07-11, closed 2026-08-10. It was the app's one
   unauthenticated, uncounted database read.
 
-  Two per-IP buckets, because one cannot do both jobs. A generous budget
-  charged on every request - a legitimate viewer makes 1-3, so a link going
-  around a large NAT clears it, which this file required of any fix. And a
-  tight budget charged only on requests that resolved to nothing: walking
-  the slug space is all misses, so a scraper exhausts that one without
-  being able to deny readers who only hit real slugs. A single
-  miss-counting bucket would have let one person on a shared address lock
-  out everyone behind it. Both scopes are separate from auth, so share
-  traffic cannot spend a sign-in budget.
+  One per-IP bucket, 600 per 10 minutes, its own scope so share traffic
+  cannot spend a sign-in budget. Opening a shared link costs one request, so
+  this is a ceiling that stops the endpoint being free forever - not a
+  throttle, and nobody using the app should ever feel it.
 
-  `/api/health` is metered separately, on its own scope, for the same
-  reason: anonymous, and its handler makes a real D1 round-trip.
+  Two limits of that choice, recorded so they are not re-derived as defects:
 
-  What this does NOT do: the limiter is D1-backed, so it costs a write per
-  view and a refused request still performs that write. It bounds the
-  expensive part - the share projection and its four queries - not the
-  Worker invocation. Coarse volumetric abuse still belongs at the edge.
+  - It does not distinguish a scraper walking the slug space from readers.
+    A tighter miss-only budget would, but classifying a request needs its
+    outcome, which means either refusing legitimate hits early or letting
+    refused probes run anyway. That machinery was judged more moving parts
+    than a 62^6 slug space and one user warrant (2026-08-10).
+  - It does not survive a determined prober on a shared address: 600
+    requests from one NAT deny readers behind it for the rest of the window.
+    This file previously required any fix to "survive a link going around a
+    large NAT" - that is met for ordinary traffic and NOT met against
+    deliberate abuse from the same address. Accepted: at that point there is
+    a real abuse problem, and the edge is the layer for it.
+
+  `/api/health` remains unmetered. It returns a single boolean; the D1 ping
+  behind it is the cheapest query in the app, and a budget there protects
+  little. Revisit if it is ever pointed at by something noisy.
+
+  What metering costs: the limiter is D1-backed, so it adds a write per
+  anonymous view and a refused request still performs that write. It bounds
+  the share projection and its four queries, not the Worker invocation.
+
 - **Web Analytics**: `https://static.cloudflareinsights.com/beacon.min.js` (and
   its `/`-suffixed prefix form) is allowed in **script-src**, and only there.
   Cloudflare Web Analytics is enabled

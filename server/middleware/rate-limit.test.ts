@@ -3,8 +3,6 @@ import { describe, expect, it } from 'vitest'
 import app from '../index'
 import { createAuth } from '../auth'
 import { lastEmailTo } from '../email/console'
-import { signUpVerifiedUser } from '../test/auth-helpers'
-import { apiRequest } from '../test/api-helpers'
 
 const ORIGIN = 'http://localhost:5173'
 
@@ -16,12 +14,7 @@ const MAGIC_SEND_EMAIL_LIMIT = 5
 const MAGIC_SEND_GLOBAL_LIMIT = 90
 const MAGIC_VERIFY_LIMIT = 10
 const DELETE_USER_LIMIT = 5
-// The generous every-request bucket (600) is deliberately NOT exhausted here:
-// that is 601 requests per run for a ceiling the tests below already prove is
-// above the miss budget. Stated rather than left as a silent gap - if the
-// number changes, nothing in this file fails.
-const PUBLIC_SHARE_MISS_LIMIT = 30
-const PUBLIC_HEALTH_LIMIT = 300
+const PUBLIC_SHARE_LIMIT = 600
 const SIGN_IN_WINDOW_MS = 10 * 60 * 1000
 const SENSITIVE_WINDOW_MS = 10 * 60 * 1000
 const MAGIC_SEND_EMAIL_WINDOW_MS = 60 * 60 * 1000
@@ -719,6 +712,9 @@ describe('auth rate limiting', () => {
 // the limiter is mounted on /auth/*, and shares are not under it. Anonymous
 // and unmetered is a bad pair for the only endpoint that answers without a
 // session.
+//
+// One loose bucket. These tests pin that it exists and is scoped separately -
+// NOT that it is tight, which it deliberately is not.
 describe('public share rate limiting', () => {
   function getShare(ip: string, slug = 'nosuchslug') {
     return app.request(
@@ -728,69 +724,35 @@ describe('public share rate limiting', () => {
     )
   }
 
-  // Walking the slug space is ALL misses, so the tight bucket is what actually
-  // stops a scraper - long before it could dent the generous one.
-  it('cuts a slug-walker off on the miss budget', async () => {
+  // Seeded to the brim rather than exhausted honestly: 600 real requests is
+  // slow enough to blow the test timeout, and the same seeding pattern is what
+  // the magic-link global quota above uses for the same reason. The IPv6 /64
+  // bucketing means the key is the plain IPv4 address here.
+  async function fillBucket(ip: string) {
+    await env.DB.prepare(
+      'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
+    )
+      .bind(`public-share:${ip}`, PUBLIC_SHARE_LIMIT, Date.now())
+      .run()
+  }
+
+  it('serves normally until the budget is spent, then 429s', async () => {
     const ip = '203.0.113.90'
-    for (let i = 0; i < PUBLIC_SHARE_MISS_LIMIT; i++) {
-      expect((await getShare(ip)).status, `miss ${i}`).toBe(404)
-    }
+
+    expect((await getShare(ip)).status).toBe(404)
+
+    await fillBucket(ip)
 
     expect((await getShare(ip)).status).toBe(429)
-  })
-
-  // THE reason there are two buckets. SECURITY.md requires this budget to
-  // survive a link going around a large NAT; with one miss-counting bucket,
-  // any one person behind that address could lock out every real reader by
-  // probing bogus slugs. Hits must stay served.
-  it('an exhausted miss budget does not deny real readers on the same address', async () => {
-    const ip = '203.0.113.92'
-    const { cookie } = await signUpVerifiedUser('nat-reader@example.com', 'N')
-    const created = await apiRequest(cookie, 'POST', '/api/lists', { name: 'NAT trip' })
-    const list = (await created.json()) as { id: string }
-    const shared = await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}`, {
-      isShared: true,
-    })
-    expect(shared.status).toBe(200)
-    const { slug } = (await shared.json()) as { slug: string }
-
-    for (let i = 0; i < PUBLIC_SHARE_MISS_LIMIT + 1; i++) await getShare(ip)
-    expect((await getShare(ip)).status).toBe(429)
-
-    // Same IP, real slug: served. This is the whole point of splitting the
-    // buckets - the person probing bogus slugs cannot take the share down for
-    // everyone else behind their address.
-    expect((await getShare(ip, slug)).status).toBe(200)
   })
 
   // Its own scope. Sharing a bucket with auth would let someone's share links
   // being read spend the sign-in budget they need to get into their account.
   it('does not spend the auth budget', async () => {
     const ip = '203.0.113.91'
-    for (let i = 0; i < PUBLIC_SHARE_MISS_LIMIT + 1; i++) await getShare(ip)
+    await fillBucket(ip)
     expect((await getShare(ip)).status).toBe(429)
 
     expect((await signIn(ip)).status).not.toBe(429)
-  })
-})
-
-// Anonymous too, and its handler makes a real D1 round-trip - so unmetered it
-// is a free way to make the database work.
-describe('health rate limiting', () => {
-  function getHealth(ip: string) {
-    return app.request('/api/health', { method: 'GET', headers: { 'cf-connecting-ip': ip } }, env)
-  }
-
-  it('has its own budget, separate from shares', async () => {
-    const ip = '203.0.113.93'
-    for (let i = 0; i < PUBLIC_HEALTH_LIMIT; i++) {
-      expect((await getHealth(ip)).status, `probe ${i}`).not.toBe(429)
-    }
-    expect((await getHealth(ip)).status).toBe(429)
-
-    // A drained health budget must not close the share surface.
-    expect(
-      (await app.request('/api/shares/v2/nosuchslug', { method: 'GET', headers: { 'cf-connecting-ip': ip } }, env)).status,
-    ).toBe(404)
   })
 })

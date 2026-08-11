@@ -6,11 +6,7 @@ import { assetCache, forceValidatedAssetResponse } from './middleware/asset-cach
 import { apiBodyLimit } from './middleware/body-limit'
 import { csrfProtection } from './middleware/csrf'
 import { errorHandler, withAuthErrorCorrelation } from './middleware/error-handler'
-import {
-  authRateLimit,
-  publicHealthRateLimit,
-  publicShareRateLimit,
-} from './middleware/rate-limit'
+import { authRateLimit, publicShareRateLimit } from './middleware/rate-limit'
 import { requireSession } from './middleware/session'
 import { securityHeaders } from './middleware/security-headers'
 import { categoryRoutes } from './routes/categories'
@@ -114,11 +110,6 @@ api.route('/lists', foodRoutes)
 // one.
 api.use('/shares/*', publicShareRateLimit)
 api.route('/shares', shareRoutes)
-
-// Anonymous, and its handler makes a real D1 round-trip - so unmetered it is
-// a free way to make the database work. Generous: the deploy liveness check
-// is nowhere near this.
-api.use('/health', publicHealthRateLimit)
 
 api.get('/health', async (c) => {
   // Round-trips through Drizzle to the D1 binding, so a green health check
