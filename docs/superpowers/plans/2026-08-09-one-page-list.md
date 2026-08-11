@@ -1,5 +1,10 @@
 # One-Page List Implementation Plan
 
+> **DATED RECORD, not binding.** An implementation plan, written before the
+> work and not updated after it. The instructions below were live WHEN IT WAS
+> WRITTEN; do not follow them now. Read it for reasoning, and check the code
+> for what actually shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make a list's gear work finishable without changing pages - the gear picker sits beside both the Category and Pack arrangements, new items can be created from either, and Pack rows finally show a weight and can be edited.

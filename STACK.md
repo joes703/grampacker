@@ -1,5 +1,8 @@
 # Stack
 
+**Reference, not policy.** `package.json` and the lockfile are authoritative
+for versions.
+
 **`package.json` and the lockfile are authoritative for versions.** This file
 is not, and the table below has NOT been kept in step - by 2026-08-11 nearly
 every number in it was behind (hono 4.12.28 documented vs 4.13.1 installed,

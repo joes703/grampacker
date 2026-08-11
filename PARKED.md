@@ -1,5 +1,8 @@
 # Parked
 
+**Reference, not policy.** The list of deferred ideas and what would un-defer
+them.
+
 Ideas deliberately deferred, each with the condition that would un-defer it.
 Nothing here is rejected - an idea with no trigger does not belong on this
 list, it belongs in the bin.

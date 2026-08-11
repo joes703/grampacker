@@ -1,6 +1,7 @@
 # UI density and design tokens
 
-Source of truth for grampacker's row/table/panel visual grammar. Cited by
+**BINDING, maintained against the code.** Source of truth for grampacker's
+row/table/panel visual grammar. Cited by
 `src/components/flat-table-styles.ts` and `src/components/ToggleSwitch.tsx`.
 
 The tokens live in `src/components/flat-table-styles.ts`. This document

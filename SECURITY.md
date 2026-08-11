@@ -362,18 +362,23 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
 ## Later surfaces (packing locations, food, the pack union)
 
 Added 2026-08-11. These three shipped after this file was written and had no
-entry until the re-sweep. None of them changes the boundary above - every one
-is session-gated through `reposForUser` and holds no new authentication or
-authorization mechanism - so what follows is what is DIFFERENT about them, not
-a restatement of the general posture.
+entry until the re-sweep. None introduces a new authentication or
+authorization MECHANISM: the authenticated routes all go through
+`reposForUser`, and the one anonymous path (the share's food aggregate) goes
+through `createPublicSharesRepo`, which is deliberately outside `reposForUser`
+because there is no user - it self-gates every statement on slug + is_shared
+instead. What follows is what is DIFFERENT about these surfaces, not a
+restatement of the general posture.
 
 - **Packing locations** are children of a list, and the interesting failure is
   cross-parent stitching: a location id from another of the caller's OWN lists
   must 404, not succeed, or the ownership check degrades from "this list" to
-  "this user". Enforced by a composite parent predicate on every write and
-  asserted per route. Item-backed containers add a cycle risk (a bag inside
-  itself, or a loop of bags); assignment rejects both with zero writes.
-  Caps: 30 locations per list.
+  "this user". Enforced by a composite parent predicate on every write.
+  Coverage is not uniform - DELETE and reorder have explicit wrong-parent
+  tests; the equivalent PATCH case does not
+  (`server/routes/packing-locations.test.ts`). Item-backed containers add a
+  cycle risk (a bag inside itself, or a loop of bags); assignment rejects both
+  with zero writes. Caps: 30 locations per list.
 
 - **The food estimate** is a private planning aid. Everything about it except
   one number is invisible to anyone but the owner - names, quantities, day
@@ -388,13 +393,21 @@ a restatement of the general posture.
   of meals it is scheduled for - a correctness trap severe enough that it is
   called out in AGENTS.md and pinned by a wire test on the share.
 
-- **The gear/food pack union (0022)** lets one bag hold rows from two tables
-  under a shared ordering. Its risk is not disclosure but integrity: a
-  client-supplied id in a reorder payload must be proven to belong to this
-  list before it can move, ranks are guarded by unique indexes per cohort, and
-  a lost race answers 409 with the whole batch rolled back rather than a
-  partial write. Ownership prechecks are owned-set membership in JS, never an
-  unbounded `inArray`, because D1 caps bound parameters at 100.
+- **The gear/food pack union** lets one bag hold rows from two tables under a
+  shared ordering. Its risk is not disclosure but integrity: a client-supplied
+  id in a reorder payload must be proven to belong to this list before it can
+  move, and a lost race answers 409 with the whole batch rolled back rather
+  than a partial write. Ownership prechecks are owned-set membership in JS,
+  never an unbounded `inArray`, because D1 caps bound parameters at 100.
+
+  Two details worth being exact about, because a looser summary invites the
+  wrong assumption. Migration **0022** added the union with NO rank
+  enforcement; **0023** added the unique indexes and range guards afterwards,
+  deliberately sequenced so the enforcement could not reject rows the earlier
+  release had already written. And uniqueness is **per table, not across the
+  union** - a gear row and a food row may legally hold the same rank in the
+  same bag, which the reorder planner accounts for
+  (`server/repos/pack-reorder.ts`).
 
 ## The app has TWO public origins
 
@@ -421,6 +434,30 @@ of it:
   the real one.
 
 ## Deferred - known gaps with triggers
+
+- **Concurrent food edits can silently destroy work.** Not a security hole -
+  an integrity one, recorded here because this is the maintained list of live
+  gaps and the plan that describes it in full is a dated record, not an
+  authority.
+
+  Trimming the day count deletes the slots past the new end. That decision is
+  made from a client-side snapshot, so a second tab that added food in the
+  meantime loses it: the destructive write commits against state it never saw.
+  A conditional UPDATE matching zero rows does not abort the rest of a D1
+  batch, so nothing stops it today. The `KNOWN GAP` comment at
+  `src/lists/FoodView.tsx:343` marks the decision point.
+
+  The fix is designed and prototyped but unbuilt: a `lists.food_revision`
+  column plus a guard table whose NOT NULL column takes a NULL on mismatch,
+  which forces D1 to roll the whole batch back, mapped to a 409 the client
+  consumes as control flow. It needs two releases separated by a deploy so the
+  column is trustworthy before anything enforces it. Full design:
+  `docs/review-remediation-plan.md` section N1 (dated record - verify against
+  the code before trusting any of it).
+
+  Trigger: a second person using the app, a second device used concurrently,
+  or any report of food disappearing. Until then the blast radius is one user
+  with two tabs open.
 
 - **Fresh-auth proofs**: CLOSED. See "Fresh auth" above - passkey
   mutations and account deletion both require a fresh session. Email

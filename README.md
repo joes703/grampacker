@@ -1,5 +1,8 @@
 # grampacker
 
+**Reference, not policy.** Product and setup. `AGENTS.md` is the working
+contract; `SECURITY.md` is the security posture.
+
 Pack-weight planning for backpacking. Live at [grampacker.app](https://grampacker.app).
 
 Build a gear library, assemble gear into trip lists, see what the pack weighs,

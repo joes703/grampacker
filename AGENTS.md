@@ -11,49 +11,66 @@ conventions do NOT apply (see "Do not reintroduce" at the bottom).
 
 ## How to read a rule in this repo
 
-Two kinds of statement live in these documents, and they want opposite
-treatment. Getting this wrong builds elaborate machinery nobody needed.
+Three kinds of statement live in these documents, and they want different
+treatment. Collapsing them is how a reader ends up building elaborate
+machinery nobody needed - or deleting a guard that was load-bearing.
 
-**Facts about the system.** D1 caps bound parameters at 100. `db.batch` is a
-real transaction. Hono's `c.res = res` merges headers. One food item scheduled
-across five meals weighs its weight once. These are specific because the
-specificity IS the value - each one cost an incident, and a vaguer version
-would not have prevented it. Do not generalize them. Do not soften them.
+**Platform facts.** D1 caps bound parameters at 100. `db.batch` is a real
+transaction. Hono's `c.res = res` merges headers. Tailwind scans whole class
+tokens. These are specific because the specificity is the value - each cost an
+incident, and a vaguer version would not have prevented it. They can still go
+out of date when a dependency changes, so verify one against the current
+version before relying on it in a new way. Do not soften them into advice.
 
-**Policies about how to work.** Everything else. These are judgment compressed
-into a sentence, and compression loses the reasoning. A policy is only as alive
-as the goal it serves, so:
+**Contracts.** One food item scheduled across five meals weighs its weight
+once. Route handlers never touch the DB. A migration may not drop or rebuild.
+These are chosen, not discovered - they are the app's own invariants, they
+have tests, and changing one is a product decision with a blast radius. You
+may propose changing a contract. You may not quietly retire one because its
+rationale looks dated.
 
-- If a policy states its reason, CHECK THE REASON before obeying it. A reason
+**Working policies.** Everything else: how to branch, when to review, what to
+run before claiming done. Judgment compressed into a sentence, and compression
+loses the reasoning. So:
+
+- If a policy states its reason, check the reason before obeying it. A reason
   that no longer holds makes the policy noise, and following noise costs real
   work.
 - If a policy has no stated reason and you cannot reconstruct one, treat it as
   a default rather than a constraint. Say what you did and why.
-- If you find a policy whose reason has expired, DELETE IT in the same change
-  rather than working around it. A shorter document that is entirely true
-  beats a complete one that is partly expired.
+- If a policy's reason has expired, retire or reclassify it in the maintained
+  document rather than working around it. Doing that in the same change is
+  usually right and sometimes out of scope - say which, and never leave the
+  expired version standing unremarked.
 
-This is not licence to ignore rules you find inconvenient. It is the opposite:
-you owe every rule enough thought to know whether it still applies, and you owe
-the next reader a document that does not make them repeat that work.
+None of this is licence to ignore a rule you find inconvenient. It is the
+opposite: you owe every rule enough thought to know which kind it is and
+whether it still applies, and you owe the next reader a document that does not
+make them repeat that work.
 
 Prefer principles you can reason from over prescriptions you can only comply
-with. When you must write a prescription, write the reason next to it so
-someone can tell later whether it died.
+with. When a prescription is genuinely the right form, write the reason next
+to it so someone can tell later whether it died.
 
 ## Documents: which ones bind you
 
 - **Binding, maintained against the code:** `AGENTS.md`, `CLAUDE.md`,
   `SECURITY.md`, `docs/authz-matrix.md`, `docs/incidents.md`,
   `docs/ui-density.md`. If one of these disagrees with the code, that is a bug
-  in the document - fix it in the same change.
+  in the document - fixing it belongs to the change that made it wrong.
+- **Reference, kept current but not policy:** `README.md`, `STACK.md`,
+  `PARKED.md`.
 - **Dated records, NOT binding:** `REWRITE_PLAN.md`, everything in
   `docs/superpowers/plans/`, the review docs, and any design doc marked
   shipped or superseded. They record what was decided at a moment. Read them
   for reasoning, never cite them as authority, and do not update them to match
-  later reality - that is what the binding set is for.
+  later reality.
 
-Every document says which it is, at the top. If one does not, that is a defect.
+A dated record may still be the only full description of something unfinished.
+When you de-authorize one, move any LIVE gap it describes into a maintained
+document first - `SECURITY.md` for defects and accepted risks, `PARKED.md` for
+deferred ideas. A known bug in a document nobody has to trust is worse than no
+document at all.
 
 ## Roles: who ships what
 

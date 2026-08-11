@@ -1,5 +1,8 @@
 # Route authorization matrix
 
+**BINDING, maintained against the code.** The authority on who can call what.
+A route without a row, or a row that disagrees with its handler, is a defect.
+
 Every API route gets a row BEFORE it ships, and the row drives its tests
 (owner / non-owner / anon at minimum; cross-parent stitching for child
 resources). A route without a row, or a row without tests, fails review.
