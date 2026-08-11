@@ -444,18 +444,27 @@ of it:
   themselves survive; only `list_food_item_slots` cascades. So this destroys a
   plan, not a pantry.
 
-  Two ways in, both deciding from a client snapshot that can be up to 30
-  seconds stale and does not refetch on focus:
+  All three paths below decide from a cached snapshot that can be
+  **arbitrarily old**. `staleTime` is 30s, but that only marks data stale - it
+  does not refetch. With `refetchOnWindowFocus: false` and no polling
+  (`src/App.tsx`), a tab left open re-reads nothing until something else
+  invalidates it. The day-trim path does refetch, but AFTER the confirm
+  decision, and never re-evaluates it.
 
   - **Trimming the day count** drops every slot past the new end
     (`src/lists/FoodView.tsx:343` carries the KNOWN GAP comment).
   - **Marking a meal not needed** clears that slot's placements, and the
     confirm that guards it is skipped when the cached snapshot says the slot
     is empty (`src/lists/FoodDaySection.tsx`).
+  - **Rescheduling an item** is a full replace, not a merge: the picker opens
+    from the cached `slotIds`, and the write deletes every placement for that
+    item before inserting the submitted set (`server/repos/food.ts`). A stale
+    client therefore erases placements another client added, without touching
+    the day count or skipping anything.
 
-  In both cases a second client that scheduled food inside that window has its
-  work deleted by a write that never saw it. A conditional UPDATE matching
-  zero rows does not abort the rest of a D1 batch, so nothing stops it today.
+  In each case a second client's work is deleted by a write that never saw it.
+  A conditional UPDATE matching zero rows does not abort the rest of a D1
+  batch, so nothing stops it today.
 
   The fix is designed and prototyped but unbuilt, and needs two releases
   separated by a deploy. Release A adds `lists.food_revision` and makes
@@ -468,8 +477,8 @@ of it:
   against the code before trusting any of it).
 
   Trigger: a second person using the app, or any report of a meal plan losing
-  entries. Until then the blast radius is one account with concurrent clients
-  - two tabs, or a phone and a laptop.
+  entries. Until then the blast radius is one list, within one account, with
+  concurrent clients - two tabs, or a phone and a laptop.
 
 - **Fresh-auth proofs**: CLOSED. See "Fresh auth" above - passkey
   mutations and account deletion both require a fresh session. Email

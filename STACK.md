@@ -13,10 +13,11 @@ prose guarantees the prose rots.
 What is worth keeping here is the RATIONALE - why a dependency is pinned where
 it is, what would trigger moving it, and which constraints are non-obvious:
 
-- Exact pins everywhere: `.npmrc` sets `save-exact`. `npm ci` for CI and
-  deploy installs; `ignore-scripts=true` (verified: install, dev and build all
-  work under it - re-test a clean `npm ci` + build before ever removing it).
-- `overrides` entries are RANGES tracking their parent, never exact pins.
+- Direct dependencies are pinned exact: `.npmrc` sets `save-exact`. `npm ci`
+  for CI and deploy installs; `ignore-scripts=true` (verified: install, dev
+  and build all work under it - re-test a clean `npm ci` + build before ever
+  removing it).
+- **`overrides` are the exception and must be RANGES** tracking their parent.
   Dependabot does not update overrides, so an exact pin there rots silently.
 - TypeScript stays on 6.x: 7.0 typechecks this repo cleanly but
   typescript-eslint declares `<6.1.0` and throws at load. Move when its peer
@@ -62,19 +63,17 @@ it is, what would trigger moving it, and which constraints are non-obvious:
 
 ## Upgrade notes
 
-Not policy - `AGENTS.md` "Git and supply chain" is the binding version. These
-are the notes specific to this dependency set:
+**Not policy.** `AGENTS.md` "Git and supply chain" is binding; if these ever
+disagree, AGENTS.md wins and this file is the bug. What follows is context
+specific to this dependency set, not rules:
 
-- Direct dependencies are pinned exact (`.npmrc` sets `save-exact`), and
-  Dependabot raises the bumps. **`overrides` are the exception and must stay
-  RANGES** tracking their parent - Dependabot does not update overrides, so an
-  exact pin there rots silently. An earlier version of this file said "exact
-  pins, no ranges" flatly, which contradicted that.
 - No core infra on beta/RC. The one-day drizzle RC experiment (adopted and
   reversed 2026-07-07 when better-auth's peer range rejected it) is the only
-  time that was tried.
-- Major bumps re-verify `rm -rf node_modules && npm ci` before merging
-  (peer-dep failures fail closed; never `--legacy-peer-deps`).
+  time that was tried, and it was reversed because better-auth's peer range
+  rejected it rather than on principle.
+- A major bump is worth a clean `rm -rf node_modules && npm ci` before
+  merging: peer-dep failures fail closed, which is the point of not reaching
+  for `--legacy-peer-deps`.
 
 ## Watch list
 
