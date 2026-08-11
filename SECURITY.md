@@ -1,10 +1,20 @@
 # Security posture
 
+**BINDING, and maintained against the code.** If this file disagrees with what
+the code does, the file is wrong and fixing it is part of the change that made
+it wrong. It records what is enforced, where the tests live, and what is
+deliberately deferred - it is honest about gaps, and a gap stated here is a
+decision, not an oversight.
+
 Written at phase 1 (2026-07-08) against MDN's web security guides
-(https://developer.mozilla.org/en-US/docs/Web/Security), per
-REWRITE_PLAN.md section 6. Re-sweep scheduled before the public share
-ships (phase 4). This file records what is enforced, where the tests
-live, and what is deliberately deferred - it is honest about gaps.
+(https://developer.mozilla.org/en-US/docs/Web/Security). Re-swept 2026-08-11,
+which was overdue: the public share had shipped long before, and three whole
+subsystems (packing locations, the food estimate, the gear/food pack union)
+had arrived with no entry here at all. See "Later surfaces" below.
+
+Per-route contracts live in `docs/authz-matrix.md`, which is the authority on
+who can call what. This file is the posture: the shape of the defenses and the
+reasoning behind them. Where the two overlap, the matrix wins on detail.
 
 ## Authorization boundary (IDOR)
 
@@ -23,7 +33,8 @@ live, and what is deliberately deferred - it is honest about gaps.
 
 - better-auth cookie sessions: HttpOnly, SameSite=Strict, Secure in
   production (https baseURL), 30-day sliding expiry - a deliberate
-  convenience call for low-sensitivity data (REWRITE_PLAN.md 13.2).
+  convenience call for low-sensitivity data (decided at the rewrite; the
+  reasoning is in REWRITE_PLAN.md 13.2, which is history, not authority).
   No tokens in localStorage anywhere.
 - **Passwordless.** grampacker stores no password, and there is no reset,
   change, or verify flow to attack. There are exactly two ways to get a
@@ -164,8 +175,19 @@ Four independent layers, tested in `server/routes/me.test.ts`:
   would reasonably conclude magic links are self-policing. They are not.
   Every budget above is hand-written in
   `server/middleware/rate-limit.ts`, and a test asserts it.
-- Cloudflare WAF is hardening on top, never the mechanism (portability
-  rule: the limiter must work on the Node target too).
+- **Where a budget lives depends on what it counts, not on a blanket rule.**
+  This used to read "Cloudflare WAF is hardening on top, never the mechanism
+  (portability rule: the limiter must work on the Node target too)". That
+  reason is retired, and on 2026-08-11 it caused an agent to build a D1-backed
+  limiter that wrote a row on every anonymous page view to protect a read.
+
+  The line that actually holds: a **semantic** budget - one that has to see
+  something only the app knows, like "5 magic links per email address" - can
+  only live in application code, and every budget listed above is that kind.
+  A **volumetric** budget - "too many requests from one address" - belongs at
+  the edge, where it refuses before the Worker runs and before D1 is touched.
+  An application counter cannot do the edge's job: it costs a write to save a
+  read and cannot stop the invocation it is counting.
 - CAPTCHA (Turnstile) is deliberately parked; trigger = observed signup
   abuse or real user growth.
 
@@ -329,6 +351,43 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   and `push` to main - never `pull_request_target` (which would run
   workflows with secrets against fork code); private repo.
 
+## Later surfaces (packing locations, food, the pack union)
+
+Added 2026-08-11. These three shipped after this file was written and had no
+entry until the re-sweep. None of them changes the boundary above - every one
+is session-gated through `reposForUser` and holds no new authentication or
+authorization mechanism - so what follows is what is DIFFERENT about them, not
+a restatement of the general posture.
+
+- **Packing locations** are children of a list, and the interesting failure is
+  cross-parent stitching: a location id from another of the caller's OWN lists
+  must 404, not succeed, or the ownership check degrades from "this list" to
+  "this user". Enforced by a composite parent predicate on every write and
+  asserted per route. Item-backed containers add a cycle risk (a bag inside
+  itself, or a loop of bags); assignment rejects both with zero writes.
+  Caps: 30 locations per list.
+
+- **The food estimate** is a private planning aid. Everything about it except
+  one number is invisible to anyone but the owner - names, quantities, day
+  count, meal slots and packing state never leave a session-gated route. The
+  one exception is deliberate and narrow: `food.weightGrams`, an aggregate, on
+  the public share, because the owner's own total counts food and a share that
+  omitted it reported a lighter pack for the same list. Caps: 200 items,
+  30 days.
+
+  The aggregate is summed over food items ALONE. Joining to the slot
+  associations to compute it would multiply one bag of trail mix by the number
+  of meals it is scheduled for - a correctness trap severe enough that it is
+  called out in AGENTS.md and pinned by a wire test on the share.
+
+- **The gear/food pack union (0022)** lets one bag hold rows from two tables
+  under a shared ordering. Its risk is not disclosure but integrity: a
+  client-supplied id in a reorder payload must be proven to belong to this
+  list before it can move, ranks are guarded by unique indexes per cohort, and
+  a lost race answers 409 with the whole batch rolled back rather than a
+  partial write. Ownership prechecks are owned-set membership in JS, never an
+  unbounded `inArray`, because D1 caps bound parameters at 100.
+
 ## Deferred - known gaps with triggers
 
 - **Fresh-auth proofs**: CLOSED. See "Fresh auth" above - passkey
@@ -375,12 +434,11 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   counting. An app-level limiter was written and then removed for exactly
   that reason (2026-08-11).
 
-  This intentionally departs from `REWRITE_PLAN.md` rule 4 ("WAF is
-  hardening on top, never the only control"), whose stated justification was
-  portability to a Node target - a goal that is retired. Where a budget is
-  SEMANTIC the rule still holds and the limiter stays in code: "5 magic
-  links per email address" needs to see the address, and the edge cannot.
-  This budget is purely volumetric, which is the edge's job.
+  This is the semantic-versus-volumetric split stated under "Abuse and rate
+  limiting" above. It departs from a rule in `REWRITE_PLAN.md` that said the
+  WAF may never be the only control; that rule's justification was
+  portability to a Node target, which is retired, and `REWRITE_PLAN.md` is
+  history rather than authority.
 
   **Trigger for creating the rule:** any sign of scraping, or a share link
   being posted somewhere public. Until then, unmetered is the accepted
@@ -436,7 +494,7 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
 
 ## Not applicable by construction
 
-Recorded so they are not re-litigated (REWRITE_PLAN.md section 6):
+Recorded so they are not re-litigated:
 SSRF (the only outbound HTTP is Resend's fixed endpoint; no
 user-controlled URLs), mixed content (HTTPS-only + HSTS), CORS
 misconfiguration (no CORS at all), local network access, user

@@ -1,6 +1,7 @@
 # One page for a list: design
 
-Status: DRAFT - revised after Codex plan review (VERDICT: MERGE-WITH-FIXES)
+Status: SHIPPED 2026-08-10 (PR #200). DATED RECORD - not binding; the code is
+the current statement of this design.
 Date: 2026-08-09
 Relates to: `src/lists/ListDetailPage.tsx`, `src/lists/LibraryPanel.tsx`,
 `src/lists/CategoryGroup.tsx`, `src/lists/ItemRow.tsx`,

@@ -9,6 +9,52 @@ Stack: Cloudflare Workers + D1 (SQLite), Vite, React, TypeScript, Drizzle,
 better-auth. This is a rewrite of a Supabase-backed app; Supabase/Postgres
 conventions do NOT apply (see "Do not reintroduce" at the bottom).
 
+## How to read a rule in this repo
+
+Two kinds of statement live in these documents, and they want opposite
+treatment. Getting this wrong builds elaborate machinery nobody needed.
+
+**Facts about the system.** D1 caps bound parameters at 100. `db.batch` is a
+real transaction. Hono's `c.res = res` merges headers. One food item scheduled
+across five meals weighs its weight once. These are specific because the
+specificity IS the value - each one cost an incident, and a vaguer version
+would not have prevented it. Do not generalize them. Do not soften them.
+
+**Policies about how to work.** Everything else. These are judgment compressed
+into a sentence, and compression loses the reasoning. A policy is only as alive
+as the goal it serves, so:
+
+- If a policy states its reason, CHECK THE REASON before obeying it. A reason
+  that no longer holds makes the policy noise, and following noise costs real
+  work.
+- If a policy has no stated reason and you cannot reconstruct one, treat it as
+  a default rather than a constraint. Say what you did and why.
+- If you find a policy whose reason has expired, DELETE IT in the same change
+  rather than working around it. A shorter document that is entirely true
+  beats a complete one that is partly expired.
+
+This is not licence to ignore rules you find inconvenient. It is the opposite:
+you owe every rule enough thought to know whether it still applies, and you owe
+the next reader a document that does not make them repeat that work.
+
+Prefer principles you can reason from over prescriptions you can only comply
+with. When you must write a prescription, write the reason next to it so
+someone can tell later whether it died.
+
+## Documents: which ones bind you
+
+- **Binding, maintained against the code:** `AGENTS.md`, `CLAUDE.md`,
+  `SECURITY.md`, `docs/authz-matrix.md`, `docs/incidents.md`,
+  `docs/ui-density.md`. If one of these disagrees with the code, that is a bug
+  in the document - fix it in the same change.
+- **Dated records, NOT binding:** `REWRITE_PLAN.md`, everything in
+  `docs/superpowers/plans/`, the review docs, and any design doc marked
+  shipped or superseded. They record what was decided at a moment. Read them
+  for reasoning, never cite them as authority, and do not update them to match
+  later reality - that is what the binding set is for.
+
+Every document says which it is, at the top. If one does not, that is a defect.
+
 ## Roles: who ships what
 
 - Merging to main and deploying are human-gated. Codex's primary job is

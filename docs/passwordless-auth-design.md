@@ -1,5 +1,8 @@
 # Passwordless auth: design
 
+> **DATED RECORD, not binding.** Shipped 2026-07-12. `SECURITY.md` is the
+> current statement of the auth posture; this records how it was designed.
+
 Status: ACCEPTED - shipped to production 2026-07-12 (PRs #46-#51 + teardown
 migration 0006; passwords removed with no rollback path; follow-ups #53
 validated-send quota charging and #55 fragment-carried tokens)
