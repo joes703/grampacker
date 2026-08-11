@@ -4,7 +4,6 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import WeightTable from './WeightTable'
 import { computeListWeightBreakdown } from '../lib/weight-breakdown'
 import type { Category, ListItemWithGear } from '../lib/types'
-import type { WeightBreakdown } from '../lib/weight-breakdown'
 
 afterEach(cleanup)
 
@@ -142,17 +141,25 @@ describe('WeightTable', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('uses an explicitly provided breakdown over the items (the share-page path)', () => {
-    // SharePage passes a precomputed breakdown. The component must render
-    // that, not recompute from `items`.
-    const breakdown: WeightBreakdown = {
-      catRows: [{ id: shelter.id, name: 'Shelter', grams: 200 }],
-      consumableCatRows: [{ id: shelter.id, name: 'Shelter', grams: 500 }],
-      baseGrams: 200, consumableGrams: 500, wornGrams: 0, totalPackGrams: 700,
-    }
-    render(<WeightTable items={[]} categories={[shelter]} breakdown={breakdown} />)
+  // Replaces a test that asserted a provided breakdown beat the component's
+  // own gear-only recomputation. That fallback is gone - a breakdown is now
+  // required and branded, so this file can no longer even construct one by
+  // hand - and what is actually worth pinning is that food reaches the
+  // rendered rows, which is the bug the share shipped with.
+  it('renders food into consumables and the total, not into a category row', () => {
+    const items = [listItem({ id: '1', categoryId: shelter.id, weightGrams: 200 })]
+    render(
+      <WeightTable
+        items={items}
+        categories={[shelter]}
+        breakdown={breakdownFor(items, [shelter], 500)}
+      />,
+    )
 
     expect(within(rowFor('Consumables')).getByText('500 g')).toBeInTheDocument()
     expect(within(rowFor('Total pack weight')).getByText('700 g')).toBeInTheDocument()
+    // Food is not gear: it has no category and must never inflate one, or the
+    // per-section subtotals stop summing to the whole.
+    expect(within(rowFor('Shelter')).getByText('200 g')).toBeInTheDocument()
   })
 })

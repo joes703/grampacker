@@ -361,19 +361,27 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   repository + DTO allowlist + private-column ABSENCE tests + uniform
   404 for unknown and inactive slugs. The re-sweep of this file happens
   before it ships.
-- **Public share endpoint is UNMETERED** (`GET /api/shares/:slug`). The
-  rate limiter is mounted on `/api/auth/*` only, so every non-auth route
-  is unmetered - but the rest are session-gated, and this one is
-  anonymous by design. It is therefore the app's one unauthenticated,
-  uncounted database read: the obvious scraping surface, and a cheap way
-  to make the Worker do work for free. Slugs are random, so this is not
-  an enumeration oracle in any practical sense, and the response is a
-  DTO-allowlisted read-only document - which is why it is a gap and not a
-  hole. Trigger: any public-endpoint abuse review, any sign of scraping,
-  or the first time a share link is posted somewhere public. Fix shape:
-  a generous per-IP bucket (a legitimate viewer makes 1-3 requests; the
-  budget must survive a link going around a large NAT). Raised by review,
-  2026-07-11.
+- **Public share endpoint is METERED** (`GET /api/shares/v2/:slug`).
+  Raised by review 2026-07-11, closed 2026-08-10. It was the app's one
+  unauthenticated, uncounted database read.
+
+  Two per-IP buckets, because one cannot do both jobs. A generous budget
+  charged on every request - a legitimate viewer makes 1-3, so a link going
+  around a large NAT clears it, which this file required of any fix. And a
+  tight budget charged only on requests that resolved to nothing: walking
+  the slug space is all misses, so a scraper exhausts that one without
+  being able to deny readers who only hit real slugs. A single
+  miss-counting bucket would have let one person on a shared address lock
+  out everyone behind it. Both scopes are separate from auth, so share
+  traffic cannot spend a sign-in budget.
+
+  `/api/health` is metered separately, on its own scope, for the same
+  reason: anonymous, and its handler makes a real D1 round-trip.
+
+  What this does NOT do: the limiter is D1-backed, so it costs a write per
+  view and a refused request still performs that write. It bounds the
+  expensive part - the share projection and its four queries - not the
+  Worker invocation. Coarse volumetric abuse still belongs at the edge.
 - **Web Analytics**: `https://static.cloudflareinsights.com/beacon.min.js` (and
   its `/`-suffixed prefix form) is allowed in **script-src**, and only there.
   Cloudflare Web Analytics is enabled

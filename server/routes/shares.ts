@@ -12,11 +12,14 @@ import type { PublicShare } from '../repos/public-shares'
 //                           and unshared list are the same 404
 //
 // The public read surface. GET-only (csrfProtection ignores safe methods),
-// no session, no rate limit: a miss is a single indexed D1 read, the
-// 62^6 slug space makes enumeration impractical, and a rate-limit counter
-// would ADD a D1 write per anonymous view - strictly worse than the read
-// it guards. The WAF stays the hardening layer (SECURITY.md trust model,
-// ported from the old app).
+// no session - and, since 2026-08-10, METERED. It used to argue itself out
+// of a budget on the grounds that a counter adds a D1 write per anonymous
+// view, which is true and still the cost; what that argument missed is that
+// this is the ONE route where an unmetered read is also an unauthenticated
+// one. The budget is two per-IP buckets mounted in server/index.ts (generous
+// on every request, tight on misses) - see the rules in
+// middleware/rate-limit.ts for why one bucket could not do both jobs. The
+// WAF remains the volumetric layer (SECURITY.md trust model).
 export const shareRoutes = new Hono<{
   Bindings: Env
   Variables: PublicShareVars
@@ -86,6 +89,15 @@ const strictShareResponse = deepStrict(sharedListResponseSchema)
 // either (AGENTS.md). That is why the path moved to /v2 in the same change:
 // a new URL is a new cache key, so every reader starts clean. Public /r/:slug
 // links are untouched - this is the internal API path, not the share link.
+//
+// What that leaves, stated rather than glossed: a tab still running the OLD
+// bundle asks for the old path, gets a 404, and its fetcher maps 404 to null,
+// so it renders "List not found" - it does NOT reload (there is no service
+// worker). A stale tab holding an already-cached old 200 can keep showing it
+// until that entry expires. Both resolve on the next navigation, which serves
+// the current bundle and /v2. Accepted: stale open tabs are explicitly not
+// supported, and the alternative - leaving the old path mounted - keeps
+// serving exactly the cacheable responses this change exists to stop.
 const NO_STORE = 'private, no-store'
 
 shareRoutes.get('/v2/:slug', async (c) => {

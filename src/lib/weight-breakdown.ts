@@ -3,7 +3,17 @@ import type { ListItemWithGear, Category } from './types'
 // Stable row identity for React keys. Real categories use their uuid;
 // the synthetic Uncategorized row uses the same '__uncategorized__'
 // sentinel as GearLibraryPage to avoid colliding with any real id.
+// Branded, and that brand is load-bearing rather than ceremony. Without it
+// this is a plain structural type: any caller could assemble an object with
+// the right fields and hand it to WeightTable, which is exactly the shape of
+// the bug this module was reorganized to prevent - a total that looks
+// finished and is not. The symbol is not exported, so the only way to obtain
+// one is computeListWeightBreakdown, which cannot be called without stating
+// what every contributor adds.
+declare const COMPLETE: unique symbol
+
 export type WeightBreakdown = {
+  readonly [COMPLETE]: true
   catRows: { id: string; name: string; grams: number }[]
   consumableCatRows: { id: string; name: string; grams: number }[]
   baseGrams: number
@@ -20,10 +30,14 @@ export type WeightBreakdown = {
 //
 // Reach it through computeListWeightBreakdown, which cannot be called without
 // deciding what every contributor adds.
+// The gear reducer's own result: the same fields WITHOUT the completeness
+// brand, so it cannot reach a display component by accident.
+type GearOnlyBreakdown = Omit<WeightBreakdown, typeof COMPLETE>
+
 function computeGearWeightBreakdown(
   items: ListItemWithGear[],
   categories: Category[],
-): WeightBreakdown {
+): GearOnlyBreakdown {
   const basePerCat = new Map<string | null, number>()
   const consumablePerCat = new Map<string | null, number>()
   const knownCategoryIds = new Set(categories.map((category) => category.id))
@@ -185,10 +199,12 @@ export type ListWeightInputs = {
 export function computeListWeightBreakdown(inputs: ListWeightInputs): WeightBreakdown {
   const gear = computeGearWeightBreakdown(inputs.gear.items, inputs.gear.categories)
   const foodGrams = inputs.food.grams
-  if (foodGrams === 0) return gear
+  // The cast is the single place completeness is asserted, and it is sound
+  // exactly here: every contributor in ListWeightInputs has been folded in
+  // above. Nowhere else may produce this type.
   return {
     ...gear,
     consumableGrams: gear.consumableGrams + foodGrams,
     totalPackGrams: gear.totalPackGrams + foodGrams,
-  }
+  } as WeightBreakdown
 }

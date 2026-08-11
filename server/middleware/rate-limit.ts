@@ -105,17 +105,36 @@ const DELETE_USER: Rule = { scope: 'delete-user', limit: 5, windowMs: 10 * MINUT
 // and until now the only data-returning route with no budget at all - the
 // limiter above is mounted on /auth/* and never saw it.
 //
-// Its own scope, deliberately. Sharing a bucket with auth would let a burst of
-// share views eat a user's sign-in budget, and a shared scope makes the two
-// budgets impossible to reason about separately.
+// TWO buckets, because one cannot do both jobs. A single per-IP budget that
+// counts misses is a denial of service against a shared address: SECURITY.md
+// requires this budget to "survive a link going around a large NAT", and one
+// person on that NAT issuing a few hundred bogus slugs would otherwise lock
+// out every legitimate reader behind it.
 //
-// Generous on purpose: opening a shared list is ONE request, so a real reader
-// refreshing hard never approaches this, while a scraper walking slugs does.
-// Note the cost this accepts - the limiter is D1-backed, so metering adds a
-// write per anonymous view, and a refused request still performs that write.
-// It bounds the expensive part (the share projection and its four queries),
-// not the Worker invocation.
-const PUBLIC_SHARE: Rule = { scope: 'public-share', limit: 120, windowMs: 10 * MINUTE }
+//   PUBLIC_SHARE      every request, deliberately generous. A real viewer
+//                     makes 1-3 requests, so this clears several hundred
+//                     distinct readers behind one address in a window.
+//   PUBLIC_SHARE_MISS only requests that resolved to nothing, and tight.
+//                     Walking the slug space is ALL misses, so a scraper
+//                     exhausts this long before it dents the budget above,
+//                     while a reader who only ever hits real slugs never
+//                     touches it.
+//
+// Both have their own scope: sharing a bucket with auth would let share
+// traffic spend a user's sign-in budget.
+//
+// The cost this accepts: the limiter is D1-backed, so metering adds a write
+// per anonymous view, and a refused request still performs that write. It
+// bounds the expensive part - the share projection and its four queries - not
+// the Worker invocation. Coarse volumetric abuse belongs at the edge.
+const PUBLIC_SHARE: Rule = { scope: 'public-share', limit: 600, windowMs: 10 * MINUTE }
+const PUBLIC_SHARE_MISS: Rule = { scope: 'public-share-miss', limit: 30, windowMs: 10 * MINUTE }
+
+// /api/health is anonymous too, and its handler performs a real D1 round-trip
+// - so leaving it unmetered makes it a free way to make the database work.
+// Generous enough that the deploy liveness check and any monitor are nowhere
+// near it; the point is a ceiling, not a throttle.
+const PUBLIC_HEALTH: Rule = { scope: 'public-health', limit: 300, windowMs: 10 * MINUTE }
 
 // Longest window; rows older than this are dead and get swept.
 const MAX_WINDOW_MS = DAY
@@ -346,18 +365,47 @@ async function consume(
 }
 
 // Per-IP budget for the anonymous share read. Same charging machinery and the
-// same IPv6 /64 bucketing as the auth limiter; separate scope, separate
-// budget.
+// same IPv6 /64 bucketing as the auth limiter; separate scopes, separate
+// budgets.
 //
-// NOT applied to /api/health, deliberately: it returns no user data, it is the
-// endpoint the deploy liveness check depends on, and metering it would add a
-// D1 write to the cheapest route in the app to protect a response that is a
-// single boolean. If it ever needs a budget, it needs its own scope too.
+// The miss bucket is charged AFTER the handler, because "did this slug resolve
+// to anything" is not knowable before it runs. That means an over-budget
+// scraper's 404 was already served - which is the cheap path (the batch
+// returns no rows) and the right trade for not punishing hits.
 export const publicShareRateLimit = createMiddleware<{ Bindings: Env }>(
   async (c, next) => {
     const rawIp = c.req.header('cf-connecting-ip')
     const ip = rawIp === undefined ? 'local' : rateLimitIpKey(rawIp)
-    const refused = await consume(createDb(c.env.DB), PUBLIC_SHARE, ip, Date.now())
+    const now = Date.now()
+    const db = createDb(c.env.DB)
+
+    const refused = await consume(db, PUBLIC_SHARE, ip, now)
+    if (refused) return refused
+
+    await next()
+
+    if (c.res.status === 404) {
+      const missRefused = await consume(db, PUBLIC_SHARE_MISS, ip, now)
+      if (missRefused) {
+        // Assigning c.res MERGES headers with the old value winning on
+        // collision (AGENTS.md), so the 404's Cache-Control would survive onto
+        // the 429 and outrank its own. Clearing first is what makes this a
+        // replacement.
+        c.res = undefined
+        c.res = missRefused
+      }
+    }
+    return undefined
+  },
+)
+
+// Per-IP budget for the anonymous health probe. Its own scope so a monitor
+// hammering it cannot spend the share budget, or vice versa.
+export const publicHealthRateLimit = createMiddleware<{ Bindings: Env }>(
+  async (c, next) => {
+    const rawIp = c.req.header('cf-connecting-ip')
+    const ip = rawIp === undefined ? 'local' : rateLimitIpKey(rawIp)
+    const refused = await consume(createDb(c.env.DB), PUBLIC_HEALTH, ip, Date.now())
     if (refused) return refused
     return next()
   },

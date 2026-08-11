@@ -102,7 +102,9 @@ export async function fetchSharedList(
     // it was unshared could keep serving it from its own cache; adding
     // no-store cannot reach an entry already stored under the old policy, but
     // a new URL is a new cache key. The public /r/:slug link people actually
-    // hold is unchanged - only this internal path moved.
+    // hold is unchanged - only this internal path moved. A tab on the old
+    // bundle asks the removed path and renders "List not found" until it
+    // navigates; stale tabs are explicitly not supported.
     return await apiFetch(`/shares/v2/${slug}`, sharedListResponseSchema)
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) return null
