@@ -10,20 +10,18 @@ better-auth 1.6.23 vs 1.6.26, wrangler 4.107.0 vs 4.120.0, and several
 "arriving later" entries that arrived). Duplicating a machine-readable fact in
 prose guarantees the prose rots.
 
-What is worth keeping here is the RATIONALE - why a dependency is pinned where
-it is, what would trigger moving it, and which constraints are non-obvious:
+What is worth keeping here is CONTEXT - why a dependency sits where it does,
+and what would move it. The rules themselves live in `AGENTS.md` ("Git and
+supply chain"); this file restates none of them, because a rule in two places
+is a rule that will disagree with itself.
 
-- Direct dependencies are pinned exact: `.npmrc` sets `save-exact`. `npm ci`
-  for CI and deploy installs; `ignore-scripts=true` (verified: install, dev
-  and build all work under it - re-test a clean `npm ci` + build before ever
-  removing it).
-- **`overrides` are the exception and must be RANGES** tracking their parent.
-  Dependabot does not update overrides, so an exact pin there rots silently.
-- TypeScript stays on 6.x: 7.0 typechecks this repo cleanly but
-  typescript-eslint declares `<6.1.0` and throws at load. Move when its peer
-  range admits 7.
-- drizzle-orm stays on 0.45.x: better-auth peers on `^0.45.2`. Upgrade trigger
-  is better-auth's peer range admitting drizzle 1.x.
+- TypeScript sits on 6.x because typescript-eslint declares `<6.1.0` and
+  throws at load on 7. 7.0 typechecks this repo cleanly, so the blocker is the
+  linter's peer range, not the compiler.
+- drizzle-orm sits on 0.45.x because better-auth peers on `^0.45.2`. The thing
+  to watch is better-auth's peer range, not drizzle's releases.
+- `overrides` exist here for transitive advisories rather than preference; see
+  AGENTS.md for how they must be written.
 
 ## Installed at phase 0 (HISTORICAL - versions here are the scaffold's, not today's)
 

@@ -439,10 +439,10 @@ of it:
   hole - an integrity one, recorded here because this is the maintained list
   of live gaps and the plan that describes it in full is a dated record.
 
-  What is lost, precisely: the day x meal SLOTS and their placements - which
-  food is eaten when, and any "not needed" decisions. The food ITEMS
-  themselves survive; only `list_food_item_slots` cascades. So this destroys a
-  plan, not a pantry.
+  What is lost: the day x meal SLOTS and their placements - which food is
+  eaten when, and any "not needed" decisions. On three of the four paths below
+  the food ITEMS survive, because only `list_food_item_slots` cascades. The
+  fourth deletes an item outright, and its placements with it.
 
   All three paths below decide from a cached snapshot that can be
   **arbitrarily old**. `staleTime` is 30s, but that only marks data stale - it
@@ -461,6 +461,12 @@ of it:
     item before inserting the submitted set (`server/repos/food.ts`). A stale
     client therefore erases placements another client added, without touching
     the day count or skipping anything.
+  - **Removing an item** acts on the cached row
+    (`src/lists/FoodCarryingList.tsx`) and deletes it, cascading every
+    placement it had (`list_food_item_slots` has ON DELETE cascade on the
+    item). This is the one path that destroys the item too, so a stale client
+    can remove something another client had just rescheduled - and the guard
+    in Release B has to cover this delete, not only the trim.
 
   In each case a second client's work is deleted by a write that never saw it.
   A conditional UPDATE matching zero rows does not abort the rest of a D1
