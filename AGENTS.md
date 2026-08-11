@@ -118,24 +118,26 @@ report the build broken - say you could not run it and verify via CI
 
 ## Verification: evidence before assertions
 
-Before claiming work is complete:
+**Know what you verified, and say what you did not.** That is the whole rule.
+An unqualified "this works" that rests on an unrun test is the failure; an
+honest "build and unit tests pass, API suite ran in CI, I could not check the
+browser" is not.
 
-1. `npm run build`
-2. `npm run test:unit`
-3. `npm run test:migrations` if migrations or schema changed
-4. API suite locally if the environment allows, otherwise via CI
-5. Review the complete diff; state plainly which checks you could NOT run
+What that usually means here: build, the suites relevant to what you touched,
+and a read of the complete diff. `npm run test:migrations` is the one people
+forget, and schema changes are exactly where a miss is expensive.
 
-Never claim a change works unless verified. Exit code 0 is the signal; error
-text in test output is often an intentional error-path assertion. After any
-multi-site change, finish with a grep proving every site moved. Test the path
-production actually takes: trace the real callers of a helper and match tests
-to them - a passing test on one path says nothing about another that merely
-shares the helper.
+Two things that make verification lie, both learned the hard way:
 
-**Remote D1 writes stay human-gated.** Local dev D1 is yours to use freely.
-Ad-hoc writes or schema changes against remote D1 need explicit approval every
-time. Never delete or recreate the D1 database.
+- Exit code 0 is the signal, not the absence of scary output - error text in
+  test output is often an intentional error-path assertion.
+- A passing test proves the path it exercises and nothing else. Trace the real
+  callers before believing a shared helper's coverage, and after a multi-site
+  change, prove every site moved rather than assuming.
+
+**Remote D1 writes stay human-gated.** Local dev D1 is yours. Ad-hoc writes or
+schema changes against remote D1 need explicit approval every time, and the
+database is never deleted or recreated.
 
 ## Traps (details and history: docs/incidents.md)
 
@@ -176,27 +178,23 @@ time. Never delete or recreate the D1 database.
   needs `forceValidatedAssetResponse` (`server/middleware/asset-cache.ts`).
 - `noValidate` forms make `minLength` inert: client checks are manual JS and
   the server is always the real gate.
-- Optimistic updates hide server rejections (rollback flashes in ms).
-  Hard-refresh after a write to confirm the server accepted it.
-- An empty array from a query means loading, failed, or genuinely empty - and
-  only the last may be written against. Reading: gate on `isLoadingError`
-  then `isPending` (NOT `isError`/`isLoading` - v5 semantics differ) before
-  any empty state. Writing: any mutation payload computed from a cached
-  collection is gated on that collection having RESOLVED
-  (`!isPending && !isLoadingError`, or `data !== undefined`), and the gate
-  goes on the ACTION, not just the render. Never gate the way out (Cancel,
-  actions with their own authoritative preflight). `makeOptimisticInsert`
-  (`src/lib/queries/optimistic.ts`) leaves an absent cache absent - absence
-  is not emptiness.
-- `src/lib/mutation-error-handler.ts` is the single home of the
-  which-failures-earn-a-toast rule; read it before adding or removing one.
-  A toast raised while a modal is open renders behind the top-layer
-  `<dialog>` - writes from a still-open modal report inline. Error copy says
-  what you can prove ("Couldn't confirm...", not "Couldn't delete...").
-- Fire-and-forget rejected promises are prohibited: an async handler invoked
-  without `await`/`.catch` must catch internally, or become
-  `() => Promise<void>` awaited and caught at the call site. Non-mutation
-  async actions: try/catch, toast, CONSUME the error (no rethrow).
+- Optimistic updates hide server rejections - the rollback flashes past in
+  milliseconds. Hard-refresh to confirm a write actually landed.
+- **An empty array is not the same as "there is nothing".** It also means
+  loading, or failed. Only the third may be written against. Read paths gate
+  on `isLoadingError` then `isPending` (v5 semantics differ from
+  `isError`/`isLoading`); write paths gate the ACTION, not just the render, on
+  the collection having resolved. Never gate the way OUT - Cancel, and actions
+  with their own preflight, must stay reachable.
+- **A failure the user cannot see is not reported.** A toast raised while a
+  modal is open renders behind the `<dialog>`, so a still-open modal reports
+  inline. `src/lib/mutation-error-handler.ts` is the single home of the
+  which-failures-earn-a-toast rule. Error copy claims only what you can prove:
+  "Couldn't confirm...", not "Couldn't delete...".
+- **Every rejected promise has an owner.** An async handler called without
+  `await`/`.catch` catches internally or becomes one the call site awaits.
+  Non-mutation async actions consume the error after reporting it rather than
+  rethrowing into nothing.
 
 ## Boundaries you must not cross
 
@@ -208,9 +206,11 @@ time. Never delete or recreate the D1 database.
   (`server/index.ts`, which owns the `/api/health` db ping), and tests as the
   only exemptions. Do not work around the rule - if it blocks you, the design
   is wrong.
-- Every route gets a row in `docs/authz-matrix.md` and owner / non-owner /
-  anon tests to match. This is a review requirement, not machine-enforced:
-  reviewers check it, so keep the matrix honest.
+- Every route proves its boundary holds: who may call it, what happens to a
+  caller who owns nothing, and what happens to an anonymous one. The row in
+  `docs/authz-matrix.md` and the tests behind it are how that proof is
+  recorded. Nothing machine-enforces this, so a row that no longer matches its
+  handler is worse than no row.
 - Generated files: regenerate, never hand-edit (better-auth schema, Drizzle
   snapshots, `wrangler types` output). Exception to know: the `gear_items`
   500-row cap is a hand-added SQL trigger NOT in the Drizzle snapshot; any
@@ -229,29 +229,26 @@ time. Never delete or recreate the D1 database.
 
 ## Git and supply chain
 
-- Feature branches; focused commits; one logical change per commit. Don't
-  fold unrelated cleanups into a focused PR, and don't add features inside a
-  refactor PR.
-- Never `git add -A` or `git add .` - stage exact files by path.
-- No destructive git (`reset --hard`, `clean -fd`, force-push) without
-  explicit approval. Never discard the user's changes.
-- `npm ci` for install/verification - it installs exactly from the lockfile
-  and fails closed on drift. Intentional dependency changes use an explicit
-  reviewed `npm install <pkg>` with justification and a lockfile-diff review;
-  `.npmrc` pins `save-exact` and `ignore-scripts` (if you ever remove
-  `ignore-scripts`, re-test a clean `npm ci` + build first).
-- Never `npm audit fix --force` (it may downgrade; it has, badly - see
-  docs/incidents.md). Plain `npm audit` to look is fine.
-- `overrides` entries are RANGES tracking their parent, never exact pins
-  (Dependabot does not update overrides; an exact pin rots).
-- GitHub Actions: pin third-party actions to a full commit SHA (tag in a
-  trailing comment - checked by `check:action-pins`, not trusted). Use
-  `pull_request`, never `pull_request_target`, for anything running fork
-  code.
-- A constant that TypeScript owns but SQL or shell copies gets a test
-  asserting the copies (`scripts/pack-rank-constants.test.ts`), not a comment
-  asking a human to remember.
-- No `target="_blank"` without `rel="noopener noreferrer"`.
+The through-line: **never commit or install something you did not look at.**
+
+- Feature branches, one logical change per commit. Don't fold unrelated
+  cleanups into a focused PR.
+- Stage exact paths. `git add -A` commits whatever happens to be in the tree,
+  which is how something unreviewed ships.
+- Destructive git (`reset --hard`, `clean -fd`, force-push) needs explicit
+  approval. Never discard the user's changes.
+- `npm ci` installs exactly from the lockfile and fails closed on drift. A
+  deliberate dependency change is an explicit `npm install <pkg>` with a
+  reason and a lockfile-diff read. `.npmrc` pins `save-exact` and
+  `ignore-scripts`.
+- `npm audit fix --force` has downgraded this repo badly before
+  (docs/incidents.md). Looking with plain `npm audit` is fine.
+- `overrides` entries are RANGES tracking their parent, never exact pins -
+  Dependabot does not update overrides, so a pin there rots silently.
+- Pin third-party GitHub Actions to a commit SHA, and use `pull_request`
+  rather than `pull_request_target` for anything running fork code.
+- A constant TypeScript owns but SQL or shell copies gets a test asserting the
+  copies, not a comment asking someone to remember.
 
 ## Security
 
@@ -276,30 +273,25 @@ time. Never delete or recreate the D1 database.
   means don't expand scope, not leave a change half-finished: if a type
   tightening implies cleanup at five sites, those sites are in scope.
 
-## UI styling: compose the vocabulary, never re-type it
+## UI styling
 
-All row/table/panel/form styling flows from the shared tokens in
-`src/components/flat-table-styles.ts` and the shared components
-(`FormLabel`, `PrimaryButton`, `WeightInput`, `RowIconButton`, `Modal`,
-`ToggleSwitch`). Rationale and the full map: `docs/ui-density.md`. Read
-BOTH before building or restyling any UI surface - the food view shipped
-half-wired into this system and had to be re-done (weights at the 16px
-page default, rows with no inset, a private form style).
+**Compose the shared vocabulary; do not re-type it.** Row, table, panel and
+form styling comes from the tokens in `src/components/flat-table-styles.ts`
+and the shared components. Hand-rolling a recipe a token owns is how the food
+view shipped looking like a different app and had to be redone.
 
-- Never hand-roll a `text-*`/`px-*`/`rounded-*` recipe a token owns. The
-  frequent traps: `ItemWeightValue` styles nothing - always wrap it in
-  `FLAT_TABLE_NUMERIC_TEXT`; `FLAT_TABLE_ROW` does not include padding -
-  compose `FLAT_TABLE_ROW_PADDING` (or a commented variant); form fields
-  are `FormLabel` + `FORM_INPUT`; primary actions are `PrimaryButton`.
-- Density is a system: 40px touch floor on mobile, 28px pointer tier +
-  13px body text on desktop (`lg:`). Tuning desktop must never change
-  mobile sizing.
-- A genuinely new repeated style gets hoisted into `flat-table-styles.ts`
-  with a comment and a `docs/ui-density.md` note - not inlined at the
-  call site for the next page to copy-paste.
-- Tailwind v4 scans whole class tokens only: composing `${TOKEN}` into a
-  template string is safe; interpolating a class *fragment* silently
-  produces no CSS.
+Density is a system, not a set of numbers to copy: a touch floor on mobile, a
+tighter pointer tier at `lg`. Changing one tier must not move the other.
+
+A genuinely new repeated style gets hoisted into the token file rather than
+inlined for the next page to copy.
+
+`docs/ui-density.md` holds the reasoning and the token index. Read it before
+building a new surface.
+
+One platform fact, because it fails silently: Tailwind v4 scans whole class
+tokens. Composing `${TOKEN}` into a template string is safe; interpolating a
+class *fragment* produces no CSS at all.
 
 ## Do not reintroduce (Supabase-era patterns)
 
