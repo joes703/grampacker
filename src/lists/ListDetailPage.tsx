@@ -2252,7 +2252,7 @@ function ListDetailInner({
                         items={wornItems}
                         regionKey="worn"
                         wornSection
-                        // Unlabelled on purpose: the section title already says
+                        // Unlabeled on purpose: the section title already says
                         // Worn, and this is the canonical list-level worn total.
                         // It must NOT look itself up by category - it has no
                         // categoryId, and a null lookup would hand it

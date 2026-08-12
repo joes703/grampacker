@@ -6,7 +6,7 @@ row/table/panel visual grammar. Cited by
 
 The tokens live in `src/components/flat-table-styles.ts`. This document
 explains the reasoning behind them and, more importantly, records **which
-token owns which control** so the choice is a lookup rather than a judgement
+token owns which control** so the choice is a lookup rather than a judgment
 call. The gear picker (`LibraryPanel`) is the reference implementation of the
 row language.
 
@@ -195,7 +195,7 @@ The three mistakes worth naming:
 - **Route views are navigation, not state.** Peer destinations with their own
   URLs are links with `aria-current="page"`, never pressed buttons.
 - **More than two options is a radio group.** Use real radio inputs, visually
-  relabelled - keyboard arrow navigation then works without reimplementing it.
+  relabeled - keyboard arrow navigation then works without reimplementing it.
 - **A row flag is not a setting.** It belongs to one item in a scanning
   column and obeys the row control target rules, so it never uses
   `ToggleSwitch`, whose sizing is tuned for panel chrome.

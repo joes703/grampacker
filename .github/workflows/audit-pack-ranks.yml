@@ -91,7 +91,7 @@ jobs:
           set -euo pipefail
 
           # Mirrors PACK_RANK_MAX in shared/lists.ts. Shell cannot import it, so
-          # the value is copied - but NOT on the honour system:
+          # the value is copied - but NOT on the honor system:
           # shared/pack-rank-constants.test.ts reads this file and fails CI if
           # the two disagree, or if this assignment is renamed away. Without
           # that, a divergence here would make the audit certify rows the schema

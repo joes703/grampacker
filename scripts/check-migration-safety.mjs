@@ -1232,7 +1232,7 @@ const quoteValue = (value) => {
 // Quoted identifiers keep their text but are tagged 'ident' rather than 'word'.
 // Quoting hides a token's KEYWORD-ness, not its IDENTITY: a table named `drop`
 // must not be read as a DROP statement, while `PRAGMA "writable_schema"` and
-// `UPDATE "sqlite_schema"` must still be recognised for what they name. An
+// `UPDATE "sqlite_schema"` must still be recognized for what they name. An
 // earlier version threw the text away and both of those walked straight through.
 //
 // Fails closed on an unterminated quote or block comment. Unterminated means the

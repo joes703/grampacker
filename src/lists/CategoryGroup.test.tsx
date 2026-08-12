@@ -672,7 +672,7 @@ describe('CategoryGroup footer subtotal', () => {
     })
   })
 
-  it('renders no subtotal in pack mode, not even an unlabelled one', () => {
+  it('renders no subtotal in pack mode, not even an unlabeled one', () => {
     // The footer is !packMode-gated. Pack mode deliberately keeps counts on
     // full section membership; a packed/unpacked-dependent weight would be a
     // third definition of the metric. Asserting only on the absent label would

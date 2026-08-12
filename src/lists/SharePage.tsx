@@ -264,7 +264,7 @@ export default function SharePage() {
                 collapsible={false}
                 wornSection
                 // See the owner-page Worn section for the full reasoning,
-                // including the accepted dual-flag caveat: unlabelled, sourced
+                // including the accepted dual-flag caveat: unlabeled, sourced
                 // from the canonical list-level wornGrams, never looked up as
                 // a category.
                 subtotalGrams={weightBreakdown.wornGrams}

@@ -97,4 +97,4 @@ await cdp.send('WebAuthn.addVirtualAuthenticator', {
 Register from the home Passkeys section, sign out, then 'Sign in with a
 passkey' completes without any prompt. Dev rpID is localhost (derived
 from BETTER_AUTH_URL). With no credential on the authenticator the
-sign-in fails fast with the cancelled-error copy - useful as a probe.
+sign-in fails fast with the canceled-error copy - useful as a probe.

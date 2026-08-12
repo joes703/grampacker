@@ -37,7 +37,7 @@ const RETRIES = 3
 
 // `uses: owner/repo@ref` or `owner/repo/subpath@ref`, with whatever trails it.
 // Deliberately loose on the ref so a tag-pinned action is CAUGHT below rather
-// than skipped by a regex that only recognises SHAs.
+// than skipped by a regex that only recognizes SHAs.
 const USES = /^\s*(?:-\s*)?uses:\s*(?<action>[^@\s'"]+)@(?<ref>[^\s'"#]+)\s*(?<trailer>#.*)?$/
 
 const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? ''

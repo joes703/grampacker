@@ -43,7 +43,7 @@ updates:
     # the poisoned versions yanked within hours to days of publication, so a week
     # on the registry avoids most of that exposure at no cost to us - we are not
     # chasing features. It does nothing about a patient backdoor, and GitHub is
-    # explicit that cooldown is one defence among several.
+    # explicit that cooldown is one defense among several.
     #
     # Scheduled updates only. Security updates ignore cooldown and open
     # immediately, which is what we want when there is a real advisory.

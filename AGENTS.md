@@ -43,7 +43,7 @@ loses the reasoning. So:
   usually right and sometimes out of scope - say which, and never leave the
   expired version standing unremarked.
 
-None of this is licence to ignore a rule you find inconvenient. It is the
+None of this is license to ignore a rule you find inconvenient. It is the
 opposite: you owe every rule enough thought to know which kind it is and
 whether it still applies, and you owe the next reader a document that does not
 make them repeat that work.
@@ -128,7 +128,7 @@ COMPLETE diff, always. `npm run build` and `npm run test:unit` for any code
 change. `npm run test:api` for anything under `server/**`.
 `npm run test:migrations` when migrations or the schema move - that is the one
 people forget, and it is where a miss is expensive. Beyond that minimum, use
-judgement about what the change actually risks.
+judgment about what the change actually risks.
 
 Two things that make verification lie, both learned the hard way:
 
@@ -278,21 +278,26 @@ The through-line: **never commit or install something you did not look at.**
 ## Conventions
 
 - US spelling everywhere you are writing English: identifiers, comments,
-  commit messages, and user-visible strings. `-ize` over `-ise`, `canceled`
-  over `cancelled`, `color` over `colour`. Not a style preference - the app
-  has one voice, and "cancelled" in one error string next to "canceled" in
-  another reads as sloppiness.
+  commit messages, and user-visible strings. `-ize` not `-ise`, `-or` not
+  `-our`, `-ense` not `-ence`, `judgment` not the longer one, and one `l`
+  in `canceled` / `labeled` / `traveled`. (Stated as transformations rather
+  than pairs on purpose: a future sweep would eat the wrong half of a pair
+  and leave this rule saying `canceled` over `canceled`, which is what
+  happened the first time it was written.) Not a style preference - the app
+  has one voice, and two spellings of the same word across two error strings
+  read as sloppiness.
 - **Identifiers are ASCII.** A non-ASCII identifier is a homoglyph waiting to
   happen: two names that render identically and compare unequal. There are
   none today; keep it that way.
 - Comments are NOT restricted to ASCII, and this rule used to say they were.
   It was never followed - the section dividers alone account for ~1300
-  box-drawing characters, and em-dashes, arrows and `x` signs are all over the
-  prose. Nothing broke, because a comment is read, not resolved. Write what
-  reads best.
+  box-drawing characters, plus 225 em dashes and a scattering of arrows.
+  Nothing broke, because a comment is read, not resolved. Write what reads
+  best.
 - Strings and test fixtures may need non-ASCII for their own reasons (the
-  multiplication sign in "2 x 80 g", Unicode-normalization fixtures, a BOM the
-  CSV parser has to strip). That is the point of them.
+  multiplication sign in "2 × 80 g", Unicode-normalization fixtures like
+  precomposed vs. combining `é`, a BOM the CSV parser has to strip). That is
+  the point of them.
 - Keep changes narrowly scoped to the task - but "don't make other changes"
   means don't expand scope, not leave a change half-finished: if a type
   tightening implies cleanup at five sites, those sites are in scope.
