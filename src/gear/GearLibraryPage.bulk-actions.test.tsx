@@ -26,7 +26,7 @@ const h = vi.hoisted(() => ({
   fetchGearItems: vi.fn<() => Promise<GearItem[]>>(),
   // Deliberately typed with no options argument: the delete confirms close on the
   // click, not on onSuccess (see the confirmation test below), so re-introducing a
-  // callback here should be a type error rather than a silent behaviour change.
+  // callback here should be a type error rather than a silent behavior change.
   removeCategoryMutate: vi.fn<(id: string) => void>(),
 }))
 

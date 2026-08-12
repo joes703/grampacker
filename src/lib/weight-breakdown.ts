@@ -172,7 +172,7 @@ export function foodGramsFor(
  * a caller could forget, and the public share forgot it - so a shared list
  * reported a lighter pack than the same list did to its owner, silently, for
  * as long as food has existed. Adding a third contributor here breaks every
- * call site until each one says what it does with it, which is the behaviour
+ * call site until each one says what it does with it, which is the behavior
  * a convention could never guarantee.
  *
  * `food.grams` is 0 when there is no food, never omitted and never null.

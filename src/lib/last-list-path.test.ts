@@ -141,7 +141,7 @@ describe('writeLastListPath', () => {
   })
 
   it('scrubs the legacy lastListId key so an old bundle cannot resurrect it', () => {
-    // Mixed-version defence: an OLD or rolled-back bundle reads our JSON as
+    // Mixed-version defense: an OLD or rolled-back bundle reads our JSON as
     // invalid, then falls back to `lastListId` and follows it with no owner
     // check. A write must therefore remove that permanently-unattributable key,
     // not just overwrite lastListPath.

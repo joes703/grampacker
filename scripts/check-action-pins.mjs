@@ -9,7 +9,7 @@
 // comment, and THAT is what anyone reading the workflow actually believes.
 //
 // Nothing was checking it. Dependabot moves the SHA and leaves the comment
-// alone, so PR #154 proposed the correct v7.0.0 hash still labelled `# v6`.
+// alone, so PR #154 proposed the correct v7.0.0 hash still labeled `# v6`.
 // Had it merged as authored, the workflows would have read `# v6` while running
 // v7 - the pin would have been right and the repo's only human-readable record
 // of it wrong. A comment that can lie is worse than no comment, because it is

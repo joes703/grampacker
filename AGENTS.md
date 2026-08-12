@@ -277,9 +277,22 @@ The through-line: **never commit or install something you did not look at.**
 
 ## Conventions
 
-- US spelling (`-ize`), ASCII punctuation in identifiers, code comments you
-  write, and commit messages. User-visible strings and test fixtures may
-  need non-ASCII; that is fine.
+- US spelling everywhere you are writing English: identifiers, comments,
+  commit messages, and user-visible strings. `-ize` over `-ise`, `canceled`
+  over `cancelled`, `color` over `colour`. Not a style preference - the app
+  has one voice, and "cancelled" in one error string next to "canceled" in
+  another reads as sloppiness.
+- **Identifiers are ASCII.** A non-ASCII identifier is a homoglyph waiting to
+  happen: two names that render identically and compare unequal. There are
+  none today; keep it that way.
+- Comments are NOT restricted to ASCII, and this rule used to say they were.
+  It was never followed - the section dividers alone account for ~1300
+  box-drawing characters, and em-dashes, arrows and `x` signs are all over the
+  prose. Nothing broke, because a comment is read, not resolved. Write what
+  reads best.
+- Strings and test fixtures may need non-ASCII for their own reasons (the
+  multiplication sign in "2 x 80 g", Unicode-normalization fixtures, a BOM the
+  CSV parser has to strip). That is the point of them.
 - Keep changes narrowly scoped to the task - but "don't make other changes"
   means don't expand scope, not leave a change half-finished: if a type
   tightening implies cleanup at five sites, those sites are in scope.

@@ -124,7 +124,7 @@ export default function DeleteAccountSection() {
       setNeedsReauth(false)
       if ((await runDelete()) === 'reauth') setNeedsReauth(true)
     } catch {
-      setError('Passkey confirmation was cancelled or failed.')
+      setError('Passkey confirmation was canceled or failed.')
     } finally {
       submitting.current = false
       setBusy(false)

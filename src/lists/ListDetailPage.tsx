@@ -194,7 +194,7 @@ export function derivePackReorderExclusions(
 }
 
 // Rows the pack-mode filters have hidden. A hidden row must be neither a
-// reorder source nor a reorder neighbour: the sort slots are computed from the
+// reorder source nor a reorder neighbor: the sort slots are computed from the
 // rows the user can actually see, so counting an invisible row would drop the
 // dragged row somewhere other than where it was released.
 //
@@ -929,7 +929,7 @@ function ListDetailInner({
   function handleDragCancel() {
     setActiveId(null)
     handleLocationDragCancel()
-    setAnnouncement('Move cancelled.')
+    setAnnouncement('Move canceled.')
   }
 
   function requestMove(itemId: string, locationId: string | null) {
@@ -1059,7 +1059,7 @@ function ListDetailInner({
         return
       }
       if (!plan) {
-        setAnnouncement('Move cancelled.')
+        setAnnouncement('Move canceled.')
         return
       }
       if (plan.kind === 'move-gear') requestMove(plan.itemId, plan.locationId)
@@ -1367,7 +1367,7 @@ function ListDetailInner({
       // returnFocus is false because the kebab that started this is inside the
       // row about to disappear. PlacementProvider's restore already declines
       // to focus a disconnected origin, but asking for it at all would be
-      // stating an intent this call cannot honour.
+      // stating an intent this call cannot honor.
       placementActions.cancel({ returnFocus: false })
       removalPreflightRef.current.add(li.id)
       void (async () => {
@@ -1376,7 +1376,7 @@ function ListDetailInner({
           // Again, after the await. The lookup is a real round trip - the
           // duplicate guard above exists because it is long enough for a
           // second click - so placement can be started DURING it, after the
-          // cancel above has already run. Cancelling once on entry would leave
+          // cancel above has already run. Canceling once on entry would leave
           // the confirm dialog opening over live slots in exactly that window.
           // cancel() is idempotent, so the common path pays nothing.
           placementActions.cancel({ returnFocus: false })
@@ -1764,7 +1764,7 @@ function ListDetailInner({
         {/* Nested containers get their OWN SortableContext. Sorting is
             scoped to a set of siblings, so without a context per level a
             nested section resolves against the root list, the strategy's
-            auto-shift computes against the wrong neighbours, and a nested
+            auto-shift computes against the wrong neighbors, and a nested
             reorder produces no usable drop. */}
         {node.children.length > 0 && (
           <SortableContext

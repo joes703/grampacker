@@ -518,7 +518,7 @@ export const listFoodItemSlots = sqliteTable(
       columns: [t.slotId, t.listId, t.userId],
       foreignColumns: [listFoodSlots.id, listFoodSlots.listId, listFoodSlots.userId],
     }).onDelete('cascade'),
-    // Defence in depth, not the same-list proof.
+    // Defense in depth, not the same-list proof.
     foreignKey({
       name: 'list_food_item_slots_list_same_owner_fk',
       columns: [t.listId, t.userId],

@@ -832,7 +832,7 @@ export function createListsRepo(db: Db, userId: string) {
     // Deliberately does NOT touch isShared. Rotating the link and turning
     // sharing off are separate intentions: someone rotating a link wants a
     // different URL, not to stop sharing. Bundling them would also make the
-    // toggle destructive, which is the behaviour this control exists to
+    // toggle destructive, which is the behavior this control exists to
     // avoid - people publish these URLs in places they cannot easily edit.
     async rotateShareLink(id: string): Promise<RotateShareLinkResult> {
       return withFreshSlug(async (slug) => {

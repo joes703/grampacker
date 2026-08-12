@@ -1203,7 +1203,7 @@ describe('pack-order route contract', () => {
   })
 
   // The two-phase write exists for this: applied naively, the first UPDATE
-  // would put one row on a rank its neighbour still holds and the unique
+  // would put one row on a rank its neighbor still holds and the unique
   // index would reject the whole batch.
   it('applies a permutation whose intermediate state would collide', async () => {
     const { cookie, list, inBag } = await bagOfTwo('pack-twophase@example.com')

@@ -128,7 +128,7 @@ describe('PackLocationSection', () => {
     expect(onDelete).toHaveBeenCalledTimes(1)
   })
 
-  it('renames in place, replacing the title but keeping the section labelled', async () => {
+  it('renames in place, replacing the title but keeping the section labeled', async () => {
     const user = userEvent.setup()
     const onRename = vi.fn()
     renderSection({ renaming: true, onRename })

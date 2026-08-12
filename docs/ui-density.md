@@ -124,8 +124,8 @@ the Pack row showed no weight at all. Three copies of the same state machine
 
 - Omit `onSave` for read-only: the public share view, and food rows in Pack
   (food weight is authored in the Food view).
-- Pass text colour and width/visibility through `className`; the control owns
-  the numeric token and the hover affordance, not the row's colour.
+- Pass text color and width/visibility through `className`; the control owns
+  the numeric token and the hover affordance, not the row's color.
 - Name and description are edited inline by `InlineText`. On a Pack row they
   deliberately are NOT: those sit inside the label that toggles Packed, and an
   input there would fight the gesture. Weight sits outside it, which is the
@@ -157,7 +157,7 @@ the control lives and whether it can be touched**, not by what the icon is.
 | Compact inline icon button in a surface that renders **only** at `lg+` | `RowIconButton` | 24x24, no touch box |
 | Modal / drawer close button | `ROW_CONTROL_TARGET` | 40px touch / 28x24 pointer |
 | Full-width disclosure button where the chevron is inline content | neither | the whole row is the hit area |
-| Toolbar button, labelled options trigger, form stepper | neither | out of scope; bordered controls with their own padding |
+| Toolbar button, labeled options trigger, form stepper | neither | out of scope; bordered controls with their own padding |
 | Compact panel header action (`PanelCard` `headerAction`) | neither | see below |
 
 `RowIconButton` defaults to the narrow desktop-only target. Callers that can

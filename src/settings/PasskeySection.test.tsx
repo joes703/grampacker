@@ -262,7 +262,7 @@ describe('PasskeySection fresh-auth gate', () => {
     expect(await screen.findByRole('button', { name: 'Use a passkey' })).toBeInTheDocument()
   })
 
-  it('reports a cancelled re-auth ceremony without running the mutation', async () => {
+  it('reports a canceled re-auth ceremony without running the mutation', async () => {
     listResolves([{ id: 'pk1', name: 'work laptop', aaguid: null }])
     h.deletePasskey.mockResolvedValue({ error: STALE })
     h.signInPasskey.mockRejectedValue(new Error('user dismissed the prompt'))
@@ -271,7 +271,7 @@ describe('PasskeySection fresh-auth gate', () => {
     await confirmWithPasskey()
 
     expect(
-      await screen.findByText('Passkey confirmation was cancelled or failed.'),
+      await screen.findByText('Passkey confirmation was canceled or failed.'),
     ).toBeInTheDocument()
     // One attempt (the original), not a replay.
     expect(h.deletePasskey).toHaveBeenCalledTimes(1)

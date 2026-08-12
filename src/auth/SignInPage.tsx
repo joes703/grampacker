@@ -53,7 +53,7 @@ export default function SignInPage() {
       void navigate('/')
     } catch {
       // Most common path: the user dismissed the browser's passkey prompt.
-      setError('Passkey sign-in was cancelled or failed.')
+      setError('Passkey sign-in was canceled or failed.')
     } finally {
       setPasskeyPending(false)
     }
