@@ -2479,13 +2479,16 @@ function ListDetailInner({
                           ROW floor: the header's own 44px includes its 1px
                           bottom border, so a 44px child would push it to
                           45px on mobile. Desktop relaxes to the 28px row
-                          height. Negative inline margin keeps the padded box
+                          height. Both dimensions, not just height: "Edit" at
+                          this size is only ~36px wide, so a height-only floor
+                          would leave the target short in the axis nobody
+                          checks. Negative inline margin keeps the padded box
                           from pushing the title without shrinking the target
                           itself. */}
                       <Link
                         to={`/lists/${listId}/food`}
                         aria-label="Edit food"
-                        className={`shrink-0 inline-flex items-center min-h-10 lg:min-h-7 px-2 -mx-1 ${FLAT_TABLE_META_TEXT} text-gray-500 hover:text-blue-600`}
+                        className={`shrink-0 inline-flex items-center justify-center min-h-10 min-w-10 lg:min-h-7 lg:min-w-0 px-2 -mx-1 ${FLAT_TABLE_META_TEXT} text-gray-500 hover:text-blue-600`}
                       >
                         Edit
                       </Link>
