@@ -42,9 +42,23 @@ export default function FoodView({ listId }: { listId: string }) {
   const qc = useQueryClient()
   const { weightUnit } = useWeightUnit()
 
+  // The ONE query in the app that refetches on window focus, against the
+  // global default in src/App.tsx. Every destructive food action lives on this
+  // view - trimming the day count, marking a meal not needed, rescheduling an
+  // item, removing one - and each decides from this cache. staleTime only
+  // MARKS data stale; without this, nothing refetches it, so a tab left open
+  // overnight would still be acting on yesterday's plan and would delete meals
+  // another client had added since.
+  //
+  // This narrows the window, it does not close it: you can still act in the
+  // gap between the refetch and the write. The real fix is the food revision
+  // guard in SECURITY.md. Deliberately NOT applied to the list detail page's
+  // copy of this query (use-list-food.ts) - its food writes are per-row field
+  // patches that cannot destroy another client's work.
   const listFoodQuery = useQuery({
     queryKey: queryKeys.listFood(listId),
     queryFn: () => fetchListFood(listId),
+    refetchOnWindowFocus: true,
   })
 
   // Plain mutate-and-invalidate, deliberately not optimistic. A slot toggle

@@ -467,12 +467,21 @@ of it:
   placements cascade. Three leave the food items themselves alone; one removes
   an item outright.
 
-  Every path below decides from a cached snapshot that can be **arbitrarily
-  old**. `staleTime` is 30s, but that only marks data stale - it
-  does not refetch. With `refetchOnWindowFocus: false` and no polling
-  (`src/App.tsx`), a tab left open re-reads nothing until something else
-  invalidates it. The day-trim path does refetch, but AFTER the confirm
-  decision, and never re-evaluates it.
+  Every path below decides from a cached snapshot. `staleTime` is 30s, but
+  that only marks data stale - it does not refetch, and the app-wide default
+  in `src/App.tsx` is `refetchOnWindowFocus: false` with no polling.
+
+  PARTIALLY MITIGATED 2026-08-12: `FoodView` overrides that default to
+  `refetchOnWindowFocus: true` (the only query in the app that does), so
+  returning to a tab re-reads the plan before you can act in it. Every path
+  below lives on that view, so none of them can now be driven from an
+  arbitrarily old snapshot - the exposure is a tab you are already looking at
+  while another client writes.
+
+  This does NOT close the gap and must not be read as closing it. The window
+  between the refetch and the write is still wide open, and the day-trim path
+  additionally refetches AFTER its confirm decision and never re-evaluates it.
+  Only the revision guard below makes the write itself safe.
 
   - **Trimming the day count** drops every slot past the new end
     (`src/lists/FoodView.tsx:343` carries the KNOWN GAP comment).
