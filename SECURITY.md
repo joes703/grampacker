@@ -374,9 +374,12 @@ restatement of the general posture.
   cross-parent stitching: a location id from another of the caller's OWN lists
   must 404, not succeed, or the ownership check degrades from "this list" to
   "this user". Enforced by a composite parent predicate on every write.
-  Coverage is not uniform - DELETE and reorder have explicit wrong-parent
-  tests; the equivalent PATCH case does not
-  (`server/routes/packing-locations.test.ts`). Item-backed containers add a
+  All three write verbs have explicit wrong-parent tests
+  (`server/routes/packing-locations.test.ts`); PATCH was the gap and was
+  closed 2026-08-11. Each asserts the WRITE, not just the 404 - mutation
+  testing on the PATCH path showed the route still answers 404 with the
+  parent predicate removed, because the read-back that produces the 404
+  happens after the UPDATE commits. Item-backed containers add a
   cycle risk (a bag inside itself, or a loop of bags); assignment rejects both
   with zero writes. Caps: 30 locations per list.
 

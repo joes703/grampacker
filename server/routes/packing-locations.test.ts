@@ -711,6 +711,45 @@ describe('packing location CRUD, assignment, and integrity', () => {
     ).toBe(204)
   })
 
+  // The child-resource fourth caller from AGENTS.md: not a stranger, but the
+  // OWNER reaching a location of theirs through the WRONG list. If any verb
+  // succeeds here, the ownership check has quietly degraded from "this list"
+  // to "this user", and every parent-scoped guarantee in the feature is
+  // decoration. All three write verbs are covered because the composite
+  // predicate is per-handler - one of them getting it right proves nothing
+  // about the others, which is how PATCH went uncovered until 2026-08-11.
+  it('wrong-parent PATCH rejects with zero writes', async () => {
+    const { cookie } = await signUpVerifiedUser('packing-parent-patch@example.com', 'O')
+    const a = await createList(cookie, 'A')
+    const b = await createList(cookie, 'B')
+    const bLoc = await createLocation(cookie, b.id, 'B loc')
+
+    const patch = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${a.id}/packing-locations/${bLoc.id}`,
+      { name: 'Renamed through the wrong list' },
+    )
+    // 404, not 403: an id the caller cannot legitimately reach through THIS
+    // parent is indistinguishable from one that does not exist, and saying
+    // "forbidden" would confirm it exists somewhere.
+    expect(patch.status).toBe(404)
+
+    // The write half, and it is the half that carries this test.
+    //
+    // Verified by mutation: drop the `listId` predicate from BOTH statements
+    // in `rename` and this route still answers 404 - the final
+    // `readOwnedList(listId)` cannot find the renamed row under list A, so it
+    // reports not_found AFTER the UPDATE has already committed. The status
+    // assertion above stays green through that; only these lines fail. A
+    // status-only wrong-parent test would have proven nothing here.
+    const bLocations = await getLocations(cookie, b.id)
+    expect(bLocations).toHaveLength(1)
+    expect(bLocations[0]).toMatchObject({ id: bLoc.id, name: 'B loc' })
+    // And nothing appeared in the list it was addressed through.
+    expect(await getLocations(cookie, a.id)).toHaveLength(0)
+  })
+
   it('wrong-parent delete and reorder reject with zero writes', async () => {
     const { cookie } = await signUpVerifiedUser('packing-parent@example.com', 'O')
     const a = await createList(cookie, 'A')
