@@ -116,6 +116,17 @@ export default function FoodView({ listId }: { listId: string }) {
     },
     onSuccess: invalidateFood,
   })
+  // Quantity is how many UNITS of this you carry. It was settable on the add
+  // form and nowhere else, so every item sat at whatever it was created with -
+  // usually 1 - and a plan of five lunches reported one packet in the pack
+  // total. Same mutate-and-invalidate shape as the reschedule beside it.
+  const foodItemQuantityMut = useMutation({
+    mutationKey: mutationKeys.setFoodItemQuantity(listId),
+    mutationFn: (vars: { itemId: string; quantity: number }) =>
+      updateFoodItem(listId, vars.itemId, { quantity: vars.quantity }),
+    meta: { errorToast: "Couldn't change that quantity. Please try again." },
+    onSuccess: invalidateFood,
+  })
   const foodItemSlotsMut = useMutation({
     mutationKey: mutationKeys.setFoodItemSlots(listId),
     mutationFn: (vars: { itemId: string; slotIds: string[] }) =>
@@ -134,6 +145,7 @@ export default function FoodView({ listId }: { listId: string }) {
     foodSlotMut.isPending ||
     foodItemCreateMut.isPending ||
     foodItemSlotsMut.isPending ||
+    foodItemQuantityMut.isPending ||
     foodItemDeleteMut.isPending
 
   // Same three-state gate every reader uses (AGENTS.md): a fabricated empty
@@ -169,6 +181,9 @@ export default function FoodView({ listId }: { listId: string }) {
       }
       onDeleteItem={(itemId) => foodItemDeleteMut.mutate(itemId)}
       onSetItemSlots={(itemId, slotIds) => foodItemSlotsMut.mutate({ itemId, slotIds })}
+      onSetItemQuantity={(itemId, quantity) =>
+        foodItemQuantityMut.mutate({ itemId, quantity })
+      }
     />
   )
 }
@@ -209,6 +224,7 @@ type FoodDocumentProps = {
   /** Reschedule an existing item. Passing [] unschedules it without deleting
    *  it - the food is still carried, it just has no meal in mind. */
   onSetItemSlots: (itemId: string, slotIds: string[]) => void
+  onSetItemQuantity: (itemId: string, quantity: number) => void
 }
 
 // The resolved food document: a rail of cards (header with title, days
@@ -225,6 +241,7 @@ function FoodDocument({
   onAddItem,
   onDeleteItem,
   onSetItemSlots,
+  onSetItemQuantity,
 }: FoodDocumentProps) {
   const [daysDraft, setDaysDraft] = useState(String(food.dayCount))
   // Follow the server. Without this a rejected day change leaves the input
@@ -436,6 +453,7 @@ function FoodDocument({
                 weightUnit={weightUnit}
                 busy={busy}
                 onReschedule={setEditingItemId}
+                onSetQuantity={onSetItemQuantity}
                 onDelete={onDeleteItem}
               />
               {editingItem && (

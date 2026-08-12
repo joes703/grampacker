@@ -6,9 +6,10 @@ import {
   FLAT_TABLE_ROW,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
+import InlineQuantity from '../components/InlineQuantity'
 import RowIconButton from '../components/RowIconButton'
 import { foodGramsFor } from '../lib/weight-breakdown'
-import type { FoodItemResponse } from '../../shared/food'
+import { FOOD_QUANTITY_MAX, type FoodItemResponse } from '../../shared/food'
 import type { WeightUnit } from '../lib/weight'
 
 // The single carrying list for the Food view: every carried item, scheduled
@@ -22,12 +23,14 @@ export default function FoodCarryingList({
   weightUnit,
   busy,
   onReschedule,
+  onSetQuantity,
   onDelete,
 }: {
   items: readonly FoodItemResponse[]
   weightUnit: WeightUnit
   busy: boolean
   onReschedule: (itemId: string) => void
+  onSetQuantity: (itemId: string, quantity: number) => void
   onDelete: (itemId: string) => void
 }) {
   return (
@@ -39,6 +42,7 @@ export default function FoodCarryingList({
           weightUnit={weightUnit}
           busy={busy}
           onReschedule={() => onReschedule(item.id)}
+          onSetQuantity={(quantity) => onSetQuantity(item.id, quantity)}
           onDelete={() => onDelete(item.id)}
         />
       ))}
@@ -63,6 +67,7 @@ function FoodItemRow({
   weightUnit,
   busy,
   onReschedule,
+  onSetQuantity,
   onDelete,
 }: {
   item: FoodItemResponse
@@ -73,6 +78,12 @@ function FoodItemRow({
    *  pruned or the trip was shortened - has to be repairable without
    *  deleting and retyping it. */
   onReschedule: () => void
+  /** How many UNITS of this you carry. Scheduling says when you eat it and
+   *  never multiplies the weight (one bag across five lunches is one bag), so
+   *  this is the only place a per-meal item's count can come from. It was
+   *  settable on the add form and nowhere else, which left every item stuck at
+   *  1 and under-reported the pack. */
+  onSetQuantity: (quantity: number) => void
   onDelete: () => void
 }) {
   return (
@@ -82,8 +93,21 @@ function FoodItemRow({
     <div className={`${FLAT_TABLE_ROW} flex items-center gap-2 px-2 lg:px-3 py-2 lg:py-1`}>
       <span className="min-w-0 flex-1">
         <span className={`block truncate ${FLAT_TABLE_BODY_TEXT}`}>{item.name}</span>
-        <span className={`block ${FLAT_TABLE_META_TEXT}`}>
-          {item.quantity > 1 ? `${item.quantity} × ` : ''}
+        {/* "Carry N" then the schedule, deliberately NOT "N x 5 meals": the
+            x reads as a multiplication that does not happen. Scheduling says
+            WHEN you eat this, the count says how many you pack, and the two
+            are independent - conflating them is what made a five-lunch plan
+            look like it weighed one packet. */}
+        <span className={`flex items-center gap-1 ${FLAT_TABLE_META_TEXT}`}>
+          <span>Carry</span>
+          <InlineQuantity
+            quantity={item.quantity}
+            max={FOOD_QUANTITY_MAX}
+            onSave={busy ? undefined : onSetQuantity}
+            itemName={item.name}
+            className="w-6"
+          />
+          <span aria-hidden="true">·</span>
           {item.slotIds.length > 0 ? (
             `${item.slotIds.length} ${item.slotIds.length === 1 ? 'meal' : 'meals'}`
           ) : (

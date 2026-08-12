@@ -83,7 +83,10 @@ const slotIdsSchema = z
 
 export const foodNameSchema = z.string().trim().min(1).max(128)
 export const foodWeightSchema = z.number().min(0).max(100000)
-export const foodQuantitySchema = z.number().int().min(1).max(9999)
+// The ceiling in ONE place: the request schema below enforces it and the
+// carrying row's inline editor clamps drafts to it. Two literals would drift.
+export const FOOD_QUANTITY_MAX = 9999
+export const foodQuantitySchema = z.number().int().min(1).max(FOOD_QUANTITY_MAX)
 
 export const createFoodItemRequestSchema = z
   .object({

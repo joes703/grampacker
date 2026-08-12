@@ -138,6 +138,31 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+describe('FoodView quantity', () => {
+  // The carrying row owns the control (FoodCarryingList.test.tsx); this pins
+  // the wire call it produces. quantity ONLY - a PATCH that also carried
+  // slotIds would rewrite the schedule as a side effect of changing a count.
+  it('patches only the quantity', async () => {
+    h.fetchListFood.mockResolvedValue(guardFood)
+    await renderFoodView()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Edit quantity 1 for Ramen' }),
+    )
+    await user.keyboard('5{Enter}')
+
+    await waitFor(() =>
+      expect(h.updateFoodItem).toHaveBeenCalledWith(listId, 'i1', { quantity: 5 }),
+    )
+  })
+
+  // No failure-toast test here on purpose: this mutation declares
+  // meta.errorToast, and that is raised by the global handler wired onto the
+  // real QueryClient in src/App.tsx, which this harness does not build. The
+  // hand-rolled toasts (the add-item one) are the testable ones. Covered by
+  // mutation-error-handler.test.ts instead.
+})
+
 describe('FoodView staleness', () => {
   // Every destructive food action decides from this cache, so the view opts
   // OUT of the app-wide refetchOnWindowFocus: false. Without it a tab left
