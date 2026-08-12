@@ -20,6 +20,7 @@ import {
   ROW_LEADING_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ItemRow, { type ItemRowProps } from './ItemRow'
+import FoodRow from './FoodRow'
 import AddItemRow from './AddItemRow'
 import { type AddItemData } from './use-quick-add-form'
 import TotalWeightValue from '../components/TotalWeightValue'
@@ -89,6 +90,17 @@ export type PackFoodRowProps = {
   weightUnit: WeightUnit
   onUpdate: (patch: { isPacked?: boolean; isReady?: boolean }) => void
   rowAction?: ReactNode
+}
+
+/** What a read-only food row needs, and nothing more. Structural rather than
+ *  a Pick of FoodItemResponse so the public share - whose DTO deliberately
+ *  carries no packing state or slot ids - can satisfy it without pretending
+ *  to hold fields it does not. */
+export type PlainFoodRow = {
+  id: string
+  name: string
+  quantity: number
+  weightGrams: number
 }
 
 export type RenderRows = (
@@ -183,8 +195,17 @@ type GroupPropsBase = {
   headerAction?: ReactNode
   /** Replaces the rendered title text. `name` is still required and still
    *  supplies every accessible label ("Collapse {name}"), so a section stays
-   *  announceable while its title is an editing input. Used by pack mode's
-   *  rename-in-place on a packing location. */
+   *  announceable whatever its title becomes.
+   *
+   *  Two callers: pack mode's rename-in-place on a packing location, and the
+   *  Category arrangement's Food section, which pairs the name with a link
+   *  out to the Food view. The second is why this slot is worth preferring
+   *  over `headerAction` for anything with width: it sits inside the header's
+   *  flex-1 region, so it costs the fixed Qty/Weight column stubs nothing,
+   *  while an appended action shifts both labels off the cells below them.
+   *
+   *  Only rendered on the COLLAPSIBLE branch. `collapsible={false}` (the
+   *  public share) falls through to plain `name`. */
   titleContent?: ReactNode
   /** Per-row trailing control, same injection rationale as the header slots.
    *  Pack rows use it for the "move to location" menu, which is the
@@ -211,6 +232,19 @@ type GroupPropsBase = {
    *  same pack filters as gear, counted into the header progress, and handed
    *  to renderRows for union-ordered rendering. */
   packFoodRows?: FoodItemResponse[]
+  /** The non-pack counterpart: plain read-only food rows, rendered after this
+   *  section's gear rows. Used by the Category arrangement and the public
+   *  share, which both show food as items rather than as a checklist.
+   *
+   *  A SEPARATE prop from packFoodRows rather than one prop switched on
+   *  packMode, because the two differ in what they need and where they go.
+   *  These rows need only a name, a quantity and a weight, and render
+   *  directly as FoodRow. Pack rows need the mutable packing state on top of
+   *  that and must travel through the injected renderRows seam so @dnd-kit
+   *  stays out of the anonymous share bundle - the same seam gear rows use.
+   *  Collapsing them would mean either importing the drag machinery here or
+   *  demanding pack state from a surface that has none. */
+  foodRows?: PlainFoodRow[]
   onUpdateFood?: (
     foodId: string,
     patch: { isPacked?: boolean; isReady?: boolean },
@@ -319,6 +353,7 @@ function CategoryGroup({
   titleContent,
   renderRowAction,
   packFoodRows,
+  foodRows,
   onUpdateFood,
   renderFoodRowAction,
   wornSection = false,
@@ -538,8 +573,11 @@ function CategoryGroup({
                  Chevron is the obvious affordance; the name remains
                  read-only here (rename happens via the section menu or the
                  modal, not by tapping the header). titleContent is the one
-                 override, used while a packing location is being renamed in
-                 place. */
+                 override: a packing location being renamed in place, and the
+                 Category arrangement's Food section, which pairs the name
+                 with a link out to the Food view. See the prop's doc for why
+                 anything with width belongs here rather than in
+                 headerAction. */
               titleContent ?? (
                 <span className={`truncate ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
               )
@@ -611,6 +649,10 @@ function CategoryGroup({
         // `cat-region-uncategorized` id - duplicate ids on the public page,
         // referenced by nothing.
         <div id={collapsible ? regionId : undefined}>
+          {/* Plain food rows follow this section's gear rows. Non-pack only:
+              in pack mode food is part of the union cohort and comes through
+              renderRows with the gear, so rendering it here as well would
+              show every row twice. */}
           {renderRows
             ? renderRows(
                 visibleItems,
@@ -635,6 +677,15 @@ function CategoryGroup({
                   : undefined,
               )
             : visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}
+          {!packMode &&
+            foodRows?.map((food) => (
+              <FoodRow
+                key={food.id}
+                food={food}
+                weightUnit={weightUnit}
+                isBelowLg={isBelowLg}
+              />
+            ))}
           {/* An empty pack section says WHY it is empty. Without this a
               section can render as a bare header with nothing under it, and
               the two reasons look identical: the location genuinely holds

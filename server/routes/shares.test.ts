@@ -241,7 +241,7 @@ describe('GET /api/shares/v2/:slug', () => {
       list: object
       categories: object[]
       items: { gear: object }[]
-      food: object
+      food: { items: object[] }
     }
     expect(Object.keys(rawShape).toSorted()).toEqual([
       'categories',
@@ -249,9 +249,21 @@ describe('GET /api/shares/v2/:slug', () => {
       'items',
       'list',
     ])
-    // Food's entire public surface. This list having exactly one entry is the
-    // assertion: an aggregate is publishable, a food ROW is not.
-    expect(Object.keys(rawShape.food)).toEqual(['weightGrams'])
+    // Food's entire public surface: rows, and each row exactly five fields.
+    // The per-row key set is what carries the contract - a food row also has
+    // isPacked, isReady, packingLocationId, packSortOrder and slot ids, and
+    // none of them may cross. (This list has no food, so the loop is vacuous
+    // here; food.test.ts drives the populated case.)
+    expect(Object.keys(rawShape.food)).toEqual(['items'])
+    for (const foodItem of rawShape.food.items) {
+      expect(Object.keys(foodItem).toSorted()).toEqual([
+        'id',
+        'name',
+        'quantity',
+        'sortOrder',
+        'weightGrams',
+      ])
+    }
     expect(Object.keys(rawShape.list).toSorted()).toEqual([
       'description',
       'groupWorn',

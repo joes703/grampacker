@@ -35,8 +35,9 @@ import type { WeightUnit } from '../lib/weight'
 
 // The Food view: /lists/:id/food. Owns the food document query and every food
 // mutation; ListDetailPage keeps its OWN subscription to the same query key
-// for the weight breakdown and the summary row (React Query dedupes the
-// fetch). Moved verbatim from ListDetailPage when food got its own view.
+// for the weight breakdown and for the rows it renders in the Category and
+// Pack arrangements (React Query dedupes the fetch). Moved verbatim from
+// ListDetailPage when food got its own view.
 export default function FoodView({ listId }: { listId: string }) {
   const qc = useQueryClient()
   const { weightUnit } = useWeightUnit()

@@ -15,6 +15,7 @@ import {
   baseGramsForCategory,
   computeListWeightBreakdown,
   consumableGramsForCategory,
+  foodGramsFor,
 } from '../lib/weight-breakdown'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
@@ -31,6 +32,10 @@ import {
 // the react-markdown + remark-gfm chunk doesn't land in the share-view
 // cold-load when the list has no description.
 const MarkdownContent = lazy(() => import('../components/MarkdownContent'))
+
+// Module-level constant: the Food section holds no gear, and a fresh []
+// literal on every render would defeat CategoryGroup's memo.
+const EMPTY_GEAR_ITEMS: ListItemWithGear[] = []
 
 // The public /r/:slug read-only view. One anonymous GET returns the whole
 // share (list + items + referenced categories) as the narrow public
@@ -150,11 +155,16 @@ export default function SharePage() {
 
   // The share's own totals used to call the gear-only reducer, so a shared
   // list reported a lighter pack than the same list did to its owner. The
-  // compositor cannot be called without a food figure, and the DTO now
-  // carries one.
+  // compositor cannot be called without a food figure, and the DTO carries
+  // the rows to compute one.
+  //
+  // Summed here with the same helper the owner's page uses, rather than read
+  // off a number the server computed. That is the point of publishing rows:
+  // one definition of food weight instead of two that could drift.
+  const foodGrams = foodGramsFor(share.food.items)
   const weightBreakdown = computeListWeightBreakdown({
     gear: { items: itemsForRender, categories: categoriesForRender },
-    food: { grams: share.food.weightGrams },
+    food: { grams: foodGrams },
   })
 
   // A list can weigh something with no GEAR rows on it - food-only is a real
@@ -228,7 +238,7 @@ export default function SharePage() {
             table surface. The shared category headers are gray dividers;
             without this surface they blend into SharePage's gray page
             background. */}
-        {items.length > 0 && (
+        {(items.length > 0 || share.food.items.length > 0) && (
           <div className="flex flex-col gap-3">
             {grouped.map((group) => (
               <CategoryGroup
@@ -255,6 +265,26 @@ export default function SharePage() {
                 // from the canonical list-level wornGrams, never looked up as
                 // a category.
                 subtotalGrams={weightBreakdown.wornGrams}
+              />
+            )}
+            {/* Food, as its own trailing section rather than mixed into the
+                gear categories: it is not filed under one, and grouping it
+                with gear would need a category it does not have.
+                The subtotal goes through the CONSUMABLE channel, not the bare
+                `subtotalGrams` one: that prop belongs to the Worn section and
+                CategoryFooterWeights labels it "Worn". Food is consumable by
+                definition, which is the bucket its grams already land in
+                upstream. */}
+            {share.food.items.length > 0 && (
+              <CategoryGroup
+                name="Food"
+                items={EMPTY_GEAR_ITEMS}
+                regionKey="food"
+                foodRows={share.food.items}
+                weightUnit={weightUnit}
+                isBelowLg={isBelowLg}
+                collapsible={false}
+                consumableSubtotalGrams={foodGrams}
               />
             )}
           </div>

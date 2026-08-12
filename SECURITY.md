@@ -364,7 +364,7 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
 Added 2026-08-11. These three shipped after this file was written and had no
 entry until the re-sweep. None introduces a new authentication or
 authorization MECHANISM: the authenticated routes all go through
-`reposForUser`, and the one anonymous path (the share's food aggregate) goes
+`reposForUser`, and the one anonymous path (the share's food rows) goes
 through `createPublicSharesRepo`, which is deliberately outside `reposForUser`
 because there is no user - it self-gates every statement on slug + is_shared
 instead. What follows is what is DIFFERENT about these surfaces, not a
@@ -380,18 +380,28 @@ restatement of the general posture.
   cycle risk (a bag inside itself, or a loop of bags); assignment rejects both
   with zero writes. Caps: 30 locations per list.
 
-- **The food estimate** is a private planning aid. Everything about it except
-  one number is invisible to anyone but the owner - names, quantities, day
-  count, meal slots and packing state never leave a session-gated route. The
-  one exception is deliberate and narrow: `food.weightGrams`, an aggregate, on
-  the public share, because the owner's own total counts food and a share that
-  omitted it reported a lighter pack for the same list. Caps: 200 items,
-  30 days.
+- **The food estimate** splits along one line, and the line is what to hold
+  onto: the ITEMS are part of the pack, the PLAN is private. What you carry -
+  `id`, `name`, `quantity`, `weightGrams`, `sortOrder` - crosses to the public
+  share, like any gear row. When you eat it does not: day count, meal slots,
+  "not needed" marks, `isPacked`/`isReady` and the packing-location fields
+  never leave a session-gated route. "2 x 85 g ramen" is a thing in a pack;
+  "Tuesday dinner: leftover curry" is a fact about someone's week. Caps: 200
+  items, 30 days.
 
-  The aggregate is summed over food items ALONE. Joining to the slot
-  associations to compute it would multiply one bag of trail mix by the number
-  of meals it is scheduled for - a correctness trap severe enough that it is
-  called out in AGENTS.md and pinned by a wire test on the share.
+  Changed 2026-08-11, from an aggregate to rows. Hiding food was never a
+  privacy decision - it was a leftover from food arriving late, and it cost a
+  permanent asymmetry between what the owner saw and what a reader did. The
+  change also deleted the aggregate query that existed only for this surface:
+  the share sums the rows exactly as the owner's own view does, so there is
+  one definition of food weight rather than two that could drift.
+
+  The rows are read from the food items table ALONE. Joining to the slot
+  associations would put one bag of trail mix on the wire five times over if
+  it were scheduled across five lunches - a correctness trap severe enough
+  that AGENTS.md calls it out, and one pinned by a wire test on the share.
+  The slot tables are also the private half, which is the second reason
+  nothing in `server/repos/public-shares.ts` touches them.
 
 - **The gear/food pack union** lets one bag hold rows from two tables under a
   shared ordering. Its risk is not disclosure but integrity: a client-supplied
@@ -525,9 +535,9 @@ of it:
 - **Public share endpoint** (`GET /api/shares/v2/:slug`, phase 4): dedicated
   repository + DTO allowlist + private-column ABSENCE tests + uniform
   404 for unknown and inactive slugs. The re-sweep of this file happens
-  before it ships. Food crosses this boundary only as an aggregate
-  (`food.weightGrams`) - see the metering entry below for the rest of the
-  endpoint's posture.
+  before it ships. Food crosses this boundary as rows carrying no schedule -
+  see "Later surfaces" above for that split, and the metering entry below for
+  the rest of the endpoint's posture.
 - **Public share endpoint is UNMETERED, and the control when it is needed
   belongs at the edge** (`GET /api/shares/v2/:slug`). Raised by review
   2026-07-11; still open by decision, 2026-08-11. There is no rate limit on

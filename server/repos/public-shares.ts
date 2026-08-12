@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import type { Db } from '../db'
 import {
   categories,
@@ -46,21 +46,26 @@ export type PublicListItemRow = {
   gearCategoryId: string | null
 }
 
+export type PublicFoodItemRow = {
+  id: string
+  name: string
+  quantity: number
+  weightGrams: number
+  sortOrder: number
+}
+
 export type PublicShare = {
   list: PublicListRow
   categories: PublicCategoryRow[]
   items: PublicListItemRow[]
-  /** Total grams of carried food, and NOTHING else about it. Names,
-   *  quantities, day count, meal slots and packing state all stay private -
-   *  "Tuesday dinner: leftover curry" says more about a person than "tent"
-   *  does, and a share is anonymous.
+  /** The food a share publishes: what it is, how many, how heavy, and its
+   *  order. Named columns only, like every other select here.
    *
-   *  It is published at all because the owner's own total counts food, so a
-   *  share that omitted it reported a lighter pack for the same list. A
-   *  number that disagrees with itself across two views is worse than an
-   *  aggregate a reader can already estimate from the day count they cannot
-   *  see. */
-  foodWeightGrams: number
+   *  What stays private is the PLAN - day count, meal slots, "not needed"
+   *  marks, packing state. Those live in other tables and no statement in
+   *  this module reads them. "2 x 85 g ramen" is a thing in a pack;
+   *  "Tuesday dinner: leftover curry" is a fact about someone's week. */
+  food: PublicFoodItemRow[]
 }
 
 export function createPublicSharesRepo(db: Db) {
@@ -122,19 +127,25 @@ export function createPublicSharesRepo(db: Db) {
         .where(shareGate)
         .orderBy(asc(categories.sortOrder), asc(categories.name))
 
-      // Food's contribution as ONE number, summed over the food items table
-      // alone. Never join to list_food_slots to get here: one 500 g bag of
-      // trail mix scheduled across five lunches would return 2500 g. The
-      // associations say WHEN you plan to eat something, not how much of it
-      // you carry (see foodGramsFor in lib/weight-breakdown.ts, which is the
-      // client-side statement of the same rule).
+      // The food items table ALONE. Never join to list_food_item_slots
+      // here: the associations say WHEN you plan to eat something, not how
+      // much of it you carry, so a join would return one 500 g bag of trail
+      // mix five times over for a trail mix scheduled across five lunches -
+      // both as duplicate rows and, if anyone re-adds a sum, as 2500 g. The
+      // slot tables are also the private half of the food plan, which is the
+      // second reason nothing here touches them.
       const foodQuery = db
         .select({
-          grams: sql<number>`coalesce(sum(${listFoodItems.weightGrams} * ${listFoodItems.quantity}), 0)`,
+          id: listFoodItems.id,
+          name: listFoodItems.name,
+          quantity: listFoodItems.quantity,
+          weightGrams: listFoodItems.weightGrams,
+          sortOrder: listFoodItems.sortOrder,
         })
         .from(listFoodItems)
         .innerJoin(lists, eq(lists.id, listFoodItems.listId))
         .where(shareGate)
+        .orderBy(asc(listFoodItems.sortOrder))
 
       const [listRows, itemRows, categoryRows, foodRows] = await db.batch([
         listQuery,
@@ -149,9 +160,7 @@ export function createPublicSharesRepo(db: Db) {
         list,
         categories: categoryRows,
         items: itemRows,
-        // sum() over zero rows is NULL, which coalesce already turns into 0;
-        // the ?? covers the batch returning no aggregate row at all.
-        foodWeightGrams: foodRows[0]?.grams ?? 0,
+        food: foodRows,
       }
     },
   }

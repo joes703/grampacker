@@ -54,7 +54,7 @@ function share(over: {
     },
     categories: over.categories ?? [],
     items: over.items ?? [],
-    food: over.food ?? { weightGrams: 0 },
+    food: over.food ?? { items: [] },
   }
 }
 
@@ -167,6 +167,85 @@ describe('SharePage read-only public sharing', () => {
     const wornSection = wornItem.closest('.overflow-hidden')
     expect(wornSection?.textContent).toContain('Worn')
     expect(screen.getAllByText('Rain jacket')).toHaveLength(1)
+  })
+
+  // Food used to cross this boundary as a single number: the share showed a
+  // total that counted food while showing nothing that accounted for it.
+  // Rows now cross, and this is the surface where that decision is visible.
+  it('renders shared food as its own trailing section of rows', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue(
+      share({
+        categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
+        items: [tentItem],
+        food: {
+          items: [
+            { id: 'f1', name: 'Oatmeal', quantity: 3, weightGrams: 90, sortOrder: 0 },
+            { id: 'f2', name: 'Trail mix', quantity: 1, weightGrams: 200, sortOrder: 1 },
+          ],
+        },
+      }),
+    )
+    renderShareView()
+
+    expect(await screen.findByText('Oatmeal')).toBeTruthy()
+    expect(screen.getByText('Trail mix')).toBeTruthy()
+    // Trailing: after the gear sections, not mixed into one of them. Food has
+    // no category and grouping it under one would invent a fact.
+    const food = screen.getByText('Oatmeal').closest('.overflow-hidden')
+    expect(food?.textContent).toContain('Food')
+    expect(food?.textContent).not.toContain('Tent')
+    // Found in review: routing the food subtotal through `subtotalGrams`
+    // printed "Worn" under it, because that prop is the Worn section's
+    // channel and the footer hardcodes the label.
+    expect(food?.textContent).toContain('Consumable')
+    expect(food?.textContent).not.toContain('Worn')
+  })
+
+  // The number the reader actually sees. It is summed from the rows, by the
+  // same helper the owner's page uses - the point of publishing rows rather
+  // than a server-computed aggregate is that there is one definition of this
+  // figure and it cannot drift between the two views of one list.
+  it('counts food toward the published total, summing rows and not slots', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue(
+      share({
+        items: [tentItem],
+        food: {
+          items: [
+            // 3 x 90 = 270, not 90. Quantity is the multiplier; the meal
+            // schedule that would multiply it further is not on this wire.
+            { id: 'f1', name: 'Oatmeal', quantity: 3, weightGrams: 90, sortOrder: 0 },
+          ],
+        },
+      }),
+    )
+    renderShareView()
+
+    await screen.findByText('Oatmeal')
+    const summary = screen.getByText('Weight summary').closest('div')?.parentElement
+    // Tent 1200 g base + oatmeal 3 x 90 = 270 g consumable, total 1470 g.
+    // Asserted through the rendered figures rather than a computed constant,
+    // so a breakdown that dropped food - or that counted it as base weight -
+    // fails here.
+    expect(summary?.textContent).toContain('Consumables270 g')
+    expect(summary?.textContent).toContain('Total pack weight1470 g')
+    expect(summary?.textContent).toContain('Base weight1200 g')
+  })
+
+  // A trip can be food-only - a resupply box, or a list started from the
+  // meal plan. Keying the sections block on gear alone hid the food section
+  // completely for exactly that list.
+  it('renders the food section for a list that has food and no gear', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue(
+      share({
+        items: [],
+        food: {
+          items: [{ id: 'f1', name: 'Oatmeal', quantity: 1, weightGrams: 90, sortOrder: 0 }],
+        },
+      }),
+    )
+    renderShareView()
+
+    expect(await screen.findByText('Oatmeal')).toBeTruthy()
   })
 
   it('shows an empty state when the shared gear list has no items', async () => {

@@ -76,11 +76,14 @@ const EMPTY_FOOD_ITEMS: FoodItemResponse[] = []
 
 import WeightSummary from './WeightSummary'
 import FoodView from './FoodView'
-import FoodSummaryRow from './FoodSummaryRow'
 import type { FoodItemResponse, ListFoodResponse } from '../../shared/food'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
-import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
+import {
+  FLAT_TABLE_HEADER_TITLE,
+  FLAT_TABLE_META_TEXT,
+  FLAT_TABLE_SURFACE,
+} from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import ListDocumentToolbar from './ListDocumentToolbar'
 import EmptyListCell from './EmptyListCell'
@@ -2407,27 +2410,91 @@ function ListDetailInner({
                 )
               })()}
 
-              {/* INSIDE the loaded branch, OUTSIDE the listItems.length === 0
-                  one. Both halves matter:
+              {/* Food in the Category arrangement, as its own trailing
+                  section of rows.
 
-                  Inside, because listFood falls back to an empty-food object
-                  when the query has not resolved. Rendered above that gate the
-                  row would sit under "Loading list details..." naming a
-                  0-day trip.
+                  It used to be a single summary line linking to the Food
+                  view, on the theory that food was a private planning aid
+                  that would clutter a shared list. That theory did not
+                  survive contact with how these lists are actually read -
+                  food you carry is part of the pack - and it cost a
+                  permanent asymmetry: the same list showed items in Pack and
+                  one number in Category, and the share showed neither.
+                  Category, Pack and the share now all show the rows.
 
-                  Outside the empty-gear branch, because a list with food and no
-                  gear yet is a real, usable list.
+                  INSIDE the loaded branch, OUTSIDE the listItems.length === 0
+                  one. Inside, because a document half-rendered under a
+                  "couldn't load" banner is worse than none - the same reason
+                  every other section sits there. (The empty-food fallback the
+                  page uses while the query is in flight cannot leak a section
+                  through on its own; the items.length gate below stops that
+                  independently.) Outside the empty-gear branch, because a
+                  list with food and no gear yet is a real, usable list.
 
-                  LIST view only: food now has its own peer view
-                  (/lists/:id/food, see FoodView and ListViewNav), and this row
-                  is only its trace here — food weight counts toward the
-                  totals this page reports (computeListWeightBreakdown counts
-                  food), and a weight
-                  contributor with no visible source is a trap. Pack keeps its
-                  packing focus; the Food tab in ListViewNav is Pack's path to
-                  food. */}
-              {mode === 'edit' && (
-                <FoodSummaryRow food={listFood} listId={listId} weightUnit={weightUnit} />
+                  Category only: in Pack, food rows are part of each bag's
+                  union cohort and are rendered by the location sections
+                  above. Rendering them here as well would show every one
+                  twice. */}
+              {mode === 'edit' && listFood.items.length > 0 && (
+                <CategoryGroup
+                  name="Food"
+                  items={EMPTY_LIST_ITEMS}
+                  regionKey="food"
+                  foodRows={listFood.items}
+                  weightUnit={weightUnit}
+                  isBelowLg={isBelowLg}
+                  // CONSUMABLE, not the bare subtotal. `subtotalGrams` is the
+                  // Worn section's channel and CategoryFooterWeights labels it
+                  // "Worn" - passing food through it would print "Worn 470 g"
+                  // under the food. Food is consumable by definition, which is
+                  // the same bucket its grams already land in upstream.
+                  consumableSubtotalGrams={foodGrams}
+                  // An explicit "Edit" alongside the section name, both
+                  // inside the title slot.
+                  //
+                  // Inside the title slot because the non-pack header ends in
+                  // fixed Qty/Weight column stubs that line up with the cells
+                  // beneath them, and the title absorbs the slack - so
+                  // anything appended AFTER the stubs shifts both labels off
+                  // their columns. Visible rather than a hover state on the
+                  // title, because hover does not exist on touch: an
+                  // affordance only a mouse can find is not an affordance
+                  // here. `name` still supplies every accessible label
+                  // ("Collapse Food").
+                  //
+                  // It leads out to the Food view rather than editing in
+                  // place: a food item is authored where its schedule lives,
+                  // and a second authoring path for one thing is how the two
+                  // drift.
+                  titleContent={
+                    <span className="flex min-w-0 flex-1 items-center gap-1">
+                      <span className={`truncate ${FLAT_TABLE_HEADER_TITLE}`}>Food</span>
+                      {/* aria-label, because "Edit" alone is the whole
+                          accessible name: the section title beside it is
+                          separate text, so a screen reader listing links
+                          would announce a destination-less "Edit".
+
+                          Sized to the 40px control target the density
+                          system uses for chevrons and kebabs, not the 44px
+                          ROW floor: the header's own 44px includes its 1px
+                          bottom border, so a 44px child would push it to
+                          45px on mobile. Desktop relaxes to the 28px row
+                          height. Both dimensions, not just height: "Edit" at
+                          this size is only ~36px wide, so a height-only floor
+                          would leave the target short in the axis nobody
+                          checks. Negative inline margin keeps the padded box
+                          from pushing the title without shrinking the target
+                          itself. */}
+                      <Link
+                        to={`/lists/${listId}/food`}
+                        aria-label="Edit food"
+                        className={`shrink-0 inline-flex items-center justify-center min-h-10 min-w-10 lg:min-h-7 lg:min-w-0 px-2 -mx-1 ${FLAT_TABLE_META_TEXT} text-gray-500 hover:text-blue-600`}
+                      >
+                        Edit
+                      </Link>
+                    </span>
+                  }
+                />
               )}
             </>
           )}

@@ -88,7 +88,9 @@ const sharedListFixture = {
       gear: { name: 'Tent', description: null, weightGrams: 900, categoryId: null },
     },
   ],
-  food: { weightGrams: 450 },
+  food: {
+    items: [{ id: 'f1', name: 'Oats', quantity: 2, weightGrams: 90, sortOrder: 0 }],
+  },
 }
 
 const foodSlotFixture = { id: 's1', dayNumber: 1, meal: 'breakfast', needed: true }
@@ -130,7 +132,10 @@ const cases: [string, Parameters<typeof deepStrict>[0], unknown, string[]][] = [
     'sharedListResponseSchema',
     sharedListResponseSchema,
     sharedListFixture,
-    ['', 'list', 'categories[0]', 'items[0]', 'items[0].gear', 'food'],
+    // 'food.items[0]' matters as much as the rest: a food row is the newest
+    // thing on this surface and the one whose owner-side twin carries the
+    // packing state and slot ids that must never cross.
+    ['', 'list', 'categories[0]', 'items[0]', 'items[0].gear', 'food', 'food.items[0]'],
   ],
   ['categoryResponseSchema', categoryResponseSchema, {
     id: 'c1',
