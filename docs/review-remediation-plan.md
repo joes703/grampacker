@@ -1,5 +1,10 @@
 # Remediation plan for the 2026-07-31 reviews
 
+> **DATED RECORD, not binding.** The plan written to answer the 2026-07-31
+> reviews. Phases 1-5 shipped; phases 6 (browser/E2E), 7 (hygiene) and 8 (the
+> food destructive-write CAS) were still outstanding as of 2026-08-11. Check
+> the code before assuming any item here is open OR closed.
+
 Source: `docs/review-2026-07-31-combined.md` (union of the Claude and Codex
 reviews, deduplicated and ranked).
 

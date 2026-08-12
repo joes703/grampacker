@@ -1,6 +1,32 @@
 # grampacker rewrite plan: Supabase -> portable TypeScript + SQLite
 
-Status: DRAFT for review (2026-07-07). Reviewer: challenge everything; open questions at the bottom.
+> **HISTORY. NOT AUTHORITATIVE. Do not cite a rule from this file to justify
+> or block a decision.**
+>
+> This was the plan written on 2026-07-07, before the rewrite happened. The
+> rewrite is done. What it describes as future work is either shipped, changed
+> beyond recognition, or abandoned - and the goals its rules were derived from
+> are not all still goals.
+>
+> It cost real work to leave this ambiguous. On 2026-08-11 an agent found
+> "portability rule 4: WAF is hardening on top, never the only control" in
+> section 12, obeyed it, and built a D1-backed rate limiter that wrote a row
+> on every anonymous page view in order to protect a read. The rule was sound
+> when portability to a Node target was a goal. That goal is retired. Nothing
+> in this file said so, because a document describing the past cannot know
+> what is still true.
+>
+> **Where to look instead:** `AGENTS.md` for how to work here, `SECURITY.md`
+> for the security posture, `docs/authz-matrix.md` for route contracts,
+> `docs/incidents.md` for why a rule exists. Those are maintained against the
+> code. This is not.
+>
+> Kept because the reasoning is often still interesting - why D1 over
+> Postgres, why passwordless, why no data migration - and because deleting the
+> record of how something was decided makes the next decision harder.
+
+Status: HISTORICAL RECORD. Written as a draft for review 2026-07-07; superseded
+by the app itself.
 
 ## 1. Context and decision
 

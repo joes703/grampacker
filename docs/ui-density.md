@@ -1,6 +1,7 @@
 # UI density and design tokens
 
-Source of truth for grampacker's row/table/panel visual grammar. Cited by
+**BINDING, maintained against the code.** Source of truth for grampacker's
+row/table/panel visual grammar. Cited by
 `src/components/flat-table-styles.ts` and `src/components/ToggleSwitch.tsx`.
 
 The tokens live in `src/components/flat-table-styles.ts`. This document
@@ -9,17 +10,24 @@ token owns which control** so the choice is a lookup rather than a judgement
 call. The gear picker (`LibraryPanel`) is the reference implementation of the
 row language.
 
-## Why tokens at all
+## How to use this
 
-These are *base fragments*, not finished class strings. Call sites compose
-their own layout-specific gap / padding / column / hover / selected classes
-around the base. The constants own the cross-surface invariants - touch vs
-pointer density, border and background language, control target sizing - so a
-density change happens in one place instead of drifting across one-off
-Tailwind strings.
+**Consult it; do not try to satisfy it.** Most of this file is an index of
+what exists and why, for when you are about to build a surface and want to
+know whether the thing you need is already named. It is not a checklist, and
+a change is not wrong because it does not appear here.
 
-Strings used exactly once anywhere in the codebase stay inline. Tokens exist
-for repeated patterns, not for every `text-*` class.
+Three ideas carry the rest:
+
+1. **Compose the vocabulary, don't re-type it.** The tokens own the
+   cross-surface invariants - density, border and background language, control
+   sizing - so a change happens in one place instead of drifting across one-off
+   Tailwind strings. They are base fragments; call sites still add their own
+   layout, gap and hover classes.
+2. **Tokens are for repeats.** A string used once stays inline. Hoist when a
+   second surface wants it, not in anticipation.
+3. **Density is two tiers, and they move independently.** Mobile is tuned for
+   touch, desktop for pointer scanning. Tuning one must not move the other.
 
 ## Two density tiers
 
@@ -171,78 +179,60 @@ current site (`ListDetailPage`'s edit-notes pencil) hand-rolls 24x24. This
 needs its own token and its own decision; until it has one, do not force a
 row token onto it.
 
-## Toggle Taxonomy
+## Toggles: pick by what the state MEANS
 
-Cited by `ToggleSwitch.tsx`. Three components can express an on/off or
-either/or state; they are not interchangeable. Pick by **what the
-state means**, not by where it sits.
+Three components express on/off or either/or, and they are not
+interchangeable. Cited by `ToggleSwitch.tsx`.
 
 | Component | Use for | Semantics |
 |---|---|---|
-| `ToggleSwitch` | Binary **settings** and in-content view toggles | `role="switch"` |
-| `RowIconButton` (`purpleToggle` / `orangeToggle`) | Per-row **flag markers** on an individual item (worn, consumable) | button with an `active` chip state |
-| `UnitSegmentedControl` | Choosing **one of several** mutually exclusive options (metric/imperial) | real `sr-only` radio inputs behind visual labels |
+| `ToggleSwitch` | Binary settings and in-content view toggles | `role="switch"` |
+| `RowIconButton` (`purpleToggle` / `orangeToggle`) | Per-row flag markers on one item (worn, consumable) | button with an `active` chip state |
+| `UnitSegmentedControl` | One of several mutually exclusive options | real `sr-only` radios behind visual labels |
 
-The distinctions that matter:
+The three mistakes worth naming:
 
-- **Route views are navigation.** List, Organize, and Pack have distinct URLs,
-  so `ListViewNav` renders links with `aria-current="page"`. Do not describe
-  peer destinations as pressed buttons or binary toggles.
-- **Two states vs several.** An in-place choice with more than two options is a
-  radio group, not a toggle. Use `UnitSegmentedControl`'s pattern - real radio
-  inputs, visually relabelled - so keyboard arrow navigation works for free
-  rather than being reimplemented with key handlers.
-- **Row flags are not settings.** A worn or consumable marker belongs to one
-  item, is one of many in a scanning column, and must obey the row control
-  target rules above. It never uses `ToggleSwitch`, whose size and transition
-  are tuned for panel chrome.
+- **Route views are navigation, not state.** Peer destinations with their own
+  URLs are links with `aria-current="page"`, never pressed buttons.
+- **More than two options is a radio group.** Use real radio inputs, visually
+  relabelled - keyboard arrow navigation then works without reimplementing it.
+- **A row flag is not a setting.** It belongs to one item in a scanning
+  column and obeys the row control target rules, so it never uses
+  `ToggleSwitch`, whose sizing is tuned for panel chrome.
 
 ### Reserved space
 
-A control hidden with `opacity-0` still occupies its box. Rows that
-hover-reveal a drag handle therefore reserve its width on every row.
+Restored 2026-08-11 - a compression pass deleted this section while three
+code sites still cite it by name (`flat-table-styles.ts`,
+`CategorySection.tsx`, `CategorySection.alignment.test.tsx`).
 
-The rule that follows, and the reason the gear header and its rows now share
-coordinates exactly:
+A control hidden with `opacity-0` still occupies its box, so rows that
+hover-reveal a drag handle reserve its width on every row. Everything below
+follows from one goal: **a section title and the item names beneath it start
+at the same x, in the normal read state.**
 
-- **The content column aligns per breakpoint, in the normal read state.** A
-  section title and the item names beneath it start at the same x. Two desktop
-  states are knowingly exempt, because each reshapes the row rather than the
-  header: **select mode** swaps the row's 20px drag handle for a 16px
-  checkbox, leaving the header title 4px right of the item names; **rename
-  mode** puts the title in an input whose `px-1.5` sits its editable text 6px
-  right of the item text. Both are improved by the current geometry but not
-  zeroed. Do not "fix" either by re-tightening the header, which would break
-  the normal state that the vast majority of viewing happens in.
-- **A leading header control may reserve a row-control slot only when the rows
+- **Content aligns per breakpoint, in the NORMAL state.** Select mode and
+  rename mode are knowingly exempt - each reshapes the row rather than the
+  header. Do not "fix" either by re-tightening the header; that breaks the
+  state almost all viewing happens in.
+- **A leading header control may reserve a row-control slot only if the rows
   reserve an equivalent slot at that breakpoint.** The collapse chevron
-  qualifies: every row leads with a drag handle of the same width.
-- **Section-only controls go after the title, before the trailing rail.** A
-  category-level reorder grip has no per-row counterpart, so it must not lead.
-  It also must not join the trailing cluster, because those
-  Price/Purchased/Weight/kebab columns are width-matched to the row's own
-  columns and anything inserted there shifts every label off-column. Placed
-  after a `flex-1 min-w-0` title it takes its width from the flexible title
-  region instead, costing only slightly earlier truncation of a long name.
-- **The kebab stays last.** That invariant is what keeps the trailing rail
-  aligned.
-- **Do not buy alignment by taxing the rows.** Adding a stub to every data row
-  to match a section-only control moves the problem rather than fixing it, and
-  spends horizontal room on every row for a per-section affordance.
-- **Disclosure stays an explicit button.** Never make the whole header strip
-  clickable to solve a layout problem; that was deliberately removed because of
-  mobile mistaps.
+  qualifies because every row leads with a drag handle of the same width.
+- **Section-only controls go after the title, before the trailing rail.** They
+  have no per-row counterpart, so they must not lead; and the trailing
+  columns are width-matched to the row's, so anything inserted there shifts
+  every label off-column. After a `flex-1 min-w-0` title, the control takes
+  its width from the flexible region instead.
+- **The kebab stays last.** That is what keeps the trailing rail aligned.
+- **Never buy alignment by taxing the rows.** A stub on every data row to
+  match a section-only control moves the problem and spends horizontal space
+  on every row.
+- **Disclosure stays an explicit button.** A fully-clickable header strip was
+  removed deliberately, for mobile mistaps.
 
-Justify this as **column alignment, not tree indentation**. A section header is
-not a parent node, and "children indent less than their parent" is not itself
-the defect. It matters here because this codebase treats these strips as column
-headers and aligns their trailing labels to row values on purpose.
-
-List and gear rows now keep a dedicated leading drag handle at every viewport.
-The handle and header chevron both use the responsive row-control target, so
-the title and item-name columns reserve the same leading space below `lg` as
-well as on desktop. Touch listeners stay on the grip rather than the whole row,
-preserving ordinary vertical scrolling.
+The frame is **column alignment, not tree indentation**: a section header is
+not a parent node, and these strips are treated as column headers whose
+trailing labels align to row values on purpose.
 
 ## Typography
 

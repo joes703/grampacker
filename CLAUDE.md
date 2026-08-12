@@ -32,34 +32,37 @@ changes before merging).
 - Keep shell commands simple and single-purpose - compound scripts trip the
   sandbox analyzer and stall on approval.
 
-## Codex review policy
+## Getting Codex to review
 
-The automatic review gate is intentionally DISABLED. Do not re-enable it.
-Reviews are explicit, at two gates:
+**Review when a wrong answer is still cheap to change, and again before it
+ships.** For net-new work that usually means once on the plan and once on the
+diff; for a fix-list, once on the diff is enough. The point is an independent
+reader who has to actually follow the reasoning - not a ceremony to perform.
 
-- GATE 1, plan review (net-new features, before any code):
-  `/codex:adversarial-review --background <plan framing + attack surfaces>`
-  Wait for VERDICT; do not start implementation until the human approves the
-  findings. Fix-lists skip GATE 1.
-- GATE 2, change review (before commit, after build/lint/tests pass):
-  `/codex:adversarial-review --base main --background <adversarial framing>`
-  Required: VERDICT: MERGE | MERGE-WITH-FIXES | BLOCK.
+Run it yourself: `codex exec -s read-only "<framing>"`, in the background, and
+report the verdict. **Name the scope in the framing** - the exact commit, or
+`git diff main...HEAD`, or the working tree. Without that, a review of a clean
+feature branch can look at nothing and still answer. Do NOT hand the human a slash command to paste - that
+makes them the transport for work they delegated. (`/codex:adversarial-review`
+is user-invocation-only and cannot be called on their behalf.) Ask for a
+one-line `VERDICT:` so the outcome is unambiguous.
 
-Never use `/codex:review` - unsteerable, takes no custom focus text. If
-`/codex:status` shows a job queued >5 min without starting, `/codex:cancel`
-and fall back to direct `codex exec -s read-only`; say so in the transcript.
+A review is only as good as its framing. Say what changed, say what you think
+is most likely to be wrong, and invite the reviewer to attack that - a prompt
+that just says "review this" gets prose back. When a finding is fixed,
+re-review rather than declaring it closed yourself.
 
-Standing invariants to name in every GATE 2 review prompt:
+The automatic review gate is intentionally disabled; do not re-enable it.
 
-- Session-scoped ownership: authenticated repo queries filter by the
-  better-auth session's user_id. Deliberate exceptions: the anonymous
-  public-share read (slug-gated on is_shared) and system tables like
-  rate-limit buckets.
-- Locked public share projection: `GET /api/shares/v2/:slug` returns only the
-  strict share DTO (constants + wire-shape tests on RAW json).
-- Ownership prechecks on writes taking client-supplied ids, under the D1
-  100-param limit (owned-set membership in JS, chunked batches - never an
-  unbounded `inArray`).
+What a review of this repo should always confirm, because these are the
+invariants that would hurt most if they broke:
+
+- Authenticated queries are scoped to the session's user. The known
+  exceptions are the anonymous share read (slug-gated on `is_shared`) and
+  system tables like rate-limit buckets.
+- The public share returns only its strict DTO, asserted on raw JSON.
+- Writes taking client-supplied ids precheck ownership, within D1's
+  100-parameter limit.
 - CSRF + auth layering on app write routes (403 without the custom header,
   401 without session). Exception: `/api/auth/*` uses better-auth's own
   origin validation.

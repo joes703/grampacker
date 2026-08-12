@@ -1,5 +1,10 @@
 # Incident log: the history behind the AGENTS.md rules
 
+**BINDING for the platform facts it records; historical for the narrative
+around them.** Read it when a rule's one-liner is not enough. An incident
+explains a failure that actually happened - verify the mechanism still applies
+to the current dependency versions before treating it as a live constraint.
+
 AGENTS.md states the rules; this file holds the incidents and deep detail that
 produced them. Read the section you need when a rule's one-liner is not enough.
 Nothing here overrides AGENTS.md.

@@ -1,5 +1,8 @@
 # grampacker
 
+**Reference, not policy.** Product and setup. `AGENTS.md` is the working
+contract; `SECURITY.md` is the security posture.
+
 Pack-weight planning for backpacking. Live at [grampacker.app](https://grampacker.app).
 
 Build a gear library, assemble gear into trip lists, see what the pack weighs,
@@ -8,14 +11,19 @@ and share a read-only view of a list.
 ## Stack
 
 TypeScript end to end: a React SPA and a Hono API running together on Cloudflare
-Workers, with Drizzle over D1 (SQLite) and better-auth for sessions. Portable by
-design - nothing depends on a Cloudflare-only API, so it can move to any
-Node + SQLite host.
+Workers, with Drizzle over D1 (SQLite) and better-auth for sessions.
+
+Portability to a Node + SQLite host was an early goal and is no longer one.
+There is no Node entry point, no non-D1 driver and no Node-target test suite,
+and the server uses D1 batch semantics directly. Treat Cloudflare as the
+platform, not as an implementation detail behind an abstraction.
 
 Sign-in is passwordless: magic link or passkey. There is no email/password path,
 and that absence is deliberate.
 
-- Pinned versions and upgrade policy: [STACK.md](./STACK.md)
+- Dependency rationale and upgrade notes: [STACK.md](./STACK.md)
+  (`package.json` is authoritative for versions; `AGENTS.md` holds the binding
+  supply-chain rules)
 - What is enforced, and what is knowingly deferred: [SECURITY.md](./SECURITY.md)
 - Rules every agent follows in this repo: [AGENTS.md](./AGENTS.md)
 
@@ -31,8 +39,10 @@ npm run typecheck  # wrangler types + tsc -b
 npm run build      # typecheck + lint + client/worker production build
 ```
 
-`npm run build` is the verification gate: it runs the full typecheck, not a
-subset.
+`npm run build` runs typecheck, lint and bundle. It is NOT the whole gate -
+tests are separate (`npm run test:unit`, `npm run test:api`, and
+`npm run test:migrations` when the schema changes). AGENTS.md has the full
+list.
 
 None of the above needs a production credential. Local dev reads a disposable
 secret from `.dev.vars`, and Miniflare creates a local SQLite database from the

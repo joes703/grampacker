@@ -1,6 +1,8 @@
 # Organize Pack: design
 
-Status: rev 6 implementation baseline; shipped 2026-07-20.
+Status: SHIPPED 2026-07-20 (rev 6 baseline). DATED RECORD - not binding.
+Organize has since been ABSORBED INTO PACK; the peer view this describes no
+longer exists (see src/lists/list-detail-mode.ts).
 
 > **Post-launch route amendment (2026-07-20):** Organize is now a peer list
 > mode at `/lists/:id/organize`, alongside List (`/lists/:id`) and Pack

@@ -1,5 +1,8 @@
 # Combined review findings, 2026-07-31
 
+> **DATED RECORD (2026-07-31), not binding.** The merged view of the two
+> reviews above. See `docs/review-remediation-plan.md` for what was acted on.
+
 Two independent whole-codebase reviews of `56d4d09` were run on the same day:
 
 - `docs/review-2026-07-31.md` - Claude, five parallel specialist subagents

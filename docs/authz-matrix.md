@@ -1,5 +1,8 @@
 # Route authorization matrix
 
+**BINDING, maintained against the code.** The authority on who can call what.
+A route without a row, or a row that disagrees with its handler, is a defect.
+
 Every API route gets a row BEFORE it ships, and the row drives its tests
 (owner / non-owner / anon at minimum; cross-parent stitching for child
 resources). A route without a row, or a row without tests, fails review.
@@ -51,7 +54,9 @@ resources). A route without a row, or a row without tests, fails review.
 Cross-cutting, tested in `server/middleware/csrf.test.ts`:
 
 - Unsafe methods on non-auth routes require the `x-grampacker-request`
-  header and a matching `Origin` (`server/middleware/csrf.ts`).
+  header, and an `Origin` that MATCHES if one is sent - an absent Origin is
+  permitted (`server/middleware/csrf.ts`). The header is the actual control;
+  Origin is defense in depth.
 - Session-gated routes 401 without a cookie (`server/middleware/session.ts`).
 - Handlers receive user-scoped repositories only; ownership is fixed
   server-side and never read from the client.
@@ -78,8 +83,13 @@ Rate limiting, tested in `server/middleware/rate-limit.test.ts`:
     `rate_limits.key` would otherwise become a plaintext list of every address
     that ever asked for a link.
   - charge order is **IP -> address -> global**: a request the narrower caps
-    already refused never spends the shared quota, so the global count tracks
-    mail actually SENT, not attempts.
+    already refused never spends the shared quota.
+  - the global count tracks **validated send attempts**, NOT mail actually
+    sent. It is charged just before `email.send`, so a provider failure still
+    spends a slot - deliberately, because reserve-then-refund would leak a
+    slot forever whenever an isolate dies mid-send.
+    `server/middleware/rate-limit.ts` says "do not write 'mail actually sent'
+    here again"; this row used to say exactly that.
 - This limiter is the ONLY one. better-auth's own is disabled (`authOptions`),
   which means **the rate-limit rule the magic-link plugin ships never fires**.
   Reading the plugin source would suggest magic links are covered. They are not,

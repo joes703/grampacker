@@ -1,6 +1,7 @@
 # Food view redesign: design
 
-Status: DRAFT - awaiting review
+Status: SHIPPED 2026-08 (PRs #186-#196). DATED RECORD - not binding; the
+code is the current statement of this design.
 Date: 2026-08-06
 Relates to: the 0017 food estimate (`shared/food.ts`, `server/repos/food.ts`,
 `src/lists/FoodSection.tsx`). `docs/food-planning-design.md` remains superseded

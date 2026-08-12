@@ -1,10 +1,37 @@
 # Stack
 
-Versions pinned exact at scaffold time (2026-07-07), verified against npm
-dist-tags the same day. `npm ci` for CI/deploy installs; `.npmrc` sets
-`ignore-scripts=true` (verified: install + dev + build all work under it).
+**Reference, not policy.** `package.json` and the lockfile are authoritative
+for versions.
 
-## Installed at phase 0
+**`package.json` and the lockfile are authoritative for versions.** This file
+is not, and the table below has NOT been kept in step - by 2026-08-11 nearly
+every number in it was behind (hono 4.12.28 documented vs 4.13.1 installed,
+better-auth 1.6.23 vs 1.6.26, wrangler 4.107.0 vs 4.120.0, and several
+"arriving later" entries that arrived). Duplicating a machine-readable fact in
+prose guarantees the prose rots.
+
+What is worth keeping here is CONTEXT - why a dependency sits where it does,
+and what would move it. The rules themselves live in `AGENTS.md` ("Git and
+supply chain"); this file restates none of them, because a rule in two places
+is a rule that will disagree with itself.
+
+- TypeScript sits on 6.x because typescript-eslint declares `<6.1.0` and
+  throws at load on 7. 7.0 typechecks this repo cleanly, so the blocker is the
+  linter's peer range, not the compiler.
+- drizzle-orm sits on 0.45.x because better-auth peers on `^0.45.2`. The thing
+  to watch is better-auth's peer range, not drizzle's releases.
+- `overrides` exist here for transitive advisories rather than preference; see
+  AGENTS.md for how they must be written.
+
+## Installed at phase 0 - HISTORICAL
+
+Everything below is the scaffold's own notes from 2026-07-07, preserved as a
+record of why each dependency was chosen. **The versions are the scaffold's,
+not today's, and any instruction-shaped sentence in it ("generate-only",
+"pin at install time", "no core infra on beta/RC", "gate upgrades on...") is a
+scaffold-era note, not a current rule.** `AGENTS.md` governs what you may do;
+if a line here reads like policy, that is this section failing to sound as
+historical as it is.
 
 | Package | Version | Why / notes |
 | --- | --- | --- |
@@ -40,14 +67,15 @@ dist-tags the same day. `npm ci` for CI/deploy installs; `.npmrc` sets
   react-markdown - with the gear UI transplant (phase 2 step 3) and later
   slices.
 
-## Upgrade policy
+## Upgrade history
 
-- Exact pins, no ranges. Renovate/deps PRs bump deliberately.
-- No core infra on beta/RC. No exceptions remain: the one-day drizzle RC
-  experiment (adopted and reversed 2026-07-07 when better-auth's peer range
-  rejected it) is recorded in REWRITE_PLAN.md section 13.
-- Major bumps re-verify `rm -rf node_modules && npm ci` before merging
-  (peer-dep failures fail closed; never --legacy-peer-deps).
+Context, not rules - `AGENTS.md` "Git and supply chain" is binding.
+
+The only time a core dependency ran on a pre-release here was a one-day
+drizzle RC in 2026-07-07, reversed the same day because better-auth's peer
+range rejected it. That is the whole history; it is recorded because "we tried
+it once and it failed for a specific reason" is more useful than a
+prohibition.
 
 ## Watch list
 

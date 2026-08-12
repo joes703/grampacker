@@ -1,5 +1,8 @@
 # Architecture, TDD, and code quality review
 
+> **DATED RECORD (2026-07-31), not binding.** Raw review output. See
+> `docs/review-remediation-plan.md` for what was acted on.
+
 Date: 2026-07-31
 
 ## Executive verdict

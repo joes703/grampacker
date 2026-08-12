@@ -1,5 +1,10 @@
 # Food View Redesign Implementation Plan
 
+> **DATED RECORD, not binding.** An implementation plan, written before the
+> work and not updated after it. The instructions below were live WHEN IT WAS
+> WRITTEN; do not follow them now. Read it for reasoning, and check the code
+> for what actually shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Move the food estimate out of the inline gear list into its own list view at `/lists/:id/food`, then redesign it per `docs/food-view-design.md` — UI only, zero server changes.
