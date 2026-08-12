@@ -195,8 +195,17 @@ type GroupPropsBase = {
   headerAction?: ReactNode
   /** Replaces the rendered title text. `name` is still required and still
    *  supplies every accessible label ("Collapse {name}"), so a section stays
-   *  announceable while its title is an editing input. Used by pack mode's
-   *  rename-in-place on a packing location. */
+   *  announceable whatever its title becomes.
+   *
+   *  Two callers: pack mode's rename-in-place on a packing location, and the
+   *  Category arrangement's Food section, which pairs the name with a link
+   *  out to the Food view. The second is why this slot is worth preferring
+   *  over `headerAction` for anything with width: it sits inside the header's
+   *  flex-1 region, so it costs the fixed Qty/Weight column stubs nothing,
+   *  while an appended action shifts both labels off the cells below them.
+   *
+   *  Only rendered on the COLLAPSIBLE branch. `collapsible={false}` (the
+   *  public share) falls through to plain `name`. */
   titleContent?: ReactNode
   /** Per-row trailing control, same injection rationale as the header slots.
    *  Pack rows use it for the "move to location" menu, which is the

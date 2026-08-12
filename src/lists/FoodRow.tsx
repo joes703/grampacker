@@ -19,7 +19,9 @@ import { ConsumableIcon } from './list-item-flags'
 // Read-only, and that is a property of the SURFACE rather than a limitation.
 // A food item is authored in the Food view, where its schedule lives; a row
 // here that could rename or reweigh it would be a second authoring path for
-// data whose first one is a page away. The section header links there.
+// data whose first one is a page away. On the owner's page the section header
+// carries the link out to it; on the public share there is nothing to link to
+// and the rows are simply the document.
 //
 // No @dnd-kit import, deliberately: this module renders on the anonymous
 // share page. The same bundling seam CategoryGroup maintains with its

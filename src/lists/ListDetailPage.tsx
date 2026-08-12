@@ -80,9 +80,11 @@ import type { FoodItemResponse, ListFoodResponse } from '../../shared/food'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
 import {
+  DESKTOP_ROW_HEIGHT,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_META_TEXT,
   FLAT_TABLE_SURFACE,
+  MOBILE_ROW_HEIGHT,
 } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import ListDocumentToolbar from './ListDocumentToolbar'
@@ -2466,11 +2468,22 @@ function ListDetailInner({
                   // and a second authoring path for one thing is how the two
                   // drift.
                   titleContent={
-                    <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                    <span className="flex min-w-0 flex-1 items-center gap-1">
                       <span className={`truncate ${FLAT_TABLE_HEADER_TITLE}`}>Food</span>
+                      {/* aria-label, because "Edit" alone is the whole
+                          accessible name: the section title beside it is
+                          separate text, so a screen reader listing links
+                          would announce a destination-less "Edit".
+
+                          Sized to the mobile touch floor (the header is
+                          44px tall and the word alone is a ~20px target),
+                          relaxing to the desktop row height. Negative inline
+                          margin keeps the padded box from pushing the title
+                          without shrinking the target itself. */}
                       <Link
                         to={`/lists/${listId}/food`}
-                        className={`shrink-0 ${FLAT_TABLE_META_TEXT} text-gray-500 hover:text-blue-600`}
+                        aria-label="Edit food"
+                        className={`shrink-0 inline-flex items-center ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} px-2 -mx-1 ${FLAT_TABLE_META_TEXT} text-gray-500 hover:text-blue-600`}
                       >
                         Edit
                       </Link>

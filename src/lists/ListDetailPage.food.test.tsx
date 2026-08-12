@@ -182,10 +182,12 @@ describe('food is reachable at its own route, and traced from List view', () => 
     // to the section's card, since the ListViewNav Food tab points at the
     // same href.
     const card = chevron.closest('.overflow-hidden')!
-    expect(within(card as HTMLElement).getByRole('link', { name: 'Edit' })).toHaveAttribute(
-      'href',
-      `/lists/${listId}/food`,
-    )
+    const edit = within(card as HTMLElement).getByRole('link', { name: 'Edit food' })
+    expect(edit).toHaveAttribute('href', `/lists/${listId}/food`)
+    // The VISIBLE text is the short form; the accessible name carries the
+    // destination, because "Edit" alone tells a screen reader nothing about
+    // what is being edited.
+    expect(edit.textContent).toBe('Edit')
   })
 
   it('does not render the food editor inline on the list view', async () => {
