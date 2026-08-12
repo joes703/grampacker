@@ -87,7 +87,12 @@ const FORBIDDEN_KEYS = new Set([
   'isShared',
   'isPacked',
   'isReady',
+  // Both flags are retired: not on any DTO, not accepted on PATCH, columns
+  // left in place because dropping one rebuilds `lists` and a rebuild
+  // cascade-deletes list_items (AGENTS.md). Kept in this denylist so a
+  // future projection cannot quietly reintroduce either.
   'readyChecksEnabled',
+  'groupWorn',
   'status',
   'cost',
   'purchaseDate',
@@ -176,7 +181,6 @@ describe('GET /api/shares/v2/:slug', () => {
     expect(body.list).toEqual({
       name: 'JMT Loop',
       description: null,
-      groupWorn: false,
       isDraft: true, // lists are born drafts; the share view shows the banner
     })
 
@@ -266,7 +270,6 @@ describe('GET /api/shares/v2/:slug', () => {
     }
     expect(Object.keys(rawShape.list).toSorted()).toEqual([
       'description',
-      'groupWorn',
       'isDraft',
       'name',
     ])
@@ -292,19 +295,27 @@ describe('GET /api/shares/v2/:slug', () => {
     }
   })
 
-  it('reflects groupWorn and isDraft edits', async () => {
+  it('reflects isDraft edits, and no longer carries the retired worn flag', async () => {
     const { cookie } = await signUpVerifiedUser('share-flags@example.com', 'F')
     const list = await createList(cookie, 'Flags')
     await setShared(cookie, list.id, true)
     const patch = await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}`, {
-      groupWorn: true,
       isDraft: false,
     })
     expect(patch.status).toBe(200)
 
-    const body = sharedListResponseSchema.parse(await (await getShare(list.slug)).json())
-    expect(body.list.groupWorn).toBe(true)
+    const raw = await (await getShare(list.slug)).json()
+    const body = sharedListResponseSchema.parse(raw)
     expect(body.list.isDraft).toBe(false)
+    // The exact public list shape. groupWorn used to sit here with a comment
+    // claiming the share honored it, which SharePage never did - worn rows
+    // always leave their categories for one trailing Worn section. Asserted
+    // on raw JSON so a projection that put it back fails here.
+    expect(Object.keys((raw as { list: object }).list).toSorted()).toEqual([
+      'description',
+      'isDraft',
+      'name',
+    ])
   })
 
   it('serves an empty shared list as empty arrays, not an error', async () => {

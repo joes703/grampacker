@@ -23,7 +23,6 @@ import {
 export type PublicListRow = {
   name: string
   description: string | null
-  groupWorn: boolean
   isDraft: boolean
 }
 
@@ -83,7 +82,6 @@ export function createPublicSharesRepo(db: Db) {
         .select({
           name: lists.name,
           description: lists.description,
-          groupWorn: lists.groupWorn,
           isDraft: lists.isDraft,
         })
         .from(lists)

@@ -151,6 +151,19 @@ export const lists = sqliteTable(
     description: text('description'),
     slug: text('slug').notNull(),
     isShared: integer('is_shared', { mode: 'boolean' }).notNull().default(false),
+    // RETIRED 2026-08-11, and deliberately still here. Nothing reads or
+    // writes either one: they are off every DTO, refused on PATCH (the
+    // request schema is strict), and no longer copied by list duplication.
+    //
+    // Dropping a column means a SQLite table REBUILD, and rebuilding `lists`
+    // fires the cascades that delete every list_items row (AGENTS.md,
+    // docs/incidents.md). Inert columns are the cheap outcome; a rebuild is
+    // the expensive one. Do not "tidy" these away.
+    //
+    // group_worn was a per-list worn-grouping preference the share view was
+    // documented to honor and never did. ready_checks_enabled was a per-list
+    // opt-in for the Ready column, now unconditional. is_ready on each item
+    // was always independent of the flag, so no tick was ever lost to it.
     groupWorn: integer('group_worn', { mode: 'boolean' }).notNull().default(false),
     readyChecksEnabled: integer('ready_checks_enabled', { mode: 'boolean' })
       .notNull()

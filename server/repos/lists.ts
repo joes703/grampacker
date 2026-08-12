@@ -26,8 +26,6 @@ const cols = {
   description: lists.description,
   slug: lists.slug,
   isShared: lists.isShared,
-  groupWorn: lists.groupWorn,
-  readyChecksEnabled: lists.readyChecksEnabled,
   isDraft: lists.isDraft,
   sortOrder: lists.sortOrder,
   createdAt: lists.createdAt,
@@ -40,8 +38,6 @@ export type ListRow = {
   description: string | null
   slug: string
   isShared: boolean
-  groupWorn: boolean
-  readyChecksEnabled: boolean
   isDraft: boolean
   sortOrder: number
   createdAt: number // epoch ms
@@ -53,8 +49,6 @@ export type UpdateListPatch = {
   name?: string
   description?: string | null
   isShared?: boolean
-  groupWorn?: boolean
-  readyChecksEnabled?: boolean
   isDraft?: boolean
 }
 
@@ -251,9 +245,6 @@ export function createListsRepo(db: Db, userId: string) {
       if (patch.name !== undefined) set.name = patch.name
       if (patch.description !== undefined) set.description = patch.description
       if (patch.isShared !== undefined) set.isShared = patch.isShared
-      if (patch.groupWorn !== undefined) set.groupWorn = patch.groupWorn
-      if (patch.readyChecksEnabled !== undefined)
-        set.readyChecksEnabled = patch.readyChecksEnabled
       if (patch.isDraft !== undefined) set.isDraft = patch.isDraft
       const [row] = await db
         .update(lists)
@@ -424,8 +415,6 @@ export function createListsRepo(db: Db, userId: string) {
             description: source.description,
             slug,
             isShared: false,
-            groupWorn: source.groupWorn,
-            readyChecksEnabled: source.readyChecksEnabled,
             isDraft: true,
             sortOrder: nextSortOrder(),
             createdAt: now,

@@ -19,11 +19,11 @@ type Props = {
   onToggleShowUnpackedOnly: () => void
   showUnreadyOnly: boolean
   onToggleShowUnreadyOnly: () => void
-  // Ready Checks block. Ready checks are ALWAYS on now: there is no
-  // per-list opt-in, so the second progress bar and the Reset ready button
-  // render unconditionally. The `ready_checks_enabled` column still exists
-  // and is still copied by list duplication, but nothing reads it - see the
-  // note in ListDetailPage where readyChecksEnabled is pinned true.
+  // Ready Checks block. Ready checks are ALWAYS on: there is no per-list
+  // opt-in, so the second progress bar and the Reset ready button render
+  // unconditionally. The `ready_checks_enabled` COLUMN still exists and is
+  // now fully inert - not read, not written, not copied by duplication, not
+  // on any DTO. See the note in ListDetailPage for why the column stays.
   // Prop is required because PackingProgress only renders for the owner
   // in pack mode — the share view (which never wires reset) does not
   // render this component.

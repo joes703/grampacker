@@ -1630,21 +1630,20 @@ function ListDetailInner({
   const sharedGroupProps = useMemo(
     () => ({
       packMode: mode === 'pack',
-      // Ready checks are always on. This used to read list.readyChecksEnabled,
-      // a per-list opt-in toggled from PackingProgress. The toggle was pure
-      // friction - a checklist either has a prep step or you ignore the
-      // column - so the feature is now unconditional and the flag is pinned
-      // true here rather than threaded through every consumer.
+      // Ready checks are unconditional. They were once a per-list opt-in
+      // toggled from PackingProgress; the toggle was pure friction - a
+      // checklist either has a prep step or you ignore the column - so the
+      // feature became unconditional, the flag was pinned true here, and the
+      // prop is now gone from every consumer.
       //
-      // The lists.ready_checks_enabled column stays: dropping it means a
-      // SQLite table rebuild, and a rebuild of `lists` cascade-deletes
-      // list_items (AGENTS.md). It is inert compatibility data now - list
-      // duplication still copies it, nothing reads it. is_ready on each item
-      // was always persisted independently of this flag, so a list that had
-      // ready checks on, collected some ticks, then turned them off gets
-      // those ticks back rather than a reset - which is the honest outcome:
-      // the data was never deleted, only hidden.
-      readyChecksEnabled: true,
+      // The lists.ready_checks_enabled COLUMN stays, and is now inert. It is
+      // no longer read, written, accepted on PATCH, or returned; dropping it
+      // means a SQLite table rebuild, and a rebuild of `lists`
+      // cascade-deletes list_items (AGENTS.md). is_ready on each item was
+      // always persisted independently of it, so a list that had ready checks
+      // on, collected some ticks, then turned them off gets those ticks back
+      // rather than a reset - the honest outcome, since the data was never
+      // deleted, only hidden.
       weightUnit,
       isBelowLg,
       // Injects the drag rendering. CategoryGroup itself has no @dnd-kit import
@@ -2364,8 +2363,7 @@ function ListDetailInner({
                         their original category or location sections.
                         Spreads the
                         same sharedGroupProps every in-category section uses so
-                        row chrome stays consistent — including readyChecksEnabled
-                        (Ready checkbox column in Pack mode), onSetGearStatus,
+                        row chrome stays consistent — onSetGearStatus,
                         edit/delete handlers, weight unit, and breakpoint.
                         Worn-specific overrides come after the spread
                         so they win: section name "Worn", the stable wornItems

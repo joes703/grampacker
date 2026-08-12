@@ -30,8 +30,6 @@ describe('ListSettingsPanel worn grouping', () => {
       slug: 'trip',
       isShared: false,
       isDraft: false,
-      groupWorn: false,
-      readyChecksEnabled: false,
       sortOrder: 0,
       createdAt: '2026-01-01',
       updatedAt: '2026-01-01',

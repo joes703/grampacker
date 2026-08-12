@@ -32,7 +32,6 @@ function toSharedListResponse(share: PublicShare): SharedListResponse {
     list: {
       name: share.list.name,
       description: share.list.description,
-      groupWorn: share.list.groupWorn,
       isDraft: share.list.isDraft,
     },
     categories: share.categories.map((row) => ({

@@ -49,12 +49,12 @@ const gearItems: GearItem[] = [
 const lists: List[] = [
   {
     id: 'l-1', name: 'Weekend Trip', description: null, slug: 's1', isShared: false,
-    groupWorn: false, readyChecksEnabled: false, isDraft: false, sortOrder: 0,
+    isDraft: false, sortOrder: 0,
     createdAt: '2024-01-01', updatedAt: '2024-01-01',
   },
   {
     id: 'l-2', name: 'Thru Hike', description: null, slug: 's2', isShared: false,
-    groupWorn: false, readyChecksEnabled: false, isDraft: false, sortOrder: 1,
+    isDraft: false, sortOrder: 1,
     createdAt: '2024-01-01', updatedAt: '2024-01-01',
   },
 ]

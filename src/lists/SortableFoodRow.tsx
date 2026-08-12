@@ -28,7 +28,6 @@ import { useIsPlacing } from './placement-context'
 // import @dnd-kit directly - no share-path bundling seam applies here.
 type Props = {
   food: FoodItemResponse
-  readyChecksEnabled: boolean
   reorderPending: boolean
   weightUnit: WeightUnit
   onUpdate: (patch: { isPacked?: boolean; isReady?: boolean }) => void
@@ -38,7 +37,6 @@ type Props = {
 
 export default function SortableFoodRow({
   food,
-  readyChecksEnabled,
   reorderPending,
   weightUnit,
   onUpdate,
@@ -87,22 +85,18 @@ export default function SortableFoodRow({
         ariaLabel={`Reorder or move ${food.name}`}
         icon={<GripVertical size={14} />}
       />
-      {readyChecksEnabled && (
-        <>
-          <PackModeCheckbox
-            variant="ready"
-            checked={food.isReady}
-            onChange={(checked) => onUpdate({ isReady: checked })}
-            ariaLabel={`Mark ${food.name} ready`}
-            title="Ready"
-            standaloneLabel
-          />
-          <span
-            aria-hidden="true"
-            className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
-          />
-        </>
-      )}
+      <PackModeCheckbox
+        variant="ready"
+        checked={food.isReady}
+        onChange={(checked) => onUpdate({ isReady: checked })}
+        ariaLabel={`Mark ${food.name} ready`}
+        title="Ready"
+        standaloneLabel
+      />
+      <span
+        aria-hidden="true"
+        className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
+      />
       <label className="flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 cursor-pointer">
         <PackModeCheckbox
           variant="packed"

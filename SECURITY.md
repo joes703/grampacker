@@ -568,6 +568,16 @@ of it:
   delete. Worst case for a user with no passkey and no working mailbox is
   loss of access to their own gear list, which is recoverable by support
   (there is one user, and he is the maintainer).
+- **Two list flags were retired from every surface** (2026-08-11):
+  `groupWorn` and `readyChecksEnabled`. Neither is on any DTO, neither is
+  accepted on PATCH, and `groupWorn` is off the public share DTO - which
+  matters here because it was published with a comment claiming the share
+  honored it, and the share never did. Their COLUMNS remain: dropping one
+  rebuilds `lists`, and a rebuild cascade-deletes every `list_items` row.
+  Both names stay in the forbidden-key denylist in
+  `server/routes/shares.test.ts` so a future projection cannot reintroduce
+  them quietly.
+
 - **Public share endpoint** (`GET /api/shares/v2/:slug`, phase 4): dedicated
   repository + DTO allowlist + private-column ABSENCE tests + uniform
   404 for unknown and inactive slugs. The re-sweep of this file happens

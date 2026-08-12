@@ -24,8 +24,6 @@ const LIST_ROW = {
   description: null,
   slug: 'abc123',
   isShared: false,
-  groupWorn: false,
-  readyChecksEnabled: true,
   isDraft: false,
   sortOrder: 0,
   createdAt: '2026-07-08T00:00:00.000Z',
@@ -33,7 +31,7 @@ const LIST_ROW = {
 }
 
 const SHARED_ROW = {
-  list: { name: 'Trip', description: null, groupWorn: false, isDraft: false },
+  list: { name: 'Trip', description: null, isDraft: false },
   categories: [],
   items: [],
   food: { items: [] },

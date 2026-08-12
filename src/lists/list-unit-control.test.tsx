@@ -20,8 +20,6 @@ const list: List = {
   slug: 'trip',
   isShared: false,
   isDraft: false,
-  groupWorn: false,
-  readyChecksEnabled: false,
   sortOrder: 0,
   createdAt: '2026-06-06T00:00:00.000Z',
   updatedAt: '2026-06-06T00:00:00.000Z',

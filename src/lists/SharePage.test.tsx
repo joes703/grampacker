@@ -48,7 +48,6 @@ function share(over: {
     list: {
       name: 'Trip',
       description: null,
-      groupWorn: false,
       isDraft: false,
       ...over.list,
     },

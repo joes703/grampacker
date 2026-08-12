@@ -540,7 +540,6 @@ describe('food crosses the public share boundary as rows, and the plan does not'
     // a root-only assertion.
     expect(Object.keys(raw.list as object).sort()).toEqual([
       'description',
-      'groupWorn',
       'isDraft',
       'name',
     ])
@@ -597,7 +596,6 @@ describe('food crosses the public share boundary as rows, and the plan does not'
 
     expect(Object.keys(raw.list as object).sort()).toEqual([
       'description',
-      'groupWorn',
       'isDraft',
       'name',
     ])

@@ -94,8 +94,6 @@ const LIST: List = {
   slug: 'abc123',
   isShared: false,
   isDraft: false,
-  groupWorn: false,
-  readyChecksEnabled: false,
   sortOrder: 0,
   createdAt: '',
   updatedAt: '',

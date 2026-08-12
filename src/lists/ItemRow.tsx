@@ -75,10 +75,6 @@ export type ItemRowProps = {
   // matchMedia subscription, not 300. Set in sharedGroupProps.
   isBelowLg: boolean
   packMode?: boolean
-  // Pack-mode + readyChecksEnabled: render a Ready checkbox BEFORE the
-  // Packed checkbox. Order in pack-mode row: [Ready] [Packed] status name
-  // ... worn/consumable qty. Ignored when packMode is false.
-  readyChecksEnabled?: boolean
   // Read by the SortableItemRow wrapper only; plain ItemRow ignores it. Lives
   // on the base Props so CategoryGroup's rowPropsFor() builder can spread the
   // same object into either renderer.
@@ -111,7 +107,6 @@ export default function ItemRow({
   weightUnit,
   isBelowLg,
   packMode = false,
-  readyChecksEnabled = false,
   onUpdate,
   onSaveName,
   onSaveDescription,
@@ -165,10 +160,8 @@ export default function ItemRow({
       <div
         ref={outerRef}
         style={outerStyle}
-        // gap-2 lg:gap-2.5 controls only the space between the Ready
-        // checkbox (left) and the wrapping label that hosts Packed +
-        // name. When readyChecksEnabled is false the row has just one
-        // direct flex child (the label) so this gap is inert. Bumped
+        // gap-2 lg:gap-2.5 controls the space between the Ready checkbox
+        // (left) and the wrapping label that hosts Packed + name. Bumped
         // from gap-0.5 lg:gap-1.5 so the two checkboxes don't read as
         // a single cluster on touch.
         className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${FLAT_TABLE_ROW_PADDING} gap-2 lg:gap-2.5 transition-colors ${
@@ -191,22 +184,18 @@ export default function ItemRow({
             forwards a non-input click on the label to its FIRST nested
             input — putting Ready there would steal that gesture. Ready
             gets its own aria-label since it's no longer wrapped. */}
-        {readyChecksEnabled && (
-          <>
-            <PackModeCheckbox
-              variant="ready"
-              checked={item.isReady}
-              onChange={(checked) => onUpdate?.({ isReady: checked })}
-              ariaLabel={`Mark ${name} ready`}
-              title="Ready"
-              standaloneLabel
-            />
-            <span
-              aria-hidden="true"
-              className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
-            />
-          </>
-        )}
+        <PackModeCheckbox
+          variant="ready"
+          checked={item.isReady}
+          onChange={(checked) => onUpdate?.({ isReady: checked })}
+          ariaLabel={`Mark ${name} ready`}
+          title="Ready"
+          standaloneLabel
+        />
+        <span
+          aria-hidden="true"
+          className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
+        />
         {/* Wrapping label means clicking/tapping the name toggles packed,
             and screen readers announce the item name as the checkbox's
             accessible name (no separate aria-label needed). */}

@@ -19,8 +19,6 @@ type ListBody = {
   description: string | null
   slug: string
   isShared: boolean
-  groupWorn: boolean
-  readyChecksEnabled: boolean
   isDraft: boolean
   sortOrder: number
   createdAt: string
@@ -211,19 +209,33 @@ describe('lists CRUD', () => {
     const patch = await apiRequest(cookie, 'PATCH', `/api/lists/${first.id}`, {
       name: 'Overnighter v2',
       description: 'Two nights, one bag',
-      groupWorn: true,
-      readyChecksEnabled: true,
       isDraft: false,
     })
     expect(patch.status).toBe(200)
     const patched = (await patch.json()) as ListBody
     expect(patched.name).toBe('Overnighter v2')
     expect(patched.description).toBe('Two nights, one bag')
-    expect(patched.groupWorn).toBe(true)
-    expect(patched.readyChecksEnabled).toBe(true)
     expect(patched.isDraft).toBe(false)
+    expect(Object.keys(patched)).not.toContain('groupWorn')
+    expect(Object.keys(patched)).not.toContain('readyChecksEnabled')
     expect(patched.updatedAt > first.updatedAt).toBe(true)
     expect(patched.slug).toBe(first.slug) // patches never touch the slug
+
+    // A client still running the pre-retirement bundle sends groupWorn or
+    // readyChecksEnabled on every list PATCH. The request schema is strict,
+    // so it gets a 400 - the whole patch is refused, not silently
+    // half-applied. That is the documented position (stale open tabs are not
+    // supported) and it is worth pinning rather than discovering: the failure
+    // is loud and total, and it resolves on the next navigation.
+    const retired = await apiRequest(cookie, 'PATCH', `/api/lists/${first.id}`, {
+      name: 'Should not land',
+      groupWorn: true,
+    })
+    expect(retired.status).toBe(400)
+    const unchanged = (await (
+      await apiRequest(cookie, 'GET', `/api/lists`)
+    ).json()) as ListBody[]
+    expect(unchanged.find((l) => l.id === first.id)?.name).toBe('Overnighter v2')
 
     // null clears description
     const clear = await apiRequest(cookie, 'PATCH', `/api/lists/${first.id}`, {
