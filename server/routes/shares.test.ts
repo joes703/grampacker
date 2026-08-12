@@ -134,6 +134,38 @@ describe('GET /api/shares/v2/:slug', () => {
     // A third category the list never references must stay absent.
     await createCategory(cookie, 'Unreferenced')
 
+    // REAL food on this list, so the per-row key assertion below actually
+    // executes. It used to carry a note saying the loop was vacuous "here"
+    // and to see food.test.ts for the populated case - and then the key set
+    // it could not check went stale (it still named `quantity` after 0024
+    // replaced that with `unitCount`). An assertion that cannot fail is not
+    // coverage; it is a comment that looks like a test.
+    //
+    // Per-meal and scheduled into two of the three lunches, so unitCount is
+    // DERIVED (2) rather than equal to quantity (1). A fixture where the two
+    // coincide cannot tell the right field from the wrong one.
+    expect(
+      (await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/food/days`, { days: 3 }))
+        .status,
+    ).toBe(200)
+    const foodPlan = (await (
+      await apiRequest(cookie, 'GET', `/api/lists/${list.id}/food`)
+    ).json()) as { slots: { id: string; dayNumber: number; meal: string }[] }
+    const lunches = foodPlan.slots
+      .filter((slot) => slot.meal === 'lunch' && slot.dayNumber <= 2)
+      .map((slot) => slot.id)
+    expect(lunches).toHaveLength(2)
+    expect(
+      (
+        await apiRequest(cookie, 'POST', `/api/lists/${list.id}/food/items`, {
+          name: 'Ramen',
+          weightGrams: 85,
+          quantity: 1,
+          slotIds: lunches,
+        })
+      ).status,
+    ).toBe(201)
+
     const tarpId = await createGear(cookie, {
       // cost + purchaseDate are POPULATED on purpose: they are private
       // inventory metadata, and a fixture that leaves them null cannot tell
@@ -255,19 +287,23 @@ describe('GET /api/shares/v2/:slug', () => {
     ])
     // Food's entire public surface: rows, and each row exactly five fields.
     // The per-row key set is what carries the contract - a food row also has
-    // isPacked, isReady, packingLocationId, packSortOrder and slot ids, and
-    // none of them may cross. (This list has no food, so the loop is vacuous
-    // here; food.test.ts drives the populated case.)
+    // quantity, isPerMeal, isPacked, isReady, packingLocationId, packSortOrder
+    // and slot ids, and none of them may cross.
     expect(Object.keys(rawShape.food)).toEqual(['items'])
+    expect(rawShape.food.items).toHaveLength(1)
     for (const foodItem of rawShape.food.items) {
       expect(Object.keys(foodItem).toSorted()).toEqual([
         'id',
         'name',
-        'quantity',
         'sortOrder',
+        'unitCount',
         'weightGrams',
       ])
     }
+    // The value, not just the key: 1 per lunch across 2 lunches. Asserting
+    // only the key set would pass on a row that published `quantity`'s value
+    // under the name `unitCount`.
+    expect(rawShape.food.items[0]).toMatchObject({ name: 'Ramen', unitCount: 2 })
     expect(Object.keys(rawShape.list).toSorted()).toEqual([
       'description',
       'isDraft',
