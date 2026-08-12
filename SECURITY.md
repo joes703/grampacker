@@ -374,9 +374,21 @@ restatement of the general posture.
   cross-parent stitching: a location id from another of the caller's OWN lists
   must 404, not succeed, or the ownership check degrades from "this list" to
   "this user". Enforced by a composite parent predicate on every write.
-  Coverage is not uniform - DELETE and reorder have explicit wrong-parent
-  tests; the equivalent PATCH case does not
-  (`server/routes/packing-locations.test.ts`). Item-backed containers add a
+  All three write verbs have explicit wrong-parent tests
+  (`server/routes/packing-locations.test.ts`); PATCH was the gap and was
+  closed 2026-08-11. Two things that gap taught, both worth keeping:
+
+  A status assertion alone proves nothing here. `rename` pre-reads, UPDATEs,
+  then reads back through the owned parent - so with the parent predicate
+  removed the route still answers 404 while the UPDATE has already committed.
+  Only the row assertions catch that.
+
+  And one fixture is not enough. An item-backed location short-circuits to
+  `item_backed` (409) in the PRE-READ, before the scoped UPDATE. Lose the
+  predicate from the pre-read alone and a name-only target still 404s, while
+  an item-backed one answers 409 through the wrong parent - an existence
+  oracle that also discloses the kind of location. Both fixtures are tested;
+  each catches a mutation the other survives. Item-backed containers add a
   cycle risk (a bag inside itself, or a loop of bags); assignment rejects both
   with zero writes. Caps: 30 locations per list.
 
@@ -505,6 +517,30 @@ of it:
   Trigger: a second person using the app, or any report of a meal plan losing
   entries. Until then the blast radius is one list, within one account, with
   concurrent clients - two tabs, or a phone and a laptop.
+
+- **Creating or renaming a packing location can commit and then report
+  failure.** Both `create` and `rename` in
+  `server/repos/packing-locations.ts` write and then call `readOwnedList` to
+  compose their response. The write and the read-back are separate
+  operations, so a read-back that fails or comes back without the row makes
+  the route report failure over a change that landed: `create` throws
+  ("insert could not be read") and 500s; `rename` maps it to 404, or 500s if
+  the read itself fails. A concurrent delete between the two produces the
+  same thing legitimately. Found by review 2026-08-11 while closing the
+  wrong-parent PATCH gap - and the second half of it, `create`, was found
+  only on the review's second pass, after this entry first claimed the
+  problem was rename's alone.
+
+  Not a security issue - no boundary is crossed, and the only caller who can
+  reach either is the owner acting on their own list. It is a truthfulness
+  one, recorded here because this file is where live gaps live rather than in
+  a commit message. The fix for both is to return the row from the write's
+  own `RETURNING` rather than re-reading, which needs that shape to match
+  what `readOwnedList` composes.
+
+  Trigger: any report of a location that "didn't save" and then existed, or
+  the next change to this repo's return path. Blast radius today is one
+  mislabelled error on one owner's own write.
 
 - **Fresh-auth proofs**: CLOSED. See "Fresh auth" above - passkey
   mutations and account deletion both require a fresh session. Email
