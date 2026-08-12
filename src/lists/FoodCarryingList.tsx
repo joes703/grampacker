@@ -98,16 +98,16 @@ function FoodItemRow({
             WHEN you eat this, the count says how many you pack, and the two
             are independent - conflating them is what made a five-lunch plan
             look like it weighed one packet. */}
-        <span className={`flex items-center gap-1 ${FLAT_TABLE_META_TEXT}`}>
-          <span>Carry</span>
+        <span className={`flex min-w-0 flex-wrap items-center gap-x-1 ${FLAT_TABLE_META_TEXT}`}>
+          <span className="shrink-0">Carry</span>
           <InlineQuantity
             quantity={item.quantity}
             max={FOOD_QUANTITY_MAX}
             onSave={busy ? undefined : onSetQuantity}
             itemName={item.name}
-            className="w-6"
+            editingClassName="w-16 lg:w-12"
           />
-          <span aria-hidden="true">·</span>
+          <span aria-hidden="true" className="shrink-0">·</span>
           {item.slotIds.length > 0 ? (
             `${item.slotIds.length} ${item.slotIds.length === 1 ? 'meal' : 'meals'}`
           ) : (

@@ -5,7 +5,7 @@ import WeightInput from '../components/WeightInput'
 import { FLAT_TABLE_BODY_TEXT, FORM_INPUT } from '../components/flat-table-styles'
 import FoodSlotPicker from './FoodSlotPicker'
 import { addFoodPreview } from './add-food-preview'
-import type { FoodSlotResponse } from '../../shared/food'
+import { FOOD_QUANTITY_MAX, type FoodSlotResponse } from '../../shared/food'
 import type { WeightUnit } from '../lib/weight'
 
 // Labeled, unit-aware add-food form with a live preview. Replaces the
@@ -61,7 +61,7 @@ export default function AddFoodForm({
     name.trim().length <= 128 &&
     Number.isInteger(quantityValue) &&
     quantityValue >= 1 &&
-    quantityValue <= 9999
+    quantityValue <= FOOD_QUANTITY_MAX
 
   const preview = addFoodPreview({
     name,
@@ -134,7 +134,7 @@ export default function AddFoodForm({
               id="add-food-qty"
               type="number"
               min={1}
-              max={9999}
+              max={FOOD_QUANTITY_MAX}
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
               className={`${FORM_INPUT} w-20 text-right tabular-nums`}
