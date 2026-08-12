@@ -272,17 +272,34 @@ export const publicListItemSchema = z.object({
 })
 export type PublicListItem = z.infer<typeof publicListItemSchema>
 
-// Food's ONLY appearance on the anonymous surface: one aggregate. No names,
-// no quantities, no day count, no meal slots, no packing state.
+// What a share publishes about food: the same four facts it publishes about
+// a gear row - what it is, how many, how heavy, and where it sits in the
+// order.
 //
-// Publishing it is a deliberate widening of this contract, made 2026-08-10.
-// The owner's own totals count food (computeListWeightBreakdown), so a share
-// that omitted it reported a lighter pack for the same list - the number
-// disagreed with itself across two views of one thing. A reader who can see
-// "Total pack weight" is better served by a true number than by a private
-// one, and the aggregate discloses far less than the rows would.
-export const publicFoodSchema = z.object({
+// Nothing about the PLAN. Day count, meal slots, "not needed" marks and
+// packing state stay private, and that line is the whole contract here:
+// "2 x 85 g ramen" is a thing in a pack, "Tuesday dinner: leftover curry" is
+// a fact about someone's week.
+//
+// This started as a single aggregate on 2026-08-10 and became rows on
+// 2026-08-11. Food you carry is part of the pack you are showing someone,
+// which is how comparable lists work; hiding it was never a privacy decision,
+// it was a leftover from food being a late arrival. Publishing rows also let
+// the aggregate query that existed only for this surface go away - the share
+// now sums the rows exactly as the owner's own view does, so there is ONE
+// definition of food weight instead of two that could drift apart.
+export const publicFoodItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  quantity: z.number().int(),
+  // Fractional for the same reason gear weight is: one item carries tenths.
   weightGrams: z.number(),
+  sortOrder: z.number().int(),
+})
+export type PublicFoodItem = z.infer<typeof publicFoodItemSchema>
+
+export const publicFoodSchema = z.object({
+  items: z.array(publicFoodItemSchema),
 })
 export type PublicFood = z.infer<typeof publicFoodSchema>
 

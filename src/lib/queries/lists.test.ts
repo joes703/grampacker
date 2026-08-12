@@ -36,7 +36,7 @@ const SHARED_ROW = {
   list: { name: 'Trip', description: null, groupWorn: false, isDraft: false },
   categories: [],
   items: [],
-  food: { weightGrams: 0 },
+  food: { items: [] },
 }
 
 function mockFetch(status: number, body?: unknown) {

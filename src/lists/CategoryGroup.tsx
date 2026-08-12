@@ -20,6 +20,7 @@ import {
   ROW_LEADING_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ItemRow, { type ItemRowProps } from './ItemRow'
+import FoodRow from './FoodRow'
 import AddItemRow from './AddItemRow'
 import { type AddItemData } from './use-quick-add-form'
 import TotalWeightValue from '../components/TotalWeightValue'
@@ -89,6 +90,17 @@ export type PackFoodRowProps = {
   weightUnit: WeightUnit
   onUpdate: (patch: { isPacked?: boolean; isReady?: boolean }) => void
   rowAction?: ReactNode
+}
+
+/** What a read-only food row needs, and nothing more. Structural rather than
+ *  a Pick of FoodItemResponse so the public share - whose DTO deliberately
+ *  carries no packing state or slot ids - can satisfy it without pretending
+ *  to hold fields it does not. */
+export type PlainFoodRow = {
+  id: string
+  name: string
+  quantity: number
+  weightGrams: number
 }
 
 export type RenderRows = (
@@ -211,6 +223,19 @@ type GroupPropsBase = {
    *  same pack filters as gear, counted into the header progress, and handed
    *  to renderRows for union-ordered rendering. */
   packFoodRows?: FoodItemResponse[]
+  /** The non-pack counterpart: plain read-only food rows, rendered after this
+   *  section's gear rows. Used by the Category arrangement and the public
+   *  share, which both show food as items rather than as a checklist.
+   *
+   *  A SEPARATE prop from packFoodRows rather than one prop switched on
+   *  packMode, because the two differ in what they need and where they go.
+   *  These rows need only a name, a quantity and a weight, and render
+   *  directly as FoodRow. Pack rows need the mutable packing state on top of
+   *  that and must travel through the injected renderRows seam so @dnd-kit
+   *  stays out of the anonymous share bundle - the same seam gear rows use.
+   *  Collapsing them would mean either importing the drag machinery here or
+   *  demanding pack state from a surface that has none. */
+  foodRows?: PlainFoodRow[]
   onUpdateFood?: (
     foodId: string,
     patch: { isPacked?: boolean; isReady?: boolean },
@@ -319,6 +344,7 @@ function CategoryGroup({
   titleContent,
   renderRowAction,
   packFoodRows,
+  foodRows,
   onUpdateFood,
   renderFoodRowAction,
   wornSection = false,
@@ -611,6 +637,10 @@ function CategoryGroup({
         // `cat-region-uncategorized` id - duplicate ids on the public page,
         // referenced by nothing.
         <div id={collapsible ? regionId : undefined}>
+          {/* Plain food rows follow this section's gear rows. Non-pack only:
+              in pack mode food is part of the union cohort and comes through
+              renderRows with the gear, so rendering it here as well would
+              show every row twice. */}
           {renderRows
             ? renderRows(
                 visibleItems,
@@ -635,6 +665,15 @@ function CategoryGroup({
                   : undefined,
               )
             : visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}
+          {!packMode &&
+            foodRows?.map((food) => (
+              <FoodRow
+                key={food.id}
+                food={food}
+                weightUnit={weightUnit}
+                isBelowLg={isBelowLg}
+              />
+            ))}
           {/* An empty pack section says WHY it is empty. Without this a
               section can render as a bare header with nothing under it, and
               the two reasons look identical: the location genuinely holds

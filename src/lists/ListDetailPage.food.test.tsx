@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, cleanup, screen, within } from '@testing-library/react'
+import { render, cleanup, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ReactNode } from 'react'
@@ -45,7 +45,23 @@ const list: List = {
 const food: ListFoodResponse = {
   dayCount: 3,
   slots: [{ id: 'slot-1', dayNumber: 1, meal: 'breakfast', needed: true }],
-  items: [],
+  // At least one item, because the Category arrangement renders a Food
+  // SECTION and a section with no rows is noise - so an empty food fixture
+  // would prove nothing about where food is mounted.
+  items: [
+    {
+      id: 'food-1',
+      name: 'Oatmeal',
+      weightGrams: 90,
+      quantity: 3,
+      sortOrder: 0,
+      isPacked: false,
+      isReady: false,
+      packingLocationId: null,
+      packSortOrder: 0,
+      slotIds: ['slot-1'],
+    },
+  ],
 } as unknown as ListFoodResponse
 
 const h = vi.hoisted(() => ({
@@ -121,12 +137,14 @@ async function renderDetail(path: string) {
 }
 
 const foodHeading = () => screen.queryByRole('heading', { name: 'Food' })
-// Scoped to FoodSummaryRow's own labeled section, not a bare link name: the
-// ListViewNav "Food" tab (part of ListDocumentToolbar, rendered in every
-// mode outside the detail-data gate) links to the exact same
-// /lists/:id/food href and would otherwise make a name- or href-based query
-// ambiguous between the two.
-const foodSummarySection = () => screen.queryByRole('region', { name: 'Food summary' })
+// The Category arrangement's Food section, identified by its own "Edit food"
+// link rather than by the word "Food": the ListViewNav Food tab (part of
+// ListDocumentToolbar, rendered in every mode and OUTSIDE the detail-data
+// gate) links to the same /lists/:id/food href, so a name- or href-based
+// query would be ambiguous between the two - and worse, would resolve before
+// the gate opens and let a negative assertion pass vacuously.
+const foodSectionLink = () => screen.queryByRole('link', { name: 'Edit food' })
+const foodRow = () => screen.queryByText('Oatmeal')
 
 beforeEach(() => {
   stubViewport(1280)
@@ -151,28 +169,29 @@ describe('food is reachable at its own route, and traced from List view', () => 
     expect(await screen.findByLabelText('Trip length in days')).toBeTruthy()
   })
 
-  it('shows the food summary row on the list view', async () => {
+  // Food used to appear here as a single summary line - one number and a
+  // link - while Pack showed the items. Category shows the items now too.
+  it('shows food as rows on the list view, with a route to edit them', async () => {
     await renderDetail(`/lists/${listId}`)
-    const section = await screen.findByRole('region', { name: 'Food summary' })
-    expect(within(section).getByRole('link')).toHaveAttribute(
-      'href',
-      `/lists/${listId}/food`,
-    )
+    const link = await screen.findByRole('link', { name: 'Edit food' })
+    expect(link).toHaveAttribute('href', `/lists/${listId}/food`)
+    expect(foodRow()).toBeTruthy()
   })
 
   it('does not render the food editor inline on the list view', async () => {
     await renderDetail(`/lists/${listId}`)
     // Something the list view always shows once loaded, so the wait settles
     // past the detail-data gate before the negative assertion below.
-    await screen.findByRole('region', { name: 'Food summary' })
+    await screen.findByRole('link', { name: 'Edit food' })
     expect(screen.queryByLabelText('Trip length in days')).not.toBeInTheDocument()
     expect(foodHeading()).toBeNull()
   })
 
-  // Pack keeps its packing focus. The Food tab in ListViewNav (part of
-  // ListDocumentToolbar, rendered in every mode) is Pack's path to food, not
-  // an inline section or summary row.
-  it('renders neither the food editor nor the summary row in Pack view', async () => {
+  // Pack shows food too, but as part of each bag's union cohort - so the
+  // CATEGORY section must not also render there, or every food row would
+  // appear twice. Neither does the editor: the Food tab in ListViewNav is
+  // Pack's route to authoring food.
+  it('renders neither the food editor nor the Category food section in Pack view', async () => {
     await renderDetail(`/lists/${listId}/pack`)
     // ListViewNav (and its "List views" nav landmark) lives in
     // ListDocumentToolbar, ABOVE the mode ternary and outside the
@@ -183,7 +202,11 @@ describe('food is reachable at its own route, and traced from List view', () => 
     // (ListDetailPage.tsx), so waiting on it actually proves the gate opened.
     await screen.findByLabelText('New packing location')
     expect(foodHeading()).toBeNull()
-    expect(foodSummarySection()).toBeNull()
+    expect(foodSectionLink()).toBeNull()
+    // Exactly once, not zero: Pack renders the row through the union cohort.
+    // Asserting only the section's absence would stay green if the row had
+    // vanished from Pack entirely.
+    expect(screen.getAllByText('Oatmeal')).toHaveLength(1)
   })
 })
 
@@ -222,16 +245,18 @@ describe('the Food route owns its own query gates, separate from the detail-data
     expect(screen.queryByText("Couldn't load list details")).toBeNull()
   })
 
-  // The List view keeps the OLD behavior: the summary row is derived from
-  // the same detail-data set the weight totals need, so it still sits behind
-  // the composite gate - a sibling failure there is a real reason to
-  // withhold a row that claims to summarize food weight.
-  it('on the List view, the summary row stays behind the composite detail-data gate', async () => {
+  // The List view keeps the OLD behavior: the Food section sits inside the
+  // composite gate along with everything else the page renders, so a sibling
+  // failure withholds it too. Not because food depends on gear - it does not
+  // - but because the page has one document, and half a document under a
+  // "couldn't load" banner is worse than none.
+  it('on the List view, the food section stays behind the composite detail-data gate', async () => {
     h.fetchListItems.mockRejectedValue(new Error('offline'))
 
     await renderDetail(`/lists/${listId}`)
     expect(await screen.findByText("Couldn't load list details")).toBeTruthy()
-    expect(foodSummarySection()).toBeNull()
+    expect(foodSectionLink()).toBeNull()
+    expect(foodRow()).toBeNull()
   })
 
   // A food-query failure is now FoodView's own retry state, not the page's

@@ -444,17 +444,22 @@ describe('food: list duplication', () => {
   })
 })
 
-describe('food crosses the public share boundary as an aggregate and nothing else', () => {
-  it('publishes total food grams, and no other trace of food', async () => {
-    // The contract CHANGED on 2026-08-10. It used to be "no food whatsoever",
-    // which contradicted the owner's own view: their total counted food, so a
-    // share of the same list reported a lighter pack. One number now crosses;
-    // everything that makes food personal - names, quantities, day count, meal
-    // slots, packing state - still does not.
+describe('food crosses the public share boundary as rows, and the plan does not', () => {
+  it('publishes each food item once, and no trace of when it is eaten', async () => {
+    // The contract has changed twice. It began as "no food whatsoever", which
+    // contradicted the owner's own view - their total counted food, so a share
+    // of the same list reported a lighter pack. 2026-08-10 published one
+    // aggregate. 2026-08-11 published the rows: food you carry is part of the
+    // pack you are showing someone.
+    //
+    // The line that did NOT move is the one this test defends. What crosses is
+    // the ITEM - what it is, how many, how heavy. What does not is the PLAN -
+    // which day, which meal, whether it is packed. Everything after the setup
+    // below exists to prove that second half.
     //
     // The projection is field-by-field, so this asserts the EXACT key set of
-    // the raw JSON rather than banning names I happened to think of: a
-    // `foodItems` array would slip past a deny-list.
+    // the raw JSON rather than banning names someone thought of: a `slotIds`
+    // array would slip past a deny-list.
     const { cookie } = await signUpVerifiedUser('food-share@example.com', 'FS')
     const listId = await createList(cookie, 'Shared trip')
 
@@ -473,13 +478,14 @@ describe('food crosses the public share boundary as an aggregate and nothing els
     await setDays(cookie, listId, 3)
     const food = await getFood(cookie, listId)
     await addItem(cookie, listId, {
-      name: 'Secret snacks',
+      name: 'Trail mix',
       weightGrams: 500,
       quantity: 2,
-      // THREE slots for one item. The aggregate below must be 1000 g
-      // (500 x 2), not 3000: the associations say when you plan to eat it,
-      // not how many you carry. This is the most dangerous query in the
-      // feature and the share is now one of its callers.
+      // THREE slots for one item. It must appear on the wire ONCE, weighing
+      // 1000 g (500 x 2) in total, not three times and not 3000 g: the
+      // associations say when you plan to eat something, not how much of it
+      // you carry. Joining to them is the most dangerous mistake available in
+      // this feature and the share is one of the callers that could make it.
       slotIds: [
         slotOf(food, 1, 'lunch').id,
         slotOf(food, 2, 'lunch').id,
@@ -499,10 +505,37 @@ describe('food crosses the public share boundary as an aggregate and nothing els
 
     expect(Object.keys(raw).sort()).toEqual(['categories', 'food', 'items', 'list'])
 
-    // The aggregate, and ONLY the aggregate.
-    expect(Object.keys(raw.food as object)).toEqual(['weightGrams'])
-    // 500 g x quantity 2, counted once despite three meal slots.
-    expect((raw.food as { weightGrams: number }).weightGrams).toBe(1000)
+    // Rows, and ONLY rows.
+    expect(Object.keys(raw.food as object)).toEqual(['items'])
+    const foodItems = (raw.food as { items: Record<string, unknown>[] }).items
+    // Once, despite three meal slots. A join to the associations would put
+    // this item on the wire three times over.
+    expect(foodItems).toHaveLength(1)
+    for (const foodItem of foodItems) {
+      // The exact publishable surface of a food row. isPacked, isReady,
+      // packingLocationId, packSortOrder and slotIds all exist on the owner's
+      // DTO for this same row and none of them may appear here.
+      expect(Object.keys(foodItem).sort()).toEqual([
+        'id',
+        'name',
+        'quantity',
+        'sortOrder',
+        'weightGrams',
+      ])
+    }
+    expect(foodItems[0]).toMatchObject({
+      name: 'Trail mix',
+      quantity: 2,
+      weightGrams: 500,
+    })
+    // The client sums the rows the same way the owner's view does. Asserted
+    // here because it is the number the reader actually sees, and because the
+    // server no longer computes it anywhere - 500 x 2, counted once.
+    const total = foodItems.reduce(
+      (grams, i) => grams + (i.weightGrams as number) * (i.quantity as number),
+      0,
+    )
+    expect(total).toBe(1000)
     // Nested too: a `food` key hanging off the list or an item would sail past
     // a root-only assertion.
     expect(Object.keys(raw.list as object).sort()).toEqual([
@@ -533,13 +566,42 @@ describe('food crosses the public share boundary as an aggregate and nothing els
     for (const category of raw.categories as Record<string, unknown>[]) {
       expect(Object.keys(category).sort()).toEqual(['id', 'name', 'sortOrder'])
     }
-    // And nothing anywhere in the payload names the food, or says how many
-    // days, meals or slots it spans.
+    // The half that did not move: nothing anywhere in the payload says WHEN
+    // any of this is eaten, how many days the trip runs, or what is already
+    // packed. The item's name crosses now; its schedule does not.
     const serialized = JSON.stringify(raw)
-    expect(serialized).not.toContain('Secret snacks')
     expect(serialized).not.toContain('lunch')
     expect(serialized).not.toContain('dayNumber')
     expect(serialized).not.toContain('slotIds')
+    expect(serialized).not.toContain('dayCount')
+    expect(serialized).not.toContain('isPacked')
+    expect(serialized).not.toContain('needed')
+  })
+
+  // The day count is stored on the LIST row, which the share does select
+  // from. A projection that added it would not be caught by the food-row key
+  // assertion above, so it gets its own check against a list whose day count
+  // is a number no other field could coincidentally hold.
+  it('does not publish the day count through the list row', async () => {
+    const { cookie } = await signUpVerifiedUser('food-share-days@example.com', 'FD')
+    const listId = await createList(cookie, 'Shared trip')
+    await setDays(cookie, listId, 17)
+
+    const shared = await apiRequest(cookie, 'PATCH', `/api/lists/${listId}`, {
+      isShared: true,
+    })
+    const slug = ((await shared.json()) as { slug: string }).slug
+    const res = await apiRequest('', 'GET', `/api/shares/v2/${slug}`)
+    expect(res.status).toBe(200)
+    const raw = (await res.json()) as Record<string, unknown>
+
+    expect(Object.keys(raw.list as object).sort()).toEqual([
+      'description',
+      'groupWorn',
+      'isDraft',
+      'name',
+    ])
+    expect(JSON.stringify(raw)).not.toContain('17')
   })
 })
 

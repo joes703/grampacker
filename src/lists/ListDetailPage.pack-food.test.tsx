@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, cleanup, screen, waitFor, within } from '@testing-library/react'
+import { render, cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -139,7 +139,7 @@ async function renderDetail(path: string) {
   if (path.endsWith('/pack')) {
     await screen.findByLabelText('New packing location')
   } else {
-    await screen.findByRole('region', { name: 'Food summary' })
+    await screen.findByRole('link', { name: 'Edit food' })
   }
 }
 
@@ -236,12 +236,17 @@ describe('food rows in Pack mode', () => {
     expect(screen.getByText('1 / 2 packed')).toBeInTheDocument()
   })
 
-  it('does not render food rows in the List (edit) view', async () => {
+  // Category shows the same food items, but as READ rows: no packed
+  // checkbox, no ready checkbox, no drag handle. The row is the same fact;
+  // the arrangement decides what you can do to it, and packing state belongs
+  // to Pack.
+  it('renders food in the List (edit) view as plain rows, not checklist rows', async () => {
     await renderDetail(`/lists/${listId}`)
 
-    // The summary row region exists; the food ITEM row does not.
-    const summary = screen.getByRole('region', { name: 'Food summary' })
-    expect(within(summary).queryByText('Tortillas')).not.toBeInTheDocument()
+    expect(screen.getByText('Tortillas')).toBeInTheDocument()
     expect(screen.queryByRole('checkbox', { name: 'Tortillas' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Reorder or move Tortillas' }),
+    ).not.toBeInTheDocument()
   })
 })

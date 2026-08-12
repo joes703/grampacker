@@ -184,14 +184,15 @@ describe('ListDetailPage when the lists query fails', () => {
     h.fetchLists.mockResolvedValue([list])
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 
-    // Anchors on content that only exists past the detail loading gate. Food
-    // used to render inline here and was a convenient anchor for that; food
-    // now has its own route, so the List view's trace of it (FoodSummaryRow,
-    // mode === 'edit' only - this file renders no other mode) is what's left
-    // to anchor on. Scoped to the row's own labeled section, not a bare link
-    // name: ListViewNav's "Food" tab (rendered in every mode) links to the
-    // same href and would make an unscoped query ambiguous.
-    await screen.findByRole('region', { name: 'Food summary' })
+    // Anchors on content that only exists past the detail loading gate. This
+    // anchor has moved twice: food rendered inline here once, then became a
+    // summary row, and is now a section of rows that this fixture's
+    // food-less list does not produce at all. The category section's
+    // "Add new item" footer is what is left that is both unconditional in
+    // Edit and strictly inside the loaded branch - and unlike the section
+    // header, it has no twin in the picker aside, which groups by category
+    // too.
+    await screen.findByRole('button', { name: 'Add new item' })
     expect(screen.queryByText("Couldn't load your lists")).toBeNull()
   })
 
@@ -238,12 +239,12 @@ describe('ListDetailPage when the lists query fails', () => {
   it('keeps rendering the open list when a refetch fails but the list is still cached', async () => {
     h.fetchLists.mockResolvedValueOnce([list])
     const qc = await renderDetail()
-    await screen.findByRole('region', { name: 'Food summary' })
+    await screen.findByRole('button', { name: 'Add new item' })
 
     h.fetchLists.mockRejectedValue(new Error('offline'))
     await failingRefetch(qc)
 
-    expect(screen.getByRole('region', { name: 'Food summary' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Add new item' })).toBeTruthy()
     expect(screen.queryByText("Couldn't load your lists")).toBeNull()
   })
 

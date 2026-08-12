@@ -54,11 +54,19 @@ function toSharedListResponse(share: PublicShare): SharedListResponse {
         categoryId: row.gearCategoryId,
       },
     })),
-    // Aggregate only - see publicFoodSchema. The repo sums the food items
-    // table alone; joining to slots would multiply one bag of trail mix by
-    // the number of meals it is scheduled for.
+    // Named field by field like the gear rows above, and for the same
+    // reason: this mapping is the allowlist. A food row carries isPacked,
+    // isReady, packingLocationId, packSortOrder and its meal-slot ids in the
+    // owner's DTO; none of them are named here, so none of them reach an
+    // anonymous reader. shares.test.ts asserts their absence on raw JSON.
     food: {
-      weightGrams: share.foodWeightGrams,
+      items: share.food.map((row) => ({
+        id: row.id,
+        name: row.name,
+        quantity: row.quantity,
+        weightGrams: row.weightGrams,
+        sortOrder: row.sortOrder,
+      })),
     },
   }
 }

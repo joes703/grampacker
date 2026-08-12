@@ -144,13 +144,16 @@ async function renderDetail(path: string) {
   // worn-remove button) pass vacuously before the gated item rows ever
   // render. Branch on mode instead, anchoring on something that is both
   // unconditional in that mode AND strictly inside the loaded branch:
-  // the packing-location create form in Pack, the List-view-only Food
-  // summary row in Edit (mirrors ListDetailPage.locations-failure.test.tsx
-  // and ListDetailPage.food.test.tsx, which anchor the same way).
+  // the packing-location create form in Pack, the category section's
+  // "Add new item" footer in Edit. Edit used to anchor on the Food summary
+  // row; food is a section of rows now and this list has no food. The
+  // section HEADER is not usable either - the picker aside groups by
+  // category too, so "Collapse Uncategorized" matches twice. The footer
+  // control exists only on the document side.
   if (path.endsWith('/pack')) {
     await screen.findByLabelText('New packing location')
   } else {
-    await screen.findByRole('region', { name: 'Food summary' })
+    await screen.findByRole('button', { name: 'Add new item' })
   }
 }
 

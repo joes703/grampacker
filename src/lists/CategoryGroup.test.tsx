@@ -719,3 +719,54 @@ describe('CategoryGroup footer subtotal', () => {
     expect(screen.queryByText('100 g')).toBeNull()
   })
 })
+
+// Two arrangements of one list, two renderings of one food row. Category and
+// the public share read food as items; Pack packs it as part of each bag's
+// union cohort, which arrives through renderRows with the gear. Getting this
+// gate wrong in either direction is visible: rendering both shows every food
+// row twice, rendering neither loses food from the arrangement that has no
+// other place to show it.
+describe('plain food rows belong to the non-pack arrangements', () => {
+  const oats = { id: 'f1', name: 'Oatmeal', quantity: 3, weightGrams: 90 }
+
+  it('renders food rows after the gear rows outside pack mode', () => {
+    render(
+      <CategoryGroup
+        name="Food"
+        items={[itemNamed('a', 'Tarp')]}
+        foodRows={[oats]}
+        weightUnit="g"
+      />,
+    )
+    expect(screen.getByText('Oatmeal')).toBeTruthy()
+    // Read-only: the packing checkbox and drag handle a Pack food row carries
+    // are what make it a checklist entry, and neither belongs here.
+    expect(screen.queryByRole('checkbox', { name: /Oatmeal/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Oatmeal/ })).toBeNull()
+  })
+
+  it('renders no plain food rows in pack mode, where the union owns them', () => {
+    render(
+      <CategoryGroup
+        name="Food"
+        items={[]}
+        foodRows={[oats]}
+        weightUnit="g"
+        packMode
+      />,
+    )
+    expect(screen.queryByText('Oatmeal')).toBeNull()
+  })
+
+  // The quantity is a multiplier, not a count of rows. A section showing
+  // "Oatmeal" three times because it is scheduled for three breakfasts is the
+  // failure this whole feature has to avoid, and one row per item is where
+  // that starts.
+  it('renders one row per food item regardless of quantity', () => {
+    render(
+      <CategoryGroup name="Food" items={[]} foodRows={[oats]} weightUnit="g" />,
+    )
+    expect(screen.getAllByText('Oatmeal')).toHaveLength(1)
+    expect(screen.getByText('3')).toBeTruthy()
+  })
+})

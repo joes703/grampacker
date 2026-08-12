@@ -76,11 +76,10 @@ const EMPTY_FOOD_ITEMS: FoodItemResponse[] = []
 
 import WeightSummary from './WeightSummary'
 import FoodView from './FoodView'
-import FoodSummaryRow from './FoodSummaryRow'
 import type { FoodItemResponse, ListFoodResponse } from '../../shared/food'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
-import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
+import { FLAT_TABLE_META_TEXT, FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import ListDocumentToolbar from './ListDocumentToolbar'
 import EmptyListCell from './EmptyListCell'
@@ -2407,27 +2406,52 @@ function ListDetailInner({
                 )
               })()}
 
-              {/* INSIDE the loaded branch, OUTSIDE the listItems.length === 0
-                  one. Both halves matter:
+              {/* Food in the Category arrangement, as its own trailing
+                  section of rows.
 
-                  Inside, because listFood falls back to an empty-food object
-                  when the query has not resolved. Rendered above that gate the
-                  row would sit under "Loading list details..." naming a
-                  0-day trip.
+                  It used to be a single summary line linking to the Food
+                  view, on the theory that food was a private planning aid
+                  that would clutter a shared list. That theory did not
+                  survive contact with how these lists are actually read -
+                  food you carry is part of the pack - and it cost a
+                  permanent asymmetry: the same list showed items in Pack and
+                  one number in Category, and the share showed neither.
+                  Category, Pack and the share now all show the rows.
 
-                  Outside the empty-gear branch, because a list with food and no
-                  gear yet is a real, usable list.
+                  INSIDE the loaded branch, OUTSIDE the listItems.length === 0
+                  one. Both halves matter. Inside, because listFood falls back
+                  to an empty-food object when the query has not resolved, so
+                  above that gate this would render an empty Food section
+                  under "Loading list details...". Outside the empty-gear
+                  branch, because a list with food and no gear yet is a real,
+                  usable list.
 
-                  LIST view only: food now has its own peer view
-                  (/lists/:id/food, see FoodView and ListViewNav), and this row
-                  is only its trace here — food weight counts toward the
-                  totals this page reports (computeListWeightBreakdown counts
-                  food), and a weight
-                  contributor with no visible source is a trap. Pack keeps its
-                  packing focus; the Food tab in ListViewNav is Pack's path to
-                  food. */}
-              {mode === 'edit' && (
-                <FoodSummaryRow food={listFood} listId={listId} weightUnit={weightUnit} />
+                  Category only: in Pack, food rows are part of each bag's
+                  union cohort and are rendered by the location sections
+                  above. Rendering them here as well would show every one
+                  twice. */}
+              {mode === 'edit' && listFood.items.length > 0 && (
+                <CategoryGroup
+                  name="Food"
+                  items={EMPTY_LIST_ITEMS}
+                  regionKey="food"
+                  foodRows={listFood.items}
+                  weightUnit={weightUnit}
+                  isBelowLg={isBelowLg}
+                  subtotalGrams={foodGrams}
+                  // Authored in the Food view, which is where its schedule
+                  // lives. Editing a name or a weight from here would be a
+                  // second authoring path for one thing, so the section
+                  // header carries the trip to that page instead.
+                  headerAction={
+                    <Link
+                      to={`/lists/${listId}/food`}
+                      className={`shrink-0 ${FLAT_TABLE_META_TEXT} text-gray-500 hover:text-blue-600`}
+                    >
+                      Edit food
+                    </Link>
+                  }
+                />
               )}
             </>
           )}
