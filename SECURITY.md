@@ -518,29 +518,27 @@ of it:
   entries. Until then the blast radius is one list, within one account, with
   concurrent clients - two tabs, or a phone and a laptop.
 
-- **Creating or renaming a packing location can commit and then report
-  failure.** Both `create` and `rename` in
-  `server/repos/packing-locations.ts` write and then call `readOwnedList` to
-  compose their response. The write and the read-back are separate
-  operations, so a read-back that fails or comes back without the row makes
-  the route report failure over a change that landed: `create` throws
-  ("insert could not be read") and 500s; `rename` maps it to 404, or 500s if
-  the read itself fails. A concurrent delete between the two produces the
-  same thing legitimately. Found by review 2026-08-11 while closing the
-  wrong-parent PATCH gap - and the second half of it, `create`, was found
-  only on the review's second pass, after this entry first claimed the
-  problem was rename's alone.
+- **Creating or renaming a packing location commits then reports failure**:
+  CLOSED 2026-08-12. Both `create` and `rename` in
+  `server/repos/packing-locations.ts` used to write and then call
+  `readOwnedList` in a second round trip to compose their response, so a
+  read-back that threw reported failure over a row that had already
+  committed - `create` 500'd ("insert could not be read"), `rename` 500'd or
+  mapped it to 404 - and the owner would retry into a duplicate-name error
+  for the bag they were told had not been made.
 
-  Not a security issue - no boundary is crossed, and the only caller who can
-  reach either is the owner acting on their own list. It is a truthfulness
-  one, recorded here because this file is where live gaps live rather than in
-  a commit message. The fix for both is to return the row from the write's
-  own `RETURNING` rather than re-reading, which needs that shape to match
-  what `readOwnedList` composes.
+  Each now issues its write and its read-back as the two statements of ONE
+  `db.batch`, which is a real transaction on D1: a failing read takes the
+  write down with it, so the answer and the database agree either way. The
+  read also runs after the write inside that transaction, so it sees the row.
+  `rename`'s "the UPDATE matched nothing" branch still answers not_found and
+  is still reachable (a concurrent delete between the pre-read and the
+  write); its read-back-found-nothing branch is now unreachable and throws
+  rather than returning a not_found that would deny a committed rename.
 
-  Trigger: any report of a location that "didn't save" and then existed, or
-  the next change to this repo's return path. Blast radius today is one
-  mislabelled error on one owner's own write.
+  Two repo tests pin the batching itself rather than the rollback, which is
+  D1's to guarantee - split either write back into write-then-read and they
+  fail. Verified by running that mutation, not by inspection.
 
 - **Fresh-auth proofs**: CLOSED. See "Fresh auth" above - passkey
   mutations and account deletion both require a fresh session. Email

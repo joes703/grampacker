@@ -68,7 +68,14 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
     return Boolean(row)
   }
 
-  function readOwnedList(listId: string): Promise<PackingLocationRow[]> {
+  // The builder, not the awaited result, so create/rename can put the
+  // read-back INSIDE the same db.batch as their write. Both used to write and
+  // then read in a second round trip, which meant a read-back that threw
+  // reported failure over a row that had already committed - you would retry
+  // and get "that name is taken" for the bag you were told had not been made.
+  // One batch is one D1 transaction: a failing read now rolls the write back,
+  // so the answer and the database agree either way.
+  function ownedListQuery(listId: string) {
     return db
       .select(cols)
       .from(packingLocations)
@@ -94,6 +101,10 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
         ),
       )
       .orderBy(asc(packingLocations.sortOrder), asc(cols.name))
+  }
+
+  function readOwnedList(listId: string): Promise<PackingLocationRow[]> {
+    return ownedListQuery(listId)
   }
 
   return {
@@ -143,7 +154,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       }
       try {
         const now = Date.now()
-        const [inserted] = await db
+        const insertLocation = db
           .insert(packingLocations)
           .values({
             id: crypto.randomUUID(),
@@ -163,8 +174,14 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
             updatedAt: now,
           })
           .returning({ id: packingLocations.id })
+        // Insert and read-back in ONE batch. Statements run in order inside the
+        // transaction, so the select sees the row the insert just wrote.
+        const [insertedRows, rows] = await db.batch([
+          insertLocation,
+          ownedListQuery(listId),
+        ])
+        const [inserted] = insertedRows
         if (!inserted) throw new Error('packing location insert returned no row')
-        const rows = await readOwnedList(listId)
         const row = rows.find((candidate) => candidate.id === inserted.id)
         if (!row) throw new Error('packing location insert could not be read')
         return { ok: true, row }
@@ -205,7 +222,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       if (existing.containerListItemId !== null) {
         return { ok: false, reason: 'item_backed' }
       }
-      const [row] = await db
+      const renameLocation = db
         .update(packingLocations)
         .set({ name, updatedAt: Date.now() })
         .where(
@@ -216,10 +233,22 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
           ),
         )
         .returning({ id: packingLocations.id })
+      // Update and read-back in ONE batch, for the reason on ownedListQuery.
+      const [renamedRows, rows] = await db.batch([
+        renameLocation,
+        ownedListQuery(listId),
+      ])
+      const [row] = renamedRows
+      // The UPDATE matched nothing, so nothing committed and not_found is the
+      // honest answer. It is reachable: the row can be deleted between the
+      // pre-read above and this write.
       if (!row) return { ok: false, reason: 'not_found' }
-      const rows = await readOwnedList(listId)
       const updated = rows.find((candidate) => candidate.id === id)
-      if (!updated) return { ok: false, reason: 'not_found' }
+      // Unreachable now that both statements share a transaction - the select
+      // ran after the update that just returned this id. It used to return
+      // not_found here, which would have reported failure over a committed
+      // rename; if it somehow happens, a 500 is the truthful answer.
+      if (!updated) throw new Error('packing location rename could not be read')
       return { ok: true, row: updated }
     },
 
