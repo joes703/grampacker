@@ -381,7 +381,6 @@ describe('CategoryGroup footer subtotal', () => {
         items={[itemNamed('bag', 'Sleeping bag')]}
         weightUnit="g"
         packMode
-        readyChecksEnabled
         onUpdate={onUpdate}
       />,
     )
@@ -477,7 +476,6 @@ describe('CategoryGroup footer subtotal', () => {
           items={all}
           weightUnit="g"
           packMode
-          readyChecksEnabled
           {...filters}
         />,
       )
@@ -527,7 +525,6 @@ describe('CategoryGroup footer subtotal', () => {
           items={all}
           weightUnit="g"
           packMode
-          readyChecksEnabled
           showUnpackedOnly
           showUnreadyOnly
           renderRowAction={(_item, cohort) => {
@@ -549,7 +546,6 @@ describe('CategoryGroup footer subtotal', () => {
           items={all}
           weightUnit="g"
           packMode
-          readyChecksEnabled
           renderRowAction={(_item, cohort) => {
             cohorts.push(cohort.map((i) => i.gearItem.name))
             return null
@@ -584,7 +580,6 @@ describe('CategoryGroup footer subtotal', () => {
           items={[packed, ready, both]}
           weightUnit="g"
           packMode
-          readyChecksEnabled
           showUnpackedOnly
           showUnreadyOnly
         />,
@@ -667,7 +662,6 @@ describe('CategoryGroup footer subtotal', () => {
           items={[packedChild]}
           weightUnit="g"
           packMode
-          readyChecksEnabled
           showUnpackedOnly
           showUnreadyOnly
         />,

@@ -568,6 +568,26 @@ of it:
   delete. Worst case for a user with no passkey and no working mailbox is
   loss of access to their own gear list, which is recoverable by support
   (there is one user, and he is the maintainer).
+- **Two list flags were retired from every surface** (2026-08-11):
+  `groupWorn` and `readyChecksEnabled`. Neither is on any DTO, neither is
+  accepted on PATCH, and `groupWorn` is off the public share DTO. It was
+  published there for a real reason - the share honored it - until #110 made
+  worn grouping unconditional on 2026-07-21, after which it was a public
+  field nothing read. Their COLUMNS remain: dropping one
+  rebuilds `lists`, and a rebuild cascade-deletes every `list_items` row.
+  Both names stay in the forbidden-key denylist in
+  `server/routes/shares.test.ts` so a future projection cannot reintroduce
+  them quietly.
+
+  Taking a required field OFF a response is not free: `apiFetch` strips
+  unexpected fields but THROWS on a missing required one, so a tab still open
+  on the previous bundle reports its own committed writes as failures until
+  it is reloaded. Owner's call, 2026-08-11, was to accept that rather than
+  keep dead fields on the wire or stage a two-release retirement - a refresh
+  is the remedy, and this is a single-user app. The contract comment in
+  `src/lib/api.ts` said the opposite and has been corrected rather than left
+  standing.
+
 - **Public share endpoint** (`GET /api/shares/v2/:slug`, phase 4): dedicated
   repository + DTO allowlist + private-column ABSENCE tests + uniform
   404 for unknown and inactive slugs. The re-sweep of this file happens

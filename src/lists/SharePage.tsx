@@ -179,8 +179,11 @@ export default function SharePage() {
   const grouped = groupListItemsByCategory(itemsForRender, categoriesForRender)
 
   // Match the owner view: worn rows always leave their categories for one
-  // trailing read-only Worn section. The persisted legacy flag remains on the
-  // public DTO, but rendering deliberately ignores its value.
+  // trailing read-only Worn section. This page DID once honor a per-list
+  // groupWorn preference - it read list.groupWorn and passed hideWorn - until
+  // #110 made worn grouping unconditional (2026-07-21). The flag went dead
+  // there and was retired from the DTO later; what was left behind in between
+  // was a comment claiming this page still honored it.
   const wornItems = grouped.flatMap((g) => g.items.filter((i) => i.isWorn))
 
   return (

@@ -8,7 +8,7 @@ import type { List } from '../lib/types'
 type ToggleVars = { id: string; value: boolean }
 
 // Race-proof optimistic toggle for a boolean list flag. THE canonical way
-// to flip isShared / isDraft / readyChecksEnabled - the naive
+// to flip isShared / isDraft - the naive
 // shape (mutationFn reading `!list.flag` from the rendered prop, apply
 // flipping the cache row) carries two races, both found by the Codex
 // review of PR #29:

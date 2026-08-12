@@ -56,8 +56,6 @@ function makeList(over: Partial<List> & { id: string; name: string }): List {
     description: over.description ?? null,
     slug: over.slug ?? `slug-${over.id}`,
     isShared: over.isShared ?? false,
-    groupWorn: over.groupWorn ?? false,
-    readyChecksEnabled: over.readyChecksEnabled ?? false,
     isDraft: over.isDraft ?? false,
     sortOrder: over.sortOrder ?? 0,
     createdAt: over.createdAt ?? '2024-01-01',

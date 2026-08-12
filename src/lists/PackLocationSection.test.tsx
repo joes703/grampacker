@@ -70,7 +70,6 @@ function node(
 const groupProps: Omit<ComponentProps<typeof CategoryGroup>, 'name' | 'items'> = {
   weightUnit: 'g',
   packMode: true,
-  readyChecksEnabled: true,
   renderRows: packingSortableRows,
 }
 

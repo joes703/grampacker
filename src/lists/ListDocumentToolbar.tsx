@@ -17,7 +17,7 @@ type Props = {
 // Hidden in print: the print-only header carries the list name on paper.
 //
 // Pack mode suppresses List options. Pack-mode-specific controls
-// (Show unpacked only, Add ready checks) live inline at the top of
+// (Show unpacked only, Show un-ready only) live inline at the top of
 // PackingProgress; the remaining List options (Sharing,
 // Rename/Duplicate/Export/Delete) are list-admin concerns the user
 // doesn't need while actively packing, so the button isn't shown.

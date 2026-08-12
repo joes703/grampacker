@@ -33,8 +33,6 @@ export function optimisticListPlaceholder(args: {
     slug: '',
     sortOrder: args.sortOrder,
     isShared: false,
-    groupWorn: false,
-    readyChecksEnabled: false,
     isDraft: true,
     createdAt: now,
     updatedAt: now,

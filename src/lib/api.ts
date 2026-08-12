@@ -88,8 +88,20 @@ export function shouldRetryQuery(failureCount: number, error: unknown): boolean 
 // Runtime tolerance is deliberate: during a deploy
 // window an open tab's old bundle can receive one additive field from the
 // newer server, and rejecting it would report a COMMITTED write - a gear
-// import, say - as a retryable failure, inviting duplicates. Stale tabs may
-// fail reads; they must not be lied to about writes that succeeded.
+// import, say - as a retryable failure, inviting duplicates.
+//
+// This used to end "stale tabs may fail reads; they must not be lied to
+// about writes that succeeded", which promises more than this code can
+// deliver. Tolerance covers only fields the server ADDS. REMOVING a field an
+// older bundle still requires throws here, and nothing in this function can
+// prevent it - the schema doing the throwing shipped inside that old bundle.
+//
+// Owner's call, 2026-08-11, on retiring groupWorn and readyChecksEnabled:
+// a stale tab reporting a failure for a write that landed is a refresh, and
+// that is cheaper than keeping dead fields on the wire forever or staging a
+// two-release retirement for every field this app stops using. So: keep
+// tolerating additive change, do not keep dead fields to protect tabs nobody
+// has open, and treat reload as the remedy.
 export async function apiFetch<Schema extends z.ZodType>(
   path: string,
   schema: Schema,

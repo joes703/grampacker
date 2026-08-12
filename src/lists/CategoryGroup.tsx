@@ -85,7 +85,6 @@ export type SectionIdentity = { key: string; name: string }
  *  in SortableFoodRow on the authenticated side. */
 export type PackFoodRowProps = {
   food: FoodItemResponse
-  readyChecksEnabled: boolean
   reorderPending: boolean
   weightUnit: WeightUnit
   onUpdate: (patch: { isPacked?: boolean; isReady?: boolean }) => void
@@ -131,10 +130,6 @@ type GroupPropsBase = {
   // pass it; defaults to false (desktop layout) until they're wired.
   isBelowLg?: boolean
   packMode?: boolean
-  /** Pack-mode-only: when true, ItemRow renders a Ready checkbox before the
-   *  Packed checkbox. Owner toggles this from PackingProgress; share view and
-   *  edit-mode pages don't pass it. */
-  readyChecksEnabled?: boolean
   collapsible?: boolean
   /** Optional controlled collapse state. Packing-location sections use this
    *  pair so their state can persist per list; category/share callers omit it
@@ -338,7 +333,6 @@ function CategoryGroup({
   weightUnit,
   isBelowLg = false,
   packMode = false,
-  readyChecksEnabled = false,
   collapsible = true,
   collapsed: controlledCollapsed,
   onCollapsedChange,
@@ -460,7 +454,6 @@ function CategoryGroup({
       weightUnit,
       isBelowLg,
       packMode,
-      readyChecksEnabled,
       reorderPending,
       onUpdate: onUpdate ? (patch: ListItemPatch) => onUpdate(item.id, patch) : undefined,
       onSaveName: onSaveGearName ? (n: string) => onSaveGearName(gearId, n) : undefined,
@@ -533,22 +526,18 @@ function CategoryGroup({
             )}
             {packMode && containerItem ? (
               <>
-                {readyChecksEnabled && (
-                  <>
-                    <PackModeCheckbox
-                      variant="ready"
-                      checked={containerItem.isReady}
-                      onChange={(checked) => onUpdate?.(containerItem.id, { isReady: checked })}
-                      ariaLabel={`Mark ${containerItem.gearItem.name} ready`}
-                      title="Ready"
-                      standaloneLabel
-                    />
-                    <span
-                      aria-hidden="true"
-                      className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
-                    />
-                  </>
-                )}
+                <PackModeCheckbox
+                  variant="ready"
+                  checked={containerItem.isReady}
+                  onChange={(checked) => onUpdate?.(containerItem.id, { isReady: checked })}
+                  ariaLabel={`Mark ${containerItem.gearItem.name} ready`}
+                  title="Ready"
+                  standaloneLabel
+                />
+                <span
+                  aria-hidden="true"
+                  className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
+                />
                 <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5">
                   <PackModeCheckbox
                     variant="packed"
@@ -663,7 +652,6 @@ function CategoryGroup({
                       rows: visibleFood,
                       rowPropsFor: (food: FoodItemResponse) => ({
                         food,
-                        readyChecksEnabled,
                         reorderPending,
                         // Required, not optional: a food row without the
                         // unit would format grams against a different scale

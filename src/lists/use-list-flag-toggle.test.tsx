@@ -26,8 +26,6 @@ const list: List = {
   description: null,
   slug: 'abc123',
   isShared: false,
-  groupWorn: false,
-  readyChecksEnabled: false,
   isDraft: true,
   sortOrder: 0,
   createdAt: '2026-01-01T00:00:00Z',

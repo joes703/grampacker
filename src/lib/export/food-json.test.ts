@@ -10,8 +10,6 @@ const list = (id: string, name: string) =>
     description: null,
     slug: id,
     isShared: false,
-    groupWorn: false,
-    readyChecksEnabled: false,
     isDraft: true,
     sortOrder: 0,
     createdAt: '2026-01-01',

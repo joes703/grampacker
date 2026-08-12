@@ -82,8 +82,6 @@ function toListResponse(row: ListRow): ListResponse {
     description: row.description,
     slug: row.slug,
     isShared: row.isShared,
-    groupWorn: row.groupWorn,
-    readyChecksEnabled: row.readyChecksEnabled,
     isDraft: row.isDraft,
     sortOrder: row.sortOrder,
     createdAt: new Date(row.createdAt).toISOString(),

@@ -35,8 +35,6 @@ const listFixture = {
   description: null,
   slug: 'abc123',
   isShared: false,
-  groupWorn: false,
-  readyChecksEnabled: true,
   isDraft: false,
   sortOrder: 0,
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -75,7 +73,7 @@ const listItemFixture = {
 }
 
 const sharedListFixture = {
-  list: { name: 'Trip', description: null, groupWorn: false, isDraft: false },
+  list: { name: 'Trip', description: null, isDraft: false },
   categories: [{ id: 'c1', name: 'Shelter', sortOrder: 0 }],
   items: [
     {

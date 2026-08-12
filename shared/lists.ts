@@ -56,8 +56,6 @@ export const listResponseSchema = z.object({
   description: z.string().nullable(),
   slug: z.string(), // server-minted, 6-char base62; share URLs later
   isShared: z.boolean(),
-  groupWorn: z.boolean(),
-  readyChecksEnabled: z.boolean(),
   isDraft: z.boolean(),
   sortOrder: z.number().int(),
   createdAt: z.string(), // ISO timestamp
@@ -79,8 +77,6 @@ export const updateListRequestSchema = z
     // whether /api/shares/v2/:slug answers. To break a leaked link, duplicate
     // the list (fresh slug) and unshare the original.
     isShared: z.boolean().optional(),
-    groupWorn: z.boolean().optional(),
-    readyChecksEnabled: z.boolean().optional(),
     isDraft: z.boolean().optional(),
   })
   .strict()
@@ -228,22 +224,23 @@ export type UpdatePackingLocationRequest = z.infer<
 // narrower than the authed DTOs above, and every widening is a security
 // decision, not a convenience. Deliberately absent, and asserted absent in
 // server/routes/shares.test.ts:
-//   - list:  id, slug, userId, isShared, sortOrder, readyChecksEnabled,
-//            timestamps (the client already knows the slug; the list id is
-//            an internal join handle the single-endpoint shape no longer
-//            needs to expose)
+//   - list:  id, slug, userId, isShared, sortOrder, timestamps (the client
+//            already knows the slug; the list id is an internal join handle
+//            the single-endpoint shape no longer needs to expose)
 //   - items: userId, listId, isPacked / isReady (the owner's private
 //            packing workflow), timestamps
 //   - gear:  id, status, cost, purchaseDate, sortOrder, timestamps
 //            (private inventory metadata; gearItemId on the item row is
 //            the row identity)
 //   - categories: userId, timestamps
-// groupWorn and isDraft are deliberately public: the share view honors the
-// owner's worn-grouping preference and shows the work-in-progress banner.
+// isDraft is deliberately public: the share view shows the work-in-progress
+// banner. groupWorn was published on the same footing and honored by
+// SharePage until #110 made worn grouping unconditional (2026-07-21). From
+// then on nothing read it, on either surface - it was retired from the DTO
+// rather than revived, because there is no preference left to express.
 export const publicListSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
-  groupWorn: z.boolean(),
   isDraft: z.boolean(),
 })
 export type PublicList = z.infer<typeof publicListSchema>
