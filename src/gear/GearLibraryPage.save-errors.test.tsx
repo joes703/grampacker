@@ -83,7 +83,7 @@ vi.mock('../lib/queries', () => ({
   fetchGearItems: h.fetchGearItems,
   // The category actions hook is NOT mocked in this file (see the note by the
   // cross-surface test), so its query layer has to be. The optimistic helpers
-  // collapse to empty lifecycles: their behaviour is queries/optimistic.test.ts's
+  // collapse to empty lifecycles: their behavior is queries/optimistic.test.ts's
   // subject, and here they would only add cache noise.
   createCategory: h.createCategory,
   renameCategory: vi.fn(),
@@ -428,7 +428,7 @@ describe('the inline new-category editor', () => {
     )
   })
 
-  it('cancelling drops a previous error rather than leaving it to greet the next attempt', async () => {
+  it('canceling drops a previous error rather than leaving it to greet the next attempt', async () => {
     h.createCategory.mockRejectedValue(new Error('nope'))
     renderPage()
 

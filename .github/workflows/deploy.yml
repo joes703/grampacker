@@ -166,7 +166,7 @@ jobs:
     timeout-minutes: 10
     # Never run two production deploys at once. A second merge queues behind
     # the first rather than racing; we do NOT cancel an in-progress deploy,
-    # because a half-cancelled deploy is worse than a wait. Only genuinely
+    # because a half-canceled deploy is worse than a wait. Only genuinely
     # deployable runs reach this group - see the note above `jobs:`.
     concurrency:
       group: deploy-production

@@ -191,7 +191,7 @@ describe('PrivacyPanel - replacing the share link', () => {
     expect(screen.getByText(/current link stops working/i)).toBeInTheDocument()
   })
 
-  it('cancelling leaves the link alone', async () => {
+  it('canceling leaves the link alone', async () => {
     renderPanel(shared)
     const user = userEvent.setup()
 

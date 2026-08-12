@@ -238,7 +238,7 @@ describe('fan-out cache discovery hardening', async () => {
 
     const ctx = await onMutate({ id: 'g1', patch: { name: 'Mid' } })
 
-    // The malformed caches keep identity: never cancelled, snapshotted,
+    // The malformed caches keep identity: never canceled, snapshotted,
     // or written.
     expect(qc.getQueryData(queryKeys.listItemsAll())).toBe(bareBefore)
     expect(qc.getQueryData(['list-items', 'l1', 'extra'])).toBe(longBefore)

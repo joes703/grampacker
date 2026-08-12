@@ -107,11 +107,11 @@ export default function PasskeySection() {
   const { data: session } = authClient.useSession()
 
   useEffect(() => {
-    let cancelled = false
+    let canceled = false
     authClient.passkey
       .listUserPasskeys()
       .then(({ data, error: listError }) => {
-        if (cancelled) return
+        if (canceled) return
         if (listError) {
           setError(authErrorMessage(listError, "Couldn't load your passkeys."))
           return
@@ -119,10 +119,10 @@ export default function PasskeySection() {
         setRows(data ?? [])
       })
       .catch(() => {
-        if (!cancelled) setError("Couldn't load your passkeys.")
+        if (!canceled) setError("Couldn't load your passkeys.")
       })
     return () => {
-      cancelled = true
+      canceled = true
     }
   }, [reloadKey])
 
@@ -153,7 +153,7 @@ export default function PasskeySection() {
       // For 'add', the overwhelmingly common path here is the user dismissing
       // the browser's passkey prompt - not a failure worth alarming about.
       setError(
-        action.kind === 'add' ? 'Passkey setup was cancelled or failed.' : failure,
+        action.kind === 'add' ? 'Passkey setup was canceled or failed.' : failure,
       )
       return 'done'
     }
@@ -203,7 +203,7 @@ export default function PasskeySection() {
       // out elsewhere). Re-park rather than swallow it.
       if ((await runAction(action)) === 'reauth') setPending(action)
     } catch {
-      setError('Passkey confirmation was cancelled or failed.')
+      setError('Passkey confirmation was canceled or failed.')
     } finally {
       submittingReauth.current = false
       setBusy(false)

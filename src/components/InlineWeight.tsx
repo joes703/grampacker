@@ -24,9 +24,9 @@ type Props = {
   /** Names the row in the control's accessible name ("Edit weight 1.2 kg for
    *  Backpack"), so a screen reader hears which weight it is about to edit. */
   itemName: string
-  /** Width, visibility and TEXT COLOR utilities from the row. Colour is not
+  /** Width, visibility and TEXT COLOR utilities from the row. Color is not
    *  baked in because the call sites genuinely differ - the Pack row's weight
-   *  is gray-500 against its checklist, the others gray-600 - and two colour
+   *  is gray-500 against its checklist, the others gray-600 - and two color
    *  classes on one element would leave Tailwind's ordering to decide. */
   className?: string
   /** Applied to the WeightInput wrapper while editing. Defaults to

@@ -710,7 +710,7 @@ export function createFoodRepo(db: Db, userId: string) {
    * than silently dropping placements the user asked for.
    *
    * It deliberately does NOT filter on `needed`. An earlier version did, which
-   * looked like defence in depth but was really a second, weaker copy of a rule
+   * looked like defense in depth but was really a second, weaker copy of a rule
    * the database already enforces: the read cannot see a prune that commits
    * before the insert, so it was never the guarantee. The
    * list_food_item_slots_needed_only trigger is the single enforcement point,

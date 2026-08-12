@@ -52,7 +52,7 @@ import { showToast } from '../toast'
 //   The cancel still happens; it's just fire-and-forget, and that is
 //   fine. cancelQueries issues query.cancel() SYNCHRONOUSLY, and cancel()
 //   rejects the retryer's thenable in the same tick, so a still-pending
-//   refetch is cancelled here and its response dropped - awaited or not.
+//   refetch is canceled here and its response dropped - awaited or not.
 //
 //   What unawaited gives up is the sliver after a fetch's promise has
 //   resolved but before the query wrote the result, where cancel() no-ops
@@ -115,7 +115,7 @@ import { showToast } from '../toast'
 //   The stock claim is "an in-flight refetch resolves after your write and clobbers
 //   it". That cannot happen the way it sounds. cancelQueries issues query.cancel()
 //   SYNCHRONOUSLY, and cancel() rejects the retryer's thenable in that same tick, so
-//   a still-PENDING fetch is cancelled and its late response is dropped by an
+//   a still-PENDING fetch is canceled and its late response is dropped by an
 //   isResolved() guard. Unawaited was already safe for that case.
 //
 //   The genuine hole is narrower: the sliver after the fetch's promise has RESOLVED

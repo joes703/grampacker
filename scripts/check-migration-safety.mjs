@@ -265,7 +265,7 @@ const FIXTURES = [
     description: 'A list that must survive every migration.',
     slug: 'seed01', // lists_slug_shape: exactly 6 characters
     // Dropped automatically while the tested schema predates migration 0009, and
-    // seeded from then on - so any later rebuild of food_plans has to honour
+    // seeded from then on - so any later rebuild of food_plans has to honor
     // this live NO ACTION reference instead of quietly breaking it.
     food_plan_id: 'plan-seed',
     is_shared: 0,
@@ -1232,7 +1232,7 @@ const quoteValue = (value) => {
 // Quoted identifiers keep their text but are tagged 'ident' rather than 'word'.
 // Quoting hides a token's KEYWORD-ness, not its IDENTITY: a table named `drop`
 // must not be read as a DROP statement, while `PRAGMA "writable_schema"` and
-// `UPDATE "sqlite_schema"` must still be recognised for what they name. An
+// `UPDATE "sqlite_schema"` must still be recognized for what they name. An
 // earlier version threw the text away and both of those walked straight through.
 //
 // Fails closed on an unterminated quote or block comment. Unterminated means the
@@ -1413,7 +1413,7 @@ const classifyStatement = (statement) => {
   // it is REAL: `PRAGMA writable_schema=ON` plus an UPDATE to sqlite_schema
   // removes a column from a live table without any DDL keyword appearing.
   //
-  // Matched on value regardless of token type, because quoting is not a defence:
+  // Matched on value regardless of token type, because quoting is not a defense:
   // PRAGMA "writable_schema" and UPDATE "sqlite_schema" both work.
   //
   // Position-independent, unlike the DDL forms above. A trigger body's first

@@ -67,7 +67,7 @@ function isPerListItemsQuery(key: QueryKey, data: unknown): boolean {
 // fired from a promise continuation rather than an event handler. Cheap insurance,
 // not a bug anyone has hit.
 //
-// Untouched caches are neither cancelled nor snapshotted. Deliberate: do not cancel
+// Untouched caches are neither canceled nor snapshotted. Deliberate: do not cancel
 // a list cache this change cannot affect, or you abort a legitimate in-flight fetch
 // for a list the user is looking at right now.
 //

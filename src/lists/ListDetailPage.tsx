@@ -25,7 +25,6 @@ const ListSidebarDrawer = lazy(() => import('./ListSidebarDrawer'))
 import {
   queryKeys,
   fetchLists,
-  fetchListFood,
   fetchListItems,
   fetchGearItems,
   fetchCategories,
@@ -40,8 +39,6 @@ import {
   type ListItemPatch,
 } from '../lib/queries'
 import { makeOptimisticUnionPackReorder } from '../lib/queries/optimistic'
-import { showToast } from '../lib/toast'
-import { updateFoodItem } from '../lib/queries/food'
 import { mutationKeys } from '../lib/queries/keys'
 import type { Category, GearItem, ListItemWithGear, List, PackingLocation } from '../lib/types'
 import { authClient } from '../lib/auth-client'
@@ -65,13 +62,13 @@ import { useStableWornItems } from '../lib/use-stable-worn-items'
 import {
   baseGramsForCategory,
   computeListWeightBreakdown,
-  foodGramsFor,
   consumableGramsForCategory,
 } from '../lib/weight-breakdown'
 
-// Stable empty value so the food-derived memos below do not see a fresh object
-// on every render while the query is still cold.
-const EMPTY_LIST_FOOD: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
+// One shared empty array for every "no food rows here" case: Edit mode, where
+// Pack's food derivations are switched off, and a bag that holds no food. It
+// reaches CategoryGroup as a prop, and CategoryGroup is memoized - a fresh []
+// literal would be a new identity every render and defeat that memo.
 const EMPTY_FOOD_ITEMS: FoodItemResponse[] = []
 
 import WeightSummary from './WeightSummary'
@@ -90,6 +87,7 @@ import EmptyListCell from './EmptyListCell'
 import PackingProgress from './PackingProgress'
 import { useListResetActions } from './use-list-reset-actions'
 import { useListItemActions } from './use-list-item-actions'
+import { useListFood } from './use-list-food'
 import { resolveRemovalPlan } from './list-item-removal'
 import { useListGearActions } from './use-list-gear-actions'
 import NotesEditor from './NotesEditor'
@@ -196,7 +194,7 @@ export function derivePackReorderExclusions(
 }
 
 // Rows the pack-mode filters have hidden. A hidden row must be neither a
-// reorder source nor a reorder neighbour: the sort slots are computed from the
+// reorder source nor a reorder neighbor: the sort slots are computed from the
 // rows the user can actually see, so counting an invisible row would drop the
 // dragged row somewhere other than where it was released.
 //
@@ -560,11 +558,17 @@ function ListDetailInner({
   })
   const listItems = listItemsQuery.data ?? EMPTY_LIST_ITEMS
 
-  const listFoodQuery = useQuery({
-    queryKey: queryKeys.listFood(listId),
-    queryFn: () => fetchListFood(listId),
-  })
-  const listFood = listFoodQuery.data ?? EMPTY_LIST_FOOD
+  // This list's food: the query, its weight, and the two writes the page makes
+  // against it. See the hook for what it owns and what stays here.
+  const {
+    food: listFood,
+    grams: foodGrams,
+    isPending: listFoodPending,
+    loadFailed: listFoodLoadFailed,
+    refetch: refetchListFood,
+    patchPackState: foodPackPatchMut,
+    moveFood: moveFoodMut,
+  } = useListFood(listId)
 
   const gearItemsQuery = useQuery({
     queryKey: queryKeys.gearItems(),
@@ -648,18 +652,18 @@ function ListDetailInner({
     listItemsQuery.isPending ||
     gearItemsQuery.isPending ||
     categoriesQuery.isPending ||
-    listFoodQuery.isPending
+    listFoodPending
   const detailDataError =
     (listItemsQuery.isError && listItemsQuery.data === undefined) ||
     (gearItemsQuery.isError && gearItemsQuery.data === undefined) ||
     (categoriesQuery.isError && categoriesQuery.data === undefined) ||
-    (listFoodQuery.isError && listFoodQuery.data === undefined)
+    listFoodLoadFailed
   const retryDetailData = useCallback(() => {
     void listItemsQuery.refetch()
     void gearItemsQuery.refetch()
     void categoriesQuery.refetch()
-    void listFoodQuery.refetch()
-  }, [categoriesQuery, gearItemsQuery, listFoodQuery, listItemsQuery])
+    void refetchListFood()
+  }, [categoriesQuery, gearItemsQuery, refetchListFood, listItemsQuery])
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
@@ -710,141 +714,6 @@ function ListDetailInner({
       queryKeys.listItems(listId),
       queryKeys.listFood(listId),
     ),
-  })
-
-  // Pack state on a food row: the Packed/Ready checkboxes. Optimistic on the
-  // food cache; hand-rolled rather than makeOptimisticUpdate because the food
-  // cache is one object holding an items array, not a bare collection.
-  type FoodPatchVars = {
-    foodId: string
-    patch: { isPacked?: boolean; isReady?: boolean }
-  }
-  // FIELD-SCOPED snapshot + rollback, the same composition rule as
-  // use-list-item-actions' gear patches and the union reorder: only the
-  // fields THIS patch touched are snapshotted, and on failure only those
-  // fields rewind onto the CURRENT row - so a reorder or the sibling
-  // checkbox that succeeded while this was in flight survives the rollback.
-  const foodPackPatchMut = useMutation({
-    mutationKey: mutationKeys.updateFoodPackState(listId),
-    mutationFn: ({ foodId, patch }: FoodPatchVars) =>
-      updateFoodItem(listId, foodId, patch),
-    onMutate: async ({ foodId, patch }: FoodPatchVars) => {
-      await qc.cancelQueries({ queryKey: queryKeys.listFood(listId) })
-      const row = qc
-        .getQueryData<ListFoodResponse>(queryKeys.listFood(listId))
-        ?.items.find((item) => item.id === foodId)
-      const previousFields = row
-        ? {
-            ...(patch.isPacked !== undefined ? { isPacked: row.isPacked } : {}),
-            ...(patch.isReady !== undefined ? { isReady: row.isReady } : {}),
-          }
-        : undefined
-      qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
-        curr
-          ? {
-              ...curr,
-              items: curr.items.map((item) =>
-                item.id === foodId ? { ...item, ...patch } : item,
-              ),
-            }
-          : curr,
-      )
-      return { previousFields }
-    },
-    onError: (
-      _err: unknown,
-      { foodId }: FoodPatchVars,
-      ctx: { previousFields: { isPacked?: boolean; isReady?: boolean } | undefined } | undefined,
-    ) => {
-      const previousFields = ctx?.previousFields
-      if (!previousFields) return
-      qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
-        curr
-          ? {
-              ...curr,
-              items: curr.items.map((item) =>
-                item.id === foodId ? { ...item, ...previousFields } : item,
-              ),
-            }
-          : curr,
-      )
-    },
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
-    },
-  })
-
-  // Moving a food row between packing locations - the write behind both a
-  // cross-location drag of a food row and its row menu. Mirrors moveItemMut:
-  // the caller supplies the destination's next UNION rank so the optimistic
-  // row lands where the refetch will confirm it.
-  type MoveFoodVars = {
-    foodId: string
-    locationId: string | null
-    nextPackSortOrder: number
-  }
-  // Field-scoped like the patch above: a failed move rewinds ONLY the moved
-  // row's location + rank, so a Packed/Ready tick that landed mid-flight
-  // survives.
-  const moveFoodMut = useMutation({
-    mutationKey: mutationKeys.moveFoodItem(listId),
-    mutationFn: ({ foodId, locationId }: MoveFoodVars) =>
-      updateFoodItem(listId, foodId, { packingLocationId: locationId }),
-    onMutate: async ({ foodId, locationId, nextPackSortOrder }: MoveFoodVars) => {
-      await qc.cancelQueries({ queryKey: queryKeys.listFood(listId) })
-      const row = qc
-        .getQueryData<ListFoodResponse>(queryKeys.listFood(listId))
-        ?.items.find((item) => item.id === foodId)
-      const previousPlacement = row
-        ? { packingLocationId: row.packingLocationId, packSortOrder: row.packSortOrder }
-        : undefined
-      qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
-        curr
-          ? {
-              ...curr,
-              items: curr.items.map((item) =>
-                item.id === foodId
-                  ? {
-                      ...item,
-                      packingLocationId: locationId,
-                      packSortOrder: nextPackSortOrder,
-                    }
-                  : item,
-              ),
-            }
-          : curr,
-      )
-      return { previousPlacement }
-    },
-    onError: (
-      _err: unknown,
-      { foodId }: MoveFoodVars,
-      ctx: {
-        previousPlacement:
-          | { packingLocationId: string | null; packSortOrder: number }
-          | undefined
-      } | undefined,
-    ) => {
-      const previousPlacement = ctx?.previousPlacement
-      if (previousPlacement) {
-        qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
-          curr
-            ? {
-                ...curr,
-                items: curr.items.map((item) =>
-                  item.id === foodId ? { ...item, ...previousPlacement } : item,
-                ),
-              }
-            : curr,
-        )
-      }
-      // Same toast rule as moveItemMut: this is the write behind a drag, and
-      // a silent rollback is indistinguishable from the user dragging back.
-      showToast("Couldn't move that item. Please try again.", { type: 'error' })
-    },
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
-    },
   })
 
   // Packing-location admin (create / rename / delete / promote an item to a
@@ -1060,7 +929,7 @@ function ListDetailInner({
   function handleDragCancel() {
     setActiveId(null)
     handleLocationDragCancel()
-    setAnnouncement('Move cancelled.')
+    setAnnouncement('Move canceled.')
   }
 
   function requestMove(itemId: string, locationId: string | null) {
@@ -1190,7 +1059,7 @@ function ListDetailInner({
         return
       }
       if (!plan) {
-        setAnnouncement('Move cancelled.')
+        setAnnouncement('Move canceled.')
         return
       }
       if (plan.kind === 'move-gear') requestMove(plan.itemId, plan.locationId)
@@ -1322,7 +1191,10 @@ function ListDetailInner({
   ])
 
   // ── Food in Pack mode (0022: a bag's contents are the gear+food union) ──
-  // The page already holds the food query for weight totals; Pack renders it.
+  // useListFood already holds the food rows for the weight total; Pack renders
+  // the same rows. Everything below is a function of PAGE state - the mode, the
+  // two row filters, which locations are on screen - which is why it stayed
+  // here rather than moving into the hook.
   const packFoodItems = mode === 'pack' ? listFood.items : EMPTY_FOOD_ITEMS
   const foodById = new Map(packFoodItems.map((food) => [food.id, food]))
   // Filtered food rows, mirroring packFilteredItemIds for gear: hidden rows
@@ -1415,10 +1287,8 @@ function ListDetailInner({
     ),
   })
   // Food composes in at the page level so the mobile strip and the desktop
-  // table are handed ONE number and cannot disagree about what the pack
-  // weighs. foodGramsFor sums items alone - never across their slot
-  // associations, which would multiply a shared bag by the meals it covers.
-  const foodGrams = useMemo(() => foodGramsFor(listFood.items), [listFood.items])
+  // table are handed ONE number (useListFood's `grams`) and cannot disagree
+  // about what the pack weighs.
   const weightBreakdown = useMemo(
     () => computeListWeightBreakdown({
       gear: { items: listItems, categories },
@@ -1497,7 +1367,7 @@ function ListDetailInner({
       // returnFocus is false because the kebab that started this is inside the
       // row about to disappear. PlacementProvider's restore already declines
       // to focus a disconnected origin, but asking for it at all would be
-      // stating an intent this call cannot honour.
+      // stating an intent this call cannot honor.
       placementActions.cancel({ returnFocus: false })
       removalPreflightRef.current.add(li.id)
       void (async () => {
@@ -1506,7 +1376,7 @@ function ListDetailInner({
           // Again, after the await. The lookup is a real round trip - the
           // duplicate guard above exists because it is long enough for a
           // second click - so placement can be started DURING it, after the
-          // cancel above has already run. Cancelling once on entry would leave
+          // cancel above has already run. Canceling once on entry would leave
           // the confirm dialog opening over live slots in exactly that window.
           // cancel() is idempotent, so the common path pays nothing.
           placementActions.cancel({ returnFocus: false })
@@ -1894,7 +1764,7 @@ function ListDetailInner({
         {/* Nested containers get their OWN SortableContext. Sorting is
             scoped to a set of siblings, so without a context per level a
             nested section resolves against the root list, the strategy's
-            auto-shift computes against the wrong neighbours, and a nested
+            auto-shift computes against the wrong neighbors, and a nested
             reorder produces no usable drop. */}
         {node.children.length > 0 && (
           <SortableContext
@@ -2382,7 +2252,7 @@ function ListDetailInner({
                         items={wornItems}
                         regionKey="worn"
                         wornSection
-                        // Unlabelled on purpose: the section title already says
+                        // Unlabeled on purpose: the section title already says
                         // Worn, and this is the canonical list-level worn total.
                         // It must NOT look itself up by category - it has no
                         // categoryId, and a null lookup would hand it

@@ -6,7 +6,7 @@ row/table/panel visual grammar. Cited by
 
 The tokens live in `src/components/flat-table-styles.ts`. This document
 explains the reasoning behind them and, more importantly, records **which
-token owns which control** so the choice is a lookup rather than a judgement
+token owns which control** so the choice is a lookup rather than a judgment
 call. The gear picker (`LibraryPanel`) is the reference implementation of the
 row language.
 
@@ -124,8 +124,8 @@ the Pack row showed no weight at all. Three copies of the same state machine
 
 - Omit `onSave` for read-only: the public share view, and food rows in Pack
   (food weight is authored in the Food view).
-- Pass text colour and width/visibility through `className`; the control owns
-  the numeric token and the hover affordance, not the row's colour.
+- Pass text color and width/visibility through `className`; the control owns
+  the numeric token and the hover affordance, not the row's color.
 - Name and description are edited inline by `InlineText`. On a Pack row they
   deliberately are NOT: those sit inside the label that toggles Packed, and an
   input there would fight the gesture. Weight sits outside it, which is the
@@ -157,7 +157,7 @@ the control lives and whether it can be touched**, not by what the icon is.
 | Compact inline icon button in a surface that renders **only** at `lg+` | `RowIconButton` | 24x24, no touch box |
 | Modal / drawer close button | `ROW_CONTROL_TARGET` | 40px touch / 28x24 pointer |
 | Full-width disclosure button where the chevron is inline content | neither | the whole row is the hit area |
-| Toolbar button, labelled options trigger, form stepper | neither | out of scope; bordered controls with their own padding |
+| Toolbar button, labeled options trigger, form stepper | neither | out of scope; bordered controls with their own padding |
 | Compact panel header action (`PanelCard` `headerAction`) | neither | see below |
 
 `RowIconButton` defaults to the narrow desktop-only target. Callers that can
@@ -195,7 +195,7 @@ The three mistakes worth naming:
 - **Route views are navigation, not state.** Peer destinations with their own
   URLs are links with `aria-current="page"`, never pressed buttons.
 - **More than two options is a radio group.** Use real radio inputs, visually
-  relabelled - keyboard arrow navigation then works without reimplementing it.
+  relabeled - keyboard arrow navigation then works without reimplementing it.
 - **A row flag is not a setting.** It belongs to one item in a scanning
   column and obeys the row control target rules, so it never uses
   `ToggleSwitch`, whose sizing is tuned for panel chrome.

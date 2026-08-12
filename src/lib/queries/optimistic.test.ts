@@ -450,7 +450,7 @@ describe('an in-flight refetch cannot clobber an optimistic CRUD write', () => {
 
   for (const { name, fire, survives } of cases) {
     it(`${name}: the optimistic write survives a refetch landing underneath it`, async () => {
-      // retry: false so a cancelled fetch settles instead of being retried.
+      // retry: false so a canceled fetch settles instead of being retried.
       const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
       const key = ['rows'] as const
       qc.setQueryData<Row[]>(key, CACHED)
@@ -458,7 +458,7 @@ describe('an in-flight refetch cannot clobber an optimistic CRUD write', () => {
       const server = deferred<Row[]>()
       const inFlight = qc
         .fetchQuery({ queryKey: key, queryFn: () => server.promise })
-        // Cancelling a pending fetch rejects with CancelledError. Expected.
+        // Canceling a pending fetch rejects with CancelledError. Expected.
         .catch(() => undefined)
       server.resolve(STALE_FROM_SERVER)
 

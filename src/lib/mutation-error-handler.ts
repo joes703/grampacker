@@ -70,7 +70,7 @@ declare module '@tanstack/react-query' {
 // system from here - that would spam users with toasts for transient
 // network failures and background refetch errors. Which failures earn a
 // toast is the rule stated at the top of this file; it is a rule rather
-// than a per-site judgement call precisely so the answer does not drift
+// than a per-site judgment call precisely so the answer does not drift
 // between two surfaces doing the same thing.
 //
 // Extracted from the App.tsx inline arrow so the same function is
