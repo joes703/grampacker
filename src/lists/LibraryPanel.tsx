@@ -1,5 +1,5 @@
 import { memo, useCallback, useId, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Plus, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { groupByCategory } from '../lib/grouping'
 import type { WeightUnit } from '../lib/weight'
@@ -295,17 +295,15 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                 title={inList ? 'Remove from list' : 'Add to list'}
                 aria-label={inList ? `Remove ${item.name} from list` : `Add ${item.name} to list`}
                 // Hover/focus background is uniform across in-list and
-                // available rows; the in-list signal is carried entirely
-                // by the dimmed name and weight text below. An earlier
-                // pass added a soft-blue rest tint to in-list rows, but
-                // toggling that bg class on click triggered a Chrome
-                // compositor paint deferral (data flow correct, DOM
-                // correct, but the parent rounded table surface +
-                // overflow-hidden ancestor chain on the sidebar aside
-                // didn't invalidate its layer until another event
-                // repainted). Dropping the tint avoids the bug without
-                // browser-specific paint hints; dimming alone is
-                // sufficient visual cue.
+                // available rows. The in-list state is signalled by the
+                // check mark and the dimmed name below, never by a rest
+                // background: an earlier pass added a soft-blue rest tint
+                // to in-list rows, and toggling that bg class on click
+                // triggered a Chrome compositor paint deferral (data flow
+                // correct, DOM correct, but the parent rounded table
+                // surface + overflow-hidden ancestor chain on the sidebar
+                // aside didn't invalidate its layer until another event
+                // repainted). Do not reintroduce one.
                 // Picker rows keep px-3 mobile inline (not the canonical
                 // FLAT_TABLE_ROW_PADDING px-2 ramp): the picker drawer is
                 // narrower than the main list, and the row has only name +
@@ -313,6 +311,29 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                 // lets the row's min-h-7 (28px) own the desktop height.
                 className={`${FLAT_TABLE_ROW} w-full gap-2 px-3 py-0 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100`}
               >
+                {/* The in-list signal, and the PRIMARY one. A text-color step
+                    (gray-900 -> gray-600) was carrying this alone and could
+                    not: scanning a long library for what is already on the
+                    list meant comparing two greys, and toggling a row gave
+                    almost no visible confirmation that anything happened.
+                    A mark that is present or absent is unambiguous at a
+                    glance, and because it occupies a fixed-width slot on
+                    EVERY row, the marks line up into a column you can scan
+                    down instead of reading row by row.
+
+                    A shape change rather than a rest-state background: the
+                    soft-blue tint tried here before hit a Chrome compositor
+                    paint deferral under this panel's rounded/overflow-hidden
+                    ancestor chain (see the row-class comment history). Adding
+                    and removing a child node is a layout change, which does
+                    not defer that way - and the dimming below still rides
+                    along as a second, independent cue. */}
+                <span
+                  aria-hidden="true"
+                  className="shrink-0 w-4 inline-flex items-center justify-center"
+                >
+                  {inList && <Check size={14} className="text-blue-600" strokeWidth={3} />}
+                </span>
                 {/* Status badge — null-for-active means no leading
                     whitespace on the common case; non-active rows pick
                     up a subtle icon next to the name. */}
@@ -325,11 +346,12 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                     1.41:1: a picker row is operable in every state, so nothing
                     here is exempt as an inactive control.)
 
-                    The cost is that the weight no longer dims when an item is
-                    already in the list - gray-600 is the floor, so there is no
-                    room below it. The dimming now rides entirely on the name
-                    (gray-900 -> gray-600) and the status badge, which is enough
-                    to read the row as already-added. */}
+                    The consequence is that the weight cannot dim when an item is
+                    already in the list - gray-600 is the contrast floor, so
+                    there is no room below it. That leaves the name as the only
+                    text that can carry the state, one step of grey, which is
+                    why the check mark above is the primary signal and this is
+                    the secondary one. */}
                 <span
                   className={`flex-1 min-w-0 truncate ${FLAT_TABLE_BODY_TEXT} font-normal ${
                     inList ? 'text-gray-600' : 'text-gray-900'

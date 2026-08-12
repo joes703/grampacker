@@ -177,3 +177,60 @@ describe('creating a new item from the picker', () => {
     expect(button).toHaveAccessibleDescription('Still loading this list.')
   })
 })
+
+// The in-list state used to be one step of grey on the name and nothing else,
+// which is not enough to scan a long library with or to confirm that a tap
+// did anything. These assert a signal that is PRESENT or ABSENT rather than
+// lighter or darker - the property that made it readable - so a future
+// styling pass cannot quietly collapse it back to a shade.
+describe('gear picker shows plainly what is already on the list', () => {
+  const both: GearItem[] = [
+    item,
+    { ...item, id: 'gear-2', name: 'Quilt' },
+  ]
+
+  function markFor(name: string) {
+    // The mark is decorative (aria-hidden), so it is found structurally: the
+    // row's first child slot. Querying it this way is the point - it asserts
+    // the mark occupies a fixed leading column on every row, which is what
+    // lets the marks line up into a scannable column.
+    const row = screen.getByRole('button', { name: new RegExp(`${name} (from|to) list`) })
+    return row.firstElementChild
+  }
+
+  it('marks the row for gear already on the list, and leaves the others unmarked', () => {
+    render(
+      <LibraryPanel
+        gearItems={both}
+        categories={[category]}
+        listItemGearIds={new Set(['gear-1'])}
+        weightUnit="g"
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    )
+
+    expect(markFor('Tarp')?.querySelector('svg')).not.toBeNull()
+    expect(markFor('Quilt')?.querySelector('svg')).toBeNull()
+  })
+
+  // Both rows reserve the slot whether or not they fill it. Without this the
+  // marked rows would sit indented from the unmarked ones and the column
+  // would not line up.
+  it('reserves the mark column on every row', () => {
+    render(
+      <LibraryPanel
+        gearItems={both}
+        categories={[category]}
+        listItemGearIds={new Set(['gear-1'])}
+        weightUnit="g"
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    )
+
+    for (const name of ['Tarp', 'Quilt']) {
+      expect(markFor(name)?.className).toContain('w-4')
+    }
+  })
+})
