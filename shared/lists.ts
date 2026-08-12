@@ -234,11 +234,10 @@ export type UpdatePackingLocationRequest = z.infer<
 //            the row identity)
 //   - categories: userId, timestamps
 // isDraft is deliberately public: the share view shows the work-in-progress
-// banner. groupWorn USED to be published on the same footing, with a comment
-// claiming the share honored it - which SharePage never did. It is retired
-// rather than fixed: worn rows always leave their categories for one trailing
-// Worn section, on the owner's page and the share alike, so there was no
-// preference left to honor.
+// banner. groupWorn was published on the same footing and honored by
+// SharePage until #110 made worn grouping unconditional (2026-07-21). From
+// then on nothing read it, on either surface - it was retired from the DTO
+// rather than revived, because there is no preference left to express.
 export const publicListSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),

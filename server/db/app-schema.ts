@@ -160,10 +160,11 @@ export const lists = sqliteTable(
     // docs/incidents.md). Inert columns are the cheap outcome; a rebuild is
     // the expensive one. Do not "tidy" these away.
     //
-    // group_worn was a per-list worn-grouping preference the share view was
-    // documented to honor and never did. ready_checks_enabled was a per-list
-    // opt-in for the Ready column, now unconditional. is_ready on each item
-    // was always independent of the flag, so no tick was ever lost to it.
+    // group_worn was a per-list worn-grouping preference, honored by both the
+    // owner's page and the share until #110 made worn grouping unconditional
+    // (2026-07-21). ready_checks_enabled was a per-list opt-in for the Ready
+    // column, likewise now unconditional. is_ready on each item was always
+    // independent of that flag, so no tick was ever lost to it.
     groupWorn: integer('group_worn', { mode: 'boolean' }).notNull().default(false),
     readyChecksEnabled: integer('ready_checks_enabled', { mode: 'boolean' })
       .notNull()

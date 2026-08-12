@@ -225,12 +225,16 @@ describe('lists CRUD', () => {
     // strict, so the whole patch 400s rather than applying the rest and
     // dropping the unknown field - no silent half-write.
     //
-    // Narrow on purpose: a pre-retirement bundle only ever SENT these two
-    // from the ready-checks toggle and the worn-grouping toggle, both of
-    // which are gone. Its rename, notes, draft and share calls each send one
-    // field and are unaffected. The stale-tab risk in this change was never
-    // the request - it was the RESPONSE losing a field the old bundle's
-    // schema required, which is why the expand step ships first.
+    // Narrow on purpose. These two keys only ever went out from the
+    // ready-checks and worn-grouping toggles, and both were gone from the
+    // client well before this change - so no shipped bundle sends either. A
+    // stale tab's rename, notes, draft and share calls each send one field
+    // and are accepted here.
+    //
+    // Which means the request side was never the risk. The RESPONSE losing a
+    // field the old bundle's schema still requires is, and that is a
+    // different problem this test does not cover - see the expand step and
+    // SECURITY.md.
     const retired = await apiRequest(cookie, 'PATCH', `/api/lists/${first.id}`, {
       name: 'Should not land',
       groupWorn: true,

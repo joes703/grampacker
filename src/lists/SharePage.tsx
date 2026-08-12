@@ -179,10 +179,11 @@ export default function SharePage() {
   const grouped = groupListItemsByCategory(itemsForRender, categoriesForRender)
 
   // Match the owner view: worn rows always leave their categories for one
-  // trailing read-only Worn section. There was once a per-list groupWorn
-  // preference, published on this DTO with a comment claiming the share
-  // honored it - which this page never did. The flag is retired rather than
-  // implemented; the behavior below is the behavior everywhere.
+  // trailing read-only Worn section. This page DID once honor a per-list
+  // groupWorn preference - it read list.groupWorn and passed hideWorn - until
+  // #110 made worn grouping unconditional (2026-07-21). The flag went dead
+  // there and was retired from the DTO later; what was left behind in between
+  // was a comment claiming this page still honored it.
   const wornItems = grouped.flatMap((g) => g.items.filter((i) => i.isWorn))
 
   return (

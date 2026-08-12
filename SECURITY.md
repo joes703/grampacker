@@ -570,9 +570,10 @@ of it:
   (there is one user, and he is the maintainer).
 - **Two list flags were retired from every surface** (2026-08-11):
   `groupWorn` and `readyChecksEnabled`. Neither is on any DTO, neither is
-  accepted on PATCH, and `groupWorn` is off the public share DTO - which
-  matters here because it was published with a comment claiming the share
-  honored it, and the share never did. Their COLUMNS remain: dropping one
+  accepted on PATCH, and `groupWorn` is off the public share DTO. It was
+  published there for a real reason - the share honored it - until #110 made
+  worn grouping unconditional on 2026-07-21, after which it was a public
+  field nothing read. Their COLUMNS remain: dropping one
   rebuilds `lists`, and a rebuild cascade-deletes every `list_items` row.
   Both names stay in the forbidden-key denylist in
   `server/routes/shares.test.ts` so a future projection cannot reintroduce

@@ -307,10 +307,10 @@ describe('GET /api/shares/v2/:slug', () => {
     const raw = await (await getShare(list.slug)).json()
     const body = sharedListResponseSchema.parse(raw)
     expect(body.list.isDraft).toBe(false)
-    // The exact public list shape. groupWorn used to sit here with a comment
-    // claiming the share honored it, which SharePage never did - worn rows
-    // always leave their categories for one trailing Worn section. Asserted
-    // on raw JSON so a projection that put it back fails here.
+    // The exact public list shape. groupWorn used to sit here, and the share
+    // really did honor it until #110 made worn grouping unconditional; after
+    // that it was a field nothing read. Asserted on raw JSON so a projection
+    // that puts it back fails here.
     expect(Object.keys((raw as { list: object }).list).toSorted()).toEqual([
       'description',
       'isDraft',
