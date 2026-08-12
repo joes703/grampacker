@@ -508,22 +508,29 @@ of it:
   entries. Until then the blast radius is one list, within one account, with
   concurrent clients - two tabs, or a phone and a laptop.
 
-- **A packing-location rename can commit and then report failure.**
-  `renamePackingLocation` UPDATEs and then re-reads through the owned parent
-  to build its response (`server/repos/packing-locations.ts`). The two are not
-  one statement, so if the read-back fails the route 500s over a rename that
-  landed, and if a concurrent delete lands between them it 404s. Found by
-  review 2026-08-11 while closing the wrong-parent PATCH gap.
+- **Creating or renaming a packing location can commit and then report
+  failure.** Both `create` and `rename` in
+  `server/repos/packing-locations.ts` write and then call `readOwnedList` to
+  compose their response. The write and the read-back are separate
+  operations, so a read-back that fails or comes back without the row makes
+  the route report failure over a change that landed: `create` throws
+  ("insert could not be read") and 500s; `rename` maps it to 404, or 500s if
+  the read itself fails. A concurrent delete between the two produces the
+  same thing legitimately. Found by review 2026-08-11 while closing the
+  wrong-parent PATCH gap - and the second half of it, `create`, was found
+  only on the review's second pass, after this entry first claimed the
+  problem was rename's alone.
 
   Not a security issue - no boundary is crossed, and the only caller who can
-  reach it is the owner. It is a truthfulness one, and this file is where
-  live gaps are recorded rather than left in a commit message. The fix is to
-  return the row from `UPDATE ... RETURNING` instead of re-reading, which
-  needs the returned shape to match what `readOwnedList` composes.
+  reach either is the owner acting on their own list. It is a truthfulness
+  one, recorded here because this file is where live gaps live rather than in
+  a commit message. The fix for both is to return the row from the write's
+  own `RETURNING` rather than re-reading, which needs that shape to match
+  what `readOwnedList` composes.
 
-  Trigger: any report of a rename that "didn't work" and then did, or the
-  next change to this repo's return path. Blast radius today is one
-  mislabelled error on one owner's own rename.
+  Trigger: any report of a location that "didn't save" and then existed, or
+  the next change to this repo's return path. Blast radius today is one
+  mislabelled error on one owner's own write.
 
 - **Fresh-auth proofs**: CLOSED. See "Fresh auth" above - passkey
   mutations and account deletion both require a fresh session. Email
