@@ -288,7 +288,10 @@ export type PublicListItem = z.infer<typeof publicListItemSchema>
 export const publicFoodItemSchema = z.object({
   id: z.string(),
   name: z.string(),
-  quantity: z.number().int(),
+  // What you CARRY, resolved server-side (0024). NOT the raw quantity: that
+  // is per-meal for most items and means nothing without the schedule, which
+  // a share must never receive.
+  unitCount: z.number().int(),
   // Fractional for the same reason gear weight is: one item carries tenths.
   weightGrams: z.number(),
   sortOrder: z.number().int(),

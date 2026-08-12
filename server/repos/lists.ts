@@ -348,6 +348,11 @@ export function createListsRepo(db: Db, userId: string) {
             name: listFoodItems.name,
             weightGrams: listFoodItems.weightGrams,
             quantity: listFoodItems.quantity,
+            // Copied, not defaulted. quantity means nothing without it: a
+            // duplicate that dropped this would silently turn every shared
+            // stash into a per-meal item and multiply the copy's weight by
+            // its meal count.
+            isPerMeal: listFoodItems.isPerMeal,
             sortOrder: listFoodItems.sortOrder,
             isPacked: listFoodItems.isPacked,
             isReady: listFoodItems.isReady,
@@ -485,6 +490,7 @@ export function createListsRepo(db: Db, userId: string) {
           name: item.name,
           weightGrams: item.weightGrams,
           quantity: item.quantity,
+          isPerMeal: item.isPerMeal,
           sortOrder: item.sortOrder,
           // Pack state copies like gear's: packed flag verbatim, location
           // remapped, rank verbatim (whole cohorts move as sets, so each

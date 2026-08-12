@@ -69,7 +69,7 @@ const guardFood: ListFoodResponse = {
     { id: 'b1', dayNumber: 1, meal: 'breakfast', needed: true },
     { id: 'l3', dayNumber: 3, meal: 'lunch', needed: true },
   ],
-  items: [{ id: 'i1', name: 'Ramen', weightGrams: 120, quantity: 1, sortOrder: 0, isPacked: false, isReady: false, packingLocationId: null, packSortOrder: 0, slotIds: ['l3'] }],
+  items: [{ id: 'i1', name: 'Ramen', weightGrams: 120, quantity: 1, isPerMeal: false, unitCount: 1, sortOrder: 0, isPacked: false, isReady: false, packingLocationId: null, packSortOrder: 0, slotIds: ['l3'] }],
 }
 
 const rescheduleFood: ListFoodResponse = {
@@ -78,7 +78,7 @@ const rescheduleFood: ListFoodResponse = {
     { id: 'b1', dayNumber: 1, meal: 'breakfast', needed: true },
     { id: 'd2', dayNumber: 2, meal: 'dinner', needed: true },
   ],
-  items: [{ id: 'i1', name: 'Ramen', weightGrams: 120, quantity: 1, sortOrder: 0, isPacked: false, isReady: false, packingLocationId: null, packSortOrder: 0, slotIds: ['b1'] }],
+  items: [{ id: 'i1', name: 'Ramen', weightGrams: 120, quantity: 1, isPerMeal: false, unitCount: 1, sortOrder: 0, isPacked: false, isReady: false, packingLocationId: null, packSortOrder: 0, slotIds: ['b1'] }],
 }
 
 function renderFoodView() {
@@ -118,7 +118,7 @@ beforeEach(() => {
     id: 'new-item',
     name: 'Oatmeal',
     weightGrams: 80,
-    quantity: 1,
+    quantity: 1, isPerMeal: false, unitCount: 1,
     sortOrder: 0,
     slotIds: [],
   })
@@ -126,7 +126,7 @@ beforeEach(() => {
     id: 'i1',
     name: 'Ramen',
     weightGrams: 120,
-    quantity: 1,
+    quantity: 1, isPerMeal: false, unitCount: 1,
     sortOrder: 0,
     slotIds: [],
   })
@@ -381,6 +381,10 @@ describe('FoodView add food', () => {
     expect(h.createFoodItem).toHaveBeenCalledWith(listId, {
       name: 'Oatmeal',
       weightGrams: 0,
+      // Neither isPerMeal nor unitCount: the create request omits the mode so
+      // the server's per-meal default applies, and unitCount is derived, never
+      // sent. A payload carrying either would be the client deciding something
+      // that is not its to decide.
       quantity: 1,
       slotIds: [],
     })
@@ -483,6 +487,10 @@ describe('FoodView stale slot ids', () => {
     expect(h.createFoodItem).toHaveBeenCalledWith(listId, {
       name: 'Oatmeal',
       weightGrams: 0,
+      // Neither isPerMeal nor unitCount: the create request omits the mode so
+      // the server's per-meal default applies, and unitCount is derived, never
+      // sent. A payload carrying either would be the client deciding something
+      // that is not its to decide.
       quantity: 1,
       slotIds: [],
     })

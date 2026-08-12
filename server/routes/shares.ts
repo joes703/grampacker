@@ -62,7 +62,7 @@ function toSharedListResponse(share: PublicShare): SharedListResponse {
       items: share.food.map((row) => ({
         id: row.id,
         name: row.name,
-        quantity: row.quantity,
+        unitCount: row.unitCount,
         weightGrams: row.weightGrams,
         sortOrder: row.sortOrder,
       })),

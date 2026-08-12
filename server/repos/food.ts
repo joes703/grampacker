@@ -7,7 +7,7 @@ import {
   lists,
   packingLocations,
 } from '../db/schema'
-import { MEALS, type Meal } from '../../shared/food'
+import { MEALS, foodUnitCount, type Meal } from '../../shared/food'
 import { chunkForParamCap } from './chunk-ids'
 import {
   isAnyUniqueViolation,
@@ -36,7 +36,10 @@ export type FoodItemRow = {
   id: string
   name: string
   weightGrams: number
+  // Per MEAL when isPerMeal, a total otherwise. unitCount is what you carry.
   quantity: number
+  isPerMeal: boolean
+  unitCount: number
   sortOrder: number
   // Pack state (0022): food is a full peer of gear in Pack mode. Rank
   // semantics live on pack-reorder.ts; weight stays summed over items alone
@@ -188,6 +191,7 @@ export function createFoodRepo(db: Db, userId: string) {
             name: listFoodItems.name,
             weightGrams: listFoodItems.weightGrams,
             quantity: listFoodItems.quantity,
+            isPerMeal: listFoodItems.isPerMeal,
             sortOrder: listFoodItems.sortOrder,
             isPacked: listFoodItems.isPacked,
             isReady: listFoodItems.isReady,
@@ -230,10 +234,15 @@ export function createFoodRepo(db: Db, userId: string) {
           meal: slot.meal,
           needed: slot.needed,
         })),
-        items: itemRows.map((item) => ({
-          ...item,
-          slotIds: slotsByItem.get(item.id) ?? [],
-        })),
+        items: itemRows.map((item) => {
+          const slotIds = slotsByItem.get(item.id) ?? []
+          // Computed HERE and shipped, not left to each reader. The public
+          // share needs the count and must never receive the schedule it
+          // derives from, and three surfaces computing it independently is
+          // how the share came to report a lighter pack than the owner's own
+          // page once already.
+          return { ...item, slotIds, unitCount: foodUnitCount({ ...item, slotIds }) }
+        }),
       }
     },
 
@@ -374,6 +383,7 @@ export function createFoodRepo(db: Db, userId: string) {
         name: string
         weightGrams: number
         quantity: number
+        isPerMeal?: boolean
         slotIds: string[]
       },
     ): Promise<FoodWriteResult<FoodItemRow>> {
@@ -397,8 +407,11 @@ export function createFoodRepo(db: Db, userId: string) {
           listId,
           name: input.name,
           weightGrams: input.weightGrams,
-          // Exactly what the caller asked for. Never the slot count.
+          // Exactly what the caller asked for. Per-meal unless told otherwise,
+          // matching the column default: the count you CARRY is derived from
+          // this and the schedule (foodUnitCount), never stored.
           quantity: input.quantity,
+          isPerMeal: input.isPerMeal ?? true,
           sortOrder: (maxRow?.max ?? -1) + 1,
           // A new food item arrives Unassigned, one past that cohort's UNION
           // maximum (gear and food - see pack-reorder.ts). DEFAULT 0 would
@@ -450,6 +463,12 @@ export function createFoodRepo(db: Db, userId: string) {
           name: input.name,
           weightGrams: input.weightGrams,
           quantity: input.quantity,
+          isPerMeal: input.isPerMeal ?? true,
+          unitCount: foodUnitCount({
+            quantity: input.quantity,
+            isPerMeal: input.isPerMeal ?? true,
+            slotIds: usable,
+          }),
           sortOrder: (maxRow?.max ?? -1) + 1,
           isPacked: false,
           isReady: false,
@@ -467,6 +486,7 @@ export function createFoodRepo(db: Db, userId: string) {
         name?: string
         weightGrams?: number
         quantity?: number
+        isPerMeal?: boolean
         slotIds?: string[]
         isPacked?: boolean
         isReady?: boolean
@@ -481,6 +501,7 @@ export function createFoodRepo(db: Db, userId: string) {
           name: listFoodItems.name,
           weightGrams: listFoodItems.weightGrams,
           quantity: listFoodItems.quantity,
+          isPerMeal: listFoodItems.isPerMeal,
           sortOrder: listFoodItems.sortOrder,
           isPacked: listFoodItems.isPacked,
           isReady: listFoodItems.isReady,
@@ -510,6 +531,7 @@ export function createFoodRepo(db: Db, userId: string) {
       if (patch.name !== undefined) set.name = patch.name
       if (patch.weightGrams !== undefined) set.weightGrams = patch.weightGrams
       if (patch.quantity !== undefined) set.quantity = patch.quantity
+      if (patch.isPerMeal !== undefined) set.isPerMeal = patch.isPerMeal
       if (patch.isPacked !== undefined) set.isPacked = patch.isPacked
       if (patch.isReady !== undefined) set.isReady = patch.isReady
       if (patch.packingLocationId !== undefined) {
@@ -671,6 +693,12 @@ export function createFoodRepo(db: Db, userId: string) {
           name: patch.name ?? item.name,
           weightGrams: patch.weightGrams ?? item.weightGrams,
           quantity: patch.quantity ?? item.quantity,
+          isPerMeal: patch.isPerMeal ?? item.isPerMeal,
+          unitCount: foodUnitCount({
+            quantity: patch.quantity ?? item.quantity,
+            isPerMeal: patch.isPerMeal ?? item.isPerMeal,
+            slotIds: links,
+          }),
           sortOrder: item.sortOrder,
           // From the write's RETURNING when it landed (the moved-to rank is
           // computed inside the statement and unknowable beforehand); the

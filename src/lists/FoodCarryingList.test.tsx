@@ -11,6 +11,10 @@ function item(over: Partial<FoodItemResponse> & { id: string; name: string }): F
   return {
     weightGrams: 100,
     quantity: 1,
+    // Per-meal is the app default; unitCount is what the row RENDERS, and
+    // tests that care about the derivation set both explicitly.
+    isPerMeal: true,
+    unitCount: 1,
     sortOrder: 0,
     isPacked: false,
     isReady: false,
@@ -33,6 +37,7 @@ function renderList(overrides: {
   busy?: boolean
   onReschedule?: (itemId: string) => void
   onSetQuantity?: (itemId: string, quantity: number) => void
+  onTogglePerMeal?: (itemId: string, isPerMeal: boolean) => void
   onDelete?: (itemId: string) => void
 } = {}) {
   const props = {
@@ -41,6 +46,7 @@ function renderList(overrides: {
     busy: overrides.busy ?? false,
     onReschedule: overrides.onReschedule ?? vi.fn(),
     onSetQuantity: overrides.onSetQuantity ?? vi.fn(),
+    onTogglePerMeal: overrides.onTogglePerMeal ?? vi.fn(),
     onDelete: overrides.onDelete ?? vi.fn(),
   }
   render(<FoodCarryingList {...props} />)
@@ -71,6 +77,79 @@ describe('FoodCarryingList delete', () => {
     const props = renderList()
     await user.click(screen.getByRole('button', { name: 'Remove Ramen' }))
     expect(props.onDelete).toHaveBeenCalledWith('r1')
+  })
+})
+
+describe('FoodCarryingList per-meal', () => {
+  // The row has to SAY the arithmetic, because the bug it replaces was the app
+  // doing none and the user having no way to tell.
+  it('shows what a per-meal item adds up to across its meals', () => {
+    renderList({
+      items: [
+        item({
+          id: 'i1',
+          name: 'Justin\'s PB',
+          weightGrams: 33.5,
+          quantity: 1,
+          isPerMeal: true,
+          unitCount: 5,
+          slotIds: ['s1', 's2', 's3', 's4', 's5'],
+        }),
+      ],
+    })
+    const row = screen.getByText("Justin's PB").closest('div')!
+    expect(within(row).getByText('per meal')).toBeInTheDocument()
+    expect(within(row).getByText('5 meals')).toBeInTheDocument()
+    expect(within(row).getByText('= 5')).toBeInTheDocument()
+    // The weight column is what it adds to the PACK: 33.5 x 5.
+    expect(within(row).getByLabelText('167.5 g')).toBeInTheDocument()
+  })
+
+  it('omits the total when it equals the count, rather than printing "= 1"', () => {
+    renderList({
+      items: [
+        item({
+          id: 'i1',
+          name: 'Trail mix',
+          weightGrams: 500,
+          quantity: 1,
+          isPerMeal: false,
+          unitCount: 1,
+          slotIds: ['s1', 's2'],
+        }),
+      ],
+    })
+    const row = screen.getByText('Trail mix').closest('div')!
+    expect(within(row).getByText('shared')).toBeInTheDocument()
+    expect(within(row).queryByText('= 1')).not.toBeInTheDocument()
+    // One bag, whatever the schedule says.
+    expect(within(row).getByLabelText('500 g')).toBeInTheDocument()
+  })
+
+  it('toggles the mode from the row', async () => {
+    const user = userEvent.setup()
+    const props = renderList({
+      items: [
+        item({ id: 'i1', name: 'Bar', quantity: 1, isPerMeal: true, unitCount: 3 }),
+      ],
+    })
+
+    await user.click(screen.getByRole('button', { name: /Bar is per meal/ }))
+
+    expect(props.onTogglePerMeal).toHaveBeenCalledWith('i1', false)
+  })
+
+  it('cannot be toggled while a food write is in flight', () => {
+    renderList({
+      busy: true,
+      items: [
+        item({ id: 'i1', name: 'Bar', quantity: 1, isPerMeal: true, unitCount: 3 }),
+      ],
+    })
+    expect(
+      (screen.getByRole('button', { name: /Bar is per meal/ }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
   })
 })
 

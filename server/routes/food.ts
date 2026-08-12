@@ -13,8 +13,15 @@ import { type SessionVars } from '../middleware/session'
 // to say which list a slot or item belongs to, and trusting it would let one of
 // the caller's own lists reach into another's rows.
 //
-// Session-scoped throughout. Nothing here is ever served anonymously: food is a
-// private planning aid and does not appear in the public share projection.
+// Session-scoped throughout: nothing on THESE routes is ever served
+// anonymously. That is a statement about this module, not about food.
+//
+// It used to read "food ... does not appear in the public share projection",
+// which stopped being true when the share began publishing food rows and was
+// left standing. What the share publishes is a narrow projection built in
+// server/routes/shares.ts - name, carried count, weight, order. What never
+// leaves this module is the PLAN: the day grid, the meal slots, their
+// "needed" flags, and every item's slot ids and pack state.
 
 export const foodRoutes = new Hono<{
   Bindings: Env

@@ -169,6 +169,13 @@
       "when": 1786233600000,
       "tag": "0023_food-pack-rank-enforcement",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1786320000000,
+      "tag": "0024_food-per-meal",
+      "breakpoints": true
     }
   ]
 }

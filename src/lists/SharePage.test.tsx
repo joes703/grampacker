@@ -178,8 +178,8 @@ describe('SharePage read-only public sharing', () => {
         items: [tentItem],
         food: {
           items: [
-            { id: 'f1', name: 'Oatmeal', quantity: 3, weightGrams: 90, sortOrder: 0 },
-            { id: 'f2', name: 'Trail mix', quantity: 1, weightGrams: 200, sortOrder: 1 },
+            { id: 'f1', name: 'Oatmeal', unitCount: 3, weightGrams: 90, sortOrder: 0 },
+            { id: 'f2', name: 'Trail mix', unitCount: 1, weightGrams: 200, sortOrder: 1 },
           ],
         },
       }),
@@ -212,7 +212,7 @@ describe('SharePage read-only public sharing', () => {
           items: [
             // 3 x 90 = 270, not 90. Quantity is the multiplier; the meal
             // schedule that would multiply it further is not on this wire.
-            { id: 'f1', name: 'Oatmeal', quantity: 3, weightGrams: 90, sortOrder: 0 },
+            { id: 'f1', name: 'Oatmeal', unitCount: 3, weightGrams: 90, sortOrder: 0 },
           ],
         },
       }),
@@ -238,7 +238,7 @@ describe('SharePage read-only public sharing', () => {
       share({
         items: [],
         food: {
-          items: [{ id: 'f1', name: 'Oatmeal', quantity: 1, weightGrams: 90, sortOrder: 0 }],
+          items: [{ id: 'f1', name: 'Oatmeal', unitCount: 1, weightGrams: 90, sortOrder: 0 }],
         },
       }),
     )

@@ -24,6 +24,7 @@ export default function FoodCarryingList({
   busy,
   onReschedule,
   onSetQuantity,
+  onTogglePerMeal,
   onDelete,
 }: {
   items: readonly FoodItemResponse[]
@@ -31,6 +32,7 @@ export default function FoodCarryingList({
   busy: boolean
   onReschedule: (itemId: string) => void
   onSetQuantity: (itemId: string, quantity: number) => void
+  onTogglePerMeal: (itemId: string, isPerMeal: boolean) => void
   onDelete: (itemId: string) => void
 }) {
   return (
@@ -43,6 +45,7 @@ export default function FoodCarryingList({
           busy={busy}
           onReschedule={() => onReschedule(item.id)}
           onSetQuantity={(quantity) => onSetQuantity(item.id, quantity)}
+          onTogglePerMeal={() => onTogglePerMeal(item.id, !item.isPerMeal)}
           onDelete={() => onDelete(item.id)}
         />
       ))}
@@ -68,6 +71,7 @@ function FoodItemRow({
   busy,
   onReschedule,
   onSetQuantity,
+  onTogglePerMeal,
   onDelete,
 }: {
   item: FoodItemResponse
@@ -84,6 +88,9 @@ function FoodItemRow({
    *  settable on the add form and nowhere else, which left every item stuck at
    *  1 and under-reported the pack. */
   onSetQuantity: (quantity: number) => void
+  /** Switches this item between "one (or `quantity`) for each meal it is
+   *  scheduled into" and "one shared stash, however many meals it spans". */
+  onTogglePerMeal: () => void
   onDelete: () => void
 }) {
   return (
@@ -93,13 +100,11 @@ function FoodItemRow({
     <div className={`${FLAT_TABLE_ROW} flex items-center gap-2 px-2 lg:px-3 py-2 lg:py-1`}>
       <span className="min-w-0 flex-1">
         <span className={`block truncate ${FLAT_TABLE_BODY_TEXT}`}>{item.name}</span>
-        {/* "Carry N" then the schedule, deliberately NOT "N x 5 meals": the
-            x reads as a multiplication that does not happen. Scheduling says
-            WHEN you eat this, the count says how many you pack, and the two
-            are independent - conflating them is what made a five-lunch plan
-            look like it weighed one packet. */}
+        {/* The whole sentence: how many per meal, over how many meals, is how
+            many you carry. It reads as the arithmetic it is, because the bug
+            this replaces was the app doing NO arithmetic and leaving the user
+            to notice. The mode word is the control that switches it. */}
         <span className={`flex min-w-0 flex-wrap items-center gap-x-1 ${FLAT_TABLE_META_TEXT}`}>
-          <span className="shrink-0">Carry</span>
           <InlineQuantity
             quantity={item.quantity}
             max={FOOD_QUANTITY_MAX}
@@ -108,12 +113,25 @@ function FoodItemRow({
             // ONE width for every state, sized for the WIDEST of them: the
             // number input, which has to hold four digits plus its padding,
             // border and the browser's native steppers. Sizing to the resting
-            // label instead (w-12/lg:w-10) fits the label fine and clips the
-            // input, and any difference between the two reflows the line on
-            // every commit.
+            // label instead fits the label fine and clips the input, and any
+            // difference between the two reflows the line on every commit.
             className="w-16 lg:w-12"
             align="center"
           />
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onTogglePerMeal}
+            title={
+              item.isPerMeal
+                ? 'Counted for each meal. Switch to one shared stash.'
+                : 'One shared stash. Switch to one for each meal.'
+            }
+            aria-label={`${item.name} is ${item.isPerMeal ? 'per meal' : 'shared'}. Switch.`}
+            className="shrink-0 rounded px-1 underline decoration-dotted underline-offset-2 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
+          >
+            {item.isPerMeal ? 'per meal' : 'shared'}
+          </button>
           <span aria-hidden="true" className="shrink-0">·</span>
           {item.slotIds.length > 0 ? (
             `${item.slotIds.length} ${item.slotIds.length === 1 ? 'meal' : 'meals'}`
@@ -122,11 +140,20 @@ function FoodItemRow({
               Unscheduled
             </span>
           )}
+          {/* Only when the two differ - repeating "= 1" on every shared row is
+              noise, and the arithmetic is the point only where it happened. */}
+          {item.unitCount !== item.quantity && (
+            <span className="shrink-0 font-medium text-gray-700">
+              = {item.unitCount}
+            </span>
+          )}
         </span>
       </span>
-      {/* Numeric token, never bare - see FoodDaySection's weight comment. */}
+      {/* Numeric token, never bare - see FoodDaySection's weight comment.
+          unitCount, not quantity: this column is what the item adds to the
+          pack, which for a per-meal item is every meal it is in. */}
       <span className={`${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
-        <ItemWeightValue grams={item.weightGrams * item.quantity} unit={weightUnit} />
+        <ItemWeightValue grams={item.weightGrams * item.unitCount} unit={weightUnit} />
       </span>
       <button
         type="button"

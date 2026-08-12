@@ -3,10 +3,12 @@ import type { Db } from '../db'
 import {
   categories,
   gearItems,
+  listFoodItemSlots,
   listFoodItems,
   listItems,
   lists,
 } from '../db/schema'
+import { foodUnitCount } from '../../shared/food'
 
 // Anonymous read access for the public share surface (/api/shares/v2/:slug).
 // Deliberately NOT part of reposForUser: there is no user. This is the
@@ -48,7 +50,11 @@ export type PublicListItemRow = {
 export type PublicFoodItemRow = {
   id: string
   name: string
-  quantity: number
+  // What you CARRY, already resolved. The share publishes this instead of the
+  // raw quantity because quantity alone is meaningless without knowing
+  // whether it is per-meal, and the per-meal case needs the schedule that a
+  // share must not receive.
+  unitCount: number
   weightGrams: number
   sortOrder: number
 }
@@ -57,13 +63,16 @@ export type PublicShare = {
   list: PublicListRow
   categories: PublicCategoryRow[]
   items: PublicListItemRow[]
-  /** The food a share publishes: what it is, how many, how heavy, and its
-   *  order. Named columns only, like every other select here.
+  /** The food a share publishes: what it is, how many you carry, how heavy,
+   *  and its order. Named columns only, like every other select here.
    *
    *  What stays private is the PLAN - day count, meal slots, "not needed"
-   *  marks, packing state. Those live in other tables and no statement in
-   *  this module reads them. "2 x 85 g ramen" is a thing in a pack;
-   *  "Tuesday dinner: leftover curry" is a fact about someone's week. */
+   *  marks, packing state. The one thing this module reads from that half is
+   *  the COUNT of an item's slot links (0024), because a per-meal item's
+   *  carried count is quantity x meals and the share must publish the answer
+   *  rather than the arithmetic. No day, meal or slot id crosses.
+   *  "2 x 85 g ramen" is a thing in a pack; "Tuesday dinner: leftover curry"
+   *  is a fact about someone's week. */
   food: PublicFoodItemRow[]
 }
 
@@ -125,18 +134,18 @@ export function createPublicSharesRepo(db: Db) {
         .where(shareGate)
         .orderBy(asc(categories.sortOrder), asc(categories.name))
 
-      // The food items table ALONE. Never join to list_food_item_slots
-      // here: the associations say WHEN you plan to eat something, not how
-      // much of it you carry, so a join would return one 500 g bag of trail
-      // mix five times over for a trail mix scheduled across five lunches -
-      // both as duplicate rows and, if anyone re-adds a sum, as 2500 g. The
-      // slot tables are also the private half of the food plan, which is the
-      // second reason nothing here touches them.
+      // Never JOIN this to list_food_item_slots. A join returns one 500 g bag
+      // of trail mix five times over for a bag scheduled across five lunches -
+      // both as duplicate rows and, if anyone re-adds a sum, as 2500 g.
+      //
+      // The slot COUNT is read separately below (0024) and combined in JS, so
+      // this statement still returns exactly one row per food item.
       const foodQuery = db
         .select({
           id: listFoodItems.id,
           name: listFoodItems.name,
           quantity: listFoodItems.quantity,
+          isPerMeal: listFoodItems.isPerMeal,
           weightGrams: listFoodItems.weightGrams,
           sortOrder: listFoodItems.sortOrder,
         })
@@ -145,20 +154,58 @@ export function createPublicSharesRepo(db: Db) {
         .where(shareGate)
         .orderBy(asc(listFoodItems.sortOrder))
 
-      const [listRows, itemRows, categoryRows, foodRows] = await db.batch([
-        listQuery,
-        itemsQuery,
-        categoriesQuery,
-        foodQuery,
-      ])
+      // The slot LINKS, and only their item ids - never the slot rows, never
+      // which day or meal. A per-meal item's carried count is quantity x the
+      // number of meals it is in (0024), so the count is the one fact about
+      // the plan a share cannot avoid touching.
+      //
+      // A separate statement rather than a join onto foodQuery: joining would
+      // fan each food row out once per link, which is exactly the duplicate
+      // that made a shared bag weigh five times in the first place. Counted in
+      // JS below, where a row is a row.
+      const foodSlotLinkQuery = db
+        .select({ foodItemId: listFoodItemSlots.foodItemId })
+        .from(listFoodItemSlots)
+        .innerJoin(lists, eq(lists.id, listFoodItemSlots.listId))
+        .where(shareGate)
+
+      const [listRows, itemRows, categoryRows, foodRows, foodSlotLinkRows] =
+        await db.batch([
+          listQuery,
+          itemsQuery,
+          categoriesQuery,
+          foodQuery,
+          foodSlotLinkQuery,
+        ])
 
       const list = listRows[0]
       if (!list) return null
+
+      const slotCountByItem = new Map<string, number>()
+      for (const link of foodSlotLinkRows) {
+        slotCountByItem.set(
+          link.foodItemId,
+          (slotCountByItem.get(link.foodItemId) ?? 0) + 1,
+        )
+      }
+
       return {
         list,
         categories: categoryRows,
         items: itemRows,
-        food: foodRows,
+        // Resolved to a carried count here, so the DTO below never has to
+        // carry isPerMeal or the schedule to explain a number.
+        food: foodRows.map((row) => ({
+          id: row.id,
+          name: row.name,
+          unitCount: foodUnitCount({
+            quantity: row.quantity,
+            isPerMeal: row.isPerMeal,
+            slotIds: new Array<string>(slotCountByItem.get(row.id) ?? 0),
+          }),
+          weightGrams: row.weightGrams,
+          sortOrder: row.sortOrder,
+        })),
       }
     },
   }

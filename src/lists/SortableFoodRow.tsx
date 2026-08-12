@@ -132,7 +132,7 @@ export default function SortableFoodRow({
         <ConsumableIcon />
       </span>
       <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
-        {food.quantity}
+        {food.unitCount}
       </span>
       {/* Same component and the same layout utilities as the gear pack row:
           a bag holds gear and food in one cohort, so a cell on one and not

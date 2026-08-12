@@ -45,8 +45,11 @@ export default function AddFoodForm({
 }) {
   const [name, setName] = useState('')
   const [weightGrams, setWeightGrams] = useState(0)
-  // ONE. Not the number of slots selected. The app cannot tell five packets
-  // from one shared bag, and guessing high silently inflates the pack weight.
+  // ONE per meal. The form creates PER-MEAL items (0024), so this is how many
+  // you eat at each sitting, and the meals you pick decide how many you carry.
+  // It used to say "not the number of slots selected, the app cannot tell five
+  // packets from one shared bag" - the app can now, because the item says
+  // which it is, and refusing to guess was silently under-reporting the pack.
   const [quantity, setQuantity] = useState('1')
 
   const quantityValue = Number(quantity)

@@ -159,10 +159,28 @@ export function consumableGramsForCategory(
  * across five lunches it returns 2500 g, and pack weight is the number the
  * whole app exists to produce.
  */
-export function foodGramsFor(
+/**
+ * Weight at ONE SITTING - what a single meal's row adds up to.
+ *
+ * `quantity`, not `unitCount`: unitCount is the whole trip's worth, and a
+ * lunch does not weigh five lunches. For a shared stash this is the whole
+ * stash, the same as it has always been, which is why the DAY total below has
+ * to dedupe shared items and must NOT dedupe per-meal ones.
+ */
+export function foodGramsAtOneMeal(
   items: readonly { weightGrams: number; quantity: number }[],
 ): number {
   return items.reduce((grams, item) => grams + item.weightGrams * item.quantity, 0)
+}
+
+export function foodGramsFor(
+  items: readonly { weightGrams: number; unitCount: number }[],
+): number {
+  // unitCount, never quantity. quantity is per-MEAL for most items (0024) and
+  // summing it counts one packet for a five-lunch plan - the under-report this
+  // whole model change exists to fix. The server resolves unitCount so every
+  // surface, including the anonymous share, sums the same number.
+  return items.reduce((grams, item) => grams + item.weightGrams * item.unitCount, 0)
 }
 
 /**

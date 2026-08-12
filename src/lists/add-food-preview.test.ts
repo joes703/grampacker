@@ -29,16 +29,19 @@ describe('addFoodPreview', () => {
     ).toBe('Adding: Oatmeal · 80 g × 2 · any time')
   })
 
+  // The multiplier is the count you will CARRY, not the number typed. The
+  // form creates per-meal items, so three breakfasts is three - previewing
+  // "80 g" for a row that lands at 240 g is the under-report 0024 ended.
   it('collapses a fully selected meal', () => {
     expect(
       addFoodPreview({ name: 'Oatmeal', weightGrams: 80, quantity: 1, slotIds: ['b1', 'b2', 'b3'], slots: SLOTS, unit: 'g' }),
-    ).toBe('Adding: Oatmeal · 80 g · every breakfast')
+    ).toBe('Adding: Oatmeal · 80 g × 3 · every breakfast')
   })
 
   it('elides past three named slots', () => {
     expect(
       addFoodPreview({ name: 'Bar', weightGrams: 50, quantity: 1, slotIds: ['b1', 'l1', 'd1', 'l2'], slots: SLOTS, unit: 'g' }),
-    ).toBe('Adding: Bar · 50 g · Day 1 breakfast, Day 1 lunch, Day 1 dinner, + 1 more')
+    ).toBe('Adding: Bar · 50 g × 4 · Day 1 breakfast, Day 1 lunch, Day 1 dinner, + 1 more')
   })
 
   it('omits the weight segment at zero grams', () => {
@@ -50,12 +53,24 @@ describe('addFoodPreview', () => {
   it('mixes whole-meal collapse with named slots', () => {
     expect(
       addFoodPreview({ name: 'Mix', weightGrams: 80, quantity: 1, slotIds: ['b1', 'b2', 'b3', 'l1'], slots: SLOTS, unit: 'g' }),
-    ).toBe('Adding: Mix · 80 g · every breakfast, Day 1 lunch')
+    ).toBe('Adding: Mix · 80 g × 4 · every breakfast, Day 1 lunch')
   })
 
   it('collapses multiple full meals', () => {
     expect(
       addFoodPreview({ name: 'Lots', weightGrams: 80, quantity: 1, slotIds: ['b1', 'b2', 'b3', 'l1', 'l2', 'l3'], slots: SLOTS, unit: 'g' }),
-    ).toBe('Adding: Lots · 80 g · every breakfast, every lunch')
+    ).toBe('Adding: Lots · 80 g × 6 · every breakfast, every lunch')
+  })
+
+  it('multiplies the per-meal count by the meals picked', () => {
+    expect(
+      addFoodPreview({ name: 'Bars', weightGrams: 50, quantity: 2, slotIds: ['b1', 'b2', 'b3'], slots: SLOTS, unit: 'g' }),
+    ).toBe('Adding: Bars · 50 g × 6 · every breakfast')
+  })
+
+  it('shows no multiplier for a single unscheduled unit', () => {
+    expect(
+      addFoodPreview({ name: 'Bar', weightGrams: 50, quantity: 1, slotIds: [], slots: SLOTS, unit: 'g' }),
+    ).toBe('Adding: Bar · 50 g · any time')
   })
 })

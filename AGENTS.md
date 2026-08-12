@@ -22,8 +22,10 @@ incident, and a vaguer version would not have prevented it. They can still go
 out of date when a dependency changes, so verify one against the current
 version before relying on it in a new way. Do not soften them into advice.
 
-**Contracts.** One food item scheduled across five meals weighs its weight
-once. Route handlers never touch the DB. A migration may not drop or rebuild.
+**Contracts.** A SHARED food item scheduled across five meals weighs its
+weight once (a per-meal one weighs five - migration 0024 split those cases,
+and this contract used to state the shared half as if it were the only one).
+Route handlers never touch the DB. A migration may not drop or rebuild.
 These are chosen, not discovered - they are the app's own invariants, they
 have tests, and changing one is a product decision with a blast radius. You
 may propose changing a contract. You may not quietly retire one because its

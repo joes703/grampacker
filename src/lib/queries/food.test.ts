@@ -16,6 +16,8 @@ const FOOD_ITEM_ROW = {
   name: 'Oats',
   weightGrams: 90,
   quantity: 1,
+  isPerMeal: true,
+  unitCount: 1,
   sortOrder: 0,
   isPacked: false,
   isReady: false,

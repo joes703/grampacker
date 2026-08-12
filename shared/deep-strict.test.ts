@@ -87,7 +87,7 @@ const sharedListFixture = {
     },
   ],
   food: {
-    items: [{ id: 'f1', name: 'Oats', quantity: 2, weightGrams: 90, sortOrder: 0 }],
+    items: [{ id: 'f1', name: 'Oats', unitCount: 2, weightGrams: 90, sortOrder: 0 }],
   },
 }
 
@@ -97,6 +97,8 @@ const foodItemFixture = {
   name: 'Oats',
   weightGrams: 90,
   quantity: 1,
+  isPerMeal: true,
+  unitCount: 1,
   sortOrder: 0,
   isPacked: false,
   isReady: false,
