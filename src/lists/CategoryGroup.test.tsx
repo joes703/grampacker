@@ -758,6 +758,26 @@ describe('plain food rows belong to the non-pack arrangements', () => {
     expect(screen.queryByText('Oatmeal')).toBeNull()
   })
 
+  // Found in review. subtotalGrams is the WORN section's channel and the
+  // footer hardcodes "Worn" as its label, so routing food through it printed
+  // "Worn 470 g" under the food rows. Food is consumable by definition, and
+  // that is the bucket its grams already land in upstream - so the section
+  // has to say so.
+  it('labels the food subtotal Consumable, never Worn', () => {
+    render(
+      <CategoryGroup
+        name="Food"
+        items={[]}
+        foodRows={[oats]}
+        weightUnit="g"
+        consumableSubtotalGrams={270}
+      />,
+    )
+    // getAll: the footer renders twice, once per breakpoint branch.
+    expect(screen.getAllByText(/Consumable/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Worn/)).toBeNull()
+  })
+
   // The quantity is a multiplier, not a count of rows. A section showing
   // "Oatmeal" three times because it is scheduled for three breakfasts is the
   // failure this whole feature has to avoid, and one row per item is where

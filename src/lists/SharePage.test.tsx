@@ -194,6 +194,11 @@ describe('SharePage read-only public sharing', () => {
     const food = screen.getByText('Oatmeal').closest('.overflow-hidden')
     expect(food?.textContent).toContain('Food')
     expect(food?.textContent).not.toContain('Tent')
+    // Found in review: routing the food subtotal through `subtotalGrams`
+    // printed "Worn" under it, because that prop is the Worn section's
+    // channel and the footer hardcodes the label.
+    expect(food?.textContent).toContain('Consumable')
+    expect(food?.textContent).not.toContain('Worn')
   })
 
   // The number the reader actually sees. It is summed from the rows, by the

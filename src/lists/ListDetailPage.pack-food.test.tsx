@@ -139,7 +139,7 @@ async function renderDetail(path: string) {
   if (path.endsWith('/pack')) {
     await screen.findByLabelText('New packing location')
   } else {
-    await screen.findByRole('link', { name: 'Edit food' })
+    await screen.findByRole('button', { name: 'Collapse Food' })
   }
 }
 

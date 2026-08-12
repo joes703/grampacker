@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, cleanup, screen } from '@testing-library/react'
+import { render, cleanup, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ReactNode } from 'react'
@@ -137,13 +137,13 @@ async function renderDetail(path: string) {
 }
 
 const foodHeading = () => screen.queryByRole('heading', { name: 'Food' })
-// The Category arrangement's Food section, identified by its own "Edit food"
-// link rather than by the word "Food": the ListViewNav Food tab (part of
-// ListDocumentToolbar, rendered in every mode and OUTSIDE the detail-data
-// gate) links to the same /lists/:id/food href, so a name- or href-based
-// query would be ambiguous between the two - and worse, would resolve before
-// the gate opens and let a negative assertion pass vacuously.
-const foodSectionLink = () => screen.queryByRole('link', { name: 'Edit food' })
+// The Category arrangement's Food section, identified by its COLLAPSE
+// control rather than by a link named "Food": the ListViewNav Food tab (part
+// of ListDocumentToolbar, rendered in every mode and OUTSIDE the detail-data
+// gate) is also a link to /lists/:id/food, so a link query would be ambiguous
+// between the two - and worse, would resolve before the gate opens and let a
+// negative assertion pass vacuously. The chevron exists only on the section.
+const foodSection = () => screen.queryByRole('button', { name: 'Collapse Food' })
 const foodRow = () => screen.queryByText('Oatmeal')
 
 beforeEach(() => {
@@ -173,16 +173,23 @@ describe('food is reachable at its own route, and traced from List view', () => 
   // link - while Pack showed the items. Category shows the items now too.
   it('shows food as rows on the list view, with a route to edit them', async () => {
     await renderDetail(`/lists/${listId}`)
-    const link = await screen.findByRole('link', { name: 'Edit food' })
-    expect(link).toHaveAttribute('href', `/lists/${listId}/food`)
+    const chevron = await screen.findByRole('button', { name: 'Collapse Food' })
     expect(foodRow()).toBeTruthy()
+    // The section TITLE is the route to the editor. Scoped to the section's
+    // own card: the ListViewNav Food tab is also a link named "Food" pointing
+    // at the same href, so an unscoped query matches both.
+    const card = chevron.closest('.overflow-hidden')!
+    expect(within(card as HTMLElement).getByRole('link', { name: 'Food' })).toHaveAttribute(
+      'href',
+      `/lists/${listId}/food`,
+    )
   })
 
   it('does not render the food editor inline on the list view', async () => {
     await renderDetail(`/lists/${listId}`)
     // Something the list view always shows once loaded, so the wait settles
     // past the detail-data gate before the negative assertion below.
-    await screen.findByRole('link', { name: 'Edit food' })
+    await screen.findByRole('button', { name: 'Collapse Food' })
     expect(screen.queryByLabelText('Trip length in days')).not.toBeInTheDocument()
     expect(foodHeading()).toBeNull()
   })
@@ -202,7 +209,7 @@ describe('food is reachable at its own route, and traced from List view', () => 
     // (ListDetailPage.tsx), so waiting on it actually proves the gate opened.
     await screen.findByLabelText('New packing location')
     expect(foodHeading()).toBeNull()
-    expect(foodSectionLink()).toBeNull()
+    expect(foodSection()).toBeNull()
     // Exactly once, not zero: Pack renders the row through the union cohort.
     // Asserting only the section's absence would stay green if the row had
     // vanished from Pack entirely.
@@ -255,7 +262,7 @@ describe('the Food route owns its own query gates, separate from the detail-data
 
     await renderDetail(`/lists/${listId}`)
     expect(await screen.findByText("Couldn't load list details")).toBeTruthy()
-    expect(foodSectionLink()).toBeNull()
+    expect(foodSection()).toBeNull()
     expect(foodRow()).toBeNull()
   })
 

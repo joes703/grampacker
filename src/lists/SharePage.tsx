@@ -270,9 +270,11 @@ export default function SharePage() {
             {/* Food, as its own trailing section rather than mixed into the
                 gear categories: it is not filed under one, and grouping it
                 with gear would need a category it does not have.
-                Subtotal is labelled and stated rather than derived per
-                category, for the same reason Worn's is - there is one
-                canonical figure and this section reports it. */}
+                The subtotal goes through the CONSUMABLE channel, not the bare
+                `subtotalGrams` one: that prop belongs to the Worn section and
+                CategoryFooterWeights labels it "Worn". Food is consumable by
+                definition, which is the bucket its grams already land in
+                upstream. */}
             {share.food.items.length > 0 && (
               <CategoryGroup
                 name="Food"
@@ -282,7 +284,7 @@ export default function SharePage() {
                 weightUnit={weightUnit}
                 isBelowLg={isBelowLg}
                 collapsible={false}
-                subtotalGrams={foodGrams}
+                consumableSubtotalGrams={foodGrams}
               />
             )}
           </div>

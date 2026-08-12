@@ -79,7 +79,10 @@ import FoodView from './FoodView'
 import type { FoodItemResponse, ListFoodResponse } from '../../shared/food'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
-import { FLAT_TABLE_META_TEXT, FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
+import {
+  FLAT_TABLE_HEADER_TITLE,
+  FLAT_TABLE_SURFACE,
+} from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import ListDocumentToolbar from './ListDocumentToolbar'
 import EmptyListCell from './EmptyListCell'
@@ -2438,17 +2441,30 @@ function ListDetailInner({
                   foodRows={listFood.items}
                   weightUnit={weightUnit}
                   isBelowLg={isBelowLg}
-                  subtotalGrams={foodGrams}
-                  // Authored in the Food view, which is where its schedule
-                  // lives. Editing a name or a weight from here would be a
-                  // second authoring path for one thing, so the section
-                  // header carries the trip to that page instead.
-                  headerAction={
+                  // CONSUMABLE, not the bare subtotal. `subtotalGrams` is the
+                  // Worn section's channel and CategoryFooterWeights labels it
+                  // "Worn" - passing food through it would print "Worn 470 g"
+                  // under the food. Food is consumable by definition, which is
+                  // the same bucket its grams already land in upstream.
+                  consumableSubtotalGrams={foodGrams}
+                  // The section TITLE is the route to the Food view, rather
+                  // than a trailing header action. Food is authored where its
+                  // schedule lives; editing a name or a weight from here
+                  // would be a second authoring path for one thing.
+                  //
+                  // Title rather than action because the non-pack header ends
+                  // in fixed Qty/Weight column stubs that line up with the
+                  // cells beneath them. The title sits in the flex-1 slot and
+                  // costs those stubs nothing; anything appended AFTER them
+                  // shifts both labels off their columns, since the title
+                  // absorbs the slack. `name` still supplies every accessible
+                  // label ("Collapse Food").
+                  titleContent={
                     <Link
                       to={`/lists/${listId}/food`}
-                      className={`shrink-0 ${FLAT_TABLE_META_TEXT} text-gray-500 hover:text-blue-600`}
+                      className={`truncate ${FLAT_TABLE_HEADER_TITLE} hover:text-blue-600`}
                     >
-                      Edit food
+                      Food
                     </Link>
                   }
                 />
