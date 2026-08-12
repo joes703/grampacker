@@ -83,7 +83,13 @@ const slotIdsSchema = z
 
 export const foodNameSchema = z.string().trim().min(1).max(128)
 export const foodWeightSchema = z.number().min(0).max(100000)
-export const foodQuantitySchema = z.number().int().min(1).max(9999)
+// The ceiling in ONE place for everything TypeScript can reach: the request
+// schema below, the add form's validation and max attribute, and the carrying
+// row's inline clamp. The DATABASE holds its own copy as a CHECK literal in
+// shipped migration 0017 - SQL cannot import a constant - and
+// scripts/quantity-bounds.test.ts is what keeps the two honest.
+export const FOOD_QUANTITY_MAX = 9999
+export const foodQuantitySchema = z.number().int().min(1).max(FOOD_QUANTITY_MAX)
 
 export const createFoodItemRequestSchema = z
   .object({

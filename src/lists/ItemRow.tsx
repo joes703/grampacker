@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 // This module is on the public share view's critical path
 // (SharePage -> CategoryGroup -> ItemRow), and a share view is read-only: it
@@ -19,18 +19,17 @@ import {
   FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
-  INLINE_EDIT_FOCUS_RING,
   POPOVER_SURFACE,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
 import InlineWeight from '../components/InlineWeight'
+import InlineQuantity from '../components/InlineQuantity'
 import GearStatusBadge from '../components/gear/GearStatusBadge'
 import GearStatusMenuItems from '../components/gear/GearStatusMenuItems'
 import { WornIcon, ConsumableIcon } from './list-item-flags'
 import { MAX_LIST_ITEM_QUANTITY } from '../lib/caps'
-import { useCommitOnce } from '../lib/use-commit-once'
 import PackModeCheckbox from './PackModeCheckbox'
 
 // Single source of truth for a list item row. Used by both the authenticated
@@ -121,29 +120,11 @@ export default function ItemRow({
   outerStyle,
 }: ItemRowProps) {
   const itemWeight = item.gearItem.weightGrams
-  // Weight editing lives in InlineWeight now (one control for the Category
-  // row, the Pack row and the gear library row). Quantity keeps its state
-  // here: it is list-membership data, not gear data, and has no second home.
-  const [editingQty, setEditingQty] = useState(false)
-  const [qtyDraft, setQtyDraft] = useState(String(item.quantity))
-  const [prevQty, setPrevQty] = useState(item.quantity)
-  if (item.quantity !== prevQty) {
-    setPrevQty(item.quantity)
-    setQtyDraft(String(item.quantity))
-  }
-  const qtyInputRef = useRef<HTMLInputElement>(null)
-  const commitOnce = useCommitOnce()
-
-  useEffect(() => {
-    if (editingQty) { qtyInputRef.current?.focus(); qtyInputRef.current?.select() }
-  }, [editingQty])
-
-  function commitQty() {
-    const parsed = parseInt(qtyDraft, 10)
-    const clamped = isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, MAX_LIST_ITEM_QUANTITY)
-    if (clamped !== item.quantity && onUpdate) onUpdate({ quantity: clamped })
-    setEditingQty(false)
-  }
+  // Weight editing lives in InlineWeight, quantity in InlineQuantity - one
+  // control each, shared with the gear library row and (quantity) the food
+  // carrying row. This used to hold quantity's own state machine, on the
+  // grounds that it "has no second home"; food items got an editable quantity
+  // and that stopped being true.
 
   const name = item.gearItem.name
   const description = item.gearItem.description ?? ''
@@ -421,35 +402,13 @@ export default function ItemRow({
         )}
 
         {/* Quantity — clickable when editable, static otherwise */}
-        {editable && editingQty ? (
-          <input
-            ref={qtyInputRef}
-            type="number"
-            min={1}
-            max={MAX_LIST_ITEM_QUANTITY}
-            value={qtyDraft}
-            onChange={(e) => setQtyDraft(e.target.value)}
-            onBlur={() => commitOnce(commitQty)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitOnce(commitQty)
-              if (e.key === 'Escape') commitOnce(() => { setQtyDraft(String(item.quantity)); setEditingQty(false) })
-            }}
-            className={`shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums ${INLINE_EDIT_FOCUS_RING}`}
-          />
-        ) : editable ? (
-          <button
-            onClick={() => setEditingQty(true)}
-            title="Edit quantity"
-            aria-label={`Edit quantity ${item.quantity} for ${name}`}
-            className={`shrink-0 w-12 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600 hover:text-blue-600`}
-          >
-            {item.quantity}
-          </button>
-        ) : (
-          <span className={`shrink-0 w-12 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
-            {item.quantity}
-          </span>
-        )}
+        <InlineQuantity
+          quantity={item.quantity}
+          max={MAX_LIST_ITEM_QUANTITY}
+          onSave={editable && onUpdate ? (quantity) => onUpdate({ quantity }) : undefined}
+          itemName={name}
+          className="w-12"
+        />
 
         {/* Weight — clickable when editable, static otherwise */}
         <InlineWeight

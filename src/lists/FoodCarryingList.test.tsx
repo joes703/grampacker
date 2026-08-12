@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import FoodCarryingList from './FoodCarryingList'
-import type { FoodItemResponse } from '../../shared/food'
+import { FOOD_QUANTITY_MAX, type FoodItemResponse } from '../../shared/food'
 
 afterEach(cleanup)
 
@@ -32,6 +32,7 @@ function renderList(overrides: {
   items?: readonly FoodItemResponse[]
   busy?: boolean
   onReschedule?: (itemId: string) => void
+  onSetQuantity?: (itemId: string, quantity: number) => void
   onDelete?: (itemId: string) => void
 } = {}) {
   const props = {
@@ -39,6 +40,7 @@ function renderList(overrides: {
     weightUnit: 'g' as const,
     busy: overrides.busy ?? false,
     onReschedule: overrides.onReschedule ?? vi.fn(),
+    onSetQuantity: overrides.onSetQuantity ?? vi.fn(),
     onDelete: overrides.onDelete ?? vi.fn(),
   }
   render(<FoodCarryingList {...props} />)
@@ -72,21 +74,54 @@ describe('FoodCarryingList delete', () => {
   })
 })
 
-describe('FoodCarryingList quantity display', () => {
-  it('shows the multiplier when carrying more than one unit', () => {
-    renderList({
-      items: [item({ id: 'i1', name: 'Jerky', weightGrams: 90, quantity: 2, slotIds: [] })],
-    })
-    const row = screen.getByText('Jerky').closest('div')!
-    expect(within(row).getByText(/^2 ×/)).toBeInTheDocument()
-  })
-
-  it('omits the multiplier for a single carried unit', () => {
+describe('FoodCarryingList quantity', () => {
+  // This row used to HIDE the count when it was 1, on the reasoning that
+  // "1 x" is noise. The cost was that quantity could only ever be set on the
+  // add form: an item created at the default sat at 1 with nothing on screen
+  // to say so and nothing to click, so a plan of five lunches reported one
+  // packet in the pack total. It is now always shown, and always editable.
+  it('shows the count even when it is one, as a control', () => {
     renderList({
       items: [item({ id: 'i1', name: 'Jerky', weightGrams: 90, quantity: 1, slotIds: [] })],
     })
-    const row = screen.getByText('Jerky').closest('div')!
-    expect(within(row).queryByText(/^1 ×/)).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Edit quantity 1 for Jerky' }),
+    ).toBeInTheDocument()
+  })
+
+  it('commits a typed quantity to onSetQuantity', async () => {
+    const user = userEvent.setup()
+    const props = renderList({
+      items: [item({ id: 'i1', name: 'Jerky', weightGrams: 90, quantity: 1, slotIds: [] })],
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit quantity 1 for Jerky' }))
+    await user.keyboard('5{Enter}')
+
+    expect(props.onSetQuantity).toHaveBeenCalledWith('i1', 5)
+  })
+
+  it('clamps a quantity past the server ceiling instead of sending it', async () => {
+    const user = userEvent.setup()
+    const props = renderList({
+      items: [item({ id: 'i1', name: 'Jerky', weightGrams: 90, quantity: 1, slotIds: [] })],
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit quantity 1 for Jerky' }))
+    await user.keyboard('99999{Enter}')
+
+    expect(props.onSetQuantity).toHaveBeenCalledWith('i1', FOOD_QUANTITY_MAX)
+  })
+
+  it('is read-only while a food write is in flight', () => {
+    renderList({
+      busy: true,
+      items: [item({ id: 'i1', name: 'Jerky', weightGrams: 90, quantity: 2, slotIds: [] })],
+    })
+    expect(
+      screen.queryByRole('button', { name: 'Edit quantity 2 for Jerky' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
   })
 })
 

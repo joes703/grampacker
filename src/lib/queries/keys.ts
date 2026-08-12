@@ -99,6 +99,8 @@ export const mutationKeys = {
   setFoodSlot: (listId: string) => ['set-food-slot', listId] as const,
   createFoodItem: (listId: string) => ['create-food-item', listId] as const,
   setFoodItemSlots: (listId: string) => ['set-food-item-slots', listId] as const,
+  setFoodItemQuantity: (listId: string) =>
+    ['set-food-item-quantity', listId] as const,
   deleteFoodItem: (listId: string) => ['delete-food-item', listId] as const,
 
   // The generic drag-reorder hook, keyed by the dnd kind it was configured for

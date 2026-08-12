@@ -82,6 +82,17 @@ export const DESKTOP_HEADER_HEIGHT = 'lg:min-h-8'
 // widths are what keep their columns aligned.
 export const MOBILE_ROW_CONTROL_TARGET = 'h-10 w-10'
 export const DESKTOP_ROW_CONTROL_TARGET = 'lg:h-7 lg:w-6'
+// Same targets as MINIMA, for controls that size to their CONTENT rather than
+// to a fixed icon box - a quantity label that may be one digit or four, and
+// the number input it becomes. Same numbers as above on purpose: a control is
+// a control, and the density doc's two tiers do not fork per widget.
+//
+// Written out as literal class tokens rather than derived from the pair above
+// with .replace(). Tailwind v4 scans whole tokens in the SOURCE, so a class
+// name assembled at runtime produces no CSS at all - the control would come
+// out with no target and the bug would be invisible in review.
+export const MOBILE_ROW_CONTROL_MIN_TARGET = 'min-h-10 min-w-10'
+export const DESKTOP_ROW_CONTROL_MIN_TARGET = 'lg:min-h-7 lg:min-w-6'
 
 // The LEADING control column - narrower on desktop than the square target
 // above, and only on desktop.
