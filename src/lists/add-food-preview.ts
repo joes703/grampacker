@@ -1,4 +1,4 @@
-import { MEALS, type FoodSlotResponse } from '../../shared/food'
+import { MEALS, foodUnitCount, type FoodSlotResponse } from '../../shared/food'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
 
 const NAMED_SLOT_LIMIT = 3
@@ -18,7 +18,16 @@ export function addFoodPreview(input: {
   const parts = [name]
   if (input.weightGrams > 0) {
     const weight = formatItemWeight(input.weightGrams, input.unit)
-    parts.push(input.quantity > 1 ? `${weight} × ${input.quantity}` : weight)
+    // The count this will actually CARRY, not the number typed. The form
+    // creates per-meal items (the server default), so picking five lunches
+    // means five - and a preview that said "80 g x 1" while the row landed at
+    // 400 g would be the same lie the whole model change exists to end.
+    const units = foodUnitCount({
+      quantity: input.quantity,
+      isPerMeal: true,
+      slotIds: input.slotIds,
+    })
+    parts.push(units > 1 ? `${weight} × ${units}` : weight)
   }
   parts.push(describeSlots(input.slotIds, input.slots))
   return `Adding: ${parts.join(' · ')}`

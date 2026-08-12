@@ -421,10 +421,14 @@ describe('food: list duplication', () => {
     await setDays(cookie, listId, 5)
     const food = await getFood(cookie, listId)
     const lunches = food.slots.filter((s) => s.meal === 'lunch').map((s) => s.id)
+    // SHARED, and that is the point of this fixture: one bag across five
+    // lunches. A duplicate that dropped isPerMeal would take the column
+    // default, turn the copy per-meal, and weigh it 2500 g.
     await addItem(cookie, listId, {
       name: 'Trail mix',
       weightGrams: 500,
       quantity: 1,
+      isPerMeal: false,
       slotIds: lunches,
     })
     const day1Breakfast = slotOf(food, 1, 'breakfast')
@@ -443,7 +447,9 @@ describe('food: list duplication', () => {
     // ONE item, five associations, 500 g - not five items and not 2500 g.
     expect(copied.items).toHaveLength(1)
     expect(copied.items[0]!.slotIds).toHaveLength(5)
-    const total = copied.items.reduce((g, i) => g + i.weightGrams * i.quantity, 0)
+    expect(copied.items[0]!.isPerMeal).toBe(false)
+    expect(copied.items[0]!.unitCount).toBe(1)
+    const total = copied.items.reduce((g, i) => g + i.weightGrams * i.unitCount, 0)
     expect(total).toBe(500)
     // Fresh ids: editing the copy must not touch the original.
     expect(copied.items[0]!.id).not.toBe(food.items[0]?.id)
@@ -869,5 +875,32 @@ describe('food counts derive from the plan (0024)', () => {
     const food = await getFood(cookie, listId)
     // Not zero: it is in the pack whether or not you have planned it.
     expect(food.items[0]!.unitCount).toBe(2)
+  })
+})
+
+describe('food: duplication carries the counting mode', () => {
+  it('a per-meal item keeps its derived count in the copy', async () => {
+    // The mirror of the shared case above. Both directions matter: dropping
+    // isPerMeal turns shared into per-meal (weight jumps), and hardcoding it
+    // the other way turns per-meal into shared (weight collapses).
+    const { cookie } = await signUpVerifiedUser('food-dup-pm@example.com', 'DP')
+    const listId = await createList(cookie, 'Original')
+    await setDays(cookie, listId, 4)
+    const plan = await getFood(cookie, listId)
+
+    await addItem(cookie, listId, {
+      name: 'Smoothie',
+      weightGrams: 93,
+      quantity: 1,
+      slotIds: [1, 2, 3, 4].map((day) => slotOf(plan, day, 'breakfast').id),
+    })
+
+    const dup = await apiRequest(cookie, 'POST', `/api/lists/${listId}/duplicate`)
+    expect(dup.status).toBe(201)
+    const copyId = ((await dup.json()) as ListBody).id
+
+    const copied = await getFood(cookie, copyId)
+    expect(copied.items[0]!.isPerMeal).toBe(true)
+    expect(copied.items[0]!.unitCount).toBe(4)
   })
 })

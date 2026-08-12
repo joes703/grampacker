@@ -394,12 +394,24 @@ restatement of the general posture.
 
 - **The food estimate** splits along one line, and the line is what to hold
   onto: the ITEMS are part of the pack, the PLAN is private. What you carry -
-  `id`, `name`, `quantity`, `weightGrams`, `sortOrder` - crosses to the public
+  `id`, `name`, `unitCount`, `weightGrams`, `sortOrder` - crosses to the public
   share, like any gear row. When you eat it does not: day count, meal slots,
   "not needed" marks, `isPacked`/`isReady` and the packing-location fields
   never leave a session-gated route. "2 x 85 g ramen" is a thing in a pack;
   "Tuesday dinner: leftover curry" is a fact about someone's week. Caps: 200
   items, 30 days.
+
+  Amended 2026-08-12 by migration 0024, and the amendment is a real widening
+  that must not be glossed. A per-meal item's carried count is `quantity` x
+  the meals it is in, so the share repo now DOES read `list_food_item_slots` -
+  a second statement selecting `food_item_id` and nothing else, gated through
+  the same shared-list join as every other query there, counted in JS. No day,
+  no meal, no slot id crosses; what a reader can infer is a COUNT, which is
+  the number they came for. The wire carries `unitCount` and neither
+  `quantity` nor `isPerMeal`, because quantity without the mode invites a
+  reader to compute the wrong answer and the mode is a step toward the plan.
+  `server/routes/food.test.ts` asserts the exact key set on raw JSON, and
+  names those two absences individually.
 
   Changed 2026-08-11, from an aggregate to rows. Hiding food was never a
   privacy decision - it was a leftover from food arriving late, and it cost a

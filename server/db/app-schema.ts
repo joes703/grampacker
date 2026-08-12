@@ -429,11 +429,13 @@ export const listFoodItems = sqliteTable(
     // REAL for the same reason gear weights are: a single item's weight
     // carries tenths.
     weightGrams: real('weight_grams').notNull(),
-    // UNITS CARRIED, and nothing derives it. Associating an item with five
-    // slots must never touch this: the app cannot tell five packets from one
-    // shared bag, and guessing inflates the pack weight silently.
     // How many you eat AT ONE MEAL when isPerMeal, or the total when it is a
     // shared stash. See isPerMeal below - the pair is meaningless apart.
+    //
+    // This used to read "UNITS CARRIED, and nothing derives it", on the
+    // grounds that the app could not tell five packets from one shared bag.
+    // It could not, and the cost was that the common case under-reported the
+    // pack on every list. 0024 asks instead of guessing.
     quantity: integer('quantity').notNull().default(1),
     // 0024. Whether `quantity` is per-meal (the default) or a total.
     //
@@ -500,10 +502,18 @@ export const listFoodItems = sqliteTable(
   ],
 )
 
-// Which slots a carried item is intended for. Expresses INTENT ONLY - this
-// table is never joined into a weight sum. The obvious query (join items to
-// slots, sum weight x quantity) returns 2500 g for one 500 g bag on five
-// lunches, and is the single most dangerous statement anyone could write here.
+// Which slots a carried item is intended for.
+//
+// Never JOINED into a weight sum, and that has not changed. The obvious query
+// (join items to slots, sum weight x quantity) returns 2500 g for one 500 g
+// SHARED bag on five lunches, and is still the single most dangerous
+// statement anyone could write here - it fans one row into five and the
+// duplicate is invisible in the total.
+//
+// What 0024 changed is that the slot COUNT is now an input to the carried
+// count for a per-meal item (foodUnitCount, shared/food.ts). Counting rows
+// per item is not joining and summing: every caller reads the links
+// separately and counts them, so an item stays one row throughout.
 export const listFoodItemSlots = sqliteTable(
   'list_food_item_slots',
   {

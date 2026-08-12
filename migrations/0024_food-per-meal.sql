@@ -27,6 +27,21 @@
 -- what per-meal now means. An item scheduled into no meals still counts one
 -- meal's worth, so adding food before planning it does not make it weightless.
 --
+-- The rejected alternative, recorded because it is the safer-looking one and
+-- someone will propose it again: default EXISTING rows to shared (0) and only
+-- new API-created rows to per-meal. That preserves the old reading of
+-- `quantity` exactly, and it was rejected on purpose. Under it this migration
+-- ships and fixes nothing - every item on the live list keeps reporting the
+-- weight its owner has already called unusable, until he opens each one and
+-- flips it. A correction that requires the user to apply it by hand to the
+-- data that prompted it is not a correction.
+--
+-- What makes the risk acceptable is that the new reading is VISIBLE and
+-- one click to undo: the carrying row states the mode and the arithmetic
+-- ("Carry 1 per meal - 5 meals = 5") and the mode word is the toggle. A row
+-- that really was a total says so on screen and is fixed in a click. The old
+-- behaviour was the opposite - wrong, silent, and with no control to reach.
+--
 -- Additive only: one ADD COLUMN with a DEFAULT, no rebuild, no rename, no
 -- backfill statement. Every existing row takes the default in place, so there
 -- is nothing here that can lose a row.
