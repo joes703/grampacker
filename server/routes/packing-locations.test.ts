@@ -750,6 +750,46 @@ describe('packing location CRUD, assignment, and integrity', () => {
     expect(await getLocations(cookie, a.id)).toHaveLength(0)
   })
 
+  // The name-only case above cannot cover this one, and the difference is an
+  // existence oracle rather than a write.
+  //
+  // rename() pre-reads the row, and an item-backed location short-circuits to
+  // `item_backed` -> 409 BEFORE the scoped UPDATE runs. So if the parent
+  // predicate were ever lost from the pre-read alone, a name-only target
+  // would still 404 (the correctly scoped UPDATE matches nothing) while an
+  // item-backed target answered 409 - telling an caller, through the wrong
+  // list, both that the id exists and what kind of location it is. Same
+  // 404 as everything else is the contract.
+  it('wrong-parent PATCH on an item-backed location is 404, not the item-backed 409', async () => {
+    const { cookie } = await signUpVerifiedUser('packing-parent-patch-container@example.com', 'O')
+    const a = await createList(cookie, 'A')
+    const b = await createList(cookie, 'B')
+    const bItem = await addItem(cookie, b.id, await createGear(cookie, 'Bear canister'))
+    const bContainer = await createItemContainer(cookie, b.id, bItem.id)
+
+    const patch = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${a.id}/packing-locations/${bContainer.id}`,
+      { name: 'Renamed through the wrong list' },
+    )
+    expect(patch.status).toBe(404)
+
+    // The control: addressed through its OWN list the same request is a 409,
+    // so the 404 above is the parent check answering and not the route
+    // rejecting item-backed renames everywhere.
+    const throughOwnList = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${b.id}/packing-locations/${bContainer.id}`,
+      { name: 'Renamed through the right list' },
+    )
+    expect(throughOwnList.status).toBe(409)
+
+    const bLocations = await getLocations(cookie, b.id)
+    expect(bLocations[0]).toMatchObject({ id: bContainer.id, name: 'Bear canister' })
+  })
+
   it('wrong-parent delete and reorder reject with zero writes', async () => {
     const { cookie } = await signUpVerifiedUser('packing-parent@example.com', 'O')
     const a = await createList(cookie, 'A')

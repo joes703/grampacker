@@ -376,10 +376,19 @@ restatement of the general posture.
   "this user". Enforced by a composite parent predicate on every write.
   All three write verbs have explicit wrong-parent tests
   (`server/routes/packing-locations.test.ts`); PATCH was the gap and was
-  closed 2026-08-11. Each asserts the WRITE, not just the 404 - mutation
-  testing on the PATCH path showed the route still answers 404 with the
-  parent predicate removed, because the read-back that produces the 404
-  happens after the UPDATE commits. Item-backed containers add a
+  closed 2026-08-11. Two things that gap taught, both worth keeping:
+
+  A status assertion alone proves nothing here. `rename` pre-reads, UPDATEs,
+  then reads back through the owned parent - so with the parent predicate
+  removed the route still answers 404 while the UPDATE has already committed.
+  Only the row assertions catch that.
+
+  And one fixture is not enough. An item-backed location short-circuits to
+  `item_backed` (409) in the PRE-READ, before the scoped UPDATE. Lose the
+  predicate from the pre-read alone and a name-only target still 404s, while
+  an item-backed one answers 409 through the wrong parent - an existence
+  oracle that also discloses the kind of location. Both fixtures are tested;
+  each catches a mutation the other survives. Item-backed containers add a
   cycle risk (a bag inside itself, or a loop of bags); assignment rejects both
   with zero writes. Caps: 30 locations per list.
 
@@ -498,6 +507,23 @@ of it:
   Trigger: a second person using the app, or any report of a meal plan losing
   entries. Until then the blast radius is one list, within one account, with
   concurrent clients - two tabs, or a phone and a laptop.
+
+- **A packing-location rename can commit and then report failure.**
+  `renamePackingLocation` UPDATEs and then re-reads through the owned parent
+  to build its response (`server/repos/packing-locations.ts`). The two are not
+  one statement, so if the read-back fails the route 500s over a rename that
+  landed, and if a concurrent delete lands between them it 404s. Found by
+  review 2026-08-11 while closing the wrong-parent PATCH gap.
+
+  Not a security issue - no boundary is crossed, and the only caller who can
+  reach it is the owner. It is a truthfulness one, and this file is where
+  live gaps are recorded rather than left in a commit message. The fix is to
+  return the row from `UPDATE ... RETURNING` instead of re-reading, which
+  needs the returned shape to match what `readOwnedList` composes.
+
+  Trigger: any report of a rename that "didn't work" and then did, or the
+  next change to this repo's return path. Blast radius today is one
+  mislabelled error on one owner's own rename.
 
 - **Fresh-auth proofs**: CLOSED. See "Fresh auth" above - passkey
   mutations and account deletion both require a fresh session. Email
