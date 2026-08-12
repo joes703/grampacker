@@ -432,7 +432,19 @@ export const listFoodItems = sqliteTable(
     // UNITS CARRIED, and nothing derives it. Associating an item with five
     // slots must never touch this: the app cannot tell five packets from one
     // shared bag, and guessing inflates the pack weight silently.
+    // How many you eat AT ONE MEAL when isPerMeal, or the total when it is a
+    // shared stash. See isPerMeal below - the pair is meaningless apart.
     quantity: integer('quantity').notNull().default(1),
+    // 0024. Whether `quantity` is per-meal (the default) or a total.
+    //
+    // Per-meal means what you CARRY is quantity x the meals it is scheduled
+    // into: a PB packet in each of five lunches is five packets. A shared
+    // stash is the other case - one 500 g bag picked at across five lunches
+    // is still one bag - and it is what the "scheduling never multiplies
+    // weight" contract was written to protect. That contract now means "the
+    // SHARED case never multiplies"; deriving nothing at all made the common
+    // case silently under-report the pack.
+    isPerMeal: integer('is_per_meal', { mode: 'boolean' }).notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     // Pack state, added by 0022. Food is a full peer of gear in Pack mode:
     // packable, bag-assignable, rank-ordered. The columns and their indexes

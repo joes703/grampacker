@@ -33,7 +33,7 @@ describe('buildFoodJson', () => {
           id: 'i1',
           name: 'Trail mix',
           weightGrams: 500,
-          quantity: 1,
+          quantity: 1, isPerMeal: false, unitCount: 1,
           sortOrder: 0,
           isPacked: false,
           isReady: false,

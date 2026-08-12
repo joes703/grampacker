@@ -784,6 +784,50 @@ const FIXTURES = [
 //     insertable any more). Entries naming a baseline migration are always in
 //     this second case.
 const EXPECTED_CHANGES = [
+  // Food pack ranks, seeded per-pass because 0023 changes what is even
+  // INSERTABLE. Before 0023 the fixtures' three list-seed food rows all sit at
+  // rank 0 - the dirty old-worker state 0023's repair exists to renumber, and
+  // what its POST_CHECKS assert. From 0023 on, the unassigned uniqueness index
+  // exists and seeding three rows at 0 is rejected outright, so every LATER
+  // migration's pass has to seed the repaired ranks instead. Declaring the
+  // values here is what keeps 0023's own pass dirty and 0024's pass legal.
+  //
+  // The `after` values are exactly 0023's repair output (see its POST_CHECKS):
+  // list-seed's Unassigned gear maximum is 1, its three food rows order by
+  // sort_order 0, 5, 20 -> ranks 2, 3, 4. list-seed-3's lone row was never
+  // dirty and keeps 0.
+  {
+    migration: '0023_food-pack-rank-enforcement.sql',
+    table: 'list_food_items',
+    key: { column: 'id', value: 'lfi-seed' },
+    column: 'pack_sort_order',
+    before: 0,
+    after: 2,
+  },
+  {
+    migration: '0023_food-pack-rank-enforcement.sql',
+    table: 'list_food_items',
+    key: { column: 'id', value: 'lfi-canary-c' },
+    column: 'pack_sort_order',
+    before: 0,
+    after: 3,
+  },
+  {
+    migration: '0023_food-pack-rank-enforcement.sql',
+    table: 'list_food_items',
+    key: { column: 'id', value: 'lfi-canary-b' },
+    column: 'pack_sort_order',
+    before: 0,
+    after: 4,
+  },
+  {
+    migration: '0023_food-pack-rank-enforcement.sql',
+    table: 'list_food_items',
+    key: { column: 'id', value: 'lfi-other-list' },
+    column: 'pack_sort_order',
+    before: 0,
+    after: 0,
+  },
   // 0019 densely renumbers only cohorts whose maximum is at or above
   // PACK_RANK_MAX. These two are the whole point: without the repair they
   // would survive the migration and permanently refuse arrivals, moves, and
@@ -1122,6 +1166,17 @@ const POST_CHECKS = [
       { id: 'lfi-other-list', rank: 0 },
       { id: 'lfi-seed', rank: 2 },
     ] },
+  // 0024: the per-meal flag. The point of the DEFAULT is that every row that
+  // already existed becomes per-meal, which is what raises the reported pack
+  // weight to what is actually being carried. A NULL or 0 here would leave
+  // pre-0024 food silently counted as a shared stash - the exact under-report
+  // this migration exists to end.
+  { migration: '0024_food-per-meal.sql', description: 'every pre-existing food row defaults to per-meal',
+    sql: "select count(*) as total, sum(is_per_meal) as per_meal from list_food_items",
+    expectRows: [{ total: 4, per_meal: 4 }] },
+  { migration: '0024_food-per-meal.sql', description: 'is_per_meal is NOT NULL, so a row cannot go unexplained',
+    sql: "insert into list_food_items (id,user_id,list_id,name,weight_grams,quantity,is_per_meal,sort_order,is_packed,is_ready,packing_location_id,pack_sort_order,created_at,updated_at) values ('lfi-null-mode','u-seed','list-seed','NullMode',1,1,null,95,0,0,null,9,0,0)",
+    expectErrorMatch: /NOT NULL/ },
   { migration: '0023_food-pack-rank-enforcement.sql', description: 'both food uniqueness indexes exist',
     sql: "select name from sqlite_master where type='index' and name in ('list_food_items_pack_cohort_uq','list_food_items_pack_unassigned_uq') order by name",
     expectRows: [{ name: 'list_food_items_pack_cohort_uq' }, { name: 'list_food_items_pack_unassigned_uq' }] },

@@ -7,7 +7,7 @@ import {
   FLAT_TABLE_ROW,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
-import { foodGramsFor } from '../lib/weight-breakdown'
+import { foodGramsAtOneMeal } from '../lib/weight-breakdown'
 import { MEAL_LABELS } from './FoodSlotPicker'
 import type { FoodItemResponse, FoodSlotResponse } from '../../shared/food'
 import type { WeightUnit } from '../lib/weight'
@@ -37,22 +37,35 @@ export default function FoodDaySection({
   onSetSlotNeeded,
   onAddToSlot,
 }: Props) {
-  // Day total counts each distinct item ONCE even when it is scheduled at two
-  // of this day's meals - summing per-slot repeats is the exact inflation
-  // foodGramsFor's comment warns about (weight-breakdown.ts): a 500 g item
-  // eaten at both breakfast and lunch must total 500 g for the day, not 1000.
-  const dayItems = new Map<string, FoodItemResponse>()
+  // The day total, and the dedupe is now conditional - 0024 split the two
+  // cases that used to be one.
+  //
+  // A PER-MEAL item at both breakfast and lunch is two units: you eat one at
+  // each, and the day weighs both. Deduping it (which this did, for every
+  // item) is precisely the under-report that made a five-lunch plan look like
+  // one packet.
+  //
+  // A SHARED stash at both meals is still ONE stash - a 500 g bag picked at
+  // twice weighs 500 g for the day, not 1000. That case keeps the dedupe, and
+  // it is the case the "scheduling never multiplies" contract was protecting.
+  let dayGrams = 0
+  const countedShared = new Set<string>()
   for (const slot of slots) {
-    for (const item of itemsBySlot.get(slot.id) ?? []) dayItems.set(item.id, item)
+    for (const item of itemsBySlot.get(slot.id) ?? []) {
+      if (!item.isPerMeal) {
+        if (countedShared.has(item.id)) continue
+        countedShared.add(item.id)
+      }
+      dayGrams += item.weightGrams * item.quantity
+    }
   }
-  const dayGrams = foodGramsFor([...dayItems.values()])
 
   return (
     <section aria-label={`Day ${day}`} className="border-t border-gray-100 first:border-t-0">
       <div className={`px-3 pt-2.5 pb-1 ${FLAT_TABLE_EYEBROW}`}>Day {day}</div>
       {slots.map((slot) => {
         const slotItems = itemsBySlot.get(slot.id) ?? []
-        const slotGrams = foodGramsFor(slotItems)
+        const slotGrams = foodGramsAtOneMeal(slotItems)
         return (
           <div
             key={slot.id}

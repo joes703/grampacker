@@ -98,7 +98,10 @@ export type PackFoodRowProps = {
 export type PlainFoodRow = {
   id: string
   name: string
-  quantity: number
+  // What you CARRY. Per-meal items multiply their quantity by the meals they
+  // are scheduled into (0024), and this row shows the result - the pack list
+  // has to say five packets when you are carrying five.
+  unitCount: number
   weightGrams: number
 }
 

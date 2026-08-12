@@ -28,7 +28,7 @@ import { ConsumableIcon } from './list-item-flags'
 // renderRows prop would be pointless if the plain food row dragged in the
 // drag machinery by itself.
 type Props = {
-  food: Pick<FoodItemResponse, 'id' | 'name' | 'quantity' | 'weightGrams'>
+  food: Pick<FoodItemResponse, 'id' | 'name' | 'unitCount' | 'weightGrams'>
   weightUnit: WeightUnit
   /** Page-level breakpoint, drilled from the section rather than subscribed
    *  per row - same reason ItemRow takes it. */
@@ -56,7 +56,7 @@ export default function FoodRow({ food, weightUnit, isBelowLg = false }: Props) 
             <ConsumableIcon />
           </span>
           <span className={`shrink-0 w-8 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
-            {food.quantity}
+            {food.unitCount}
           </span>
           <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
             <ItemWeightValue grams={food.weightGrams} unit={weightUnit} />
@@ -81,7 +81,7 @@ export default function FoodRow({ food, weightUnit, isBelowLg = false }: Props) 
             <ConsumableIcon />
           </span>
           <span className={`shrink-0 w-12 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
-            {food.quantity}
+            {food.unitCount}
           </span>
           <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
             <ItemWeightValue grams={food.weightGrams} unit={weightUnit} />

@@ -127,6 +127,16 @@ export default function FoodView({ listId }: { listId: string }) {
     meta: { errorToast: "Couldn't change that quantity. Please try again." },
     onSuccess: invalidateFood,
   })
+  // Per-meal vs shared. Same shape as the quantity write beside it; a
+  // separate mutation key so a mode flip and a count edit do not cancel each
+  // other's invalidation.
+  const foodItemModeMut = useMutation({
+    mutationKey: mutationKeys.setFoodItemMode(listId),
+    mutationFn: (vars: { itemId: string; isPerMeal: boolean }) =>
+      updateFoodItem(listId, vars.itemId, { isPerMeal: vars.isPerMeal }),
+    meta: { errorToast: "Couldn't change how that food is counted. Please try again." },
+    onSuccess: invalidateFood,
+  })
   const foodItemSlotsMut = useMutation({
     mutationKey: mutationKeys.setFoodItemSlots(listId),
     mutationFn: (vars: { itemId: string; slotIds: string[] }) =>
@@ -146,6 +156,7 @@ export default function FoodView({ listId }: { listId: string }) {
     foodItemCreateMut.isPending ||
     foodItemSlotsMut.isPending ||
     foodItemQuantityMut.isPending ||
+    foodItemModeMut.isPending ||
     foodItemDeleteMut.isPending
 
   // Same three-state gate every reader uses (AGENTS.md): a fabricated empty
@@ -183,6 +194,9 @@ export default function FoodView({ listId }: { listId: string }) {
       onSetItemSlots={(itemId, slotIds) => foodItemSlotsMut.mutate({ itemId, slotIds })}
       onSetItemQuantity={(itemId, quantity) =>
         foodItemQuantityMut.mutate({ itemId, quantity })
+      }
+      onSetItemPerMeal={(itemId, isPerMeal) =>
+        foodItemModeMut.mutate({ itemId, isPerMeal })
       }
     />
   )
@@ -225,6 +239,7 @@ type FoodDocumentProps = {
    *  it - the food is still carried, it just has no meal in mind. */
   onSetItemSlots: (itemId: string, slotIds: string[]) => void
   onSetItemQuantity: (itemId: string, quantity: number) => void
+  onSetItemPerMeal: (itemId: string, isPerMeal: boolean) => void
 }
 
 // The resolved food document: a rail of cards (header with title, days
@@ -242,6 +257,7 @@ function FoodDocument({
   onDeleteItem,
   onSetItemSlots,
   onSetItemQuantity,
+  onSetItemPerMeal,
 }: FoodDocumentProps) {
   const [daysDraft, setDaysDraft] = useState(String(food.dayCount))
   // Follow the server. Without this a rejected day change leaves the input
@@ -454,6 +470,7 @@ function FoodDocument({
                 busy={busy}
                 onReschedule={setEditingItemId}
                 onSetQuantity={onSetItemQuantity}
+                onTogglePerMeal={onSetItemPerMeal}
                 onDelete={onDeleteItem}
               />
               {editingItem && (

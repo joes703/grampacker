@@ -47,6 +47,10 @@ function food(id: string, rank: number, locationId: string | null = null): FoodI
     name: `Food ${id}`,
     weightGrams: 100,
     quantity: 1,
+    // Shared, so unitCount == quantity and these fixtures keep meaning what
+    // they meant before 0024. Per-meal derivation has its own tests.
+    isPerMeal: false,
+    unitCount: 1,
     sortOrder: 0,
     isPacked: false,
     isReady: false,

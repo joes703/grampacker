@@ -30,7 +30,13 @@ async function setDays(cookie: string, listId: string, days: number) {
 async function addItem(
   cookie: string,
   listId: string,
-  body: { name: string; weightGrams: number; quantity: number; slotIds: string[] },
+  body: {
+    name: string
+    weightGrams: number
+    quantity: number
+    isPerMeal?: boolean
+    slotIds: string[]
+  },
 ): Promise<Response> {
   return apiRequest(cookie, 'POST', `/api/lists/${listId}/food/items`, body)
 }
@@ -481,11 +487,14 @@ describe('food crosses the public share boundary as rows, and the plan does not'
       name: 'Trail mix',
       weightGrams: 500,
       quantity: 2,
-      // THREE slots for one item. It must appear on the wire ONCE, weighing
-      // 1000 g (500 x 2) in total, not three times and not 3000 g: the
-      // associations say when you plan to eat something, not how much of it
-      // you carry. Joining to them is the most dangerous mistake available in
-      // this feature and the share is one of the callers that could make it.
+      // THREE slots for one item, created WITHOUT isPerMeal so it takes the
+      // per-meal default (0024). It must appear on the wire ONCE - a join to
+      // the associations would put it there three times over, which is still
+      // the most dangerous mistake available in this feature.
+      //
+      // Its published unitCount is 6: two at each of three lunches. That is
+      // the number the reader needs, and the only one they get - the share
+      // must not receive the three slot ids it was derived from.
       slotIds: [
         slotOf(food, 1, 'lunch').id,
         slotOf(food, 2, 'lunch').id,
@@ -518,24 +527,31 @@ describe('food crosses the public share boundary as rows, and the plan does not'
       expect(Object.keys(foodItem).sort()).toEqual([
         'id',
         'name',
-        'quantity',
         'sortOrder',
+        'unitCount',
         'weightGrams',
       ])
+      // Named individually as well as by the key set above: `isPerMeal` and
+      // `quantity` are the two fields whose ABSENCE is load-bearing here. A
+      // reader given quantity without the mode would compute 2 where the
+      // answer is 6, and given the mode would be a step from the schedule.
+      expect(foodItem).not.toHaveProperty('quantity')
+      expect(foodItem).not.toHaveProperty('isPerMeal')
     }
     expect(foodItems[0]).toMatchObject({
       name: 'Trail mix',
-      quantity: 2,
+      // 2 per lunch x 3 lunches. Resolved by the server; the wire carries the
+      // answer, never the arithmetic.
+      unitCount: 6,
       weightGrams: 500,
     })
     // The client sums the rows the same way the owner's view does. Asserted
-    // here because it is the number the reader actually sees, and because the
-    // server no longer computes it anywhere - 500 x 2, counted once.
+    // here because it is the number the reader actually sees - 500 x 6.
     const total = foodItems.reduce(
-      (grams, i) => grams + (i.weightGrams as number) * (i.quantity as number),
+      (grams, i) => grams + (i.weightGrams as number) * (i.unitCount as number),
       0,
     )
-    expect(total).toBe(1000)
+    expect(total).toBe(3000)
     // Nested too: a `food` key hanging off the list or an item would sail past
     // a root-only assertion.
     expect(Object.keys(raw.list as object).sort()).toEqual([
@@ -691,5 +707,167 @@ describe('the food item cap (200 per list)', () => {
         `insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, created_at, updated_at) values ('${userId}-bypass', '${userId}', '${listId}', 'Bypass', 1, 1, 999, 0, 0)`,
       ).run(),
     ).rejects.toThrow(/cap/)
+  })
+})
+
+
+describe('food counts derive from the plan (0024)', () => {
+  // The defect this closes: a five-day trip with a peanut butter packet in
+  // each lunch reported ONE packet. The plan was right and the pack weight was
+  // wrong, silently, which is the worst failure this app has.
+  it('a per-meal item counts once for every meal it is scheduled into', async () => {
+    const { cookie } = await signUpVerifiedUser('food-permeal@example.com', 'PM')
+    const listId = await createList(cookie, 'Trip')
+    expect((await setDays(cookie, listId, 5)).status).toBe(200)
+    const plan = await getFood(cookie, listId)
+
+    // No isPerMeal in the body: the DEFAULT is what the common case gets, and
+    // a client that has never heard of the flag must still get this right.
+    const res = await addItem(cookie, listId, {
+      name: 'Justin\'s PB',
+      weightGrams: 33.5,
+      quantity: 1,
+      slotIds: [1, 2, 3, 4, 5].map((day) => slotOf(plan, day, 'lunch').id),
+    })
+    expect(res.status).toBe(201)
+
+    const food = await getFood(cookie, listId)
+    const item = food.items[0]!
+    expect(item.isPerMeal).toBe(true)
+    // One per lunch, five lunches.
+    expect(item.quantity).toBe(1)
+    expect(item.unitCount).toBe(5)
+    expect(item.weightGrams * item.unitCount).toBeCloseTo(167.5)
+  })
+
+  it('multiplies the per-meal count by the meals', async () => {
+    const { cookie } = await signUpVerifiedUser('food-permeal2@example.com', 'PM')
+    const listId = await createList(cookie, 'Trip')
+    expect((await setDays(cookie, listId, 3)).status).toBe(200)
+    const plan = await getFood(cookie, listId)
+
+    expect(
+      (
+        await addItem(cookie, listId, {
+          name: 'Bars',
+          weightGrams: 50,
+          quantity: 2,
+          slotIds: [1, 2, 3].map((day) => slotOf(plan, day, 'breakfast').id),
+        })
+      ).status,
+    ).toBe(201)
+
+    const food = await getFood(cookie, listId)
+    expect(food.items[0]!.unitCount).toBe(6)
+  })
+
+  it('a SHARED stash ignores the schedule, however many meals it spans', async () => {
+    const { cookie } = await signUpVerifiedUser('food-shared@example.com', 'SH')
+    const listId = await createList(cookie, 'Trip')
+    expect((await setDays(cookie, listId, 5)).status).toBe(200)
+    const plan = await getFood(cookie, listId)
+
+    expect(
+      (
+        await addItem(cookie, listId, {
+          name: 'Trail mix',
+          weightGrams: 500,
+          quantity: 1,
+          isPerMeal: false,
+          slotIds: [1, 2, 3, 4, 5].map((day) => slotOf(plan, day, 'lunch').id),
+        })
+      ).status,
+    ).toBe(201)
+
+    const food = await getFood(cookie, listId)
+    // One bag. This is the case the "scheduling never multiplies weight"
+    // contract was written for, and it still holds - it is now a MODE rather
+    // than a refusal to derive anything at all.
+    expect(food.items[0]!.unitCount).toBe(1)
+  })
+
+  it('recomputes when the schedule changes, without touching quantity', async () => {
+    const { cookie } = await signUpVerifiedUser('food-resched@example.com', 'RS')
+    const listId = await createList(cookie, 'Trip')
+    expect((await setDays(cookie, listId, 4)).status).toBe(200)
+    const plan = await getFood(cookie, listId)
+
+    const created = await addItem(cookie, listId, {
+      name: 'Smoothie',
+      weightGrams: 93,
+      quantity: 1,
+      slotIds: [slotOf(plan, 1, 'breakfast').id],
+    })
+    expect(created.status).toBe(201)
+    const itemId = ((await created.json()) as { id: string }).id
+    expect((await getFood(cookie, listId)).items[0]!.unitCount).toBe(1)
+
+    // Add it to three more breakfasts. Nothing writes a count anywhere; the
+    // count is a function of the plan, so it moves on its own.
+    const res = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${listId}/food/items/${itemId}`,
+      { slotIds: [1, 2, 3, 4].map((day) => slotOf(plan, day, 'breakfast').id) },
+    )
+    expect(res.status).toBe(200)
+    expect((await res.json()) as { unitCount: number }).toMatchObject({ unitCount: 4 })
+
+    const food = await getFood(cookie, listId)
+    expect(food.items[0]!.quantity).toBe(1)
+    expect(food.items[0]!.unitCount).toBe(4)
+  })
+
+  it('switching a scheduled item to shared collapses it to its quantity', async () => {
+    const { cookie } = await signUpVerifiedUser('food-toggle@example.com', 'TG')
+    const listId = await createList(cookie, 'Trip')
+    expect((await setDays(cookie, listId, 5)).status).toBe(200)
+    const plan = await getFood(cookie, listId)
+
+    const created = await addItem(cookie, listId, {
+      name: 'Coffee',
+      weightGrams: 20,
+      quantity: 1,
+      slotIds: [1, 2, 3, 4, 5].map((day) => slotOf(plan, day, 'breakfast').id),
+    })
+    expect(created.status).toBe(201)
+    const itemId = ((await created.json()) as { id: string }).id
+    expect((await getFood(cookie, listId)).items[0]!.unitCount).toBe(5)
+
+    const res = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${listId}/food/items/${itemId}`,
+      { isPerMeal: false },
+    )
+    expect(res.status).toBe(200)
+
+    const food = await getFood(cookie, listId)
+    expect(food.items[0]!.isPerMeal).toBe(false)
+    // The SCHEDULE is untouched - it still says which breakfasts. Only what it
+    // means for the count changed.
+    expect(food.items[0]!.slotIds).toHaveLength(5)
+    expect(food.items[0]!.unitCount).toBe(1)
+  })
+
+  it('an unscheduled per-meal item still counts one meal\'s worth', async () => {
+    const { cookie } = await signUpVerifiedUser('food-unsched@example.com', 'US')
+    const listId = await createList(cookie, 'Trip')
+    expect((await setDays(cookie, listId, 3)).status).toBe(200)
+
+    expect(
+      (
+        await addItem(cookie, listId, {
+          name: 'Emergency bar',
+          weightGrams: 60,
+          quantity: 2,
+          slotIds: [],
+        })
+      ).status,
+    ).toBe(201)
+
+    const food = await getFood(cookie, listId)
+    // Not zero: it is in the pack whether or not you have planned it.
+    expect(food.items[0]!.unitCount).toBe(2)
   })
 })

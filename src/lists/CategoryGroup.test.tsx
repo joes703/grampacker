@@ -721,7 +721,7 @@ describe('CategoryGroup footer subtotal', () => {
 // row twice, rendering neither loses food from the arrangement that has no
 // other place to show it.
 describe('plain food rows belong to the non-pack arrangements', () => {
-  const oats = { id: 'f1', name: 'Oatmeal', quantity: 3, weightGrams: 90 }
+  const oats = { id: 'f1', name: 'Oatmeal', unitCount: 3, weightGrams: 90 }
 
   it('renders food rows after the gear rows outside pack mode', () => {
     render(

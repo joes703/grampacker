@@ -183,12 +183,12 @@ describe('buildTakeoutFiles', () => {
           slots: [],
           items: [
             {
-              id: 'food-2', name: 'Oats', weightGrams: 90, quantity: 1,
+              id: 'food-2', name: 'Oats', weightGrams: 90, quantity: 1, isPerMeal: false, unitCount: 1,
               sortOrder: 1, isPacked: true, isReady: false,
               packingLocationId: null, packSortOrder: 7, slotIds: [],
             },
             {
-              id: 'food-1', name: 'Tortillas', weightGrams: 300, quantity: 2,
+              id: 'food-1', name: 'Tortillas', weightGrams: 300, quantity: 2, isPerMeal: false, unitCount: 2,
               sortOrder: 0, isPacked: false, isReady: false,
               packingLocationId: 'loc-b', packSortOrder: 3, slotIds: [],
             },

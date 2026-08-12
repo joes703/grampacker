@@ -38,10 +38,17 @@ export const foodItemResponseSchema = z.object({
   id: z.string(),
   name: z.string(),
   weightGrams: z.number(),
-  // UNITS CARRIED. Never derived from how many slots the item is associated
-  // with: the app cannot tell five packets from one shared bag, and guessing
-  // inflates the pack weight silently.
+  // How many you eat AT ONE MEAL when isPerMeal, or the total when it is a
+  // shared stash. Meaningless without isPerMeal beside it.
   quantity: z.number().int(),
+  // 0024. Per-meal (the default) or a shared total. See foodUnitCount.
+  isPerMeal: z.boolean(),
+  // What you actually CARRY, computed by the server from quantity, isPerMeal
+  // and the schedule. Sent rather than left to each caller because the public
+  // share needs it and must never receive the schedule it derives from - and
+  // because three surfaces computing it independently is how the share came
+  // to report a lighter pack than the owner's own page once before.
+  unitCount: z.number().int(),
   sortOrder: z.number().int(),
   // Pack state (0022): food is a full peer of gear in Pack mode. The rank is
   // a per-cohort rank in the UNION rank space shared with gear - see
@@ -96,6 +103,9 @@ export const createFoodItemRequestSchema = z
     name: foodNameSchema,
     weightGrams: foodWeightSchema,
     quantity: foodQuantitySchema,
+    // Omitted means per-meal, matching the column default. A client that has
+    // not been taught about shared stashes still creates the common case.
+    isPerMeal: z.boolean().optional(),
     slotIds: slotIdsSchema,
   })
   .strict()
@@ -109,6 +119,7 @@ export const updateFoodItemRequestSchema = z
     name: foodNameSchema.optional(),
     weightGrams: foodWeightSchema.optional(),
     quantity: foodQuantitySchema.optional(),
+    isPerMeal: z.boolean().optional(),
     slotIds: slotIdsSchema.optional(),
     // Pack state. packingLocationId null means Unassigned; omitted means
     // "leave the assignment alone" - the same absent-vs-null PATCH semantics
@@ -123,3 +134,27 @@ export const updateFoodItemRequestSchema = z
     message: 'at least one field is required',
   })
 export type UpdateFoodItemRequest = z.infer<typeof updateFoodItemRequestSchema>
+
+
+/**
+ * What you CARRY of a food item: the one definition, imported by the server
+ * that publishes it and by every test that checks it.
+ *
+ * Per-meal is the common case and the default - a packet in each of five
+ * lunches is five packets. A SHARED stash ignores the schedule entirely: one
+ * bag of trail mix picked at across five lunches is one bag, which is the case
+ * the "scheduling never multiplies weight" contract exists to protect.
+ *
+ * An UNSCHEDULED per-meal item counts one meal's worth rather than zero.
+ * Adding food before you have planned where it goes should not make it
+ * weightless - it is in the pack either way, and the row already carries an
+ * "Unscheduled" badge saying the plan is incomplete.
+ */
+export function foodUnitCount(item: {
+  quantity: number
+  isPerMeal: boolean
+  slotIds: readonly string[]
+}): number {
+  if (!item.isPerMeal) return item.quantity
+  return item.quantity * Math.max(item.slotIds.length, 1)
+}

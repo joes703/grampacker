@@ -289,21 +289,21 @@ describe('food weight', () => {
     // THE invariant. One 500 g bag of trail mix eaten across five lunches
     // weighs 500 g. Summing across the item->slot associations would say 2500,
     // and pack weight is the number this app exists to produce.
-    expect(foodGramsFor([{ weightGrams: 500, quantity: 1 }])).toBe(500)
+    expect(foodGramsFor([{ weightGrams: 500, unitCount: 1 }])).toBe(500)
   })
 
   it('multiplies by quantity, which is UNITS CARRIED', () => {
     // Four oatmeal packets is four packets - that is the user telling us, not
     // us inferring it from four breakfast slots.
-    expect(foodGramsFor([{ weightGrams: 80, quantity: 4 }])).toBe(320)
+    expect(foodGramsFor([{ weightGrams: 80, unitCount: 4 }])).toBe(320)
   })
 
   it('sums several carried items', () => {
     expect(
       foodGramsFor([
-        { weightGrams: 500, quantity: 1 },
-        { weightGrams: 80, quantity: 4 },
-        { weightGrams: 15, quantity: 6 },
+        { weightGrams: 500, unitCount: 1 },
+        { weightGrams: 80, unitCount: 4 },
+        { weightGrams: 15, unitCount: 6 },
       ]),
     ).toBe(910)
   })

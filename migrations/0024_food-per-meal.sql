@@ -1,0 +1,33 @@
+-- Food counts derive from the PLAN.
+--
+-- Until now, scheduling an item into five lunches said only WHEN you eat it;
+-- how many you carry was a separate number you had to type, and its default
+-- was 1. So a five-day trip with a peanut butter packet in each lunch weighed
+-- one packet. The plan was right, the packing list was wrong, and nothing
+-- said so. That is the wrong failure for an app whose entire job is telling
+-- you what your pack weighs.
+--
+-- `is_per_meal` splits the two real cases that were being conflated:
+--
+--   1 (the default) - one unit PER MEAL. `quantity` is how many you eat at
+--     each meal, and what you carry is quantity x the number of meals it is
+--     scheduled into. A packet of PB in each of five lunches: quantity 1,
+--     five slots, five packets.
+--   0 - a SHARED stash. `quantity` is the total, and scheduling does not
+--     multiply it. One 500 g bag of trail mix picked at across five lunches
+--     is still one bag - the case AGENTS.md's contract was written to
+--     protect, now expressed by a column instead of by refusing to derive
+--     anything.
+--
+-- DEFAULT 1 on purpose, and it changes what existing rows MEAN. Every
+-- scheduled item becomes per-meal, so its weight rises to what is actually in
+-- the pack. That is the correction, not a side effect: the owner reported the
+-- old numbers as unusable for packing. Rows with quantity > 1 rise too - the
+-- one such row on the live list was typed as "2 per day", which is exactly
+-- what per-meal now means. An item scheduled into no meals still counts one
+-- meal's worth, so adding food before planning it does not make it weightless.
+--
+-- Additive only: one ADD COLUMN with a DEFAULT, no rebuild, no rename, no
+-- backfill statement. Every existing row takes the default in place, so there
+-- is nothing here that can lose a row.
+ALTER TABLE `list_food_items` ADD `is_per_meal` integer DEFAULT true NOT NULL;

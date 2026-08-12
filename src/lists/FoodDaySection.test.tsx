@@ -19,6 +19,10 @@ const item = (
 ): FoodItemResponse => ({
   weightGrams: 100,
   quantity: 1,
+  // This section shows an item WITHIN one meal, so it renders quantity (how
+  // many at this sitting), never unitCount (how many across the trip).
+  isPerMeal: true,
+  unitCount: 1,
   sortOrder: 0,
   isPacked: false,
   isReady: false,
@@ -104,10 +108,18 @@ describe('FoodDaySection food lines', () => {
 })
 
 describe('FoodDaySection day total', () => {
-  it('totals the day counting a twice-scheduled item once', () => {
-    // Same item id scheduled at both breakfast AND lunch of this day - the
-    // exact inflation foodGramsFor's comment warns about (weight-breakdown.ts).
-    const shared = item({ id: 'shared', name: 'Trail mix', weightGrams: 500, quantity: 1 })
+  // The day total's dedupe is CONDITIONAL since 0024, and these two tests are
+  // the whole difference. Getting this wrong in either direction is a wrong
+  // pack weight: dedupe everything and a per-meal item under-reports, dedupe
+  // nothing and a shared bag is counted once per meal it is picked at.
+  it('counts a SHARED stash once however many of the day it spans', () => {
+    const shared = item({
+      id: 'shared',
+      name: 'Trail mix',
+      weightGrams: 500,
+      quantity: 1,
+      isPerMeal: false,
+    })
     renderDay({
       itemsBySlot: new Map([
         ['b1', [shared]],
@@ -117,6 +129,26 @@ describe('FoodDaySection day total', () => {
     const totalRow = screen.getByText('Day total').closest('div')!
     expect(within(totalRow).getByLabelText('500 g')).toBeInTheDocument()
     expect(screen.queryByLabelText('1000 g')).not.toBeInTheDocument()
+  })
+
+  it('counts a PER-MEAL item once for every meal of the day it is in', () => {
+    // One bar at breakfast and another at lunch is two bars. The old code
+    // deduped this to one, which is the under-report 0024 exists to end.
+    const perMeal = item({
+      id: 'bar',
+      name: 'Bar',
+      weightGrams: 500,
+      quantity: 1,
+      isPerMeal: true,
+    })
+    renderDay({
+      itemsBySlot: new Map([
+        ['b1', [perMeal]],
+        ['l1', [perMeal]],
+      ]),
+    })
+    const totalRow = screen.getByText('Day total').closest('div')!
+    expect(within(totalRow).getByLabelText('1000 g')).toBeInTheDocument()
   })
 })
 
