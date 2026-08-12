@@ -51,11 +51,17 @@ describe('createPackingLocationsRepo', () => {
   // db.batch. That is the whole fix: a batch is a real D1 transaction, so a
   // read-back that throws takes the write down with it. Written as a
   // write-then-read pair instead, a failed read reports failure over a row
-  // that has already committed - you retry and are told the name is taken.
+  // that has already committed - and since location names are NOT unique,
+  // retrying then makes a second bag with the same name rather than refusing.
   //
-  // D1 does the rolling back; what this code controls is that both statements
-  // are in the same batch, so that is what is asserted. Split them again and
-  // batch is called with one statement (or not at all) and these fail.
+  // These are STRUCTURAL and that is all they are. They prove the two
+  // statements go in one batch, which is the part this code controls and the
+  // regression worth catching; both were mutation-tested by splitting the
+  // batch. They do NOT prove D1's transaction semantics, read-your-writes, or
+  // the error shape - the mock invents its own results, and these sentinels
+  // are not thenable, so they would also pass an implementation that awaited
+  // the write builder before batching it. The real-workerd route tests in
+  // server/routes/packing-locations.test.ts carry that weight.
   it('creates a location and reads it back in one batch', async () => {
     const readBack = { readBack: true }
     const select = vi

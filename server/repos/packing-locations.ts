@@ -71,10 +71,16 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
   // The builder, not the awaited result, so create/rename can put the
   // read-back INSIDE the same db.batch as their write. Both used to write and
   // then read in a second round trip, which meant a read-back that threw
-  // reported failure over a row that had already committed - you would retry
-  // and get "that name is taken" for the bag you were told had not been made.
-  // One batch is one D1 transaction: a failing read now rolls the write back,
-  // so the answer and the database agree either way.
+  // reported failure over a row that had already committed. Names are NOT
+  // unique here, so retrying a "failed" create silently makes a SECOND bag
+  // with the same name - the one case that does refuse is promoting gear,
+  // which answers "Item is already a container" for the container you were
+  // told had not been made.
+  //
+  // One batch is one D1 transaction, so a statement that fails rolls the
+  // sequence back. That covers the read-back failing, which is the case this
+  // addresses; a transport failure after the commit lands is still ambiguous
+  // and no amount of batching fixes that.
   function ownedListQuery(listId: string) {
     return db
       .select(cols)

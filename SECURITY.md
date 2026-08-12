@@ -533,13 +533,21 @@ of it:
   `readOwnedList` in a second round trip to compose their response, so a
   read-back that threw reported failure over a row that had already
   committed - `create` 500'd ("insert could not be read"), `rename` 500'd or
-  mapped it to 404 - and the owner would retry into a duplicate-name error
-  for the bag they were told had not been made.
+  mapped it to 404. Location names are NOT unique (the only unique index is
+  `container_list_item_id`), so retrying a "failed" create made a SECOND bag
+  with the same name rather than refusing; promoting gear to a container is
+  the one path that does refuse, with "Item is already a container".
 
   Each now issues its write and its read-back as the two statements of ONE
-  `db.batch`, which is a real transaction on D1: a failing read takes the
-  write down with it, so the answer and the database agree either way. The
+  `db.batch`, which is a real transaction on D1: a SQL statement that fails
+  rolls the sequence back, so a failing read-back takes the write with it. The
   read also runs after the write inside that transaction, so it sees the row.
+
+  Scoped claim, deliberately: this closes the read-back-failed case and the
+  window between the two round trips. It does not make the write atomic with
+  its RESPONSE - a transport failure after the batch commits, or a failure
+  mapping the batch's results, still leaves the caller unsure. Nothing at this
+  layer can fix that; only an idempotency key would.
   `rename`'s "the UPDATE matched nothing" branch still answers not_found and
   is still reachable (a concurrent delete between the pre-read and the
   write); its read-back-found-nothing branch is now unreachable and throws
@@ -547,7 +555,8 @@ of it:
 
   Two repo tests pin the batching itself rather than the rollback, which is
   D1's to guarantee - split either write back into write-then-read and they
-  fail. Verified by running that mutation, not by inspection.
+  fail. Verified by running that mutation, not by inspection. They are
+  structural only; the real-workerd route tests cover the semantics.
 
 - **Fresh-auth proofs**: CLOSED. See "Fresh auth" above - passkey
   mutations and account deletion both require a fresh session. Email
