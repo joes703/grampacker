@@ -451,8 +451,13 @@ describe('food: list duplication', () => {
     expect(copied.items[0]!.unitCount).toBe(1)
     const total = copied.items.reduce((g, i) => g + i.weightGrams * i.unitCount, 0)
     expect(total).toBe(500)
-    // Fresh ids: editing the copy must not touch the original.
-    expect(copied.items[0]!.id).not.toBe(food.items[0]?.id)
+    // Fresh ids: editing the copy must not touch the original. Read the
+    // ORIGINAL again rather than reusing the pre-add snapshot - `food` was
+    // fetched before the item existed, so comparing against it asserted only
+    // that an id is not undefined.
+    const original = await getFood(cookie, listId)
+    expect(original.items).toHaveLength(1)
+    expect(copied.items[0]!.id).not.toBe(original.items[0]!.id)
   })
 })
 

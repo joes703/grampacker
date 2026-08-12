@@ -63,13 +63,16 @@ export type PublicShare = {
   list: PublicListRow
   categories: PublicCategoryRow[]
   items: PublicListItemRow[]
-  /** The food a share publishes: what it is, how many, how heavy, and its
-   *  order. Named columns only, like every other select here.
+  /** The food a share publishes: what it is, how many you carry, how heavy,
+   *  and its order. Named columns only, like every other select here.
    *
    *  What stays private is the PLAN - day count, meal slots, "not needed"
-   *  marks, packing state. Those live in other tables and no statement in
-   *  this module reads them. "2 x 85 g ramen" is a thing in a pack;
-   *  "Tuesday dinner: leftover curry" is a fact about someone's week. */
+   *  marks, packing state. The one thing this module reads from that half is
+   *  the COUNT of an item's slot links (0024), because a per-meal item's
+   *  carried count is quantity x meals and the share must publish the answer
+   *  rather than the arithmetic. No day, meal or slot id crosses.
+   *  "2 x 85 g ramen" is a thing in a pack; "Tuesday dinner: leftover curry"
+   *  is a fact about someone's week. */
   food: PublicFoodItemRow[]
 }
 
@@ -131,13 +134,12 @@ export function createPublicSharesRepo(db: Db) {
         .where(shareGate)
         .orderBy(asc(categories.sortOrder), asc(categories.name))
 
-      // The food items table ALONE. Never join to list_food_item_slots
-      // here: the associations say WHEN you plan to eat something, not how
-      // much of it you carry, so a join would return one 500 g bag of trail
-      // mix five times over for a trail mix scheduled across five lunches -
-      // both as duplicate rows and, if anyone re-adds a sum, as 2500 g. The
-      // slot tables are also the private half of the food plan, which is the
-      // second reason nothing here touches them.
+      // Never JOIN this to list_food_item_slots. A join returns one 500 g bag
+      // of trail mix five times over for a bag scheduled across five lunches -
+      // both as duplicate rows and, if anyone re-adds a sum, as 2500 g.
+      //
+      // The slot COUNT is read separately below (0024) and combined in JS, so
+      // this statement still returns exactly one row per food item.
       const foodQuery = db
         .select({
           id: listFoodItems.id,
