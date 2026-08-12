@@ -573,8 +573,11 @@ function CategoryGroup({
                  Chevron is the obvious affordance; the name remains
                  read-only here (rename happens via the section menu or the
                  modal, not by tapping the header). titleContent is the one
-                 override, used while a packing location is being renamed in
-                 place. */
+                 override: a packing location being renamed in place, and the
+                 Category arrangement's Food section, which pairs the name
+                 with a link out to the Food view. See the prop's doc for why
+                 anything with width belongs here rather than in
+                 headerAction. */
               titleContent ?? (
                 <span className={`truncate ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
               )

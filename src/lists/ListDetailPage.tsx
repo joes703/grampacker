@@ -80,11 +80,9 @@ import type { FoodItemResponse, ListFoodResponse } from '../../shared/food'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
 import {
-  DESKTOP_ROW_HEIGHT,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_META_TEXT,
   FLAT_TABLE_SURFACE,
-  MOBILE_ROW_HEIGHT,
 } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import ListDocumentToolbar from './ListDocumentToolbar'
@@ -2425,12 +2423,13 @@ function ListDetailInner({
                   Category, Pack and the share now all show the rows.
 
                   INSIDE the loaded branch, OUTSIDE the listItems.length === 0
-                  one. Both halves matter. Inside, because listFood falls back
-                  to an empty-food object when the query has not resolved, so
-                  above that gate this would render an empty Food section
-                  under "Loading list details...". Outside the empty-gear
-                  branch, because a list with food and no gear yet is a real,
-                  usable list.
+                  one. Inside, because a document half-rendered under a
+                  "couldn't load" banner is worse than none - the same reason
+                  every other section sits there. (The empty-food fallback the
+                  page uses while the query is in flight cannot leak a section
+                  through on its own; the items.length gate below stops that
+                  independently.) Outside the empty-gear branch, because a
+                  list with food and no gear yet is a real, usable list.
 
                   Category only: in Pack, food rows are part of each bag's
                   union cohort and are rendered by the location sections
@@ -2475,15 +2474,18 @@ function ListDetailInner({
                           separate text, so a screen reader listing links
                           would announce a destination-less "Edit".
 
-                          Sized to the mobile touch floor (the header is
-                          44px tall and the word alone is a ~20px target),
-                          relaxing to the desktop row height. Negative inline
-                          margin keeps the padded box from pushing the title
-                          without shrinking the target itself. */}
+                          Sized to the 40px control target the density
+                          system uses for chevrons and kebabs, not the 44px
+                          ROW floor: the header's own 44px includes its 1px
+                          bottom border, so a 44px child would push it to
+                          45px on mobile. Desktop relaxes to the 28px row
+                          height. Negative inline margin keeps the padded box
+                          from pushing the title without shrinking the target
+                          itself. */}
                       <Link
                         to={`/lists/${listId}/food`}
                         aria-label="Edit food"
-                        className={`shrink-0 inline-flex items-center ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} px-2 -mx-1 ${FLAT_TABLE_META_TEXT} text-gray-500 hover:text-blue-600`}
+                        className={`shrink-0 inline-flex items-center min-h-10 lg:min-h-7 px-2 -mx-1 ${FLAT_TABLE_META_TEXT} text-gray-500 hover:text-blue-600`}
                       >
                         Edit
                       </Link>
