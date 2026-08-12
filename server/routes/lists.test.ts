@@ -231,10 +231,11 @@ describe('lists CRUD', () => {
     // stale tab's rename, notes, draft and share calls each send one field
     // and are accepted here.
     //
-    // Which means the request side was never the risk. The RESPONSE losing a
-    // field the old bundle's schema still requires is, and that is a
-    // different problem this test does not cover - see the expand step and
-    // SECURITY.md.
+    // Which means the request side was never the risk here. The RESPONSE
+    // losing a field an old bundle's schema still requires is - that tab sees
+    // its own committed writes fail until it is reloaded. Accepted
+    // deliberately rather than staged across two releases; see the contract
+    // note in src/lib/api.ts.
     const retired = await apiRequest(cookie, 'PATCH', `/api/lists/${first.id}`, {
       name: 'Should not land',
       groupWorn: true,

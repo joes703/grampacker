@@ -579,16 +579,14 @@ of it:
   `server/routes/shares.test.ts` so a future projection cannot reintroduce
   them quietly.
 
-  Retiring them took TWO releases, and the reason is worth keeping. Taking a
-  required field OFF a response breaks the contract in `src/lib/api.ts` -
-  "stale tabs may fail reads; they must not be lied to about writes that
-  succeeded" - because `apiFetch` strips unexpected fields but THROWS on a
-  missing required one. An open tab on the previous bundle would have
-  reported its own committed writes as failures, and on a list create or
-  duplicate the retry that invites makes a second list. So the client schema
-  was made tolerant and deployed first, then the server stopped sending
-  them. Expand then contract, the same sequencing migrations 0022 and 0023
-  used.
+  Taking a required field OFF a response is not free: `apiFetch` strips
+  unexpected fields but THROWS on a missing required one, so a tab still open
+  on the previous bundle reports its own committed writes as failures until
+  it is reloaded. Owner's call, 2026-08-11, was to accept that rather than
+  keep dead fields on the wire or stage a two-release retirement - a refresh
+  is the remedy, and this is a single-user app. The contract comment in
+  `src/lib/api.ts` said the opposite and has been corrected rather than left
+  standing.
 
 - **Public share endpoint** (`GET /api/shares/v2/:slug`, phase 4): dedicated
   repository + DTO allowlist + private-column ABSENCE tests + uniform
