@@ -175,11 +175,14 @@ describe('food is reachable at its own route, and traced from List view', () => 
     await renderDetail(`/lists/${listId}`)
     const chevron = await screen.findByRole('button', { name: 'Collapse Food' })
     expect(foodRow()).toBeTruthy()
-    // The section TITLE is the route to the editor. Scoped to the section's
-    // own card: the ListViewNav Food tab is also a link named "Food" pointing
-    // at the same href, so an unscoped query matches both.
+    // The section header carries a VISIBLE "Edit" out to the Food view.
+    // Asserted on its own text rather than on a hover style, because hover
+    // does not exist on touch - an affordance only a mouse can find would
+    // pass a "there is a link" test and still be missing on a phone. Scoped
+    // to the section's card, since the ListViewNav Food tab points at the
+    // same href.
     const card = chevron.closest('.overflow-hidden')!
-    expect(within(card as HTMLElement).getByRole('link', { name: 'Food' })).toHaveAttribute(
+    expect(within(card as HTMLElement).getByRole('link', { name: 'Edit' })).toHaveAttribute(
       'href',
       `/lists/${listId}/food`,
     )

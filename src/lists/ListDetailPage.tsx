@@ -81,6 +81,7 @@ import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
 import {
   FLAT_TABLE_HEADER_TITLE,
+  FLAT_TABLE_META_TEXT,
   FLAT_TABLE_SURFACE,
 } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
@@ -2447,25 +2448,33 @@ function ListDetailInner({
                   // under the food. Food is consumable by definition, which is
                   // the same bucket its grams already land in upstream.
                   consumableSubtotalGrams={foodGrams}
-                  // The section TITLE is the route to the Food view, rather
-                  // than a trailing header action. Food is authored where its
-                  // schedule lives; editing a name or a weight from here
-                  // would be a second authoring path for one thing.
+                  // An explicit "Edit" alongside the section name, both
+                  // inside the title slot.
                   //
-                  // Title rather than action because the non-pack header ends
-                  // in fixed Qty/Weight column stubs that line up with the
-                  // cells beneath them. The title sits in the flex-1 slot and
-                  // costs those stubs nothing; anything appended AFTER them
-                  // shifts both labels off their columns, since the title
-                  // absorbs the slack. `name` still supplies every accessible
-                  // label ("Collapse Food").
+                  // Inside the title slot because the non-pack header ends in
+                  // fixed Qty/Weight column stubs that line up with the cells
+                  // beneath them, and the title absorbs the slack - so
+                  // anything appended AFTER the stubs shifts both labels off
+                  // their columns. Visible rather than a hover state on the
+                  // title, because hover does not exist on touch: an
+                  // affordance only a mouse can find is not an affordance
+                  // here. `name` still supplies every accessible label
+                  // ("Collapse Food").
+                  //
+                  // It leads out to the Food view rather than editing in
+                  // place: a food item is authored where its schedule lives,
+                  // and a second authoring path for one thing is how the two
+                  // drift.
                   titleContent={
-                    <Link
-                      to={`/lists/${listId}/food`}
-                      className={`truncate ${FLAT_TABLE_HEADER_TITLE} hover:text-blue-600`}
-                    >
-                      Food
-                    </Link>
+                    <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                      <span className={`truncate ${FLAT_TABLE_HEADER_TITLE}`}>Food</span>
+                      <Link
+                        to={`/lists/${listId}/food`}
+                        className={`shrink-0 ${FLAT_TABLE_META_TEXT} text-gray-500 hover:text-blue-600`}
+                      >
+                        Edit
+                      </Link>
+                    </span>
                   }
                 />
               )}
