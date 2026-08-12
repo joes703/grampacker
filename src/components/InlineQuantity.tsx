@@ -30,10 +30,17 @@ type Props = {
    *  the same reasoning as InlineWeight's className. The touch/pointer target
    *  is owned here and is not a caller's to opt out of. */
   className?: string
-  /** Applied to the input instead of `className` while editing. A number
-   *  input needs room for four digits plus the native steppers, which is more
-   *  than the resting label needs - the same split InlineWeight makes. */
+  /** Applied to the input instead of `className` while editing. Use ONLY when
+   *  the two states genuinely want different widths - if the control sits in
+   *  running text, they must not, or committing visibly shrinks it and reflows
+   *  the line. In a numeric COLUMN the width is fixed by the column anyway. */
   editingClassName?: string
+  /** 'end' for a numeric column, where digits line up on the right. 'center'
+   *  for a control sitting in a line of text, where a right-aligned 1 in a
+   *  fixed-width box reads as a gap. A prop rather than a className override:
+   *  two justify- classes on one element leave the outcome to Tailwind's
+   *  ordering, which is not something to leave to chance. */
+  align?: 'end' | 'center'
 }
 
 export default function InlineQuantity({
@@ -43,6 +50,7 @@ export default function InlineQuantity({
   itemName,
   className = '',
   editingClassName,
+  align = 'end',
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(String(quantity))
@@ -77,6 +85,8 @@ export default function InlineQuantity({
   // the ONLY way to correct a food count, and a text-height 24px tap target on
   // a phone is how someone gives up and packs the wrong weight.
   const target = `${MOBILE_ROW_CONTROL_MIN_TARGET} ${DESKTOP_ROW_CONTROL_MIN_TARGET}`
+  const justify = align === 'center' ? 'justify-center' : 'justify-end'
+  const textAlign = align === 'center' ? 'text-center' : 'text-right'
 
   if (onSave && editing) {
     return (
@@ -101,7 +111,7 @@ export default function InlineQuantity({
             })
           }
         }}
-        className={`shrink-0 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums ${target} ${INLINE_EDIT_FOCUS_RING} ${editingClassName ?? className}`}
+        className={`shrink-0 rounded border border-blue-400 px-1 py-0.5 tabular-nums ${textAlign} ${target} ${INLINE_EDIT_FOCUS_RING} ${editingClassName ?? className}`}
       />
     )
   }
@@ -113,7 +123,7 @@ export default function InlineQuantity({
         onClick={() => setEditing(true)}
         title="Edit quantity"
         aria-label={`Edit quantity ${quantity} for ${itemName}`}
-        className={`shrink-0 inline-flex items-center justify-end ${target} ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600 hover:text-blue-600 ${className}`}
+        className={`shrink-0 inline-flex items-center ${justify} ${target} ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600 hover:text-blue-600 ${className}`}
       >
         {quantity}
       </button>
@@ -127,7 +137,7 @@ export default function InlineQuantity({
   // control you just used.
   return (
     <span
-      className={`shrink-0 inline-flex items-center justify-end ${target} ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600 ${className}`}
+      className={`shrink-0 inline-flex items-center ${justify} ${target} ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600 ${className}`}
     >
       {quantity}
     </span>

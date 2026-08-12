@@ -105,7 +105,11 @@ function FoodItemRow({
             max={FOOD_QUANTITY_MAX}
             onSave={busy ? undefined : onSetQuantity}
             itemName={item.name}
-            editingClassName="w-16 lg:w-12"
+            // ONE width for every state. Resting, editing and busy all render
+            // at w-12/lg:w-10, so committing a change cannot shrink the
+            // control or reflow the line around it.
+            className="w-12 lg:w-10"
+            align="center"
           />
           <span aria-hidden="true" className="shrink-0">·</span>
           {item.slotIds.length > 0 ? (
