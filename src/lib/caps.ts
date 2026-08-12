@@ -24,9 +24,15 @@ export { CATEGORY_CAP, GEAR_ITEM_CAP } from '../../shared/gear'
 // Upper bound (grams) for a single item's weight; drafts clamp to this.
 export const MAX_ITEM_WEIGHT_GRAMS = 100000
 
-// Upper bound for a list item's quantity; drafts clamp to this.
-// (Consumed by GearItemDialog's list-context quantity field.)
-export const MAX_LIST_ITEM_QUANTITY = 9999
+// Upper bound for a list item's quantity; drafts clamp to this. Consumed by
+// GearItemDialog's list-context field, Quick Add, CSV import and the row's
+// inline editor.
+//
+// RE-EXPORTED, not redeclared. This was its own `= 9999` sitting beside an
+// identical one in shared/lists.ts, which is the copy the request schema and
+// the DB CHECK are held to - so raising the ceiling in one place left every
+// client clamp on the old bound with nothing failing.
+export { MAX_LIST_ITEM_QUANTITY } from '../../shared/lists'
 
 // Max characters for an item/list/gear name field (input maxLength +
 // CSV-import slice).

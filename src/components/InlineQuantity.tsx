@@ -120,8 +120,15 @@ export default function InlineQuantity({
     )
   }
 
+  // The read-only span carries the SAME target as the button. Not because a
+  // span can be tapped, but because the food row swaps to it while a write is
+  // in flight: sized to its text instead, the row would visibly shrink and
+  // shift every time you committed a quantity, which reads as a glitch on the
+  // control you just used.
   return (
-    <span className={`shrink-0 inline-flex items-center justify-end ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600 ${className}`}>
+    <span
+      className={`shrink-0 inline-flex items-center justify-end ${target} ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600 ${className}`}
+    >
       {quantity}
     </span>
   )
