@@ -105,10 +105,13 @@ function FoodItemRow({
             max={FOOD_QUANTITY_MAX}
             onSave={busy ? undefined : onSetQuantity}
             itemName={item.name}
-            // ONE width for every state. Resting, editing and busy all render
-            // at w-12/lg:w-10, so committing a change cannot shrink the
-            // control or reflow the line around it.
-            className="w-12 lg:w-10"
+            // ONE width for every state, sized for the WIDEST of them: the
+            // number input, which has to hold four digits plus its padding,
+            // border and the browser's native steppers. Sizing to the resting
+            // label instead (w-12/lg:w-10) fits the label fine and clips the
+            // input, and any difference between the two reflows the line on
+            // every commit.
+            className="w-16 lg:w-12"
             align="center"
           />
           <span aria-hidden="true" className="shrink-0">·</span>
