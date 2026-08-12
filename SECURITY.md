@@ -578,6 +578,17 @@ of it:
   `server/routes/shares.test.ts` so a future projection cannot reintroduce
   them quietly.
 
+  Retiring them took TWO releases, and the reason is worth keeping. Taking a
+  required field OFF a response breaks the contract in `src/lib/api.ts` -
+  "stale tabs may fail reads; they must not be lied to about writes that
+  succeeded" - because `apiFetch` strips unexpected fields but THROWS on a
+  missing required one. An open tab on the previous bundle would have
+  reported its own committed writes as failures, and on a list create or
+  duplicate the retry that invites makes a second list. So the client schema
+  was made tolerant and deployed first, then the server stopped sending
+  them. Expand then contract, the same sequencing migrations 0022 and 0023
+  used.
+
 - **Public share endpoint** (`GET /api/shares/v2/:slug`, phase 4): dedicated
   repository + DTO allowlist + private-column ABSENCE tests + uniform
   404 for unknown and inactive slugs. The re-sweep of this file happens

@@ -22,11 +22,13 @@ type Props = { list: List }
 //   - Sharing: PrivacyPanel's inline body (toggle + url + Copy when
 //     public).
 //
-// "Add ready checks" used to live here as a third toggle, but it is a
-// pack-mode-only feature and the panel itself is hidden in pack mode
-// (see ListDocumentToolbar / MobileListActionBar). The toggle now lives
-// inline at the top of PackingProgress, the one surface where the user
-// is actually in pack mode and can see/use the second progress bar.
+// "Add ready checks" used to live here as a third toggle. It moved to
+// PackingProgress and was then retired entirely: ready checks are
+// unconditional, so there is nothing left to toggle. What survives of the
+// original reasoning is why it did not belong here - it is a pack-mode-only
+// concern and this panel is hidden in pack mode (see ListDocumentToolbar /
+// MobileListActionBar), which is the same test to apply to the next
+// pack-only control someone wants to put here.
 //
 // Actions reuse the shared useCurrentListActions hook so the /lists
 // card kebab and this panel call the same renameMut/duplicateMut/

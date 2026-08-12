@@ -221,12 +221,16 @@ describe('lists CRUD', () => {
     expect(patched.updatedAt > first.updatedAt).toBe(true)
     expect(patched.slug).toBe(first.slug) // patches never touch the slug
 
-    // A client still running the pre-retirement bundle sends groupWorn or
-    // readyChecksEnabled on every list PATCH. The request schema is strict,
-    // so it gets a 400 - the whole patch is refused, not silently
-    // half-applied. That is the documented position (stale open tabs are not
-    // supported) and it is worth pinning rather than discovering: the failure
-    // is loud and total, and it resolves on the next navigation.
+    // A retired key on a PATCH is refused outright. The request schema is
+    // strict, so the whole patch 400s rather than applying the rest and
+    // dropping the unknown field - no silent half-write.
+    //
+    // Narrow on purpose: a pre-retirement bundle only ever SENT these two
+    // from the ready-checks toggle and the worn-grouping toggle, both of
+    // which are gone. Its rename, notes, draft and share calls each send one
+    // field and are unaffected. The stale-tab risk in this change was never
+    // the request - it was the RESPONSE losing a field the old bundle's
+    // schema required, which is why the expand step ships first.
     const retired = await apiRequest(cookie, 'PATCH', `/api/lists/${first.id}`, {
       name: 'Should not land',
       groupWorn: true,
