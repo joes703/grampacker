@@ -757,7 +757,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
   // `item_backed` -> 409 BEFORE the scoped UPDATE runs. So if the parent
   // predicate were ever lost from the pre-read alone, a name-only target
   // would still 404 (the correctly scoped UPDATE matches nothing) while an
-  // item-backed target answered 409 - telling an caller, through the wrong
+  // item-backed target answered 409 - telling a caller, through the wrong
   // list, both that the id exists and what kind of location it is. Same
   // 404 as everything else is the contract.
   it('wrong-parent PATCH on an item-backed location is 404, not the item-backed 409', async () => {
