@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query'
 import { FOOD_ITEM_CAP, type ListFoodResponse } from '../../shared/food'
 import { ApiError } from '../lib/api'
 
@@ -83,7 +83,15 @@ const rescheduleFood: ListFoodResponse = {
 
 function renderFoodView() {
   const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    // Mirrors the app-wide defaults in src/App.tsx. refetchOnWindowFocus is
+    // load-bearing here, not incidental: React Query's OWN default is true, so
+    // a client that omits it makes the staleness test below pass whether or
+    // not FoodView opts in. Verified by removing the option and watching the
+    // test still pass.
+    defaultOptions: {
+      queries: { retry: false, refetchOnWindowFocus: false },
+      mutations: { retry: false },
+    },
   })
   return import('./FoodView').then(({ default: FoodView }) =>
     render(
@@ -128,6 +136,27 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+})
+
+describe('FoodView staleness', () => {
+  // Every destructive food action decides from this cache, so the view opts
+  // OUT of the app-wide refetchOnWindowFocus: false. Without it a tab left
+  // open re-reads nothing, and trimming days or rescheduling from that stale
+  // snapshot deletes meals another client added. Behavioral on purpose: drop
+  // the option and no second fetch happens.
+  afterEach(() => {
+    focusManager.setFocused(undefined)
+  })
+
+  it('refetches the plan when the window regains focus', async () => {
+    await renderFoodView()
+    await waitFor(() => expect(h.fetchListFood).toHaveBeenCalledTimes(1))
+
+    focusManager.setFocused(false)
+    focusManager.setFocused(true)
+
+    await waitFor(() => expect(h.fetchListFood).toHaveBeenCalledTimes(2))
+  })
 })
 
 describe('FoodView query gate', () => {

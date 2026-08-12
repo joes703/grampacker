@@ -467,12 +467,21 @@ of it:
   placements cascade. Three leave the food items themselves alone; one removes
   an item outright.
 
-  Every path below decides from a cached snapshot that can be **arbitrarily
-  old**. `staleTime` is 30s, but that only marks data stale - it
-  does not refetch. With `refetchOnWindowFocus: false` and no polling
-  (`src/App.tsx`), a tab left open re-reads nothing until something else
-  invalidates it. The day-trim path does refetch, but AFTER the confirm
-  decision, and never re-evaluates it.
+  Every path below decides from a cached snapshot. `staleTime` is 30s, but
+  that only marks data stale - it does not refetch, and the app-wide default
+  in `src/App.tsx` is `refetchOnWindowFocus: false` with no polling.
+
+  PARTIALLY MITIGATED 2026-08-12: `FoodView` overrides that default to
+  `refetchOnWindowFocus: true` (the only query in the app that does), so
+  returning to a tab re-reads the plan before you can act in it. Every path
+  below lives on that view, so none of them can now be driven from an
+  arbitrarily old snapshot - the exposure is a tab you are already looking at
+  while another client writes.
+
+  This does NOT close the gap and must not be read as closing it. The window
+  between the refetch and the write is still wide open, and the day-trim path
+  additionally refetches AFTER its confirm decision and never re-evaluates it.
+  Only the revision guard below makes the write itself safe.
 
   - **Trimming the day count** drops every slot past the new end
     (`src/lists/FoodView.tsx:343` carries the KNOWN GAP comment).
@@ -518,29 +527,36 @@ of it:
   entries. Until then the blast radius is one list, within one account, with
   concurrent clients - two tabs, or a phone and a laptop.
 
-- **Creating or renaming a packing location can commit and then report
-  failure.** Both `create` and `rename` in
-  `server/repos/packing-locations.ts` write and then call `readOwnedList` to
-  compose their response. The write and the read-back are separate
-  operations, so a read-back that fails or comes back without the row makes
-  the route report failure over a change that landed: `create` throws
-  ("insert could not be read") and 500s; `rename` maps it to 404, or 500s if
-  the read itself fails. A concurrent delete between the two produces the
-  same thing legitimately. Found by review 2026-08-11 while closing the
-  wrong-parent PATCH gap - and the second half of it, `create`, was found
-  only on the review's second pass, after this entry first claimed the
-  problem was rename's alone.
+- **Creating or renaming a packing location commits then reports failure**:
+  CLOSED 2026-08-12. Both `create` and `rename` in
+  `server/repos/packing-locations.ts` used to write and then call
+  `readOwnedList` in a second round trip to compose their response, so a
+  read-back that threw reported failure over a row that had already
+  committed - `create` 500'd ("insert could not be read"), `rename` 500'd or
+  mapped it to 404. Location names are NOT unique (the only unique index is
+  `container_list_item_id`), so retrying a "failed" create made a SECOND bag
+  with the same name rather than refusing; promoting gear to a container is
+  the one path that does refuse, with "Item is already a container".
 
-  Not a security issue - no boundary is crossed, and the only caller who can
-  reach either is the owner acting on their own list. It is a truthfulness
-  one, recorded here because this file is where live gaps live rather than in
-  a commit message. The fix for both is to return the row from the write's
-  own `RETURNING` rather than re-reading, which needs that shape to match
-  what `readOwnedList` composes.
+  Each now issues its write and its read-back as the two statements of ONE
+  `db.batch`, which is a real transaction on D1: a SQL statement that fails
+  rolls the sequence back, so a failing read-back takes the write with it. The
+  read also runs after the write inside that transaction, so it sees the row.
 
-  Trigger: any report of a location that "didn't save" and then existed, or
-  the next change to this repo's return path. Blast radius today is one
-  mislabelled error on one owner's own write.
+  Scoped claim, deliberately: this closes the read-back-failed case and the
+  window between the two round trips. It does not make the write atomic with
+  its RESPONSE - a transport failure after the batch commits, or a failure
+  mapping the batch's results, still leaves the caller unsure. Nothing at this
+  layer can fix that; only an idempotency key would.
+  `rename`'s "the UPDATE matched nothing" branch still answers not_found and
+  is still reachable (a concurrent delete between the pre-read and the
+  write); its read-back-found-nothing branch is now unreachable and throws
+  rather than returning a not_found that would deny a committed rename.
+
+  Two repo tests pin the batching itself rather than the rollback, which is
+  D1's to guarantee - split either write back into write-then-read and they
+  fail. Verified by running that mutation, not by inspection. They are
+  structural only; the real-workerd route tests cover the semantics.
 
 - **Fresh-auth proofs**: CLOSED. See "Fresh auth" above - passkey
   mutations and account deletion both require a fresh session. Email
