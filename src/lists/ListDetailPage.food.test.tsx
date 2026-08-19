@@ -43,7 +43,7 @@ const list: List = {
 
 const food: ListFoodResponse = {
   dayCount: 3,
-  slots: [{ id: 'slot-1', dayNumber: 1, meal: 'breakfast', needed: true }],
+  slots: [{ id: 'slot-1', dayNumber: 1, meal: 'breakfast' }],
   // At least one item, because the Category arrangement renders a Food
   // SECTION and a section with no rows is noise - so an empty food fixture
   // would prove nothing about where food is mounted.

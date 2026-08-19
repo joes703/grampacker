@@ -30,7 +30,6 @@ export const foodSlotResponseSchema = z.object({
   id: z.string(),
   dayNumber: z.number().int(),
   meal: z.enum(MEALS),
-  needed: z.boolean(),
 })
 export type FoodSlotResponse = z.infer<typeof foodSlotResponseSchema>
 
@@ -72,11 +71,6 @@ export const setFoodDaysRequestSchema = z
   .object({ days: z.number().int().min(0).max(FOOD_DAY_CAP) })
   .strict()
 export type SetFoodDaysRequest = z.infer<typeof setFoodDaysRequestSchema>
-
-export const updateFoodSlotRequestSchema = z
-  .object({ needed: z.boolean() })
-  .strict()
-export type UpdateFoodSlotRequest = z.infer<typeof updateFoodSlotRequestSchema>
 
 // Bounded and de-duplicated at the boundary so a write can never name more
 // slots than a trip can hold, and so the D1 param chunking downstream has a

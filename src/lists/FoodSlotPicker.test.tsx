@@ -7,7 +7,7 @@ import type { FoodSlotResponse } from '../../shared/food'
 afterEach(cleanup)
 
 const slot = (id: string, dayNumber: number, meal: 'breakfast' | 'lunch' | 'dinner'): FoodSlotResponse =>
-  ({ id, dayNumber, meal, needed: true })
+  ({ id, dayNumber, meal })
 
 function renderPicker(slots: readonly FoodSlotResponse[] = [], selected: string[] = []) {
   const { rerender } = render(

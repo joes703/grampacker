@@ -26,7 +26,6 @@ import { ApiError } from '../lib/api'
 const h = vi.hoisted(() => ({
   fetchListFood: vi.fn(),
   setFoodDays: vi.fn(),
-  setFoodSlotNeeded: vi.fn(),
   createFoodItem: vi.fn(),
   updateFoodItem: vi.fn(),
   deleteFoodItem: vi.fn(),
@@ -44,18 +43,18 @@ const user = userEvent.setup()
 
 const food: ListFoodResponse = {
   dayCount: 3,
-  slots: [{ id: 'slot-1', dayNumber: 1, meal: 'breakfast', needed: true }],
+  slots: [{ id: 'slot-1', dayNumber: 1, meal: 'breakfast' }],
   items: [],
 } as unknown as ListFoodResponse
 
-// One day, every meal needed, nothing scheduled - the fixture the "+ Add"
+// One day, three empty meals - the fixture the "+ Add"
 // tests need so the dinner slot renders its own "+ Add" affordance.
 const oneDayFood: ListFoodResponse = {
   dayCount: 1,
   slots: [
-    { id: 'b1', dayNumber: 1, meal: 'breakfast', needed: true },
-    { id: 'l1', dayNumber: 1, meal: 'lunch', needed: true },
-    { id: 'd1', dayNumber: 1, meal: 'dinner', needed: true },
+    { id: 'b1', dayNumber: 1, meal: 'breakfast' },
+    { id: 'l1', dayNumber: 1, meal: 'lunch' },
+    { id: 'd1', dayNumber: 1, meal: 'dinner' },
   ],
   items: [],
 }
@@ -66,8 +65,8 @@ const oneDayFood: ListFoodResponse = {
 const guardFood: ListFoodResponse = {
   dayCount: 3,
   slots: [
-    { id: 'b1', dayNumber: 1, meal: 'breakfast', needed: true },
-    { id: 'l3', dayNumber: 3, meal: 'lunch', needed: true },
+    { id: 'b1', dayNumber: 1, meal: 'breakfast' },
+    { id: 'l3', dayNumber: 3, meal: 'lunch' },
   ],
   items: [{ id: 'i1', name: 'Ramen', weightGrams: 120, quantity: 1, isPerMeal: false, unitCount: 1, sortOrder: 0, isPacked: false, isReady: false, packingLocationId: null, packSortOrder: 0, slotIds: ['l3'] }],
 }
@@ -75,8 +74,8 @@ const guardFood: ListFoodResponse = {
 const rescheduleFood: ListFoodResponse = {
   dayCount: 2,
   slots: [
-    { id: 'b1', dayNumber: 1, meal: 'breakfast', needed: true },
-    { id: 'd2', dayNumber: 2, meal: 'dinner', needed: true },
+    { id: 'b1', dayNumber: 1, meal: 'breakfast' },
+    { id: 'd2', dayNumber: 2, meal: 'dinner' },
   ],
   items: [{ id: 'i1', name: 'Ramen', weightGrams: 120, quantity: 1, isPerMeal: false, unitCount: 1, sortOrder: 0, isPacked: false, isReady: false, packingLocationId: null, packSortOrder: 0, slotIds: ['b1'] }],
 }
@@ -113,7 +112,6 @@ async function findDinnerRow() {
 beforeEach(() => {
   h.fetchListFood.mockResolvedValue(food)
   h.setFoodDays.mockResolvedValue(food)
-  h.setFoodSlotNeeded.mockResolvedValue(food)
   h.createFoodItem.mockResolvedValue({
     id: 'new-item',
     name: 'Oatmeal',
@@ -237,36 +235,36 @@ describe('FoodView header', () => {
   })
 })
 
-describe('FoodView meal counts', () => {
-  it('derives the meal counts and offers no way to type them', async () => {
-    // Breakfast is skipped; lunch and dinner remain needed - one of each.
+describe('FoodView header meal counts', () => {
+  it('shows no derived meal counts, and no way to type one', async () => {
+    // The header used to read "Food for 1 days - 1 lunch - 1 dinner". Those
+    // counts only differed from the day count because meals could be skipped;
+    // with skipping gone they were the day count repeated three times.
     h.fetchListFood.mockResolvedValue({
       dayCount: 1,
       slots: [
-        { id: 'b1', dayNumber: 1, meal: 'breakfast', needed: false },
-        { id: 'l1', dayNumber: 1, meal: 'lunch', needed: true },
-        { id: 'd1', dayNumber: 1, meal: 'dinner', needed: true },
+        { id: 'b1', dayNumber: 1, meal: 'breakfast' },
+        { id: 'l1', dayNumber: 1, meal: 'lunch' },
+        { id: 'd1', dayNumber: 1, meal: 'dinner' },
       ],
       items: [],
     })
     await renderFoodView()
-    expect(await screen.findByText(/1 lunch · 1 dinner/)).toBeInTheDocument()
+    await screen.findByLabelText('Trip length in days')
+    expect(screen.queryByText(/1 lunch/)).toBeNull()
+    expect(screen.queryByText(/1 dinner/)).toBeNull()
     const numbers = screen.getAllByRole('spinbutton')
     expect(numbers.map((n) => n.getAttribute('aria-label'))).toEqual(['Trip length in days'])
   })
 })
 
-describe('FoodView skip', () => {
-  it('reaches the mutation without confirming on an empty slot', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm')
+describe('FoodView has no skip control', () => {
+  it('offers no way to skip or restore a meal', async () => {
     h.fetchListFood.mockResolvedValue(oneDayFood)
     await renderFoodView()
-    const dinnerRow = await findDinnerRow()
-    await user.click(within(dinnerRow).getByRole('button', { name: 'Skip' }))
-
-    expect(confirmSpy).not.toHaveBeenCalled()
-    expect(h.setFoodSlotNeeded).toHaveBeenCalledWith(listId, 'd1', false)
-    confirmSpy.mockRestore()
+    await findDinnerRow()
+    expect(screen.queryByRole('button', { name: 'Skip' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull()
   })
 })
 
@@ -274,7 +272,9 @@ describe('FoodView empty state', () => {
   it('explains what setting a trip length does when there are zero days', async () => {
     h.fetchListFood.mockResolvedValue({ dayCount: 0, slots: [], items: [] })
     await renderFoodView()
-    expect(await screen.findByText(/Strike the ones you will not/)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/Add what you are eating and when/),
+    ).toBeInTheDocument()
   })
 })
 
@@ -442,43 +442,52 @@ describe('FoodView add food', () => {
 })
 
 describe('FoodView stale slot ids', () => {
-  // GATE 2 finding: FoodView owns selectedSlotIds while the picker only
-  // renders currently-needed slots. Skip a selected meal while the add form
-  // is open and the id used to vanish from the picker but survive in state,
-  // so the raw array still reached the server and 400'd on the pruned slot
-  // (server/routes/food.ts). Filtering at the boundary (activeSelectedSlotIds
-  // in FoodView.tsx) must keep the stale id out of both the picker and the
-  // submit payload, without touching the typed name.
-  it('drops a slot that goes not-needed after selection from both the picker and the submit', async () => {
-    h.fetchListFood.mockResolvedValueOnce(oneDayFood).mockResolvedValue({
-      ...oneDayFood,
-      slots: oneDayFood.slots.map((s) => (s.id === 'd1' ? { ...s, needed: false } : s)),
+  // GATE 2 finding, and it outlived the feature that first exposed it.
+  // FoodView owns selectedSlotIds while the picker renders only slots that
+  // currently exist. A selected slot used to vanish by being SKIPPED; skipping
+  // is gone, but TRIMMING the trip still removes slots out from under an open
+  // add form. The id would survive in state, reach the server and 400 on a
+  // slot that no longer exists. activeSelectedSlotIds must keep it out of both
+  // the picker and the submit, without touching the typed name.
+  it('drops a slot trimmed away after selection from both the picker and the submit', async () => {
+    const twoDays: ListFoodResponse = {
+      dayCount: 2,
+      slots: [
+        { id: 'b1', dayNumber: 1, meal: 'breakfast' },
+        { id: 'd2', dayNumber: 2, meal: 'dinner' },
+      ],
+      items: [],
+    }
+    // After the trim, day 2 is gone.
+    h.fetchListFood.mockResolvedValueOnce(twoDays).mockResolvedValue({
+      dayCount: 1,
+      slots: [{ id: 'b1', dayNumber: 1, meal: 'breakfast' }],
+      items: [],
     })
     await renderFoodView()
 
-    // Select dinner (d1) via the per-slot "+ Add" affordance, then type a name.
-    await user.click(within(await findDinnerRow()).getByRole('button', { name: /add/i }))
-    expect(screen.getByRole('button', { name: 'Dinner day 1' })).toHaveAttribute(
+    // Select day 2 dinner via its own "+ Add", then type a name.
+    const day2 = await screen.findByRole('region', { name: 'Day 2' })
+    await user.click(within(day2).getByRole('button', { name: /add/i }))
+    expect(screen.getByRole('button', { name: 'Dinner day 2' })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
     await user.type(screen.getByLabelText('Name'), 'Oatmeal')
     expect(screen.getByText(/Adding: Oatmeal/)).toHaveTextContent('dinner')
 
-    // Skip a DIFFERENT slot (breakfast) - its mutation's onSuccess invalidates
-    // the food query, and the refetch above is what makes dinner not-needed.
-    const breakfastRow = within(
-      await screen.findByRole('region', { name: 'Day 1' }),
-    ).getByText('Breakfast').closest('div') as HTMLElement
-    await user.click(within(breakfastRow).getByRole('button', { name: 'Skip' }))
+    // Shorten the trip to one day. The empty day 2 holds no food, so this asks
+    // no confirmation - it just takes the slot away.
+    const input = screen.getByLabelText('Trip length in days')
+    await user.clear(input)
+    await user.type(input, '1')
+    await user.tab()
 
-    // The picker no longer renders a slot for dinner at all (it is filtered
-    // out of neededSlots), so there is no stale "pressed" chip anywhere.
+    // The picker no longer renders that slot at all, so no stale pressed chip.
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Dinner day 1' })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('button', { name: 'Dinner day 2' })).not.toBeInTheDocument(),
     )
-    // The preview line derives from the same filtered prop - it must stop
-    // naming the vanished slot too.
+    // The preview derives from the same filtered prop and must stop naming it.
     expect(screen.getByText(/Adding: Oatmeal/)).not.toHaveTextContent('dinner')
     // Typed input survives untouched throughout.
     expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')

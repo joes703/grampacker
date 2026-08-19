@@ -5,7 +5,6 @@ import {
   deleteFoodItem,
   fetchListFood,
   setFoodDays,
-  setFoodSlotNeeded,
   updateFoodItem,
 } from './food'
 
@@ -28,7 +27,7 @@ const FOOD_ITEM_ROW = {
 
 const LIST_FOOD_ROW = {
   dayCount: 1,
-  slots: [{ id: 's1', dayNumber: 1, meal: 'breakfast', needed: true }],
+  slots: [{ id: 's1', dayNumber: 1, meal: 'breakfast' }],
   items: [FOOD_ITEM_ROW],
 }
 
@@ -79,17 +78,6 @@ describe('food queries hit the documented endpoints', () => {
       url: '/api/lists/l1/food/days',
       method: 'PUT',
       body: { days: 3 },
-      csrf: '1',
-    })
-  })
-
-  it('setFoodSlotNeeded: PATCH /api/lists/:id/food/slots/:slotId', async () => {
-    const fn = mockFetch(200, LIST_FOOD_ROW)
-    await setFoodSlotNeeded('l1', 's1', false)
-    expect(requestOf(fn)).toMatchObject({
-      url: '/api/lists/l1/food/slots/s1',
-      method: 'PATCH',
-      body: { needed: false },
       csrf: '1',
     })
   })

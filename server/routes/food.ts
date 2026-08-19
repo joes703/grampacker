@@ -3,7 +3,6 @@ import {
   createFoodItemRequestSchema,
   setFoodDaysRequestSchema,
   updateFoodItemRequestSchema,
-  updateFoodSlotRequestSchema,
   type ListFoodResponse,
 } from '../../shared/food'
 import { type SessionVars } from '../middleware/session'
@@ -20,8 +19,8 @@ import { type SessionVars } from '../middleware/session'
 // which stopped being true when the share began publishing food rows and was
 // left standing. What the share publishes is a narrow projection built in
 // server/routes/shares.ts - name, carried count, weight, order. What never
-// leaves this module is the PLAN: the day grid, the meal slots, their
-// "needed" flags, and every item's slot ids and pack state.
+// leaves this module is the PLAN: the day grid, the meal slots, and every
+// item's slot ids and pack state.
 
 export const foodRoutes = new Hono<{
   Bindings: Env
@@ -49,20 +48,6 @@ foodRoutes.put('/:id/food/days', async (c) => {
   return c.json(food satisfies ListFoodResponse | null)
 })
 
-foodRoutes.patch('/:id/food/slots/:slotId', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = updateFoodSlotRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request' }, 400)
-
-  const ok = await c
-    .get('repos')
-    .food.setSlotNeeded(c.req.param('id'), c.req.param('slotId'), parsed.data.needed)
-  if (!ok) return c.json({ error: 'Not found' }, 404)
-
-  const food = await c.get('repos').food.forList(c.req.param('id'))
-  return c.json(food satisfies ListFoodResponse | null)
-})
-
 foodRoutes.post('/:id/food/items', async (c) => {
   const raw = await c.req.json().catch(() => null)
   const parsed = createFoodItemRequestSchema.safeParse(raw)
@@ -82,8 +67,8 @@ foodRoutes.post('/:id/food/items', async (c) => {
     if (result.reason === 'pack_rank_exhausted') {
       return c.json({ error: 'This bag cannot accept more items' }, 422)
     }
-    // A slot id that is not on this list, not this user's, or already marked
-    // not-needed. Rejecting beats silently dropping the placement.
+    // A slot id that is not on this list or not this user's. Rejecting beats
+    // silently dropping the placement.
     return c.json({ error: 'Invalid slots' }, 400)
   }
   return c.json(result.row, 201)

@@ -10,8 +10,9 @@ import {
 } from '../components/flat-table-styles'
 
 type Props = {
-  // Totals over the list's gear items.
-  // is 0 until a plan is attached, so gear-only lists are unchanged.
+  // Totals over the list's gear items. The second half of this comment used to
+  // read "is 0 until a plan is attached" - a dangling fragment about the food
+  // PLAN object that migration 0016 deleted, left behind when its subject went.
   total: number
   packed: number
   onReset: () => void

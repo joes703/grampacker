@@ -4,7 +4,7 @@ import PrimaryButton from '../components/PrimaryButton'
 import FoodDaySection from './FoodDaySection'
 import AddFoodForm from './AddFoodForm'
 import FoodCarryingList from './FoodCarryingList'
-import FoodSlotPicker, { MEAL_LABELS } from './FoodSlotPicker'
+import FoodSlotPicker from './FoodSlotPicker'
 import {
   FLAT_TABLE_EYEBROW,
   FLAT_TABLE_HEADER,
@@ -18,7 +18,6 @@ import {
   deleteFoodItem,
   fetchListFood,
   setFoodDays,
-  setFoodSlotNeeded,
   updateFoodItem,
 } from '../lib/queries/food'
 import { ApiError } from '../lib/api'
@@ -44,8 +43,8 @@ export default function FoodView({ listId }: { listId: string }) {
 
   // The ONE query in the app that refetches on window focus, against the
   // global default in src/App.tsx. Every destructive food action lives on this
-  // view - trimming the day count, marking a meal not needed, rescheduling an
-  // item, removing one - and each decides from this cache. staleTime only
+  // view - trimming the day count, rescheduling an item, removing one - and
+  // each decides from this cache. staleTime only
   // MARKS data stale; without this, nothing refetches it, so a tab left open
   // overnight would still be acting on yesterday's plan and would delete meals
   // another client had added since.
@@ -61,10 +60,9 @@ export default function FoodView({ listId }: { listId: string }) {
     refetchOnWindowFocus: true,
   })
 
-  // Plain mutate-and-invalidate, deliberately not optimistic. A slot toggle
-  // also clears that slot's associations server-side, and an optimistic
-  // transform that flipped only `needed` would show a state the server is
-  // never going to produce.
+  // Plain mutate-and-invalidate, deliberately not optimistic: a day-count
+  // change rewrites the whole grid server-side, so there is no local transform
+  // that predicts the result.
   const invalidateFood = useCallback(() => {
     void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
   }, [qc, listId])
@@ -79,13 +77,6 @@ export default function FoodView({ listId }: { listId: string }) {
       return setFoodDays(listId, days)
     },
     meta: { errorToast: "Couldn't change the trip length. Please try again." },
-    onSuccess: invalidateFood,
-  })
-  const foodSlotMut = useMutation({
-    mutationKey: mutationKeys.setFoodSlot(listId),
-    mutationFn: (vars: { slotId: string; needed: boolean }) =>
-      setFoodSlotNeeded(listId, vars.slotId, vars.needed),
-    meta: { errorToast: "Couldn't update that meal. Please try again." },
     onSuccess: invalidateFood,
   })
   const foodItemCreateMut = useMutation({
@@ -152,7 +143,6 @@ export default function FoodView({ listId }: { listId: string }) {
   })
   const foodBusy =
     foodDaysMut.isPending ||
-    foodSlotMut.isPending ||
     foodItemCreateMut.isPending ||
     foodItemSlotsMut.isPending ||
     foodItemQuantityMut.isPending ||
@@ -186,7 +176,6 @@ export default function FoodView({ listId }: { listId: string }) {
       weightUnit={weightUnit}
       busy={foodBusy}
       onSetDays={(days) => foodDaysMut.mutate(days)}
-      onSetSlotNeeded={(slotId, needed) => foodSlotMut.mutate({ slotId, needed })}
       onAddItem={(input, onSuccess) =>
         foodItemCreateMut.mutate(input, { onSuccess: () => { invalidateFood(); onSuccess() } })
       }
@@ -202,13 +191,13 @@ export default function FoodView({ listId }: { listId: string }) {
   )
 }
 
-// True when shrinking to `days` would drop a slot that is either holding food
-// or has been explicitly marked not-needed. Untouched, empty days are not work,
-// so shortening a trip you have not planned yet asks nothing.
+// True when shrinking to `days` would drop a slot that is holding food. Empty
+// days are not work, so shortening a trip you have not planned yet asks
+// nothing.
 function losesWorkBelow(food: ListFoodResponse, days: number): boolean {
-  const doomed = food.slots.filter((slot) => slot.dayNumber > days)
-  if (doomed.some((slot) => !slot.needed)) return true
-  const doomedIds = new Set(doomed.map((slot) => slot.id))
+  const doomedIds = new Set(
+    food.slots.filter((slot) => slot.dayNumber > days).map((slot) => slot.id),
+  )
   return food.items.some((item) => item.slotIds.some((id) => doomedIds.has(id)))
 }
 
@@ -229,7 +218,6 @@ type FoodDocumentProps = {
    *  shortening decided against a stale snapshot is narrowed to one round
    *  trip. */
   onSetDays: (days: number) => void
-  onSetSlotNeeded: (slotId: string, needed: boolean) => void
   onAddItem: (
     input: { name: string; weightGrams: number; quantity: number; slotIds: string[] },
     onSuccess: () => void,
@@ -242,9 +230,9 @@ type FoodDocumentProps = {
   onSetItemPerMeal: (itemId: string, isPerMeal: boolean) => void
 }
 
-// The resolved food document: a rail of cards (header with title, days
-// input and meal counts; the add-food card; the carrying list with its
-// inline reschedule) beside the day grid. Everything here only ever runs
+// The resolved food document: a rail of cards (header with title and days
+// input; the add-food card; the carrying list with its inline reschedule)
+// beside the day grid. Everything here only ever runs
 // once FoodView's query gate above has confirmed real data - see the
 // comment on that gate.
 function FoodDocument({
@@ -252,7 +240,6 @@ function FoodDocument({
   weightUnit,
   busy,
   onSetDays,
-  onSetSlotNeeded,
   onAddItem,
   onDeleteItem,
   onSetItemSlots,
@@ -312,22 +299,13 @@ function FoodDocument({
     }
   }
 
-  // Derived, never editable. The user gives days and strikes slots; these
-  // numbers are the consequence, and typing one directly is exactly the
-  // arithmetic the grid exists to remove.
-  const counts = MEALS.map((meal) => ({
-    meal,
-    count: food.slots.filter((slot) => slot.meal === meal && slot.needed).length,
-  })).filter((entry) => entry.count > 0)
-
   const days = Array.from({ length: food.dayCount }, (_, i) => i + 1)
-  const neededSlots = food.slots.filter((slot) => slot.needed)
-  const neededSlotIds = new Set(neededSlots.map((s) => s.id))
-  // Selection can hold ids for slots that were skipped or trimmed after being
-  // picked (the picker no longer shows them, so the user could neither see nor
-  // clear them). Filter at the boundary: state may go stale harmlessly, but a
-  // stale id can never render or submit.
-  const activeSelectedSlotIds = selectedSlotIds.filter((id) => neededSlotIds.has(id))
+  const slotIds = new Set(food.slots.map((slot) => slot.id))
+  // Selection can hold ids for slots trimmed after being picked (the picker no
+  // longer shows them, so the user could neither see nor clear them). Filter at
+  // the boundary: state may go stale harmlessly, but a stale id can never
+  // render or submit.
+  const activeSelectedSlotIds = selectedSlotIds.filter((id) => slotIds.has(id))
 
   return (
     // Desktop (lg+) is a two-column grid: the header card ("Food for N
@@ -384,9 +362,9 @@ function FoodDocument({
                       return
                     }
                     if (next === food.dayCount) return
-                    // Shrinking throws away the slots beyond the new count, and with
-                    // them their placements and any "not needed" decisions. Ask, but
-                    // only when there is actually something to lose.
+                    // Shrinking throws away the slots beyond the new count, and
+                    // with them their placements. Ask, but only when there is
+                    // actually something to lose.
                     //
                     // KNOWN GAP, stated rather than papered over: this decides from
                     // the client's cached food, which is up to 30 seconds stale and
@@ -413,17 +391,12 @@ function FoodDocument({
                 />
                 <span>days</span>
               </label>
-              {counts.length > 0 && (
-                <span className={`shrink-0 ${FLAT_TABLE_EYEBROW}`}>
-                  {counts.map((entry) => `${entry.count} ${MEAL_LABELS[entry.meal].toLowerCase()}`).join(' · ')}
-                </span>
-              )}
             </div>
           </section>
           <section ref={addFormRef} className={`${FLAT_TABLE_SURFACE} px-3 py-2.5`}>
             {adding ? (
               <AddFoodForm
-                slots={neededSlots}
+                slots={food.slots}
                 busy={busy}
                 weightUnit={weightUnit}
                 nameInputRef={nameInputRef}
@@ -480,7 +453,7 @@ function FoodDocument({
                   </p>
                   <RescheduleForm
                     key={editingItem.id}
-                    slots={neededSlots}
+                    slots={food.slots}
                     initialSlotIds={editingItem.slotIds}
                     busy={busy}
                     onCancel={() => setEditingItemId(null)}
@@ -498,8 +471,8 @@ function FoodDocument({
         <div className="min-w-0">
           {food.dayCount === 0 ? (
             <p className="px-3 py-3 text-sm text-gray-500">
-              Set a trip length and every meal appears. Strike the ones you will not
-              eat; what is left is what you need to pack.
+              Set a trip length and every meal appears. Add what you are eating
+              and when; that is what you need to pack.
             </p>
           ) : (
             <section className={FLAT_TABLE_SURFACE}>
@@ -511,7 +484,6 @@ function FoodDocument({
                   itemsBySlot={itemsBySlot}
                   weightUnit={weightUnit}
                   busy={busy}
-                  onSetSlotNeeded={onSetSlotNeeded}
                   onAddToSlot={openAddForSlot}
                 />
               ))}

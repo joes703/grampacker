@@ -29,7 +29,6 @@ export type FoodSlotRow = {
   id: string
   dayNumber: number
   meal: Meal
-  needed: boolean
 }
 
 export type FoodItemRow = {
@@ -74,9 +73,14 @@ export function isFoodItemCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'food item cap exceeded')
 }
 
-// Raised by the needed_only trigger when an association insert loses a race
-// with a prune. The read in usableSlotIds catches the ordinary case; this
-// catches the narrow window it cannot.
+// Raised by the needed_only trigger (migration 0017) when an association
+// insert names a slot whose `needed` is 0.
+//
+// Nothing writes `needed = 0` any more - the Skip feature and its route are
+// gone - so this can only fire for rows that predate that removal, until the
+// backfill lands. Kept mapped to a 400 rather than left to surface as a 500
+// for exactly that window. The trigger and the column go together in the
+// contract migration once the backfill has deployed.
 export function isSlotNotNeededError(err: unknown): boolean {
   return isTriggerAbort(err, 'food slot not needed')
 }
@@ -180,7 +184,6 @@ export function createFoodRepo(db: Db, userId: string) {
             id: listFoodSlots.id,
             dayNumber: listFoodSlots.dayNumber,
             meal: listFoodSlots.meal,
-            needed: listFoodSlots.needed,
           })
           .from(listFoodSlots)
           .where(and(eq(listFoodSlots.listId, listId), eq(listFoodSlots.userId, userId)))
@@ -232,7 +235,6 @@ export function createFoodRepo(db: Db, userId: string) {
           id: slot.id,
           dayNumber: slot.dayNumber,
           meal: slot.meal,
-          needed: slot.needed,
         })),
         items: itemRows.map((item) => {
           const slotIds = slotsByItem.get(item.id) ?? []
@@ -250,15 +252,13 @@ export function createFoodRepo(db: Db, userId: string) {
      * Generate/trim the day x meal grid.
      *
      * Contract, all of it load-bearing:
-     *   - surviving days KEEP their `needed` flag. Re-entering the same number
-     *     is a no-op; anything else would undo the user's pruning, which is the
-     *     one piece of work this feature asks them to do by hand.
+     *   - re-entering the same number is a no-op.
      *   - holes are repaired. Never derive the existing range from
      *     max(day_number): a missing middle day would stay missing forever.
      *   - surviving slots keep their IDs, so associations survive too. That
      *     rules out delete-all-then-reinsert.
      *   - trimming DOES cascade its associations away. Reducing to 3 and back
-     *     to 5 gives days 4-5 back as fresh, needed, empty slots.
+     *     to 5 gives days 4-5 back as fresh, empty slots.
      */
     async setDayCount(listId: string, days: number): Promise<boolean> {
       if (!(await ownsList(listId))) return false
@@ -279,7 +279,6 @@ export function createFoodRepo(db: Db, userId: string) {
         listId: string
         dayNumber: number
         meal: Meal
-        needed: boolean
         createdAt: number
         updatedAt: number
       }[] = []
@@ -292,7 +291,6 @@ export function createFoodRepo(db: Db, userId: string) {
             listId,
             dayNumber: day,
             meal,
-            needed: true,
             createdAt: now,
             updatedAt: now,
           })
@@ -319,61 +317,6 @@ export function createFoodRepo(db: Db, userId: string) {
       const statements = [...inserts, trim] as const
       const [first, ...rest] = statements
       if (first) await db.batch([first, ...rest])
-      return true
-    },
-
-    async setSlotNeeded(
-      listId: string,
-      slotId: string,
-      needed: boolean,
-    ): Promise<boolean> {
-      if (!(await ownsList(listId))) return false
-
-      const [slot] = await db
-        .select({ id: listFoodSlots.id })
-        .from(listFoodSlots)
-        .where(
-          and(
-            eq(listFoodSlots.id, slotId),
-            eq(listFoodSlots.listId, listId),
-            eq(listFoodSlots.userId, userId),
-          ),
-        )
-        .limit(1)
-      if (!slot) return false
-
-      const update = db
-        .update(listFoodSlots)
-        .set({ needed, updatedAt: Date.now() })
-        .where(
-          and(
-            eq(listFoodSlots.id, slotId),
-            eq(listFoodSlots.listId, listId),
-            eq(listFoodSlots.userId, userId),
-          ),
-        )
-
-      if (needed) {
-        await db.batch([update])
-        return true
-      }
-
-      // Marking a slot NOT NEEDED clears its associations in the same batch, so
-      // the fourth state - "deliberately skipped, but still holding food" -
-      // cannot be stored. An item that loses its last association shows up
-      // under Unscheduled rather than vanishing.
-      await db.batch([
-        update,
-        db
-          .delete(listFoodItemSlots)
-          .where(
-            and(
-              eq(listFoodItemSlots.slotId, slotId),
-              eq(listFoodItemSlots.listId, listId),
-              eq(listFoodItemSlots.userId, userId),
-            ),
-          ),
-      ])
       return true
     },
 
@@ -737,14 +680,11 @@ export function createFoodRepo(db: Db, userId: string) {
    * user. Returns null when any id is unknown, so a bad request fails rather
    * than silently dropping placements the user asked for.
    *
-   * It deliberately does NOT filter on `needed`. An earlier version did, which
-   * looked like defense in depth but was really a second, weaker copy of a rule
-   * the database already enforces: the read cannot see a prune that commits
-   * before the insert, so it was never the guarantee. The
+   * It deliberately does NOT filter on `needed`, and never did usefully: the
    * list_food_item_slots_needed_only trigger is the single enforcement point,
-   * and both write paths map its abort to the same 400 - which also means the
-   * API tests exercise the real mechanism rather than a precheck standing in
-   * front of it.
+   * and both write paths map its abort to the same 400. With nothing left that
+   * can set `needed = 0`, that trigger is inert for every row written from
+   * here on.
    *
    * Chunked owned-set membership, never an unbounded inArray: the id list is
    * client-supplied and D1 caps bound params at 100 per statement.

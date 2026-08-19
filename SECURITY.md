@@ -396,8 +396,8 @@ restatement of the general posture.
   onto: the ITEMS are part of the pack, the PLAN is private. What you carry -
   `id`, `name`, `unitCount`, `weightGrams`, `sortOrder` - crosses to the public
   share, like any gear row. When you eat it does not: day count, meal slots,
-  "not needed" marks, `isPacked`/`isReady` and the packing-location fields
-  never leave a session-gated route. "2 x 85 g ramen" is a thing in a pack;
+  `isPacked`/`isReady` and the packing-location fields never leave a
+  session-gated route. "2 x 85 g ramen" is a thing in a pack;
   "Tuesday dinner: leftover curry" is a fact about someone's week. Caps: 200
   items, 30 days.
 
@@ -480,10 +480,14 @@ of it:
   of live gaps and the plan that describes it in full is a dated record.
 
   What is lost: the day x meal SLOTS and their placements - which food is
-  eaten when, and any "not needed" decisions. Two of the paths below delete
-  placements DIRECTLY; the other two delete a parent row and let the
-  placements cascade. Three leave the food items themselves alone; one removes
-  an item outright.
+  eaten when. One of the paths below deletes placements DIRECTLY; the other
+  two delete a parent row and let the placements cascade. Two leave the food
+  items themselves alone; one removes an item outright.
+
+  There were FOUR paths until the Skip feature was removed. Marking a meal
+  not needed cleared that slot's placements, and its confirm was skipped
+  whenever the cached snapshot said the slot was empty - the worst of the
+  four, because a stale snapshot suppressed the warning entirely.
 
   Every path below decides from a cached snapshot. `staleTime` is 30s, but
   that only marks data stale - it does not refetch, and the app-wide default
@@ -502,15 +506,13 @@ of it:
   Only the revision guard below makes the write itself safe.
 
   - **Trimming the day count** drops every slot past the new end
-    (`src/lists/FoodView.tsx:343` carries the KNOWN GAP comment).
-  - **Marking a meal not needed** clears that slot's placements, and the
-    confirm that guards it is skipped when the cached snapshot says the slot
-    is empty (`src/lists/FoodDaySection.tsx`).
+    (`src/lists/FoodView.tsx` carries the KNOWN GAP comment on the days
+    input's onBlur).
   - **Rescheduling an item** is a full replace, not a merge: the picker opens
     from the cached `slotIds`, and the write deletes every placement for that
     item before inserting the submitted set (`server/repos/food.ts`). A stale
     client therefore erases placements another client added, without touching
-    the day count or skipping anything.
+    the day count.
   - **Removing an item** acts on the cached row
     (`src/lists/FoodCarryingList.tsx`) and deletes it, cascading every
     placement it had (`list_food_item_slots` has ON DELETE cascade on the

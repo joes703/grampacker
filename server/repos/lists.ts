@@ -336,7 +336,6 @@ export function createListsRepo(db: Db, userId: string) {
             id: listFoodSlots.id,
             dayNumber: listFoodSlots.dayNumber,
             meal: listFoodSlots.meal,
-            needed: listFoodSlots.needed,
           })
           .from(listFoodSlots)
           .where(
@@ -479,7 +478,6 @@ export function createListsRepo(db: Db, userId: string) {
           listId: newId,
           dayNumber: slot.dayNumber,
           meal: slot.meal,
-          needed: slot.needed,
           createdAt: now,
           updatedAt: now,
         }))

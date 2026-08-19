@@ -3,7 +3,7 @@ import { addFoodPreview } from './add-food-preview'
 import type { FoodSlotResponse } from '../../shared/food'
 
 function slot(id: string, dayNumber: number, meal: FoodSlotResponse['meal']): FoodSlotResponse {
-  return { id, dayNumber, meal, needed: true }
+  return { id, dayNumber, meal }
 }
 
 const SLOTS = [

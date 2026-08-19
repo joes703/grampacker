@@ -12,7 +12,12 @@ import type { ListFoodResponse } from '../../../shared/food'
 // version moves anyway: in v1 `quantity` WAS the carried count, and in v2 it
 // is per-meal for most items. A reader that kept treating it as the total
 // would under-report exactly the way the app itself did.
-export const FOOD_JSON_VERSION = 2
+//
+// v3 DROPS `needed` from each slot. The Skip feature it belonged to is gone -
+// a meal you are not eating is simply a meal with nothing scheduled - so there
+// is no longer a distinction for the export to carry. Removal, not addition,
+// which is exactly why the version has to move.
+export const FOOD_JSON_VERSION = 3
 
 export type FoodJson = {
   version: number
@@ -20,7 +25,7 @@ export type FoodJson = {
     listId: string
     listName: string
     dayCount: number
-    slots: { id: string; dayNumber: number; meal: string; needed: boolean }[]
+    slots: { id: string; dayNumber: number; meal: string }[]
     items: {
       id: string
       name: string
@@ -51,7 +56,6 @@ export function buildFoodJson(input: {
             id: slot.id,
             dayNumber: slot.dayNumber,
             meal: slot.meal,
-            needed: slot.needed,
           })),
           items: food.items.map((item) => ({
             id: item.id,

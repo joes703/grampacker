@@ -373,10 +373,18 @@ export const listFoodSlots = sqliteTable(
     listId: text('list_id').notNull(),
     dayNumber: integer('day_number').notNull(),
     meal: text('meal', { enum: ['breakfast', 'lunch', 'dinner'] }).notNull(),
-    // The three-state distinction the feature exists for. needed + no
-    // associations = "you forgot this meal"; needed=false = "you deliberately
-    // skipped it" (breakfast on day 1, eaten in the car). Collapsing those two
-    // into one blank is exactly the omission this is meant to catch.
+    // RETIRED. Nothing writes 0 any more: this backed a "Nothing planned"
+    // warning and a Skip button that silenced it, neither of which ever
+    // reached the packing list or a weight, and both were removed as the last
+    // of the deleted meal planner. Every writer went with them - the PATCH
+    // route, the repo method, and the copy in list duplication.
+    //
+    // Still here because a column drop is a separate release from the code
+    // removal (deploy.yml migrates before it swaps the Worker), and still
+    // ENFORCED by the 0017 list_food_item_slots_needed_only trigger, which
+    // refuses to schedule food into a row left at 0 by the old feature. The
+    // backfill sets every row to 1; the column and the trigger go together
+    // after that has deployed.
     needed: integer('needed', { mode: 'boolean' }).notNull().default(true),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),

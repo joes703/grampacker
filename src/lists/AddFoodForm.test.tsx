@@ -13,7 +13,6 @@ const slot = (id: string, dayNumber: number, meal: FoodSlotResponse['meal']): Fo
   id,
   dayNumber,
   meal,
-  needed: true,
 })
 
 const breakfastSlots = [1, 2, 3, 4].map((d) => slot(`b${d}`, d, 'breakfast'))
