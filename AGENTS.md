@@ -223,6 +223,28 @@ database is never deleted or recreated.
   snapshots, `wrangler types` output). Exception to know: the `gear_items`
   500-row cap is a hand-added SQL trigger NOT in the Drizzle snapshot; any
   rebuild of that table must recreate it.
+- **Every migration carries a Drizzle snapshot: `drizzle-kit generate` for a
+  schema change, `generate --custom` for a data-only one.** Never hand-add a
+  `.sql` and a journal entry alone. drizzle diffs against the EFFECTIVE LATEST
+  snapshot, so what hurts is that one being stale - a missing intermediate is
+  harmless once a correct later snapshot exists, and only Drizzle-MODELED
+  changes are affected (triggers and table options are not modeled at all).
+  0018 and 0021-0024 skipped it, leaving the latest basis four migrations
+  behind, and `generate` then produced a migration re-adding five existing
+  columns and three existing tables - which D1 rejects as `duplicate column
+  name`. Repaired by 0025. `npm run test:migrations` enforces the bookkeeping
+  and, by generating against a copy of `meta/`, that the newest snapshot
+  matches `schema.ts` for every Drizzle-MODELED object - the part filenames
+  cannot prove, because `generate --custom` copies its predecessor forward.
+  Triggers and table options sit outside Drizzle's model entirely. The same
+  run's replay narrows that gap but does not close it: it fails if a trigger or
+  index that existed before a migration is MISSING after it, comparing NAMES
+  only - not trigger bodies - and nothing checks table options such as
+  `WITHOUT ROWID`. Trigger bodies are not compared generally: `POST_CHECKS`
+  behaviorally exercise selected PATHS through some triggers, so they catch
+  rewrites that alter those observed behaviors, while rewrites to unexercised
+  triggers - or to unexercised behavior within a probed one - still slip
+  through.
 - **A new migration may NOT drop, rebuild, or rename anything, and may not
   touch `d1_migrations`. No exceptions.** `npm run test:migrations` enforces
   this and also replays every post-baseline migration against a seeded D1.
