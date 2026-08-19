@@ -12,7 +12,25 @@ jobs:
   verify:
     name: Verify
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Raised from 10 on 2026-08-19, because 10 was set on 2026-07-07 when this
+    # repo had a third of its current migrations and the number simply expired.
+    #
+    # The cost that grows is `test:migrations`. It replays EVERY migration
+    # before each post-baseline one, so adding the Nth migration adds a whole
+    # N-migration apply pass - the total grows with the square of the count,
+    # not linearly. At six post-baseline migrations that step alone is ~2m45s
+    # locally and roughly 3-4x that on a hosted runner, which put the whole job
+    # at 9m32s and then tipped it over: two PRs died at exactly 10 minutes, and
+    # a timeout is reported as "cancelled", which reads like someone pressed a
+    # button rather than a budget being hit.
+    #
+    # 20 is about 2x current headroom, not a ceiling chosen for comfort: it
+    # still catches a genuine hang, which is the only thing this setting is
+    # for. Expect to revisit it - the growth is quadratic, so the honest fix
+    # when this bites again is to make the harness cheaper (apply once and
+    # snapshot, rather than re-applying per migration) rather than to keep
+    # raising the number.
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository

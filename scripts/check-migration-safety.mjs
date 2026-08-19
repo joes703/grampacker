@@ -355,15 +355,21 @@ const FIXTURES = [
   // Food estimate (0017). Slots are the trip's eating periods; items are what
   // you CARRY; the association expresses intent only and is never summed.
   //
-  // One item is associated with a needed slot; a SECOND slot is pruned and
-  // deliberately holds nothing, because "pruned but still holding food" is a
-  // state the schema forbids (see the needed_only trigger). What this
-  // actually guards is a future migration DELETING or REWRITING association
-  // rows, or resetting `needed` back to 1 during a rebuild - either of which
-  // would silently re-add meals the user said they were not eating. It does
-  // NOT catch a future migration adding a weight column to the association
-  // table: the guard deliberately excludes new columns from comparison, so a
-  // wrong sum introduced that way has to be caught by tests, not here.
+  // One item is associated with a slot; a SECOND slot sits at needed=0 and
+  // deliberately holds nothing, because "skipped but still holding food" is a
+  // state the schema forbids (see the needed_only trigger).
+  //
+  // That second row USED to guard against a migration resetting `needed` to 1
+  // and silently re-adding meals the user said they were not eating. Migration
+  // 0026 does exactly that, deliberately: the Skip feature is gone, so a row at
+  // 0 is now unusable rather than meaningful. The row survives as the fixture
+  // that PROVES 0026's repair, declared in EXPECTED_CHANGES.
+  //
+  // What this still guards is a future migration DELETING or REWRITING
+  // association rows. It does NOT catch a future migration adding a weight
+  // column to the association table: the guard deliberately excludes new
+  // columns from comparison, so a wrong sum introduced that way has to be
+  // caught by tests, not here.
   ['list_food_slots', {
     id: 'lfs-seed',
     user_id: 'u-seed',
@@ -380,8 +386,10 @@ const FIXTURES = [
     list_id: 'list-seed',
     day_number: 1,
     meal: 'lunch',
-    // A deliberately pruned slot: "not needed" must survive a migration, or a
-    // rebuild would silently re-add meals the user said they were not eating.
+    // Seeded at 0 so 0026's backfill has something to repair, and so the
+    // repair is asserted rather than assumed. This used to guard the opposite
+    // invariant - that a pruned meal survives a migration - which 0026
+    // deliberately retires along with the feature that created such rows.
     needed: 0,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
@@ -784,6 +792,25 @@ const FIXTURES = [
 //     insertable any more). Entries naming a baseline migration are always in
 //     this second case.
 const EXPECTED_CHANGES = [
+  // 0026 makes every meal slot usable again. `needed` backed a "Nothing
+  // planned" warning and the Skip button that silenced it; both were removed
+  // one release earlier, along with all three writers (the PATCH route,
+  // setSlotNeeded, and the copy in list duplication). The rows they left at 0
+  // are hostile rather than stale - the 0017 needed_only trigger refuses to
+  // schedule food into them, and no control exists any more to clear the flag.
+  //
+  // lfs-seed-2 is the fixture that proves it. It was seeded at 0 specifically
+  // so a rebuild could not silently re-add a pruned meal; that invariant is
+  // deliberately RETIRED here, which is why the change has to be declared
+  // rather than merely allowed.
+  {
+    migration: '0026_food_needed_backfill.sql',
+    table: 'list_food_slots',
+    key: { column: 'id', value: 'lfs-seed-2' },
+    column: 'needed',
+    before: 0,
+    after: 1,
+  },
   // Food pack ranks, seeded per-pass because 0023 changes what is even
   // INSERTABLE. Before 0023 the fixtures' three list-seed food rows all sit at
   // rank 0 - the dirty old-worker state 0023's repair exists to renumber, and
