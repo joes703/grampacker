@@ -151,24 +151,6 @@ export const lists = sqliteTable(
     description: text('description'),
     slug: text('slug').notNull(),
     isShared: integer('is_shared', { mode: 'boolean' }).notNull().default(false),
-    // RETIRED 2026-08-11, and deliberately still here. Nothing reads or
-    // writes either one: they are off every DTO, refused on PATCH (the
-    // request schema is strict), and no longer copied by list duplication.
-    //
-    // Dropping a column means a SQLite table REBUILD, and rebuilding `lists`
-    // fires the cascades that delete every list_items row (AGENTS.md,
-    // docs/incidents.md). Inert columns are the cheap outcome; a rebuild is
-    // the expensive one. Do not "tidy" these away.
-    //
-    // group_worn was a per-list worn-grouping preference, honored by both the
-    // owner's page and the share until #110 made worn grouping unconditional
-    // (2026-07-21). ready_checks_enabled was a per-list opt-in for the Ready
-    // column, likewise now unconditional. is_ready on each item was always
-    // independent of that flag, so no tick was ever lost to it.
-    groupWorn: integer('group_worn', { mode: 'boolean' }).notNull().default(false),
-    readyChecksEnabled: integer('ready_checks_enabled', { mode: 'boolean' })
-      .notNull()
-      .default(false),
     isDraft: integer('is_draft', { mode: 'boolean' }).notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: integer('created_at').notNull(), // epoch ms
@@ -373,19 +355,6 @@ export const listFoodSlots = sqliteTable(
     listId: text('list_id').notNull(),
     dayNumber: integer('day_number').notNull(),
     meal: text('meal', { enum: ['breakfast', 'lunch', 'dinner'] }).notNull(),
-    // RETIRED. Nothing writes 0 any more: this backed a "Nothing planned"
-    // warning and a Skip button that silenced it, neither of which ever
-    // reached the packing list or a weight, and both were removed as the last
-    // of the deleted meal planner. Every writer went with them - the PATCH
-    // route, the repo method, and the copy in list duplication.
-    //
-    // Still here because a column drop is a separate release from the code
-    // removal (deploy.yml migrates before it swaps the Worker), and still
-    // ENFORCED by the 0017 list_food_item_slots_needed_only trigger, which
-    // refuses to schedule food into a row left at 0 by the old feature. The
-    // backfill sets every row to 1; the column and the trigger go together
-    // after that has deployed.
-    needed: integer('needed', { mode: 'boolean' }).notNull().default(true),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -619,12 +588,3 @@ export const foodLocationDeleteState = sqliteTable(
     seq: integer('seq').notNull(),
   },
 )
-
-// TRANSIENT. Used exactly once, by migration 0023's repair step, then emptied
-// - it persists only because the destructive-DDL gate (correctly) refuses a
-// DROP TABLE in post-baseline migrations. Nothing at runtime reads or writes
-// it; declared so drizzle-kit's snapshot matches the deployed schema.
-export const foodRankRepair = sqliteTable('_food_rank_repair', {
-  foodItemId: text('food_item_id').primaryKey(),
-  newRank: integer('new_rank').notNull(),
-})

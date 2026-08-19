@@ -736,10 +736,10 @@ describe('caps and slug integrity', () => {
 
     const values = Array.from({ length: 99 }, (_, i) => {
       const slug = `s${String(i).padStart(5, '0')}`
-      return `('seed-${i}', '${userId}', 'Seed list ${i}', '${slug}', 0, 0, 0, 1, ${i}, 0, 0)`
+      return `('seed-${i}', '${userId}', 'Seed list ${i}', '${slug}', 0, 1, ${i}, 0, 0)`
     }).join(',')
     await env.DB.prepare(
-      `insert into lists (id, user_id, name, slug, is_shared, group_worn, ready_checks_enabled, is_draft, sort_order, created_at, updated_at) values ${values}`,
+      `insert into lists (id, user_id, name, slug, is_shared, is_draft, sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
     const at100 = await apiRequest(cookie, 'POST', '/api/lists', {
@@ -754,7 +754,7 @@ describe('caps and slug integrity', () => {
 
     await expect(
       env.DB.prepare(
-        `insert into lists (id, user_id, name, slug, is_shared, group_worn, ready_checks_enabled, is_draft, sort_order, created_at, updated_at) values ('bypass', '${userId}', 'Bypass', 'bypass', 0, 0, 0, 1, 0, 0, 0)`,
+        `insert into lists (id, user_id, name, slug, is_shared, is_draft, sort_order, created_at, updated_at) values ('bypass', '${userId}', 'Bypass', 'bypass', 0, 1, 0, 0, 0)`,
       ).run(),
     ).rejects.toThrow(/cap/)
   })
@@ -845,10 +845,10 @@ describe('caps and slug integrity', () => {
     // Lists reorder at exactly LIST_CAP: 99 seeded + the selection list
     // (seeding 100 first would make from-selection the 101st and 422).
     const listValues = Array.from({ length: 99 }, (_, i) => {
-      return `('listmany-${i}', '${userId}', 'List ${i}', 'LM${String(i).padStart(4, '0')}', 0, 0, 0, 1, ${i + 10}, 0, 0)`
+      return `('listmany-${i}', '${userId}', 'List ${i}', 'LM${String(i).padStart(4, '0')}', 0, 1, ${i + 10}, 0, 0)`
     }).join(',')
     await env.DB.prepare(
-      `insert into lists (id, user_id, name, slug, is_shared, group_worn, ready_checks_enabled, is_draft, sort_order, created_at, updated_at) values ${listValues}`,
+      `insert into lists (id, user_id, name, slug, is_shared, is_draft, sort_order, created_at, updated_at) values ${listValues}`,
     ).run()
     const reorderIds = [
       bigList.id,
@@ -1119,12 +1119,12 @@ describe('caps and slug integrity', () => {
     const { cookie } = await signUpVerifiedUser('lists-slug@example.com', 'S')
     const userId = await userIdFor(cookie)
     await env.DB.prepare(
-      `insert into lists (id, user_id, name, slug, is_shared, group_worn, ready_checks_enabled, is_draft, sort_order, created_at, updated_at) values ('slug-1', '${userId}', 'One', 'AAAAAA', 0, 0, 0, 1, 0, 0, 0)`,
+      `insert into lists (id, user_id, name, slug, is_shared, is_draft, sort_order, created_at, updated_at) values ('slug-1', '${userId}', 'One', 'AAAAAA', 0, 1, 0, 0, 0)`,
     ).run()
     // Pins the real error text isUniqueViolation matches on.
     await expect(
       env.DB.prepare(
-        `insert into lists (id, user_id, name, slug, is_shared, group_worn, ready_checks_enabled, is_draft, sort_order, created_at, updated_at) values ('slug-2', '${userId}', 'Two', 'AAAAAA', 0, 0, 0, 1, 1, 0, 0)`,
+        `insert into lists (id, user_id, name, slug, is_shared, is_draft, sort_order, created_at, updated_at) values ('slug-2', '${userId}', 'Two', 'AAAAAA', 0, 1, 1, 0, 0)`,
       ).run(),
     ).rejects.toThrow(/UNIQUE constraint failed: lists.slug/)
   })

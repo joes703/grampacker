@@ -73,18 +73,6 @@ export function isFoodItemCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'food item cap exceeded')
 }
 
-// Raised by the needed_only trigger (migration 0017) when an association
-// insert names a slot whose `needed` is 0.
-//
-// Nothing writes `needed = 0` any more - the Skip feature and its route are
-// gone - so this can only fire for rows that predate that removal, until the
-// backfill lands. Kept mapped to a 400 rather than left to surface as a 500
-// for exactly that window. The trigger and the column go together in the
-// contract migration once the backfill has deployed.
-export function isSlotNotNeededError(err: unknown): boolean {
-  return isTriggerAbort(err, 'food slot not needed')
-}
-
 export function createFoodRepo(db: Db, userId: string) {
   // Every method takes listId and filters on it. The route's list is the only
   // authority on which list a nested resource belongs to - trusting the child
@@ -374,7 +362,6 @@ export function createFoodRepo(db: Db, userId: string) {
         inserted = insertRows[0]
       } catch (err) {
         if (isFoodItemCapError(err)) return { ok: false, reason: 'cap_exceeded' }
-        if (isSlotNotNeededError(err)) return { ok: false, reason: 'invalid_slots' }
         // 0022's range trigger: the Unassigned cohort sits at PACK_RANK_MAX,
         // so the max+1 above would step past it.
         if (isPackRankRangeError(err)) {
@@ -566,7 +553,6 @@ export function createFoodRepo(db: Db, userId: string) {
           updated = (updateRows as typeof updated[])[0]
         }
       } catch (err) {
-        if (isSlotNotNeededError(err)) return { ok: false, reason: 'invalid_slots' }
         // 0022's range trigger: the destination cohort's rank space is
         // exhausted, so the move's union max+1 stepped past PACK_RANK_MAX.
         if (isPackRankRangeError(err)) {
@@ -680,11 +666,12 @@ export function createFoodRepo(db: Db, userId: string) {
    * user. Returns null when any id is unknown, so a bad request fails rather
    * than silently dropping placements the user asked for.
    *
-   * It deliberately does NOT filter on `needed`, and never did usefully: the
-   * list_food_item_slots_needed_only trigger is the single enforcement point,
-   * and both write paths map its abort to the same 400. With nothing left that
-   * can set `needed = 0`, that trigger is inert for every row written from
-   * here on.
+   * There is nothing left for it to filter on. This used to defer to the
+   * list_food_item_slots_needed_only trigger, which refused to associate food
+   * with a slot marked "not needed"; the Skip feature, the column and that
+   * trigger are all gone (0027). What remains is the membership question -
+   * is this slot on THIS list, owned by THIS user - which is what the probes
+   * below answer.
    *
    * Chunked owned-set membership, never an unbounded inArray: the id list is
    * client-supplied and D1 caps bound params at 100 per statement.

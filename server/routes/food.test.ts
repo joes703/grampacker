@@ -182,33 +182,12 @@ describe('food: weight is per ITEM, never per placement', () => {
   })
 })
 
-describe('food: legacy skipped slots, until the backfill lands', () => {
-  // Nothing can WRITE needed=0 any more: the PATCH route, the repo method and
-  // the duplication copy are all gone. Two rows in production still hold it,
-  // written before the removal, and the 0017 needed_only trigger still refuses
-  // to schedule food into them. That is a visible 400, not a 500 and not a
-  // silent drop, and it stops being reachable at all once the backfill
-  // migration runs. Set up by raw UPDATE because no API path can produce it.
-  it('refuses to schedule food into a slot left skipped by the old feature', async () => {
-    const { cookie } = await signUpVerifiedUser('food-10@example.com', 'F10')
-    const listId = await createList(cookie, 'Trip')
-    await setDays(cookie, listId, 2)
-    const food = await getFood(cookie, listId)
-    const breakfast = slotOf(food, 1, 'breakfast')
-
-    await env.DB.prepare('update list_food_slots set needed = 0 where id = ?')
-      .bind(breakfast.id)
-      .run()
-
-    const res = await addItem(cookie, listId, {
-      name: 'Oatmeal',
-      weightGrams: 80,
-      quantity: 1,
-      slotIds: [breakfast.id],
-    })
-    expect(res.status).toBe(400)
-  })
-
+describe('food: the Skip feature is gone at every layer', () => {
+  // There used to be a third test here, provoking the 0017 needed_only trigger
+  // against a row left at needed=0 by the old Skip button. It was correct for
+  // exactly one release: the window between removing the writers and running
+  // the backfill. Migration 0027 dropped the trigger and the column, so the
+  // state it set up can no longer be constructed - which is the point.
   it('no longer exposes any way to skip a meal', async () => {
     const { cookie } = await signUpVerifiedUser('food-11@example.com', 'F11')
     const listId = await createList(cookie, 'Trip')
@@ -234,6 +213,19 @@ describe('food: legacy skipped slots, until the backfill lands', () => {
     for (const slot of raw.slots) {
       expect(Object.keys(slot).sort()).toEqual(['dayNumber', 'id', 'meal'])
     }
+  })
+
+  it('has no needed column left to write to', async () => {
+    // The column is gone (0027). Naming it is now a hard SQL error, which is
+    // the strongest possible statement that no code path can resurrect the
+    // state the Skip button used to create.
+    const { cookie } = await signUpVerifiedUser('food-11c@example.com', 'F11c')
+    const listId = await createList(cookie, 'Trip')
+    await setDays(cookie, listId, 1)
+
+    await expect(
+      env.DB.prepare('update list_food_slots set needed = 0').run(),
+    ).rejects.toThrow(/no such column: needed/)
   })
 })
 
@@ -420,13 +412,6 @@ describe('food: list duplication', () => {
       isPerMeal: false,
       slotIds: lunches,
     })
-    // A legacy skipped slot on the ORIGINAL. Duplication used to copy `needed`
-    // verbatim, which would have propagated a hostile row into every copy made
-    // before the backfill; it now lets the column default instead.
-    const day1Breakfast = slotOf(food, 1, 'breakfast')
-    await env.DB.prepare('update list_food_slots set needed = 0 where id = ?')
-      .bind(day1Breakfast.id)
-      .run()
 
     const dup = await apiRequest(cookie, 'POST', `/api/lists/${listId}/duplicate`)
     expect(dup.status).toBe(201)
@@ -434,14 +419,6 @@ describe('food: list duplication', () => {
 
     const copied = await getFood(cookie, copyId)
     expect(copied.slots).toHaveLength(15)
-    // The skip did NOT come with it: the copy's slot is usable.
-    const copiedBreakfast = slotOf(copied, 1, 'breakfast')
-    const copiedNeeded = await env.DB.prepare(
-      'select needed from list_food_slots where id = ?',
-    )
-      .bind(copiedBreakfast.id)
-      .first<{ needed: number }>()
-    expect(copiedNeeded?.needed).toBe(1)
     // ONE item, five associations, 500 g - not five items and not 2500 g.
     expect(copied.items).toHaveLength(1)
     expect(copied.items[0]!.slotIds).toHaveLength(5)
@@ -625,48 +602,6 @@ describe('food crosses the public share boundary as rows, and the plan does not'
       'name',
     ])
     expect(JSON.stringify(raw)).not.toContain('17')
-  })
-})
-
-describe('food: the legacy trigger still refuses politely', () => {
-  it('rejects a reschedule onto a slot left skipped by the old feature', async () => {
-    // The 0017 needed_only trigger, driven through the RESCHEDULE path rather
-    // than the create path. Nothing can write needed=0 any more, so the setup
-    // is a raw UPDATE standing in for a row written before the Skip feature was
-    // removed. Until the backfill migration lands, this is what a legacy
-    // skipped slot does to a reschedule: a 400, with the item's existing
-    // placement left intact rather than cleared.
-    const { cookie } = await signUpVerifiedUser('food-race@example.com', 'FR')
-    const listId = await createList(cookie, 'Trip')
-    await setDays(cookie, listId, 2)
-    const food = await getFood(cookie, listId)
-    const lunch = slotOf(food, 1, 'lunch')
-
-    // An item that IS legitimately scheduled...
-    const created = (await (
-      await addItem(cookie, listId, {
-        name: 'Bar',
-        weightGrams: 60,
-        quantity: 1,
-        slotIds: [slotOf(food, 1, 'breakfast').id],
-      })
-    ).json()) as FoodItemResponse
-
-    // ...then the lunch slot is a legacy skipped row, and we reschedule onto it.
-    await env.DB.prepare('update list_food_slots set needed = 0 where id = ?')
-      .bind(lunch.id)
-      .run()
-    const res = await apiRequest(
-      cookie,
-      'PATCH',
-      `/api/lists/${listId}/food/items/${created.id}`,
-      { slotIds: [lunch.id] },
-    )
-    expect(res.status).toBe(400)
-
-    // And the item kept its original placement rather than being left bare.
-    const after = await getFood(cookie, listId)
-    expect(after.items[0]!.slotIds).toEqual([slotOf(after, 1, 'breakfast').id])
   })
 })
 

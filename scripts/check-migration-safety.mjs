@@ -73,11 +73,18 @@
 // probe) - the row-changed failure flips into an assertion that the rewrite
 // happened exactly as declared.
 //
-// Writing a migration that DROPS, REBUILDS or RENAMES anything? You cannot,
-// and there is no declaration that lets you. A new migration containing
-// destructive DDL is REJECTED - see the DESTRUCTIVE DDL GATE below for why, and
-// for what to do instead. That also means a column TYPE change is out, since
-// SQLite can only do one through a table rebuild.
+// Writing a migration that REBUILDS or RENAMES anything? You cannot, and no
+// declaration lets you - a rebuild's DROP TABLE cascade-wipes children on D1.
+// That also means a column TYPE or CHECK change is out, since SQLite can only
+// do one through a rebuild.
+//
+// REMOVING a column, trigger or index - or a table nothing cascades from - is
+// allowed as a CONTRACT STEP one release after the code that read it stopped
+// shipping. Declare it in CONTRACT_MIGRATIONS: the gate then matches the SQL
+// against the declaration statement by statement, refuses a cascade parent by
+// reading incoming foreign keys off the live schema, and refuses a column that
+// server/db/app-schema.ts or a raw sql`` fragment still names. It CANNOT prove
+// the earlier release reached production - that part is attested, not checked.
 //
 // DROPPED_TABLES, DROPPED_COLUMNS, DROPPED_SCHEMA_OBJECTS and
 // EXPECTED_TYPE_CHANGES are FROZEN HISTORY. They describe migrations that
@@ -968,7 +975,7 @@ const TRANSIENT_TABLES = [
   {
     migration: '0023_food-pack-rank-enforcement.sql',
     table: '_food_rank_repair',
-    why: "0023's one-shot repair mapping; emptied by the same migration, kept only because post-baseline migrations cannot DROP",
+    why: "0023's one-shot repair mapping; emptied by the same migration and dropped by the 0027 contract step, so this entry only applies to passes before 0027",
   },
 ]
 
@@ -1285,25 +1292,41 @@ const quoteValue = (value) => {
 // ---------------------------------------------------------------------------
 // DESTRUCTIVE DDL GATE
 // ---------------------------------------------------------------------------
-// Blocks every drop, rebuild and rename in a NEW migration, with no exception.
+// Blocks every rebuild and rename in a NEW migration, with no exception, and
+// every REMOVAL that is not declared as a contract step.
 //
-// WHY A HARD BLOCK RATHER THAN A DECLARATION
-// The rest of this script proves data SURVIVED a migration. It cannot prove the
-// CODE still works, and that is the open half of the problem: deploy.yml applies
-// migrations and THEN deploys the Worker, so between those two steps -
-// indefinitely, if `wrangler deploy` fails - production runs the OLD Worker
-// against the NEW schema. A dropped or renamed column breaks it in that window.
+// WHY THE TWO ARE DIFFERENT, SINCE THIS USED TO TREAT THEM AS ONE
+// A rebuild is drizzle-kit's 12-step recipe for a constraint change:
+// CREATE __new_x; copy; DROP TABLE x; RENAME. On D1 the
+// `PRAGMA foreign_keys=OFF` it wraps that in is a no-op, so the DROP TABLE
+// fires every child cascade - that is how 0009 wiped list_items. A native
+// `ALTER TABLE ... DROP COLUMN` shares none of that: it rewrites rows in place
+// and issues no DROP TABLE, so nothing cascades. This gate banned both for a
+// year because the distinction had not been paid for yet.
 //
-// The real fix is expand/contract: add in one deploy, remove in a later one,
-// with a manifest CI can check. Until that exists there is nothing to
-// distinguish a safe staged contract from a destructive migration that merely
-// passed incomplete tests, so the honest control is to allow neither.
-// docs/review-remediation-plan.md, Phase 3.
+// WHAT STILL CONSTRAINS A REMOVAL, AND IT IS NOT SQLITE
+// deploy.yml applies migrations and THEN deploys the Worker, so between those
+// steps - indefinitely, if `wrangler deploy` fails - production runs the OLD
+// Worker against the NEW schema. A column dropped in the same release that
+// removed its reads breaks every request touching it in that window. Hence a
+// removal ships one release LATER, declared in CONTRACT_MIGRATIONS.
 //
-// There is deliberately NO declaration that excuses a drop. The DROPPED_*
-// constants below are frozen history, not a hatch - see the note on them. The
-// only way past this gate is a human deliberately editing it, which shows up in
-// the diff as its own reviewable act.
+// WHAT THE DECLARATION BUYS, AND WHAT IT DOES NOT
+// The gate matches SQL against the declaration statement by statement (never by
+// comparing counts - that let `ALTER TABLE d1_migrations DROP COLUMN x` pass as
+// a benign column removal), requires every statement in a contract migration to
+// BE a removal (so nothing additive can introduce a cascade the parent check
+// cannot see), refuses a cascade parent by reading incoming foreign keys off
+// the schema rather than trusting a flag, and refuses a column that
+// app-schema.ts or a raw sql`` fragment still names.
+//
+// It CANNOT see what is deployed, so `readsRemovedIn` is a human attestation
+// and a green run is not evidence the earlier release shipped. The column scans
+// are table-blind and over-block on purpose; read the comment on
+// assertColumnUnreferenced before assuming a rejection is a false alarm.
+//
+// The DROPPED_* constants below are frozen history, not a hatch - see the note
+// on them. CONTRACT_MIGRATIONS is the live mechanism.
 //
 // Additive DDL is untouched: ADD COLUMN, CREATE TABLE, CREATE INDEX and
 // CREATE TRIGGER all pass, which is what Phase 8's two releases need.
@@ -2177,6 +2200,183 @@ const verifyBaselineIntact = () => {
 //
 // Anchoring to a frozen baseline instead means 0021 is re-scanned on every run
 // for as long as it exists, so it cannot ride in behind a later commit.
+// Objects a migration is allowed to REMOVE, and the release that earned it.
+//
+// The blanket ban this replaces was correct about rebuilds and wrong about
+// everything else, because when it was written the two had not been told apart.
+// `ALTER TABLE ... DROP COLUMN` is not the 12-step rebuild that wiped
+// list_items in 0009: it rewrites rows in place, never issues DROP TABLE, and
+// so fires no cascade. Verified against sqlite3 3.46.1 with foreign_keys=ON
+// inside a transaction, which is D1's setup.
+//
+// What survives is OUR constraint, not SQLite's: deploy.yml applies migrations
+// and THEN swaps the Worker, so a column dropped in the same release that
+// removed its reads 500s every request touching it until the deploy lands -
+// indefinitely if the deploy fails. Hence: one release later, never the same.
+//
+// WHAT THIS GATE PROVES, AND WHAT IT MERELY RECORDS. It proves the migration
+// removes exactly the objects declared here and nothing else, and for a column
+// it proves the name is gone from server/db/app-schema.ts. It CANNOT prove the
+// previous release reached production - CI has no view of what is deployed.
+// `readsRemovedIn` is a human attestation of that, and a green check is not
+// evidence for it. Say so out loud rather than letting the green imply it.
+const CONTRACT_MIGRATIONS = new Map([
+  [
+    '0027_contract_drop_retired.sql',
+    {
+      // Attested, NOT proven. CI cannot see production. This names the release
+      // that removed the last read of each object and shipped it; a green run
+      // says the migration matches this declaration, not that the release
+      // deployed.
+      readsRemovedIn:
+        '#213 (needed, deployed 2026-08-19) + #214 backfill; #110/2026-07-21 ' +
+        '(group_worn); 2026-08-11 (ready_checks_enabled); 0023 (_food_rank_repair)',
+      objects: [
+        // Must come out before the column it references, or SQLite refuses.
+        { kind: 'trigger', name: 'list_food_item_slots_needed_only' },
+        { kind: 'column', table: 'list_food_slots', name: 'needed' },
+        { kind: 'column', table: 'lists', name: 'group_worn' },
+        { kind: 'column', table: 'lists', name: 'ready_checks_enabled' },
+        // Nothing has a foreign key pointing at this, so its DROP TABLE fires
+        // no cascade. That is not taken on trust: the replay reads incoming
+        // ON DELETE CASCADE references off the live schema immediately before
+        // the drop and refuses a cascade parent outright.
+        { kind: 'table', name: '_food_rank_repair' },
+      ],
+    },
+  ],
+])
+
+// The target an object-removing statement names, for matching against a
+// declaration. Deliberately a SEPARATE function from classifyStatement rather
+// than a widening of it: that one is covered by DDL_GATE_CASES and is the only
+// thing standing between this repo and a repeat of 0009, so it is left exactly
+// as it is.
+//
+// Returns null for anything that is not a removal, including the forms that are
+// never declarable (renames, ledger writes, sqlite_schema edits) - those are
+// caught by the classifier and must stay caught.
+const describeRemoval = (statement) => {
+  const first = wordAt(statement, 0)
+  const named = (index) =>
+    statement[index + 1]?.value === '.'
+      ? String(valueAt(statement, index + 2) || '').toLowerCase()
+      : String(valueAt(statement, index) || '').toLowerCase()
+
+  if (first === 'DROP') {
+    const kind = wordAt(statement, 1)
+    if (!['TABLE', 'TRIGGER', 'INDEX'].includes(kind)) return null
+    // Step over an optional IF EXISTS before reading the name.
+    let i = 2
+    if (wordAt(statement, 2) === 'IF' && wordAt(statement, 3) === 'EXISTS') i = 4
+    const name = named(i)
+    // The ledger table itself is never declarable. Scoped to DROP TABLE on
+    // purpose: an INDEX or TRIGGER may legitimately be NAMED `d1_migrations`
+    // while belonging to an ordinary table, and SQLite allows it. Only the
+    // table target is the ledger.
+    if (kind === 'TABLE' && name === LEDGER_TABLE) return null
+    return { kind: kind.toLowerCase(), name }
+  }
+
+  if (first === 'ALTER' && wordAt(statement, 1) === 'TABLE') {
+    let i = 2
+    if (statement[i + 1]?.value === '.') i += 2
+    const table = String(valueAt(statement, i) || '').toLowerCase()
+    // ANY alter of wrangler's ledger, INCLUDING a column drop. classifyStatement
+    // calls this a forbidden ledger alteration; without this line describeRemoval
+    // called the identical statement a benign column removal, and the gate's
+    // count comparison saw one of each and let a declaration authorize writing
+    // to wrangler's own bookkeeping. That is the bug this early return closes,
+    // and the statement-by-statement matching below is what stops the class of
+    // it recurring.
+    if (table === LEDGER_TABLE) return null
+    if (wordAt(statement, i + 1) !== 'DROP') return null
+    // `DROP COLUMN x` and the equivalent `DROP x`.
+    const j = wordAt(statement, i + 2) === 'COLUMN' ? i + 3 : i + 2
+    return { kind: 'column', table, name: String(valueAt(statement, j) || '').toLowerCase() }
+  }
+
+  return null
+}
+
+// A dropped COLUMN must be gone from the Drizzle schema, which in this repo is
+// the only place the app can reach a column from: route handlers never touch
+// the DB, so every read goes through a repo, and every repo goes through here.
+//
+// This is a real check with a real limit, and the limit is the deploy window
+// rather than the grep: it proves the code being deployed NOW has no reference,
+// not that the code currently RUNNING has none. That is what readsRemovedIn is
+// for.
+const assertColumnUnreferenced = (table, column, migration) => {
+  // Raw SQL first, because it is the case a schema search cannot see. The repos
+  // build most statements through drizzle, but sql`` fragments and sql.raw()
+  // exist and name columns as text.
+  //
+  // WHAT THIS DELIBERATELY GETS WRONG, since a check nobody understands is a
+  // check nobody trusts:
+  //   - it is TABLE-BLIND. A fragment naming `name` blocks dropping ANY column
+  //     called `name`, on any table. Knowing which table a raw fragment targets
+  //     means parsing SQL out of a template with interpolations in it, and the
+  //     failure mode of getting THAT wrong is permitting a drop that breaks
+  //     production. Over-blocking is the safe direction: it is loud, it happens
+  //     at author time, and the author can look at the fragment and see it is
+  //     unrelated.
+  //   - a nested tagged template can truncate the match, so this is a floor on
+  //     what is caught rather than a ceiling.
+  // It is a second line behind the app-schema check below, not a substitute for
+  // reading the diff.
+  const rawSqlHits = []
+  const walk = (dir) => {
+    for (const item of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, item.name)
+      if (item.isDirectory()) {
+        if (item.name === 'node_modules') continue
+        walk(full)
+        continue
+      }
+      if (!/\.(ts|tsx)$/.test(item.name)) continue
+      if (item.name.endsWith('.test.ts') || item.name.endsWith('.test.tsx')) continue
+      const text = readFileSync(full, 'utf8')
+      // Only inside a sql`` template or a sql.raw() argument. A bare mention
+      // elsewhere is a comment or a camelCase property, and flagging those
+      // would make this so noisy nobody would keep it.
+      for (const fragment of text.match(/sql`[^`]*`|sql\.raw\([^)]*\)/g) || []) {
+        // Case-INSENSITIVE: SQL keywords and identifiers are, so `SELECT NEEDED`
+        // is the same column as `needed` and a case-sensitive scan walked
+        // straight past it.
+        if (new RegExp(`\\b${column}\\b`, 'i').test(fragment)) rawSqlHits.push(full)
+      }
+    }
+  }
+  walk('server')
+  if (rawSqlHits.length > 0) {
+    throw new Error(
+      `${migration} drops ${table}.${column}, but raw SQL still names that ` +
+        `column in: ${[...new Set(rawSqlHits)].join(', ')}. Drizzle-built ` +
+        'queries are covered by the schema check below; a raw fragment is not, ' +
+        'and it fails at runtime rather than at build time.',
+    )
+  }
+
+  const schema = readFileSync('server/db/app-schema.ts', 'utf8')
+  // Drizzle names the SQL column in a string literal - `integer('needed')` -
+  // so the quoted spelling is what a surviving reference looks like. The
+  // camelCase property cannot be searched for reliably; it is the SQL name
+  // that this migration removes.
+  //
+  // Table-blind for the same reason as the raw-SQL scan above: this matches the
+  // column name anywhere in the file, so dropping `lists.name` would trip on
+  // `gear_items.name` too. Over-blocking, loud, at author time.
+  const quoted = new RegExp(`['"\`]${column}['"\`]`)
+  if (quoted.test(schema)) {
+    throw new Error(
+      `${migration} drops ${table}.${column}, but server/db/app-schema.ts still ` +
+        'names that column. Remove it from the schema in the same migration, or ' +
+        'drizzle will keep selecting a column that no longer exists.',
+    )
+  }
+}
+
 const gateNewMigrations = () => {
   const files = postBaselineMigrations()
 
@@ -2187,19 +2387,154 @@ const gateNewMigrations = () => {
     })
     .filter((entry) => entry.found.length > 0)
 
-  if (destructive.length > 0) {
+  // Every file that is EITHER destructive OR declared. Iterating only the
+  // destructive ones had a hole: a declared migration containing nothing
+  // destructive - empty, comment-only, or additive - skipped statement
+  // validation, declaration matching and assertColumnUnreferenced entirely,
+  // while the replay still exempted its declared column from comparison. The
+  // migration could then claim a removal it never performed and pass.
+  const byPath = new Map(destructive.map((entry) => [entry.path, entry]))
+  for (const migration of CONTRACT_MIGRATIONS.keys()) {
+    const path = join(MIGRATIONS_DIR, migration)
+    if (!byPath.has(path)) byPath.set(path, { path, found: [] })
+  }
+
+  const undeclared = []
+  for (const entry of byPath.values()) {
+    const migration = basename(entry.path)
+    const contract = CONTRACT_MIGRATIONS.get(migration)
+    if (!contract) {
+      undeclared.push(entry)
+      continue
+    }
+
+    // Every removal in the file must be one this migration declared, and every
+    // declared removal must actually appear. Both directions: an undeclared
+    // extra drop is the obvious hazard, and a declaration naming something the
+    // SQL does not do is a declaration nobody has kept honest.
+    const statements = splitStatements(tokenizeSql(readFileSync(entry.path, 'utf8'), entry.path))
+
+    // PER STATEMENT, never by comparing two array lengths. The length version
+    // was unsound and had a live counterexample:
+    // `ALTER TABLE d1_migrations DROP COLUMN x` classifies as a forbidden
+    // ledger alteration and ALSO parsed as a benign column removal, so one of
+    // each made the counts agree and a declaration authorized it. Walking the
+    // statements together means a statement the classifier condemns must be a
+    // removal IN ITS OWN RIGHT to be declarable, and the ledger no longer
+    // parses as one at all.
+    const neverDeclarable = []
+    const removals = []
+    for (const statement of statements) {
+      const condemned = classifyStatement(statement)
+      const removal = describeRemoval(statement)
+      if (removal) removals.push(removal)
+      if (condemned && !removal) neverDeclarable.push(condemned)
+    }
+
+    // A contract migration REMOVES things and does nothing else. Every
+    // statement must be a recognized removal - no CREATE, no ALTER ... ADD, no
+    // INSERT, nothing.
+    //
+    // This is the rule that closes the cascade-timing hole. The cascade-parent
+    // check reads incoming foreign keys BEFORE the migration runs, so an
+    // additive statement earlier in the SAME file could introduce a cascading
+    // FK the check never saw, and the declared DROP TABLE would then cascade
+    // undetected. Rather than teach the harness to re-derive foreign keys
+    // between statements, forbid the shape entirely: if a contract migration
+    // cannot create a table or add a referencing column, it cannot invent a
+    // new incoming cascade. Mixed migrations were never wanted anyway - a
+    // contract step is the removal half of an expand/contract pair.
+    const nonRemovals = statements
+      .filter((statement) => statement.length > 0)
+      .filter((statement) => !describeRemoval(statement))
+    if (nonRemovals.length > 0) {
+      throw new Error(
+        `${migration} is a contract step, so every statement in it must be a ` +
+          'removal. It contains ' + nonRemovals.length + ' statement(s) that ' +
+          'are not:\n' +
+          nonRemovals
+            .map((st) => `      ${st.map((t) => t.value).join(' ').slice(0, 90)}`)
+            .join('\n') +
+          '\n\nAdditive DDL belongs in its own migration. Mixing them lets a ' +
+          'statement create an incoming ON DELETE CASCADE that the ' +
+          'cascade-parent check - which reads the schema BEFORE this migration ' +
+          'runs - cannot see, and a declared DROP TABLE would then cascade ' +
+          'undetected.',
+      )
+    }
+
+    if (neverDeclarable.length > 0) {
+      throw new Error(
+        `${migration} is declared in CONTRACT_MIGRATIONS but contains ` +
+          'destructive DDL that a contract step may never include - a rebuild, ' +
+          'a rename, or a write to wrangler\'s ledger:\n' +
+          neverDeclarable.map((f) => `      ${f}`).join('\n') +
+          '\n\nThose stay banned with no declaration: a rebuild cascade-wipes ' +
+          'children on D1, and a rename has no window in which both names work.',
+      )
+    }
+
+    const declared = contract.objects.map((o) =>
+      o.kind === 'column' ? `column:${o.table}.${o.name}` : `${o.kind}:${o.name}`,
+    )
+    const actual = removals.map((r) =>
+      r.kind === 'column' ? `column:${r.table}.${r.name}` : `${r.kind}:${r.name}`,
+    )
+    // Multiset, not set membership. `includes` matched two identical
+    // `DROP ... IF EXISTS` statements against a single declaration, so a
+    // repeated removal looked declared.
+    const tally = (labels) => {
+      const counts = new Map()
+      for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1)
+      return counts
+    }
+    const declaredCounts = tally(declared)
+    const actualCounts = tally(actual)
+    const missing = []
+    const extra = []
+    for (const [label, count] of declaredCounts) {
+      const seen = actualCounts.get(label) ?? 0
+      for (let i = seen; i < count; i++) missing.push(label)
+    }
+    for (const [label, count] of actualCounts) {
+      const want = declaredCounts.get(label) ?? 0
+      for (let i = want; i < count; i++) extra.push(label)
+    }
+    if (missing.length > 0 || extra.length > 0) {
+      throw new Error(
+        `${migration} does not remove what it declares.\n` +
+          (extra.length ? `  removes but did not declare: ${extra.join(', ')}\n` : '') +
+          (missing.length ? `  declares but does not remove: ${missing.join(', ')}\n` : '') +
+          '\nThe declaration is what a reviewer reads instead of the SQL. If the ' +
+          'two disagree, the declaration is worse than nothing.',
+      )
+    }
+
+    for (const object of contract.objects) {
+      if (object.kind === 'column') {
+        assertColumnUnreferenced(object.table, object.name, migration)
+      }
+    }
+
+    console.log(
+      `  ${migration}: contract step, ${actual.length} object(s) removed; reads ` +
+        `removed in ${contract.readsRemovedIn} (attested, not proven).`,
+    )
+  }
+
+  if (undeclared.length > 0) {
     throw new Error(
       'Destructive DDL in a migration:\n' +
-        destructive
+        undeclared
           .map((e) => `  - ${e.path}\n${e.found.map((f) => `      ${f}`).join('\n')}`)
           .join('\n') +
         '\n\ndeploy.yml applies migrations BEFORE it deploys the Worker, so ' +
         'production runs the old code against this schema - and keeps running ' +
-        'it if the deploy step fails. A drop or rename breaks it in that window.' +
-        '\n\nThere is no declaration that excuses this. Until expand/contract is ' +
-        'enforceable (docs/review-remediation-plan.md, Phase 3), the removal ' +
-        'cannot ship at all: land the additive half and stop using the old ' +
-        'object, then raise the removal rather than working around this.',
+        'it if the deploy step fails. A drop breaks it in that window.' +
+        '\n\nA DROP COLUMN, DROP TRIGGER, DROP INDEX or childless DROP TABLE may ' +
+        'ship as a CONTRACT STEP one release after the code that read it: add an ' +
+        'entry to CONTRACT_MIGRATIONS naming every object and the PR that removed ' +
+        'the reads. Rebuilds, renames and ledger writes are never declarable.',
     )
   }
 
@@ -2429,6 +2764,12 @@ const validateExpectedChanges = (knownMigrations) => {
     ['EXPECTED_TYPE_CHANGES', EXPECTED_TYPE_CHANGES],
     ['TRANSIENT_TABLES', TRANSIENT_TABLES],
     ['POST_CHECKS', POST_CHECKS],
+    // Keyed by filename like the rest, and MORE dangerous when wrong: a typo
+    // here is not merely inert. alreadyApplied() treats any filename it cannot
+    // find in the directory as already applied, so a misspelled future contract
+    // would retroactively excuse a transient table's absence in the very pass
+    // that creates it.
+    ['CONTRACT_MIGRATIONS', [...CONTRACT_MIGRATIONS.keys()].map((migration) => ({ migration }))],
   ]) {
     for (const entry of entries) {
       if (!knownMigrations.has(entry.migration)) {
@@ -3015,6 +3356,28 @@ const extractCheckClauses = (sql) => {
 // deferrability would simply be outside this comparison. Extracting it
 // would mean parsing FK syntax out of raw DDL - not worth it for a clause
 // the schema has never used.
+// Tables that would take rows with them if dropped: anything with an incoming
+// ON DELETE CASCADE. Read from the live schema, never from a declaration.
+//
+// This replaces a `hasCascadingChildren: false` boolean the author wrote by
+// hand. That was an assertion dressed as a check - it let a contract declare
+// any cascade parent childless, and because a declared table is exempted from
+// the row and constraint comparisons, dropping a parent AND its children could
+// have passed. That is the 0009 wipe with paperwork.
+const tablesWithIncomingCascades = () => {
+  const rows = query(
+    'select f."table" as ref, f.on_delete as onDelete from sqlite_master m ' +
+      `join pragma_foreign_key_list(m.name) f where ${appTablesFilter('m')}`,
+  )
+  const parents = new Set()
+  for (const row of rows) {
+    if (String(row.onDelete || '').toUpperCase() === 'CASCADE') {
+      parents.add(String(row.ref).toLowerCase())
+    }
+  }
+  return parents
+}
+
 const describeConstraints = () => {
   const fkRows = query(
     'select m.name as tbl, f.id as fkid, f.seq as seq, f."table" as ref, ' +
@@ -3194,9 +3557,39 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
   // Transient tables only exist once the migration that creates them has run.
   // Asserting all of them in every pass would fail an earlier migration's pass
   // for a table a later migration has not created yet.
-  const transientsInPlay = TRANSIENT_TABLES.filter(
-    (t) => alreadyApplied(t.migration) || t.migration === name,
+  // A transient table a contract step has already removed is no longer expected
+  // to exist. Without this the entry reads as stale the moment the drop lands,
+  // which is the opposite of what it means.
+  // A contract-dropped table needs THREE different answers depending on when
+  // you ask, and collapsing them into one set is how this went wrong twice.
+  //
+  //   droppedAlready  - the drop ran in an EARLIER migration than this pass.
+  //                     The table is simply gone; it is neither exempt from
+  //                     needing a fixture nor expected to exist.
+  //   droppedHere     - the drop is THIS migration. The table still exists at
+  //                     seed time, so it keeps its fixture exemption, but it
+  //                     must not be asserted to survive.
+  const droppedAlready = new Set()
+  const droppedHere = new Set()
+  for (const [migration, contract] of CONTRACT_MIGRATIONS) {
+    const tables = contract.objects.filter((o) => o.kind === 'table').map((o) => o.name)
+    if (migration === name) tables.forEach((t) => droppedHere.add(t))
+    else if (alreadyApplied(migration)) tables.forEach((t) => droppedAlready.add(t))
+  }
+
+  // Exempt from the new-table fixture demand: transients that EXIST at seed
+  // time. A transient whose contract drop already ran is deliberately NOT in
+  // here - if some later migration recreates that name, it is a new table and
+  // must earn a fixture like any other.
+  const transientsCreated = TRANSIENT_TABLES.filter(
+    (t) =>
+      (alreadyApplied(t.migration) || t.migration === name) &&
+      !droppedAlready.has(t.table),
   )
+
+  // Asserted to exist and be empty AFTER the migration - so the one this
+  // migration drops comes out too.
+  const transientsInPlay = transientsCreated.filter((t) => !droppedHere.has(t.table))
 
   console.log(`\n--- ${name}`)
   persistDir = mkdtempSync(join(tmpdir(), 'migration-safety-'))
@@ -3223,7 +3616,14 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
     // can never persist. This matters MORE once they are in the baseline -
     // every future migration would otherwise trip this, which is exactly the
     // shape of breakage 0018 left behind by relying on its own backfill.
-    const transientAtBase = new Set(TRANSIENT_TABLES.map((t) => t.table))
+    // Derived from transientsCreated, not from the raw list - and NOT from
+    // transientsInPlay, which additionally excludes the table this very
+    // migration drops, and that one still exists at seed time. A transient
+    // whose contract drop ran EARLIER is no longer exempt: if a later migration
+    // recreates that name, it must earn a fixture like any other new table.
+    // Reading the raw list here would exempt the name permanently, leaving the
+    // recreated table invisible to every preservation check thereafter.
+    const transientAtBase = new Set(transientsCreated.map((t) => t.table))
     const unseeded = listTables().filter(
       (table) => !seededColumns.has(table) && !transientAtBase.has(table),
     )
@@ -3236,9 +3636,31 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
     }
 
     const before = snapshot(seededColumns)
+    const tablesBefore = listTables()
     const schemaBefore = listSchemaObjects()
     const typesBefore = describeColumnTypes()
     const constraintsBefore = describeConstraints()
+
+    // A contract step may only drop a table nothing cascades FROM, and the
+    // proof is the live schema immediately before the drop - not a boolean in
+    // the declaration. Checked here rather than in the gate because that runs
+    // without a database, and the honest answer needs one.
+    const contract = CONTRACT_MIGRATIONS.get(name)
+    if (contract) {
+      const cascadeParents = tablesWithIncomingCascades()
+      for (const object of contract.objects) {
+        if (object.kind !== 'table') continue
+        if (cascadeParents.has(object.name.toLowerCase())) {
+          throw new Error(
+            `${name} declares a drop of ${object.name}, but another table ` +
+              'references it with ON DELETE CASCADE. DROP TABLE performs an ' +
+              'implicit DELETE that fires those cascades - that is exactly how ' +
+              '0009 wiped list_items - so a cascade parent may never be ' +
+              'dropped, declaration or not.',
+          )
+        }
+      }
+    }
     const seededRows = [...before.values()].reduce((n, rows) => n + rows.length, 0)
     console.log(`  seeded ${seededRows} rows across ${before.size} tables.`)
 
@@ -3257,15 +3679,40 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
     const droppedTables = new Set(
       DROPPED_TABLES.filter((d) => addedNames.has(d.migration)).map((d) => d.table),
     )
+    // Same two-source rule as columns below: a table a contract step removes is
+    // expected to be gone, and the "did the drop actually run" assertion below
+    // then covers it for free.
+    for (const [migration, contract] of CONTRACT_MIGRATIONS) {
+      if (!addedNames.has(migration)) continue
+      for (const object of contract.objects) {
+        if (object.kind === 'table') droppedTables.add(object.name)
+      }
+    }
     // Declared-dropped columns come out of the compared column set. Quoting a
     // column SQLite no longer has would silently read back as the column NAME
     // (its double-quoted-string fallback), which reads as a corrupted value
     // rather than an absent one.
+    //
+    // Two sources feed this, and they are different KINDS of thing: the frozen
+    // DROPPED_COLUMNS list describes grandfathered baseline migrations, while
+    // CONTRACT_MIGRATIONS describes removals the gate deliberately permits from
+    // here on. Both mean the same thing to the comparison - do not expect this
+    // column afterwards - so they share one exclusion set rather than two
+    // mechanisms that could disagree.
     const droppedColumns = new Map()
+    const excludeColumn = (table, column) => {
+      if (!droppedColumns.has(table)) droppedColumns.set(table, new Set())
+      droppedColumns.get(table).add(column)
+    }
     for (const d of DROPPED_COLUMNS) {
       if (!addedNames.has(d.migration)) continue
-      if (!droppedColumns.has(d.table)) droppedColumns.set(d.table, new Set())
-      droppedColumns.get(d.table).add(d.column)
+      excludeColumn(d.table, d.column)
+    }
+    for (const [migration, contract] of CONTRACT_MIGRATIONS) {
+      if (!addedNames.has(migration)) continue
+      for (const object of contract.objects) {
+        if (object.kind === 'column') excludeColumn(object.table, object.name)
+      }
     }
     const survivingColumns = new Map(
       [...seededColumns]
@@ -3276,6 +3723,24 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
         ]),
     )
     const stillPresent = new Set(listTables())
+    // A declared table drop has to be an EVENT, not an intention.
+    // `DROP TABLE IF EXISTS never_existed` removes nothing and would otherwise
+    // satisfy its own declaration - the same gap the trigger/index check just
+    // closed. tablesBefore is captured above, before the migration ran.
+    if (contract) {
+      const wasPresent = new Set(tablesBefore)
+      const neverExisted = contract.objects
+        .filter((o) => o.kind === 'table')
+        .map((o) => o.name)
+        .filter((name) => !wasPresent.has(name))
+      if (neverExisted.length > 0) {
+        throw new Error(
+          `${name} declares it drops ${neverExisted.join(', ')}, but the table ` +
+            'did not exist before this migration ran. The declaration ' +
+            'describes something that never happened.',
+        )
+      }
+    }
     const notActuallyDropped = [...droppedTables].filter((t) => stillPresent.has(t))
     if (notActuallyDropped.length > 0) {
       throw new Error(
@@ -3362,6 +3827,54 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
     const allowedGone = new Set(
       DROPPED_SCHEMA_OBJECTS.filter((d) => addedNames.has(d.migration)).map((d) => d.object),
     )
+    // Same two-source rule as the column and table exclusions: a trigger or
+    // index a contract step removes is expected to be gone. The label shape
+    // here is "trigger <name>" / "index <name>", matching listSchemaObjects().
+    for (const [migration, contract] of CONTRACT_MIGRATIONS) {
+      if (!addedNames.has(migration)) continue
+      for (const object of contract.objects) {
+        if (object.kind === 'trigger' || object.kind === 'index') {
+          allowedGone.add(`${object.kind} ${object.name}`)
+        }
+      }
+    }
+    // A declared trigger or index must actually be absent afterwards, the same
+    // way DROPPED_TABLES proves its tables went. Without this, `DROP TRIGGER IF
+    // EXISTS temp.foo` satisfied a declaration naming `foo` while the real
+    // main.foo survived - the declaration exempted it from the survival check
+    // below, and nothing else looked.
+    if (contract) {
+      const stillThere = new Set(schemaAfter)
+      const wasThere = new Set(schemaBefore.map((o) => o.label))
+      const declaredObjects = contract.objects.filter(
+        (o) => o.kind === 'trigger' || o.kind === 'index',
+      )
+      const survivors = declaredObjects
+        .map((o) => `${o.kind} ${o.name}`)
+        .filter((label) => stillThere.has(label))
+      if (survivors.length > 0) {
+        failures.push(
+          `Declared removed but still present: ${survivors.join(', ')}. The ` +
+            'declaration exempts these from the survival check, so a drop that ' +
+            'silently matched nothing would otherwise look like a success.',
+        )
+      }
+      // ...and it has to have been there to begin with. `DROP TRIGGER IF
+      // EXISTS missing` removes nothing and would otherwise satisfy its own
+      // declaration, which makes the declaration a description of an intention
+      // rather than of an event.
+      const neverExisted = declaredObjects
+        .map((o) => `${o.kind} ${o.name}`)
+        .filter((label) => !wasThere.has(label))
+      if (neverExisted.length > 0) {
+        failures.push(
+          `Declared removed but never existed: ${neverExisted.join(', ')}. ` +
+            'The declaration says this migration removes it; the database says ' +
+            'there was nothing there. One of the two is wrong.',
+        )
+      }
+    }
+
     const dropped = schemaBefore
       .filter((object) => !droppedTables.has(object.table))
       .filter((object) => !allowedGone.has(object.label))
@@ -3408,7 +3921,9 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
     // New tables hold no data yet, so nothing can be lost from them THIS time -
     // but without a fixture they would be invisible to every future run. Demand
     // one now, while the table is fresh in the author's mind.
-    const transientTables = new Set(TRANSIENT_TABLES.map((t) => t.table))
+    // Same derivation as transientAtBase above, and for the same reason: a
+    // dropped transient's NAME must not carry its exemption forward.
+    const transientTables = new Set(transientsCreated.map((t) => t.table))
     const fixtureTables = new Set(FIXTURES.map(([table]) => table))
     const missingFixture = tablesAfter.filter(
       (table) =>
