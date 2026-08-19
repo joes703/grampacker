@@ -12,18 +12,20 @@ import { MEAL_LABELS } from './FoodSlotPicker'
 import type { FoodItemResponse, FoodSlotResponse } from '../../shared/food'
 import type { WeightUnit } from '../lib/weight'
 
-// One day of the food grid: every meal slot for `day`, in MEALS order,
-// showing the food scheduled at each and letting the user Skip a meal they
-// will not eat or Restore one they skipped by mistake. Replaces the
-// three-state grid from the retired inline food section that FoodView
-// rendered before this redesign.
+// One day of the food grid: every meal slot for `day`, in MEALS order, showing
+// the food scheduled at each.
+//
+// A meal with nothing in it is just empty. It used to carry a "Nothing
+// planned" warning and a Skip button whose only job was to silence that
+// warning, which made the view an audit of whether you had FINISHED planning -
+// a different job from working out what you carry and what it weighs, and the
+// last of the deleted meal planner still standing here.
 type Props = {
   day: number
   slots: readonly FoodSlotResponse[]
   itemsBySlot: ReadonlyMap<string, FoodItemResponse[]>
   weightUnit: WeightUnit
   busy: boolean
-  onSetSlotNeeded: (slotId: string, needed: boolean) => void
   /** Opens the add form preselected to this slot. */
   onAddToSlot: (slotId: string) => void
 }
@@ -34,7 +36,6 @@ export default function FoodDaySection({
   itemsBySlot,
   weightUnit,
   busy,
-  onSetSlotNeeded,
   onAddToSlot,
 }: Props) {
   // The day total, and the dedupe is now conditional - 0024 split the two
@@ -73,33 +74,21 @@ export default function FoodDaySection({
             // documented variant (py-2 lg:py-1, not the token's lg:py-0)
             // because a slot stacks multiple food lines and items-start
             // content would sit flush against the row border without it.
-            className={`${FLAT_TABLE_ROW} flex items-start gap-2 px-2 lg:px-3 py-2 lg:py-1 ${slot.needed ? '' : 'bg-gray-50'}`}
+            className={`${FLAT_TABLE_ROW} flex items-start gap-2 px-2 lg:px-3 py-2 lg:py-1`}
           >
-            <span
-              className={`w-20 shrink-0 pt-0.5 ${FLAT_TABLE_META_TEXT} ${
-                slot.needed ? '' : 'line-through'
-              }`}
-            >
+            <span className={`w-20 shrink-0 pt-0.5 ${FLAT_TABLE_META_TEXT}`}>
               {MEAL_LABELS[slot.meal]}
             </span>
             <span className="min-w-0 flex-1">
-              {!slot.needed ? (
-                <span className={FLAT_TABLE_META_TEXT}>Skipped</span>
-              ) : slotItems.length === 0 ? (
-                <span className="inline-flex items-center gap-2">
-                  {/* The omission check. Reads as unfinished on purpose. */}
-                  <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800">
-                    Nothing planned
-                  </span>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => onAddToSlot(slot.id)}
-                    className={`${FLAT_TABLE_BODY_TEXT} font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50`}
-                  >
-                    + Add
-                  </button>
-                </span>
+              {slotItems.length === 0 ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onAddToSlot(slot.id)}
+                  className={`${FLAT_TABLE_BODY_TEXT} font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50`}
+                >
+                  + Add
+                </button>
               ) : (
                 <span className="flex flex-col gap-0.5">
                   {slotItems.map((item) => (
@@ -129,27 +118,6 @@ export default function FoodDaySection({
                 </span>
               )}
             </span>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                // Skipping a FILLED slot unschedules its food. The items
-                // survive and so does their weight - say so, because "Skip"
-                // sounds like it should be reversible with nothing lost.
-                if (slot.needed && slotItems.length > 0) {
-                  const ok = window.confirm(
-                    `${MEAL_LABELS[slot.meal]} on day ${day} has food planned for it. ` +
-                      'Skipping it unschedules that food - it stays on the list and ' +
-                      'still counts toward your pack weight. Continue?',
-                  )
-                  if (!ok) return
-                }
-                onSetSlotNeeded(slot.id, !slot.needed)
-              }}
-              className={`shrink-0 rounded px-2 py-1 ${FLAT_TABLE_META_TEXT} font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50`}
-            >
-              {slot.needed ? 'Skip' : 'Restore'}
-            </button>
           </div>
         )
       })}

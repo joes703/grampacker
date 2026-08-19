@@ -96,7 +96,6 @@ export const mutationKeys = {
 
   // Food
   setFoodDays: (listId: string) => ['set-food-days', listId] as const,
-  setFoodSlot: (listId: string) => ['set-food-slot', listId] as const,
   createFoodItem: (listId: string) => ['create-food-item', listId] as const,
   setFoodItemSlots: (listId: string) => ['set-food-item-slots', listId] as const,
   setFoodItemQuantity: (listId: string) =>

@@ -26,17 +26,6 @@ export async function setFoodDays(
   })
 }
 
-export async function setFoodSlotNeeded(
-  listId: string,
-  slotId: string,
-  needed: boolean,
-): Promise<ListFoodResponse> {
-  return apiFetch(`/lists/${listId}/food/slots/${slotId}`, listFoodResponseSchema, {
-    method: 'PATCH',
-    body: { needed },
-  })
-}
-
 export async function createFoodItem(
   listId: string,
   body: CreateFoodItemRequest,

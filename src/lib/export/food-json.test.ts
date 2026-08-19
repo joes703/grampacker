@@ -26,7 +26,6 @@ describe('buildFoodJson', () => {
         id: `l${d}`,
         dayNumber: d,
         meal: 'lunch' as const,
-        needed: true,
       })),
       items: [
         {
@@ -59,7 +58,10 @@ describe('buildFoodJson', () => {
     expect(total).toBe(500)
   })
 
-  it('keeps a pruned slot, so the export says what was skipped', () => {
+  it('carries no plan-completeness flag on a slot', () => {
+    // v3 dropped `needed`. The Skip feature it belonged to is gone, so there is
+    // no distinction left to export: an unscheduled meal is simply a meal with
+    // no items pointing at it.
     const json = buildFoodJson({
       lists: [list('a', 'Trip')],
       foodByListId: new Map([
@@ -67,15 +69,17 @@ describe('buildFoodJson', () => {
           'a',
           {
             dayCount: 1,
-            slots: [
-              { id: 's1', dayNumber: 1, meal: 'breakfast' as const, needed: false },
-            ],
+            slots: [{ id: 's1', dayNumber: 1, meal: 'breakfast' as const }],
             items: [],
           },
         ],
       ]),
     })
-    expect(json.lists[0]!.slots[0]!.needed).toBe(false)
+    expect(Object.keys(json.lists[0]!.slots[0]!).sort()).toEqual([
+      'dayNumber',
+      'id',
+      'meal',
+    ])
   })
 
   it('omits lists with no food at all', () => {

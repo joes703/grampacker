@@ -91,7 +91,7 @@ const sharedListFixture = {
   },
 }
 
-const foodSlotFixture = { id: 's1', dayNumber: 1, meal: 'breakfast', needed: true }
+const foodSlotFixture = { id: 's1', dayNumber: 1, meal: 'breakfast' }
 const foodItemFixture = {
   id: 'f1',
   name: 'Oats',

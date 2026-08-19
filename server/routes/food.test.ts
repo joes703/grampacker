@@ -55,31 +55,31 @@ describe('food: day grid', () => {
     expect(food.dayCount).toBe(5)
     expect(food.slots).toHaveLength(15)
     expect(food.slots.filter((s) => s.meal === 'dinner')).toHaveLength(5)
-    expect(food.slots.every((s) => s.needed)).toBe(true)
   })
 
-  it('keeps pruning when the same day count is re-entered', async () => {
-    // The one piece of work the feature asks the user to do by hand. Losing it
-    // on a no-op edit would be worse than not having the feature.
+  it('keeps slot ids, and so placements, when the same day count is re-entered', async () => {
+    // Re-entering the same number must be a no-op. The id is the load-bearing
+    // part: delete-and-reinsert would take every association with it, so a
+    // stray edit to the days box would silently unschedule the whole trip.
     const { cookie } = await signUpVerifiedUser('food-2@example.com', 'F2')
     const listId = await createList(cookie, 'Trip')
     await setDays(cookie, listId, 5)
 
     const before = await getFood(cookie, listId)
     const day1Breakfast = slotOf(before, 1, 'breakfast')
-    await apiRequest(
-      cookie,
-      'PATCH',
-      `/api/lists/${listId}/food/slots/${day1Breakfast.id}`,
-      { needed: false },
-    )
+    await addItem(cookie, listId, {
+      name: 'Oatmeal',
+      weightGrams: 80,
+      quantity: 1,
+      slotIds: [day1Breakfast.id],
+    })
 
     await setDays(cookie, listId, 5)
 
     const after = await getFood(cookie, listId)
-    expect(slotOf(after, 1, 'breakfast').needed).toBe(false)
-    // ...and the slot kept its id, which is what lets associations survive.
     expect(slotOf(after, 1, 'breakfast').id).toBe(day1Breakfast.id)
+    expect(after.items).toHaveLength(1)
+    expect(after.items[0]!.slotIds).toEqual([day1Breakfast.id])
   })
 
   it('repairs a hole rather than reading only the highest day', async () => {
@@ -91,8 +91,8 @@ describe('food: day grid', () => {
 
     const food = await getFood(cookie, listId)
     expect(food.slots).toHaveLength(15)
-    // Days 3-5 came back fresh and needed.
-    expect(slotOf(food, 4, 'dinner').needed).toBe(true)
+    // Days 3-5 came back.
+    expect(slotOf(food, 4, 'dinner')).toBeDefined()
   })
 
   it('trims beyond the new count', async () => {
@@ -182,43 +182,23 @@ describe('food: weight is per ITEM, never per placement', () => {
   })
 })
 
-describe('food: slot states', () => {
-  it('clears associations when a slot is marked not needed', async () => {
-    // The fourth state - "deliberately skipped, still holding food" - must not
-    // be storable. The ITEM survives; only its placement goes.
+describe('food: legacy skipped slots, until the backfill lands', () => {
+  // Nothing can WRITE needed=0 any more: the PATCH route, the repo method and
+  // the duplication copy are all gone. Two rows in production still hold it,
+  // written before the removal, and the 0017 needed_only trigger still refuses
+  // to schedule food into them. That is a visible 400, not a 500 and not a
+  // silent drop, and it stops being reachable at all once the backfill
+  // migration runs. Set up by raw UPDATE because no API path can produce it.
+  it('refuses to schedule food into a slot left skipped by the old feature', async () => {
     const { cookie } = await signUpVerifiedUser('food-10@example.com', 'F10')
     const listId = await createList(cookie, 'Trip')
     await setDays(cookie, listId, 2)
     const food = await getFood(cookie, listId)
     const breakfast = slotOf(food, 1, 'breakfast')
 
-    await addItem(cookie, listId, {
-      name: 'Oatmeal',
-      weightGrams: 80,
-      quantity: 1,
-      slotIds: [breakfast.id],
-    })
-    await apiRequest(cookie, 'PATCH', `/api/lists/${listId}/food/slots/${breakfast.id}`, {
-      needed: false,
-    })
-
-    const after = await getFood(cookie, listId)
-    expect(after.items).toHaveLength(1)
-    expect(after.items[0]!.slotIds).toEqual([])
-    expect(slotOf(after, 1, 'breakfast').needed).toBe(false)
-  })
-
-  it('refuses to associate food with an already-pruned slot', async () => {
-    // The other direction. Clearing on the true->false transition alone would
-    // leave this route into the fourth state wide open.
-    const { cookie } = await signUpVerifiedUser('food-11@example.com', 'F11')
-    const listId = await createList(cookie, 'Trip')
-    await setDays(cookie, listId, 2)
-    const food = await getFood(cookie, listId)
-    const breakfast = slotOf(food, 1, 'breakfast')
-    await apiRequest(cookie, 'PATCH', `/api/lists/${listId}/food/slots/${breakfast.id}`, {
-      needed: false,
-    })
+    await env.DB.prepare('update list_food_slots set needed = 0 where id = ?')
+      .bind(breakfast.id)
+      .run()
 
     const res = await addItem(cookie, listId, {
       name: 'Oatmeal',
@@ -227,6 +207,33 @@ describe('food: slot states', () => {
       slotIds: [breakfast.id],
     })
     expect(res.status).toBe(400)
+  })
+
+  it('no longer exposes any way to skip a meal', async () => {
+    const { cookie } = await signUpVerifiedUser('food-11@example.com', 'F11')
+    const listId = await createList(cookie, 'Trip')
+    await setDays(cookie, listId, 2)
+    const food = await getFood(cookie, listId)
+
+    const res = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${listId}/food/slots/${slotOf(food, 1, 'breakfast').id}`,
+      { needed: false },
+    )
+    expect(res.status).toBe(404)
+  })
+
+  it('keeps the plan off the slot DTO entirely', async () => {
+    const { cookie } = await signUpVerifiedUser('food-11b@example.com', 'F11b')
+    const listId = await createList(cookie, 'Trip')
+    await setDays(cookie, listId, 1)
+
+    const res = await apiRequest(cookie, 'GET', `/api/lists/${listId}/food`)
+    const raw = (await res.json()) as { slots: Record<string, unknown>[] }
+    for (const slot of raw.slots) {
+      expect(Object.keys(slot).sort()).toEqual(['dayNumber', 'id', 'meal'])
+    }
   })
 })
 
@@ -261,22 +268,6 @@ describe('food: ownership and list scoping', () => {
     expect(res.status).toBe(400)
   })
 
-  it('404s a slot patch aimed at the wrong list', async () => {
-    const { cookie } = await signUpVerifiedUser('food-15@example.com', 'F15')
-    const listA = await createList(cookie, 'A')
-    const listB = await createList(cookie, 'B')
-    await setDays(cookie, listB, 2)
-    const foodB = await getFood(cookie, listB)
-
-    const res = await apiRequest(
-      cookie,
-      'PATCH',
-      `/api/lists/${listA}/food/slots/${slotOf(foodB, 1, 'breakfast').id}`,
-      { needed: false },
-    )
-    expect(res.status).toBe(404)
-  })
-
 })
 
 // The table-driven auth matrix the other four route files already have. Food
@@ -289,7 +280,6 @@ describe('/api/lists/:id/food authorization', () => {
     for (const [method, path, body] of [
       ['GET', '/api/lists/list/food', undefined],
       ['PUT', '/api/lists/list/food/days', { days: 2 }],
-      ['PATCH', '/api/lists/list/food/slots/slot', { needed: false }],
       ['POST', '/api/lists/list/food/items', { name: 'X', weightGrams: 1, quantity: 1, slotIds: [] }],
       ['PATCH', '/api/lists/list/food/items/item', { name: 'X' }],
       ['DELETE', '/api/lists/list/food/items/item', undefined],
@@ -339,7 +329,6 @@ describe('/api/lists/:id/food authorization', () => {
     expect((await requestWithoutCsrf('GET', `/api/lists/${listId}/food`)).status).toBe(200)
     for (const [method, path, body] of [
       ['PUT', `/api/lists/${listId}/food/days`, { days: 2 }],
-      ['PATCH', `/api/lists/${listId}/food/slots/slot`, { needed: false }],
       ['POST', `/api/lists/${listId}/food/items`, { name: 'X', weightGrams: 1, quantity: 1, slotIds: [] }],
       ['PATCH', `/api/lists/${listId}/food/items/item`, { name: 'X' }],
       ['DELETE', `/api/lists/${listId}/food/items/item`, undefined],
@@ -431,10 +420,13 @@ describe('food: list duplication', () => {
       isPerMeal: false,
       slotIds: lunches,
     })
+    // A legacy skipped slot on the ORIGINAL. Duplication used to copy `needed`
+    // verbatim, which would have propagated a hostile row into every copy made
+    // before the backfill; it now lets the column default instead.
     const day1Breakfast = slotOf(food, 1, 'breakfast')
-    await apiRequest(cookie, 'PATCH', `/api/lists/${listId}/food/slots/${day1Breakfast.id}`, {
-      needed: false,
-    })
+    await env.DB.prepare('update list_food_slots set needed = 0 where id = ?')
+      .bind(day1Breakfast.id)
+      .run()
 
     const dup = await apiRequest(cookie, 'POST', `/api/lists/${listId}/duplicate`)
     expect(dup.status).toBe(201)
@@ -442,8 +434,14 @@ describe('food: list duplication', () => {
 
     const copied = await getFood(cookie, copyId)
     expect(copied.slots).toHaveLength(15)
-    // The prune came with it.
-    expect(slotOf(copied, 1, 'breakfast').needed).toBe(false)
+    // The skip did NOT come with it: the copy's slot is usable.
+    const copiedBreakfast = slotOf(copied, 1, 'breakfast')
+    const copiedNeeded = await env.DB.prepare(
+      'select needed from list_food_slots where id = ?',
+    )
+      .bind(copiedBreakfast.id)
+      .first<{ needed: number }>()
+    expect(copiedNeeded?.needed).toBe(1)
     // ONE item, five associations, 500 g - not five items and not 2500 g.
     expect(copied.items).toHaveLength(1)
     expect(copied.items[0]!.slotIds).toHaveLength(5)
@@ -630,12 +628,14 @@ describe('food crosses the public share boundary as rows, and the plan does not'
   })
 })
 
-describe('food: the fourth state is unreachable at the database', () => {
-  it('rejects an association insert against a pruned slot', async () => {
-    // The repo's needed=true read is a PRECHECK - a concurrent prune can commit
-    // between it and the insert batch. The needed_only trigger is what actually
-    // guarantees "deliberately skipped" never coexists with food, so this drives
-    // the write path directly rather than trusting the read.
+describe('food: the legacy trigger still refuses politely', () => {
+  it('rejects a reschedule onto a slot left skipped by the old feature', async () => {
+    // The 0017 needed_only trigger, driven through the RESCHEDULE path rather
+    // than the create path. Nothing can write needed=0 any more, so the setup
+    // is a raw UPDATE standing in for a row written before the Skip feature was
+    // removed. Until the backfill migration lands, this is what a legacy
+    // skipped slot does to a reschedule: a 400, with the item's existing
+    // placement left intact rather than cleared.
     const { cookie } = await signUpVerifiedUser('food-race@example.com', 'FR')
     const listId = await createList(cookie, 'Trip')
     await setDays(cookie, listId, 2)
@@ -652,10 +652,10 @@ describe('food: the fourth state is unreachable at the database', () => {
       })
     ).json()) as FoodItemResponse
 
-    // ...then the lunch slot is pruned, and we try to reschedule onto it.
-    await apiRequest(cookie, 'PATCH', `/api/lists/${listId}/food/slots/${lunch.id}`, {
-      needed: false,
-    })
+    // ...then the lunch slot is a legacy skipped row, and we reschedule onto it.
+    await env.DB.prepare('update list_food_slots set needed = 0 where id = ?')
+      .bind(lunch.id)
+      .run()
     const res = await apiRequest(
       cookie,
       'PATCH',

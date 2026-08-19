@@ -9,9 +9,11 @@
 // rewrites the address bar, so the merge is invisible to anyone returning to
 // an old link.
 //
-// Food joined as a peer view 2026-08: food planning got its own surface to
-// track dietary needs, preferences, restrictions, and meal planning separate
-// from gear. See docs/food-view-design.md.
+// Food joined as a peer view 2026-08. It is a WEIGHT ESTIMATE with a schedule
+// attached - what you carry, and which meals you eat it at - not a meal
+// planner. There are no dietary needs, preferences or restrictions here, and
+// an earlier version of this comment claimed all three; none of them has ever
+// existed in this build. See docs/food-view-design.md, a dated record.
 export type ListDetailMode = 'edit' | 'pack' | 'food'
 
 // The human-facing names. NOTE: ListViewNav holds its own VIEWS array with

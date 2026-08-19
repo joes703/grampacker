@@ -10,9 +10,8 @@ afterEach(cleanup)
 const slot = (
   id: string,
   meal: FoodSlotResponse['meal'],
-  needed = true,
   dayNumber = 1,
-): FoodSlotResponse => ({ id, dayNumber, meal, needed })
+): FoodSlotResponse => ({ id, dayNumber, meal })
 
 const item = (
   over: Partial<FoodItemResponse> & { id: string; name: string },
@@ -42,7 +41,6 @@ const baseProps = {
   day: 1,
   weightUnit: 'g' as const,
   busy: false,
-  onSetSlotNeeded: vi.fn(),
   onAddToSlot: vi.fn(),
 }
 
@@ -153,86 +151,43 @@ describe('FoodDaySection day total', () => {
 })
 
 describe('FoodDaySection empty slot', () => {
-  it('offers + Add on an empty needed slot, preselecting it', async () => {
+  it('offers + Add on an empty slot, preselecting it', async () => {
     const user = userEvent.setup()
     const props = renderDay()
     await user.click(within(dinnerRow()).getByRole('button', { name: /add/i }))
     expect(props.onAddToSlot).toHaveBeenCalledWith('d1')
   })
-
-  it('marks an empty needed slot with the omission badge', () => {
-    renderDay()
-    expect(within(dinnerRow()).getByText('Nothing planned')).toBeInTheDocument()
-  })
 })
 
-describe('FoodDaySection skip / restore', () => {
-  it('reads Skip and Restore, not the old labels', () => {
+describe('FoodDaySection has no plan-completeness opinion', () => {
+  // The Skip button and the "Nothing planned" badge were one feature: a
+  // warning, and a control whose only job was to silence it. Neither ever
+  // changed the packing list or a weight. A meal you are eating in town and a
+  // meal you have not thought about yet are now the same thing - an empty row.
+  it('does not warn about an empty meal', () => {
     renderDay()
-    expect(screen.getAllByRole('button', { name: 'Skip' }).length).toBeGreaterThan(0)
-    expect(screen.queryByText('Not needed')).not.toBeInTheDocument()
-    expect(screen.queryByText('Need it')).not.toBeInTheDocument()
+    expect(screen.queryByText('Nothing planned')).toBeNull()
   })
 
-  it('confirms with the moved, reworded copy before unscheduling a filled slot', async () => {
-    const user = userEvent.setup()
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    const props = renderDay()
-    const lunch = screen.getByText('Lunch').closest('div')!
-    await user.click(within(lunch).getByRole('button', { name: 'Skip' }))
-
-    expect(confirmSpy).toHaveBeenCalledWith(
-      'Lunch on day 1 has food planned for it. Skipping it unschedules that ' +
-        'food - it stays on the list and still counts toward your pack ' +
-        'weight. Continue?',
-    )
-    expect(props.onSetSlotNeeded).not.toHaveBeenCalled()
-    confirmSpy.mockRestore()
+  it('offers no way to skip or restore a meal', () => {
+    renderDay()
+    expect(screen.queryByRole('button', { name: 'Skip' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull()
+    expect(screen.queryByText('Skipped')).toBeNull()
   })
 
-  it('does not confirm when skipping an empty slot', async () => {
-    const user = userEvent.setup()
-    const confirmSpy = vi.spyOn(window, 'confirm')
-    const props = renderDay()
-    await user.click(within(dinnerRow()).getByRole('button', { name: 'Skip' }))
-
-    expect(confirmSpy).not.toHaveBeenCalled()
-    expect(props.onSetSlotNeeded).toHaveBeenCalledWith('d1', false)
-    confirmSpy.mockRestore()
-  })
-
-  it('restores a skipped slot without confirming', async () => {
-    const user = userEvent.setup()
-    const confirmSpy = vi.spyOn(window, 'confirm')
-    const props = renderDay({
-      slots: [slot('b1', 'breakfast', false), slot('l1', 'lunch'), slot('d1', 'dinner')],
-    })
-    await user.click(screen.getByRole('button', { name: 'Restore' }))
-
-    expect(confirmSpy).not.toHaveBeenCalled()
-    expect(props.onSetSlotNeeded).toHaveBeenCalledWith('b1', true)
-    confirmSpy.mockRestore()
-  })
-})
-
-describe('FoodDaySection three states', () => {
-  it('renders skipped, empty and filled distinguishably', () => {
-    renderDay({
-      slots: [slot('b1', 'breakfast', false), slot('l1', 'lunch'), slot('d1', 'dinner')],
-    })
-    expect(screen.getByText('Skipped')).toBeInTheDocument()
-    expect(screen.getByText('Breakfast')).toHaveClass('line-through')
-    expect(screen.getByText('Nothing planned')).toBeInTheDocument()
+  it('renders an empty meal and a filled one, with nothing struck through', () => {
+    renderDay()
     expect(screen.getByText('Trail mix')).toBeInTheDocument()
+    expect(screen.getByText('Breakfast')).not.toHaveClass('line-through')
+    expect(screen.getByText('Dinner')).not.toHaveClass('line-through')
   })
 
   it('never claims a filled slot is complete', () => {
     // A breakfast holding only coffee is non-empty and not necessarily
     // enough - there is deliberately no "complete" tick on a filled slot;
     // judging that is the user's job, not the app's.
-    renderDay({
-      slots: [slot('b1', 'breakfast', false), slot('l1', 'lunch'), slot('d1', 'dinner')],
-    })
+    renderDay()
     expect(screen.queryByLabelText(/complete/i)).toBeNull()
     expect(screen.queryByText(/✓/)).toBeNull()
   })
