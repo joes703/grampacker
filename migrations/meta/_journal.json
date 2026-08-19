@@ -176,6 +176,13 @@
       "when": 1786320000000,
       "tag": "0024_food-per-meal",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1787159037711,
+      "tag": "0025_snapshot_realign",
+      "breakpoints": true
     }
   ]
 }

@@ -91,9 +91,9 @@
 // Takes no arguments and reads no git state - what it checks is determined
 // entirely by the contents of the migrations directory.
 
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
@@ -1721,6 +1721,339 @@ const stripJsonComments = (text) => {
 //
 // An ABSENT migrations_dir is fine - wrangler's default is exactly this
 // directory. A present one has to agree.
+// Every migration in drizzle's journal must have its snapshot on disk, and the
+// journal must cover every .sql file in the directory.
+//
+// WHY THIS EXISTS
+// drizzle-kit decides what SQL to emit by diffing server/db/schema.ts against
+// the NEWEST snapshot in migrations/meta. A missing snapshot does not fail
+// anything at apply time - wrangler never reads meta/ - so the chain can rot in
+// total silence, and the damage only appears the next time somebody runs
+// `generate`.
+//
+// That is not hypothetical. 0018 and 0021-0024 were authored by hand and their
+// snapshots were never regenerated, so drizzle's idea of the schema froze at
+// 0020. By 0024, `generate` emitted a migration re-adding five columns and
+// three tables that already existed - which D1 rejects as `duplicate column
+// name`. Nothing went red, because nothing looked. Migration 0025 repaired the
+// chain; this check is what stops it happening again.
+//
+// It deliberately checks the JOURNAL against the DIRECTORY in both directions.
+// A .sql file with no journal entry is the other half of the same failure: the
+// next `generate` would hand out a number that is already taken.
+// First migration held to the snapshot rule. 0018 and 0021-0024 shipped
+// without one and no honest repair exists: a snapshot describes the schema AS
+// OF its migration, and reconstructing intermediate states after the fact
+// would fabricate a record of something nobody observed. They are already in
+// production and cannot change.
+//
+// Enforcement starts at 0025 because that is the migration that rebuilt
+// drizzle's basis. Missing INTERMEDIATE snapshots are harmless on their own -
+// drizzle only ever diffs against the effective latest one - so the floor
+// costs nothing. What broke was the latest basis being four migrations stale.
+const SNAPSHOT_ENFORCEMENT_FROM = 25
+
+// The snapshot file a journal entry owns.
+//
+// Derived from the entry's own TAG, not from `String(idx).padStart(4, '0')`.
+// Those agree under the default index prefix and diverge under
+// `--prefix timestamp` / `--prefix unix`, where the padded idx would name a
+// file that does not exist and this check would reject a legitimate migration.
+const snapshotNameForEntry = (entry) => `${String(entry.tag).split('_')[0]}_snapshot.json`
+
+// The drizzle snapshot chain: every migration accounted for in BOTH
+// directions, no orphans, and the basis drizzle actually diffs against being
+// the current one.
+//
+// WHY THIS EXISTS
+// drizzle-kit decides what SQL to emit by diffing server/db/schema.ts against
+// the newest snapshot in migrations/meta. Nothing at apply time reads meta/ -
+// wrangler does not know it exists - so the chain can rot in total silence,
+// and the damage only appears the next time somebody runs `generate`.
+//
+// That is not hypothetical. 0018 and 0021-0024 were hand-authored without
+// snapshots, so drizzle's view froze at 0020. By 0024 `generate` emitted a
+// migration re-adding five columns and three tables that already existed,
+// which D1 rejects as `duplicate column name`. Nothing went red, because
+// nothing looked. 0025 rebuilt the basis; this keeps it rebuilt.
+//
+// This function proves BOOKKEEPING ONLY. It cannot speak for a snapshot's
+// CONTENTS: `generate --custom` copies its predecessor forward, so a
+// schema-changing migration written by hand can ship a stale snapshot and
+// satisfy every rule here. verifySnapshotMatchesSchema() covers that, and the
+// two are only sufficient together.
+const verifySnapshotChainIntact = () => {
+  const metaDir = join(MIGRATIONS_DIR, 'meta')
+  const journalPath = join(metaDir, '_journal.json')
+  let journal
+  try {
+    journal = JSON.parse(readFileSync(journalPath, 'utf8'))
+  } catch (error) {
+    throw new Error(
+      `${journalPath} could not be read or parsed, so the drizzle snapshot ` +
+        `chain cannot be verified: ${error.message}`,
+    )
+  }
+
+  // Structure, before anything indexes into it. Parsed-but-wrong JSON would
+  // otherwise surface as a raw TypeError from inside a loop below, which reads
+  // like a bug in this script rather than a broken journal.
+  if (journal === null || typeof journal !== 'object' || Array.isArray(journal)) {
+    throw new Error(`${journalPath} is not a JSON object.`)
+  }
+  const entries = journal.entries
+  if (!Array.isArray(entries)) {
+    throw new Error(`${journalPath} has no "entries" array.`)
+  }
+  entries.forEach((entry, i) => {
+    if (entry === null || typeof entry !== 'object') {
+      throw new Error(`${journalPath} entry ${i} is not an object.`)
+    }
+    if (!Number.isInteger(entry.idx)) {
+      throw new Error(`${journalPath} entry ${i} has no integer "idx".`)
+    }
+    if (typeof entry.tag !== 'string' || entry.tag.length === 0) {
+      throw new Error(`${journalPath} entry ${entry.idx} has no "tag".`)
+    }
+  })
+
+  // Journal INVARIANTS, not just field types. drizzle derives the next index
+  // from the LAST entry in the array - not from the maximum idx - so an
+  // out-of-order or duplicated journal makes the next generate reuse a number
+  // and overwrite an existing snapshot. Type checks alone let all of that
+  // through.
+  const seenIdx = new Set()
+  const seenTag = new Set()
+  const seenPrefix = new Map()
+  let previousIdx = null
+  for (const entry of entries) {
+    if (seenIdx.has(entry.idx)) {
+      throw new Error(`${journalPath} has two entries with idx ${entry.idx}.`)
+    }
+    seenIdx.add(entry.idx)
+    if (seenTag.has(entry.tag)) {
+      throw new Error(`${journalPath} has two entries tagged ${entry.tag}.`)
+    }
+    seenTag.add(entry.tag)
+    if (previousIdx !== null && entry.idx <= previousIdx) {
+      throw new Error(
+        `${journalPath} is out of order: idx ${entry.idx} follows ${previousIdx}. ` +
+          'drizzle takes the LAST entry to decide the next number, so the next ' +
+          'generate would reuse one and overwrite its snapshot.',
+      )
+    }
+    previousIdx = entry.idx
+    const prefix = snapshotNameForEntry(entry)
+    if (seenPrefix.has(prefix)) {
+      throw new Error(
+        `${journalPath}: ${seenPrefix.get(prefix)} and ${entry.tag} both map ` +
+          `to ${prefix}, so one snapshot would overwrite the other.`,
+      )
+    }
+    seenPrefix.set(prefix, entry.tag)
+  }
+
+  const failures = []
+  // EVERY file drizzle would consider, which is not the same as every file
+  // named *_snapshot.json: drizzle sorts all of meta/ except names starting
+  // with '_' and takes the last. So a stray `9999.json` becomes its basis
+  // while a *_snapshot.json filter looks straight past it.
+  const snapshots = new Set(
+    readdirSync(metaDir).filter((name) => !name.startsWith('_')),
+  )
+  const sqlFiles = new Set(
+    readdirSync(MIGRATIONS_DIR).filter((name) => name.endsWith('.sql')),
+  )
+
+  const expectedSnapshots = new Set()
+  for (const entry of entries) {
+    const expected = snapshotNameForEntry(entry)
+    expectedSnapshots.add(expected)
+
+    if (entry.idx >= SNAPSHOT_ENFORCEMENT_FROM && !snapshots.has(expected)) {
+      failures.push(
+        `journal entry ${entry.idx} (${entry.tag}) has no ${expected}. Use ` +
+          '`drizzle-kit generate` for a schema change and `generate --custom` ' +
+          'for a data-only one; both write the snapshot for you.',
+      )
+    }
+
+    // journal -> .sql. Without this a journal entry and snapshot can ship with
+    // no migration file: wrangler applies FILES, so the change never reaches a
+    // database, while drizzle's basis says it did - and the next generate
+    // therefore never emits it again.
+    if (!sqlFiles.has(`${entry.tag}.sql`)) {
+      failures.push(
+        `journal entry ${entry.idx} names ${entry.tag}.sql, which does not ` +
+          'exist. wrangler applies files, not journal entries, so this change ' +
+          "would never reach a database while drizzle's basis assumes it did.",
+      )
+    }
+  }
+
+  // .sql -> journal. The other direction: wrangler applies it either way, but
+  // drizzle does not know it exists and will hand its number out again.
+  const tagged = new Set(entries.map((entry) => `${entry.tag}.sql`))
+  for (const name of sqlFiles) {
+    if (!tagged.has(name)) {
+      failures.push(
+        `${name} is not registered in meta/_journal.json. wrangler applies it ` +
+          'either way, but drizzle does not know it exists and will reuse its ' +
+          'number.',
+      )
+    }
+  }
+
+  // Orphan snapshots, which matter more than they look: drizzle picks its
+  // basis by sorting snapshot FILENAMES and taking the last, with no reference
+  // to the journal at all. A stray 9999_snapshot.json silently becomes the
+  // schema every future generate diffs against.
+  for (const name of snapshots) {
+    if (!expectedSnapshots.has(name)) {
+      failures.push(
+        `${name} has no journal entry. drizzle selects its basis by sorting ` +
+          'snapshot filenames, so an orphan can silently become the schema it ' +
+          'diffs against.',
+      )
+    }
+  }
+
+  // The basis drizzle will actually use must belong to the newest migration.
+  // Compared by sorted FILENAME because that is what drizzle does - not by max
+  // idx, which is what a reader assumes and is not the same thing under a
+  // non-default prefix.
+  const newestEntry = entries.reduce(
+    (max, entry) => (max === null || entry.idx > max.idx ? entry : max),
+    null,
+  )
+  const newestSnapshot = [...snapshots].sort().at(-1)
+  if (newestEntry && newestSnapshot) {
+    const expected = snapshotNameForEntry(newestEntry)
+    if (newestSnapshot !== expected) {
+      failures.push(
+        `drizzle's basis would be ${newestSnapshot}, but the newest migration ` +
+          `is ${newestEntry.tag}, whose snapshot is ${expected}. Every change ` +
+          'between them would be re-emitted by the next generate.',
+      )
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `The drizzle snapshot chain is broken:\n  ${failures.join('\n  ')}`,
+    )
+  }
+  console.log(
+    `OK: snapshot chain intact - ${entries.length} journal entries, each with ` +
+      'its .sql, no orphan snapshots, and the newest snapshot is the basis.',
+  )
+}
+
+// The snapshot's CONTENTS, which the bookkeeping check above cannot speak for.
+//
+// The hole it closes, concretely: `generate --custom` copies the previous
+// snapshot forward. That is correct for a data-only migration and wrong for
+// anything that changes the schema - so an author can run `--custom`,
+// hand-write an ALTER TABLE into it, and ship a snapshot that omits the
+// column. Every filename rule above still passes, and the next regular
+// `generate` re-emits the same ALTER against a database that already has it.
+// That is the 0021-0024 failure exactly, and filenames cannot see it.
+//
+// drizzle's own generator is the oracle: if the newest snapshot describes the
+// schema, generating produces nothing. Run against a COPY of meta/ in a temp
+// directory, so noticing a stale basis cannot itself write a migration into
+// the real tree as a side effect.
+// drizzle-kit's success line. Matched as a substring because the real output
+// carries a trailing emoji.
+const NO_CHANGES_MARKER = 'No schema changes, nothing to migrate'
+
+const verifySnapshotMatchesSchema = () => {
+  // Relative, and inside the repo, because drizzle-kit resolves --out against
+  // the cwd by prefixing './': an absolute /tmp path becomes './/tmp/...' and
+  // the run dies on ENOENT. mkdtemp in the system temp dir is the obvious
+  // choice here and does not work.
+  const probeDir = `.snapshot-probe-${process.pid}`
+  try {
+    rmSync(probeDir, { recursive: true, force: true })
+    cpSync(join(MIGRATIONS_DIR, 'meta'), join(probeDir, 'meta'), { recursive: true })
+    // --dialect and --schema explicitly: passing --out on the CLI stops
+    // drizzle-kit reading them from drizzle.config.ts, and it exits with
+    // "Please provide required params" rather than falling back.
+    //
+    // Both streams captured, and NOT through run(): drizzle-kit catches several
+    // generation failures - a malformed snapshot, a rename prompt it cannot
+    // show on a non-TTY - prints them, and exits 0. Trusting the exit code
+    // means those land here as "no .sql was emitted", which this function would
+    // report as success. So the test is the presence of the SUCCESS MARKER,
+    // never the absence of failure.
+    //
+    // spawnSync, not execFileSync: execFileSync RETURNS stdout only. Piping
+    // stderr does not fold it into that return value - it is reachable only
+    // through the thrown error, and only when the child exits nonzero. Since
+    // the whole point here is the case where drizzle prints an error and exits
+    // ZERO, execFileSync would leave the diagnostic below empty exactly when it
+    // is needed.
+    const probe = spawnSync(
+      'npx',
+      [
+        'drizzle-kit',
+        'generate',
+        '--dialect',
+        'sqlite',
+        '--schema',
+        './server/db/schema.ts',
+        '--out',
+        probeDir,
+        '--name',
+        'probe',
+      ],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    )
+    if (probe.error) {
+      throw new Error(
+        `drizzle-kit generate could not be run, so the snapshot could not be ` +
+          `checked against server/db/schema.ts: ${probe.error.message}`,
+      )
+    }
+    const output = [probe.stdout, probe.stderr].filter(Boolean).join('\n')
+    if (probe.status !== 0) {
+      throw new Error(
+        `drizzle-kit generate failed, so the snapshot could not be checked ` +
+          `against server/db/schema.ts:\n${output.trim() || `exit ${probe.status}`}`,
+      )
+    }
+
+    const emitted = readdirSync(probeDir).filter((name) => name.endsWith('.sql'))
+    if (emitted.length === 0 && !output.includes(NO_CHANGES_MARKER)) {
+      throw new Error(
+        'drizzle-kit generate emitted no migration AND did not report ' +
+          `"${NO_CHANGES_MARKER}", so it did not actually compare anything. ` +
+          'It exits 0 after catching some failures, so silence here is not ' +
+          `proof the snapshot is current. Its output was:\n\n${output.trim()}`,
+      )
+    }
+    if (emitted.length > 0) {
+      const body = readFileSync(join(probeDir, emitted[0]), 'utf8').trim()
+      throw new Error(
+        'The newest drizzle snapshot does not describe server/db/schema.ts, so ' +
+          '`drizzle-kit generate` would emit SQL for changes that are already ' +
+          'in the migrations:\n\n' +
+          body
+            .split('\n')
+            .map((line) => `    ${line}`)
+            .join('\n') +
+          '\n\nThat is the 0021-0024 rot in miniature: a migration whose ' +
+          'snapshot was copied forward by `generate --custom` rather than ' +
+          'produced by `generate`. Regenerate the snapshot for the migration ' +
+          'that changed the schema.',
+      )
+    }
+    console.log('OK: newest snapshot matches server/db/schema.ts.')
+  } finally {
+    rmSync(probeDir, { recursive: true, force: true })
+  }
+}
+
 const verifyMigrationsDirIsPinned = () => {
   let config
   try {
@@ -3114,6 +3447,8 @@ const main = () => {
   selfTestExpectedValues()
   selfTestConstraintCompare()
   verifyMigrationsDirIsPinned()
+  verifySnapshotChainIntact()
+  verifySnapshotMatchesSchema()
   validateExpectedChanges(
     new Set([...PRE_GATE_MIGRATIONS.keys(), ...postBaselineMigrations()]),
   )

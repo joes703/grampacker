@@ -1,0 +1,44 @@
+-- INTENTIONALLY EMPTY. This migration exists for its SNAPSHOT, not its SQL.
+--
+-- drizzle-kit diffs `server/db/schema.ts` against the newest snapshot in
+-- migrations/meta to decide what SQL to emit. That chain went stale: snapshots
+-- stop at 0020, while _journal.json registers migrations through 0024. 0018
+-- and 0021-0024 were authored by hand and their snapshots were never
+-- regenerated, so drizzle's idea of the schema froze four migrations ago.
+--
+-- The consequence was not cosmetic. Running `drizzle-kit generate` in that
+-- state emitted a migration re-creating `_food_rank_repair`,
+-- `_food_pack_reorder_guard` and `_food_location_delete_state` and re-adding
+-- `is_per_meal`, `is_packed`, `is_ready`, `packing_location_id` and
+-- `pack_sort_order` to `list_food_items` - every one of which a scratch D1
+-- with all migrations applied confirms already exists. On D1 that fails with
+-- `duplicate column name`, and the next person to run the tool would have had
+-- to work out why before they could ship anything.
+--
+-- The fix has to ride a migration because a snapshot is only ever written
+-- alongside one. `generate --custom` does NOT work: it copies the previous
+-- snapshot forward, preserving the drift. So this file was produced by a real
+-- `generate` - its snapshot correctly describes the Drizzle-MODELED schema,
+-- which is not the whole schema: triggers and WITHOUT ROWID are real parts of
+-- this database that Drizzle does not represent at all - and its SQL body,
+-- which would have re-created objects that already exist, was replaced with
+-- this note.
+--
+-- The schema this migration's snapshot claims is real. Migrations 0021-0024
+-- built it; nothing here needs to build it again. What changes is that
+-- drizzle now knows where the schema actually is, so the NEXT `generate`
+-- emits a truthful diff instead of four migrations' worth of duplicates.
+--
+-- Verified 2026-08-19: with this snapshot in place, `drizzle-kit generate`
+-- reports "No schema changes, nothing to migrate".
+--
+-- A hand-written migration still needs its snapshot. That omission is what
+-- rotted here, and AGENTS.md now says so.
+--
+-- The SELECT below is not decoration. A migration file has to contain at least
+-- one STATEMENT: `wrangler d1 migrations apply` tolerates a comment-only file,
+-- but `applyD1Migrations` from cloudflare:test - the path the API suite uses -
+-- rejects it with `D1_ERROR: SQL code did not contain a statement`, which took
+-- all 25 API test files down with it. The two appliers disagree, so the file
+-- has to satisfy the stricter one.
+SELECT 1;
