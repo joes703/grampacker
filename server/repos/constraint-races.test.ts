@@ -6,6 +6,8 @@ import { createListItemsRepo } from './list-items'
 import { createPackReorderRepo } from './pack-reorder'
 import { createPackingLocationsRepo } from './packing-locations'
 import { createListsRepo } from './lists'
+import { eq } from 'drizzle-orm'
+import { listFoodItemSlots } from '../db/app-schema'
 import { listItemFailure } from '../routes/lists'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
@@ -314,6 +316,22 @@ describe('food updateItem loses a race', () => {
     )
     const result = await repo.updateItem(listId, itemId, { slotIds: [otherSlot] })
     expect(result).toEqual({ ok: false, reason: 'invalid_slots' })
+
+    // The status is only half of it. updateItem replaces associations by
+    // DELETING every existing link and inserting the submitted set in ONE
+    // batch, so a failure partway must roll the delete back - otherwise a
+    // rejected reschedule silently unschedules the item instead of leaving it
+    // alone.
+    //
+    // A retired API test used to cover this via a slot left at needed=0; that
+    // column is gone (0027) and the test went with it, but the invariant did
+    // not - the trimmed-slot race reaches the same code path, so the assertion
+    // moves here rather than being lost.
+    const links = await raw()
+      .select({ slotId: listFoodItemSlots.slotId })
+      .from(listFoodItemSlots)
+      .where(eq(listFoodItemSlots.foodItemId, itemId))
+    expect(links.map((l) => l.slotId)).toEqual([slotId])
   })
 
   it('an FK nothing explains rethrows instead of blaming the client', async () => {

@@ -1506,14 +1506,15 @@ function ListDetailInner({
       // feature became unconditional, the flag was pinned true here, and the
       // prop is now gone from every consumer.
       //
-      // The lists.ready_checks_enabled COLUMN stays, and is now inert. It is
-      // no longer read, written, accepted on PATCH, or returned; dropping it
-      // means a SQLite table rebuild, and a rebuild of `lists`
-      // cascade-deletes list_items (AGENTS.md). is_ready on each item was
-      // always persisted independently of it, so a list that had ready checks
-      // on, collected some ticks, then turned them off gets those ticks back
-      // rather than a reset - the honest outcome, since the data was never
-      // deleted, only hidden.
+      // The lists.ready_checks_enabled COLUMN is GONE, dropped by migration
+      // 0027. This comment used to say it had to stay because dropping it
+      // meant a SQLite table rebuild that would cascade-delete list_items -
+      // true of a rebuild, and never true of `ALTER TABLE ... DROP COLUMN`,
+      // which rewrites rows in place and issues no DROP TABLE. is_ready on
+      // each item was always persisted independently of the flag, so a list
+      // that had ready checks on, collected some ticks, then turned them off
+      // gets those ticks back rather than a reset - the honest outcome, since
+      // the data was never deleted, only hidden.
       weightUnit,
       isBelowLg,
       // Injects the drag rendering. CategoryGroup itself has no @dnd-kit import

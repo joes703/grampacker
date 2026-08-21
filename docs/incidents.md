@@ -180,10 +180,18 @@ Why the destructive-DDL freeze: `deploy.yml` applies migrations and THEN
 deploys the Worker, so in between - and indefinitely if the deploy step
 fails - production runs the OLD code against the NEW schema, where a removed
 or renamed object breaks it. The eventual answer is expand/contract, where the
-removal lands in a later release than the code that stopped needing it; until
-that sequencing is machine-checkable (`docs/review-remediation-plan.md`,
-Phase 3) the gate blocks removals entirely. Dead objects accumulate on
-purpose. The gate scans the migrations DIRECTORY against a frozen baseline of
+removal lands in a later release than the code that stopped needing it.
+
+REVISED 2026-08-19. The freeze banned drops, rebuilds and renames together,
+because when it was written the rebuild had just cost this incident and the
+two had not been told apart. A native `ALTER TABLE ... DROP COLUMN` is not a
+rebuild: it rewrites rows in place, never issues `DROP TABLE`, and so fires no
+cascade (verified against sqlite3 3.46.1 with `foreign_keys=ON` inside a
+transaction). Rebuilds and renames remain banned outright. Column, trigger and
+index drops - and a `DROP TABLE` of a table nothing cascades from - now ship as
+a declared CONTRACT STEP one release after the reads went, enforced by
+`CONTRACT_MIGRATIONS` in `scripts/check-migration-safety.mjs`. Dead objects no
+longer accumulate on purpose; migration 0027 cleared the backlog. The gate scans the migrations DIRECTORY against a frozen baseline of
 the 21 pre-gate migrations, not a git diff, so a rejected migration is
 re-scanned on every run and cannot ride to production behind a later green
 commit. The `DROPPED_*` and `EXPECTED_TYPE_CHANGES` constants in

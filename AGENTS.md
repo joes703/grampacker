@@ -245,14 +245,55 @@ database is never deleted or recreated.
   rewrites that alter those observed behaviors, while rewrites to unexercised
   triggers - or to unexercised behavior within a probed one - still slip
   through.
-- **A new migration may NOT drop, rebuild, or rename anything, and may not
-  touch `d1_migrations`. No exceptions.** `npm run test:migrations` enforces
-  this and also replays every post-baseline migration against a seeded D1.
-  Additive DDL is fine; a new table needs a fixture row in
-  `scripts/check-migration-safety.mjs`. Dead objects accumulate on purpose
-  until expand/contract sequencing is machine-checkable. The reasons (deploy
-  ordering, the D1 cascade wipe, what the check can and cannot prove) are in
-  docs/incidents.md - read that section before writing any migration.
+- **A new migration may not REBUILD or RENAME anything, and may not touch
+  `d1_migrations`. No exceptions.** A rebuild is the SQLite 12-step recipe
+  drizzle-kit emits for a constraint change - `CREATE __new_x; copy;
+  DROP TABLE x; RENAME` - and on D1 the `PRAGMA foreign_keys=OFF` it wraps that
+  in is a no-op, so the `DROP TABLE` fires every child cascade and wipes the
+  data. Migration 0009 did exactly that to `list_items` in production. A column
+  TYPE or CHECK change is out for the same reason: SQLite can only do one
+  through a rebuild. A rename is a drop plus an add with no window where both
+  names work.
+- **`DROP COLUMN`, `DROP TRIGGER` and `DROP INDEX` are allowed as a CONTRACT
+  STEP, one release after the code that read them stopped shipping.** This is
+  narrower than it sounds and the distinction is load-bearing: native
+  `ALTER TABLE ... DROP COLUMN` is not a rebuild. It rewrites the table's rows
+  in place and never issues `DROP TABLE`, so no cascade fires - verified
+  against sqlite3 3.46.1 with `foreign_keys=ON` inside a transaction, which is
+  D1's exact setup. The blanket ban that used to stand here was written when
+  the rebuild had just cost an incident and the two operations had not been
+  told apart yet.
+
+  The constraint that survives is NOT SQLite's, it is ours: `deploy.yml`
+  applies migrations and THEN replaces the Worker, so between those steps -
+  indefinitely if `wrangler deploy` fails - production runs the OLD Worker
+  against the NEW schema. Drop a column in the same release that removed its
+  reads and every request touching it 500s in that window. Hence one release
+  later, never the same one.
+
+  `DROP TABLE` stays banned for any table another table cascades from. A
+  childless scratch table is not that, and may go.
+
+  A contract migration contains ONLY removals - no CREATE, no ADD COLUMN,
+  nothing additive. That is what keeps the cascade-parent check honest: it
+  reads incoming foreign keys from the schema as it stands BEFORE the migration,
+  so a file that could also create a referencing table would have a window the
+  check cannot see.
+
+  What the gate proves: rebuilds, renames and ledger writes rejected outright;
+  SQL matched against the declaration statement by statement; a cascade parent
+  refused on evidence read from the live schema; a declared trigger or index
+  proven to have existed before and to be gone after.
+
+  What it does NOT prove, and do not read a green check as proof of any of it:
+  that the previous release reached production (CI cannot see what is deployed -
+  `readsRemovedIn` is a human attestation); that a column is genuinely
+  unreferenced (the schema and raw-SQL scans are table-blind, so they
+  over-block rather than under-block, and a nested template can hide a
+  fragment); or that a trigger body still does what it did.
+- Dead objects no longer accumulate on purpose. The reasons behind all of this
+  (deploy ordering, the D1 cascade wipe, what the check can and cannot prove)
+  are in docs/incidents.md - read that section before writing any migration.
 - Never edit a migration that has shipped: production applied it by name and
   will never re-run it. The 21 baseline migrations are digest-pinned and fail
   closed on edit.
