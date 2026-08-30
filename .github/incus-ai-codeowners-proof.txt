@@ -1,0 +1,1 @@
+CODEOWNERS enforcement proof. This file must never be merged.
