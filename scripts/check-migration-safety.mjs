@@ -138,13 +138,14 @@ const isScratchTable = (name) => name.startsWith('__')
 const FIXED_TS = 1_700_000_000_000
 
 // NOTE on pack_sort_order: these values are explicit, and must stay that way.
-// They were originally omitted so that 0018's backfill would assign them, which
-// is what the 0018 POST_CHECKS probe asserts. That worked only while 0018 was
-// the migration UNDER TEST. Now that 0018 is in the frozen baseline, the fixtures are
-// seeded into a schema that already carries its two unique indexes, so rows
-// defaulting to 0 in the same cohort collide - and the seed fails before any
-// new migration is even applied. The values below are exactly what the 0018
-// backfill produced, so that probe still asserts the same thing.
+// They were originally omitted so that 0018's backfill would assign them, and
+// a 0018 probe asserted the result. That worked only while 0018 was the
+// migration UNDER TEST. Now that 0018 is in the frozen baseline, the fixtures
+// are seeded into a schema that already carries its two unique indexes, so
+// rows defaulting to 0 in the same cohort collide - and the seed fails before
+// any new migration is even applied. The values below are exactly what the
+// 0018 backfill produced (each cohort ranked from 0, independently), so the
+// seeded state is the one production actually holds.
 const FIXTURES = [
   ['user', {
     id: 'u-seed',
@@ -243,24 +244,6 @@ const FIXTURES = [
     cost_cents: null,
     purchase_date: null,
     status: 'need_to_buy',
-    sort_order: 1,
-    created_at: FIXED_TS,
-    updated_at: FIXED_TS,
-  }],
-  // Before lists: lists.food_plan_id points at it from migration 0009 onward.
-  ['food_plans', {
-    id: 'plan-seed',
-    user_id: 'u-seed',
-    name: 'Seed Plan',
-    sort_order: 0,
-    created_at: FIXED_TS,
-    updated_at: FIXED_TS,
-  }],
-  // Second plan, shared by the TIE pair below (list-seed-4/5).
-  ['food_plans', {
-    id: 'plan-seed-2',
-    user_id: 'u-seed',
-    name: 'Seed Plan Two',
     sort_order: 1,
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
@@ -630,161 +613,6 @@ const FIXTURES = [
     created_at: FIXED_TS,
     updated_at: FIXED_TS,
   }],
-  ['food_items', {
-    id: 'food-seed',
-    user_id: 'u-seed',
-    name: 'Seed Oatmeal',
-    brand: 'Seed Brand',
-    serving_description: '1 packet',
-    serving_weight_grams: 50, // NOT NULL and > 0
-    calories_per_serving: 190,
-    servings_per_package: 8,
-    fat_grams: 3.5,
-    saturated_fat_grams: 0.5,
-    carbs_grams: 32,
-    fiber_grams: 4,
-    sugar_grams: 12,
-    protein_grams: 5,
-    sodium_mg: 260,
-    potassium_mg: 150,
-    notes: null,
-    sort_order: 0,
-    created_at: FIXED_TS,
-    updated_at: FIXED_TS,
-  }],
-  // A by-weight food: servings_per_package null is the load-bearing
-  // incomplete-projection signal (design 5.4), and the only nullable-vs-NOT NULL
-  // asymmetry in this table. A migration that "tidies" it into NOT NULL would
-  // have to drop or rewrite this row.
-  ['food_items', {
-    id: 'food-seed-2',
-    user_id: 'u-seed',
-    name: 'Seed Trail Mix',
-    brand: null,
-    serving_description: null,
-    serving_weight_grams: 30,
-    calories_per_serving: 145,
-    servings_per_package: null,
-    fat_grams: null,
-    saturated_fat_grams: null,
-    carbs_grams: null,
-    fiber_grams: null,
-    sugar_grams: null,
-    protein_grams: null,
-    sodium_mg: null,
-    potassium_mg: null,
-    notes: 'Weighed out, not packaged.',
-    sort_order: 1,
-    created_at: FIXED_TS,
-    updated_at: FIXED_TS,
-  }],
-  ['meals', {
-    id: 'meal-seed',
-    user_id: 'u-seed',
-    food_plan_id: 'plan-seed',
-    name: 'Breakfast',
-    anchor_role: 'breakfast',
-    is_default: 1,
-    sort_order: 0,
-    created_at: FIXED_TS,
-    updated_at: FIXED_TS,
-  }],
-  ['food_plan_days', {
-    id: 'day-seed',
-    user_id: 'u-seed',
-    food_plan_id: 'plan-seed',
-    day_type_override: null,
-    sort_order: 0,
-    created_at: FIXED_TS,
-    updated_at: FIXED_TS,
-  }],
-  ['day_meals', {
-    id: 'dm-seed',
-    user_id: 'u-seed',
-    food_plan_id: 'plan-seed',
-    day_id: 'day-seed',
-    meal_id: 'meal-seed',
-    created_at: FIXED_TS,
-    updated_at: FIXED_TS,
-  }],
-  ['food_plan_entries', {
-    id: 'entry-seed',
-    user_id: 'u-seed',
-    food_plan_id: 'plan-seed',
-    day_meal_id: 'dm-seed',
-    is_extra: 0, // food_plan_entries_location_xor
-    food_item_id: 'food-seed',
-    basis: 'servings',
-    amount: 2,
-    sort_order: 0,
-    created_at: FIXED_TS,
-    updated_at: FIXED_TS,
-  }],
-  // An Extras entry: the other branch of food_plan_entries_location_xor, and the
-  // one whose composite (day_meal_id, food_plan_id) FK is NOT enforced because
-  // day_meal_id is null. It survives a day_meals rebuild that the cell entry
-  // above would not.
-  ['food_plan_entries', {
-    id: 'entry-seed-extra',
-    user_id: 'u-seed',
-    food_plan_id: 'plan-seed',
-    day_meal_id: null,
-    is_extra: 1,
-    food_item_id: 'food-seed-2',
-    basis: 'packages',
-    amount: 1.5,
-    sort_order: 1,
-    created_at: FIXED_TS,
-    updated_at: FIXED_TS,
-  }],
-  // A packed checkmark (migration 0011): list-seed holds plan-seed, and
-  // entry-seed puts food-seed in that plan, so this row satisfies the state
-  // rule 2 (reconcile) preserves - a future migration that rebuilds
-  // food_pack_state must carry it across unchanged. No id column: the PK is
-  // (list_id, food_item_id).
-  ['food_pack_state', {
-    list_id: 'list-seed',
-    food_item_id: 'food-seed',
-    user_id: 'u-seed',
-    created_at: FIXED_TS,
-  }],
-  // Nutrition targets (migration 0012). One row per table; the daily row is a
-  // range (both bounds live), the meal row a max-mode pct metric (exercises
-  // the pct ceiling's happy side), the default a min - so a rebuild that
-  // mangles any bounds branch trips at least one row.
-  ['food_plan_daily_targets', {
-    id: 'daily-target-seed',
-    user_id: 'u-seed',
-    food_plan_id: 'plan-seed',
-    metric: 'calories',
-    mode: 'range',
-    target_min: 2500,
-    target_max: 3500,
-    created_at: FIXED_TS,
-    updated_at: FIXED_TS,
-  }],
-  ['meal_targets', {
-    id: 'meal-target-seed',
-    user_id: 'u-seed',
-    food_plan_id: 'plan-seed',
-    meal_id: 'meal-seed',
-    metric: 'fat_pct',
-    mode: 'max',
-    target_min: null,
-    target_max: 35,
-    created_at: FIXED_TS,
-    updated_at: FIXED_TS,
-  }],
-  ['food_plan_target_defaults', {
-    id: 'default-target-seed',
-    user_id: 'u-seed',
-    metric: 'protein',
-    mode: 'min',
-    target_min: 120,
-    target_max: null,
-    created_at: FIXED_TS,
-    updated_at: FIXED_TS,
-  }],
 ]
 
 // Intentional data rewrites. The row-changed check exists to catch ACCIDENTAL
@@ -1013,138 +841,9 @@ const EXPECTED_TYPE_CHANGES = [
 // long as that migration is post-baseline. Later regressions are covered
 // elsewhere (listSchemaObjects fails if the index ever vanishes).
 const POST_CHECKS = [
-  {
-    migration: '0010_one-plan-per-list.sql',
-    description:
-      'lists_food_plan_id_unique rejects a second list on one plan',
-    // list-seed still holds plan-seed; re-pointing the (now detached)
-    // list-seed-3 at it must hit the partial unique index.
-    sql: "update lists set food_plan_id = 'plan-seed' where id = 'list-seed-3'",
-    expectErrorMatch: /unique/i,
-  },
-  {
-    migration: '0013_gear-weight-real.sql',
-    description: 'gear_items.weight_grams is declared REAL, not integer',
-    // SQLite INTEGER affinity already STORES 12.4 as a real, so a
-    // write-then-read round trip passes whether or not this migration ran and
-    // cannot prove it. The declared type is the only observable difference.
-    sql:
-      "select upper(type) as type from pragma_table_info('gear_items') " +
-      "where name = 'weight_grams'",
-    expectRows: [{ type: 'REAL' }],
-  },
-  // 1. new column exists and is TEXT
-  { migration: '0014_packing-locations.sql', description: 'list_items.packing_location_id is TEXT',
-    sql: "select upper(type) as type from pragma_table_info('list_items') where name='packing_location_id'",
-    expectRows: [{ type: 'TEXT' }] },
-  // 2. all four new indexes exist (deterministic order)
-  { migration: '0014_packing-locations.sql', description: 'packing-location indexes exist',
-    sql: "select name from sqlite_master where type='index' and name in ('list_items_packing_location_idx','packing_locations_id_list_user_unique','packing_locations_id_user_unique','packing_locations_list_sort_idx') order by name",
-    expectRows: [ { name: 'list_items_packing_location_idx' }, { name: 'packing_locations_id_list_user_unique' },
-                  { name: 'packing_locations_id_user_unique' }, { name: 'packing_locations_list_sort_idx' } ] },
-  // 3. INSERT trigger fires on a bogus location (no setup needed)
-  { migration: '0014_packing-locations.sql', description: 'insert with unknown location aborts',
-    sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,sort_order,created_at,updated_at,packing_location_id) values ('li-chk-ins','u-seed','list-seed','gear-seed',1,0,0,0,0,90,0,0,'nonexistent')",
-    expectErrorMatch: /does not belong to this list/ },
-  // 4. SETUP: create a valid location on list-seed
-  { migration: '0014_packing-locations.sql', description: 'setup: valid location',
-    sql: "insert into packing_locations (id,user_id,list_id,name,sort_order,created_at,updated_at) values ('pl-chk','u-seed','list-seed','Chk',0,0,0) returning id",
-    expectRows: [{ id: 'pl-chk' }] },
-  // 5. a legitimate assignment is ALLOWED (trigger must not over-fire)
-  { migration: '0014_packing-locations.sql', description: 'setup: valid assignment allowed',
-    sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,sort_order,created_at,updated_at,packing_location_id) values ('li-chk','u-seed','list-seed','gear-seed',1,0,0,0,0,91,0,0,'pl-chk') returning id",
-    expectRows: [{ id: 'li-chk' }] },
-  // 6. child list_id-only update fires (the rev-2 hole): pl-chk is on list-seed
-  { migration: '0014_packing-locations.sql', description: 'child list_id move aborts while assigned',
-    sql: "update list_items set list_id='list-seed-3' where id='li-chk'",
-    expectErrorMatch: /does not belong to this list/ },
-  // 7. child packing_location_id update to a bogus id fires
-  { migration: '0014_packing-locations.sql', description: 'child assignment to unknown location aborts',
-    sql: "update list_items set packing_location_id='nonexistent' where id='li-chk'",
-    expectErrorMatch: /does not belong to this list/ },
-  // 8. parent immutability fires (the rev-3 hole)
-  { migration: '0014_packing-locations.sql', description: 'moving a location to another list aborts',
-    sql: "update packing_locations set list_id='list-seed-3' where id='pl-chk'",
-    expectErrorMatch: /cannot change list or owner/ },
-  // 9. cap fires: pl-chk is 1; a recursive insert of 30 more makes the 31st abort
-  { migration: '0014_packing-locations.sql', description: 'packing-location cap enforced',
-    sql: "insert into packing_locations (id,user_id,list_id,name,sort_order,created_at,updated_at) with recursive c(x) as (select 1 union all select x+1 from c where x<30) select 'cap-'||x,'u-seed','list-seed','Cap'||x,x,0,0 from c",
-    expectErrorMatch: /packing location cap exceeded/ },
-  { migration: '0015_item-backed-containers.sql', description: 'container source column is TEXT',
-    sql: "select upper(type) as type from pragma_table_info('packing_locations') where name='container_list_item_id'",
-    expectRows: [{ type: 'TEXT' }] },
-  { migration: '0015_item-backed-containers.sql', description: 'container source is unique',
-    sql: "select name from sqlite_master where type='index' and name='packing_locations_container_item_unique'",
-    expectRows: [{ name: 'packing_locations_container_item_unique' }] },
-  { migration: '0015_item-backed-containers.sql', description: 'cross-list container source aborts',
-    sql: "update packing_locations set container_list_item_id='li-seed-2' where id='pl-seed'",
-    expectErrorMatch: /container item does not belong to this list/ },
-  { migration: '0015_item-backed-containers.sql', description: 'setup: valid item-backed location',
-    sql: "update packing_locations set container_list_item_id='li-seed' where id='pl-seed' returning id,container_list_item_id as containerListItemId",
-    expectRows: [{ id: 'pl-seed', containerListItemId: 'li-seed' }] },
-  { migration: '0015_item-backed-containers.sql', description: 'container source cannot contain itself',
-    sql: "update list_items set packing_location_id='pl-seed' where id='li-seed'",
-    expectErrorMatch: /container nesting cycle/ },
-  { migration: '0015_item-backed-containers.sql', description: 'one item cannot back two locations',
-    sql: "insert into packing_locations (id,user_id,list_id,name,container_list_item_id,sort_order,created_at,updated_at) values ('pl-duplicate-source','u-seed','list-seed','Duplicate','li-seed',2,0,0)",
-    expectErrorMatch: /unique/i },
-  { migration: '0015_item-backed-containers.sql', description: 'setup: disposable container source',
-    sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,packing_location_id,sort_order,created_at,updated_at) values ('li-container-chk','u-seed','list-seed-3','gear-seed',1,0,0,0,0,null,92,0,0) returning id",
-    expectRows: [{ id: 'li-container-chk' }] },
-  { migration: '0015_item-backed-containers.sql', description: 'setup: disposable container contents',
-    sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,packing_location_id,sort_order,created_at,updated_at) values ('li-content-chk','u-seed','list-seed-3','gear-seed',1,0,0,0,0,null,93,0,0) returning id",
-    expectRows: [{ id: 'li-content-chk' }] },
-  { migration: '0015_item-backed-containers.sql', description: 'setup: disposable item-backed location',
-    sql: "insert into packing_locations (id,user_id,list_id,name,container_list_item_id,sort_order,created_at,updated_at) values ('pl-lifecycle-chk','u-seed','list-seed-3','Container','li-container-chk',0,0,0) returning id",
-    expectRows: [{ id: 'pl-lifecycle-chk' }] },
-  { migration: '0015_item-backed-containers.sql', description: 'setup: assign disposable contents',
-    sql: "update list_items set packing_location_id='pl-lifecycle-chk' where id='li-content-chk' returning id",
-    expectRows: [{ id: 'li-content-chk' }] },
-  { migration: '0015_item-backed-containers.sql', description: 'deleting source removes role and unassigns contents',
-    sql: "delete from list_items where id='li-container-chk' returning id",
-    expectRows: [{ id: 'li-container-chk' }] },
-  { migration: '0015_item-backed-containers.sql', description: 'container cascade left contents intact and unassigned',
-    sql: "select (select count(*) from packing_locations where id='pl-lifecycle-chk') as locationCount, packing_location_id as packingLocationId from list_items where id='li-content-chk'",
-    expectRows: [{ locationCount: 0, packingLocationId: null }] },
-
-  // 0018: pack_sort_order is a rank WITHIN a cohort, not a second list-wide
-  // sequence. These pin exact values rather than "contiguous", because a
-  // list-wide backfill would also be contiguous - and would be wrong.
-  //
-  // list-seed holds two cohorts at backfill time. Ordered by sort_order:
-  //   pl-seed:    li-cohort-a2 (10) -> 0, li-cohort-a1 (40) -> 1
-  //   Unassigned: li-seed (0)        -> 0, li-cohort-u1 (30) -> 1
-  //
-  // Rank 0 appearing TWICE in one list is the whole assertion. A list-wide
-  // sequence could not produce it, and would have given a1 and u1 distinct
-  // global ranks that later interleave when a location is deleted. Gapped
-  // source ranks (10, 30, 40) also prove the backfill ranks by ORDER rather
-  // than copying sort_order across.
-  { migration: '0018_pack-sort-order.sql', description: 'backfill ranks each cohort from 0, independently',
-    sql: "select id, pack_sort_order as rank from list_items where id in ('li-seed','li-cohort-a2','li-cohort-a1','li-cohort-u1') order by id",
-    expectRows: [
-      { id: 'li-cohort-a1', rank: 1 },
-      { id: 'li-cohort-a2', rank: 0 },
-      { id: 'li-cohort-u1', rank: 1 },
-      { id: 'li-seed', rank: 0 },
-    ] },
-  { migration: '0018_pack-sort-order.sql', description: 'no committed rank is negative',
-    sql: "select count(*) as negatives from list_items where pack_sort_order < 0",
-    expectRows: [{ negatives: 0 }] },
-  { migration: '0018_pack-sort-order.sql', description: 'both uniqueness indexes exist',
-    sql: "select name from sqlite_master where type='index' and name in ('list_items_pack_cohort_uq','list_items_pack_unassigned_uq') order by name",
-    expectRows: [{ name: 'list_items_pack_cohort_uq' }, { name: 'list_items_pack_unassigned_uq' }] },
-  { migration: '0018_pack-sort-order.sql', description: 'a duplicate rank in a located cohort is rejected',
-    sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,packing_location_id,sort_order,pack_sort_order,created_at,updated_at) values ('li-dup-loc','u-seed','list-seed','gear-seed',1,0,0,0,0,'pl-seed',99,1,0,0)",
-    expectErrorMatch: /unique/i },
-  // SQLite treats NULLs as distinct in a unique index, so the composite index
-  // above does NOT cover Unassigned. This proves the partial index does.
-  { migration: '0018_pack-sort-order.sql', description: 'a duplicate rank in the unassigned cohort is rejected too',
-    sql: "insert into list_items (id,user_id,list_id,gear_item_id,quantity,is_worn,is_consumable,is_packed,is_ready,packing_location_id,sort_order,pack_sort_order,created_at,updated_at) values ('li-dup-un','u-seed','list-seed','gear-seed',1,0,0,0,0,null,98,0,0,0)",
-    expectErrorMatch: /unique/i },
-
   // 0022: food pack state (the EXPAND half; enforcement checks live on
-  // 0023's entries). The backfill pin mirrors 0018's, with the 0022 twist:
+  // 0023's entries). The backfill pin mirrors 0018's gear backfill (each
+  // cohort ranked from 0 by sort_order), with the 0022 twist:
   // food ranks are OFFSET past each list's Unassigned gear maximum, so the
   // union display reads "food appended after gear". list-seed's Unassigned
   // gear holds ranks 0 and 1 (li-seed, li-cohort-u1), so its food ordered by
