@@ -108,7 +108,7 @@ document at all.
 | Lint | `npm run lint` | ESLint. There is **no formatter** - do not add Prettier. |
 | Unit tests | `npm run test:unit` | Vitest over `scripts/**`, `shared/**`, `src/**`. Runs anywhere. |
 | API tests | `npm run test:api` | Vitest workers pool over `server/**`. Bindings come from `vitest.workers.config.ts`, not `.dev.vars`. |
-| Migration safety | `npm run test:migrations` | Required when anything under `migrations/` or the schema changes. |
+| Migration safety | `npm run test:migrations` | Required when anything under `migrations/` or the schema changes. Reads only the tracked `migrations/` tree - each pass stages its own copy - so it is safe to run alongside the other suites. |
 | Action pins | `npm run check:action-pins` | Verifies pinned action SHAs against upstream tags. Needs network; fails closed. |
 | YAML parse | `npm run check:yaml` | yamllint over `.github/`. Not schema validation. |
 | Dev server | `npm run dev` | SPA + `/api/*` + local D1 in one process. |
@@ -245,6 +245,18 @@ database is never deleted or recreated.
   rewrites that alter those observed behaviors, while rewrites to unexercised
   triggers - or to unexercised behavior within a probed one - still slip
   through.
+- **The harness runs every statement on D1, and batches only reads.** The
+  `POST_CHECKS` probes are the only behavioral coverage of trigger bodies in
+  the repo, so nothing may move to a stock SQLite build to make it faster - two
+  attempts died on that. What is cheap instead is sharing one
+  `wrangler d1 execute` launch between reads that observe the SAME state:
+  never across a seed, a probe or an apply, and never with a statement that
+  writes. Seeding, each probe and each apply keep their own launch. A pass
+  makes five read launches; a full run is 81 launches where it was 182. Each
+  pass stages the migrations it should see into its own directory beside a
+  generated wrangler config, so the tracked tree is only ever read - proven by
+  a recursive content digest compared before and after the run, on the failure
+  path as well as the happy one.
 - **A new migration may not REBUILD or RENAME anything, and may not touch
   `d1_migrations`. No exceptions.** A rebuild is the SQLite 12-step recipe
   drizzle-kit emits for a constraint change - `CREATE __new_x; copy;

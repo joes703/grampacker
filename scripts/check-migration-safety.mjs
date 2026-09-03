@@ -25,7 +25,8 @@
 //   2. Seeds one row into every table, so the database looks like production
 //      rather than like a fresh install.
 //   3. Applies every post-baseline migration - the same `wrangler d1 migrations
-//      apply` code path deploy.yml runs against production.
+//      apply` code path deploy.yml runs against production, pointed at a
+//      staged copy of the directory rather than the tracked one.
 //   4. Asserts every seeded row still exists AND still holds the same values
 //      in every column that existed beforehand.
 //
@@ -93,16 +94,44 @@
 // entries: the gate rejects the migrations they would describe, so an entry can
 // no longer excuse anything - it only looks like it can.
 //
+// HOW IT TALKS TO D1
+// ------------------
+// Every statement runs against local D1 through `wrangler d1 execute --local`,
+// including the ones that only read. Nothing here uses a second SQLite: the
+// probes below are the only behavioral coverage of trigger bodies this repo
+// has, and running them on another engine would prove something about that
+// engine instead.
+//
+// What it does NOT do is pay a process launch per statement. Reads that observe
+// the same database state ride one launch (batchReadSql), which is why a pass
+// makes five read launches rather than twenty. Writes never share a launch:
+// fixture seeding, every POST_CHECKS probe and every migration apply get their
+// own, because their individual failure text IS the assertion.
+//
+// Each pass stages the migrations it should see into a throwaway directory
+// beside a generated wrangler config. The tracked `migrations/` tree is only
+// ever read - hashed by contents before and after the run to prove it.
+//
 // Usage: node scripts/check-migration-safety.mjs
 //
 // Takes no arguments and reads no git state - what it checks is determined
 // entirely by the contents of the migrations directory.
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import {
+  copyFileSync,
+  cpSync,
+  mkdirSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, join, posix, relative } from 'node:path'
 
 const DB = 'grampacker'
 const MIGRATIONS_DIR = 'migrations'
@@ -1803,7 +1832,10 @@ const verifySnapshotMatchesSchema = () => {
   }
 }
 
-const verifyMigrationsDirIsPinned = () => {
+// wrangler.jsonc, parsed. Shared by the pin check below and by the per-pass
+// config generator, so both read the same file the same way and a rename in
+// one cannot drift from the other.
+const readTrackedConfig = () => {
   let config
   try {
     config = readFileSync('wrangler.jsonc', 'utf8')
@@ -1836,6 +1868,15 @@ const verifyMigrationsDirIsPinned = () => {
   // database_name could validate one entry's directory while wrangler applied a
   // different entry's - an earlier binding: "grampacker" would win there and
   // lose here.
+  return parsed
+}
+
+// The ONE d1_databases entry this script migrates. Matched on database_name OR
+// binding, because `wrangler d1 migrations apply <name>` accepts either and
+// takes the FIRST match. Selecting only on database_name could validate one
+// entry's directory while wrangler applied a different entry's - an earlier
+// binding: "grampacker" would win there and lose here.
+const selectOurD1Entry = (parsed) => {
   const databases = Array.isArray(parsed?.d1_databases) ? parsed.d1_databases : []
   const ours = databases.filter(
     (entry) => entry?.database_name === DB || entry?.binding === DB,
@@ -1847,9 +1888,138 @@ const verifyMigrationsDirIsPinned = () => {
         'directory cannot be verified.',
     )
   }
+  return ours[0]
+}
 
+// ---------------------------------------------------------------------------
+// The per-pass wrangler config and staged migrations directory.
+//
+// This script used to rewind the database by DELETING held-back migration files
+// out of the tracked `migrations/` tree and writing them back afterwards, with a
+// backup directory and signal handlers to survive a crash mid-rewind. Anything
+// else reading that directory during a run saw a truncated set: the API suite
+// migrates from it (vitest.workers.config.ts), and a concurrent run produced 114
+// failures. Wrangler resolves `migrations_dir` relative to the config file it is
+// given, so each pass now stages exactly the files it should see beside a
+// generated config and points wrangler at that instead. The tracked tree is only
+// ever read.
+
+// Backslashes FIRST, then posix.normalize - the order wrangler uses, and the
+// order that matters: on POSIX, path.normalize() does not treat `\` as a
+// separator, so normalizing first leaves `migrations\nested\*.sql` as ONE
+// component and every later comparison is made against the wrong shape.
+const normalizeRelPath = (value) => {
+  const normalized = posix.normalize(String(value).replace(/\\/g, '/')).replace(/\/+$/, '')
+  return normalized === '.' ? '' : normalized.replace(/^\.\//, '')
+}
+
+// The part of `path` below `dir`, or null when it is not below it. Uses
+// posix.relative rather than string surgery so `.`, doubled separators and a
+// similarly-named sibling all answer correctly: `migrations-old` starts with
+// `migrations` and is NOT inside it.
+const pathUnder = (dir, path) => {
+  const rel = posix.relative(normalizeRelPath(dir), normalizeRelPath(path))
+  if (rel === '' || rel.startsWith('../') || posix.isAbsolute(rel)) return null
+  return rel
+}
+
+// The tracked entry, with ONLY its migration paths pointed at the staged
+// directory. Copied wholesale rather than rebuilt field by field: a key this
+// function does not know about (preview_database_id today, something else after
+// the next wrangler release) must reach the generated config unchanged, or the
+// harness would apply migrations under a configuration production does not have.
+const rebaseD1Entry = (entry, stagedDir) => {
+  const rebased = { ...entry, migrations_dir: normalizeRelPath(stagedDir) }
+  const pattern = entry.migrations_pattern
+  if (pattern !== undefined) {
+    // Wrangler refuses a pattern with no migrations_dir outright. Substituting
+    // the default here would accept a config wrangler rejects.
+    if (entry.migrations_dir === undefined) {
+      throw new Error(
+        `wrangler.jsonc sets migrations_pattern "${pattern}" without a ` +
+          'migrations_dir. Wrangler rejects that combination; fix the config ' +
+          'rather than the harness.',
+      )
+    }
+    const tail = pathUnder(entry.migrations_dir, pattern)
+    if (tail === null) {
+      throw new Error(
+        `wrangler.jsonc sets migrations_pattern "${pattern}", which is not ` +
+          `inside migrations_dir "${entry.migrations_dir}". Wrangler rejects that ` +
+          'combination too (it requires the pattern to start with migrations_dir); ' +
+          'fix the config rather than the harness.',
+      )
+    }
+    rebased.migrations_pattern = `${normalizeRelPath(stagedDir)}/${tail}`
+  }
+  return rebased
+}
+
+// The ledger table wrangler will actually use. Defaulted, not assumed: an
+// assertion hard-coded to `d1_migrations` would read an empty table and pass
+// while wrangler wrote somewhere else entirely.
+// The tracked migration tree, hashed by CONTENTS, recursively.
+//
+// Names and sizes are not enough: a migration edited in place to something the
+// same length is exactly the mutation this exists to catch. `meta/` is included
+// because the snapshot chain lives there and a stray write would silently
+// rebase what the next `drizzle-kit generate` diffs against.
+const trackedTreeDigest = (dir = MIGRATIONS_DIR) => {
+  const hash = createHash('sha256')
+  const walk = (current, prefix) => {
+    const entries = readdirSync(current, { withFileTypes: true }).sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+    )
+    for (const entry of entries) {
+      const path = join(current, entry.name)
+      const label = `${prefix}${entry.name}`
+      if (entry.isDirectory()) {
+        hash.update(`d ${label}\n`)
+        walk(path, `${label}/`)
+      } else {
+        hash.update(`f ${label} `)
+        hash.update(readFileSync(path))
+        hash.update('\n')
+      }
+    }
+  }
+  walk(dir, '')
+  return hash.digest('hex')
+}
+
+const migrationsTableName = () =>
+  selectOurD1Entry(readTrackedConfig()).migrations_table ?? LEDGER_TABLE
+
+// Copies the named tracked migrations into the pass's own directory. Never the
+// other way round: nothing here writes to MIGRATIONS_DIR.
+const stageMigrationsDir = (dir, names) => {
+  const stagedDir = join(dir, 'migrations')
+  rmSync(stagedDir, { recursive: true, force: true })
+  mkdirSync(stagedDir, { recursive: true })
+  for (const name of names) {
+    copyFileSync(join(MIGRATIONS_DIR, name), join(stagedDir, name))
+  }
+  return stagedDir
+}
+
+const writeWranglerConfig = (dir, stagedDir) => {
+  const tracked = readTrackedConfig()
+  const config = {
+    name: tracked.name,
+    compatibility_date: tracked.compatibility_date,
+    compatibility_flags: tracked.compatibility_flags,
+    // migrations_dir is resolved relative to the config file, so the staged
+    // directory is named relative to it rather than absolutely.
+    d1_databases: [rebaseD1Entry(selectOurD1Entry(tracked), relative(dir, stagedDir))],
+  }
+  const path = join(dir, 'wrangler.json')
+  writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`)
+  return path
+}
+
+const verifyMigrationsDirIsPinned = () => {
   // Absent means wrangler's default, which is this directory.
-  const configured = ours[0].migrations_dir
+  const configured = selectOurD1Entry(readTrackedConfig()).migrations_dir
   if (configured !== undefined && configured !== MIGRATIONS_DIR) {
     throw new Error(
       `wrangler.jsonc sets migrations_dir to "${configured}" for "${DB}", ` +
@@ -2674,11 +2844,189 @@ const selfTestConstraintCompare = () => {
   }
 }
 
+// The generated per-pass config has to be the tracked one with its migration
+// paths moved, and nothing else changed. Pure, so it runs without a database.
+const selfTestConfigRebase = () => {
+  const failures = []
+  const cases = [
+    [
+      { binding: 'DB', database_name: 'grampacker', database_id: 'x', migrations_dir: 'migrations' },
+      { binding: 'DB', database_name: 'grampacker', database_id: 'x', migrations_dir: 'staged' },
+    ],
+    // Every unrelated key survives, including ones wrangler adds later.
+    [
+      { binding: 'DB', database_id: 'x', preview_database_id: 'p', remote: true, migrations_dir: 'migrations' },
+      { binding: 'DB', database_id: 'x', preview_database_id: 'p', remote: true, migrations_dir: 'staged' },
+    ],
+    // An explicit ledger table is carried through untouched.
+    [
+      { binding: 'DB', database_id: 'x', migrations_dir: 'migrations', migrations_table: 'my_ledger' },
+      { binding: 'DB', database_id: 'x', migrations_dir: 'staged', migrations_table: 'my_ledger' },
+    ],
+    // A pattern is rebased onto the staged directory, not rejected.
+    [
+      { binding: 'DB', database_id: 'x', migrations_dir: 'migrations', migrations_pattern: 'migrations/*/up.sql' },
+      { binding: 'DB', database_id: 'x', migrations_dir: 'staged', migrations_pattern: 'staged/*/up.sql' },
+    ],
+    // "./migrations" and "migrations" are one directory to wrangler, so they
+    // must be one directory here.
+    [
+      { binding: 'DB', database_id: 'x', migrations_dir: './migrations', migrations_pattern: './migrations/*.sql' },
+      { binding: 'DB', database_id: 'x', migrations_dir: 'staged', migrations_pattern: 'staged/*.sql' },
+    ],
+    // Doubled separators normalize away rather than producing an empty segment.
+    [
+      { binding: 'DB', database_id: 'x', migrations_dir: 'migrations', migrations_pattern: 'migrations//nested/*.sql' },
+      { binding: 'DB', database_id: 'x', migrations_dir: 'staged', migrations_pattern: 'staged/nested/*.sql' },
+    ],
+    // Windows separators, and mixed ones. These fail if normalization runs
+    // before backslash conversion: the pattern stays one component and the
+    // containment test compares the wrong shapes.
+    [
+      { binding: 'DB', database_id: 'x', migrations_dir: 'migrations', migrations_pattern: 'migrations\\nested\\*.sql' },
+      { binding: 'DB', database_id: 'x', migrations_dir: 'staged', migrations_pattern: 'staged/nested/*.sql' },
+    ],
+    [
+      { binding: 'DB', database_id: 'x', migrations_dir: '.\\migrations', migrations_pattern: 'migrations\\deep/nested\\*.sql' },
+      { binding: 'DB', database_id: 'x', migrations_dir: 'staged', migrations_pattern: 'staged/deep/nested/*.sql' },
+    ],
+  ]
+  for (const [input, want] of cases) {
+    let got
+    try {
+      got = rebaseD1Entry(input, 'staged')
+    } catch (error) {
+      failures.push(`${JSON.stringify(input)} threw: ${error.message}`)
+      continue
+    }
+    if (JSON.stringify(got) !== JSON.stringify(want)) {
+      failures.push(`${JSON.stringify(input)} -> ${JSON.stringify(got)}, want ${JSON.stringify(want)}`)
+    }
+  }
+  // Patterns that do not sit under migrations_dir are wrangler's own error
+  // case; the harness must not paper over them. `migrations-old` is the one a
+  // raw startsWith accepts and must not.
+  for (const pattern of ['elsewhere/*.sql', 'migrations-old/*.sql', '../migrations/*.sql']) {
+    try {
+      rebaseD1Entry({ migrations_dir: 'migrations', migrations_pattern: pattern }, 'staged')
+      failures.push(`pattern outside migrations_dir was accepted: ${pattern}`)
+    } catch {
+      // expected
+    }
+  }
+  // Wrangler rejects a pattern with no migrations_dir; so must this.
+  try {
+    rebaseD1Entry({ migrations_pattern: 'migrations/*.sql' }, 'staged')
+    failures.push('a pattern with no migrations_dir was accepted')
+  } catch {
+    // expected
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      'The generated wrangler config would not match the tracked one:\n' +
+        failures.map((f) => `  - ${f}`).join('\n'),
+    )
+  }
+}
+
+// Batched reads are only safe if a result can be trusted to be the result of
+// the statement it is attributed to. Pure: fabricated result sets, no database.
+const selfTestMarkedBatch = () => {
+  const failures = []
+  const nonce = 'n'
+  const marked = (i) => [{ __batch_marker: `${nonce}:${i}` }]
+  const good = [marked(0), [{ a: 1 }], marked(1), [{ b: 2 }]]
+
+  const parsed = parseMarkedBatch(2, good, nonce)
+  if (JSON.stringify(parsed) !== JSON.stringify([[{ a: 1 }], [{ b: 2 }]])) {
+    failures.push(`well-formed batch parsed as ${JSON.stringify(parsed)}`)
+  }
+
+  const cases = [
+    ['a missing result set', [marked(0), [{ a: 1 }], marked(1)]],
+    ['an extra result set', [...good, [{ c: 3 }]]],
+    ['reordered results', [marked(1), [{ b: 2 }], marked(0), [{ a: 1 }]]],
+    ['a marker from another call', [[{ __batch_marker: 'other:0' }], [{ a: 1 }], marked(1), [{ b: 2 }]]],
+    ['a marker row that is not a marker', [[{ a: 1 }], [{ a: 1 }], marked(1), [{ b: 2 }]]],
+    ['a marker set with two rows', [[...marked(0), { __batch_marker: `${nonce}:0` }], [{ a: 1 }], marked(1), [{ b: 2 }]]],
+    ['a marker set with no rows', [[], [{ a: 1 }], marked(1), [{ b: 2 }]]],
+    ['a marker row carrying extra columns', [[{ __batch_marker: `${nonce}:0`, a: 1 }], [{ a: 1 }], marked(1), [{ b: 2 }]]],
+  ]
+  for (const [label, sets] of cases) {
+    try {
+      parseMarkedBatch(2, sets, nonce)
+      failures.push(`${label} was accepted`)
+    } catch {
+      // expected
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      'Batched reads cannot be trusted - their position check is broken:\n' +
+        failures.map((f) => `  - ${f}`).join('\n'),
+    )
+  }
+}
+
+// A batch can fail for a reason no single statement reproduces (its size, say).
+// That case must read as a batch problem rather than as a false accusation
+// against statement 1 - and the attributable case must still name its
+// statement. Both are exercised with an injected runner, because an output cap
+// is not a reliable forcing function: several individual result sets are large
+// enough to trip a small cap on their own, which would make the replay
+// attribute correctly and the experiment look like a bug.
+const selfTestBatchAttribution = () => {
+  const failures = []
+
+  const onlyFailsInBatches = (statements) => {
+    if (statements.length > 1) throw new Error('stdout maxBuffer length exceeded')
+    return [[{ ok: 1 }]]
+  }
+  try {
+    runOneBatch(['select 1 as a', 'select 2 as b'], onlyFailsInBatches)
+    failures.push('a batch-level failure was not reported at all')
+  } catch (error) {
+    if (!/batch itself is the problem/.test(error.message)) {
+      failures.push(`a batch-level failure was misattributed:\n${error.message}`)
+    }
+    if (/at statement \d+ of/.test(error.message)) {
+      failures.push('a batch-level failure was blamed on a specific statement')
+    }
+  }
+
+  const failsOnBadTable = (statements) => {
+    if (statements.some((sql) => sql.includes('from bad'))) {
+      throw new Error('no such table: bad')
+    }
+    return statements.map(() => [{ ok: 1 }])
+  }
+  try {
+    runOneBatch(['select 1 as a', 'select * from bad'], failsOnBadTable)
+    failures.push('an attributable failure was not reported')
+  } catch (error) {
+    if (!/at statement 2 of 2/.test(error.message) || !/select \* from bad/.test(error.message)) {
+      failures.push(`an attributable failure did not name its statement:\n${error.message}`)
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      'Batched-read failure attribution is broken:\n' +
+        failures.map((f) => `  - ${f}`).join('\n'),
+    )
+  }
+}
+
 const run = (command, args) => {
   try {
     return execFileSync(command, args, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
+      // Batched reads return one result set per statement; Node's 1 MB default
+      // would turn a large snapshot into an ENOBUFS that reads like a SQL
+      // failure. 500 statements measured 63 KB, so this is far above need.
+      maxBuffer: 64 * 1024 * 1024,
     })
   } catch (error) {
     // execFileSync's own message is just the command line. wrangler reports
@@ -2690,8 +3038,38 @@ const run = (command, args) => {
 }
 
 let persistDir = ''
+// The generated per-pass config (see writeWranglerConfig). Wrangler resolves
+// migrations_dir relative to it, which is what lets a pass stage its own
+// migrations directory instead of editing the tracked one.
+let configPath = ''
 
-const wrangler = (args) => run('npx', ['wrangler', ...args, '--persist-to', persistDir])
+// The installed binary directly, not through `npx`: npx re-resolves the
+// package on every launch, which measured 0.83-1.32 s against 0.61-0.82 s for
+// the bin. That difference is smaller than its own spread, so this is a free
+// win rather than a meaningful one - taken because the fallback costs nothing.
+const WRANGLER_BIN = join('node_modules', '.bin', 'wrangler')
+
+// The INSTALLED binary, or nothing. `npx wrangler` was the obvious fallback and
+// is the wrong one: npx resolves - and will happily fetch - whatever version it
+// finds, so a machine missing the install would prove its migrations against a
+// CLI the lockfile never pinned. This whole script exists to say what
+// production will do, and it cannot say that through an unknown tool version.
+// (Using the bin directly is also marginally faster than npx: measured
+// 0.61-0.82 s against 0.83-1.32 s per launch, a difference smaller than its own
+// spread. Speed is the side benefit here, not the reason.)
+const requireWranglerBin = () => {
+  if (existsSync(WRANGLER_BIN)) return WRANGLER_BIN
+  throw new Error(
+    `${WRANGLER_BIN} is missing, so this check cannot run against the wrangler ` +
+      'version package-lock.json pins. Run `npm ci`. (It deliberately does NOT ' +
+      'fall back to `npx wrangler`, which may resolve or download a different ' +
+      'version - proving a migration against an unpinned CLI proves nothing ' +
+      'about the deploy.)',
+  )
+}
+
+const wrangler = (args) =>
+  run(requireWranglerBin(), [...args, '--config', configPath, '--persist-to', persistDir])
 
 // Runs statements as a file rather than as one --command: D1 caps the number of
 // terms in a compound SELECT far below stock SQLite, so 16 tables' worth of
@@ -2707,7 +3085,125 @@ const execSql = (statements) => {
   return JSON.parse(raw).map((result) => result.results)
 }
 
-const query = (sql) => execSql([sql])[0]
+// Read-only statements, run in ONE wrangler launch.
+//
+// `d1 execute --file` has always returned one result set per statement, in
+// order - snapshot() has relied on that since it was written. What cost 132 of
+// this script's 213 seconds was calling it ONE statement at a time: a ~0.9 s
+// process boot per microsecond query, 136 times a run. Nothing here leaves D1;
+// the statements are the same statements, run by the same engine, in fewer
+// processes. Measured 2026-09-03 against wrangler 4.120.0: 25 statements
+// batched 1.04 s, the same 25 individually 24.25 s, results byte-identical.
+//
+// Two rules, and they are the whole contract:
+//   1. READ-ONLY. A batch never contains a statement that writes. Seeding and
+//      every POST_CHECKS probe keep their own launch.
+//   2. ONE STATE. Every statement in a batch observes the same database - no
+//      seed, no probe, no `migrations apply` in between - or the comparison
+//      would be assembled from rows that never coexisted.
+//
+// The cap counts PAYLOAD statements; markers double it, so 200 here is 400
+// statements on the wire. 500 in one file measured 2.03 s and parsed cleanly,
+// so this is comfort rather than a limit found by hitting it. Chunking is
+// positional, so results stay ordered across chunks.
+const MAX_BATCH_STATEMENTS = 200
+
+// Wrangler reports a failing statement as a JSON error object and NO result
+// array (verified: a `no such table` at position 3 of 5 exits 1 with
+// `{"error":{"text":"no such table: ..."}}` and nothing else), so a batch fails
+// loud. What it does not say is WHICH statement failed. Replaying the batch one
+// statement at a time finds it - only on the failure path, where an extra
+// second does not matter, and safe because batches are read-only.
+//
+// `exec` is a parameter only so the self-tests can inject a runner whose
+// failure shape is exact; production always passes the default.
+const attributeBatchFailure = (statements, error, exec = execSql) => {
+  for (const [i, sql] of statements.entries()) {
+    try {
+      exec([sql])
+    } catch (individual) {
+      return new Error(
+        `A batched read failed at statement ${i + 1} of ${statements.length}:\n` +
+          `  ${sql}\n${individual.message}`,
+      )
+    }
+  }
+  return new Error(
+    'A batched read failed, but every statement succeeds on its own. The batch ' +
+      `itself is the problem (size, or a statement that is not read-only):\n${error.message}`,
+  )
+}
+
+const expectedMarker = (nonce, i) => `${nonce}:${i}`
+
+const isMarkerSet = (set, expected) =>
+  Array.isArray(set) &&
+  set.length === 1 &&
+  set[0] !== null &&
+  typeof set[0] === 'object' &&
+  Object.keys(set[0]).length === 1 &&
+  set[0].__batch_marker === expected
+
+// Pure: given the marker-interleaved result sets, return the real ones or
+// throw. Split out so the position check has self-tests that need no database.
+//
+// What this proves, stated exactly: the marker-bearing POSITIONS arrived in the
+// order they were sent, each carrying this call's nonce, and the set count is
+// right. That every payload belongs to the marker before it rests on wrangler
+// returning one result set per statement in statement order - the contract
+// snapshot() has always relied on, re-verified against wrangler 4.120.0. The
+// markers turn a silent violation of that contract into a loud one; they do not
+// replace it.
+const parseMarkedBatch = (count, sets, nonce) => {
+  if (sets.length !== count * 2) {
+    throw new Error(
+      `A batched read returned ${sets.length} result sets for ${count} statements ` +
+        `(expected ${count * 2} with markers). Results may be missing or extra.`,
+    )
+  }
+  const results = []
+  for (let i = 0; i < count; i += 1) {
+    // Exactly one row, exactly one column, exactly this nonce. A looser test -
+    // reading [0].__batch_marker off whatever arrived - would accept a payload
+    // result set that happens to carry the column, which is precisely the
+    // confusion the marker exists to rule out.
+    if (!isMarkerSet(sets[i * 2], expectedMarker(nonce, i))) {
+      throw new Error(
+        `A batched read came back out of order or malformed: position ${i} ` +
+          `should have been the single-row marker "${expectedMarker(nonce, i)}", ` +
+          `and was ${String(JSON.stringify(sets[i * 2])).slice(0, 200)}.`,
+      )
+    }
+    results.push(sets[i * 2 + 1])
+  }
+  return results
+}
+
+const runOneBatch = (statements, exec = execSql) => {
+  // A per-call nonce, so a marker can only satisfy the call that wrote it.
+  const nonce = randomUUID()
+  const marked = []
+  statements.forEach((sql, i) => {
+    marked.push(`select '${expectedMarker(nonce, i)}' as __batch_marker`)
+    marked.push(sql)
+  })
+  let sets
+  try {
+    sets = exec(marked)
+  } catch (error) {
+    throw attributeBatchFailure(statements, error, exec)
+  }
+  return parseMarkedBatch(statements.length, sets, nonce)
+}
+
+const batchReadSql = (statements) => {
+  const results = []
+  for (let i = 0; i < statements.length; i += MAX_BATCH_STATEMENTS) {
+    results.push(...runOneBatch(statements.slice(i, i + MAX_BATCH_STATEMENTS)))
+  }
+  return results
+}
+
 
 // Runs a statement that MUST fail, returning null on the expected rejection
 // and a failure description otherwise. wrangler reports D1's SQL errors on
@@ -2782,10 +3278,16 @@ const applyExpectedChanges = (before, newMigrations) => {
 
 const applyMigrations = () => wrangler(['d1', 'migrations', 'apply', DB, '--local'])
 
-const listTables = () =>
-  query(`select m.name from sqlite_master m where ${appTablesFilter('m')}`).map(
-    (row) => row.name,
-  )
+// Every read below is a SQL constant and a parser, rather than a helper that
+// runs its own query, so several can ride one wrangler launch (see
+// batchReadSql). The SQL and the parsing are exactly what they were when each
+// helper owned both; only the packaging moved. There are deliberately no
+// single-read wrappers left over: once checkOneMigration reads in batches,
+// nothing calls them, and an unused wrapper is a dead object inviting the next
+// author to reintroduce a launch per statement.
+const TABLES_SQL = `select m.name from sqlite_master m where ${appTablesFilter('m')}`
+const parseTables = (rows) => rows.map((row) => row.name)
+
 
 // Triggers and named indexes on our own tables. A table rebuild drops these
 // along with the old table, and drizzle-kit cannot regenerate the hand-written
@@ -2793,19 +3295,19 @@ const listTables = () =>
 // `lists_user_cap` trigger nearly vanished in migration 0009. Implicit
 // sqlite_autoindex_* entries are excluded: they are recreated automatically and
 // their numbering is not stable across a rebuild.
-const listSchemaObjects = () =>
-  query(
-    "select m.type, m.name, m.tbl_name from sqlite_master m where m.type in ('trigger', 'index') " +
-      "and m.name not glob 'sqlite_*' and m.tbl_name not glob 'sqlite_*' " +
-      "and m.tbl_name not glob '_cf_*' and m.tbl_name <> 'd1_migrations'",
-  ).map(({ type, name, tbl_name }) => ({ label: `${type} ${name}`, table: tbl_name }))
+const SCHEMA_OBJECTS_SQL =
+  "select m.type, m.name, m.tbl_name from sqlite_master m where m.type in ('trigger', 'index') " +
+  "and m.name not glob 'sqlite_*' and m.tbl_name not glob 'sqlite_*' " +
+  "and m.tbl_name not glob '_cf_*' and m.tbl_name <> 'd1_migrations'"
+const parseSchemaObjects = (rows) =>
+  rows.map(({ type, name, tbl_name }) => ({ label: `${type} ${name}`, table: tbl_name }))
+
 
 // Maps table -> Set of column names, as the schema actually stands right now.
-const describeColumns = () => {
-  const rows = query(
-    'select m.name as tbl, p.name as col from sqlite_master m ' +
-      `join pragma_table_info(m.name) p where ${appTablesFilter('m')}`,
-  )
+const COLUMNS_SQL =
+  'select m.name as tbl, p.name as col from sqlite_master m ' +
+  `join pragma_table_info(m.name) p where ${appTablesFilter('m')}`
+const parseColumns = (rows) => {
   const byTable = new Map()
   for (const { tbl, col } of rows) {
     if (!byTable.has(tbl)) byTable.set(tbl, new Set())
@@ -2814,19 +3316,19 @@ const describeColumns = () => {
   return byTable
 }
 
+
 // Every column's DECLARED type, as "table.column" -> type. Guards the one hole
 // that canonicalize() opens: because the value comparison now ignores numeric
 // FORMATTING, an unintended integer -> real rebuild of some other column would
 // no longer show up as a changed value (45000 vs 45000.0 compare equal). The
 // declared type is what catches that instead, and it is a stronger check than
 // the one it replaces - previously nothing verified column types at all.
-const describeColumnTypes = () => {
-  const rows = query(
-    'select m.name as tbl, p.name as col, p.type as type from sqlite_master m ' +
-      `join pragma_table_info(m.name) p where ${appTablesFilter('m')}`,
-  )
-  return new Map(rows.map(({ tbl, col, type }) => [`${tbl}.${col}`, String(type).toUpperCase()]))
-}
+const COLUMN_TYPES_SQL =
+  'select m.name as tbl, p.name as col, p.type as type from sqlite_master m ' +
+  `join pragma_table_info(m.name) p where ${appTablesFilter('m')}`
+const parseColumnTypes = (rows) =>
+  new Map(rows.map(({ tbl, col, type }) => [`${tbl}.${col}`, String(type).toUpperCase()]))
+
 
 // ---------------------------------------------------------------------------
 // CHECK and FOREIGN KEY constraints. Everything above watches rows, columns,
@@ -3063,11 +3565,10 @@ const extractCheckClauses = (sql) => {
 // any cascade parent childless, and because a declared table is exempted from
 // the row and constraint comparisons, dropping a parent AND its children could
 // have passed. That is the 0009 wipe with paperwork.
-const tablesWithIncomingCascades = () => {
-  const rows = query(
-    'select f."table" as ref, f.on_delete as onDelete from sqlite_master m ' +
-      `join pragma_foreign_key_list(m.name) f where ${appTablesFilter('m')}`,
-  )
+const CASCADE_PARENTS_SQL =
+  'select f."table" as ref, f.on_delete as onDelete from sqlite_master m ' +
+  `join pragma_foreign_key_list(m.name) f where ${appTablesFilter('m')}`
+const parseCascadeParents = (rows) => {
   const parents = new Set()
   for (const row of rows) {
     if (String(row.onDelete || '').toUpperCase() === 'CASCADE') {
@@ -3077,18 +3578,17 @@ const tablesWithIncomingCascades = () => {
   return parents
 }
 
-const describeConstraints = () => {
-  const fkRows = query(
-    'select m.name as tbl, f.id as fkid, f.seq as seq, f."table" as ref, ' +
-      'f."from" as fromCol, f."to" as toCol, f.on_update as onUpdate, ' +
-      'f.on_delete as onDelete from sqlite_master m ' +
-      `join pragma_foreign_key_list(m.name) f where ${appTablesFilter('m')}`,
-  )
+
+const FOREIGN_KEYS_SQL =
+  'select m.name as tbl, f.id as fkid, f.seq as seq, f."table" as ref, ' +
+  'f."from" as fromCol, f."to" as toCol, f.on_update as onUpdate, ' +
+  'f.on_delete as onDelete from sqlite_master m ' +
+  `join pragma_foreign_key_list(m.name) f where ${appTablesFilter('m')}`
+const TABLE_SQL_SQL = `select m.name as tbl, m.sql as sql from sqlite_master m where ${appTablesFilter('m')}`
+
+const parseConstraints = (fkRows, tableRows) => {
   const byTable = groupForeignKeyRows(fkRows)
-  const tables = query(
-    `select m.name as tbl, m.sql as sql from sqlite_master m where ${appTablesFilter('m')}`,
-  )
-  for (const { tbl, sql } of tables) {
+  for (const { tbl, sql } of tableRows) {
     const checks = extractCheckClauses(String(sql)).map((c) => `check ${c}`)
     if (checks.length === 0) continue
     if (!byTable.has(tbl)) byTable.set(tbl, [])
@@ -3096,6 +3596,41 @@ const describeConstraints = () => {
   }
   for (const labels of byTable.values()) labels.sort()
   return byTable
+}
+
+
+// The whole schema-shaped picture of one database state, in ONE launch. Split
+// into statements and parsers above so this can exist: every entry describes
+// the same moment, which is what makes comparing a before against an after
+// meaningful.
+const SCHEMA_STATE_READS = [
+  { key: 'tables', sql: [TABLES_SQL], parse: ([rows]) => parseTables(rows) },
+  { key: 'schemaObjects', sql: [SCHEMA_OBJECTS_SQL], parse: ([rows]) => parseSchemaObjects(rows) },
+  { key: 'columnTypes', sql: [COLUMN_TYPES_SQL], parse: ([rows]) => parseColumnTypes(rows) },
+  {
+    key: 'constraints',
+    sql: [FOREIGN_KEYS_SQL, TABLE_SQL_SQL],
+    parse: ([fkRows, tableRows]) => parseConstraints(fkRows, tableRows),
+  },
+  { key: 'cascadeParents', sql: [CASCADE_PARENTS_SQL], parse: ([rows]) => parseCascadeParents(rows) },
+]
+
+const schemaStateStatements = () => SCHEMA_STATE_READS.flatMap((read) => read.sql)
+
+const parseSchemaState = (sets) => {
+  const wanted = schemaStateStatements().length
+  if (sets.length !== wanted) {
+    throw new Error(
+      `Schema-state batch returned ${sets.length} result sets, expected ${wanted}.`,
+    )
+  }
+  const state = {}
+  let at = 0
+  for (const read of SCHEMA_STATE_READS) {
+    state[read.key] = read.parse(sets.slice(at, at + read.sql.length))
+    at += read.sql.length
+  }
+  return state
 }
 
 // Pure comparison: every constraint present before must survive, except on
@@ -3210,9 +3745,8 @@ const canonicalize = (json) => JSON.stringify(JSON.parse(json))
 // Every seeded row, as JSON, keyed by table. Reads only the columns that
 // existed before the migration: new columns are expected to differ, old ones
 // are not allowed to.
-const snapshot = (seededColumns) => {
-  const tables = [...seededColumns.keys()]
-  const selects = tables.map((table) => {
+const snapshotStatements = (seededColumns) =>
+  [...seededColumns.keys()].map((table) => {
     const pairs = seededColumns
       .get(table)
       .map((col) => `'${col}', ${quoteIdent(col)}`)
@@ -3220,15 +3754,16 @@ const snapshot = (seededColumns) => {
     return `select json_object(${pairs}) as row from ${quoteIdent(table)}`
   })
 
-  const resultSets = execSql(selects)
-  return new Map(
-    tables.map((table, i) => [
+// Positional, over the same Map insertion order snapshotStatements walks.
+const parseSnapshot = (seededColumns, sets) =>
+  new Map(
+    [...seededColumns.keys()].map((table, i) => [
       table,
       // Sorted so the comparison does not depend on row order.
-      resultSets[i].map(({ row }) => canonicalize(row)).sort(),
+      sets[i].map(({ row }) => canonicalize(row)).sort(),
     ]),
   )
-}
+
 
 // Tests ONE migration, against a database holding every migration before it -
 // applied AND seeded with fixture rows.
@@ -3239,10 +3774,14 @@ const snapshot = (seededColumns) => {
 // against empty and passed. The blind spot grew with every migration added.
 // One pass per migration means each one faces populated tables, which is the
 // whole point of the check.
-const checkOneMigration = (postBaseline, index, contentsByPath) => {
+const checkOneMigration = (postBaseline, index) => {
   const name = postBaseline[index]
-  const target = join(MIGRATIONS_DIR, name)
-  const heldBack = postBaseline.slice(index).map((n) => join(MIGRATIONS_DIR, n))
+  // Everything production would have applied before this migration: the whole
+  // frozen baseline plus the post-baseline files sorting ahead of it.
+  const priorNames = [
+    ...[...PRE_GATE_MIGRATIONS.keys()].sort(),
+    ...postBaseline.slice(0, index),
+  ]
   const addedNames = new Set([name])
 
   // "Has this migration run by the time the one under test starts?" Anything in
@@ -3294,21 +3833,62 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
   persistDir = mkdtempSync(join(tmpdir(), 'migration-safety-'))
 
   try {
-    // 1. Rewind to just before this migration: take it, and everything that
-    // comes after it, out of the directory.
-    for (const file of heldBack) rmSync(file)
+    // 1. Rewind to just before this migration by STAGING only what came before
+    // it. Nothing is removed from the tracked tree - the API suite migrates
+    // from that same directory (vitest.workers.config.ts), and a concurrent run
+    // used to see a truncated set.
+    const stagedDir = stageMigrationsDir(persistDir, priorNames)
+    configPath = writeWranglerConfig(persistDir, stagedDir)
 
     console.log('  applying everything before it...')
     applyMigrations()
 
+    // The staged directory is only worth anything if wrangler actually read it.
+    // Asserted against the CONFIGURED ledger table, not a hard-coded name: a
+    // check reading `d1_migrations` while wrangler wrote elsewhere would find an
+    // empty table and pass.
+    // BATCH A. One launch for two reads of the same state: prove wrangler
+    // applied exactly what was staged, and read the column sets seed() needs.
+    // Nothing mutates between the apply above and the seed below, so they
+    // describe the same database.
+    const [ledgerRows, columnRows] = batchReadSql([
+      `select name from ${quoteIdent(migrationsTableName())} order by id`,
+      COLUMNS_SQL,
+    ])
+    const ledger = ledgerRows.map((row) => row.name)
+    if (JSON.stringify(ledger) !== JSON.stringify(priorNames)) {
+      throw new Error(
+        `The staged directory is not what wrangler applied.\n` +
+          `  staged:  ${priorNames.join(', ')}\n` +
+          `  applied: ${ledger.join(', ')}\n` +
+          "The generated config's migrations_dir or migrations_table is not " +
+          'being honored.',
+      )
+    }
+
     // 2. Make the database look like production.
-    const columnsByTable = describeColumns()
+    const columnsByTable = parseColumns(columnRows)
     if (columnsByTable.size === 0) {
       console.log('  no tables exist yet; there is no data to preserve.')
       return
     }
 
     const seededColumns = seed(columnsByTable, alreadyApplied)
+
+    // BATCH B. Everything that describes the database this migration is about
+    // to run against - the seeded rows AND the schema they live in - in one
+    // launch. Snapshot statements first, schema-state statements after; the
+    // split is positional.
+    const beforeSnapshotSql = snapshotStatements(seededColumns)
+    const beforeSets = batchReadSql([...beforeSnapshotSql, ...schemaStateStatements()])
+    const before = parseSnapshot(seededColumns, beforeSets.slice(0, beforeSnapshotSql.length))
+    const {
+      tables: tablesBefore,
+      schemaObjects: schemaBefore,
+      columnTypes: typesBefore,
+      constraints: constraintsBefore,
+      cascadeParents,
+    } = parseSchemaState(beforeSets.slice(beforeSnapshotSql.length))
 
     // Transient tables are exempt here for the same reason they are exempt
     // from the new-table fixture check below: a seeded row asserts a state that
@@ -3323,7 +3903,7 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
     // Reading the raw list here would exempt the name permanently, leaving the
     // recreated table invisible to every preservation check thereafter.
     const transientAtBase = new Set(transientsCreated.map((t) => t.table))
-    const unseeded = listTables().filter(
+    const unseeded = tablesBefore.filter(
       (table) => !seededColumns.has(table) && !transientAtBase.has(table),
     )
     if (unseeded.length > 0) {
@@ -3334,19 +3914,15 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
       )
     }
 
-    const before = snapshot(seededColumns)
-    const tablesBefore = listTables()
-    const schemaBefore = listSchemaObjects()
-    const typesBefore = describeColumnTypes()
-    const constraintsBefore = describeConstraints()
-
     // A contract step may only drop a table nothing cascades FROM, and the
     // proof is the live schema immediately before the drop - not a boolean in
     // the declaration. Checked here rather than in the gate because that runs
     // without a database, and the honest answer needs one.
+    // cascadeParents comes from batch B above: it describes the same live
+    // schema this check used to read in a launch of its own, and is still
+    // consulted only for a contract migration.
     const contract = CONTRACT_MIGRATIONS.get(name)
     if (contract) {
-      const cascadeParents = tablesWithIncomingCascades()
       for (const object of contract.objects) {
         if (object.kind !== 'table') continue
         if (cascadeParents.has(object.name.toLowerCase())) {
@@ -3364,7 +3940,7 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
     console.log(`  seeded ${seededRows} rows across ${before.size} tables.`)
 
     // 3. Apply THIS migration alone, exactly as deploy.yml does in production.
-    writeFileSync(target, contentsByPath.get(target))
+    copyFileSync(join(MIGRATIONS_DIR, name), join(stagedDir, name))
 
     console.log(`  applying ${name}...`)
     applyMigrations()
@@ -3421,7 +3997,20 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
           cols.filter((col) => !droppedColumns.get(table)?.has(col)),
         ]),
     )
-    const stillPresent = new Set(listTables())
+    // BATCH C. The whole post-migration picture in one launch: the surviving
+    // rows and the schema they now live in. survivingColumns is derived from
+    // the declarations and seededColumns above, never from a query, so it is
+    // available before this batch runs.
+    const afterSnapshotSql = snapshotStatements(survivingColumns)
+    const afterSets = batchReadSql([...afterSnapshotSql, ...schemaStateStatements()])
+    const after = parseSnapshot(survivingColumns, afterSets.slice(0, afterSnapshotSql.length))
+    const {
+      tables: tablesStillPresent,
+      schemaObjects: schemaObjectsAfter,
+      columnTypes: typesAfter,
+      constraints: constraintsAfter,
+    } = parseSchemaState(afterSets.slice(afterSnapshotSql.length))
+    const stillPresent = new Set(tablesStillPresent)
     // A declared table drop has to be an EVENT, not an intention.
     // `DROP TABLE IF EXISTS never_existed` removes nothing and would otherwise
     // satisfy its own declaration - the same gap the trigger/index check just
@@ -3449,7 +4038,6 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
       )
     }
 
-    const after = snapshot(survivingColumns)
     const failures = []
     const expected = new Map(
       [...applyExpectedChanges(before, addedNames)].map(([table, rows]) => {
@@ -3495,7 +4083,6 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
         c,
       ]),
     )
-    const typesAfter = describeColumnTypes()
     for (const [column, beforeType] of typesBefore) {
       const afterType = typesAfter.get(column)
       if (afterType === undefined || afterType === beforeType) continue
@@ -3522,7 +4109,7 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
     // Triggers and indexes that a rebuild dropped and never put back. Objects
     // belonging to a declared-dropped TABLE went with it; objects on surviving
     // tables must be declared one by one.
-    const schemaAfter = new Set(listSchemaObjects().map((o) => o.label))
+    const schemaAfter = new Set(schemaObjectsAfter.map((o) => o.label))
     const allowedGone = new Set(
       DROPPED_SCHEMA_OBJECTS.filter((d) => addedNames.has(d.migration)).map((d) => d.object),
     )
@@ -3592,7 +4179,7 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
     // post-baseline migrations - see diffConstraints for why there is no
     // declaration hatch.
     failures.push(
-      ...diffConstraints(constraintsBefore, describeConstraints(), droppedTables),
+      ...diffConstraints(constraintsBefore, constraintsAfter, droppedTables),
     )
 
     // Probes belonging to the migration under test. Run AFTER the snapshots so
@@ -3608,7 +4195,11 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
       }
     }
 
-    const tablesAfter = listTables()
+    // BATCH D. What exists once the probes have run - and it is read ALONE,
+    // before anything names a table it has not confirmed. 15 of the 24 probes
+    // write, so this cannot join batch C.
+    const [tablesAfterRows] = batchReadSql([TABLES_SQL])
+    const tablesAfter = parseTables(tablesAfterRows)
     const scratch = tablesAfter.filter(isScratchTable)
     if (scratch.length > 0) {
       failures.push(
@@ -3638,8 +4229,22 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
       )
     }
 
-    // A transient table earns its fixture exemption by proving the thing that
-    // makes it transient: it exists, and it is empty.
+    // BATCH E. A transient table earns its fixture exemption by proving the
+    // thing that makes it transient: it exists, and it is empty.
+    //
+    // Counted in a batch of its own, over only the tables batch D confirmed
+    // present. `select count(*) from _missing_table` fails, and a failing
+    // statement takes its whole batch down with no result sets - so counting
+    // inside batch D would have destroyed tablesAfter whenever a declared
+    // transient was absent, and that case has its own verdict below.
+    const presentTransients = transientsInPlay.filter((t) => tablesAfter.includes(t.table))
+    const transientCountSets = batchReadSql(
+      presentTransients.map((t) => `select count(*) as n from ${quoteIdent(t.table)}`),
+    )
+    const transientCounts = new Map(
+      presentTransients.map((t, i) => [t.table, Number(transientCountSets[i]?.[0]?.n ?? -1)]),
+    )
+
     for (const { table, why } of transientsInPlay) {
       if (!tablesAfter.includes(table)) {
         failures.push(
@@ -3649,8 +4254,7 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
         )
         continue
       }
-      const rows = query(`select count(*) as n from \`${table}\``)
-      const n = Number(rows?.[0]?.n ?? -1)
+      const n = transientCounts.get(table) ?? -1
       if (n !== 0) {
         failures.push(
           `Transient table ${table} holds ${n} row(s) after migration; it must ` +
@@ -3673,8 +4277,7 @@ const checkOneMigration = (postBaseline, index, contentsByPath) => {
 
     console.log(`  OK: all ${seededRows} seeded rows survived ${name}.`)
   } finally {
-    // Put back everything this pass took away, whatever happened.
-    for (const file of heldBack) writeFileSync(file, contentsByPath.get(file))
+    // Nothing to put back: this pass only ever read the tracked tree.
     rmSync(persistDir, { recursive: true, force: true })
   }
 }
@@ -3687,6 +4290,9 @@ const main = () => {
   selfTestDdlGate()
   selfTestExpectedValues()
   selfTestConstraintCompare()
+  selfTestConfigRebase()
+  selfTestMarkedBatch()
+  selfTestBatchAttribution()
   verifyMigrationsDirIsPinned()
   verifySnapshotChainIntact()
   verifySnapshotMatchesSchema()
@@ -3713,50 +4319,44 @@ const main = () => {
   console.log('Migrations added since the frozen baseline:')
   for (const name of postBaseline) console.log(`  ${name}`)
 
-  // Held in memory AND copied to disk before anything is moved. The disk copy is
-  // what survives a SIGKILL or a crash, where `finally` never runs - and it
-  // matters because an uncommitted migration exists nowhere else, so
-  // `git checkout -- migrations/` would restore committed text over it.
-  // (Copied, not renamed: the temp dir is usually another filesystem, and
-  // rename across one gives EXDEV.)
-  const backupDir = mkdtempSync(join(tmpdir(), 'migration-safety-backup-'))
-  const contentsByPath = new Map(
-    postBaseline.map((name) => {
-      const path = join(MIGRATIONS_DIR, name)
-      return [path, readFileSync(path, 'utf8')]
-    }),
-  )
-  for (const [path, contents] of contentsByPath) {
-    writeFileSync(join(backupDir, basename(path)), contents)
-  }
+  // This script only ever READS the tracked tree, and that is checked rather
+  // than trusted: a pass that wrote to it would corrupt every other check
+  // silently, and the API suite migrates from the same directory.
+  const treeBefore = trackedTreeDigest()
 
-  const restore = () => {
-    for (const [path, contents] of contentsByPath) writeFileSync(path, contents)
-  }
-
-  // Ctrl-C exits without running `finally`, which would leave the working tree
-  // missing tracked migration files.
-  const onSignal = () => {
-    restore()
-    process.exit(130)
-  }
-  process.on('SIGINT', onSignal)
-  process.on('SIGTERM', onSignal)
-
+  // Checked on EVERY path, not just the happy one. The restoration this
+  // replaced lived in a `finally`, so a pass that threw still put the tree
+  // back; a guard that only runs after all seven passes succeed would go quiet
+  // in exactly the case where a stray write is most likely.
+  let passError = null
   try {
     for (let i = 0; i < postBaseline.length; i += 1) {
-      checkOneMigration(postBaseline, i, contentsByPath)
+      checkOneMigration(postBaseline, i)
     }
-    console.log(
-      `\nOK: ${postBaseline.length} post-baseline migration(s) each preserve ` +
-        'the data that existed before them.',
-    )
-  } finally {
-    restore()
-    process.off('SIGINT', onSignal)
-    process.off('SIGTERM', onSignal)
-    rmSync(backupDir, { recursive: true, force: true })
+  } catch (error) {
+    passError = error
   }
+
+  if (trackedTreeDigest() !== treeBefore) {
+    const message =
+      `This script modified the tracked ${MIGRATIONS_DIR} tree. It must only ` +
+      'ever read it - the API suite migrates from the same directory ' +
+      '(vitest.workers.config.ts), and an edited or truncated tree silently ' +
+      'changes what every other check tests against. The digest cannot say ' +
+      `which file moved; run \`git status ${MIGRATIONS_DIR}/\` to see.`
+    // A corrupted tree is the more urgent of the two, and it explains the
+    // other: a pass reading a mutated directory can fail for that reason. The
+    // original failure is carried along rather than swallowed.
+    throw passError
+      ? new Error(`${message}\n\nThe run also failed:\n${passError.message}`)
+      : new Error(message)
+  }
+  if (passError) throw passError
+
+  console.log(
+    `\nOK: ${postBaseline.length} post-baseline migration(s) each preserve ` +
+      'the data that existed before them.',
+  )
 }
 
 try {

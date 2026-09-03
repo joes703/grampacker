@@ -211,6 +211,41 @@ closed forever; post-baseline edits get re-tested, but nothing detects that
 production already ran the old text (Phase 3's manifest closes that; until
 then it is on you).
 
+How it talks to D1, and why that is not a detail: every statement runs against
+local D1 through `wrangler d1 execute --local`, including the reads. The
+`POST_CHECKS` probes are the only behavioral coverage of trigger BODIES this
+repo has, so running them on a stock SQLite build would prove something about
+that build instead. Two rewrites of the performance work died on exactly that
+point before the third stopped trying to leave D1.
+
+What was actually expensive was process launches, not SQL: a full run made 182
+of them for 213 seconds of work, and 211 of those seconds were wrangler booting.
+Reads that observe the SAME database state now share one launch
+(`batchReadSql`), which took a run to 81 launches and 100 seconds with every
+statement still on D1. Two rules keep that safe, and breaking either is how a
+comparison starts describing rows that never coexisted:
+
+- a batch contains only read-only statements;
+- a batch never spans a seed, a probe or a `migrations apply`.
+
+So a pass makes five read launches - before seeding, after seeding, after the
+migration, after the probes, and the transient-table counts - while seeding,
+each probe and each apply keep a launch of their own, because their individual
+failure text IS the assertion. Batched results are position-checked with a
+nonce-tagged marker statement before each read, and a batch failure is
+attributed to its exact statement by replaying the batch one statement at a
+time; when no individual statement reproduces it, the message says the batch
+itself is the problem rather than blaming statement one.
+
+Each pass also stages the migrations it should see into a throwaway directory
+beside a generated wrangler config, instead of deleting held-back files out of
+the tracked tree and writing them back. The old way needed a backup directory
+and signal handlers to survive a Ctrl-C, and it still broke any concurrent
+reader: the API suite migrates from `migrations/` too, and a run alongside the
+harness produced 114 failures. The tracked tree is now hashed by CONTENTS,
+recursively, before and after the run - names and sizes would miss an in-place
+edit of the same length.
+
 ## Supply chain: the npm audit fix --force incident
 
 One `npm audit fix --force` run walked the Cloudflare toolchain back ten
