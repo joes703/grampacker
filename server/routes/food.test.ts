@@ -124,10 +124,13 @@ describe('food: day grid', () => {
   })
 })
 
-describe('food: weight is per ITEM, never per placement', () => {
-  it('counts one bag associated with five slots exactly once', async () => {
-    // THE defining invariant. One 500 g bag of trail mix eaten across five
-    // lunches weighs 500 g. Joining items to slots and summing would say 2500.
+describe('food: quantity is what you typed, unitCount is what you carry', () => {
+  it('counts one SHARED bag associated with five slots exactly once', async () => {
+    // One 500 g bag of trail mix picked at across five lunches weighs 500 g.
+    // Since 0024 that is a MODE (isPerMeal: false), not the only reading: a
+    // shared stash is ONE row with five associations, and its published
+    // carry count ignores the schedule. Summing per placement, or multiplying
+    // a shared stash by its meals, would say 2500.
     const { cookie } = await signUpVerifiedUser('food-7@example.com', 'F7')
     const listId = await createList(cookie, 'Trip')
     await setDays(cookie, listId, 5)
@@ -139,19 +142,26 @@ describe('food: weight is per ITEM, never per placement', () => {
       name: 'Trail mix',
       weightGrams: 500,
       quantity: 1,
+      isPerMeal: false,
       slotIds: lunches,
     })
     expect(res.status).toBe(201)
 
     const after = await getFood(cookie, listId)
     expect(after.items).toHaveLength(1)
+    expect(after.items[0]!.isPerMeal).toBe(false)
     expect(after.items[0]!.quantity).toBe(1)
     expect(after.items[0]!.slotIds).toHaveLength(5)
-    const total = after.items.reduce((g, i) => g + i.weightGrams * i.quantity, 0)
+    // unitCount is the carry count every surface sums; quantity is not.
+    expect(after.items[0]!.unitCount).toBe(1)
+    const total = after.items.reduce((g, i) => g + i.weightGrams * i.unitCount, 0)
     expect(total).toBe(500)
   })
 
-  it('never derives quantity from the number of slots', async () => {
+  it('never overwrites quantity with the number of slots', async () => {
+    // Per-meal (the default): four breakfasts make unitCount 4, and quantity -
+    // the per-meal count the user typed - stays 1. A server that derived
+    // quantity from the schedule would report 4 here, and then carry 16.
     const { cookie } = await signUpVerifiedUser('food-8@example.com', 'F8')
     const listId = await createList(cookie, 'Trip')
     await setDays(cookie, listId, 4)
@@ -167,6 +177,7 @@ describe('food: weight is per ITEM, never per placement', () => {
 
     const after = await getFood(cookie, listId)
     expect(after.items[0]!.quantity).toBe(1)
+    expect(after.items[0]!.unitCount).toBe(4)
   })
 
   it('rejects a fractional quantity at the boundary', async () => {

@@ -1502,31 +1502,39 @@ describe('location deletion near the top of the rank space', () => {
       .where(and(eq(listItems.id, loose.id), eq(listItems.userId, userId)))
 
     const location = await createLocation(cookie, list.id, 'Bag')
-    for (const name of ['A', 'B']) {
+    // Each arrival lands in Unassigned at max+1, which is now PACK_RANK_MAX
+    // itself, so the items must be moved into the bag one at a time - a
+    // second arrival before the first moved would already be refused.
+    const bag = async (name: string) => {
       const item = await addItem(cookie, list.id, await createGear(cookie, name))
       await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${item.id}`, {
         packingLocationId: location.id,
       })
+      return item
     }
+    const a = await bag('A')
+    const b = await bag('B')
 
     const res = await apiRequest(
       cookie,
       'DELETE',
       `/api/lists/${list.id}/packing-locations/${location.id}`,
     )
-    // 422 is the classified outcome; what must NEVER happen is a 500.
-    expect([204, 422]).toContain(res.status)
-    expect(res.status).not.toBe(500)
+    // The DENSE FALLBACK in packingLocations.remove(): when base + i would
+    // step past PACK_RANK_MAX, the whole merged cohort is renumbered from 0 -
+    // Unassigned block first, then the bag's contents in display order -
+    // instead of refusing the delete. This is the only test that reaches that
+    // branch; every other delete has headroom and takes the plain append, so
+    // deleting the fallback turns this 204 into a 422.
+    expect(res.status).toBe(204)
 
-    if (res.status === 422) {
-      expect(await res.json()).toEqual({
-        error: expect.stringContaining('run out of pack ordering space'),
-      })
-      // And nothing was half-applied.
-      expect((await getLocations(cookie, list.id)).map((l) => l.id)).toContain(
-        location.id,
-      )
-    }
+    const after = await getItems(cookie, list.id)
+    expect(after).toHaveLength(3)
+    expect(after.every((i) => i.packingLocationId === null)).toBe(true)
+    expect(after.map((i) => i.packSortOrder).sort((x, y) => x - y)).toEqual([0, 1, 2])
+    const rankOf = (id: string) => after.find((i) => i.id === id)!.packSortOrder
+    expect(rankOf(loose.id)).toBe(0)
+    expect(rankOf(a.id)).toBeLessThan(rankOf(b.id))
   })
 })
 
