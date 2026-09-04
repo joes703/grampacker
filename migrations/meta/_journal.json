@@ -197,6 +197,13 @@
       "when": 1787181552508,
       "tag": "0027_contract_drop_retired",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1788502924045,
+      "tag": "0028_better_auth_1_7_account_issuer",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,35 @@
+-- better-auth 1.7 account identity. Upstream now keys every `account` row by a
+-- required `issuer` namespace paired with `account_id`, under a unique index
+-- (1.7 upgrade guide, "Account identity"). Its runtime looks a credential
+-- account up by ALL of user_id, provider_id = 'credential',
+-- issuer = 'local:credential' and account_id = user_id
+-- (better-auth/dist/db/internal-adapter.mjs findCredentialAccount), and the
+-- 1.7 Drizzle adapter throws - a 500 on POST /api/auth/delete-user with a
+-- password - when the where clause names a column the schema lacks. So the
+-- column has to exist even though this passwordless app writes no account
+-- rows at all: migration 0006 deleted every credential row, no OAuth provider
+-- has ever been configured, magic link and passkey never touch `account`, and
+-- production held zero rows when this shipped (checked 2026-09-04).
+--
+-- Both statements are exactly what drizzle-kit generated from the
+-- CLI-regenerated schema, so the live column is what the Drizzle snapshot
+-- says it is: NOT NULL, no default. That is deliberate and it is the whole
+-- point of not softening it: a row written without an issuer must be refused,
+-- not stored under a sentinel. SQLite offers no way to arrive here except on
+-- an EMPTY table - `ADD COLUMN ... NOT NULL` without a default is accepted
+-- only while the table has no rows ("Cannot add a NOT NULL column with default
+-- value NULL" otherwise), a default once added can never be dropped, and the
+-- rebuild that could do either is banned (AGENTS.md).
+--
+-- So this migration FAILS CLOSED if a row exists when it runs. Each migration
+-- file is one D1 transaction, so nothing is half-applied; deploy.yml applies
+-- migrations before it swaps the Worker, so a refusal leaves the 1.6 Worker
+-- running on the 1.6 schema and a human decides what the unexpected row is.
+-- No code path the 1.6 Worker exposes can create one (reset tokens were
+-- purged by 0006 and none can be minted; set-password is server-only), so a
+-- row appearing between the production check and the deploy would be a
+-- manual remote write, which is human-gated anyway. The migration-safety
+-- harness models this as REQUIRE_EMPTY_TABLE: it seeds `account` in every
+-- other pass and leaves it empty for this one.
+ALTER TABLE `account` ADD `issuer` text NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `account_issuer_accountId_uidx` ON `account` (`issuer`,`account_id`);
