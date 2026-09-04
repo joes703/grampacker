@@ -58,8 +58,9 @@ to it so someone can tell later whether it died.
 
 - **Binding, maintained against the code:** `AGENTS.md`, `CLAUDE.md`,
   `SECURITY.md`, `docs/authz-matrix.md`, `docs/incidents.md`,
-  `docs/ui-density.md`. If one of these disagrees with the code, that is a bug
-  in the document - fixing it belongs to the change that made it wrong.
+  `docs/testing-and-ci.md`, `docs/ui-density.md`. If one of these disagrees
+  with the code, that is a bug in the document - fixing it belongs to the
+  change that made it wrong.
 - **Reference, kept current but not policy:** `README.md`, `STACK.md`,
   `PARKED.md`.
 - **Dated records, NOT binding:** `REWRITE_PLAN.md`, everything in
@@ -93,11 +94,18 @@ document at all.
   token exists only as a GitHub Actions secret, by design. A production
   migration ships with the merge, so treat "approve this merge" as "approve
   this deploy".
-- Branch protection does NOT require checks to pass, so `gh pr merge --auto`
-  merges immediately and protects nothing. Confirm CI green yourself
-  (`gh run watch` / `gh pr checks`), then merge with
-  `gh pr merge --squash --match-head-commit <sha>`. Squash is the default
-  landing method; never merge while checks are pending or red.
+- The ruleset "Protect main" has required the `Verify` check (strict, no
+  bypass actors) since 2026-09-01, so `gh pr merge --auto` now waits for it.
+  The convention stays the same regardless: confirm CI green yourself
+  through the Actions REST API (`docs/testing-and-ci.md` section 12 - the
+  sandbox token cannot use `gh run watch`), then merge with
+  `gh pr merge --squash --match-head-commit <sha>` so the merged head is the
+  reviewed one. Squash is the only landing method the ruleset allows; never
+  merge while checks are pending or red.
+- Working from an agent sandbox: `docs/testing-and-ci.md` section 12 is the
+  operating policy for GitHub access - what the token is meant to allow,
+  which operations change state, how to monitor CI, and how to classify a
+  failure before reacting.
 
 ## Commands (use these exact ones)
 
@@ -106,8 +114,8 @@ document at all.
 | Build gate | `npm run build` | typecheck + lint + bundle. NOT the full gate: tests are separate. A bare `tsc --noEmit` misses project-reference and lib-type errors. |
 | Typecheck | `npm run typecheck` | = `wrangler types && tsc -b` |
 | Lint | `npm run lint` | ESLint. There is **no formatter** - do not add Prettier. |
-| Unit tests | `npm run test:unit` | Vitest over `scripts/**`, `shared/**`, `src/**`. Runs anywhere. |
-| API tests | `npm run test:api` | Vitest workers pool over `server/**`. Bindings come from `vitest.workers.config.ts`, not `.dev.vars`. |
+| Unit tests | `npm run test:unit` | Vitest on Node (jsdom per file by pragma) over `scripts/**`, `shared/**`, `src/**`, and `server/**/*.node.test.ts` - the pure and mock-only server tests. Runs anywhere. Which tier a test belongs in: `docs/testing-and-ci.md`. |
+| API tests | `npm run test:api` | Vitest workers pool over every other `server/**/*.test.ts`, on real workerd + D1 with per-file isolation. Bindings come from `vitest.workers.config.ts`, not `.dev.vars`. |
 | Migration safety | `npm run test:migrations` | Required when anything under `migrations/` or the schema changes. Reads only the tracked `migrations/` tree - each pass stages its own copy - so it is safe to run alongside the other suites. |
 | Action pins | `npm run check:action-pins` | Verifies pinned action SHAs against upstream tags. Needs network; fails closed. |
 | YAML parse | `npm run check:yaml` | yamllint over `.github/`. Not schema validation. |
@@ -127,7 +135,8 @@ browser" is not.
 
 The minimum, so "I disclosed it" cannot substitute for running it: read the
 COMPLETE diff, always. `npm run build` and `npm run test:unit` for any code
-change. `npm run test:api` for anything under `server/**`.
+change. `npm run test:api` for anything under `server/**` (`test:unit` also
+runs the `server/**/*.node.test.ts` files, so both are needed there).
 `npm run test:migrations` when migrations or the schema move - that is the one
 people forget, and it is where a miss is expensive. Beyond that minimum, use
 judgment about what the change actually risks.

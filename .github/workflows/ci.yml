@@ -29,8 +29,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Full history: the migration-safety check diffs this branch's
-          # migrations against origin/main, which a depth-1 checkout lacks.
+          # Full history. Nothing in this job reads git today - the
+          # migration-safety check scans the migrations directory, not a diff
+          # - but the checkout costs about two seconds here and the planned
+          # change-aware scoping of that check needs the merge base.
           fetch-depth: 0
 
       - name: Set up Node
@@ -53,7 +55,10 @@ jobs:
       # list_items row past a fully green suite. This seeds a populated database
       # at origin/main's schema, applies this branch's new migrations through the
       # same code path deploy.yml uses against production, and fails if any row
-      # vanished or changed. A no-op when the branch adds no migrations.
+      # vanished or changed. It re-tests EVERY post-baseline migration on every
+      # run, whether or not this branch added one: the check is anchored to the
+      # migrations directory, not to a diff, so a bad migration cannot ride to
+      # production behind a later commit that touched no SQL.
       - name: Test (migrations preserve data)
         run: npm run test:migrations
 

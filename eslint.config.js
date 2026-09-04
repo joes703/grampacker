@@ -144,4 +144,23 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // Node-tier server tests (docs/testing-and-ci.md section 3) run on plain
+    // Node, which refuses `cloudflare:*` at import on its own. The one thing
+    // Node does not refuse is the app entry: server/index.ts loads fine there,
+    // so a misnamed API test would prove Hono-on-Node instead of workerd.
+    files: ['server/**/*.node.test.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: ['./index', '../index', '../../index'].map((name) => ({
+            name,
+            message:
+              'A .node.test.ts runs on Node and must not drive the app. Name it .test.ts to run it on workerd.',
+          })),
+        },
+      ],
+    },
+  },
 )

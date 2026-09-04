@@ -32,6 +32,12 @@ export default defineConfig(async () => {
     ],
     test: {
       include: ['server/**/*.test.ts'],
+      // Pure and mock-only server tests run on plain Node under
+      // vitest.config.ts instead; the suffix is the tier boundary
+      // (docs/testing-and-ci.md section 3). Every file here pays a worker
+      // boot plus a full migration replay into its own isolated D1 before
+      // its first assertion, which a test with no binding gains nothing from.
+      exclude: ['server/**/*.node.test.ts'],
       setupFiles: ['./server/test/apply-migrations.ts'],
     },
   }
