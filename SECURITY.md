@@ -42,7 +42,7 @@ reasoning behind them. Where the two overlap, the matrix wins on detail.
   "Passwordless auth" below and `docs/passwordless-auth-design.md`.
 - Passkeys (WebAuthn): rpID is `grampacker.app`, derived with an
   exact-or-dot-boundary match so lookalike domains are excluded
-  (`server/passkey-rp-id.test.ts`).
+  (`server/passkey-rp-id.node.test.ts`).
 - Secrets (`BETTER_AUTH_SECRET`, `RESEND_API_KEY`) are Worker secrets;
   nothing secret is in the client bundle or the repo (`.dev.vars` is
   gitignored).

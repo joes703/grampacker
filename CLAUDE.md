@@ -24,11 +24,16 @@ push a branch, open a PR, merge on green, let CI deploy. The human's OK lands
 at the outward gates (merge = deploy; flag destructive or account-affecting
 changes before merging).
 
-- Merge procedure is in AGENTS.md "Roles": confirm CI green yourself with
-  `gh run watch` / `gh pr checks`, then
-  `gh pr merge --squash --match-head-commit <sha>`. Branch protection does
-  not wait for checks, so `--auto` is not a safety net.
-- Never write polling loops (`while true; do ... sleep`); use `gh run watch`.
+- Merge procedure is in AGENTS.md "Roles": confirm CI green yourself, then
+  `gh pr merge --squash --match-head-commit <sha>` once the human has
+  approved that exact head. The ruleset requires the `Verify` check, so
+  `--auto` would wait for it, but the convention is still to confirm and
+  pin the head yourself.
+- From a sandbox, `gh run watch` fails with a 403 on check annotations (a
+  token limitation, not an auth failure). Monitor with the Actions REST API
+  in a bounded or background poll at about 30 s intervals, never a
+  foreground `while true` loop; `docs/testing-and-ci.md` section 12 has the
+  commands and the failure-classification rules.
 - Keep shell commands simple and single-purpose - compound scripts trip the
   sandbox analyzer and stall on approval.
 

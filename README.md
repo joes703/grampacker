@@ -42,7 +42,8 @@ npm run build      # typecheck + lint + client/worker production build
 `npm run build` runs typecheck, lint and bundle. It is NOT the whole gate -
 tests are separate (`npm run test:unit`, `npm run test:api`, and
 `npm run test:migrations` when the schema changes). AGENTS.md has the full
-list.
+list; [docs/testing-and-ci.md](./docs/testing-and-ci.md) explains the test
+tiers, which one a new test belongs in, and how a merge reaches production.
 
 None of the above needs a production credential. Local dev reads a disposable
 secret from `.dev.vars`, and Miniflare creates a local SQLite database from the
