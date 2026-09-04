@@ -1,7 +1,15 @@
 import { env } from 'cloudflare:test'
+import { hashPassword } from 'better-auth/crypto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { makeSessionStale, signUpVerifiedUser } from './test/auth-helpers'
 import { apiRequest } from './test/api-helpers'
+
+// The namespace better-auth 1.7 stores in `account.issuer` for a credential
+// account: `createLocalAccountIssuer('credential')` in @better-auth/core,
+// which is neither a direct dependency nor re-exported by better-auth, hence
+// the literal. The test below is what proves it is the value the runtime
+// actually looks up.
+const CREDENTIAL_ACCOUNT_ISSUER = 'local:credential'
 
 // Delete-account is destructive and total: better-auth's internalAdapter
 // deleteUser removes only the session/account/user rows itself - the user's
@@ -328,5 +336,52 @@ describe('POST /api/auth/delete-user', () => {
 
     const after = await rowCounts(userId)
     expect(after.user).toBe(1)
+  })
+
+  it("a credential row stored under the migration's namespace is the one 1.7 looks up", async () => {
+    // The refusal above is only meaningful if the lookup that produced it
+    // is the real one. better-auth 1.7 keys a credential account by ALL of
+    // user_id, provider_id, issuer and account_id (migration 0028 added the
+    // column). This proves CREDENTIAL_ACCOUNT_ISSUER is the namespace the
+    // runtime actually queries and that the column is live end to end:
+    // plant a credential row under it, send the WRONG password, and the
+    // only way to reach INVALID_PASSWORD is for findCredentialAccount to
+    // have matched the row. A stale namespace would surface as
+    // CREDENTIAL_ACCOUNT_NOT_FOUND instead. No account is deleted either
+    // way - a wrong password is a refusal, and that is asserted too.
+    await env.DB.prepare(
+      'insert into account (id, issuer, account_id, provider_id, user_id, password, updated_at) values (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(
+        `${userId}-cred`,
+        CREDENTIAL_ACCOUNT_ISSUER,
+        userId,
+        'credential',
+        userId,
+        await hashPassword('the-real-password-123456'),
+        Date.now(),
+      )
+      .run()
+
+    const res = await apiRequest(cookie, 'POST', '/api/auth/delete-user', {
+      password: 'not-the-real-password',
+    })
+    expect(res.ok).toBe(false)
+    expect(((await res.json()) as { code?: string }).code).toBe('INVALID_PASSWORD')
+
+    const after = await rowCounts(userId)
+    expect(after.user).toBe(1)
+    for (const table of APP_TABLES) {
+      expect(after[table], `${table} still present`).toBeGreaterThan(0)
+    }
+    // rowCounts() deliberately leaves `account` out (passwordless users have
+    // none), so the planted row's survival is asserted directly: a refused
+    // password must not consume the credential either.
+    const credential = await env.DB.prepare(
+      'select count(*) as n from account where user_id = ? and provider_id = ?',
+    )
+      .bind(userId, 'credential')
+      .first<{ n: number }>()
+    expect(credential?.n).toBe(1)
   })
 })

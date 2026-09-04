@@ -208,6 +208,11 @@ const FIXTURES = [
   }],
   ['account', {
     id: 'acct-seed',
+    // Added by 0028 (better-auth 1.7), which requires `account` to be EMPTY
+    // when it runs (REQUIRE_EMPTY_TABLE), so 0028's own pass does not seed
+    // this row at all. Every later pass does, and this is the namespace 1.7
+    // stores for a credential account (createLocalAccountIssuer).
+    issuer: 'local:credential',
     account_id: 'acct-seed-provider-id',
     provider_id: 'credential',
     user_id: 'u-seed',
@@ -836,6 +841,32 @@ const TRANSIENT_TABLES = [
   },
 ]
 
+// Migrations whose DDL is legal only on an EMPTY table, and which therefore
+// REFUSE a populated one - by design, not by accident. SQLite accepts
+// `ADD COLUMN ... NOT NULL` with no default only while the table has no rows,
+// a default once added can never be dropped, and the rebuild that could do
+// either is banned. So a migration that must leave a column exactly as the
+// Drizzle snapshot declares it (NOT NULL, no default) has one honest form:
+// the generated statement, on an empty table, failing closed otherwise.
+//
+// The pass for such a migration does NOT seed the named table - seeding it
+// would fail the apply for the reason the migration exists - and its
+// POST_CHECKS prove the schema it leaves behind. The table is still seeded
+// in every other pass, so a later rebuild of it is caught as usual, and its
+// fixture must still carry every column the newest schema has.
+//
+// What this does NOT prove: that production's table is empty when the deploy
+// runs. That is a human attestation (a remote count before merge); the
+// migration's refusal is what keeps a wrong attestation from costing anything
+// beyond a halted deploy.
+const REQUIRE_EMPTY_TABLE = [
+  {
+    migration: '0028_better_auth_1_7_account_issuer.sql',
+    table: 'account',
+    why: "better-auth 1.7's required account.issuer added without a default; this app has no writers of account and production held zero rows on 2026-09-04",
+  },
+]
+
 // Columns 0016 dropped, and the schema objects that went with them. Indexes and
 // triggers belonging to a DROPPED_TABLES entry are exempt automatically (the
 // table took them); this list is for objects on tables that SURVIVED, where a
@@ -999,6 +1030,23 @@ const POST_CHECKS = [
   { migration: '0021_categories-cap.sql', description: 'the 501st category is rejected',
     sql: "insert into categories (id,user_id,name,sort_order,created_at) values ('cap-over','u-seed','Over',999,0)",
     expectErrorMatch: /category cap exceeded/ },
+
+  // 0028: better-auth 1.7's required account.issuer, applied to an EMPTY
+  // table (REQUIRE_EMPTY_TABLE: this pass does not seed acct-seed, because
+  // the generated `ADD COLUMN ... NOT NULL` is accepted only on an empty
+  // table and the migration is meant to refuse anything else). What is
+  // proven here is the schema the migration leaves behind: the column has
+  // no default, so a writer that omits issuer is refused rather than stored
+  // under a sentinel - exactly what the Drizzle snapshot declares.
+  { migration: '0028_better_auth_1_7_account_issuer.sql', description: 'an insert that omits issuer is refused',
+    sql: "insert into account (id,account_id,provider_id,user_id,updated_at) values ('acct-no-issuer','no-issuer','credential','u-seed',0)",
+    expectErrorMatch: /NOT NULL constraint failed: account\.issuer/ },
+  { migration: '0028_better_auth_1_7_account_issuer.sql', description: 'setup: a credential row under the local namespace',
+    sql: "insert into account (id,issuer,account_id,provider_id,user_id,updated_at) values ('acct-probe','local:credential','acct-probe-subject','credential','u-seed',0) returning id",
+    expectRows: [{ id: 'acct-probe' }] },
+  { migration: '0028_better_auth_1_7_account_issuer.sql', description: 'a second row under the same identity is refused',
+    sql: "insert into account (id,issuer,account_id,provider_id,user_id,updated_at) values ('acct-dup-probe','local:credential','acct-probe-subject','credential','u-seed',0)",
+    expectErrorMatch: /UNIQUE constraint failed: account\.issuer, account\.account_id/ },
 ]
 
 const quoteIdent = (name) => `"${name.replaceAll('"', '""')}"`
@@ -2632,6 +2680,7 @@ const validateExpectedChanges = (knownMigrations) => {
     ['DROPPED_SCHEMA_OBJECTS', DROPPED_SCHEMA_OBJECTS],
     ['EXPECTED_TYPE_CHANGES', EXPECTED_TYPE_CHANGES],
     ['TRANSIENT_TABLES', TRANSIENT_TABLES],
+    ['REQUIRE_EMPTY_TABLE', REQUIRE_EMPTY_TABLE],
     ['POST_CHECKS', POST_CHECKS],
     // Keyed by filename like the rest, and MORE dangerous when wrong: a typo
     // here is not merely inert. alreadyApplied() treats any filename it cannot
@@ -3671,13 +3720,17 @@ const diffConstraints = (beforeByTable, afterByTable, skipTables) => {
 // The rule is simply the truth about the database at this point: a change seeds
 // `after` if its migration has ALREADY run, and `before` if it has not - which
 // covers both the migration under test and every migration after it.
-const seed = (columnsByTable, alreadyApplied) => {
+const seed = (columnsByTable, alreadyApplied, underTest) => {
   const seededColumns = new Map()
   const inserts = []
 
   for (const [table, fixtureRow] of FIXTURES) {
     const existing = columnsByTable.get(table)
     if (!existing) continue // table arrives in a later migration
+    // A migration that refuses a populated table is tested against the
+    // state it demands. Every OTHER pass still seeds this table, so a later
+    // rebuild of it is caught as usual.
+    if (REQUIRE_EMPTY_TABLE.some((r) => r.migration === underTest && r.table === table)) continue
 
     const row = { ...fixtureRow }
 
@@ -3873,7 +3926,7 @@ const checkOneMigration = (postBaseline, index) => {
       return
     }
 
-    const seededColumns = seed(columnsByTable, alreadyApplied)
+    const seededColumns = seed(columnsByTable, alreadyApplied, name)
 
     // BATCH B. Everything that describes the database this migration is about
     // to run against - the seeded rows AND the schema they live in - in one
@@ -3903,8 +3956,24 @@ const checkOneMigration = (postBaseline, index) => {
     // Reading the raw list here would exempt the name permanently, leaving the
     // recreated table invisible to every preservation check thereafter.
     const transientAtBase = new Set(transientsCreated.map((t) => t.table))
+    // A REQUIRE_EMPTY_TABLE entry exempts its table from seeding ONLY in the
+    // pass for the migration that needs it empty; the fixture itself must
+    // still exist, or the table would be invisible to every other pass.
+    const requiredEmpty = new Set(
+      REQUIRE_EMPTY_TABLE.filter((r) => r.migration === name).map((r) => r.table),
+    )
+    for (const table of requiredEmpty) {
+      if (!FIXTURES.some(([fixtureTable]) => fixtureTable === table)) {
+        throw new Error(
+          `REQUIRE_EMPTY_TABLE names ${table} for ${name}, but ${table} has no ` +
+            'fixture row. The exemption is for one pass, not a way to skip the ' +
+            'fixture: add one so every other pass still checks the table.',
+        )
+      }
+    }
     const unseeded = tablesBefore.filter(
-      (table) => !seededColumns.has(table) && !transientAtBase.has(table),
+      (table) =>
+        !seededColumns.has(table) && !transientAtBase.has(table) && !requiredEmpty.has(table),
     )
     if (unseeded.length > 0) {
       throw new Error(
