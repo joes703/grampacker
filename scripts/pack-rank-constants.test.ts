@@ -3,17 +3,16 @@ import { describe, expect, it } from 'vitest'
 import { LIST_ITEM_CAP, PACK_RANK_MAX } from '../shared/lists'
 import { FOOD_ITEM_CAP } from '../shared/food'
 
-// PACK_RANK_MAX and LIST_ITEM_CAP are declared once in shared/lists.ts, but two
-// things outside TypeScript's reach hold copies of the same numbers:
+// PACK_RANK_MAX and LIST_ITEM_CAP are declared once in shared/lists.ts, but the
+// migrations' triggers - which are what the DATABASE actually enforces - hold
+// copies of the same numbers: SQL cannot import a constant, so the values are
+// literals there. (A pre-deploy audit workflow used to hold a third copy; it
+// gated migration 0019's release and was deleted once that had shipped.)
 //
-//   * migration 0019's triggers, which are what the DATABASE actually enforces.
-//     SQL cannot import a constant, so the values are literals there.
-//   * the pack-rank audit workflow, which decides whether production is clean
-//     enough for a migration to apply. Shell cannot import one either.
-//
-// Both carried a comment saying "keep this in step with shared/". A comment is
-// not a mechanism - the `# v6` tag comment on a setup-node pin was wrong for a
-// full release before anyone noticed. These tests are the mechanism.
+// The migrations carried a comment saying "keep this in step with shared/". A
+// comment is not a mechanism - the `# v6` tag comment on a setup-node pin was
+// wrong for a full release before anyone noticed. These tests are the
+// mechanism.
 //
 // Note the direction of the guard. Migration 0019 has SHIPPED, so it is frozen
 // and cannot be the thing that drifts. What this catches is someone changing
@@ -72,22 +71,5 @@ describe('pack rank constants stay in step outside TypeScript', () => {
         PACK_RANK_MAX - LIST_ITEM_CAP - FOOD_ITEM_CAP,
       ]),
     )
-  })
-
-  it('the pack-rank audit workflow probes the bounds shared/lists.ts declares', () => {
-    const workflow = readRepoFile('.github/workflows/audit-pack-ranks.yml')
-
-    const ceiling = workflow.match(/^\s*pack_rank_max=(\d+)$/m)
-    expect(ceiling, 'no `pack_rank_max=<number>` assignment found').not.toBeNull()
-    expect(Number(ceiling?.[1])).toBe(PACK_RANK_MAX)
-
-    const headroom = workflow.match(/(?<!food_)headroom_floor=\$\(\(\s*pack_rank_max - (\d+)\s*\)\)/)
-    expect(headroom, 'no `headroom_floor=$(( pack_rank_max - <number> ))` found').not.toBeNull()
-    expect(Number(headroom?.[1])).toBe(LIST_ITEM_CAP)
-
-    // The 0022 food mirror: same ceiling, FOOD_ITEM_CAP-wide headroom.
-    const foodHeadroom = workflow.match(/food_headroom_floor=\$\(\(\s*pack_rank_max - (\d+)\s*\)\)/)
-    expect(foodHeadroom, 'no `food_headroom_floor=$(( pack_rank_max - <number> ))` found').not.toBeNull()
-    expect(Number(foodHeadroom?.[1])).toBe(FOOD_ITEM_CAP)
   })
 })

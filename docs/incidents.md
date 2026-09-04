@@ -272,6 +272,34 @@ tag and fails CI on a mismatch. Dependabot moves the SHA but has left the
 comment reading the old major, so for one release the workflows said `# v6`
 while running v7.
 
+## Actions: a manual dispatch runs the chosen ref's copy of the workflow
+
+`workflow_dispatch` lets the person dispatching pick a ref, and the run
+executes THAT ref's copy of the workflow file with the repository's secrets
+(same-repository refs receive them; forks and Dependabot do not). So a
+dispatch trigger on a workflow that names a secret is a way for any branch
+to run an edited privileged workflow. `deploy.yml` carried one from its
+first version as the recovery path for a deploy that never fired, and the
+pack-rank audit workflow (`audit-pack-ranks.yml`, dispatch-only, holding a
+read-only D1 token) had the same shape. Found by Codex review 2026-09-04;
+both removed the same day. The audit workflow had never been run: it gated
+migration 0019's release, which shipped in August, and the triggers 0019
+and 0023 installed now enforce what it probed. Migration 0019's comment
+still names it - that file is frozen and cannot be edited.
+
+Recovery without dispatch, both verified against GitHub's documentation: a
+re-run (`gh run rerun`, `--failed` for just the failed jobs) keeps the
+original run's `GITHUB_SHA`, `GITHUB_REF` and workflow file, so it can only
+ever execute the copy on main; and re-running a CI run fires its
+`workflow_run` `completed` event again (only `requested` is suppressed on
+re-runs). One qualification, because `--failed` is job-granular: a Deploy
+run that failed only at "Record deployment marker" has already changed
+production, and re-running its deploy job would apply migrations and
+deploy again - that step's own error message says not to. The marker is
+repaired by hand (the same two API calls the step makes). The rule now
+stands in SECURITY.md: no workflow that names a secret carries
+`workflow_dispatch`.
+
 ## If this ever moves off D1 (self-hosted SQLite)
 
 D1 pre-applies the SQLite settings this app's correctness depends on, so
