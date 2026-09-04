@@ -32,7 +32,30 @@
 #     path cannot be spoofed by naming a workflow "CI". The trigger is only ever
 #     a wake-up call and never the proof.
 #   * THE CHECKOUT NEVER USES AN EVENT-SUPPLIED REF. Always `refs/heads/main`.
-#     Never `head_sha`, never the dispatch ref.
+#     Never `head_sha`.
+#   * THERE IS NO `workflow_dispatch`, AND THERE MUST NOT BE ONE. A manual
+#     dispatch runs the CHOSEN REF's copy of this file, and same-repository
+#     refs receive repository secrets - so a branch could edit this workflow,
+#     dispatch it, and reach CLOUDFLARE_API_TOKEN. It carried one until
+#     2026-09-04 as a recovery path. The recovery paths that replace it never
+#     execute anything but the copy on main:
+#       - a Deploy run that failed at any step EXCEPT "Record deployment
+#         marker": `gh run rerun --failed <deploy-run-id>`. A re-run keeps
+#         the original run's commit and workflow file; the deploy job then
+#         re-resolves main's head and re-verifies CI under the lock exactly
+#         as on the first attempt. That includes a run where the migrations
+#         applied and "Deploy Worker" failed: `wrangler d1 migrations apply`
+#         skips migrations already recorded by name, so the re-run only
+#         retries the Worker swap.
+#         NOT for a run that failed only at "Record deployment marker": its
+#         error says so explicitly, because production is already on the new
+#         SHA and `--failed` re-runs the whole deploy job. Repair the marker
+#         instead - the same two API calls that step makes, with the SHA the
+#         error message names.
+#       - a Deploy run that never fired: `gh run rerun <ci-run-id>` on main's
+#         CI run. A re-run completion fires `workflow_run` `completed` again
+#         (only the `requested` activity type is suppressed on re-runs), or
+#         land a new commit on main through a PR.
 #   * THE AUTHORITATIVE CHECK LIVES INSIDE THE CONCURRENCY LOCK. Preflight is a
 #     cheap filter that drops obsolete events before they contend for the lock;
 #     its verdict can rot while the deploy job queues. The deploy job therefore
@@ -55,11 +78,11 @@ on:
   workflow_run:
     workflows: ['CI']
     types: [completed]
-  workflow_dispatch:
 
 # Unspecified permissions default to none, so every one of these is load-bearing:
 #   contents     - check out the source.
-#   actions      - query workflow runs, for the manual-dispatch recovery path.
+#   actions      - query workflow runs: the deploy job's in-lock check that
+#                  ci.yml is green for main's head reads the runs API.
 #   deployments  - record which SHA reached production, which the liveness
 #                  watchdog reads. GITHUB_TOKEN can write deployment records and
 #                  their statuses; it CANNOT write Actions variables, which is
@@ -85,12 +108,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_repository.full_name == github.repository &&
-       github.event.workflow.path == '.github/workflows/ci.yml')
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow.path == '.github/workflows/ci.yml'
     outputs:
       # Deliberately NOT exporting the SHA. The deploy job must re-resolve it
       # under the lock; handing it one from out here would reintroduce exactly
@@ -122,7 +144,6 @@ jobs:
       # never happens.
       - name: Skip if this run is stale
         id: stale
-        if: github.event_name == 'workflow_run'
         env:
           EVENT_SHA: ${{ github.event.workflow_run.head_sha }}
           HEAD_SHA: ${{ steps.sha.outputs.sha }}
@@ -195,9 +216,10 @@ jobs:
         id: sha
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      # THE REAL GATE. The trigger proves nothing: workflow_dispatch has no CI
-      # link at all, and the workflow_run trigger matched a display NAME, which
-      # any workflow can claim. The authoritative answer is whether THE FILE
+      # THE REAL GATE. The trigger proves nothing: the workflow_run trigger
+      # matched a display NAME, which any workflow can claim, and a re-run of
+      # this workflow arrives with an event that may be arbitrarily old. The
+      # authoritative answer is whether THE FILE
       # .github/workflows/ci.yml has a successful push-run on main for this
       # exact SHA. A file path cannot be spoofed by naming a workflow "CI".
       #

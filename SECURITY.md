@@ -358,6 +358,18 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
 - GitHub Actions pinned to full commit SHAs; triggers are `pull_request`
   and `push` to main - never `pull_request_target` (which would run
   workflows with secrets against fork code); private repo.
+- No workflow that names a secret carries `workflow_dispatch`. A manual
+  dispatch runs the CHOSEN REF's copy of the workflow file, and
+  same-repository refs receive repository secrets, so it would let a branch
+  execute an edited privileged workflow. `deploy.yml` carried one as a
+  recovery path until 2026-09-04; recovery is now a re-run of the failed
+  run, which keeps the original commit's workflow file - for any failed
+  step except the marker step, where production is already on the new SHA
+  and the marker is repaired by hand instead (see the header of
+  `deploy.yml`). Narrowly stated: `deploy.yml`'s `workflow_run` trigger
+  still fires on PR-branch CI completions, but its job-level `if` rejects
+  them before any step runs, and the copy that runs is always the one on
+  main.
 
 ## Later surfaces (packing locations, food, the pack union)
 

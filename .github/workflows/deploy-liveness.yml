@@ -121,8 +121,26 @@ jobs:
           2. A deploy failed. Check the Actions tab.
           3. Every recent Deploy run decided it was stale and skipped.
 
-          To recover, dispatch \`Deploy\` manually - it re-verifies CI is green
-          for main's head before doing anything."
+          To recover (there is deliberately no manual dispatch - see the
+          header of \`deploy.yml\`):
+
+          - If a Deploy run for main's head FAILED at any step except
+            \"Record deployment marker\": re-run it with
+            \`gh run rerun --failed <deploy-run-id>\`. A re-run keeps that
+            run's commit and workflow file, and the deploy job re-verifies
+            CI is green for main's head before doing anything. This includes
+            a run where migrations applied and \"Deploy Worker\" failed:
+            \`wrangler d1 migrations apply\` skips migrations already recorded
+            by name, so the re-run only retries the Worker swap.
+          - If it failed ONLY at \"Record deployment marker\" (its log says
+            production is running the new SHA and not to re-run): do NOT
+            re-run. Create the marker by hand with the same two API calls
+            that step makes (a deployment for that SHA, then a success
+            status), and this check will read it.
+          - If no Deploy run fired at all: re-run main's CI run with
+            \`gh run rerun <ci-run-id>\`; its completion fires the
+            \`workflow_run\` trigger again. Or land a new commit on main
+            through a PR."
           fi
 
           # Idempotent: update the existing open issue rather than filing a new
