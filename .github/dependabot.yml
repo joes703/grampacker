@@ -10,7 +10,8 @@
 # 7, patch 3) and by package family. The semver partition was the mistake. A
 # group can only ever combine updates that are eligible in the SAME run, so
 # different waits per level push packages that pin each other exactly into
-# separate runs. @cloudflare/vitest-pool-workers pins wrangler EXACTLY; a patch
+# separate runs. The Cloudflare Vitest plugin (@cloudflare/vitest-pool-workers
+# then, @cloudflare/vitest-plugin now) pins wrangler EXACTLY; a patch
 # on one and a minor on the other came eligible three days apart, and the
 # resulting PR would have installed a second nested wrangler, miniflare and five
 # workerd binaries.

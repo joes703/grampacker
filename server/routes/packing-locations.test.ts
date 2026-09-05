@@ -1641,7 +1641,7 @@ describe('cascade delete at the schema caps', () => {
     // the runtime and prove nothing extra.
     //
     // HONEST LIMIT: this asserts the delete SUCCEEDS at cap shape, not a write
-    // budget - vitest-pool-workers gives no counter for that. The write-count
+    // budget - the Cloudflare Vitest plugin gives no counter for that. The write-count
     // evidence lives in the migration comment and was measured directly.
     const { cookie } = await signUpVerifiedUser('cascade-scale@example.com', 'O')
     const list = await createList(cookie, 'Big')

@@ -16,7 +16,7 @@ come from is a dated record,
 | --- | --- | --- | --- |
 | Node unit | `npm run test:unit` (Vitest, `environment: node`) | `scripts/**`, `shared/**`, `src/**` tests without a jsdom pragma, `server/**/*.node.test.ts` | Pure functions, DTO schemas, repo plumbing, server code with a mocked `Db` |
 | jsdom component | same command; file opens with `// @vitest-environment jsdom` | `src/**` tests that render or need a DOM API | Rendering, DOM APIs, `localStorage` |
-| workerd / D1 API | `npm run test:api` (`@cloudflare/vitest-pool-workers`) | every other `server/**/*.test.ts` | What the real Hono app, better-auth and D1 do on workerd: routes, middleware, authorization boundaries, constraints, triggers |
+| workerd / D1 API | `npm run test:api` (`@cloudflare/vitest-plugin`) | every other `server/**/*.test.ts` | What the real Hono app, better-auth and D1 do on workerd: routes, middleware, authorization boundaries, constraints, triggers |
 | Migration preservation | `npm run test:migrations` | `migrations/**` | Every post-baseline migration, applied the way deploy applies it, preserves the rows that already existed and the trigger behaviors it probes |
 | Browser / end-to-end | none | none | Not needed today: the API tier drives the real app below the DOM and the jsdom tier covers rendering. Add one only for a cross-layer bug neither can express, in its own config |
 
