@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config'
 
 // Standalone config so unit tests do not boot the Cloudflare plugin.
-// API integration tests against workerd (vitest-pool-workers) have their own
+// API integration tests against workerd (@cloudflare/vitest-plugin) have their own
 // config, vitest.workers.config.ts. Which tier a test belongs in, and why:
 // docs/testing-and-ci.md.
 export default defineConfig({

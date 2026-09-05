@@ -17,14 +17,15 @@ export const API_BODY_LIMIT_BYTES = 128 * 1024
 // gear row is ~300 bytes, so a full import runs well past 128 KB).
 //
 // 2 MB is a TRANSPORT bound, deliberately not derived from the DTO's
-// worst case. Deriving it would be a trap: zod's `.max()` counts UTF-16
-// code units (JS string length) while a body limit counts BYTES, and a
-// single code unit encodes to up to 3 bytes of UTF-8 (4-byte code points
-// cost two code units, so 3x is the true worst-case ratio), so the worst
-// case the gear DTO accepts (500 items
-// x 2000-char descriptions) is over 3 MB - a cap we do not want to hold
-// open in a 128 MB isolate for an endpoint that only needs to carry real
-// CSV data (at ~300 bytes per fat row, 500 rows is well under 1 MB). A
+// worst case. Deriving it would be a trap: zod's `.max()` counts
+// CHARACTERS while a body limit counts BYTES, and the two do not have a
+// fixed ratio. Since zod 4.5 a character is a Unicode code point, which
+// UTF-8 encodes in up to 4 bytes (zod 4.4 and earlier counted UTF-16 code
+// units, at most 3 bytes each; the switch made every string cap admit
+// MORE bytes, not fewer). So the worst case the gear DTO accepts (500
+// items x 2000-char descriptions) is over 4 MB - a cap we do not want to
+// hold open in a 128 MB isolate for an endpoint that only needs to carry
+// real CSV data (at ~300 bytes per fat row, 500 rows is well under 1 MB). A
 // pathological import can therefore still 413. That is the intended
 // behavior, not a bug: the DTO bounds semantics, this bounds transport,
 // and the 413 tells the client to split the file. The residual DoS shape

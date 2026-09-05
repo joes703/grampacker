@@ -41,19 +41,19 @@ historical as it is.
 | better-auth | 1.7.2 | Auth core: sessions, and the `magic-link` plugin (which ships INSIDE core - `better-auth/plugins/magic-link` - so passwordless auth added no dependency). Email/password was removed 2026-07-11; see `docs/passwordless-auth-design.md`. Vercel-acquisition watch item: gate upgrades on Workers-pool integration tests. 1.7 (landed via Dependabot #224) added a required `account.issuer` column plus a unique `(issuer, account_id)` index to better-auth's own model: the CLI-generated schema had to be regenerated and migration 0028 added the column, so expect a better-auth minor to need a schema regen + migration, not just a lockfile bump. |
 | zod | 4.4.3 | DTO schemas in `shared/`, validated on both sides of the API. |
 | react / react-dom | 19.2.7 | Same major as the SPA being transplanted. |
-| wrangler | 4.107.0 | Exactly matches @cloudflare/vite-plugin's peer floor (`^4.107.0`). |
-| @cloudflare/vite-plugin | 1.43.0 | Runs the Worker inside Vite dev (workerd) - one `npm run dev` for SPA + API + local D1. |
+| wrangler | 4.129.0 | Exactly matches the wrangler version BOTH Cloudflare plugins pin as an exact dependency (not merely their peer range). Moving wrangler without moving both plugins to the release that pins the same version nests a second wrangler, miniflare and workerd under whichever plugin disagrees - the lockfile carried exactly that under vitest-pool-workers from 0.22.0 until the 2026-09 rename PR. |
+| @cloudflare/vite-plugin | 1.54.4 | Runs the Worker inside Vite dev (workerd) - one `npm run dev` for SPA + API + local D1. Pins wrangler exactly (1.54.4 -> 4.129.0), so it moves in lockstep with wrangler and the Vitest plugin. |
 | vite | 8.1.3 | Rolldown line. All plugins verified against `^8` peer ranges at scaffold. |
 | @vitejs/plugin-react | 6.0.3 | Requires vite ^8. |
 | tailwindcss + @tailwindcss/vite | 4.3.2 | CSS-first v4 config (`@import 'tailwindcss'`). |
 | typescript | 6.0.3 | `tsc -b` over three noEmit projects (app / worker / node). TS 7 native compiler is trial-not-adopt. |
-| vitest | 4.1.10 | v5 still beta (5.0.0-beta.6 at scaffold). No test runner on betas. |
+| vitest | 4.1.11 | v5 was still beta at scaffold (5.0.0-beta.6); 5.0.0 went GA 2026-09-03. Held on 4.1.x because `@cloudflare/vitest-plugin` peers on `vitest ^4.1.0` and no release accepts 5.x yet - the upgrade trigger is the plugin's peer range, not Vitest's release. |
 
 ## Installed during phase 1
 
 | Package | Version | Why / notes |
 | --- | --- | --- |
-| @cloudflare/vitest-pool-workers | 0.18.1 | API integration tests against real workerd + D1 (peers vitest ^4.1.0). 0.18 API: `cloudflareTest()` Vite plugin (not `defineWorkersConfig`), types at the `/types` subpath, env is `Cloudflare.Env`. |
+| @cloudflare/vitest-plugin | 1.1.4 | API integration tests against real workerd + D1 (peers vitest ^4.1.0). Installed as `@cloudflare/vitest-pool-workers` 0.18.1; Cloudflare renamed the package for its 1.0 release (2026-08-19) with the API unchanged, and the repo followed in 2026-09. 0.18 API, still current: `cloudflareTest()` Vite plugin (not `defineWorkersConfig`), `readD1Migrations` on the root export, types at the `/types` subpath, env is `Cloudflare.Env`. Pins wrangler and zod exactly; the zod pin (4.4.3) trails the app's zod, so one nested zod under this package is expected in the lockfile. |
 | eslint | 10.6.0 | Baseline lint plus the security import boundary: fail-closed over all of server/ (data layer, middleware, composition root, and tests are the explicit exemptions) - no DB factory/schema, drizzle-orm, repo constructors, or auth imports; dynamic import() banned; eslint-disable comments neutralized via noInlineConfig. Runs inside `npm run build` (gates deploys) and in CI (gates merges). |
 | typescript-eslint | 8.63.0 | Flat-config recommended rules + `@typescript-eslint/no-restricted-imports` (allowTypeImports keeps repo row-type imports legal in routes). |
 | eslint-plugin-react-hooks | 7.1.1 | Hooks correctness for the SPA (`src/**`). eslint-plugin-jsx-a11y stays excluded until a release supports ESLint 10 peers (same deferral as the old repo). |
@@ -81,7 +81,8 @@ prohibition.
 
 - drizzle 1.x: the upgrade trigger is better-auth's peer range admitting it
   (GA will long since have shipped by then)
-- vitest 5 GA
+- vitest 5: GA shipped 2026-09-03 (5.0.0); blocked on `@cloudflare/vitest-plugin`
+  publishing a release whose peer range admits it
 - @dnd-kit/react 1.0 (classic line transplants until then)
 - eslint-plugin-jsx-a11y with ESLint 10 peer support
 - TypeScript 7 native compiler (trial on a branch when it GAs; adopt only if

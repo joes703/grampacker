@@ -1,13 +1,12 @@
 import { defineConfig } from 'vitest/config'
-import {
-  cloudflareTest,
-  readD1Migrations,
-} from '@cloudflare/vitest-pool-workers'
+import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-plugin'
 
 // API integration tests: the real Hono app against real workerd + D1.
 // Migrations are applied by server/test/apply-migrations.ts before tests.
 // (vitest 4 era: pool-workers 0.18 replaced defineWorkersConfig with the
-// cloudflareTest() Vite plugin.)
+// cloudflareTest() Vite plugin; 1.0 renamed the package to
+// @cloudflare/vitest-plugin with the API unchanged. readD1Migrations is a
+// root export - the package publishes no `/config` subpath.)
 export default defineConfig(async () => {
   const migrations = await readD1Migrations('./migrations')
   return {
