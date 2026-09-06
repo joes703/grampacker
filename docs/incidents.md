@@ -197,6 +197,13 @@ re-scanned on every run and cannot ride to production behind a later green
 commit. The `DROPPED_*` and `EXPECTED_TYPE_CHANGES` constants in
 `scripts/check-migration-safety.mjs` are frozen history, not a hatch.
 
+What that gate does NOT do is compare the tree against main: it replays the
+files as it finds them, so an EDIT to a migration production already applied
+by name replays clean while production keeps the original text. On a pull
+request `scripts/check-migration-immutability.mjs` refuses such a change
+(2026-09; coverage boundary in `docs/testing-and-ci.md` section 7). Beyond
+the 21 digest-pinned baseline files, that route was unchecked before it.
+
 What `npm run test:migrations` proves and does not: it applies everything
 before each post-baseline migration, seeds a populated D1, applies that one
 migration the way deploy.yml does, and fails if a seeded fixture row was lost

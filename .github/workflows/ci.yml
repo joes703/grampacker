@@ -29,10 +29,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Full history. Nothing in this job reads git today - the
-          # migration-safety check scans the migrations directory, not a diff
-          # - but the checkout costs about two seconds here and the planned
-          # change-aware scoping of that check needs the merge base.
+          # Full history: the migration-immutability check below needs the
+          # merge base with origin/main, which only a full fetch creates. The
+          # migration-safety harness still reads no git at all - it scans the
+          # migrations directory, not a diff.
           fetch-depth: 0
 
       - name: Set up Node
@@ -61,6 +61,16 @@ jobs:
       # production behind a later commit that touched no SQL.
       - name: Test (migrations preserve data)
         run: npm run test:migrations
+
+      # A separate question from the step above, which replays the migrations
+      # in the TREE and so cannot notice that one of them was edited. Wrangler
+      # applies migrations by name and never re-runs one, so an edited 0027
+      # replays clean here while production still holds the original text.
+      # This refuses a pull request that changes any migration main already
+      # holds. It is pull-request-only and skips itself on a push; what that
+      # does and does not cover is in docs/testing-and-ci.md section 7.
+      - name: Check (shipped migrations unchanged)
+        run: node scripts/check-migration-immutability.mjs
 
       # We pin actions by SHA because tags are mutable, and then rely on a
       # trailing `# v7.0.0` comment to say what the SHA is. Nothing checked that

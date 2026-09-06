@@ -101,12 +101,39 @@ stub is a measured decision, not a default.
   a probe; the PR says what a backfill wrote, because the harness proves
   survival, not correctness.
 
-**Target state (lands in PR 4).** Today every run replays all post-baseline
-migrations. The target: on a pull request only the migrations the PR adds
-get a populated-D1 pass, any change to a migration main already holds
-fails the PR, and a change to the harness, schema, wrangler, drizzle, Node
-or the lockfile forces the full run; on main the run stays full, because
-main is the deploy gate.
+**The harness always runs whole.** Every CI event replays every
+post-baseline migration - pull request and push to main alike. Scoping it to
+the migrations a PR adds was designed and then dropped: it saved 1-2 minutes
+on the pull requests that carry the least migration risk, zero on the ones
+that carry the most, and cost a scheduler with two execution modes to
+maintain. Anchoring to the directory rather than a diff is also what stops a
+bad migration riding to production behind a later commit that touched no SQL.
+
+**What the harness cannot see, and what does.** It replays the migrations in
+the TREE, so it cannot notice that one of them was EDITED. Wrangler applies
+migrations by name and never re-runs one: an edited `0027` replays perfectly
+clean while production still holds the text it actually applied.
+`scripts/check-migration-immutability.mjs` closes that gap on pull requests.
+It diffs the merge base with `origin/main` (`--no-renames --name-only -z
+--diff-filter=a`, so additions are excluded and a rename-away arrives as a
+deletion), refuses any path under `migrations/` that is not an addition, and
+allows `meta/_journal.json` only to gain entries with its existing entries and
+other fields untouched. What the appended entries say is the harness's job.
+Unobtainable git evidence fails the step rather than passing it.
+
+Immutability is judged against the merge base, so a migration the PR itself
+introduced stays editable across pushes.
+
+**Its coverage boundary, so nobody assumes more.** The guard runs on
+`pull_request` only, and depends on the "Protect main" ruleset requiring
+`Verify` strictly with no bypass actors - today a pull request is the only
+route to main. A direct push, a history rewrite or a merge that bypasses
+`Verify` is NOT covered, and nothing else covers it either: main's full
+harness would replay an edited shipped migration without complaint, and every
+later pull request would then treat that file as trusted history. Closing
+that properly means digest-pinning the post-baseline files the way the 21
+frozen baseline files are pinned, re-pinned on every migration. That is
+deferred, not overlooked.
 
 ## 8. Never delete or weaken a test to make CI faster
 
