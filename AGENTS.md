@@ -317,7 +317,11 @@ database is never deleted or recreated.
   are in docs/incidents.md - read that section before writing any migration.
 - Never edit a migration that has shipped: production applied it by name and
   will never re-run it. The 21 baseline migrations are digest-pinned and fail
-  closed on edit.
+  closed on edit; on a pull request
+  `scripts/check-migration-immutability.mjs` refuses a change to any other
+  migration main already holds. The harness cannot catch this - it replays
+  the tree, so an edited migration replays clean. That guard's coverage
+  boundary is in `docs/testing-and-ci.md` section 7.
 
 ## Git and supply chain
 

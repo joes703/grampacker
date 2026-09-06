@@ -6,7 +6,11 @@
     "moduleResolution": "bundler",
     "strict": true,
     "noEmit": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    // Only for the one .mjs listed below, which opens with `// @ts-check` so
+    // it is checked under these strict settings; its test imports it and
+    // would otherwise fail on the missing declaration (TS7016).
+    "allowJs": true
   },
   // Every root-level config file must be listed, or `npm run build` goes green
   // while the config TypeScript rots. vitest.setup.ts is NOT here: it pulls in
@@ -21,6 +25,7 @@
     "vitest.config.ts",
     "vitest.workers.config.ts",
     "drizzle.config.ts",
+    "scripts/check-migration-immutability.mjs",
     "scripts/**/*.test.ts"
   ]
 }
