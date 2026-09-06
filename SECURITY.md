@@ -487,6 +487,41 @@ of it:
 
 ## Deferred - known gaps with triggers
 
+- **Production Cloudflare credentials are not environment-scoped.** Closing
+  this needs repository SETTINGS changes plus a one-line workflow change; no
+  pull request closes it on its own.
+
+  What the repository shows, and it is all this entry claims: `deploy.yml`
+  reads `secrets.CLOUDFLARE_API_TOKEN` and `secrets.CLOUDFLARE_ACCOUNT_ID`,
+  and no job in any workflow declares an `environment:` key, so no deployment
+  branch policy applies to any job here. **No GitHub setting has been
+  inspected.** Whether those secrets are defined at repository or organization
+  scope, and whether this plan offers environments on a private repository at
+  all, are unverified - `gh api user --jq .plan.name` returns nothing under
+  the sandbox token (`docs/testing-and-ci.md` section 12).
+
+  Why it matters: a secret available to the repository is readable by a
+  same-repository `pull_request` run of any workflow, including one that a
+  pull request itself edits. The merge gate does not help - the run happens
+  before the merge. Today the only thing between a branch and these
+  credentials is that no workflow reads them outside `deploy.yml`, which is a
+  convention, not a control.
+
+  Closing it is a coordinated settings-and-code migration, not a checklist of
+  independently useful steps: a `production` environment holding the
+  credentials, its deployment branch policy restricted to `main`, broader-scope
+  availability withdrawn (for an organization secret, removing THIS
+  repository's access is enough - the organization secret itself need not be
+  deleted), and `environment: production` on the deploy job, since a branch
+  policy binds only a job that references it. Withdrawing the broader-scope
+  availability is what actually stops the exposure; do it without the rest and
+  deploys break until the environment wiring exists, so the order matters.
+
+  Trigger: any second person gaining write access, or any need to run workflow
+  code that is not reviewed before it runs. Until then the accepted risk is a
+  single-maintainer repository where every branch is authored by the
+  credential owner.
+
 - **Concurrent food edits can silently destroy scheduling.** Not a security
   hole - an integrity one, recorded here because this is the maintained list
   of live gaps and the plan that describes it in full is a dated record.
