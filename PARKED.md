@@ -21,3 +21,4 @@ Format: `- YYYY-MM-DD <idea> - <why it waits>`
 - 2026-07-07 Google social login - better-auth makes it a config-level add; wait for an actual reason.
 - 2026-07-07 Apple social login - blocked by cost-zero (Apple Developer Program is $99/year).
 - 2026-07-07 Cloudflare Email Service - re-adopt for auth email only if the account lands on Workers Paid anyway (free path covers verified destinations only; public signup needs arbitrary recipients). See REWRITE_PLAN.md decisions 13.1-13.2.
+- 2026-09-06 Real production liveness: stamp the commit SHA into the Worker at build time and report it from `/api/health`, so the deploy watchdog compares main against what Cloudflare is actually serving instead of GitHub's record of the last deploy job - trigger: a second occasion where a deployment record disagrees with production, or any deploy that changes production without recording itself. Deferred because it makes a commit id public.

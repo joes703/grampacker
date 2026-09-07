@@ -4,10 +4,11 @@
 sentence here disagrees with a config file or a workflow, that is a bug in
 this document, and the change that made it wrong owes the fix.
 
-Every section describes the tree as it is. A later change is headed
-**Target state (lands in PR n)**; the PR that lands it flips the heading.
-History and rationale live in `docs/incidents.md`; the plan these targets
-come from is a dated record,
+Every section describes the tree as it is. Nothing here is headed "target
+state" any more: the CI-simplification effort those headings came from closed
+on 2026-09-06, and its last two stages were dropped rather than built (see
+section 11). History and rationale live in `docs/incidents.md`; the plan is a
+dated record, and not authority,
 `docs/superpowers/plans/2026-09-04-testing-and-ci-simplification.md`.
 
 ## 1. The tiers
@@ -177,17 +178,31 @@ Mechanism today: a push to main runs `ci.yml`; its completion triggers
 deploy job, inside the `deploy-production` concurrency group, re-verifies
 through the API that `ci.yml` is green for main's head, builds, migrates,
 deploys, records a deployment marker; `deploy-liveness.yml` compares main
-against the marker every six hours. Recovery is a re-run of the failed run,
-never a manual dispatch; the header of `deploy.yml` says which failures may
-be re-run and which must not.
+against that marker every six hours, via `scripts/deployed-sha.mjs`. The
+watchdog trusts only the NEWEST deployment record in the page the API returns,
+and only when that record's LATEST status is a success - the marker step
+creates the record before posting its status, so a record alone is not
+evidence that a SHA reached production. Anything else - no status, an
+unsuccessful one, or records or statuses tied at the same second that
+disagree - is reported as `unverified`, naming no deployed SHA, rather than
+falling back to an older success that cannot speak for the newer deploy. Recovery is a
+re-run of the failed run, never a manual dispatch; the header of `deploy.yml`
+says which failures may be re-run and which must not.
 
-**Target state (lands in PR 5).** `ci.yml` runs `Verify` on pull requests
-and is callable; `deploy.yml` runs only on a push to main, calls that same
-`Verify` (one verification per main commit), then a `gate` job outside the
-lock that skips if main has moved, then `deploy` inside the lock on the
-exact verified SHA, recorded through the `production` environment. The
-liveness check selects the newest deployment whose latest status is
-`success`.
+**This is the intended shape, not a way station.** A replacement was designed
+in full - `ci.yml` callable, `deploy.yml` calling it directly and gating
+inside the lock, no `workflow_run` handoff - and dropped on 2026-09-06 without
+being built, so nothing here estimates what it would have saved. What it would
+have removed is nameable, though: the `workflow_run` handoff, the preflight
+job, and the in-lock API query that re-checks `ci.yml` is green for main's
+head (that query, not a second test run - `deploy.yml` never re-runs the
+suites). Against that it rewrites the file with the largest blast radius in
+the repository, whose ordering behavior under concurrent merges is the part
+hardest to re-derive and the part its header spends most of its length on. It
+would also have bought no credential isolation: that is a repository settings
+question, recorded in `SECURITY.md` under "Deferred", not a property of the
+workflow's shape. Revisit only if something in `deploy.yml`'s header stops
+holding.
 
 ## 12. GitHub access from agent sandboxes
 
