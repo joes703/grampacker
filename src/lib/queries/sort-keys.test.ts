@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  gearKey,
   nextCategorySortOrder,
   nextGearItemSortOrder,
   nextListItemSortOrder,
@@ -46,21 +45,5 @@ describe.each(helpers)('%s', (_name, next) => {
     expect(next(rows(4), 0)).toBe(5)
     expect(next(rows(4), 1)).toBe(6)
     expect(next(rows(4), 2)).toBe(7)
-  })
-})
-
-describe('gearKey', () => {
-  it('normalizes to NFC before lowercasing, so NFD re-imports match', () => {
-    const precomposed = 'café' // é as one codepoint
-    const decomposed = 'café' // e + combining acute
-    expect(gearKey('c1', precomposed, 100)).toBe(gearKey('c1', decomposed, 100))
-    expect(gearKey('c1', 'CAFÉ', 100)).toBe(gearKey('c1', 'café', 100))
-  })
-
-  it('distinguishes category, name, and weight', () => {
-    expect(gearKey('c1', 'Tent', 900)).not.toBe(gearKey('c2', 'Tent', 900))
-    expect(gearKey('c1', 'Tent', 900)).not.toBe(gearKey('c1', 'Tarp', 900))
-    expect(gearKey('c1', 'Tent', 900)).not.toBe(gearKey('c1', 'Tent', 901))
-    expect(gearKey(null, 'Tent', 900)).not.toBe(gearKey('c1', 'Tent', 900))
   })
 })

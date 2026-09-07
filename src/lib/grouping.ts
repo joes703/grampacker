@@ -1,7 +1,6 @@
-import type { Category, GearItem, ListItemWithGear, PackingLocation } from './types'
+import type { Category, GearItem, ListItemWithGear } from './types'
 
 export type CategoryGroup<T> = { category: Category | null; items: T[] }
-export type LocationGroup<T> = { location: PackingLocation | null; items: T[] }
 export type Group<G, T> = { group: G | null; items: T[] }
 
 type OrphanPolicy = 'route-to-ungrouped' | 'drop'
@@ -175,27 +174,6 @@ export function listItemsArrayEqual(a: ListItemWithGear[], b: ListItemWithGear[]
     if (x.gearItem.status !== y.gearItem.status) return false
   }
   return true
-}
-
-export function groupListItemsByLocation(
-  items: ListItemWithGear[],
-  locations: PackingLocation[],
-  prior?: LocationGroup<ListItemWithGear>[],
-): LocationGroup<ListItemWithGear>[] {
-  const sortedLocations = locations.toSorted((a, b) => a.sortOrder - b.sortOrder)
-  return groupByCore(
-    items,
-    sortedLocations,
-    (item) => item.packingLocationId,
-    {
-      keepEmpty: true,
-      orphanPolicy: 'route-to-ungrouped',
-      stability: prior ? { prior, itemsEqual: listItemsArrayEqual } : undefined,
-    },
-    (entry) => entry.location,
-    (entry) => entry.items,
-    (location, groupItems) => ({ location, items: groupItems }),
-  )
 }
 
 /**

@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
 import { cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { groupListItemsByLocation } from './grouping'
 import { useStableWornItems } from './use-stable-worn-items'
-import type { ListItemWithGear, PackingLocation } from './types'
+import type { ListItemWithGear } from './types'
 
 afterEach(cleanup)
+
+// The hook reads only `.items`, so the groups are written as literals. They
+// used to come from groupListItemsByLocation, which no production code called;
+// these reproduce that builder's exact output for these inputs - group order,
+// order within each group, and the retained empty group all included. The
+// orderings below are DELIBERATELY not sorted: each one is what the assertion
+// underneath it has to overcome.
+const groups = (...buckets: ListItemWithGear[][]) => buckets.map((items) => ({ items }))
 
 function item(
   id: string,
@@ -45,13 +52,11 @@ function item(
 }
 
 describe('useStableWornItems with location groups', () => {
-  const locations: PackingLocation[] = [{
-    id: 'loc-1', name: 'Main pack', sortOrder: 0, containerListItemId: null,
-  }]
   const wornAssigned = item('worn-assigned', 'loc-1', true)
   const wornUnassigned = item('worn-unassigned', null, true)
   const normal = item('normal', 'loc-1', false)
-  const grouped = groupListItemsByLocation([wornAssigned, wornUnassigned, normal], locations)
+  // loc-1's bucket, then the Unassigned bucket last.
+  const grouped = groups([wornAssigned, normal], [wornUnassigned])
 
   it('extracts worn rows when enabled', () => {
     const { result } = renderHook(() => useStableWornItems(grouped, true))
@@ -79,17 +84,14 @@ describe('useStableWornItems with location groups', () => {
 // sort them on a number nobody can control. They keep that rank - it reserves
 // their slot for when they stop being worn - it just is not what this reads.
 describe('useStableWornItems ordering', () => {
-  const locations: PackingLocation[] = [
-    { id: 'loc-1', name: 'First bag', sortOrder: 0, containerListItemId: null },
-    { id: 'loc-2', name: 'Second bag', sortOrder: 1, containerListItemId: null },
-  ]
-
   it('orders by document rank across groups, not by group', () => {
     // Document order says late-bag-row comes FIRST. Group order would put it
     // last, because its bag sorts second.
     const early = item('early-doc', 'loc-2', true, 0, 99)
     const late = item('late-doc', 'loc-1', true, 5, 0)
-    const grouped = groupListItemsByLocation([late, early], locations)
+    // First bag then second bag, so `late` leads. That inversion is the point:
+    // a hook that stopped sorting would return it first and fail below.
+    const grouped = groups([late], [early])
 
     const { result } = renderHook(() => useStableWornItems(grouped, true))
     expect(result.current.map((entry) => entry.id)).toEqual([
@@ -103,7 +105,9 @@ describe('useStableWornItems ordering', () => {
     const a = item('a', 'loc-1', true, 0, 2)
     const b = item('b', 'loc-1', true, 1, 1)
     const c = item('c', 'loc-1', true, 2, 0)
-    const grouped = groupListItemsByLocation([c, b, a], locations)
+    // All in the first bag, in pack-rank order c-b-a; the second bag is empty
+    // and still present, exactly as the builder emitted it.
+    const grouped = groups([c, b, a], [])
 
     const { result } = renderHook(() => useStableWornItems(grouped, true))
     expect(result.current.map((entry) => entry.id)).toEqual(['a', 'b', 'c'])

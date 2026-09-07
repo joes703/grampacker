@@ -1,4 +1,4 @@
-// Supabase-free home for the pure dedup-key and sortOrder helpers used by
+// Supabase-free home for the pure sortOrder helpers used by
 // the CSV import paths. Keeping them here (importing nothing but types) lets
 // the pure planner in import-plan.ts depend on them without transitively
 // pulling in `supabase`, which would create an import cycle and break the
@@ -7,20 +7,6 @@
 // unchanged.
 
 import type { Category, GearItem, List, ListItemWithGear } from '../types'
-
-// Composite dedup key: a CSV row matches an existing gear item when its
-// category + lowercase name + weight all agree. Same shape used to seed the
-// existing-gear map and to look up each row.
-//
-// Unicode normalization: NFC before lowercase so visually identical names
-// that happen to be encoded differently (e.g. "café" with a precomposed
-// `é` vs. "café" composed as `e` + combining acute) compare equal.
-// Without this, a re-import from a tool that emits NFD created duplicate
-// gear rows for the same item. NFC + toLowerCase (not toLocaleLowerCase)
-// stays locale-independent so the key is identical in every runtime.
-export function gearKey(categoryId: string | null, name: string, weightGrams: number): string {
-  return `${categoryId ?? ''}:${name.trim().normalize('NFC').toLowerCase()}:${weightGrams}`
-}
 
 // Next sortOrder slot for a newly-created category. Robust to gaps:
 // deleteCategory does NOT compact remaining rows, so the existing

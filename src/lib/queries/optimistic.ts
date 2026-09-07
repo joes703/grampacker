@@ -5,8 +5,7 @@ import { showToast } from '../toast'
 // This module holds only the pure TanStack Query cache lifecycle helpers
 // (insert / update / delete / bulk delete / bulk move / reorder). It must
 // stay free of any Supabase import so optimistic.test.ts can evaluate
-// the module without VITE_SUPABASE_* env vars. The Supabase-side RPC
-// helper for sortOrder writes lives next door in ./bulk-reorder.ts.
+// the module without VITE_SUPABASE_* env vars.
 
 // ── Reorder mutation lifecycle ────────────────────────────────────────────────
 
@@ -329,7 +328,7 @@ function validateReorderPayload<T extends { id: string; sortOrder: number }>(
   updates: { id: string; sortOrder: number }[],
   cached: T[] | undefined,
 ): string | null {
-  // Empty payload is a documented no-op in bulkUpdateSortOrder; skip.
+  // Empty payload is a no-op; skip.
   if (updates.length === 0) return null
   // No cache yet (no fetch ever happened) means there's no subset to
   // validate against. Prod behavior is also a no-op here (the cache

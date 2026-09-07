@@ -18,10 +18,6 @@ export function lastEmailTo(to: string): AuthEmail | undefined {
   return outbox.findLast((msg) => msg.to === to)
 }
 
-export function clearOutbox(): void {
-  outbox.length = 0
-}
-
 export class ConsoleEmailSender implements EmailSender {
   async send(msg: AuthEmail): Promise<void> {
     outbox.push(msg)
