@@ -24,16 +24,6 @@ import { POPOVER_SURFACE } from '../components/flat-table-styles'
 // the same; the thing being wrapped is now the checklist section, because
 // arranging and packing are one view.
 
-/** A location section's header controls, or null for the sections that have
- *  none (Unassigned, and optimistic rows the server has not confirmed). */
-export type PackSectionChrome = {
-  headerLeading?: ReactNode
-  headerAction?: ReactNode
-  setNodeRef: (node: HTMLElement | null) => void
-  style: React.CSSProperties
-  isOver: boolean
-}
-
 // A location section that is NOT backed by an item. One identity: the section
 // itself, which reorders among its siblings and accepts item drops.
 export function useSortableLocationSection({

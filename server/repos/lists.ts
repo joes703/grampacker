@@ -108,10 +108,6 @@ export type ImportListResult =
         | 'invalid_gear'
     }
 
-// The 0004 trigger is the single enforcement point; keep in lockstep
-// with its WHEN clause and message (same discipline as GEAR_ITEM_CAP).
-export const LIST_CAP = 100
-
 export function isListCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'list cap exceeded')
 }

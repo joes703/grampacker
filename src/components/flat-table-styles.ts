@@ -162,11 +162,8 @@ export const FLAT_TABLE_HEADER =
 //     (Qty / Weight / Price / Purchased), summary stat labels (Base /
 //     Consumable), panel titles (Notes / Weight summary), and disclosure
 //     toggles. One token so these don't drift apart in size/case/color.
-// COUNT is the subdued tabular metadata count beside a title. Keep it dark
-// enough for 12px text on gray-50 table headers.
 export const FLAT_TABLE_HEADER_TITLE = 'text-sm font-medium text-gray-700'
 export const FLAT_TABLE_HEADER_TITLE_MUTED = 'text-sm font-medium text-gray-500'
-export const FLAT_TABLE_HEADER_COUNT = 'text-xs font-normal tabular-nums text-gray-600'
 export const FLAT_TABLE_EYEBROW =
   'text-xs font-semibold uppercase tracking-wider text-gray-500'
 

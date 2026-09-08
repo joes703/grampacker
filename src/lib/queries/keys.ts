@@ -17,11 +17,6 @@ export const queryKeys = {
   // reads the slug from the URL (useParams types it string | undefined);
   // the query is disabled until it exists.
   sharedList: (slug: string | undefined) => ['shared-list', slug] as const,
-  // Partial-match prefix. Changing what a list contains changes what a share
-  // reports without touching the slug, and the share cache has a 30s staleTime,
-  // so the writer invalidates every share it might hold rather than resolving
-  // which slug moved (design 5.5).
-  sharedListAll: () => ['shared-list'] as const,
 }
 
 // Canonical mutation keys, here for the same reason queryKeys is: an inline

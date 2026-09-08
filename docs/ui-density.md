@@ -244,7 +244,6 @@ trailing labels align to row values on purpose.
 - `FLAT_TABLE_EYEBROW` - every small uppercase micro-label: in-table column
   labels, summary stat labels, panel titles, disclosure toggles. One token so
   these do not drift apart in size, case, or color.
-- `FLAT_TABLE_HEADER_COUNT` - the subdued tabular count beside a title.
 
 ### Body
 
@@ -261,7 +260,7 @@ trailing labels align to row values on purpose.
 
 ### Numbers
 
-Five different things in this app are "numeric" and they do not share a
+Four different things in this app are "numeric" and they do not share a
 treatment. Classify before reaching for a token:
 
 | Kind | Meaning | Token | Mono? |
@@ -269,7 +268,6 @@ treatment. Classify before reaching for a token:
 | **Value** | A measurement in a column: weight, cost, purchase date | `FLAT_TABLE_NUMERIC_TEXT`, or `NUMERIC_VALUE_TEXT` when the caller owns its size | yes |
 | **Panel value** | An emphasis stat inside a compact panel | `COMPACT_PANEL_META_TEXT` | yes |
 | **Quantity** | A count of items, in a Qty cell | `FLAT_TABLE_QUANTITY_TEXT` | no |
-| **Count metadata** | "(5)" beside a section title | `FLAT_TABLE_HEADER_COUNT` | no |
 | **Numeric prose** | "Updated 5 min ago", "3 of 8 packed" | none; inline | no |
 
 `font-mono` is for **value displays only**. Never apply it to labels, item

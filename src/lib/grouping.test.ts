@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   groupBy,
   groupListItemsByCategory,
-  groupListItemsByLocation,
   groupGearItemsByCategory,
   groupByCategory,
   assignSortOrderSlots,
@@ -27,9 +26,6 @@ const sleep: Category = {
 
 const mainPack: PackingLocation = {
   id: 'loc-main', name: 'Main pack', sortOrder: 0, containerListItemId: null,
-}
-const hipBelt: PackingLocation = {
-  id: 'loc-hip', name: 'Hip belt', sortOrder: 1, containerListItemId: null,
 }
 
 function listItem(overrides: {
@@ -203,49 +199,6 @@ describe('groupListItemsByCategory', () => {
 
     expect(second).not.toBe(first)
     expect(second[0]!.items).not.toBe(first[0]!.items)
-  })
-})
-
-describe('groupListItemsByLocation', () => {
-  it('sorts locations, retains empty locations, and emits Unassigned last', () => {
-    const items = [
-      listItem({ id: 'a', categoryId: 'cat-shelter', packingLocationId: hipBelt.id }),
-      listItem({ id: 'b', categoryId: 'cat-sleep', packingLocationId: null }),
-    ]
-
-    const result = groupListItemsByLocation(items, [hipBelt, mainPack])
-
-    expect(result.map((group) => group.location?.id ?? null)).toEqual([
-      mainPack.id,
-      hipBelt.id,
-      null,
-    ])
-    expect(result[0]!.items).toEqual([])
-    expect(result[1]!.items.map((item) => item.id)).toEqual(['a'])
-    expect(result[2]!.items.map((item) => item.id)).toEqual(['b'])
-  })
-
-  it('routes a missing location reference to Unassigned', () => {
-    const item = listItem({
-      id: 'a',
-      categoryId: 'cat-shelter',
-      packingLocationId: 'loc-deleted',
-    })
-
-    const result = groupListItemsByLocation([item], [mainPack])
-
-    expect(result.at(-1)?.location).toBeNull()
-    expect(result.at(-1)?.items).toEqual([item])
-  })
-
-  it('reuses the prior result when locations and items are unchanged', () => {
-    const items = [
-      listItem({ id: 'a', categoryId: 'cat-shelter', packingLocationId: mainPack.id }),
-    ]
-    const first = groupListItemsByLocation(items, [mainPack, hipBelt])
-    const second = groupListItemsByLocation(items, [mainPack, hipBelt], first)
-
-    expect(second).toBe(first)
   })
 })
 
