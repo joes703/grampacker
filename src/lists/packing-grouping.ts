@@ -1,16 +1,6 @@
 import type { Category, PackingLocation } from '../lib/types'
 import type { ListItemGrouping } from '../lib/use-grouped-list-items'
 
-export function orderPackGroups<T extends { group: unknown | null }>(
-  groups: T[],
-  groupingKind: ListItemGrouping['kind'],
-): T[] {
-  if (groupingKind !== 'location') return groups
-  const unassigned = groups.find((group) => group.group === null)
-  if (!unassigned) return groups
-  return [unassigned, ...groups.filter((group) => group.group !== null)]
-}
-
 export function selectPackGrouping(
   categories: Category[],
   locations: PackingLocation[] | undefined,

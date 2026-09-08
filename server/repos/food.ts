@@ -629,17 +629,13 @@ export function createFoodRepo(db: Db, userId: string) {
             slotIds: links,
           }),
           sortOrder: item.sortOrder,
-          // From the write's RETURNING when it landed (the moved-to rank is
-          // computed inside the statement and unknowable beforehand); the
-          // pre-read row covers the vanished-concurrently case, where the
-          // stale values are as good as answers get.
-          isPacked: updated?.isPacked ?? item.isPacked,
-          isReady: updated?.isReady ?? item.isReady,
-          packingLocationId:
-            updated !== undefined
-              ? updated.packingLocationId
-              : item.packingLocationId,
-          packSortOrder: updated?.packSortOrder ?? item.packSortOrder,
+          // From the write's RETURNING, never the pre-read: the moved-to rank
+          // is computed inside the statement and unknowable beforehand. The
+          // vanished-concurrently case already answered not_found above.
+          isPacked: updated.isPacked,
+          isReady: updated.isReady,
+          packingLocationId: updated.packingLocationId,
+          packSortOrder: updated.packSortOrder,
           slotIds: links,
         },
       }

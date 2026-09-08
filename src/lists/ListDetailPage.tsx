@@ -109,7 +109,7 @@ import {
   persistedListPath,
   type ListDetailMode,
 } from './list-detail-mode'
-import { orderPackGroups, selectPackGroupingState } from './packing-grouping'
+import { selectPackGroupingState } from './packing-grouping'
 import {
   buildContainerMoveExclusions,
   buildPackingTree,
@@ -1128,7 +1128,6 @@ function ListDetailInner({
     grouping,
     mode === 'pack' ? 'pack' : 'document',
   )
-  const orderedPackGroups = orderPackGroups(grouped, grouping.kind)
   const packingTree = useMemo(
     () => mode === 'pack' && packingLocations.length > 0
       ? buildPackingTree(listItems, packingLocations, {
@@ -1303,7 +1302,7 @@ function ListDetailInner({
   // CategoryGroup filters ordinary sections at the leaf so unchanged groups
   // retain their stable item-array references. useStableWornItems similarly
   // preserves the trailing section's array identity across unrelated updates.
-  const wornItems = useStableWornItems(grouped, true)
+  const wornItems = useStableWornItems(grouped)
 
   // gearItems / listItems are read by handlers in sharedGroupProps and the
   // LibraryPanel onAdd / onRemove callbacks, but only at call time (never
@@ -2142,7 +2141,7 @@ function ListDetailInner({
                         </>
                       ) : (
                         <>
-                        {orderedPackGroups.map((group) => {
+                        {grouped.map((group) => {
                           const definition = group.group
                           if (definition) {
                             return (

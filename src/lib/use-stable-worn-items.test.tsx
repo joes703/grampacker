@@ -58,19 +58,12 @@ describe('useStableWornItems with location groups', () => {
   // loc-1's bucket, then the Unassigned bucket last.
   const grouped = groups([wornAssigned, normal], [wornUnassigned])
 
-  it('extracts worn rows when enabled', () => {
-    const { result } = renderHook(() => useStableWornItems(grouped, true))
+  it('extracts worn rows across every group', () => {
+    const { result } = renderHook(() => useStableWornItems(grouped))
     expect(result.current.map((entry) => entry.id)).toEqual([
       'worn-assigned',
       'worn-unassigned',
     ])
-  })
-
-  it('extracts nothing when disabled, leaving rows in their location groups', () => {
-    const { result } = renderHook(() => useStableWornItems(grouped, false))
-    expect(result.current).toEqual([])
-    expect(grouped[0]?.items.map((entry) => entry.id)).toEqual(['worn-assigned', 'normal'])
-    expect(grouped.at(-1)?.items.map((entry) => entry.id)).toEqual(['worn-unassigned'])
   })
 })
 
@@ -93,7 +86,7 @@ describe('useStableWornItems ordering', () => {
     // a hook that stopped sorting would return it first and fail below.
     const grouped = groups([late], [early])
 
-    const { result } = renderHook(() => useStableWornItems(grouped, true))
+    const { result } = renderHook(() => useStableWornItems(grouped))
     expect(result.current.map((entry) => entry.id)).toEqual([
       'early-doc',
       'late-doc',
@@ -109,7 +102,7 @@ describe('useStableWornItems ordering', () => {
     // and still present, exactly as the builder emitted it.
     const grouped = groups([c, b, a], [])
 
-    const { result } = renderHook(() => useStableWornItems(grouped, true))
+    const { result } = renderHook(() => useStableWornItems(grouped))
     expect(result.current.map((entry) => entry.id)).toEqual(['a', 'b', 'c'])
   })
 })

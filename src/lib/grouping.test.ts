@@ -4,9 +4,11 @@ import {
   groupListItemsByCategory,
   groupGearItemsByCategory,
   groupByCategory,
+  listItemsArrayEqual,
   assignSortOrderSlots,
   nextMoveSortOrder,
   nextPackRankInCohort,
+  type Group,
 } from './grouping'
 import type { Category, GearItem, GearStatus, ListItemWithGear } from './types'
 import type { PackingLocation } from './types'
@@ -100,6 +102,28 @@ describe('groupListItemsByCategory', () => {
     expect(result).toHaveLength(1)
     expect(result[0]!.category).toBeNull()
   })
+})
+
+// The stability layer - reuse a prior group when its items are structurally
+// unchanged, and the prior TOP-LEVEL array when every group was reused - has
+// one live caller: useGroupedListItems, which reaches it through `groupBy`
+// with exactly the options below (use-grouped-list-items.ts, buildGroups).
+// These tests used to drive it through a `prior` parameter on
+// groupListItemsByCategory that no production code passed; they now drive
+// the path the app runs. The top-level identity invariant is load-bearing
+// for the hook's setState-during-render loop guard.
+describe('groupBy stability (the useGroupedListItems path)', () => {
+  function stableListGroups(
+    items: ListItemWithGear[],
+    cats: Category[],
+    prior?: Group<Category, ListItemWithGear>[],
+  ) {
+    return groupBy(items, cats, (item) => item.gearItem.categoryId, {
+      keepEmpty: false,
+      orphanPolicy: 'route-to-ungrouped',
+      stability: prior ? { prior, itemsEqual: listItemsArrayEqual } : undefined,
+    })
+  }
 
   // Load-bearing for useGroupedListItems' loop guard.
   it('returns the prior top-level array reference when nothing changed', () => {
@@ -108,8 +132,8 @@ describe('groupListItemsByCategory', () => {
       listItem({ id: 'b', categoryId: 'cat-sleep' }),
     ]
     const cats = [shelter, sleep]
-    const first = groupListItemsByCategory(items, cats)
-    const second = groupListItemsByCategory(items, cats, first)
+    const first = stableListGroups(items, cats)
+    const second = stableListGroups(items, cats, first)
     expect(second).toBe(first)
   })
 
@@ -119,7 +143,7 @@ describe('groupListItemsByCategory', () => {
       listItem({ id: 'b', categoryId: 'cat-sleep' }),
     ]
     const cats = [shelter, sleep]
-    const first = groupListItemsByCategory(items1, cats)
+    const first = stableListGroups(items1, cats)
 
     // Toggle isPacked on the shelter item — fresh list_item objects, fresh
     // top-level array (simulates an optimistic update).
@@ -127,7 +151,7 @@ describe('groupListItemsByCategory', () => {
       { ...items1[0]!, isPacked: true },
       items1[1]!,
     ]
-    const second = groupListItemsByCategory(items2, cats, first)
+    const second = stableListGroups(items2, cats, first)
 
     expect(second).not.toBe(first) // top-level changed (one group changed)
     expect(second[0]!.items).not.toBe(first[0]!.items) // shelter group's items changed
@@ -137,12 +161,12 @@ describe('groupListItemsByCategory', () => {
 
   it('reuses prior items array when only an unrelated field on the item object changed', () => {
     const items1 = [listItem({ id: 'a', categoryId: 'cat-shelter' })]
-    const first = groupListItemsByCategory(items1, [shelter])
+    const first = stableListGroups(items1, [shelter])
 
     // Same render-affecting fields, fresh object reference (simulates a
     // refetch that returns equivalent data).
     const items2 = [{ ...items1[0]!, updatedAt: '2024-01-02' }]
-    const second = groupListItemsByCategory(items2, [shelter], first)
+    const second = stableListGroups(items2, [shelter], first)
 
     expect(second).toBe(first) // top-level reused
     expect(second[0]!.items).toBe(first[0]!.items) // items array reused
@@ -150,10 +174,10 @@ describe('groupListItemsByCategory', () => {
 
   it('rebuilds when gearItem.description changes (regression: must be in comparator)', () => {
     const items1 = [listItem({ id: 'a', categoryId: 'cat-shelter', description: 'old' })]
-    const first = groupListItemsByCategory(items1, [shelter])
+    const first = stableListGroups(items1, [shelter])
 
     const items2 = [listItem({ id: 'a', categoryId: 'cat-shelter', description: 'new' })]
-    const second = groupListItemsByCategory(items2, [shelter], first)
+    const second = stableListGroups(items2, [shelter], first)
 
     expect(second).not.toBe(first)
     expect(second[0]!.items).not.toBe(first[0]!.items)
@@ -162,10 +186,10 @@ describe('groupListItemsByCategory', () => {
 
   it('rebuilds when gearItem.name changes', () => {
     const items1 = [listItem({ id: 'a', categoryId: 'cat-shelter', name: 'old name' })]
-    const first = groupListItemsByCategory(items1, [shelter])
+    const first = stableListGroups(items1, [shelter])
 
     const items2 = [listItem({ id: 'a', categoryId: 'cat-shelter', name: 'new name' })]
-    const second = groupListItemsByCategory(items2, [shelter], first)
+    const second = stableListGroups(items2, [shelter], first)
 
     expect(second).not.toBe(first)
     expect(second[0]!.items).not.toBe(first[0]!.items)
@@ -178,10 +202,10 @@ describe('groupListItemsByCategory', () => {
     // the gear closet would leave the badge visually stuck until another
     // invalidation hit the cache.
     const items1 = [listItem({ id: 'a', categoryId: 'cat-shelter', status: 'active' })]
-    const first = groupListItemsByCategory(items1, [shelter])
+    const first = stableListGroups(items1, [shelter])
 
     const items2 = [listItem({ id: 'a', categoryId: 'cat-shelter', status: 'need_to_buy' })]
-    const second = groupListItemsByCategory(items2, [shelter], first)
+    const second = stableListGroups(items2, [shelter], first)
 
     expect(second).not.toBe(first)
     expect(second[0]!.items).not.toBe(first[0]!.items)
@@ -190,12 +214,12 @@ describe('groupListItemsByCategory', () => {
 
   it('rebuilds when only packingLocationId changes', () => {
     const items1 = [listItem({ id: 'a', categoryId: 'cat-shelter', packingLocationId: null })]
-    const first = groupListItemsByCategory(items1, [shelter])
+    const first = stableListGroups(items1, [shelter])
 
     const items2 = [
       listItem({ id: 'a', categoryId: 'cat-shelter', packingLocationId: mainPack.id }),
     ]
-    const second = groupListItemsByCategory(items2, [shelter], first)
+    const second = stableListGroups(items2, [shelter], first)
 
     expect(second).not.toBe(first)
     expect(second[0]!.items).not.toBe(first[0]!.items)
@@ -410,16 +434,24 @@ describe('groupByCategory (generic)', () => {
     expect(last.items).toHaveLength(1)
     expect(last.items[0]!.id).toBe('2')
   })
+})
 
-  it('stability: returns prior top-level reference when nothing changed', () => {
+// Stability with a caller-supplied comparator, through `groupBy`, which is
+// the only entry point that still takes `stability` (groupByCategory used to
+// forward it too, and nothing passed it there).
+describe('groupBy stability (generic)', () => {
+  type Item = { id: string; categoryId: string | null }
+  const getKey = (i: Item) => i.categoryId
+  const itemsEqual = (a: Item[], b: Item[]) =>
+    a.length === b.length && a.every((x, i) => x.id === b[i]!.id)
+
+  it('returns prior top-level reference when nothing changed', () => {
     const items: Item[] = [{ id: '1', categoryId: 'cat-shelter' }]
-    const itemsEqual = (a: Item[], b: Item[]) =>
-      a.length === b.length && a.every((x, i) => x.id === b[i]!.id)
-    const first = groupByCategory(items, [shelter], getKey, {
+    const first = groupBy(items, [shelter], getKey, {
       keepEmpty: false,
       orphanPolicy: 'drop',
     })
-    const second = groupByCategory(items, [shelter], getKey, {
+    const second = groupBy(items, [shelter], getKey, {
       keepEmpty: false,
       orphanPolicy: 'drop',
       stability: { prior: first, itemsEqual },
@@ -427,14 +459,12 @@ describe('groupByCategory (generic)', () => {
     expect(second).toBe(first)
   })
 
-  it('stability: rebuilds top-level when at least one group changed', () => {
+  it('rebuilds top-level when at least one group changed', () => {
     const items1: Item[] = [
       { id: '1', categoryId: 'cat-shelter' },
       { id: '2', categoryId: 'cat-sleep' },
     ]
-    const itemsEqual = (a: Item[], b: Item[]) =>
-      a.length === b.length && a.every((x, i) => x.id === b[i]!.id)
-    const first = groupByCategory(items1, [shelter, sleep], getKey, {
+    const first = groupBy(items1, [shelter, sleep], getKey, {
       keepEmpty: false,
       orphanPolicy: 'drop',
     })
@@ -443,7 +473,7 @@ describe('groupByCategory (generic)', () => {
       ...items1,
       { id: '3', categoryId: 'cat-shelter' },
     ]
-    const second = groupByCategory(items2, [shelter, sleep], getKey, {
+    const second = groupBy(items2, [shelter, sleep], getKey, {
       keepEmpty: false,
       orphanPolicy: 'drop',
       stability: { prior: first, itemsEqual },
@@ -453,30 +483,28 @@ describe('groupByCategory (generic)', () => {
     expect(second[1]!).toBe(first[1]!)
   })
 
-  // Regression cover for the keepEmpty:true + stability combination.
-  // Today no live caller combines these (gear library has no stability
-  // layer), but the helper's option matrix permits it, so a future
-  // caller would hit silent identity churn without this test.
-  it('stability: reuses empty-cat group references when keepEmpty: true and items unchanged', () => {
-    const itemsEqual = (a: Item[], b: Item[]) =>
-      a.length === b.length && a.every((x, i) => x.id === b[i]!.id)
+  // Regression cover for the keepEmpty:true + stability combination. This is
+  // a LIVE combination: useGroupedListItems grouping by packing location
+  // keeps empty sections (keepEmpty: true) and layers stability on top, so
+  // identity churn here would bust the memo on every empty location.
+  it('reuses empty group references when keepEmpty: true and items unchanged', () => {
     const items: Item[] = [{ id: '1', categoryId: 'cat-shelter' }]
     // sleep is empty in both calls. With keepEmpty: true the helper
     // emits an empty sleep group on the first call; the second call
     // (with stability) must reuse the SAME group reference, not a
-    // fresh `{ category: sleep, items: [] }` object.
-    const first = groupByCategory(items, [shelter, sleep], getKey, {
+    // fresh `{ group: sleep, items: [] }` object.
+    const first = groupBy(items, [shelter, sleep], getKey, {
       keepEmpty: true,
       orphanPolicy: 'drop',
     })
     expect(first).toHaveLength(2)
     expect(first[1]!.items).toHaveLength(0)
-    const second = groupByCategory(items, [shelter, sleep], getKey, {
+    const second = groupBy(items, [shelter, sleep], getKey, {
       keepEmpty: true,
       orphanPolicy: 'drop',
       stability: { prior: first, itemsEqual },
     })
-    // Top-level identity invariant holds even with empty cats present.
+    // Top-level identity invariant holds even with empty groups present.
     expect(second).toBe(first)
     expect(second[1]!).toBe(first[1]!)
   })

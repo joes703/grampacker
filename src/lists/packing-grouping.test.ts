@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Category, PackingLocation } from '../lib/types'
-import { orderPackGroups, selectPackGrouping, selectPackGroupingState } from './packing-grouping'
+import { selectPackGrouping, selectPackGroupingState } from './packing-grouping'
 
 const categories: Category[] = [
   { id: 'cat-1', name: 'Shelter', sortOrder: 0, createdAt: '2026-01-01' },
@@ -50,24 +50,5 @@ describe('selectPackGrouping', () => {
       grouping: { kind: 'category', groups: categories },
       showErrorNotice: false,
     })
-  })
-})
-
-describe('orderPackGroups', () => {
-  const assigned = { group: locations[0], items: ['assigned'] }
-  const unassigned = { group: null, items: ['unassigned'] }
-
-  it('puts Unassigned first when Pack is grouped by location', () => {
-    expect(orderPackGroups([assigned, unassigned], 'location')).toEqual([
-      unassigned,
-      assigned,
-    ])
-  })
-
-  it('leaves Uncategorized last when Pack falls back to category grouping', () => {
-    expect(orderPackGroups([assigned, unassigned], 'category')).toEqual([
-      assigned,
-      unassigned,
-    ])
   })
 })
