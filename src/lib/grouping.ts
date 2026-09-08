@@ -100,20 +100,16 @@ export function groupBy<G extends { id: string }, T>(
   )
 }
 
-type GroupByCategoryOptions<T> = {
+type GroupByCategoryOptions = {
   keepEmpty: boolean
   orphanPolicy: 'route-to-uncategorized' | 'drop'
-  stability?: {
-    prior: CategoryGroup<T>[]
-    itemsEqual: (a: T[], b: T[]) => boolean
-  }
 }
 
 export function groupByCategory<T>(
   items: T[],
   categories: Category[],
   getCategoryId: (item: T) => string | null,
-  options: GroupByCategoryOptions<T>,
+  options: GroupByCategoryOptions,
 ): CategoryGroup<T>[] {
   return groupByCore(
     items,
@@ -125,7 +121,6 @@ export function groupByCategory<T>(
         options.orphanPolicy === 'route-to-uncategorized'
           ? 'route-to-ungrouped'
           : 'drop',
-      stability: options.stability,
     },
     (entry) => entry.category,
     (entry) => entry.items,
@@ -185,26 +180,17 @@ export function listItemsArrayEqual(a: ListItemWithGear[], b: ListItemWithGear[]
  * sections that contain none of this list's items. (This is the deliberate
  * divergence from `groupGearItemsByCategory`, which retains them.)
  *
- * Stability: when `prior` is supplied, per-group references are reused for
- * categories whose items are structurally identical to the prior call's
- * output, AND the top-level `prior` array reference itself is returned when
- * EVERY group is reused. The top-level identity invariant is load-bearing
- * for `useGroupedListItems` — without it the hook's setState-during-render
- * loop guard would never short-circuit.
- *
  * Implementation: single-pass bucket map keyed by categoryId (O(N+C)).
  * The old repo's prior implementation used N filter passes (O(N×C)).
  */
 export function groupListItemsByCategory(
   items: ListItemWithGear[],
   categories: Category[],
-  prior?: CategoryGroup<ListItemWithGear>[],
 ): CategoryGroup<ListItemWithGear>[] {
   const sortedCats = categories.toSorted((a, b) => a.sortOrder - b.sortOrder)
   return groupByCategory(items, sortedCats, (item) => item.gearItem.categoryId, {
     keepEmpty: false,
     orphanPolicy: 'route-to-uncategorized',
-    stability: prior ? { prior, itemsEqual: listItemsArrayEqual } : undefined,
   })
 }
 

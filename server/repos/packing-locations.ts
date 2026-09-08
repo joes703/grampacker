@@ -109,16 +109,12 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       .orderBy(asc(packingLocations.sortOrder), asc(cols.name))
   }
 
-  function readOwnedList(listId: string): Promise<PackingLocationRow[]> {
-    return ownedListQuery(listId)
-  }
-
   return {
     // null means the list is not the caller's; [] is an owned, unorganized
     // list. Both states are significant to the Pack Mode grouping switch.
     async forList(listId: string): Promise<PackingLocationRow[] | null> {
       if (!(await ownsList(listId))) return null
-      return readOwnedList(listId)
+      return ownedListQuery(listId)
     },
 
     async create(

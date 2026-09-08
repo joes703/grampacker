@@ -29,7 +29,6 @@ export type ListContextPatch = {
 type Props = {
   categories: Category[]
   item?: GearItem
-  defaultCategoryId?: string | null
   /** When provided, the dialog renders an "On this list" section with
    *  quantity / worn / consumable fields, and onSave receives a second
    *  argument with the list-item patch. Omitted from the gear-library
@@ -55,7 +54,6 @@ type Props = {
 export default function GearItemDialog({
   categories,
   item,
-  defaultCategoryId = null,
   listContext,
   onSave,
   onCreateCategory,
@@ -68,9 +66,7 @@ export default function GearItemDialog({
   const [name, setName] = useState(item?.name ?? '')
   const [description, setDescription] = useState(item?.description ?? '')
   const [weightGrams, setWeightGrams] = useState(item?.weightGrams ?? 0)
-  const [categoryId, setCategoryId] = useState<string | null>(
-    item?.categoryId ?? defaultCategoryId,
-  )
+  const [categoryId, setCategoryId] = useState<string | null>(item?.categoryId ?? null)
   // Cost is held as a string so the user can type freely (e.g. "89.",
   // "89.9") without React fighting the cursor; parsed to number on
   // submit. Empty string → null. Initial value is the existing cost

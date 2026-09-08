@@ -7,7 +7,7 @@ import type { ListItemWithGear } from './types'
  * Why this exists: the trailing Worn section renders a CategoryGroup keyed on
  * a worn-items array. The naive shape
  * (`useMemo(() => grouped.flatMap(g => g.items.filter(i => i.isWorn)),
- * [grouped, enabled])`) mints a fresh array on every list-items mutation
+ * [grouped])`) mints a fresh array on every list-items mutation
  * — even pack-mode isPacked toggles that don't change worn membership —
  * which defeats React.memo on the Worn CategoryGroup.
  *
@@ -21,16 +21,8 @@ import type { ListItemWithGear } from './types'
  */
 export function useStableWornItems(
   grouped: { items: ListItemWithGear[] }[],
-  enabled: boolean,
 ): ListItemWithGear[] {
   const [cached, setCached] = useState<ListItemWithGear[]>([])
-
-  if (!enabled) {
-    if (cached.length === 0) return cached
-    const empty: ListItemWithGear[] = []
-    setCached(empty)
-    return empty
-  }
 
   const next: ListItemWithGear[] = []
   for (const g of grouped) {

@@ -737,12 +737,12 @@ describe('packing location CRUD, assignment, and integrity', () => {
 
     // The write half, and it is the half that carries this test.
     //
-    // Verified by mutation: drop the `listId` predicate from BOTH statements
-    // in `rename` and this route still answers 404 - the final
-    // `readOwnedList(listId)` cannot find the renamed row under list A, so it
-    // reports not_found AFTER the UPDATE has already committed. The status
-    // assertion above stays green through that; only these lines fail. A
-    // status-only wrong-parent test would have proven nothing here.
+    // The status alone proves nothing about the write: `rename` answers from
+    // its final read-back (`ownedListQuery(listId)`), so a version of it that
+    // dropped the `listId` predicate from the pre-read and the UPDATE would
+    // rename list B's row and only THEN fail to find it under list A. The
+    // rename has committed by that point, whatever status comes back; these
+    // lines are what prove the write never happened.
     const bLocations = await getLocations(cookie, b.id)
     expect(bLocations).toHaveLength(1)
     expect(bLocations[0]).toMatchObject({ id: bLoc.id, name: 'B loc' })

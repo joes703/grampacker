@@ -71,7 +71,7 @@ import { useGearBulkActions } from './use-gear-bulk-actions'
 // separate useState is what makes closing the dialog discard the error with it,
 // and is what the save's completion guard compares identity against.
 type DialogState =
-  | { type: 'create-item'; categoryId?: string | null; saveError: string | null }
+  | { type: 'create-item'; saveError: string | null }
   | { type: 'edit-item'; item: GearItem; saveError: string | null }
   | { type: 'create-list-from-selection'; saveError: string | null }
   // `returnDialog` lets the confirm dialog restore the prior dialog on
@@ -833,7 +833,6 @@ export default function GearLibraryPage() {
           key={dialog.type === 'edit-item' ? dialog.item.id : 'new'}
           categories={categories}
           item={dialog.type === 'edit-item' ? dialog.item : undefined}
-          defaultCategoryId={dialog.type === 'create-item' ? dialog.categoryId : undefined}
           saving={savingAttempt === dialog}
           saveError={dialog.saveError}
           onClose={() => setDialog(null)}
@@ -850,10 +849,7 @@ export default function GearLibraryPage() {
             // which installs a fresh object - the guard makes the late completion a
             // no-op. Without it a slow rejection would re-open a dialog the user
             // had already dismissed, remounted, with their draft gone.
-            const attempt: DialogState =
-              dialog.type === 'edit-item'
-                ? { ...dialog, saveError: null }
-                : { ...dialog, saveError: null }
+            const attempt: DialogState = { ...dialog, saveError: null }
             // Installing `attempt` also clears any error from the previous try, so
             // a retry shows fresh state rather than last time's message.
             setDialog(attempt)
