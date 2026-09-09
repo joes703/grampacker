@@ -2,10 +2,12 @@ import type { QueryClient, QueryKey } from '@tanstack/react-query'
 import { ApiError } from '../api'
 import { showToast } from '../toast'
 
-// This module holds only the pure TanStack Query cache lifecycle helpers
-// (insert / update / delete / bulk delete / bulk move / reorder). It must
-// stay free of any Supabase import so optimistic.test.ts can evaluate
-// the module without VITE_SUPABASE_* env vars.
+// This module holds only the TanStack Query cache lifecycle helpers
+// (insert / update / delete / bulk delete / bulk move / reorder). They write
+// the cache, roll it back, raise the failure toast and invalidate on settle;
+// the network write belongs to the mutationFn each caller supplies. Nothing
+// here imports a fetch function, which is what lets optimistic.test.ts drive
+// the whole lifecycle against a bare QueryClient with only the toast mocked.
 
 // ── Reorder mutation lifecycle ────────────────────────────────────────────────
 

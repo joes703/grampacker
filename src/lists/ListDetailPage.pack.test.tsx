@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { render, cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router'
 import type { ReactNode } from 'react'
 import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../lib/types'
 import type { ListFoodResponse } from '../../shared/food'
@@ -416,5 +416,95 @@ describe('the gear picker beside Pack', () => {
     cleanup()
     await renderDetail(`/lists/${listId}`)
     expect(listsPanel()).toBeTruthy()
+  })
+})
+
+// Retired URL spellings the router still resolves. The page must rewrite the
+// address bar, not only render Pack: until the page and deriveListMode shared
+// one predicate, /lists/<id>/organize/ (trailing slash) rendered Pack under the
+// retired address because the page's own exact-match check missed it. The
+// probe reports the navigation type as well as the path, so "left alone" is
+// distinguishable from "replaced with itself".
+describe('rewriting retired list URLs', () => {
+  function LocationProbe() {
+    const location = useLocation()
+    const navigationType = useNavigationType()
+    return (
+      <div data-testid="location">
+        {location.pathname}{location.search}{location.hash}|{navigationType}
+      </div>
+    )
+  }
+
+  async function renderAtRetiredRoute(path: string) {
+    const { default: ListDetailPage } = await import('./ListDetailPage')
+    const page = (
+      <>
+        <ListDetailPage />
+        <LocationProbe />
+      </>
+    )
+    stubViewport(1024)
+    render(
+      <Providers>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/lists/:id" element={page} />
+            <Route path="/lists/:id/pack" element={page} />
+            <Route path="/lists/:id/organize" element={page} />
+            <Route path="/lists/:id/pack/organize" element={page} />
+          </Routes>
+        </MemoryRouter>
+      </Providers>,
+    )
+    // Every entry this describe uses derives to Pack, so Pack's loaded anchor
+    // is the gate (renderDetail picks its anchor by path suffix and would wait
+    // for Category's on a retired URL).
+    await screen.findByLabelText('New packing location')
+  }
+
+  it.each([
+    `/lists/${listId}/organize/`,
+    `/lists/${listId}/ORGANIZE`,
+    `/lists/${listId}/pack/organize/`,
+    `/lists/${listId}/?mode=pack`,
+    `/lists/${listId}?mode=pack`,
+  ])('replaces %s with the canonical /pack URL', async (path) => {
+    await renderAtRetiredRoute(path)
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(`/lists/${listId}/pack|REPLACE`),
+    )
+  })
+
+  // Whatever else a retired link carried arrives intact; only the consumed
+  // mode=pack entry is gone, because /pack now says what it said.
+  it.each([
+    [`/lists/${listId}/organize/?keep=1#row-3`, `/lists/${listId}/pack?keep=1#row-3`],
+    [`/lists/${listId}/?mode=pack&keep=1#row-3`, `/lists/${listId}/pack?keep=1#row-3`],
+    [`/lists/${listId}/pack/organize?mode=PACK`, `/lists/${listId}/pack?mode=PACK`],
+    // Survivors arrive byte-for-byte: escapes, bare keys and duplicates.
+    [
+      `/lists/${listId}/?mode=pack&q=a%20b&flag&x=%2f&q=c#row-3`,
+      `/lists/${listId}/pack?q=a%20b&flag&x=%2f&q=c#row-3`,
+    ],
+    // A key beginning with `?` is not the consumed one.
+    [`/lists/${listId}/organize?mode=pack&?mode=pack`, `/lists/${listId}/pack??mode=pack`],
+  ])('carries the query and fragment of %s to %s', async (path, expected) => {
+    await renderAtRetiredRoute(path)
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(`${expected}|REPLACE`),
+    )
+  })
+
+  it.each([
+    `/lists/${listId}/pack`,
+    `/lists/${listId}/pack?keep=1#row-3`,
+    `/lists/${listId}/pack/?mode=pack`,
+  ])('leaves the canonical %s untouched', async (path) => {
+    await renderAtRetiredRoute(path)
+    // A rewrite would have flipped the navigation type to REPLACE during the
+    // first effect flush, long before the loaded anchor above appeared - and
+    // the URL, query and fragment are exactly what was entered.
+    expect(screen.getByTestId('location')).toHaveTextContent(`${path}|POP`)
   })
 })

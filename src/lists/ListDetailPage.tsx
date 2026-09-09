@@ -104,9 +104,10 @@ import { useDocumentTitle } from '../lib/use-document-title'
 import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
 import {
   deriveListMode,
-  isLegacyOrganizePath,
+  isLegacyListPath,
   listDocumentTitle,
   persistedListPath,
+  searchAfterLegacyRedirect,
   type ListDetailMode,
 } from './list-detail-mode'
 import { selectPackGroupingState } from './packing-grouping'
@@ -434,16 +435,16 @@ function ListDetailInner({
   const { data: session } = authClient.useSession()
   const ownerId = session?.user.id ?? null
   // Pack mode is URL-represented as /lists/:id/pack so it's bookmarkable,
-  // refresh-stable, and back/forward navigable. The legacy ?mode=pack URL
-  // redirects below for old bookmarks and home-screen shortcuts.
+  // refresh-stable, and back/forward navigable. The retired spellings - the
+  // legacy ?mode=pack query and the two /organize paths from before Organize
+  // merged into Pack - derive to Pack AND get rewritten to /pack below, so old
+  // bookmarks and home-screen shortcuts land in the view that replaced them
+  // rather than on a dead route. Both facts come from the same predicate in
+  // list-detail-mode.ts: this page used to keep exact-match copies of the
+  // checks, and /lists/<id>/organize/ then rendered Pack without the rewrite.
   const location = useLocation()
   const navigate = useNavigate()
-  const legacyPackMode = location.pathname === `/lists/${listId}` && new URLSearchParams(location.search).get('mode') === 'pack'
-  // Organize was merged into Pack. Both retired URL shapes still resolve (via
-  // deriveListMode) and get rewritten to /pack below, so old bookmarks and
-  // home-screen shortcuts land in the view that replaced them rather than on
-  // a dead route.
-  const legacyOrganizeMode = isLegacyOrganizePath(location.pathname, listId)
+  const isLegacyPath = isLegacyListPath(location.pathname, location.search, listId)
   const mode: ListDetailMode = deriveListMode(location.pathname, location.search, listId)
   const { weightUnit } = useWeightUnit()
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
@@ -502,11 +503,22 @@ function ListDetailInner({
   // the title doesn't briefly drop to the bare app name.
   useDocumentTitle(list ? listDocumentTitle(list.name, mode) : 'Lists')
 
+  // Only the path changes. The search string and hash travel with the URL,
+  // minus the `mode=pack` entry the /pack destination now stands for - a
+  // returning link keeps whatever else it carried. (The rewrite used to
+  // navigate to a bare path and drop both.)
   useEffect(() => {
-    if (legacyPackMode || legacyOrganizeMode) {
-      void navigate(`/lists/${listId}/pack`, { replace: true })
+    if (isLegacyPath) {
+      void navigate(
+        {
+          pathname: persistedListPath(listId, 'pack'),
+          search: searchAfterLegacyRedirect(location.search),
+          hash: location.hash,
+        },
+        { replace: true },
+      )
     }
-  }, [legacyOrganizeMode, legacyPackMode, listId, navigate])
+  }, [isLegacyPath, listId, location.hash, location.search, navigate])
 
   // Last-list cache write: stash the list path only AFTER the list resolves
   // to a real, server-permitted row. Writing on mount unconditionally would
@@ -515,7 +527,8 @@ function ListDetailInner({
   // locking the loop in. The reactive dep `list?.id` is undefined while
   // the lists query is in-flight or the route is invalid, so no write
   // fires on those paths. The `mode` dep tracks peer-mode toggling so the
-  // stored path stays in sync with List, Pack, or Organize.
+  // stored path stays in sync with Category, Pack, or Food - the three shapes
+  // persistedListPath produces and last-list-path's validator accepts.
   useEffect(() => {
     if (list?.id) {
       writeLastListPath(persistedListPath(list.id, mode), ownerId)

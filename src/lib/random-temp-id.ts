@@ -22,7 +22,7 @@ export function randomTempId(): string {
   // Explicit failure mode: every browser this codebase supports has
   // crypto.getRandomValues (IE11+, universal). If neither randomUUID nor
   // getRandomValues is present, the environment is broken in ways that
-  // would also affect Supabase auth and other crypto consumers — fail
+  // would also break every other crypto consumer in the app — fail
   // loudly with a diagnosable message rather than letting a later
   // ReferenceError surface.
   if (typeof crypto === 'undefined' || typeof crypto.getRandomValues !== 'function') {

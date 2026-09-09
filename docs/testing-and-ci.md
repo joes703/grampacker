@@ -6,10 +6,10 @@ this document, and the change that made it wrong owes the fix.
 
 Every section describes the tree as it is. Nothing here is headed "target
 state" any more: the CI-simplification effort those headings came from closed
-on 2026-09-06, and its last two stages were dropped rather than built (see
-section 11). History and rationale live in `docs/incidents.md`; the plan is a
-dated record, and not authority,
-`docs/superpowers/plans/2026-09-04-testing-and-ci-simplification.md`.
+on 2026-09-06, and its last two stages were dropped rather than built.
+Section 11 records what the dropped design would have changed and why it was
+not worth it; history and rationale live in `docs/incidents.md`. The plan
+document itself was never committed, so nothing in the tree cites it.
 
 ## 1. The tiers
 
