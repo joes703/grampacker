@@ -14,7 +14,7 @@ import AppLoading from '../components/AppLoading'
 //
 // Fast path: if localStorage has a cached last-visited list path, redirect
 // to it immediately without waiting for fetchLists. The path includes
-// `/pack` or `/organize` when the user was last in that mode, so a cold start
+// `/pack` or `/food` when the user was last in that mode, so a cold start
 // lands them back in the same workspace. Server-side misses (deleted list,
 // or a stale value from the old app under the same domain) hit the
 // destination page's not-found branch, which clears the cache when the

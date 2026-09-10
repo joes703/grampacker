@@ -195,7 +195,7 @@ describe('getListIdFromListPath', () => {
   it('does not extract a UUID from a retired organize path', () => {
     // This helper drives ListDetailPage's cache self-heal, which compares the
     // STORED path against the current route. A stored path is always a strict
-    // /lists/<uuid>[/pack]; treating an organize path as valid here would let
+    // /lists/<uuid>[/pack|/food]; treating an organize path as valid here would let
     // the self-heal match (and then clear) a cache entry it should never see.
     expect(getListIdFromListPath(ORGANIZE_PATH)).toBeNull()
   })

@@ -1,10 +1,10 @@
-// Supabase-free home for the pure sortOrder helpers used by
-// the CSV import paths. Keeping them here (importing nothing but types) lets
-// the pure planner in import-plan.ts depend on them without transitively
-// pulling in `supabase`, which would create an import cycle and break the
-// planner's purity. The original modules (import-helpers.ts, categories.ts,
-// gear.ts) re-export from here for back-compat so existing call sites are
-// unchanged.
+// Pure max+1 sortOrder slot pickers. The server assigns the persisted slot on
+// every create; the optimistic write paths (the use-*-actions hooks, reached
+// through the queries barrel) compute the same value against the cached rows
+// so a placeholder lands where the server row will. Importing nothing but
+// types keeps them trivially testable and free of any fetch module. The CSV
+// import planner does NOT use these: its dedup key lives in
+// src/lib/csv/sort-keys.ts.
 
 import type { Category, GearItem, List, ListItemWithGear } from '../types'
 

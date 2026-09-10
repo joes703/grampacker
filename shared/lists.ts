@@ -72,10 +72,10 @@ export const updateListRequestSchema = z
   .object({
     name: listNameSchema.optional(),
     description: descriptionSchema.nullable().optional(),
-    // Flipping isShared is the whole share/unshare mechanism: the slug is
-    // minted at creation and never changes, so the toggle alone controls
-    // whether /api/shares/v2/:slug answers. To break a leaked link, duplicate
-    // the list (fresh slug) and unshare the original.
+    // isShared is the on/off switch and nothing else: it alone decides whether
+    // /api/shares/v2/:slug answers. The slug is server-minted and is not set
+    // here; POST /api/lists/:id/share-link replaces it with a fresh one, which
+    // is how a leaked link is broken without touching isShared.
     isShared: z.boolean().optional(),
     isDraft: z.boolean().optional(),
   })

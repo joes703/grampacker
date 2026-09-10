@@ -4,8 +4,9 @@
 //
 // TRANSPLANT NOTE: the old repo also exported nextCategorySortOrder /
 // nextGearItemSortOrder here (max+1 slot pickers for client-side inserts).
-// The new server assigns sortOrder itself, so those helpers are dead and
-// were not ported.
+// The server assigns sortOrder itself now, so those pickers moved out of the
+// import path: they live in src/lib/queries/sort-keys.ts and feed only the
+// optimistic placeholders.
 
 // Composite dedup key: a CSV row matches an existing gear item when its
 // category + lowercase name + weight all agree. Same shape used to seed the

@@ -15,7 +15,8 @@
 // the READ covers all of them, and it never wipes a returning owner's own
 // shortcut the way a blanket clear-on-sign-in would.
 //
-// Validation stays strict: only `/lists/<uuid>` with an optional exact `/pack`.
+// Validation stays strict: only `/lists/<uuid>` with an optional exact `/pack`
+// or `/food`.
 // The helper refuses to store anything else, and any stored value that doesn't
 // match on read is a miss. If a future list-detail URL state needs to survive
 // the shortcut, broaden LIST_PATH_RE explicitly; do not relax to "any string
