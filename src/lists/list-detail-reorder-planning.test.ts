@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { makeDnDId } from '../lib/dnd-ids'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
-import { deriveFilteredItemIds, planListItemReorder } from './ListDetailPage'
+import { deriveFilteredItemIds, planListItemReorder } from './list-reorder-plan'
 
 function item(
   id: string,

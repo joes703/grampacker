@@ -138,15 +138,21 @@ describe('CategoryGroup region id', () => {
 })
 
 describe('CategoryGroup worn extraction', () => {
-  it('keeps worn rows out of ordinary sections and renders them in Worn', () => {
+  // Mixed fixture, both modes: an ordinary section shows its non-worn rows
+  // and hides the worn one in List AND Pack view (the reorder planner assumes
+  // exactly this - audit F1 was the two disagreeing), while the Worn section
+  // shows every row it is handed.
+  it.each([false, true])('keeps worn rows out of ordinary sections (packMode=%s) and renders them in Worn', (packMode) => {
     const jacket = { ...itemNamed('jacket', 'Rain jacket'), isWorn: true }
+    const shell = itemNamed('shell', 'Wind shell')
     const { rerender } = render(
-      <CategoryGroup name="Clothing" items={[jacket]} weightUnit="g" />,
+      <CategoryGroup name="Clothing" items={[shell, jacket]} weightUnit="g" packMode={packMode} />,
     )
+    expect(screen.getByText('Wind shell')).toBeInTheDocument()
     expect(screen.queryByText('Rain jacket')).not.toBeInTheDocument()
 
     rerender(
-      <CategoryGroup name="Worn" items={[jacket]} weightUnit="g" wornSection />,
+      <CategoryGroup name="Worn" items={[jacket]} weightUnit="g" wornSection packMode={packMode} />,
     )
     expect(screen.getByText('Rain jacket')).toBeInTheDocument()
   })
