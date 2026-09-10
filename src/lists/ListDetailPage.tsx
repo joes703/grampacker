@@ -296,17 +296,18 @@ export function planListItemReorder({
     .filter((item) =>
       item.gearItem.categoryId === categoryId &&
       !hiddenItemIds.has(item.id) &&
-      // Worn rows are pulled out into their own section and are not draggable,
-      // but they were still landing in this planning array - so a category
-      // holding one produced a permutation naming a worn row, which the
-      // pack-order route rejects outright. The effect was a 400 on an ordinary
-      // drag in any list with worn gear. Location grouping already excluded
-      // them (derivePackReorderExclusions); the category fallback did not.
+      // Worn rows render only in the trailing Worn section - in BOTH views
+      // (CategoryGroup filters them out of every ordinary section) - and are
+      // not draggable, so they are not part of the sequence the user is
+      // rearranging. They keep their document and pack ranks untouched. The
+      // location branch already excludes them (derivePackReorderExclusions).
       //
-      // Only in pack mode: List view genuinely renders worn rows inside their
-      // categories, so excluding them there would plan against rows the user
-      // is not looking at.
-      !(mode === 'pack' && item.isWorn),
+      // This used to exclude them in pack mode only, on the false belief that
+      // List view rendered worn rows inside their categories. It does not,
+      // so a List drag permuted over an invisible row: assignSortOrderSlots
+      // handed the worn row a new document rank the user never chose, and
+      // that rank is what orders the Worn section (use-stable-worn-items).
+      !item.isWorn,
     )
     // Sorted by whichever order the user is actually looking at. The cache is
     // canonically in document order, so the pack fallback has to re-sort or it
@@ -2251,8 +2252,8 @@ function ListDetailInner({
                         Worn-specific overrides come after the spread
                         so they win: section name "Worn", the stable wornItems
                         list, and renderRows={undefined} (no drag). The items
-                        array walks categories in display order so in-section
-                        order is stable and predictable. regionKey is explicit
+                        array is in document order (use-stable-worn-items
+                        sorts it), not category order. regionKey is explicit
                         because this section passes no categoryId: without it
                         the collapsible region derives the same
                         'cat-region-uncategorized' id as the real Uncategorized
