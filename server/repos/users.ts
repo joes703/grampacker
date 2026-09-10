@@ -66,13 +66,22 @@ export function createUsersRepo(db: Db, userId: string) {
     // so there is nothing to clean there.) Every predicate keys on a value
     // unique to this account, so none of them can touch another user's rows;
     // json_valid guards each extract so a bare-id value is never mis-parsed.
+    //
+    // The email match folds case on BOTH sides. The magic-link plugin stores
+    // the address exactly as the request submitted it and lowercases only
+    // when it looks the user up, while `email` here is the user row's, which
+    // better-auth always lowercases - so a link requested as `Alice@X.com`
+    // for the account `alice@x.com` used to survive the purge. SQLite's
+    // lower() folds ASCII only; that matches what the installed validator
+    // admits (zod's email regex is ASCII-only), so revisit if internationalized
+    // addresses are ever accepted.
     async purgeVerificationArtifacts(email: string): Promise<void> {
       await db
         .delete(verification)
         .where(
           sql`${verification.value} = ${userId}
               OR (json_valid(${verification.value}) AND json_extract(${verification.value}, '$.userData.id') = ${userId})
-              OR (json_valid(${verification.value}) AND json_extract(${verification.value}, '$.email') = ${email})`,
+              OR (json_valid(${verification.value}) AND lower(json_extract(${verification.value}, '$.email')) = lower(${email}))`,
         )
     },
   }

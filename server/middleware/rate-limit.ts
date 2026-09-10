@@ -61,8 +61,8 @@ const AUTH_DEFAULT: Rule = { scope: 'auth', limit: 30, windowMs: 10 * MINUTE }
 // slot was already spent. ~90 requests carrying garbage addresses, from rotating
 // IPs, therefore drained a day of the ONLY recovery path in a passwordless app
 // while sending zero mail. Charging in the callback means better-auth has already
-// validated and normalized the address, so nothing that cannot become an email
-// can spend the shared quota. (Found by review, 2026-07-12.)
+// validated the address (z.email(); case is NOT folded), so nothing that cannot
+// become an email can spend the shared quota. (Found by review, 2026-07-12.)
 //
 // What the counter therefore means, precisely: VALIDATED SEND ATTEMPTS. It is
 // charged just before email.send, not after, so a provider failure still spends a

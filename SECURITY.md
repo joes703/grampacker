@@ -161,7 +161,7 @@ coverage in `server/routes/me.test.ts`):
     so ~90 garbage requests from rotating IPs drained a full day of the
     only account-recovery path in a passwordless app **without sending a
     single email**. Charging inside the callback means better-auth has
-    already validated and normalized the address, so nothing that cannot
+    already validated the address (case is not folded), so nothing that cannot
     become an email can spend the shared quota. (Found in review,
     2026-07-12; fixed the same day.)
   - The middleware still **peeks** at the global bucket (a read, not a
@@ -347,9 +347,13 @@ tidier sentence, but tidiness is not a threat model.)
   ceremony (gating it would make passkey sign-in impossible), and
   `list-user-passkeys` (a read).
 - Deleting the account purges the user's `verification` rows, **including
-  any pending magic link for that address**. Without that, a link
-  requested before the delete would still redeem afterwards and silently
-  resurrect the account as a new, empty user.
+  any pending magic link for that address, whatever letter case it was
+  requested in**. Without that, a link requested before the delete would
+  still redeem afterwards and silently resurrect the account as a new,
+  empty user. The plugin stores the submitted casing and the user row is
+  lowercase, so the purge folds case on both sides
+  (`server/repos/users.ts`, proven over HTTP in
+  `server/auth-delete-user.test.ts`).
 
 WebAuthn user verification is REQUIRED, and enforced rather than
 requested. `authenticatorSelection.userVerification: 'required'` is only

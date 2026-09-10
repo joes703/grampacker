@@ -296,9 +296,10 @@ export function authOptions(env: Env, incident?: AuthIncident) {
           // addresses could therefore drain a day of the ONLY account-recovery
           // path in a passwordless app without sending a single email.
           //
-          // By the time this callback runs, better-auth has validated and
-          // normalized `to`, so a charge here means mail is genuinely about to be
-          // sent. The IP and per-address buckets are still charged upstream in
+          // By the time this callback runs, better-auth has validated `to`
+          // (z.email(); it does NOT fold case - the address is stored and sent
+          // as submitted), so a charge here means mail is genuinely about to
+          // be sent. The IP and per-address buckets are still charged upstream in
           // the middleware; only the shared quota moved.
           //
           // Charged BEFORE email.send, not after: two concurrent sends must not
