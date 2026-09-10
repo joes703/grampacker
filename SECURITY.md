@@ -714,9 +714,11 @@ of it:
   accepted on PATCH, and `groupWorn` is off the public share DTO. It was
   published there for a real reason - the share honored it - until #110 made
   worn grouping unconditional on 2026-07-21, after which it was a public
-  field nothing read. Their COLUMNS remain: dropping one
-  rebuilds `lists`, and a rebuild cascade-deletes every `list_items` row.
-  Both names stay in the forbidden-key denylist in
+  field nothing read. Their columns were dropped in a later release by
+  migration 0027 as a contract step - a native `ALTER TABLE ... DROP
+  COLUMN`, which rewrites rows in place and is NOT the table rebuild that
+  cascade-deletes children (AGENTS.md draws that line). Both names stay in
+  the forbidden-key denylist in
   `server/routes/shares.test.ts` so a future projection cannot reintroduce
   them quietly.
 

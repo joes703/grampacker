@@ -332,9 +332,7 @@ async function consume(
 // Limits auth requests per client IP, every method except allowlisted
 // read-only GETs. CF-Connecting-IP is set by Cloudflare's edge and
 // cannot be spoofed through it; it is absent in local dev and tests
-// unless injected, where everything shares one bucket ('local'). The
-// Node deployment target must map its trusted client-IP source to the
-// same header.
+// unless injected, where everything shares one bucket ('local').
 export const authRateLimit = createMiddleware<{ Bindings: Env }>(
   async (c, next) => {
     if (

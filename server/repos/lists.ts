@@ -152,10 +152,9 @@ export async function withFreshSlug<T>(
   throw new Error('slug generation exhausted retries')
 }
 
-// "(copy)" suffix must not push the name past the 256 CHECK; the old
-// Postgres RPC had the same latent overflow, fixed here rather than
-// Suffix used when duplicating a list. Truncates to keep the result inside the
-// name column's 256 CHECK.
+// Suffix used when duplicating a list. Truncates so the " (copy)" suffix
+// cannot push the name past the column's 256 CHECK (the old Postgres RPC had
+// that latent overflow).
 export function copyName(name: string): string {
   return `${name.slice(0, 249)} (copy)`
 }

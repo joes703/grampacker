@@ -1,9 +1,10 @@
 import { drizzle } from 'drizzle-orm/d1'
 import * as schema from './schema'
 
-// Portability rule 3: all DB access goes through this factory. On Workers it
-// wraps the D1 binding; a Node deployment swaps in a better-sqlite3-backed
-// drizzle instance behind the same call sites.
+// All DB access goes through this factory, which wraps the D1 binding. (It
+// was once the seam for a Node + SQLite deployment; that goal is retired -
+// README - and the repo uses D1 semantics directly, e.g. db.batch as the
+// transaction. The single entry point is still worth keeping.)
 //
 // Drizzle is pinned to the 0.45.x stable line because better-auth's adapter
 // peers on drizzle-orm ^0.45.2 (see STACK.md). Upgrade to 1.x when

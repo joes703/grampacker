@@ -9,9 +9,8 @@ export type AuthEmail = {
   text: string
 }
 
-// All outbound email goes through this interface (portability rule 3, same
-// pattern as the DB factory). The Worker uses Resend's HTTP API; a Node
-// deployment or a provider change swaps the implementation, not the callers.
+// All outbound email goes through this interface. The Worker uses Resend's
+// HTTP API; a provider change swaps the implementation, not the callers.
 export interface EmailSender {
   send(msg: AuthEmail): Promise<void>
 }

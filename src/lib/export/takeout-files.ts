@@ -14,7 +14,6 @@ export type TakeoutInput = {
   allItems: ListItemWithGear[]
   packingLocationsByListId: ReadonlyMap<string, PackingLocation[]>
   foodByListId: ReadonlyMap<string, ListFoodResponse>
-  // Full per-plan graphs, fetched one document per plan (plan cap 100).
 }
 
 // Builds the takeout zip's file map as { path -> text content }. Pure and

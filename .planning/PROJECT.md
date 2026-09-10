@@ -1,3 +1,11 @@
+> **DATED RECORD. NOT AUTHORITATIVE.** A planning tool's snapshot from
+> 2026-07-19, kept for the reasoning it holds. Several things it lists as
+> validated or intended were retired afterwards: the standalone food-planning
+> feature and nutrition targets (deleted by migration 0016, 2026-07-30), and
+> portability to a self-hosted Node + SQLite deployment (retired; README).
+> Do not cite anything here to justify or block a decision, and do not update
+> it to match later reality. `AGENTS.md` says which documents bind.
+
 # grampacker
 
 ## What This Is
