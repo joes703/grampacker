@@ -341,9 +341,13 @@ class OptimisticReorderValidationError extends Error {
 // applies them in one batch - so the optimistic apply, rollback and refetch
 // must span both caches or a failed drop would roll back half a drag.
 //
-// The permutation rule is validated over the UNION: an interleaving drag
-// hands a food row a rank a gear row held, so neither half is a permutation
-// of its own subset on its own.
+// Validation is INDEX SAFETY per table half, not a permutation check: a
+// payload rank must not collide with an untouched row of the same table in
+// the cohort (the unique index would reject the settle); free ranks are
+// legal. An interleaving drag hands a food row a rank a gear row held, so
+// neither half is a permutation of its own subset - which is why the rule is
+// stated per half and the server (server/repos/pack-reorder.ts) does the
+// same.
 export type UnionPackReorderUpdates = {
   items: { id: string; packSortOrder: number }[]
   foodItems: { id: string; packSortOrder: number }[]

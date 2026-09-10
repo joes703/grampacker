@@ -245,15 +245,19 @@ time a later one touches it. Fixture rows are the only data it can speak for
 RIGHT value - that is yours to test. It rejects tables it has no fixture for,
 so a NEW TABLE means adding a fixture row - that is the check refusing to go
 quiet. The 21 baseline migrations are digest-pinned and editing one fails
-closed forever; post-baseline edits get re-tested, but nothing detects that
-production already ran the old text (Phase 3's manifest closes that; until
-then it is on you).
+closed forever. A post-baseline edit is refused on a pull request by
+`scripts/check-migration-immutability.mjs` (any change to a migration `main`
+already holds), but neither guard can see what production actually applied,
+so an edit that reaches `main` some other way still re-tests clean while
+never reaching a deployed database - never edit a migration that has
+shipped.
 
 How it talks to D1, and why that is not a detail: every statement runs against
 local D1 through `wrangler d1 execute --local`, including the reads. The
-`POST_CHECKS` probes are the only behavioral coverage of trigger BODIES this
-repo has, so running them on a stock SQLite build would prove something about
-that build instead. Two rewrites of the performance work died on exactly that
+`POST_CHECKS` probes are the harness's only behavioral coverage of trigger
+BODIES (the API suite exercises some triggers directly on D1 too, not the
+migration-time behaviors these probe), so running them on a stock SQLite
+build would prove something about that build instead. Two rewrites of the performance work died on exactly that
 point before the third stopped trying to leave D1.
 
 What was actually expensive was process launches, not SQL: a full run made 182

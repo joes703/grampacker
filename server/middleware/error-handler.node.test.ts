@@ -81,6 +81,20 @@ describe('describeError', () => {
     expect(describeError(deep).cause).toHaveLength(5)
   })
 
+  it('never coerces a non-string message or an oversized name into the entry', () => {
+    // String(message) would run an object's own toString / toStringTag; a
+    // hand-built stack whose first line carries more than the header would
+    // keep that suffix under a plain prefix match.
+    const tagged = { name: 'Error', message: { [Symbol.toStringTag]: SENTINEL } }
+    expect(JSON.stringify(describeError(tagged))).not.toContain(SENTINEL)
+    const bigName = new Error('x')
+    bigName.name = 'N'.repeat(10_000)
+    expect(describeError(bigName).name.length).toBeLessThan(200)
+    const padded = new Error('safe')
+    padded.stack = `Error: safe [session=${SENTINEL}]\n    at caller (x.ts:1:1)`
+    expect(JSON.stringify(describeError(padded))).not.toContain(SENTINEL)
+  })
+
   it('describes a non-object throw without pretending it is an Error', () => {
     expect(describeError('just a string')).toEqual({ name: 'string', message: 'just a string' })
     expect(describeError(undefined)).toEqual({ name: 'undefined', message: 'undefined' })

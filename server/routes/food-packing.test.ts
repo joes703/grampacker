@@ -388,11 +388,11 @@ describe('the food half of the pack-order permutation and its parents', () => {
 
 describe('a full-cohort union reorder at the caps', () => {
   it('reorders 300 gear + 200 food rows in one request (chunked batch)', async () => {
-    // The D1 platform counts every batch statement against its per-invocation
-    // query ceiling, so a full-cohort permutation must ship as chunked
-    // multi-row statements. This seeds a list AT both caps and reverses the
-    // whole 500-row union - the payload shape the drag planner actually
-    // submits for a worst-case drag.
+    // A full-cohort reorder ships as chunked multi-row statements rather
+    // than one statement per row (docs/incidents.md, the D1 section, on what
+    // the per-invocation limit counts). This seeds a list AT both caps and
+    // reverses the whole 500-row union - the payload shape the drag planner
+    // actually submits for a worst-case drag.
     const { cookie } = await signUpVerifiedUser('cap1@example.com', 'CAP')
     const list = await createList(cookie, 'Everything')
     const me = await apiRequest(cookie, 'GET', '/api/me')

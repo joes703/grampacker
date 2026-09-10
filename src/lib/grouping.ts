@@ -234,8 +234,9 @@ export function assignSortOrderSlots<T extends { id: string; sortOrder: number }
 // Permuting rather than minting matters more here than it does for sortOrder.
 // packSortOrder carries a unique index per cohort, so any value not already
 // held by one of these rows risks colliding with a row this payload does not
-// mention - which the server would reject as a conflict rather than apply. The
-// server enforces the permutation rule for the same reason.
+// mention - which the server would reject rather than apply. The server's
+// validation is index safety (no collision with an untouched same-table row)
+// rather than a strict permutation, and a permutation always satisfies it.
 //
 // Callers pass only the VISIBLE rows. Worn rows are excluded from the packing
 // tree and keep their ranks reserved: permuting `{0, 2}` over two visible rows

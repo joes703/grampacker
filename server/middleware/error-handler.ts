@@ -91,12 +91,18 @@ function scrubbedMessage(err: object): string {
       : 'Failed query (bound params redacted)'
   }
   const message = (err as { message?: unknown }).message
-  return scrubMessageText(typeof message === 'string' ? message : String(message))
+  // Only a string message is logged as text. Coercing an object would run
+  // its own toString / toStringTag, which is a way for arbitrary content to
+  // reach the log; describe its type instead.
+  if (typeof message === 'string') return scrubMessageText(message)
+  return message === undefined ? '' : `[non-string message: ${typeof message}]`
 }
 
 function nameOf(err: object): string {
   const name = (err as { name?: unknown }).name
-  return typeof name === 'string' && name !== '' ? name : 'Error'
+  return typeof name === 'string' && name !== ''
+    ? truncate(name, 128)
+    : 'Error'
 }
 
 function scrubbedStack(err: Error): string | undefined {
@@ -106,7 +112,9 @@ function scrubbedStack(err: Error): string | undefined {
   // V8 renders `${name}: ${message}` (or just the name for an empty message)
   // and then the frames. Anything else is not a layout this code understands.
   const header = err.message === '' ? err.name : `${err.name}: ${err.message}`
-  if (!stack.startsWith(header)) return undefined
+  // The header must end exactly where the frames begin. A prefix match alone
+  // would keep whatever a hand-built stack appended to its first line.
+  if (stack !== header && !stack.startsWith(`${header}\n`)) return undefined
   const frames = stack.slice(header.length).replace(/^\n/, '')
   return frames === '' ? undefined : frames.slice(0, STACK_LIMIT_BYTES)
 }
