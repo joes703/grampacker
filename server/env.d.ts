@@ -4,6 +4,7 @@
 interface Env {
   BETTER_AUTH_SECRET: string
   // Absent in local dev - createEmailSender falls back to the console
-  // sender and prints verification/reset URLs to the dev log.
+  // sender and prints magic-link URLs to the dev log. Absent anywhere else,
+  // magic-link sends fail closed (server/email/index.ts).
   RESEND_API_KEY?: string
 }

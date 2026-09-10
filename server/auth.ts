@@ -3,13 +3,23 @@ import {
   APIError,
   createAuthMiddleware,
   getSessionFromCtx,
+  isAPIError,
 } from 'better-auth/api'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { magicLink } from 'better-auth/plugins/magic-link'
 import { passkey } from '@better-auth/passkey'
 import { createDb } from './db'
 import { createEmailSender } from './email'
+import { authLogger } from './middleware/error-handler'
 import { chargeMagicLinkGlobalQuota } from './middleware/rate-limit'
+
+// Per-request holder for the error behind an auth 5xx. better-call catches
+// every throw inside its router and returns a Response, so the only way the
+// error itself reaches the correlated incident log is for the onAPIError
+// hook (authOptions) to stash it here and for the caller that built this
+// auth instance to hand it to withAuthErrorCorrelation. One holder per
+// createAuth call, so it cannot cross requests.
+export type AuthIncident = { error?: unknown }
 import { createUsersRepo } from './repos/users'
 import { FRESH_AGE_SECONDS, MAGIC_LINK_PATH } from '../shared/auth'
 
@@ -57,7 +67,7 @@ const PASSKEY_UNGATED = new Set([
 // Shared between the runtime factory below and the CLI schema config
 // (auth-schema.config.ts). Schema-affecting options (adapter provider,
 // plugins) MUST live here so the generated tables cannot drift from runtime.
-export function authOptions(env: Env) {
+export function authOptions(env: Env, incident?: AuthIncident) {
   const db = createDb(env.DB)
   const email = createEmailSender(env)
 
@@ -66,6 +76,37 @@ export function authOptions(env: Env) {
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
     basePath: '/api/auth',
+    // Every log line better-auth writes goes through the incident handler's
+    // budget and error shape (server/middleware/error-handler.ts). Its
+    // default logger hands raw Error objects to console.error, and a failed
+    // session lookup's error carries the session token as a bound param.
+    logger: authLogger,
+    // What happens to an error that escapes an endpoint. With no hook here
+    // better-auth logs it itself - `err.message` alone when the text looks
+    // like SQL, the raw object otherwise - and then better-call ALSO writes
+    // `console.error('# SERVER_ERROR: ', error)` for any non-APIError before
+    // answering a bare 500 (better-call/dist/router.mjs). Both sinks bypass
+    // the budget and the redaction.
+    //
+    // This hook is the only place better-auth lets us in, and it ignores the
+    // hook's return value, so the way to take over the response is to THROW:
+    // better-call's catch around the hook turns a thrown APIError into the
+    // response and never reaches its own console fallback. The original error
+    // is stashed on the per-request holder so withAuthErrorCorrelation
+    // (server/index.ts) can log it in the one correlated entry; an APIError
+    // is a deliberate answer and is left to better-auth to serialize.
+    onAPIError: {
+      onError: (error: unknown) => {
+        if (incident) incident.error = error
+        if (isAPIError(error)) return
+        // The same body shape withAuthErrorCorrelation synthesizes for
+        // better-call's bare 500, so auth callers see one dialect.
+        throw new APIError('INTERNAL_SERVER_ERROR', {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Internal Server Error',
+        })
+      },
+    },
     // NO emailAndPassword. Its absence is load-bearing, not an oversight:
     // better-auth mounts /sign-in/email and /sign-up/email unconditionally and
     // gates them on this option, so leaving it out is what makes them 400
@@ -381,8 +422,8 @@ export function authOptions(env: Env) {
 
 // Workers get fresh bindings per request, so the auth instance is built per
 // request. This is config wiring only - no I/O happens until a handler runs.
-export function createAuth(env: Env) {
-  return betterAuth(authOptions(env))
+export function createAuth(env: Env, incident?: AuthIncident) {
+  return betterAuth(authOptions(env, incident))
 }
 
 export type Auth = ReturnType<typeof createAuth>

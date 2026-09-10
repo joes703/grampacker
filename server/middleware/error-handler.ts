@@ -25,6 +25,121 @@ const PRESERVED_HEADERS = ['Retry-After']
 
 // Stacks are the bulk of an entry's bytes; the identity of the incident is not.
 const STACK_LIMIT_BYTES = 2048
+// Messages and SQL text are bounded for the same reason - and because a
+// message can be user-controlled (a repo throw that quotes a client id).
+const TEXT_LIMIT_BYTES = 2048
+// How far down `.cause` an entry follows. Drizzle -> D1 -> SQLite is three
+// links; anything deeper is noise, and a cycle must not spin.
+const CAUSE_DEPTH_LIMIT = 5
+
+// What an entry may say about an error. THIS IS THE ONLY SHAPE THAT REACHES
+// A LOG LINE. The rule it enforces: bound query parameters never appear.
+//
+// Drizzle wraps every failed statement in DrizzleQueryError, whose message is
+// `Failed query: <sql>\nparams: <every bound value>` (drizzle-orm/errors.js)
+// and whose V8 stack repeats that message as its header. The values are
+// whatever the request carried - gear names, costs, and on a session lookup
+// during a D1 outage, the session token itself. The raw SQLite text on the
+// cause chain (`UNIQUE constraint failed: lists.slug`, `no such table`) never
+// embeds values, and is the diagnostic that actually matters - yet before this
+// existed only the outermost wrapper was logged, so entries leaked the values
+// and omitted the diagnosis. db-errors.ts learned the same lesson for
+// classification (match the root cause, never a wrapper); this is the logging
+// half.
+//
+// Recognition is by shape, not `instanceof`: an error carrying a `params`
+// property is treated as parameter-bearing whether or not it is Drizzle's
+// class, and its message is replaced outright rather than filtered. A message
+// STRING in Drizzle's format is cut at the first `\nparams: ` too, because
+// better-auth sometimes re-logs `err.message` on its own (api/index.mjs). Cut
+// at the FIRST marker: a bound value could itself contain the marker, and
+// cutting early drops more, never less.
+//
+// Stacks: the header is removed by exact match against `${name}: ${message}`
+// and the frames kept only if that match succeeds. Searching for the first
+// `    at ` line instead would be fooled by a parameter containing a fake
+// frame (Codex finding); an unrecognized layout logs no stack at all.
+export type LoggedError = {
+  name: string
+  message: string
+  stack?: string
+  cause?: { name: string; message: string }[]
+}
+
+const PARAMS_MARKER = '\nparams: '
+
+function truncate(text: string, limit: number): string {
+  return text.length > limit ? `${text.slice(0, limit)}…` : text
+}
+
+function hasParams(err: object): boolean {
+  return 'params' in err
+}
+
+// A string that may be a Drizzle message rendered somewhere else.
+function scrubMessageText(text: string): string {
+  const cut = text.indexOf(PARAMS_MARKER)
+  const kept = cut === -1 ? text : `${text.slice(0, cut)} (bound params redacted)`
+  return truncate(kept, TEXT_LIMIT_BYTES)
+}
+
+function scrubbedMessage(err: object): string {
+  if (hasParams(err)) {
+    const query = (err as { query?: unknown }).query
+    return typeof query === 'string'
+      ? `Failed query (bound params redacted): ${truncate(query, TEXT_LIMIT_BYTES)}`
+      : 'Failed query (bound params redacted)'
+  }
+  const message = (err as { message?: unknown }).message
+  return scrubMessageText(typeof message === 'string' ? message : String(message))
+}
+
+function nameOf(err: object): string {
+  const name = (err as { name?: unknown }).name
+  return typeof name === 'string' && name !== '' ? name : 'Error'
+}
+
+function scrubbedStack(err: Error): string | undefined {
+  if (hasParams(err)) return undefined
+  const { stack } = err
+  if (typeof stack !== 'string') return undefined
+  // V8 renders `${name}: ${message}` (or just the name for an empty message)
+  // and then the frames. Anything else is not a layout this code understands.
+  const header = err.message === '' ? err.name : `${err.name}: ${err.message}`
+  if (!stack.startsWith(header)) return undefined
+  const frames = stack.slice(header.length).replace(/^\n/, '')
+  return frames === '' ? undefined : frames.slice(0, STACK_LIMIT_BYTES)
+}
+
+export function describeError(err: unknown): LoggedError {
+  if (typeof err !== 'object' || err === null) {
+    return { name: typeof err, message: scrubMessageText(String(err)) }
+  }
+  const entry: LoggedError = {
+    name: nameOf(err),
+    message: scrubbedMessage(err),
+  }
+  if (err instanceof Error) {
+    const stack = scrubbedStack(err)
+    if (stack !== undefined) entry.stack = stack
+  }
+
+  const seen = new Set<object>([err])
+  const cause: { name: string; message: string }[] = []
+  let link: unknown = (err as { cause?: unknown }).cause
+  while (
+    typeof link === 'object' &&
+    link !== null &&
+    !seen.has(link) &&
+    cause.length < CAUSE_DEPTH_LIMIT
+  ) {
+    seen.add(link)
+    cause.push({ name: nameOf(link), message: scrubbedMessage(link) })
+    link = (link as { cause?: unknown }).cause
+  }
+  if (cause.length > 0) entry.cause = cause
+  return entry
+}
 
 // Anonymous routes exist (/api/health, /api/shares/v2/:slug), reachable
 // without a session, so without
@@ -115,7 +230,7 @@ function recordIncident({ source, method, path, status, err }: Incident): string
   }
 
   const correlationId = crypto.randomUUID()
-  const error = err instanceof Error ? err : undefined
+  const error = err === undefined ? undefined : describeError(err)
   // One JSON string, so Workers Logs keeps one entry rather than splitting a
   // multi-argument call across lines.
   console.error(
@@ -126,12 +241,65 @@ function recordIncident({ source, method, path, status, err }: Incident): string
       method,
       path,
       status,
-      name: error?.name ?? (err === undefined ? undefined : typeof err),
-      message: error?.message ?? (err === undefined ? undefined : String(err)),
-      stack: error?.stack?.slice(0, STACK_LIMIT_BYTES),
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack,
+      cause: error?.cause,
     }),
   )
   return correlationId
+}
+
+// better-auth's own log calls, routed through the same budget and the same
+// error shape. Without this better-auth builds its default console logger,
+// which hands the RAW error object to console.error - the Drizzle wrapper
+// with the session token in its params on a failed session lookup - and it
+// does so outside the ceiling above, once per request, which is exactly the
+// unbounded outage write the ceiling exists to prevent. The default level is
+// `warn`, so better-auth only calls this for warnings and errors.
+//
+// Both positions are sanitized: the declared signature says the first
+// argument is a string, but better-auth passes an Error there in places
+// (api/routes/session.mjs list-sessions) and createLogger forwards it
+// unchanged.
+export function recordAuthLog(
+  level: 'debug' | 'info' | 'warn' | 'error',
+  message: unknown,
+  ...args: unknown[]
+): void {
+  const slot = claimLogSlot(Date.now())
+  if (slot === 'silent') return
+  const sink = level === 'warn' ? console.warn : console.error
+  if (slot === 'announce-suppression') {
+    sink(
+      JSON.stringify({
+        event: 'server-error-suppressed',
+        detail: `more than ${DETAILED_BUDGET} errors in ${WINDOW_MS}ms; further errors in this window are not logged`,
+      }),
+    )
+    return
+  }
+  const describe = (value: unknown) =>
+    typeof value === 'object' && value !== null
+      ? describeError(value)
+      : scrubMessageText(String(value))
+  sink(
+    JSON.stringify({
+      event: 'auth-log',
+      level,
+      message: describe(message),
+      details: args.length === 0 ? undefined : args.map(describe),
+    }),
+  )
+}
+
+// The `logger` option handed to better-auth (server/auth.ts).
+export const authLogger = {
+  log: (
+    level: 'debug' | 'info' | 'warn' | 'error',
+    message: string,
+    ...args: unknown[]
+  ) => recordAuthLog(level, message, ...args),
 }
 
 // better-call catches every throw inside its own router and returns a Response,
@@ -152,6 +320,9 @@ function recordIncident({ source, method, path, status, err }: Incident): string
 export async function withAuthErrorCorrelation(
   res: Response,
   req: { method: string; path: string },
+  // The error behind the response, when the onAPIError hook in server/auth.ts
+  // caught one. Absent for a 5xx better-auth produced without throwing.
+  err?: unknown,
 ): Promise<Response> {
   if (res.status < 500) return res
 
@@ -160,6 +331,7 @@ export async function withAuthErrorCorrelation(
     method: req.method,
     path: req.path,
     status: res.status,
+    err,
   })
   if (correlationId === undefined) return res
 

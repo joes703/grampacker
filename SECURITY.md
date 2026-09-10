@@ -46,6 +46,35 @@ reasoning behind them. Where the two overlap, the matrix wins on detail.
 - Secrets (`BETTER_AUTH_SECRET`, `RESEND_API_KEY`) are Worker secrets;
   nothing secret is in the client bundle or the repo (`.dev.vars` is
   gitignored).
+- **A missing `RESEND_API_KEY` fails closed.** The console sender - which
+  prints the redeemable magic-link URL to the log and reports success - is
+  selected only when `BETTER_AUTH_URL` is `localhost` (`isDevEnvironment`,
+  the same test that relaxes the CSP). On any other origin a missing key
+  makes the magic-link send itself fail as a logged 500; session lookups
+  and every other auth route keep working (`server/email/index.ts`,
+  `server/auth-error-logging.test.ts`).
+- **Bound query parameters stay out of the server's log lines.** Drizzle's
+  wrapper error embeds every bound value in its message (and V8 repeats it
+  in the stack header): gear names, costs, and on a failed session lookup
+  the session token. Three sinks are routed through one sanitizer that
+  replaces such messages, drops their stacks, and keeps the query text and
+  the SQLite root-cause message, which never embed values
+  (`server/middleware/error-handler.ts`, `describeError`): the incident
+  handler's own entries, better-auth's logger (`logger` option), and the
+  `onAPIError` hook that takes over from better-call's raw `console.error`
+  fallback for any error escaping an auth endpoint. Proven over the real
+  app in `server/auth-error-logging.test.ts`.
+
+  Two things this does NOT cover, stated so nobody reads more into it:
+  better-auth's adapter factory writes one raw `console.error(error)` of
+  its own when the SECOND statement of a JS-side join fails (the user read
+  after a successful session read, `@better-auth/core`
+  `db/adapter/factory.mjs`) - outside the sanitizer and the budget; the
+  value bound there is the user id, never the token, and the test above
+  pins that boundary. The installed Drizzle adapter has no native join to
+  switch to. And an arbitrary error message is not made free of
+  user-controlled text - a repo throw that quotes a client-supplied id
+  still logs it.
 
 ## CSRF
 

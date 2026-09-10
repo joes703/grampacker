@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { sql } from 'drizzle-orm'
-import { createAuth } from './auth'
+import { createAuth, type AuthIncident } from './auth'
 import { createDb } from './db'
 import { assetCache, forceValidatedAssetResponse } from './middleware/asset-cache'
 import { apiBodyLimit } from './middleware/body-limit'
@@ -74,12 +74,16 @@ api.use('/auth/*', authRateLimit)
 // inside its own router and RETURNS a Response, so nothing here ever reaches
 // app.onError. Without this wrapper, auth 5xx would be the one part of the
 // server outside the correlation scheme entirely.
-api.on(['GET', 'POST'], '/auth/*', async (c) =>
-  withAuthErrorCorrelation(await createAuth(c.env).handler(c.req.raw), {
-    method: c.req.method,
-    path: new URL(c.req.raw.url).pathname,
-  }),
-)
+api.on(['GET', 'POST'], '/auth/*', async (c) => {
+  // The error behind a 5xx is captured by the onAPIError hook in
+  // server/auth.ts and logged here, in the same entry as the correlation id.
+  const incident: AuthIncident = {}
+  return withAuthErrorCorrelation(
+    await createAuth(c.env, incident).handler(c.req.raw),
+    { method: c.req.method, path: new URL(c.req.raw.url).pathname },
+    incident.error,
+  )
+})
 
 // ONE session gate for the three sub-apps that share the /lists base. Each
 // used to gate itself with use('*', requireSession), and because a request
