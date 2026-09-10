@@ -1187,6 +1187,27 @@ describe('pack-order route contract', () => {
     expect(await getItems(cookie, list.id)).toEqual(before)
   })
 
+  it("404s the gear half submitted through ANOTHER OWNED parent without writing anything", async () => {
+    // Same user, two lists: list A's bagged items submitted under list B, with
+    // a valid list-B rank change riding along so a partial write would show.
+    // The cross-user case above holds the parent constant; this holds the
+    // owner constant.
+    const { cookie, list: listA, inBag } = await bagOfTwo('pack-parent-a@example.com')
+    const listB = await createList(cookie, 'Other')
+    const b1 = await addItem(cookie, listB.id, await createGear(cookie, 'B1'))
+    const b2 = await addItem(cookie, listB.id, await createGear(cookie, 'B2'))
+    const before = { a: await getItems(cookie, listA.id), b: await getItems(cookie, listB.id) }
+
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${listB.id}/items/pack-order`, [
+      { id: b1.id, packSortOrder: b2.packSortOrder },
+      { id: b2.id, packSortOrder: b1.packSortOrder },
+      { id: inBag[0]!.id, packSortOrder: inBag[1]!.packSortOrder },
+      { id: inBag[1]!.id, packSortOrder: inBag[0]!.packSortOrder },
+    ])
+    expect(res.status).toBe(404)
+    expect({ a: await getItems(cookie, listA.id), b: await getItems(cookie, listB.id) }).toEqual(before)
+  })
+
   it('does not bump updatedAt', async () => {
     const { cookie, list, inBag } = await bagOfTwo('pack-updated@example.com')
     const before = await getItems(cookie, list.id)

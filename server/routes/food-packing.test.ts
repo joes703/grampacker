@@ -322,6 +322,70 @@ describe('the union pack-order permutation', () => {
   })
 })
 
+// The food half of the union is checked separately from the gear half
+// (server/repos/pack-reorder.ts validates each table's membership on its
+// own), so a payload whose gear half is clean must still be refused when its
+// food half names a row outside this list - and the state of BOTH lists must
+// be untouched.
+describe('the food half of the pack-order permutation and its parents', () => {
+  // Gear through the owner's DTO (it carries ranks, locations and updatedAt);
+  // food as RAW rows, because the food DTO omits created_at/updated_at and a
+  // timestamp-only partial write would otherwise pass.
+  async function snapshot(cookie: string, listId: string) {
+    const gear = await apiRequest(cookie, 'GET', `/api/lists/${listId}/items`)
+    expect(gear.status).toBe(200)
+    const food = await env.DB.prepare(
+      'select * from list_food_items where list_id = ? order by id',
+    )
+      .bind(listId)
+      .all()
+    return { gear: await gear.json(), food: food.results }
+  }
+
+  it("404s a food id from ANOTHER OWNED list, gear half valid, zero writes", async () => {
+    const { cookie } = await signUpVerifiedUser('fp-parent-a@example.com', 'FP')
+    const listA = await createList(cookie, 'A')
+    const listB = await createList(cookie, 'B')
+    const foodA = await createFood(cookie, listA.id, 'Oats A')
+    const g1 = await createGearOnList(cookie, listB.id, 'G1')
+    const g2 = await createGearOnList(cookie, listB.id, 'G2')
+    const foodB = await createFood(cookie, listB.id, 'Oats B')
+    const before = { a: await snapshot(cookie, listA.id), b: await snapshot(cookie, listB.id) }
+
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${listB.id}/items/pack-order`, {
+      items: [
+        { id: g1.id, packSortOrder: g2.packSortOrder },
+        { id: g2.id, packSortOrder: g1.packSortOrder },
+      ],
+      foodItems: [
+        { id: foodB.id, packSortOrder: foodA.packSortOrder },
+        { id: foodA.id, packSortOrder: foodB.packSortOrder },
+      ],
+    })
+    expect(res.status).toBe(404)
+    expect({ a: await snapshot(cookie, listA.id), b: await snapshot(cookie, listB.id) }).toEqual(before)
+  })
+
+  it("404s a NON-OWNER reordering food through the victim's own list, zero writes", async () => {
+    const owner = await signUpVerifiedUser('fp-victim@example.com', 'FP')
+    const other = await signUpVerifiedUser('fp-intruder@example.com', 'FP')
+    const list = await createList(owner.cookie, 'Victim')
+    const f1 = await createFood(owner.cookie, list.id, 'F1')
+    const f2 = await createFood(owner.cookie, list.id, 'F2')
+    const before = await snapshot(owner.cookie, list.id)
+
+    const res = await apiRequest(other.cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, {
+      items: [],
+      foodItems: [
+        { id: f1.id, packSortOrder: f2.packSortOrder },
+        { id: f2.id, packSortOrder: f1.packSortOrder },
+      ],
+    })
+    expect(res.status).toBe(404)
+    expect(await snapshot(owner.cookie, list.id)).toEqual(before)
+  })
+})
+
 describe('a full-cohort union reorder at the caps', () => {
   it('reorders 300 gear + 200 food rows in one request (chunked batch)', async () => {
     // The D1 platform counts every batch statement against its per-invocation
