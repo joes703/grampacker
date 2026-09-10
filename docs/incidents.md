@@ -148,8 +148,9 @@ toast. Supporting detail:
   expires. A write issued from a still-open modal MUST report inline
   (`saveError`). Check the surface really stays put: an optimistic insert can
   unmount the component holding the error state (`ListsEmptyState` stops
-  rendering when the placeholder lands - a known gap, recorded in the
-  remediation plan).
+  rendering when the placeholder lands, so its inline error has no owner by
+  the time a rejection arrives - it reports through `meta.errorToast`, and
+  `ListsEmptyState.test.tsx` pins the unmount-then-fail sequence).
 - Say what you can prove: a rejected fetch never proves the server did not
   commit (the connection can drop after the write lands, and `apiFetch` also
   rejects when a 200 fails DTO validation). So "Couldn't confirm...", not

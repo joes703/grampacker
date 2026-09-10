@@ -18,6 +18,9 @@ import ListImportPreviewDialog from './ListImportPreviewDialog'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 
+export const CREATE_FAILED_COPY =
+  "Couldn't confirm the list was created. Refresh to check before trying again."
+
 // Empty state shown to a brand-new user when they have zero lists.
 // Two paths: name-and-create a blank list, or import a CSV which creates
 // a list and populates it in one go (mirrors the import button on the
@@ -57,10 +60,15 @@ export default function ListsEmptyState() {
     onSuccess: (list) => {
       void navigate(`/lists/${list.id}`)
     },
-    // Local error state is set at the call site (submit) so it doesn't
-    // override the helper's rollback onError. Both fire — useMutation's
-    // helper-level onError first (rolls back cache), then the mutate()
-    // call-site onError (sets the user-facing error message).
+    // Toasted, because this surface cannot report inline: the optimistic
+    // placeholder makes lists.length 1, ListsPage stops rendering the empty
+    // state, and the component holding the inline error - and the
+    // call-site onError below - is gone before the rejection arrives. The
+    // call-site onError still fires while the component is mounted, so the
+    // inline copy stays for that case; the toast is what survives the
+    // unmount. Copy claims only what a rejected request proves: the server
+    // may have committed and lost only the response.
+    meta: { errorToast: CREATE_FAILED_COPY },
   })
 
   function submit() {
@@ -69,7 +77,7 @@ export default function ListsEmptyState() {
     setError(null)
     createMut.mutate(trimmed, {
       onError: (err) => {
-        setError(err instanceof Error ? err.message : 'Could not create list. Try again.')
+        setError(err instanceof Error ? err.message : CREATE_FAILED_COPY)
       },
     })
   }

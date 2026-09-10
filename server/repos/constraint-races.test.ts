@@ -246,6 +246,22 @@ describe('food createItem loses a race', () => {
   })
 })
 
+describe('food setDayCount loses a race', () => {
+  it('list deleted after the ownership check -> not found, not a 500', async () => {
+    const { cookie, userId } = await newUser('f9')
+    const listId = await createList(cookie, 'Trip')
+    const repo = createFoodRepo(
+      sabotaged(raw(), 'batch', async () => {
+        await env.DB.prepare('delete from lists where id = ?').bind(listId).run()
+      }),
+      userId,
+    )
+    // The slot inserts fail their FK to the vanished list; the repo probes
+    // ownership again and answers as the route's 404 expects.
+    expect(await repo.setDayCount(listId, 2)).toBe(false)
+  })
+})
+
 describe('food updateItem loses a race', () => {
   async function seedItem(cookie: string, listId: string, slotId: string) {
     const res = await apiRequest(cookie, 'POST', `/api/lists/${listId}/food/items`, {
@@ -332,6 +348,80 @@ describe('food updateItem loses a race', () => {
       .from(listFoodItemSlots)
       .where(eq(listFoodItemSlots.foodItemId, itemId))
     expect(links.map((l) => l.slotId)).toEqual([slotId])
+  })
+
+  it('destination bag deleted after the precheck -> invalid_location, nothing written', async () => {
+    // The location precheck passes, then the bag is deleted before the write
+    // batch runs. 0022's BEFORE UPDATE trigger fires ahead of the FK and
+    // names the condition; before it was classified this was a 500. Moved
+    // together with a rename and a reschedule so the rollback of the WHOLE
+    // batch can be asserted, not just the status.
+    const { cookie, userId } = await newUser('f7')
+    const listId = await createList(cookie, 'Trip')
+    const [slotId, otherSlot] = await slotIdsFor(cookie, listId, 2)
+    if (!slotId || !otherSlot) throw new Error('no slots')
+    const itemId = await seedItem(cookie, listId, slotId)
+    const bag = await apiRequest(cookie, 'POST', `/api/lists/${listId}/packing-locations`, {
+      name: 'Doomed',
+    })
+    if (bag.status !== 201) throw new Error(`create location: ${bag.status}`)
+    const locationId = ((await bag.json()) as { id: string }).id
+
+    const repo = createFoodRepo(
+      sabotaged(raw(), 'batch', async () => {
+        await env.DB.prepare('delete from packing_locations where id = ?')
+          .bind(locationId)
+          .run()
+      }, 1),
+      userId,
+    )
+    const result = await repo.updateItem(listId, itemId, {
+      name: 'Renamed',
+      packingLocationId: locationId,
+      slotIds: [otherSlot],
+    })
+    expect(result).toEqual({ ok: false, reason: 'invalid_location' })
+
+    const [row] = await env.DB.prepare(
+      'select name, packing_location_id as loc from list_food_items where id = ?',
+    )
+      .bind(itemId)
+      .all<{ name: string; loc: string | null }>()
+      .then((r) => r.results)
+    expect(row).toEqual({ name: 'Oats', loc: null })
+    const links = await raw()
+      .select({ slotId: listFoodItemSlots.slotId })
+      .from(listFoodItemSlots)
+      .where(eq(listFoodItemSlots.foodItemId, itemId))
+    expect(links.map((l) => l.slotId)).toEqual([slotId])
+  })
+
+  it('answers with what the write committed, not the pre-read', async () => {
+    // A concurrent write changes quantity between updateItem's pre-read and
+    // its batch. The response used to be composed as `patch.x ?? preRead.x`,
+    // so it reported the quantity the pre-read saw - a value the row no
+    // longer held - and a unitCount derived from it.
+    const { cookie, userId } = await newUser('f8')
+    const listId = await createList(cookie, 'Trip')
+    const [slotId] = await slotIdsFor(cookie, listId, 2)
+    if (!slotId) throw new Error('no slots')
+    const itemId = await seedItem(cookie, listId, slotId)
+
+    const repo = createFoodRepo(
+      sabotaged(raw(), 'batch', async () => {
+        await env.DB.prepare('update list_food_items set quantity = 7 where id = ?')
+          .bind(itemId)
+          .run()
+      }),
+      userId,
+    )
+    const result = await repo.updateItem(listId, itemId, { name: 'Renamed' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.row.name).toBe('Renamed')
+    expect(result.row.quantity).toBe(7)
+    expect(result.row.unitCount).toBe(7)
+    expect(result.row.slotIds).toEqual([slotId])
   })
 
   it('an FK nothing explains rethrows instead of blaming the client', async () => {

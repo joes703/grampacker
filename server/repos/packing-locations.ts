@@ -490,10 +490,15 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
         return denseDeleted.length > 0 ? 'deleted' : 'not_found'
       }
       // Appending, so no two-phase write is needed: every rank claimed here is
-      // above every rank Unassigned currently holds. If a concurrent write
-      // takes one first the unique index rejects the batch and the whole
-      // delete rolls back, which is the outcome we want - a loud retry beats a
-      // half-deleted bag.
+      // above every rank Unassigned held at the pre-read. If a concurrent
+      // SAME-TABLE write takes one first the unique index rejects the batch
+      // and the whole delete rolls back, which is the outcome we want - a loud
+      // retry beats a half-deleted bag. A concurrent arrival in the OTHER
+      // table is not caught: the cohort's unique index is per table, so a
+      // food row landing in Unassigned at `base` while gear is being appended
+      // there produces a legal cross-table tie, and "orphans land after
+      // everything" degrades to the deterministic tiebreak until the next
+      // reorder renumbers. Accepted (SECURITY.md, "Later surfaces").
       // Each reassign asserts the row is STILL IN THE DOOMED BAG at its
       // PRE-READ RANK (rounds 6-8: keyed on id alone, a row concurrently
       // moved to another bag was yanked back; keyed without the rank, a

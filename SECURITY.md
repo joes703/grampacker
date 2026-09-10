@@ -494,6 +494,16 @@ restatement of the general posture.
   same bag, which the reorder planner accounts for
   (`server/repos/pack-reorder.ts`).
 
+- **Deleting a packing location appends its contents after a rank read
+  taken before the write batch** (`server/repos/packing-locations.ts`,
+  `base`). The census that aborts the batch guards the SOURCE bag only, and
+  the cohort's unique index is per table, so a food row arriving in
+  Unassigned at that rank while gear is being appended there (or the
+  reverse) produces a legal cross-table tie. Nothing is lost or half-written:
+  the order of the appended block degrades to the deterministic tiebreak
+  until the next reorder renumbers the cohort. Accepted; it is the same
+  cross-table-tie class migration 0022 tolerates by design.
+
 ## The app has TWO public origins
 
 `wrangler.jsonc` routes `grampacker.app` as a custom domain and does NOT set
@@ -560,16 +570,19 @@ of it:
   of live gaps and the plan that describes it in full is a dated record.
 
   What is lost: the day x meal SLOTS and their placements - which food is
-  eaten when. One of the paths below deletes placements DIRECTLY; the other
-  two delete a parent row and let the placements cascade. Two leave the food
-  items themselves alone; one removes an item outright.
+  eaten when. Of the three CLIENT-SIDE paths below, one deletes placements
+  DIRECTLY; the other two delete a parent row and let the placements
+  cascade. Two leave the food items themselves alone; one removes an item
+  outright. A fourth, server-side path (the day-count race, last in the
+  list) is different in kind and is described on its own terms.
 
   There were FOUR paths until the Skip feature was removed. Marking a meal
   not needed cleared that slot's placements, and its confirm was skipped
   whenever the cached snapshot said the slot was empty - the worst of the
   four, because a stale snapshot suppressed the warning entirely.
 
-  Every path below decides from a cached snapshot. `staleTime` is 30s, but
+  Each of the three client-side paths decides from a cached snapshot.
+  `staleTime` is 30s, but
   that only marks data stale - it does not refetch, and the app-wide default
   in `src/App.tsx` is `refetchOnWindowFocus: false` with no polling.
 
@@ -600,6 +613,16 @@ of it:
     can remove something another client had just rescheduled - and the guard
     in Release B has to cover this delete, not only the trim.
 
+  - **Changing the day count** plans the missing slots from a read taken
+    OUTSIDE the write batch (`setDayCount` in `server/repos/food.ts`). Two
+    day-count writes racing - one trimming, one expanding - can leave the
+    grid with a hole, and two expansions can collide on the slot unique
+    index and surface as a 500. Different from the three paths above in one
+    way worth keeping straight: a missing grid slot self-heals on the next
+    day-count write (the contract repairs holes), whereas placements erased
+    by the paths above do not come back. The revision guard covers this
+    write too.
+
   A fifth path exists and is deliberately out of scope: **deleting the list**
   cascades its food entirely (`server/repos/lists.ts`), reachable from three
   cached-list surfaces. It belongs to a different problem - it destroys the
@@ -609,9 +632,11 @@ of it:
   too and does not act from a cached snapshot at all. Deleting a packing
   location only unassigns and re-ranks food; it destroys nothing.
 
-  In each case a second client's work is deleted by a write that never saw it.
-  A conditional UPDATE matching zero rows does not abort the rest of a D1
-  batch, so nothing stops it today.
+  In each of the three client-side cases a second client's work is deleted
+  by a write that never saw it. A conditional UPDATE matching zero rows does
+  not abort the rest of a D1 batch, so nothing stops it today. The day-count
+  race can happen with perfectly fresh clients and may simply abort on the
+  slot unique index rather than delete anything.
 
   The fix is designed and prototyped but unbuilt, and needs two releases
   separated by a deploy. Release A adds `lists.food_revision` and makes

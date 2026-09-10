@@ -13,6 +13,14 @@ export const queryKeys = {
   listItemsAll: () => ['list-items'] as const,
   listFood: (listId: string) => ['list-food', listId] as const,
   packingLocations: (listId: string) => ['packing-locations', listId] as const,
+  // Prefixes for the two caches a gear DELETE can change through the
+  // server's cascade (list_items -> packing_locations.container_list_item_id
+  // -> SET NULL + rerank of gear and food). Invalidated as families rather
+  // than per list because a list's locations or food can be cached while its
+  // list-items query is failed or pending, which is exactly when a per-list
+  // discovery through the list-items cache finds nothing.
+  listFoodAll: () => ['list-food'] as const,
+  packingLocationsAll: () => ['packing-locations'] as const,
   // Public /r/:slug read cache. Param accepts undefined because SharePage
   // reads the slug from the URL (useParams types it string | undefined);
   // the query is disabled until it exists.

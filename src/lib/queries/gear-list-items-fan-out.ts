@@ -134,7 +134,16 @@ function makeRollback(opts: FanOutOpts) {
   }
 }
 
-function makeSettled(opts: FanOutOpts) {
+// `cascades`: the mutation is a DELETE, which the server cascades past
+// list_items. A deleted gear row that backed a packing location deletes that
+// location, and the location's SET NULL + rerank moves gear AND food rows
+// (the membership-delete path in src/lists/use-list-item-actions.ts
+// invalidates the same two caches for the same reason). Those families are
+// invalidated by prefix, not per snapshot: a list can have its locations or
+// food cached while its list-items query is failed or pending, and then it
+// has no snapshot here to be discovered through. An update or a category
+// move cascades nothing and leaves them alone.
+function makeSettled(opts: FanOutOpts, { cascades }: { cascades: boolean }) {
   return (
     _data: unknown,
     _err: unknown,
@@ -144,6 +153,10 @@ function makeSettled(opts: FanOutOpts) {
     void opts.qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
     for (const { key } of ctx?.listSnapshots ?? []) {
       void opts.qc.invalidateQueries({ queryKey: key })
+    }
+    if (cascades) {
+      void opts.qc.invalidateQueries({ queryKey: queryKeys.packingLocationsAll() })
+      void opts.qc.invalidateQueries({ queryKey: queryKeys.listFoodAll() })
     }
   }
 }
@@ -177,7 +190,7 @@ export function makeOptimisticGearItemUpdate(opts: FanOutOpts) {
           ),
       ),
     onError: makeRollback(opts),
-    onSettled: makeSettled(opts),
+    onSettled: makeSettled(opts, { cascades: false }),
   }
 }
 
@@ -193,7 +206,7 @@ export function makeOptimisticGearItemDelete(opts: FanOutOpts) {
         (items) => items.filter((item) => item.gearItemId !== id),
       ),
     onError: makeRollback(opts),
-    onSettled: makeSettled(opts),
+    onSettled: makeSettled(opts, { cascades: true }),
   }
 }
 
@@ -209,7 +222,7 @@ export function makeOptimisticGearItemsBulkDelete(opts: FanOutOpts) {
       )
     },
     onError: makeRollback(opts),
-    onSettled: makeSettled(opts),
+    onSettled: makeSettled(opts, { cascades: true }),
   }
 }
 
@@ -237,6 +250,6 @@ export function makeOptimisticGearItemsBulkCategoryMove(opts: FanOutOpts) {
       )
     },
     onError: makeRollback(opts),
-    onSettled: makeSettled(opts),
+    onSettled: makeSettled(opts, { cascades: false }),
   }
 }
