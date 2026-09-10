@@ -8,7 +8,7 @@ import {
   packingLocations,
 } from '../db/schema'
 import { MEALS, foodUnitCount, type Meal } from '../../shared/food'
-import { chunkForParamCap } from './chunk-ids'
+import { chunkForParamCap, chunkIds } from './chunk-ids'
 import {
   isAnyUniqueViolation,
   isForeignKeyViolation,
@@ -715,14 +715,6 @@ export function createFoodRepo(db: Db, userId: string) {
     if (found.size !== new Set(slotIds).size) return null
     return slotIds
   }
-}
-
-// 90 ids would be 90 bound params plus the two scoping predicates; chunk well
-// under D1's 100.
-function chunkIds(ids: string[]): string[][] {
-  const out: string[][] = []
-  for (let i = 0; i < ids.length; i += 80) out.push(ids.slice(i, i + 80))
-  return out
 }
 
 // Association inserts are chunked too: 90 links x 4 columns is ~360 bound

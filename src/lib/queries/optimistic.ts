@@ -3,7 +3,8 @@ import { ApiError } from '../api'
 import { showToast } from '../toast'
 
 // This module holds only the TanStack Query cache lifecycle helpers
-// (insert / update / delete / bulk delete / bulk move / reorder). They write
+// (insert / update / delete / reorder; bulk gear actions use the cross-cache
+// helpers in gear-list-items-fan-out.ts instead). They write
 // the cache, roll it back, raise the failure toast and invalidate on settle;
 // the network write belongs to the mutationFn each caller supplies. Nothing
 // here imports a fetch function, which is what lets optimistic.test.ts drive
@@ -267,55 +268,6 @@ export function makeOptimisticDelete<TList extends { id: string }, TInput>(opts:
       qc.setQueryData<TList[]>(queryKey, (curr) => {
         if (!curr) return curr
         return curr.filter((item) => item.id !== targetId)
-      })
-      return { previous }
-    },
-    onError: makeRollback<TList>(opts),
-    onSettled: makeSettled(opts),
-  }
-}
-
-// Remove a SET of rows from the cached array in one write. The bulk
-// counterpart of makeOptimisticDelete: same lifecycle, ids resolved from
-// the mutation input as a batch. The server applies the batch
-// all-or-nothing (one foreign id = zero writes), so a single snapshot/
-// rollback matches the server's transaction semantics.
-export function makeOptimisticBulkDelete<TList extends { id: string }, TInput>(opts: CommonOpts & {
-  ids: (input: TInput) => string[]
-}) {
-  const { qc, queryKey, ids } = opts
-  return {
-    onMutate: async (input: TInput): Promise<OptimisticContext<TList>> => {
-      await qc.cancelQueries({ queryKey })
-      const previous = qc.getQueryData<TList[]>(queryKey)
-      const idSet = new Set(ids(input))
-      qc.setQueryData<TList[]>(queryKey, (curr) => {
-        if (!curr) return curr
-        return curr.filter((item) => !idSet.has(item.id))
-      })
-      return { previous }
-    },
-    onError: makeRollback<TList>(opts),
-    onSettled: makeSettled(opts),
-  }
-}
-
-// Apply the same transform to a SET of rows in one write. The bulk
-// counterpart of makeOptimisticUpdate (e.g. move-selected-to-category
-// applies `{ ...item, categoryId }` to every selected row).
-export function makeOptimisticBulkUpdate<TList extends { id: string }, TInput>(opts: CommonOpts & {
-  ids: (input: TInput) => string[]
-  apply: (item: TList, input: TInput) => TList
-}) {
-  const { qc, queryKey, ids, apply } = opts
-  return {
-    onMutate: async (input: TInput): Promise<OptimisticContext<TList>> => {
-      await qc.cancelQueries({ queryKey })
-      const previous = qc.getQueryData<TList[]>(queryKey)
-      const idSet = new Set(ids(input))
-      qc.setQueryData<TList[]>(queryKey, (curr) => {
-        if (!curr) return curr
-        return curr.map((item) => (idSet.has(item.id) ? apply(item, input) : item))
       })
       return { previous }
     },

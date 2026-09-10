@@ -17,18 +17,6 @@ export type GearStatus = (typeof GEAR_STATUSES)[number]
 
 export const DEFAULT_GEAR_STATUS: GearStatus = 'active'
 
-export function isGearStatus(value: unknown): value is GearStatus {
-  return typeof value === 'string' && (GEAR_STATUSES as readonly string[]).includes(value)
-}
-
-// Coerce an arbitrary value (CSV cell, network payload) to a GearStatus,
-// returning the default when the input is missing or unrecognized. Callers
-// that need to distinguish "missing" from "invalid" should use isGearStatus
-// directly.
-export function coerceGearStatus(value: unknown): GearStatus {
-  return isGearStatus(value) ? value : DEFAULT_GEAR_STATUS
-}
-
 type GearStatusVisual = {
   label: string
   icon: LucideIcon

@@ -1,4 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm'
+import type { ReorderPackPayload } from '../../shared/lists'
 import type { SQL } from 'drizzle-orm'
 import type { Db } from '../db'
 import {
@@ -38,13 +39,6 @@ import {
 // fail-loud guard are documented in depth on migrations 0018/0019 and on the
 // gear half's original implementation notes (git history of list-items.ts);
 // the mechanism here is identical, just instantiated per table.
-
-export type PackRankUpdate = { id: string; packSortOrder: number }
-
-export type PackReorderPayload = {
-  items: PackRankUpdate[]
-  foodItems: PackRankUpdate[]
-}
 
 export type PackReorderResult =
   | { ok: true }
@@ -189,7 +183,7 @@ export function createPackReorderRepo(db: Db, userId: string) {
     //   4. incoming ranks a PERMUTATION of the union's current ranks
     async reorder(
       listId: string,
-      payload: PackReorderPayload,
+      payload: ReorderPackPayload,
     ): Promise<PackReorderResult> {
       // Both cohort scans in one batch: a consistent snapshot, so the
       // permutation check cannot straddle a concurrent write. Owned-set

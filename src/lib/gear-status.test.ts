@@ -3,9 +3,7 @@ import {
   DEFAULT_GEAR_STATUS,
   GEAR_STATUS_MENU_OPTIONS,
   GEAR_STATUSES,
-  coerceGearStatus,
   gearStatusVisual,
-  isGearStatus,
 } from './gear-status'
 
 // These tests pin the GearStatus contract that the DB CHECK constraint
@@ -28,37 +26,6 @@ describe('GEAR_STATUSES', () => {
   })
 })
 
-describe('isGearStatus', () => {
-  it('accepts each canonical value', () => {
-    for (const s of GEAR_STATUSES) {
-      expect(isGearStatus(s)).toBe(true)
-    }
-  })
-
-  it('rejects unknown strings, casing variants, and non-strings', () => {
-    expect(isGearStatus('archived')).toBe(false)
-    expect(isGearStatus('Active')).toBe(false)
-    expect(isGearStatus('')).toBe(false)
-    expect(isGearStatus(null)).toBe(false)
-    expect(isGearStatus(undefined)).toBe(false)
-    expect(isGearStatus(0)).toBe(false)
-  })
-})
-
-describe('coerceGearStatus', () => {
-  it('returns the value when valid', () => {
-    expect(coerceGearStatus('needs_repair')).toBe('needs_repair')
-    expect(coerceGearStatus('loaned_out')).toBe('loaned_out')
-    expect(coerceGearStatus('need_to_buy')).toBe('need_to_buy')
-  })
-
-  it('falls back to the default for missing or unrecognized inputs', () => {
-    expect(coerceGearStatus(undefined)).toBe(DEFAULT_GEAR_STATUS)
-    expect(coerceGearStatus('')).toBe(DEFAULT_GEAR_STATUS)
-    expect(coerceGearStatus('archived')).toBe(DEFAULT_GEAR_STATUS)
-    expect(coerceGearStatus(null)).toBe(DEFAULT_GEAR_STATUS)
-  })
-})
 
 describe('gearStatusVisual', () => {
   it('returns null for the default status so no badge renders', () => {

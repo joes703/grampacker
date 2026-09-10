@@ -6,8 +6,6 @@ import {
   groupByCategory,
   listItemsArrayEqual,
   assignSortOrderSlots,
-  nextMoveSortOrder,
-  nextPackRankInCohort,
   type Group,
 } from './grouping'
 import type { Category, GearItem, GearStatus, ListItemWithGear } from './types'
@@ -576,74 +574,5 @@ describe('assignSortOrderSlots', () => {
     // Stronger: confirm the extras are not on the output objects.
     expect(result[0]).not.toHaveProperty('name')
     expect(result[0]).not.toHaveProperty('extra')
-  })
-})
-
-// nextMoveSortOrder is the CLIENT mirror of the server's nextItemSortOrder.
-// It exists so an optimistic move puts the row where the refetch will
-// confirm it, rather than at its old rank followed by a visible jump. The
-// two must agree on every case, including the empty one.
-describe('nextMoveSortOrder', () => {
-  it('returns one past the highest rank in the list', () => {
-    expect(nextMoveSortOrder([
-      { sortOrder: 3 },
-      { sortOrder: 11 },
-      { sortOrder: 7 },
-    ])).toBe(12)
-  })
-
-  it('matches SQL coalesce(max + 1, 0) on an empty list', () => {
-    expect(nextMoveSortOrder([])).toBe(0)
-  })
-
-  it('does not assume ranks are dense, sorted, or unique', () => {
-    // Real data is none of these: imports preserve gaps and nothing
-    // constrains (packing_location_id, sort_order) to be unique.
-    expect(nextMoveSortOrder([
-      { sortOrder: 50 },
-      { sortOrder: 0 },
-      { sortOrder: 50 },
-    ])).toBe(51)
-  })
-
-  it('still exceeds every rank when they are negative', () => {
-    expect(nextMoveSortOrder([{ sortOrder: -5 }, { sortOrder: -2 }])).toBe(-1)
-  })
-})
-
-// nextPackRankInCohort is the CLIENT mirror of the server's
-// nextPackSortOrderInCohort, and until now the only untested helper in this
-// family (review P2.2). Its divergences from nextMoveSortOrder are exactly
-// what needs pinning: the maximum is COHORT-scoped, null means the
-// Unassigned cohort, and worn rows still hold their rank.
-describe('nextPackRankInCohort', () => {
-  const row = (packingLocationId: string | null, packSortOrder: number) => ({
-    packingLocationId,
-    packSortOrder,
-  })
-
-  it('takes one past the DESTINATION cohort maximum, ignoring other cohorts', () => {
-    const items = [
-      row('bag-a', 0),
-      row('bag-a', 7),
-      row('bag-b', 99), // a bigger rank elsewhere must not leak in
-      row(null, 3),
-    ]
-    expect(nextPackRankInCohort(items, 'bag-a')).toBe(8)
-  })
-
-  it('treats null as the Unassigned cohort, not as "no filter"', () => {
-    const items = [row(null, 5), row('bag-a', 50)]
-    expect(nextPackRankInCohort(items, null)).toBe(6)
-  })
-
-  it('matches SQL coalesce(max + 1, 0) for an empty cohort', () => {
-    expect(nextPackRankInCohort([row('bag-a', 4)], 'bag-b')).toBe(0)
-    expect(nextPackRankInCohort([], null)).toBe(0)
-  })
-
-  it('does not assume cohort ranks are dense, sorted, or unique', () => {
-    const items = [row('bag-a', 40), row('bag-a', 2), row('bag-a', 40)]
-    expect(nextPackRankInCohort(items, 'bag-a')).toBe(41)
   })
 })
