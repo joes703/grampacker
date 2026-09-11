@@ -56,9 +56,10 @@ export function isNoOpSlot(slot: number, sourceIndex: number): boolean {
  * actually looking at.
  *
  * Ranks come from assignUnionPackRankSlots, which permutes the values the
- * union cohort already holds. That keeps the list-wide multiset unchanged (so rows outside
- * this bag never renumber) and satisfies the optimistic reorder validator,
- * which requires exactly that permutation property.
+ * union cohort already holds. That keeps the list-wide multiset unchanged (so
+ * rows outside this bag never renumber) and satisfies the optimistic reorder
+ * validator's index-safety rule (no collision with an untouched same-table
+ * row), which a permutation always does.
  */
 export function planPlacementWithinLocation(
   rowId: string,

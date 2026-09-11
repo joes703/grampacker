@@ -8,7 +8,7 @@ import {
   packingLocations,
 } from '../db/schema'
 import { MEALS, foodUnitCount, type Meal } from '../../shared/food'
-import { chunkForParamCap } from './chunk-ids'
+import { chunkForParamCap, chunkIds } from './chunk-ids'
 import {
   isAnyUniqueViolation,
   isForeignKeyViolation,
@@ -304,7 +304,20 @@ export function createFoodRepo(db: Db, userId: string) {
       // three meals.
       const statements = [...inserts, trim] as const
       const [first, ...rest] = statements
-      if (first) await db.batch([first, ...rest])
+      try {
+        if (first) await db.batch([first, ...rest])
+      } catch (err) {
+        // The list was deleted between the ownership check and the batch:
+        // the slot inserts fail a foreign key. A slot references both the
+        // user and the (list, user) pair, and the user's deletion cascades
+        // the list, so the probe is the same either way - the list is gone
+        // and not-found is the right answer. An FK failure while the list is
+        // still owned is something else and is rethrown.
+        if (isForeignKeyViolation(err) && !(await ownsList(listId))) {
+          return false
+        }
+        throw err
+      }
       return true
     },
 
@@ -485,9 +498,11 @@ export function createFoodRepo(db: Db, userId: string) {
       // slot statements apply while the location write silently did not - a
       // partially-applied patch. A location cannot move lists (0014's
       // immutability trigger), so the only race left after the precheck is
-      // deletion, which the FK catches below. Food cannot back a container,
-      // so there is no cycle to check, unlike the gear gate. Null
-      // (Unassigned) deliberately skips the gate.
+      // deletion - and it is 0022's BEFORE UPDATE trigger, not the FK, that
+      // catches it: a BEFORE trigger runs ahead of constraint checks, and its
+      // marker is classified below. Food cannot back a container, so there
+      // is no cycle to check, unlike the gear gate. Null (Unassigned)
+      // deliberately skips the gate.
       if (
         patch.packingLocationId !== undefined &&
         patch.packingLocationId !== null
@@ -506,6 +521,12 @@ export function createFoodRepo(db: Db, userId: string) {
         if (!location) return { ok: false, reason: 'invalid_location' }
       }
 
+      // The response is built from what the batch RETURNS and READS, never
+      // from the pre-read: the batch is one D1 transaction, so the scalars
+      // and the links it hands back are one snapshot. Composing the answer
+      // from `patch.x ?? item.x` (the old shape) could pair a quantity a
+      // concurrent write had already replaced with links this write made -
+      // a row the database never held.
       const statements: Parameters<Db['batch']>[0][number][] = [
         db
           .update(listFoodItems)
@@ -518,6 +539,11 @@ export function createFoodRepo(db: Db, userId: string) {
             ),
           )
           .returning({
+            name: listFoodItems.name,
+            weightGrams: listFoodItems.weightGrams,
+            quantity: listFoodItems.quantity,
+            isPerMeal: listFoodItems.isPerMeal,
+            sortOrder: listFoodItems.sortOrder,
             isPacked: listFoodItems.isPacked,
             isReady: listFoodItems.isReady,
             packingLocationId: listFoodItems.packingLocationId,
@@ -538,19 +564,40 @@ export function createFoodRepo(db: Db, userId: string) {
           ...linkStatements(db, listId, userId, itemId, usable),
         )
       }
+      // Always last, so it sees the link rewrite above when there was one.
+      statements.push(
+        db
+          .select({ slotId: listFoodItemSlots.slotId })
+          .from(listFoodItemSlots)
+          .where(
+            and(
+              eq(listFoodItemSlots.foodItemId, itemId),
+              eq(listFoodItemSlots.listId, listId),
+              eq(listFoodItemSlots.userId, userId),
+            ),
+          ),
+      )
       const [first, ...rest] = statements
-      let updated:
-        | {
-            isPacked: boolean
-            isReady: boolean
-            packingLocationId: string | null
-            packSortOrder: number
-          }
-        | undefined
+      type Updated = {
+        name: string
+        weightGrams: number
+        quantity: number
+        isPerMeal: boolean
+        sortOrder: number
+        isPacked: boolean
+        isReady: boolean
+        packingLocationId: string | null
+        packSortOrder: number
+      }
+      let updated: Updated | undefined
+      let links: string[] = []
       try {
         if (first) {
-          const [updateRows] = await db.batch([first, ...rest])
-          updated = (updateRows as typeof updated[])[0]
+          const results = await db.batch([first, ...rest])
+          updated = (results[0] as Updated[])[0]
+          links = (results[results.length - 1] as { slotId: string }[]).map(
+            (row) => row.slotId,
+          )
         }
       } catch (err) {
         // 0022's range trigger: the destination cohort's rank space is
@@ -564,10 +611,17 @@ export function createFoodRepo(db: Db, userId: string) {
         if (isAnyUniqueViolation(err)) {
           return { ok: false, reason: 'conflict' }
         }
+        // The prechecked location was deleted between the precheck and the
+        // batch. 0022's BEFORE UPDATE trigger fires first - ahead of the FK -
+        // and names the condition, so this is a clean 400, not a 500. The
+        // FK branch below keeps its own location probe for the case where a
+        // future schema change makes the FK the one that fires.
+        if (isTriggerAbort(err, 'packing location does not belong to this list')) {
+          return { ok: false, reason: 'invalid_location' }
+        }
         // Same recovery as createItem, plus the item itself and (when a
-        // location was being assigned) the prechecked location: a concurrent
-        // location delete between precheck and batch fires the same
-        // anonymous FK error a trimmed slot does.
+        // location was being assigned) the prechecked location: a slot
+        // trimmed between precheck and batch fires the anonymous FK error.
         if (isForeignKeyViolation(err)) {
           if (
             patch.packingLocationId !== undefined &&
@@ -600,42 +654,16 @@ export function createFoodRepo(db: Db, userId: string) {
       // for a row that no longer exists (GATE 2 finding).
       if (updated === undefined) return { ok: false, reason: 'not_found' }
 
-      const links =
-        usable ??
-        (
-          await db
-            .select({ slotId: listFoodItemSlots.slotId })
-            .from(listFoodItemSlots)
-            .where(
-              and(
-                eq(listFoodItemSlots.foodItemId, itemId),
-                eq(listFoodItemSlots.listId, listId),
-                eq(listFoodItemSlots.userId, userId),
-              ),
-            )
-        ).map((row) => row.slotId)
-
       return {
         ok: true,
         row: {
           id: itemId,
-          name: patch.name ?? item.name,
-          weightGrams: patch.weightGrams ?? item.weightGrams,
-          quantity: patch.quantity ?? item.quantity,
-          isPerMeal: patch.isPerMeal ?? item.isPerMeal,
+          ...updated,
           unitCount: foodUnitCount({
-            quantity: patch.quantity ?? item.quantity,
-            isPerMeal: patch.isPerMeal ?? item.isPerMeal,
+            quantity: updated.quantity,
+            isPerMeal: updated.isPerMeal,
             slotIds: links,
           }),
-          sortOrder: item.sortOrder,
-          // From the write's RETURNING, never the pre-read: the moved-to rank
-          // is computed inside the statement and unknowable beforehand. The
-          // vanished-concurrently case already answered not_found above.
-          isPacked: updated.isPacked,
-          isReady: updated.isReady,
-          packingLocationId: updated.packingLocationId,
-          packSortOrder: updated.packSortOrder,
           slotIds: links,
         },
       }
@@ -687,14 +715,6 @@ export function createFoodRepo(db: Db, userId: string) {
     if (found.size !== new Set(slotIds).size) return null
     return slotIds
   }
-}
-
-// 90 ids would be 90 bound params plus the two scoping predicates; chunk well
-// under D1's 100.
-function chunkIds(ids: string[]): string[][] {
-  const out: string[][] = []
-  for (let i = 0; i < ids.length; i += 80) out.push(ids.slice(i, i + 80))
-  return out
 }
 
 // Association inserts are chunked too: 90 links x 4 columns is ~360 bound

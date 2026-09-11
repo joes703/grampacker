@@ -64,8 +64,11 @@ to it so someone can tell later whether it died.
 - **Reference, kept current but not policy:** `README.md`, `STACK.md`,
   `PARKED.md`.
 - **Dated records, NOT binding:** `REWRITE_PLAN.md`, everything in
-  `docs/superpowers/plans/`, the review docs, and any design doc marked
-  shipped or superseded. They record what was decided at a moment. Read them
+  `docs/superpowers/plans/` and `.planning/` (a planning tool's snapshot from
+  2026-07-19 that still lists food planning and Node portability as
+  validated - both retired since), the review docs, `docs/audits/`, and any
+  design doc marked shipped or superseded. They record what was decided at a
+  moment. Read them
   for reasoning, never cite them as authority, and do not update them to match
   later reality.
 
@@ -169,9 +172,14 @@ database is never deleted or recreated.
 - Never put `db.run/all/get(sql)` items in `db.batch()` - typechecks, crashes
   the D1 driver at runtime. Ride a builder (`.insert().select()`,
   `.delete().where()`) instead.
-- D1's queries-per-invocation limit is ambiguously documented; keep batch
-  statement counts low (multi-row inserts) and suspect this limit first when
-  a large batch fails in prod.
+- D1's "queries per Worker invocation" limit (1000 Paid / 50 Free) is a
+  SUBREQUEST count: the limits table links it to the Workers subrequest
+  limits, and the binding sends a whole `db.batch()` as ONE call (workerd's
+  `src/cloudflare/internal/d1-api.ts`, `batch()`). Per-statement limits
+  (100 params, 100 KB) apply inside a batch; the query count does not. Not
+  wire-verified against a maxed-out batch in prod - so still keep statement
+  counts low (multi-row inserts) and suspect this first when a large batch
+  fails there. Details and the Free-tier daily row limits: docs/incidents.md.
 - `db.batch` is a real transaction on D1. Compute the plan, then apply it in
   one batch; a partial write is a bug.
 - better-auth GETs are not read-only (passkey challenge writes; magic-link
@@ -255,9 +263,10 @@ database is never deleted or recreated.
   triggers - or to unexercised behavior within a probed one - still slip
   through.
 - **The harness runs every statement on D1, and batches only reads.** The
-  `POST_CHECKS` probes are the only behavioral coverage of trigger bodies in
-  the repo, so nothing may move to a stock SQLite build to make it faster - two
-  attempts died on that. What is cheap instead is sharing one
+  `POST_CHECKS` probes are the harness's only behavioral coverage of trigger
+  bodies (the API suite exercises some triggers directly on D1 as well, but
+  not the migration-time behaviors these probe), so nothing may move to a
+  stock SQLite build to make it faster - two attempts died on that. What is cheap instead is sharing one
   `wrangler d1 execute` launch between reads that observe the SAME state:
   never across a seed, a probe or an apply, and never with a statement that
   writes. Seeding, each probe and each apply keep their own launch. A pass

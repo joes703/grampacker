@@ -234,8 +234,9 @@ export function assignSortOrderSlots<T extends { id: string; sortOrder: number }
 // Permuting rather than minting matters more here than it does for sortOrder.
 // packSortOrder carries a unique index per cohort, so any value not already
 // held by one of these rows risks colliding with a row this payload does not
-// mention - which the server would reject as a conflict rather than apply. The
-// server enforces the permutation rule for the same reason.
+// mention - which the server would reject rather than apply. The server's
+// validation is index safety (no collision with an untouched same-table row)
+// rather than a strict permutation, and a permutation always satisfies it.
 //
 // Callers pass only the VISIBLE rows. Worn rows are excluded from the packing
 // tree and keep their ranks reserved: permuting `{0, 2}` over two visible rows
@@ -248,47 +249,4 @@ export function assignPackRankSlots<
   // Non-null assertion: `slots` and `reorderedItems` have identical length by
   // construction, so slots[idx] is always defined for every idx in the map.
   return reorderedItems.map((i, idx) => ({ id: i.id, packSortOrder: slots[idx]! }))
-}
-
-// The rank a MOVED item takes: one past the highest in the list, which lands
-// it at the bottom of whatever location it was moved into. Unlike
-// assignSortOrderSlots this mints a NEW value rather than permuting existing
-// ones, because a move has no set of ranks to redistribute - the item is
-// arriving from somewhere else.
-//
-// This must stay identical to the server's `nextItemSortOrder`
-// (server/repos/list-items.ts), which is the authority; the client computes it
-// only so the optimistic row appears where the refetch will confirm it. The
-// empty-list case is 0 on both sides, matching SQL's
-// `coalesce(max(sort_order) + 1, 0)`.
-export function nextMoveSortOrder(items: readonly { sortOrder: number }[]): number {
-  if (items.length === 0) return 0
-  return Math.max(...items.map((item) => item.sortOrder)) + 1
-}
-
-// The PACK rank an arriving item takes: one past the highest in its
-// DESTINATION COHORT - the rows already sharing that packing location, with
-// null meaning Unassigned.
-//
-// Cohort-scoped, not list-wide, and that distinction is the whole point of
-// packSortOrder. A list-wide maximum would look identical day to day and then
-// fall apart the moment a location is deleted: its orphans would interleave
-// into Unassigned by ranks encoding old cross-location accidents.
-//
-// Worn rows are counted. They render outside the packing tree but keep their
-// rank reserved, so skipping them would hand an arrival a slot a worn row
-// still owns - and the server's unique index would reject the write.
-//
-// Must stay identical to the server's `nextPackSortOrderInCohort`
-// (server/repos/list-items.ts), which is the authority; the client computes it
-// only so the optimistic row appears where the refetch will confirm it. Empty
-// cohort is 0 on both sides, matching SQL's
-// `coalesce(max(pack_sort_order) + 1, 0)`.
-export function nextPackRankInCohort(
-  items: readonly { packingLocationId: string | null; packSortOrder: number }[],
-  locationId: string | null,
-): number {
-  const cohort = items.filter((item) => item.packingLocationId === locationId)
-  if (cohort.length === 0) return 0
-  return Math.max(...cohort.map((item) => item.packSortOrder)) + 1
 }

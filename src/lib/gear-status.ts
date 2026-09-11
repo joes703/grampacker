@@ -5,8 +5,8 @@ import {
 } from './row-indicator-styles'
 
 // Inventory-level advisory metadata on gear_items.status. Values are pinned
-// to the DB CHECK constraint in migration 20260526173748 - keep this list
-// and the constraint in lockstep. 'active' is the default and renders no
+// to the DB CHECK constraint on `gear_items.status` (migrations/0003_gear.sql)
+// - keep this list and the constraint in lockstep. 'active' is the default and renders no
 // visible treatment; the remaining three surface a small badge in private
 // views only (gear library, gear picker, private list rows) and are
 // explicitly excluded from public share projections.
@@ -16,18 +16,6 @@ export const GEAR_STATUSES = ['active', 'needs_repair', 'loaned_out', 'need_to_b
 export type GearStatus = (typeof GEAR_STATUSES)[number]
 
 export const DEFAULT_GEAR_STATUS: GearStatus = 'active'
-
-export function isGearStatus(value: unknown): value is GearStatus {
-  return typeof value === 'string' && (GEAR_STATUSES as readonly string[]).includes(value)
-}
-
-// Coerce an arbitrary value (CSV cell, network payload) to a GearStatus,
-// returning the default when the input is missing or unrecognized. Callers
-// that need to distinguish "missing" from "invalid" should use isGearStatus
-// directly.
-export function coerceGearStatus(value: unknown): GearStatus {
-  return isGearStatus(value) ? value : DEFAULT_GEAR_STATUS
-}
 
 type GearStatusVisual = {
   label: string

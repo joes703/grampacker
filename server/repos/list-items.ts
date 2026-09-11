@@ -304,6 +304,9 @@ export function createListItemsRepo(db: Db, userId: string) {
         if (!gear || !item) throw new Error('quick-add returned no rows')
         return { ok: true, row: { item, gear } }
       } catch (err) {
+        // 0019's range trigger: this cohort's rank space is exhausted, so the
+        // `max + 1` an arrival computes would step past PACK_RANK_MAX. A known
+        // condition, so it gets a status rather than a 500.
         if (isPackRankRangeError(err)) {
           return { ok: false, reason: 'pack_rank_exhausted' }
         }
@@ -312,12 +315,6 @@ export function createListItemsRepo(db: Db, userId: string) {
         }
         if (isListItemCapError(err)) {
           return { ok: false, reason: 'cap_exceeded' }
-        }
-        // 0019's range trigger: this cohort's rank space is exhausted, so the
-        // `max + 1` an arrival computes would step past PACK_RANK_MAX. A known
-        // condition, so it gets a status rather than a 500.
-        if (isPackRankRangeError(err)) {
-          return { ok: false, reason: 'pack_rank_exhausted' }
         }
         throw err
       }

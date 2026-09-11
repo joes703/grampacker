@@ -160,9 +160,11 @@ export function listItemFailure(
     case 'cap_exceeded':
       return { status: 422, error: 'List item limit reached (300 per list)' }
     case 'pack_rank_exhausted':
-      // Deliberately does NOT tell the user to reorder. reorderPack writes a
-      // permutation of the ranks a cohort already holds, so reordering cannot
-      // compact anything - it would write the same exhausted values back.
+      // Deliberately does NOT tell the user to reorder. An ordinary drag
+      // permutes the ranks a cohort already holds, so it cannot compact
+      // anything - it would write the same exhausted values back. (The
+      // client's dense renumber runs only when it detects a cross-table tie,
+      // not on exhaustion.)
       // Migration 0019 normalizes existing dirty cohorts, so reaching this
       // needs roughly a billion arrivals; there is no self-service fix and
       // pretending otherwise would send people in circles.

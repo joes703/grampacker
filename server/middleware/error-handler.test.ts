@@ -3,7 +3,14 @@ import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import app from '../index'
-import { errorHandler, resetLogBudget, withAuthErrorCorrelation } from './error-handler'
+import { sql } from 'drizzle-orm'
+import { createDb } from '../db'
+import {
+  errorHandler,
+  recordAuthLog,
+  resetLogBudget,
+  withAuthErrorCorrelation,
+} from './error-handler'
 import { securityHeaders } from './security-headers'
 
 // Prod-like origin so securityHeaders emits the full set (the test default is
@@ -322,5 +329,59 @@ describe('the real app', () => {
       event: 'server-error',
       path: '/api/health',
     })
+  })
+})
+
+describe('bound parameters never reach the log', () => {
+  let consoleError: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    resetLogBudget()
+    consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    consoleError.mockRestore()
+  })
+
+  it('redacts the params of a REAL Drizzle failure and keeps the diagnosis', async () => {
+    // Not a hand-built error: a statement that fails on D1 with a bound
+    // sentinel, wrapped by the installed drizzle-orm exactly as a repo
+    // failure would be. First prove the leak exists at the source, so the
+    // assertion below cannot pass because the sentinel was never there.
+    const sentinel = 'bound-value-that-must-never-be-logged-7a3d'
+    let thrown: unknown
+    try {
+      await createDb(env.DB).run(sql`select 1 from no_such_table where x = ${sentinel}`)
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(Error)
+    expect((thrown as Error).message).toContain(sentinel)
+    expect((thrown as Error).stack).toContain(sentinel)
+
+    const res = await appThatThrows(thrown).request('/api/boom', {}, prodEnv)
+    expect(res.status).toBe(500)
+
+    const everything = consoleError.mock.calls.flat().map(String).join('\n')
+    expect(everything).not.toContain(sentinel)
+    // The parts that diagnose the failure survive: the statement and the
+    // SQLite text on the cause chain.
+    expect(everything).toContain('no_such_table')
+    expect(everything).toContain('no such table')
+    const [entry] = logLines(consoleError)
+    expect(entry).toMatchObject({ event: 'server-error', status: 500 })
+    expect(entry!.cause).toBeDefined()
+  })
+
+  it('counts better-auth log lines against the same ceiling as incidents', async () => {
+    const thrower = appThatThrows(new Error('flood'))
+    for (let i = 0; i < 15; i += 1) await thrower.request('/api/boom', {}, prodEnv)
+    for (let i = 0; i < 15; i += 1) recordAuthLog('error', `auth flood ${i}`)
+    const entries = logLines(consoleError)
+    expect(entries).toHaveLength(21)
+    expect(entries.filter((e) => e.event === 'server-error')).toHaveLength(15)
+    expect(entries.filter((e) => e.event === 'auth-log')).toHaveLength(5)
+    expect(entries.filter((e) => e.event === 'server-error-suppressed')).toHaveLength(1)
   })
 })

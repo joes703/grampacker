@@ -177,6 +177,74 @@ describe('makeOptimisticGearItemDelete', async () => {
   })
 })
 
+// A gear DELETE cascades server-side past list_items: a row that backed a
+// packing location takes the location with it, and its contents (gear AND
+// food) are returned to Unassigned and reranked. The membership-delete path
+// already invalidates both caches; the gear-delete path did not, so a ghost
+// bag stayed on screen until something else refetched.
+describe('gear delete invalidates the caches the server cascade reaches', () => {
+  function seedWithLocationsAndFood() {
+    const { qc } = seed()
+    // l9 has locations and food cached but NO list-items cache at all - the
+    // shape a per-list discovery through list-items cannot see.
+    qc.setQueryData(queryKeys.packingLocations('l9'), [{ id: 'loc-9' }])
+    qc.setQueryData(queryKeys.listFood('l9'), { dayCount: 0, slots: [], items: [] })
+    qc.setQueryData(queryKeys.packingLocations('l1'), [{ id: 'loc-1' }])
+    return { qc }
+  }
+
+  const invalidatedKeys = (invalidate: { mock: { calls: unknown[][] } }) =>
+    invalidate.mock.calls.map((c) => (c[0] as { queryKey: unknown } | undefined)?.queryKey)
+
+  it('single delete: locations and food families, even without a list-items snapshot', async () => {
+    const { qc } = seedWithLocationsAndFood()
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+    const { onMutate, onSettled } = makeOptimisticGearItemDelete({ qc })
+
+    const ctx = await onMutate('g1')
+    onSettled(undefined, null, 'g1', ctx)
+
+    const keys = invalidatedKeys(invalidate)
+    expect(keys).toContainEqual(queryKeys.packingLocationsAll())
+    expect(keys).toContainEqual(queryKeys.listFoodAll())
+    // Prefix keys cover l9, which had no list-items snapshot to be found by.
+    expect(qc.getQueryState(queryKeys.packingLocations('l9'))?.isInvalidated).toBe(true)
+    expect(qc.getQueryState(queryKeys.listFood('l9'))?.isInvalidated).toBe(true)
+  })
+
+  it('bulk delete: the same families, on failure settlement too', async () => {
+    const { qc } = seedWithLocationsAndFood()
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+    const { onMutate, onError, onSettled } = makeOptimisticGearItemsBulkDelete({ qc })
+
+    const ctx = await onMutate(['g1', 'g2'])
+    onError(new Error('nope'), ['g1', 'g2'], ctx)
+    onSettled(undefined, new Error('nope'), ['g1', 'g2'], ctx)
+
+    const keys = invalidatedKeys(invalidate)
+    expect(keys).toContainEqual(queryKeys.packingLocationsAll())
+    expect(keys).toContainEqual(queryKeys.listFoodAll())
+  })
+
+  it('an edit or a category move cascades nothing and leaves both families alone', async () => {
+    const { qc } = seedWithLocationsAndFood()
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+
+    const edit = makeOptimisticGearItemUpdate({ qc })
+    const editCtx = await edit.onMutate({ id: 'g1', patch: { name: 'Mid' } })
+    edit.onSettled(undefined, null, { id: 'g1', patch: { name: 'Mid' } }, editCtx)
+
+    const move = makeOptimisticGearItemsBulkCategoryMove({ qc })
+    const moveCtx = await move.onMutate({ ids: ['g1'], categoryId: null })
+    move.onSettled(undefined, null, { ids: ['g1'], categoryId: null }, moveCtx)
+
+    const keys = invalidatedKeys(invalidate)
+    expect(keys).not.toContainEqual(queryKeys.packingLocationsAll())
+    expect(keys).not.toContainEqual(queryKeys.listFoodAll())
+    expect(qc.getQueryState(queryKeys.packingLocations('l1'))?.isInvalidated).toBe(false)
+  })
+})
+
 describe('makeOptimisticGearItemsBulkDelete', async () => {
   it('drops every selected id across gear and list caches', async () => {
     const { qc } = seed()

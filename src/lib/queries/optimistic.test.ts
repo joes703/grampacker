@@ -10,8 +10,6 @@ import {
   makeOptimisticInsert,
   makeOptimisticUpdate,
   makeOptimisticDelete,
-  makeOptimisticBulkDelete,
-  makeOptimisticBulkUpdate,
   makeOptimisticReorder,
   makeOptimisticUnionPackReorder,
 } from './optimistic'
@@ -225,110 +223,6 @@ describe('makeOptimisticDelete', () => {
   })
 })
 
-describe('makeOptimisticBulkDelete', () => {
-  it('removes every row in the id set in one write (happy path)', async () => {
-    const { qc, key } = makeClient([
-      { id: 'A', name: 'a', categoryId: null },
-      { id: 'B', name: 'b', categoryId: null },
-      { id: 'C', name: 'c', categoryId: null },
-    ])
-    const helper = makeOptimisticBulkDelete<Row, string[]>({
-      qc,
-      queryKey: key,
-      ids: (input) => input,
-    })
-    await helper.onMutate(['A', 'C'])
-    expect(qc.getQueryData<Row[]>(key)).toEqual([
-      { id: 'B', name: 'b', categoryId: null },
-    ])
-  })
-
-  it('rolls back on error to the pre-apply snapshot and shows the errorToast', async () => {
-    const initial: Row[] = [
-      { id: 'A', name: 'a', categoryId: null },
-      { id: 'B', name: 'b', categoryId: null },
-    ]
-    const { qc, key } = makeClient(initial)
-    const helper = makeOptimisticBulkDelete<Row, string[]>({
-      qc,
-      queryKey: key,
-      errorToast: 'Bulk delete failed.',
-      ids: (input) => input,
-    })
-    const ctx = await helper.onMutate(['A', 'B'])
-    helper.onError(new Error('boom'), ['A', 'B'], ctx)
-    expect(qc.getQueryData<Row[]>(key)).toEqual(initial)
-    expect(showToast).toHaveBeenCalledWith('Bulk delete failed.', { type: 'error' })
-  })
-
-  it('is a no-op when the cache is undefined (no prior fetch)', async () => {
-    const qc = new QueryClient()
-    const key = ['rows'] as const
-    const helper = makeOptimisticBulkDelete<Row, string[]>({
-      qc,
-      queryKey: key,
-      ids: (input) => input,
-    })
-    await helper.onMutate(['A'])
-    expect(qc.getQueryData<Row[]>(key)).toBeUndefined()
-  })
-})
-
-describe('makeOptimisticBulkUpdate', () => {
-  type MoveInput = { ids: string[]; categoryId: string | null }
-
-  it('applies the transform to every row in the id set and no others (happy path)', async () => {
-    const { qc, key } = makeClient([
-      { id: 'A', name: 'a', categoryId: 'c1' },
-      { id: 'B', name: 'b', categoryId: 'c1' },
-      { id: 'C', name: 'c', categoryId: 'c2' },
-    ])
-    const helper = makeOptimisticBulkUpdate<Row, MoveInput>({
-      qc,
-      queryKey: key,
-      ids: (input) => input.ids,
-      apply: (item, input) => ({ ...item, categoryId: input.categoryId }),
-    })
-    await helper.onMutate({ ids: ['A', 'C'], categoryId: null })
-    expect(qc.getQueryData<Row[]>(key)).toEqual([
-      { id: 'A', name: 'a', categoryId: null },
-      { id: 'B', name: 'b', categoryId: 'c1' },
-      { id: 'C', name: 'c', categoryId: null },
-    ])
-  })
-
-  it('rolls back on error to the pre-apply snapshot and shows the errorToast', async () => {
-    const initial: Row[] = [
-      { id: 'A', name: 'a', categoryId: 'c1' },
-      { id: 'B', name: 'b', categoryId: 'c1' },
-    ]
-    const { qc, key } = makeClient(initial)
-    const helper = makeOptimisticBulkUpdate<Row, MoveInput>({
-      qc,
-      queryKey: key,
-      errorToast: 'Bulk move failed.',
-      ids: (input) => input.ids,
-      apply: (item, input) => ({ ...item, categoryId: input.categoryId }),
-    })
-    const ctx = await helper.onMutate({ ids: ['A', 'B'], categoryId: 'c9' })
-    helper.onError(new Error('boom'), { ids: ['A', 'B'], categoryId: 'c9' }, ctx)
-    expect(qc.getQueryData<Row[]>(key)).toEqual(initial)
-    expect(showToast).toHaveBeenCalledWith('Bulk move failed.', { type: 'error' })
-  })
-
-  it('is a no-op when the cache is undefined (no prior fetch)', async () => {
-    const qc = new QueryClient()
-    const key = ['rows'] as const
-    const helper = makeOptimisticBulkUpdate<Row, MoveInput>({
-      qc,
-      queryKey: key,
-      ids: (input) => input.ids,
-      apply: (item, input) => ({ ...item, categoryId: input.categoryId }),
-    })
-    await helper.onMutate({ ids: ['A'], categoryId: null })
-    expect(qc.getQueryData<Row[]>(key)).toBeUndefined()
-  })
-})
 
 // The mechanism suite for the awaited cancelQueries in every CRUD onMutate.
 //
@@ -421,30 +315,6 @@ describe('an in-flight refetch cannot clobber an optimistic CRUD write', () => {
           id: (id) => id,
         }).onMutate('B'),
       survives: (rows) => expect(rows.map((r) => r.id)).not.toContain('B'),
-    },
-    {
-      name: 'bulk delete',
-      fire: (qc, queryKey) =>
-        makeOptimisticBulkDelete<Row, string[]>({
-          qc,
-          queryKey,
-          ids: (ids) => ids,
-        }).onMutate(['A', 'B']),
-      survives: (rows) => {
-        expect(rows.map((r) => r.id)).not.toContain('A')
-        expect(rows.map((r) => r.id)).not.toContain('B')
-      },
-    },
-    {
-      name: 'bulk update',
-      fire: (qc, queryKey) =>
-        makeOptimisticBulkUpdate<Row, { ids: string[]; categoryId: string | null }>({
-          qc,
-          queryKey,
-          ids: (input) => input.ids,
-          apply: (item, input) => ({ ...item, categoryId: input.categoryId }),
-        }).onMutate({ ids: ['A'], categoryId: 'c9' }),
-      survives: (rows) => expect(rows.find((r) => r.id === 'A')?.categoryId).toBe('c9'),
     },
   ]
 

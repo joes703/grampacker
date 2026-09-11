@@ -3,6 +3,9 @@ import { hashPassword } from 'better-auth/crypto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { makeSessionStale, signUpVerifiedUser } from './test/auth-helpers'
 import { apiRequest } from './test/api-helpers'
+import app from './index'
+import { lastEmailTo } from './email/console'
+import { MAGIC_LINK_PATH } from '../shared/auth'
 
 // The namespace better-auth 1.7 stores in `account.issuer` for a credential
 // account: `createLocalAccountIssuer('credential')` in @better-auth/core,
@@ -154,6 +157,16 @@ async function verificationCount(userId: string, email: string): Promise<number>
     .bind(userId, email)
     .first<{ n: number }>()
   return r?.n ?? -1
+}
+
+// The token out of the console outbox, the way auth-helpers reads it: the
+// link points at the SPA with the token in the fragment.
+function tokenFromEmailTo(to: string): string {
+  const msg = lastEmailTo(to)
+  if (!msg) throw new Error(`no magic-link email was sent to ${to}`)
+  const token = msg.text.match(new RegExp(`${MAGIC_LINK_PATH}#token=([^\\s]+)`))?.[1]
+  if (!token) throw new Error(`magic-link email to ${to} carried no token`)
+  return decodeURIComponent(token)
 }
 
 // No password: its ABSENCE is what selects better-auth's freshness path.
@@ -318,6 +331,70 @@ describe('POST /api/auth/delete-user', () => {
     expect([400, 401]).toContain(res.status)
     const after = await rowCounts(userId)
     expect(after.user).toBe(1)
+  })
+
+  it('purges a pending magic link requested in a different letter case', async () => {
+    // The plugin stores the address AS SUBMITTED in the verification row and
+    // lowercases it only when it looks the user up (better-auth's z.email()
+    // does not fold case). The user row is lowercase, so a purge comparing the
+    // stored JSON email to the user's email byte-for-byte missed a link
+    // requested as `Alice@Example.com` for the account `alice@example.com` -
+    // and redeeming that survivor after the delete signed the address straight
+    // back up. This drives the whole path over HTTP and checks the OUTCOME (no
+    // user row, token refused), never the purge's own predicate.
+    const mixedCase = email.replace('del-', 'DEL-').replace('@example.com', '@Example.COM')
+    expect(mixedCase).not.toBe(email)
+    expect(mixedCase.toLowerCase()).toBe(email)
+
+    // A bystander whose address is similar but NOT the same identity must keep
+    // its pending link: the purge has to be case-insensitive, not broad.
+    const similar = email.replace('@', '+keep@')
+    for (const to of [mixedCase, similar]) {
+      const send = await app.request(
+        '/api/auth/sign-in/magic-link',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'http://localhost:5173',
+            'cf-connecting-ip': '10.88.0.1',
+          },
+          body: JSON.stringify({ email: to }),
+        },
+        env,
+      )
+      expect(send.status, `magic-link request for ${to}`).toBe(200)
+    }
+    const stolenToken = tokenFromEmailTo(mixedCase)
+    const bystanderToken = tokenFromEmailTo(similar)
+
+    expect((await deleteAccount(cookie)).status).toBe(200)
+
+    const redeem = (token: string) =>
+      app.request(
+        `/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`,
+        { headers: { Origin: 'http://localhost:5173', 'cf-connecting-ip': '10.88.0.2' } },
+        env,
+      )
+
+    // The plugin answers a bad token with a redirect carrying INVALID_TOKEN
+    // (and a good one with JSON + Set-Cookie). Asserting the specific
+    // refusal keeps a 429 or a 500 from passing as "refused".
+    const stale = await redeem(stolenToken)
+    expect(stale.status).toBe(302)
+    expect(stale.headers.get('location')).toContain('error=INVALID_TOKEN')
+    expect(stale.headers.get('set-cookie')).toBeNull()
+    const resurrected = await env.DB.prepare(
+      'select count(*) as n from user where lower(email) = lower(?)',
+    )
+      .bind(email)
+      .first<{ n: number }>()
+    expect(resurrected?.n, 'user rows for the deleted address').toBe(0)
+
+    // The similar address is a different account and its link still works.
+    const kept = await redeem(bystanderToken)
+    expect(kept.status).toBe(200)
+    expect(kept.headers.get('set-cookie')).toContain('session_token')
   })
 
   it('refuses to resurrect a password: a supplied password is rejected, not honored', async () => {

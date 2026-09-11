@@ -1,4 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm'
+import type { ReorderPackPayload } from '../../shared/lists'
 import type { SQL } from 'drizzle-orm'
 import type { Db } from '../db'
 import {
@@ -21,10 +22,12 @@ import {
 //
 // A COHORT is now a UNION: the list_items rows and the list_food_items rows
 // sharing (list_id, packing_location_id), displayed merged by
-// (pack_sort_order, gear-before-food, id). A reorder payload permutes ranks
+// (pack_sort_order, gear-before-food, id). A reorder payload rearranges ranks
 // across the whole union - moving a food row between two gear rows hands the
-// food row a rank a gear row held and vice versa - so the permutation check
-// compares the union multiset, not per-table multisets.
+// food row a rank a gear row held and vice versa - so validation reasons per
+// table HALF (index safety: no duplicate within a half, no landing on an
+// untouched same-table row), not about a permutation of the union multiset.
+// See rule 4 in reorder() below.
 //
 // Each table keeps its own unique cohort index, so uniqueness is enforced
 // WITHIN a table only. A cross-table duplicate cannot corrupt anything: it
@@ -38,13 +41,6 @@ import {
 // fail-loud guard are documented in depth on migrations 0018/0019 and on the
 // gear half's original implementation notes (git history of list-items.ts);
 // the mechanism here is identical, just instantiated per table.
-
-export type PackRankUpdate = { id: string; packSortOrder: number }
-
-export type PackReorderPayload = {
-  items: PackRankUpdate[]
-  foodItems: PackRankUpdate[]
-}
 
 export type PackReorderResult =
   | { ok: true }
@@ -186,13 +182,18 @@ export function createPackReorderRepo(db: Db, userId: string) {
     //   1. every id owned by this user on this list (else not_found)
     //   2. worn gear rows rejected (they render outside the packing tree)
     //   3. the whole payload inside ONE cohort, across both tables
-    //   4. incoming ranks a PERMUTATION of the union's current ranks
+    //   4. incoming ranks INDEX-SAFE against the union's current ranks: no
+    //      rank duplicated within a table half, and none landing on an
+    //      untouched row of the same table. A free rank is legal - this is
+    //      deliberately weaker than the permutation rule the gear-only
+    //      implementation enforced, so a payload can heal a degraded cohort
+    //      (docs/authz-matrix.md, the pack-order row)
     async reorder(
       listId: string,
-      payload: PackReorderPayload,
+      payload: ReorderPackPayload,
     ): Promise<PackReorderResult> {
       // Both cohort scans in one batch: a consistent snapshot, so the
-      // permutation check cannot straddle a concurrent write. Owned-set
+      // index-safety check cannot straddle a concurrent write. Owned-set
       // membership rather than inArray over the input - D1 caps bound params
       // at 100 and the payload allows LIST_ITEM_CAP + FOOD_ITEM_CAP ids; the
       // per-list caps bound the scans instead.
@@ -264,9 +265,12 @@ export function createPackReorderRepo(db: Db, userId: string) {
       // within their table's half, and must not equal the CURRENT rank of
       // any same-cohort row in the SAME table that the payload does not
       // touch (including worn gear, whose reserved slots must stay
-      // reserved). A permutation always satisfies this; so does the dense
-      // renumber the client sends when it detects ties - which is what
-      // makes "the next reorder dissolves the tie" true.
+      // reserved). A permutation of the union's ranks satisfies this unless
+      // the union already holds a cross-table tie (a permutation could then
+      // hand both copies to one table, which its index would reject); the
+      // dense renumber the client sends when it detects ties satisfies it
+      // outright - which is what makes "the next reorder dissolves the tie"
+      // true.
       const validateHalf = (
         entries: { id: string; packSortOrder: number }[],
         cohortRows: { id: string; packSortOrder: number }[],
@@ -299,12 +303,14 @@ export function createPackReorderRepo(db: Db, userId: string) {
       // Park/settle per table, each inside its own scratch band (-300 wide
       // for gear, -200 for food - each exactly its cap, so the index always
       // fits). CHUNKED multi-row statements rather than one statement per
-      // row: D1 counts every batch statement against its ~1000
-      // queries-per-invocation ceiling, and the accepted payload allows 500
-      // rows - per-row statements put a full-cohort reorder
-      // deterministically over the limit (GATE 2 round-3 finding; also the
-      // AGENTS.md trap about keeping batch statement counts low). At 20
-      // rows per statement the worst case is ~54 statements.
+      // row: the accepted payload allows 500 rows, and a 1,000-statement
+      // batch (park + settle per row) is exactly the shape AGENTS.md says to
+      // avoid. This comment used to claim D1 counts every batched statement
+      // against its queries-per-invocation ceiling; the docs and the
+      // binding's source say a batch is ONE call (docs/incidents.md, the D1
+      // section) - but no maxed-out batch has been wire-verified in prod, and
+      // fewer, larger statements are cheaper either way. At RANK_CHUNK rows
+      // per statement the worst case is a handful of statements.
       //
       // Each chunk still RE-ASSERTS what the pre-read saw, per row: the SET
       // subquery matches on (id, current rank) and yields NULL when a row

@@ -13,8 +13,7 @@
     // EVERY request goes through the Worker so the security-header
     // middleware covers the SPA shell and static assets, not just /api/*
     // (server/middleware/security-headers.ts). Costs one Worker
-    // invocation per asset request - fine at this traffic, and it ports
-    // to the Node target where the server fronts static files anyway.
+    // invocation per asset request - fine at this traffic.
     "run_worker_first": true,
     "binding": "ASSETS"
   },

@@ -695,6 +695,51 @@ describe('list items', () => {
     expect(items.find((i) => i.id === b.id)?.updatedAt).toBe(b.updatedAt)
   })
 
+  it("item reorder naming ANOTHER USER's item under the caller's own list: 404, zero writes", async () => {
+    // The wrong-parent test above uses another of the caller's OWN lists, so
+    // it can pass on the list predicate alone. This one holds the parent
+    // constant and varies the owner: the caller's list, a foreign item, and a
+    // valid local rank change riding along so a partial application shows.
+    const a = await signUpVerifiedUser('items-order-foreign-a@example.com', 'A')
+    const b = await signUpVerifiedUser('items-order-foreign-b@example.com', 'B')
+    const mine = await createList(a.cookie, 'Mine')
+    const m1 = await addItem(a.cookie, mine.id, await createGear(a.cookie, 'M1'))
+    const m2 = await addItem(a.cookie, mine.id, await createGear(a.cookie, 'M2'))
+    const theirs = await createList(b.cookie, 'Theirs')
+    const t1 = await addItem(b.cookie, theirs.id, await createGear(b.cookie, 'T1'))
+    const before = {
+      mine: await getItems(a.cookie, mine.id),
+      theirs: await getItems(b.cookie, theirs.id),
+    }
+
+    const res = await apiRequest(a.cookie, 'PUT', `/api/lists/${mine.id}/items/order`, [
+      { id: m1.id, sortOrder: m2.sortOrder },
+      { id: m2.id, sortOrder: m1.sortOrder },
+      { id: t1.id, sortOrder: 7 },
+    ])
+    expect(res.status).toBe(404)
+    expect({
+      mine: await getItems(a.cookie, mine.id),
+      theirs: await getItems(b.cookie, theirs.id),
+    }).toEqual(before)
+  })
+
+  it("item reorder by a NON-OWNER through the item's real parent: 404, zero writes", async () => {
+    const a = await signUpVerifiedUser('items-order-victim@example.com', 'A')
+    const b = await signUpVerifiedUser('items-order-intruder@example.com', 'B')
+    const list = await createList(a.cookie, 'Victim')
+    const i1 = await addItem(a.cookie, list.id, await createGear(a.cookie, 'I1'))
+    const i2 = await addItem(a.cookie, list.id, await createGear(a.cookie, 'I2'))
+    const before = await getItems(a.cookie, list.id)
+
+    const res = await apiRequest(b.cookie, 'PUT', `/api/lists/${list.id}/items/order`, [
+      { id: i1.id, sortOrder: i2.sortOrder },
+      { id: i2.id, sortOrder: i1.sortOrder },
+    ])
+    expect(res.status).toBe(404)
+    expect(await getItems(a.cookie, list.id)).toEqual(before)
+  })
+
   it('reset-packed and reset-ready clear only their own flag', async () => {
     const { cookie } = await signUpVerifiedUser('items-reset@example.com', 'R')
     const list = await createList(cookie, 'Pack')

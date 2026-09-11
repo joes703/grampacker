@@ -37,7 +37,7 @@ after the table's column list, in DEFINITION order - match it) or
 such fragments (aliases like `l.id`, not `${lists.id}`) so the
 unqualified-rendering trap above cannot reach them.
 
-## D1: the queries-per-invocation limit is ambiguously documented
+## D1: the queries-per-invocation limit, and what a batch counts as
 
 As of 2026-07-16 the D1 limits table says 1000 (Paid) / 50 (Free) queries per
 Worker invocation, but links that row to the Workers SUBREQUEST limits (one
@@ -47,6 +47,36 @@ over per-row statements to keep batch statement counts low, and treat any
 failure of a large batch in prod as possibly THIS before debugging SQL. The
 worst-case list duplicate has grown since this was first measured; no
 maxed-out duplicate has been wire-verified in prod.
+
+Re-checked 2026-09-10 (audit F3), because a comment in
+`server/repos/pack-reorder.ts` had come to assert the opposite - that every
+batched statement counts - and the two readings drove opposite designs
+(per-row inserts in import/duplicate vs chunked multi-row writes in the pack
+reorder). Evidence for the per-CALL reading: the limits table is unchanged and
+still links to the subrequest limits, and the binding's own source (workerd
+`src/cloudflare/internal/d1-api.ts`, `D1DatabaseSessionAlwaysPrimary.batch`)
+serializes the whole statement list into ONE `fetch` to the D1 service (or
+one RPC call on the JSRPC path). A subrequest is a fetch; a batch is one.
+Nothing in Cloudflare's docs says the D1 service applies a separate
+per-statement count. This is documentation-plus-source evidence, not a
+production measurement - a maxed-out import (up to ~1,000 statements) has
+still never been run in prod, so keep the multi-row habit and keep suspecting
+this limit first.
+
+Two more platform facts from the same check, recorded because nothing in the
+repo says which plan the account is on (the dated planning docs say Workers
+Free; treat that as the operating assumption until the dashboard says
+otherwise):
+
+- Since 2026-09-01 D1 on the Free plan FAILS queries once the account's daily
+  row-read or row-write limit is hit, until midnight UTC, with the error text
+  `Your account has exceeded D1's free tier daily row read limit ...` (or
+  `... row write limit ...`). Every rate-limited auth request writes a row,
+  `/api/health` reads on every hit, and the public share is unmetered by
+  decision - so this is the first thing to check if the whole app starts
+  answering 500 late in a UTC day.
+- On Free the per-invocation query count is 50, not 1000. Under the per-call
+  reading a request makes a handful of D1 calls and is nowhere near it.
 
 ## Env types differ between local and CI
 
@@ -148,8 +178,9 @@ toast. Supporting detail:
   expires. A write issued from a still-open modal MUST report inline
   (`saveError`). Check the surface really stays put: an optimistic insert can
   unmount the component holding the error state (`ListsEmptyState` stops
-  rendering when the placeholder lands - a known gap, recorded in the
-  remediation plan).
+  rendering when the placeholder lands, so its inline error has no owner by
+  the time a rejection arrives - it reports through `meta.errorToast`, and
+  `ListsEmptyState.test.tsx` pins the unmount-then-fail sequence).
 - Say what you can prove: a rejected fetch never proves the server did not
   commit (the connection can drop after the write lands, and `apiFetch` also
   rejects when a 200 fails DTO validation). So "Couldn't confirm...", not
@@ -214,15 +245,19 @@ time a later one touches it. Fixture rows are the only data it can speak for
 RIGHT value - that is yours to test. It rejects tables it has no fixture for,
 so a NEW TABLE means adding a fixture row - that is the check refusing to go
 quiet. The 21 baseline migrations are digest-pinned and editing one fails
-closed forever; post-baseline edits get re-tested, but nothing detects that
-production already ran the old text (Phase 3's manifest closes that; until
-then it is on you).
+closed forever. A post-baseline edit is refused on a pull request by
+`scripts/check-migration-immutability.mjs` (any change to a migration `main`
+already holds), but neither guard can see what production actually applied,
+so an edit that reaches `main` some other way still re-tests clean while
+never reaching a deployed database - never edit a migration that has
+shipped.
 
 How it talks to D1, and why that is not a detail: every statement runs against
 local D1 through `wrangler d1 execute --local`, including the reads. The
-`POST_CHECKS` probes are the only behavioral coverage of trigger BODIES this
-repo has, so running them on a stock SQLite build would prove something about
-that build instead. Two rewrites of the performance work died on exactly that
+`POST_CHECKS` probes are the harness's only behavioral coverage of trigger
+BODIES (the API suite exercises some triggers directly on D1 too, not the
+migration-time behaviors these probe), so running them on a stock SQLite
+build would prove something about that build instead. Two rewrites of the performance work died on exactly that
 point before the third stopped trying to leave D1.
 
 What was actually expensive was process launches, not SQL: a full run made 182

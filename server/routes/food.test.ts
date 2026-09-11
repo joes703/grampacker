@@ -273,6 +273,132 @@ describe('food: ownership and list scoping', () => {
 
 })
 
+// The matrix rule (docs/authz-matrix.md): owner / non-owner / anon for every
+// route, plus wrong-parent stitching for a child resource - and a status alone
+// proves nothing, so every refusal below is paired with a raw-row snapshot of
+// the victim list taken through D1 directly (no user predicate), compared
+// byte-for-byte after the request.
+describe('food: the matrix cells a status alone would not prove', () => {
+  async function foodRows(listId: string) {
+    const items = await env.DB.prepare(
+      'select * from list_food_items where list_id = ? order by id',
+    )
+      .bind(listId)
+      .all()
+    const links = await env.DB.prepare(
+      'select * from list_food_item_slots where list_id = ? order by food_item_id, slot_id',
+    )
+      .bind(listId)
+      .all()
+    return { items: items.results, links: links.results }
+  }
+
+  async function scheduledItem(cookie: string, listId: string) {
+    await setDays(cookie, listId, 2)
+    const food = await getFood(cookie, listId)
+    const res = await addItem(cookie, listId, {
+      name: 'Oats',
+      weightGrams: 90,
+      quantity: 2,
+      slotIds: [slotOf(food, 1, 'breakfast').id],
+    })
+    expect(res.status).toBe(201)
+    return { item: (await res.json()) as FoodItemResponse, food }
+  }
+
+  it('a: a non-owner cannot create an item on the victim list (404, no row)', async () => {
+    const owner = await signUpVerifiedUser('food-m1@example.com', 'M1')
+    const other = await signUpVerifiedUser('food-m2@example.com', 'M2')
+    const listId = await createList(owner.cookie, 'Mine')
+    await scheduledItem(owner.cookie, listId)
+    const before = await foodRows(listId)
+
+    const res = await addItem(other.cookie, listId, {
+      name: 'Smuggled',
+      weightGrams: 100,
+      quantity: 1,
+      slotIds: [],
+    })
+    expect(res.status).toBe(404)
+    expect(await foodRows(listId)).toEqual(before)
+  })
+
+  it('b: a non-owner cannot delete the victim item (404, row and placements intact)', async () => {
+    const owner = await signUpVerifiedUser('food-m3@example.com', 'M3')
+    const other = await signUpVerifiedUser('food-m4@example.com', 'M4')
+    const listId = await createList(owner.cookie, 'Mine')
+    const { item } = await scheduledItem(owner.cookie, listId)
+    const before = await foodRows(listId)
+    expect(before.links).toHaveLength(1)
+
+    const res = await apiRequest(
+      other.cookie,
+      'DELETE',
+      `/api/lists/${listId}/food/items/${item.id}`,
+    )
+    expect(res.status).toBe(404)
+    expect(await foodRows(listId)).toEqual(before)
+  })
+
+  it("c: an item cannot be patched or deleted through another of the SAME user's lists", async () => {
+    const { cookie } = await signUpVerifiedUser('food-m5@example.com', 'M5')
+    const listA = await createList(cookie, 'A')
+    const listB = await createList(cookie, 'B')
+    const { item } = await scheduledItem(cookie, listA)
+    await setDays(cookie, listB, 1)
+    const before = { a: await foodRows(listA), b: await foodRows(listB) }
+
+    const patch = await apiRequest(
+      cookie,
+      'PATCH',
+      `/api/lists/${listB}/food/items/${item.id}`,
+      { quantity: 9 },
+    )
+    expect(patch.status).toBe(404)
+    expect({ a: await foodRows(listA), b: await foodRows(listB) }).toEqual(before)
+
+    const del = await apiRequest(
+      cookie,
+      'DELETE',
+      `/api/lists/${listB}/food/items/${item.id}`,
+    )
+    expect(del.status).toBe(404)
+    expect({ a: await foodRows(listA), b: await foodRows(listB) }).toEqual(before)
+  })
+
+  it('d: a PATCH naming a foreign slot is refused whole - existing placements survive', async () => {
+    // Two foreign shapes, run separately: another user's slot, and a slot on
+    // another of the caller's own lists. Each request also carries a scalar
+    // change and a VALID local slot, so a partial application would show.
+    const owner = await signUpVerifiedUser('food-m6@example.com', 'M6')
+    const other = await signUpVerifiedUser('food-m7@example.com', 'M7')
+    const listId = await createList(owner.cookie, 'Mine')
+    const { item, food } = await scheduledItem(owner.cookie, listId)
+    const localLunch = slotOf(food, 1, 'lunch').id
+
+    const otherList = await createList(other.cookie, 'Theirs')
+    await setDays(other.cookie, otherList, 1)
+    const foreignSlot = slotOf(await getFood(other.cookie, otherList), 1, 'dinner').id
+
+    const ownOtherList = await createList(owner.cookie, 'Mine too')
+    await setDays(owner.cookie, ownOtherList, 1)
+    const crossListSlot = slotOf(await getFood(owner.cookie, ownOtherList), 1, 'dinner').id
+
+    const before = await foodRows(listId)
+    expect(before.links).toHaveLength(1)
+    for (const smuggled of [foreignSlot, crossListSlot]) {
+      const res = await apiRequest(
+        owner.cookie,
+        'PATCH',
+        `/api/lists/${listId}/food/items/${item.id}`,
+        { quantity: 5, slotIds: [localLunch, smuggled] },
+      )
+      expect(res.status, smuggled).toBe(400)
+      expect(await foodRows(listId), smuggled).toEqual(before)
+    }
+  })
+})
+
 // The table-driven auth matrix the other four route files already have. Food
 // was the odd one out (a single ad-hoc GET 401), which mattered doubly once
 // the session gate moved to ONE hoisted api.use('/lists/*') in

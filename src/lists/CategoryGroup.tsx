@@ -20,6 +20,7 @@ import {
   ROW_LEADING_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ItemRow, { type ItemRowProps } from './ItemRow'
+import { isOrdinarySectionRow } from './section-rows'
 import FoodRow from './FoodRow'
 import AddItemRow from './AddItemRow'
 import { type AddItemData } from './use-quick-add-form'
@@ -387,11 +388,12 @@ function CategoryGroup({
   const sectionKey = regionKey ?? categoryId ?? 'uncategorized'
   const regionId = `cat-region-${sectionKey}`
   const section: SectionIdentity = { key: sectionKey, name }
-  // sectionItems = the items that BELONG to this category section. When
-  // Worn items always belong to the trailing Worn section, so ordinary
-  // sections exclude them from the pack count, footer totals, and rows. The
+  // sectionItems = the items that BELONG to this category section. Worn
+  // items always belong to the trailing Worn section, so ordinary sections
+  // exclude them from the pack count, footer totals, and rows - by the one
+  // shared rule in section-rows.ts, which the reorder planner uses too. The
   // Worn section opts into its own rows explicitly.
-  const sectionItems = wornSection ? items : items.filter((i) => !i.isWorn)
+  const sectionItems = wornSection ? items : items.filter(isOrdinarySectionRow)
   // Only displayed in pack-mode header. Gating the read on packMode means
   // the share view (which never enters pack mode) doesn't pull is_packed
   // off each item; that field is excluded from the public read path.

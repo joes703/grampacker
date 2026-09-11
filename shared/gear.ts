@@ -41,13 +41,11 @@ const idSchema = z.string().min(1).max(64)
 
 // Dollars with at most 2 decimal places (stored as integer cents; REAL is
 // the wrong tool for money and numeric(10,2) does not exist in SQLite).
-export const costSchema = z
-  .number()
-  .min(0)
-  .max(99_999_999.99)
-  .refine((v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-6, {
-    message: 'cost must have at most 2 decimal places',
-  })
+// The round-trip check in decimalNumber, not the epsilon form this used to
+// carry: the epsilon let 1e-9 through (stored as 0 cents) and, near the cap,
+// 99999999.00999999 (v*100 lands exactly on an integer). Max stays inclusive -
+// src/lib/csv/money.ts relies on that.
+export const costSchema = decimalNumber({ min: 0, max: 99_999_999.99, decimals: 2 })
 
 // Real calendar date, ISO YYYY-MM-DD (rejects 2026-02-30).
 const isoDateSchema = z

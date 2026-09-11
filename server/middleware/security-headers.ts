@@ -2,10 +2,10 @@ import { createMiddleware } from 'hono/factory'
 
 // One security-header map, owned by the Worker and applied to EVERY
 // response - the SPA shell, static assets, and /api/* alike. The old
-// repo carried this set in public/_headers, a Pages convention that
-// does not port to the Node target; a middleware does (REWRITE_PLAN.md
-// section 6). run_worker_first in wrangler.jsonc routes all requests
-// through the Worker so no response can bypass the map.
+// repo carried this set in public/_headers, a Pages convention; owning it
+// in a middleware is what lets a test assert it on every response shape.
+// run_worker_first in wrangler.jsonc routes all requests through the
+// Worker so no response can bypass the map.
 //
 // The CSP is the old app's minus what died with Supabase: connect-src loses
 // the two Supabase origins (the API is same-origin now).

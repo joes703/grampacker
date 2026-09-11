@@ -46,6 +46,35 @@ reasoning behind them. Where the two overlap, the matrix wins on detail.
 - Secrets (`BETTER_AUTH_SECRET`, `RESEND_API_KEY`) are Worker secrets;
   nothing secret is in the client bundle or the repo (`.dev.vars` is
   gitignored).
+- **A missing `RESEND_API_KEY` fails closed.** The console sender - which
+  prints the redeemable magic-link URL to the log and reports success - is
+  selected only when `BETTER_AUTH_URL` is `localhost` (`isDevEnvironment`,
+  the same test that relaxes the CSP). On any other origin a missing key
+  makes the magic-link send itself fail as a logged 500; session lookups
+  and every other auth route keep working (`server/email/index.ts`,
+  `server/auth-error-logging.test.ts`).
+- **Bound query parameters stay out of the server's log lines.** Drizzle's
+  wrapper error embeds every bound value in its message (and V8 repeats it
+  in the stack header): gear names, costs, and on a failed session lookup
+  the session token. Three sinks are routed through one sanitizer that
+  replaces such messages, drops their stacks, and keeps the query text and
+  the SQLite root-cause message, which never embed values
+  (`server/middleware/error-handler.ts`, `describeError`): the incident
+  handler's own entries, better-auth's logger (`logger` option), and the
+  `onAPIError` hook that takes over from better-call's raw `console.error`
+  fallback for any error escaping an auth endpoint. Proven over the real
+  app in `server/auth-error-logging.test.ts`.
+
+  Two things this does NOT cover, stated so nobody reads more into it:
+  better-auth's adapter factory writes one raw `console.error(error)` of
+  its own when the SECOND statement of a JS-side join fails (the user read
+  after a successful session read, `@better-auth/core`
+  `db/adapter/factory.mjs`) - outside the sanitizer and the budget; the
+  value bound there is the user id, never the token, and the test above
+  pins that boundary. The installed Drizzle adapter has no native join to
+  switch to. And an arbitrary error message is not made free of
+  user-controlled text - a repo throw that quotes a client-supplied id
+  still logs it.
 
 ## CSRF
 
@@ -132,7 +161,7 @@ coverage in `server/routes/me.test.ts`):
     so ~90 garbage requests from rotating IPs drained a full day of the
     only account-recovery path in a passwordless app **without sending a
     single email**. Charging inside the callback means better-auth has
-    already validated and normalized the address, so nothing that cannot
+    already validated the address (case is not folded), so nothing that cannot
     become an email can spend the shared quota. (Found in review,
     2026-07-12; fixed the same day.)
   - The middleware still **peeks** at the global bucket (a read, not a
@@ -318,9 +347,13 @@ tidier sentence, but tidiness is not a threat model.)
   ceremony (gating it would make passkey sign-in impossible), and
   `list-user-passkeys` (a read).
 - Deleting the account purges the user's `verification` rows, **including
-  any pending magic link for that address**. Without that, a link
-  requested before the delete would still redeem afterwards and silently
-  resurrect the account as a new, empty user.
+  any pending magic link for that address, whatever letter case it was
+  requested in**. Without that, a link requested before the delete would
+  still redeem afterwards and silently resurrect the account as a new,
+  empty user. The plugin stores the submitted casing and the user row is
+  lowercase, so the purge folds case on both sides
+  (`server/repos/users.ts`, proven over HTTP in
+  `server/auth-delete-user.test.ts`).
 
 WebAuthn user verification is REQUIRED, and enforced rather than
 requested. `authenticatorSelection.userVerification: 'required'` is only
@@ -461,6 +494,16 @@ restatement of the general posture.
   same bag, which the reorder planner accounts for
   (`server/repos/pack-reorder.ts`).
 
+- **Deleting a packing location appends its contents after a rank read
+  taken before the write batch** (`server/repos/packing-locations.ts`,
+  `base`). The census that aborts the batch guards the SOURCE bag only, and
+  the cohort's unique index is per table, so a food row arriving in
+  Unassigned at that rank while gear is being appended there (or the
+  reverse) produces a legal cross-table tie. Nothing is lost or half-written:
+  the order of the appended block degrades to the deterministic tiebreak
+  until the next reorder renumbers the cohort. Accepted; it is the same
+  cross-table-tie class migration 0022 tolerates by design.
+
 ## The app has TWO public origins
 
 `wrangler.jsonc` routes `grampacker.app` as a custom domain and does NOT set
@@ -527,16 +570,19 @@ of it:
   of live gaps and the plan that describes it in full is a dated record.
 
   What is lost: the day x meal SLOTS and their placements - which food is
-  eaten when. One of the paths below deletes placements DIRECTLY; the other
-  two delete a parent row and let the placements cascade. Two leave the food
-  items themselves alone; one removes an item outright.
+  eaten when. Of the three CLIENT-SIDE paths below, one deletes placements
+  DIRECTLY; the other two delete a parent row and let the placements
+  cascade. Two leave the food items themselves alone; one removes an item
+  outright. A fourth, server-side path (the day-count race, last in the
+  list) is different in kind and is described on its own terms.
 
   There were FOUR paths until the Skip feature was removed. Marking a meal
   not needed cleared that slot's placements, and its confirm was skipped
   whenever the cached snapshot said the slot was empty - the worst of the
   four, because a stale snapshot suppressed the warning entirely.
 
-  Every path below decides from a cached snapshot. `staleTime` is 30s, but
+  Each of the three client-side paths decides from a cached snapshot.
+  `staleTime` is 30s, but
   that only marks data stale - it does not refetch, and the app-wide default
   in `src/App.tsx` is `refetchOnWindowFocus: false` with no polling.
 
@@ -567,6 +613,16 @@ of it:
     can remove something another client had just rescheduled - and the guard
     in Release B has to cover this delete, not only the trim.
 
+  - **Changing the day count** plans the missing slots from a read taken
+    OUTSIDE the write batch (`setDayCount` in `server/repos/food.ts`). Two
+    day-count writes racing - one trimming, one expanding - can leave the
+    grid with a hole, and two expansions can collide on the slot unique
+    index and surface as a 500. Different from the three paths above in one
+    way worth keeping straight: a missing grid slot self-heals on the next
+    day-count write (the contract repairs holes), whereas placements erased
+    by the paths above do not come back. The revision guard covers this
+    write too.
+
   A fifth path exists and is deliberately out of scope: **deleting the list**
   cascades its food entirely (`server/repos/lists.ts`), reachable from three
   cached-list surfaces. It belongs to a different problem - it destroys the
@@ -576,9 +632,11 @@ of it:
   too and does not act from a cached snapshot at all. Deleting a packing
   location only unassigns and re-ranks food; it destroys nothing.
 
-  In each case a second client's work is deleted by a write that never saw it.
-  A conditional UPDATE matching zero rows does not abort the rest of a D1
-  batch, so nothing stops it today.
+  In each of the three client-side cases a second client's work is deleted
+  by a write that never saw it. A conditional UPDATE matching zero rows does
+  not abort the rest of a D1 batch, so nothing stops it today. The day-count
+  race can happen with perfectly fresh clients and may simply abort on the
+  slot unique index rather than delete anything.
 
   The fix is designed and prototyped but unbuilt, and needs two releases
   separated by a deploy. Release A adds `lists.food_revision` and makes
@@ -656,9 +714,11 @@ of it:
   accepted on PATCH, and `groupWorn` is off the public share DTO. It was
   published there for a real reason - the share honored it - until #110 made
   worn grouping unconditional on 2026-07-21, after which it was a public
-  field nothing read. Their COLUMNS remain: dropping one
-  rebuilds `lists`, and a rebuild cascade-deletes every `list_items` row.
-  Both names stay in the forbidden-key denylist in
+  field nothing read. Their columns were dropped in a later release by
+  migration 0027 as a contract step - a native `ALTER TABLE ... DROP
+  COLUMN`, which rewrites rows in place and is NOT the table rebuild that
+  cascade-deletes children (AGENTS.md draws that line). Both names stay in
+  the forbidden-key denylist in
   `server/routes/shares.test.ts` so a future projection cannot reintroduce
   them quietly.
 

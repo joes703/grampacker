@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
-import { derivePackReorderExclusions } from './ListDetailPage'
+import { derivePackReorderExclusions } from './list-reorder-plan'
 import { deriveWornReorderExclusions } from './packing-tree'
 
 function item(id: string, isWorn = false): ListItemWithGear {

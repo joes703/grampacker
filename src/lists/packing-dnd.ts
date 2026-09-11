@@ -100,7 +100,7 @@ function planUnionReorder(
   if (activeRow.locationId !== overRow.locationId) return null
 
   // This array IS one union cohort - the scope pack ranks are unique within
-  // (per table) and the scope the server's permutation check runs against.
+  // (per table) and the scope the server's index-safety check runs against.
   // Sorting by anything but union display order would compute the move
   // against a sequence the user is not looking at.
   const cohortRows = unionPackRows(

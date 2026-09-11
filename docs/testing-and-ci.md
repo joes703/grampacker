@@ -96,7 +96,11 @@ stub is a measured decision, not a default.
   `npm run test:migrations` seeds fixture rows, applies each post-baseline
   migration the way deploy does, on real D1, and fails if any pre-existing
   row, column, trigger or index changed. Its `POST_CHECKS` probes are the
-  only behavioral coverage of trigger bodies.
+  harness's only behavioral coverage of trigger bodies; the API suite also
+  exercises some triggers directly on D1 with raw writes (the "database
+  triggers" cases in `server/routes/packing-locations.test.ts`, the cap
+  backstops in the route suites), so neither is the sole coverage - and
+  neither compares trigger BODIES.
 - What a migration may contain, and the contract-step rules for drops, are
   in AGENTS.md. A new table needs a fixture row; a trigger or rewrite needs
   a probe; the PR says what a backfill wrote, because the harness proves
@@ -135,6 +139,24 @@ later pull request would then treat that file as trusted history. Closing
 that properly means digest-pinning the post-baseline files the way the 21
 frozen baseline files are pinned, re-pinned on every migration. That is
 deferred, not overlooked.
+
+**Why the harness stays one untyped file (audit F14, 2026-09-10): an
+accepted maintenance trade-off, not a rule.** `scripts/check-migration-safety.mjs`
+is ~4,400 lines of JavaScript outside `tsc`. Every invocation runs its six
+self-tests (the DDL classifier, expected-value resolution, constraint
+comparison, config rebase, marked-batch parsing, batch attribution) before
+any D1 work, and a self-test failure prevents success; CI invokes the whole
+harness on pull requests and pushes to `main`. What that does not give you is
+the self-tests under `npm run test:unit`, or per-case reporting. A strict
+`checkJs` experiment reported 176 diagnostics, almost all missing parameter
+types, tuple inference and `unknown` in catch blocks - none of them a
+demonstrated correctness defect. Annotating the file, or splitting the
+fixtures and declarations from the engine, was deferred because the review
+cost lands on the one script that gates production migrations and the
+benefit was not demonstrated. If it is ever done: keep the CLI entry
+unconditional (a thin wrapper that always calls an exported `main()`, never
+an `argv` guard that can silently turn the deploy gate into a no-op), keep the
+self-tests first in `main()`, and keep every D1-backed check.
 
 ## 8. Never delete or weaken a test to make CI faster
 
