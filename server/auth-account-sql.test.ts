@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test'
-import { getTableColumns, getTableName } from 'drizzle-orm'
+import { getTableColumns, getTableName, is, SQL } from 'drizzle-orm'
 import type { SQLiteTable } from 'drizzle-orm/sqlite-core'
 import { describe, expect, it } from 'vitest'
 import app from './index'
@@ -25,10 +25,19 @@ const ORIGIN = 'http://localhost:5173'
 
 type ColumnShape = {
   name: string
+  columnType: string
   dataType: string
+  // `timestamp_ms` vs `timestamp` on a SQLiteTimestamp: same dataType, same
+  // columnType, DIFFERENT serialization. Comparing dataType alone would miss it.
+  mode: unknown
   notNull: boolean
   primary: boolean
   hasDefault: boolean
+  // The rendered default expression, not merely whether one exists.
+  defaultSql: string | null
+  hasDefaultFn: boolean
+  // `$onUpdate` is invisible to hasDefault; updatedAt relies on it.
+  hasOnUpdateFn: boolean
 }
 
 // The real D1 binding with `prepare` instrumented: every statement's SQL is
@@ -56,20 +65,43 @@ describe('the account model better-auth actually queries', () => {
   // the runtime model behind - and the runtime model is the one every auth
   // request uses. Pin the relationship instead of trusting the two files to be
   // edited together: identical but for `issuer`.
-  it('differs from the generated model in exactly one column', () => {
-    // Compared as plain records: same columns is not enough, since a differing
-    // type or nullability would make the runtime model write rows the physical
-    // table rejects.
+  //
+  // What this compares, precisely: the column SET, the column ORDER, and per
+  // column its name, drizzle column type, data type, timestamp mode, NOT NULL,
+  // primary-key flag, and all three ways a value can be supplied (a rendered
+  // SQL default, a default function, an $onUpdate function). What it does NOT
+  // compare: foreign keys, indexes, and check constraints. Those live outside
+  // getTableColumns, and the runtime model deliberately drops one index (the
+  // issuer-dependent unique one), so a blanket equality there would be wrong.
+  it('matches the generated model column for column, but for issuer', () => {
+    const renderDefault = (value: unknown): string | null => {
+      if (value === undefined) return null
+      return is(value, SQL)
+        ? JSON.stringify(
+            value.queryChunks.map((chunk) =>
+              chunk && typeof chunk === 'object' && 'value' in chunk
+                ? chunk.value
+                : String(chunk),
+            ),
+          )
+        : String(value)
+    }
+
     const shapeOf = (table: SQLiteTable): Record<string, ColumnShape> =>
       Object.fromEntries(
         Object.entries(getTableColumns(table)).map(([key, column]) => [
           key,
           {
             name: column.name,
+            columnType: column.columnType,
             dataType: column.dataType,
+            mode: (column as { mode?: unknown }).mode,
             notNull: column.notNull,
             primary: column.primary,
             hasDefault: column.hasDefault,
+            defaultSql: renderDefault(column.default),
+            hasDefaultFn: typeof column.defaultFn === 'function',
+            hasOnUpdateFn: typeof column.onUpdateFn === 'function',
           },
         ]),
       )
@@ -83,6 +115,9 @@ describe('the account model better-auth actually queries', () => {
     const generatedWithoutIssuer = Object.fromEntries(
       Object.entries(generated).filter(([key]) => key !== 'issuer'),
     )
+    // Order as well as content. toEqual ignores key order, so assert it
+    // separately - a reordering is drift even where it is not yet a bug.
+    expect(Object.keys(runtime)).toEqual(Object.keys(generatedWithoutIssuer))
     expect(runtime).toEqual(generatedWithoutIssuer)
   })
 
@@ -141,7 +176,7 @@ describe('the account model better-auth actually queries', () => {
     // The account read really happened - otherwise "no statement names issuer"
     // would be true for the boring reason that nothing queried `account`.
     const accountReads = seen.filter(
-      (q) => /\bfrom\s+"?account"?/i.test(q) && /^\s*select/i.test(q),
+      (q) => /\bfrom\s+("account"|account)(\s|$)/i.test(q) && /^\s*select/i.test(q),
     )
     expect(accountReads, seen.join('\n')).not.toHaveLength(0)
 
