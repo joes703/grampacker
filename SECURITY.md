@@ -118,10 +118,25 @@ coverage in `server/routes/me.test.ts`):
   ALL methods with a two-entry pure-read GET allowlist - better-auth
   GETs are not read-only (the passkey challenge endpoint is an
   unauthenticated GET that writes a row, and `magic-link/verify` is a GET
-  that creates a user and mints a session). Budgets: sign-in 10/10min
-  (the passkey ceremony), magic-link verify 10/10min, delete-user
+  that creates a user and mints a session). Budgets: passkey sign-in
+  30/5min, sign-in 10/10min, magic-link verify 10/10min, delete-user
   5/10min, default 30/10min. Single atomic upsert (no lost updates under
   concurrency - proven by a 20-way burst test), 429 + Retry-After.
+- **The passkey ceremony has its own budget, deliberately looser than
+  `sign-in`.** It shared `sign-in` (10/10min) until 2026-09-12, when the
+  app owner was locked out of production by it. One ceremony costs TWO
+  requests (options, then verification) and an ABANDONED one still costs
+  one, so ten requests was five attempts - and a user with several
+  passkeys spends those just by picking the wrong credential a few
+  times. Sizing it like a password bucket was the error: a WebAuthn
+  assertion needs the private key in the authenticator, so there is no
+  secret to brute force and few-attempts-then-lockout buys nothing. What
+  the budget actually bounds is write amplification -
+  `generate-authenticate-options` is an anonymous GET that writes a
+  `verification` row - and 30/5min bounds that just as hard while
+  leaving 15 ceremonies. The shorter window also halves the lockout.
+  `server/middleware/rate-limit.test.ts` pins ten fumbled attempts as
+  something that must never 429.
 - **Requesting a magic link is charged to THREE buckets**, because no
   single key stops all three abuses. All are charged on every send and
   any one can 429: a **global** cap (90/day), a **per-IP** cap

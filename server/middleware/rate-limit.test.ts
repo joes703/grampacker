@@ -8,6 +8,7 @@ const ORIGIN = 'http://localhost:5173'
 
 // Budgets under test (mirrors server/middleware/rate-limit.ts).
 const SIGN_IN_LIMIT = 10
+const PASSKEY_SIGN_IN_LIMIT = 30
 const AUTH_DEFAULT_LIMIT = 30
 const MAGIC_SEND_IP_LIMIT = 10
 const MAGIC_SEND_EMAIL_LIMIT = 5
@@ -15,6 +16,7 @@ const MAGIC_SEND_GLOBAL_LIMIT = 90
 const MAGIC_VERIFY_LIMIT = 10
 const DELETE_USER_LIMIT = 5
 const SIGN_IN_WINDOW_MS = 10 * 60 * 1000
+const PASSKEY_SIGN_IN_WINDOW_MS = 5 * 60 * 1000
 const SENSITIVE_WINDOW_MS = 10 * 60 * 1000
 const MAGIC_SEND_EMAIL_WINDOW_MS = 60 * 60 * 1000
 
@@ -76,9 +78,28 @@ function authPost(path: string, body: unknown, ip: string) {
 }
 
 // The passkey ceremony is the primary sign-in surface now. It does NOT live
-// under /sign-in/*, which is exactly why it needs an explicit rule.
+// under /sign-in/*, which is exactly why it needs an explicit rule - and its
+// own bucket, not SIGN_IN's.
+//
+// ONE request, i.e. HALF a ceremony: the client follows this with a
+// verify-authentication POST, which is metered against the same bucket. Tests
+// that count ceremonies rather than requests use signInCeremony below.
 function signIn(ip: string) {
   return authPost('/api/auth/passkey/generate-authenticate-options', {}, ip)
+}
+
+// A full ceremony's worth of traffic: options, then verification. The
+// verification 4xxs on a fabricated assertion, which is fine - the limiter
+// counts every request regardless of outcome, and a FAILED ceremony is exactly
+// what this file needs to be able to simulate.
+async function signInCeremony(ip: string): Promise<Response[]> {
+  const options = await signIn(ip)
+  const verify = await authPost(
+    '/api/auth/passkey/verify-authentication',
+    { response: {} },
+    ip,
+  )
+  return [options, verify]
 }
 
 function sendMagicLink(ip: string, email: string) {
@@ -86,9 +107,9 @@ function sendMagicLink(ip: string, email: string) {
 }
 
 describe('auth rate limiting', () => {
-  it('sign-in cuts off after the budget with Retry-After', async () => {
+  it('passkey sign-in cuts off after the budget with Retry-After', async () => {
     const ip = '203.0.113.1'
-    for (let i = 0; i < SIGN_IN_LIMIT; i++) {
+    for (let i = 0; i < PASSKEY_SIGN_IN_LIMIT; i++) {
       const res = await signIn(ip)
       expect(res.status).not.toBe(429)
     }
@@ -98,7 +119,52 @@ describe('auth rate limiting', () => {
     const retryAfter = Number(blocked.headers.get('Retry-After'))
     expect(Number.isInteger(retryAfter)).toBe(true)
     expect(retryAfter).toBeGreaterThan(0)
-    expect(retryAfter).toBeLessThanOrEqual(SIGN_IN_WINDOW_MS / 1000)
+    expect(retryAfter).toBeLessThanOrEqual(PASSKEY_SIGN_IN_WINDOW_MS / 1000)
+  })
+
+  // THE REGRESSION THIS BUDGET EXISTS FOR (production, 2026-09-12: the app
+  // owner locked himself out of his own app).
+  //
+  // The ceremony costs TWO requests, and a user with several passkeys picks the
+  // wrong one and retries - that is ordinary use, not an attack. On the old
+  // shared SIGN_IN budget (10 per 10 minutes) this capped out at five attempts
+  // and then refused the front door for ten minutes.
+  //
+  // Ten fumbled attempts is a realistic bad day, not abuse. It must not 429.
+  it('ten fumbled passkey attempts do not lock a legitimate user out', async () => {
+    const ip = '203.0.113.61'
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const [options, verify] = await signInCeremony(ip)
+      expect(options!.status, `attempt ${attempt} options`).not.toBe(429)
+      expect(verify!.status, `attempt ${attempt} verify`).not.toBe(429)
+    }
+  })
+
+  // The other half of the same story: abandoning the browser's passkey picker
+  // still costs a request, because generate-authenticate-options has already
+  // written its challenge row. Cancelling repeatedly must not be cheaper for
+  // the limiter to ignore, nor expensive enough to lock the owner out.
+  it('abandoned ceremonies are metered but leave room to recover', async () => {
+    const ip = '203.0.113.62'
+    for (let i = 0; i < 15; i++) {
+      expect((await signIn(ip)).status, `abandon ${i}`).not.toBe(429)
+    }
+    // Half the budget spent on abandoned attempts still leaves a full ceremony.
+    const [options, verify] = await signInCeremony(ip)
+    expect(options!.status).not.toBe(429)
+    expect(verify!.status).not.toBe(429)
+  })
+
+  // The budget is passkey-specific: burning it must not take the magic-link
+  // recovery path down with it. A user who gives up on passkeys has to be able
+  // to fall back to email in the same breath.
+  it('exhausting the passkey budget leaves magic-link recovery reachable', async () => {
+    const ip = '203.0.113.63'
+    for (let i = 0; i <= PASSKEY_SIGN_IN_LIMIT; i++) await signIn(ip)
+    expect((await signIn(ip)).status).toBe(429)
+
+    const recovery = await sendMagicLink(ip, 'locked-out@example.com')
+    expect(recovery.status).not.toBe(429)
   })
 
   it('delete-user gets its own tighter sensitive budget with Retry-After', async () => {
@@ -494,7 +560,7 @@ describe('auth rate limiting', () => {
 
   it('buckets are per IP: another client is unaffected', async () => {
     const ip = '203.0.113.2'
-    for (let i = 0; i <= SIGN_IN_LIMIT; i++) {
+    for (let i = 0; i <= PASSKEY_SIGN_IN_LIMIT; i++) {
       await signIn(ip)
     }
     expect((await signIn(ip)).status).toBe(429)
@@ -527,20 +593,25 @@ describe('auth rate limiting', () => {
       ip,
     )
     expect(blocked.status).toBe(429)
+    // Still on SIGN_IN's own 10-minute window, not the passkey bucket's 5.
+    // The two budgets diverged on 2026-09-12 and this is what pins the split.
+    const retryAfter = Number(blocked.headers.get('Retry-After'))
+    expect(retryAfter).toBeGreaterThan(PASSKEY_SIGN_IN_WINDOW_MS / 1000)
+    expect(retryAfter).toBeLessThanOrEqual(SIGN_IN_WINDOW_MS / 1000)
   })
 
   it('the window expires: requests are allowed again afterwards', async () => {
     const ip = '203.0.113.5'
-    for (let i = 0; i <= SIGN_IN_LIMIT; i++) {
+    for (let i = 0; i <= PASSKEY_SIGN_IN_LIMIT; i++) {
       await signIn(ip)
     }
     expect((await signIn(ip)).status).toBe(429)
 
-    // Rewind the stored window past expiry instead of waiting 10 minutes.
+    // Rewind the stored window past expiry instead of waiting five minutes.
     await env.DB.prepare(
       'update rate_limits set window_start = window_start - ? where key = ?',
     )
-      .bind(SIGN_IN_WINDOW_MS + 1000, `sign-in:${ip}`)
+      .bind(PASSKEY_SIGN_IN_WINDOW_MS + 1000, `passkey-sign-in:${ip}`)
       .run()
 
     const afterExpiry = await signIn(ip)
@@ -550,18 +621,18 @@ describe('auth rate limiting', () => {
   it('the limit holds under a concurrent burst: no lost updates', { timeout: 30000 }, async () => {
     const ip = '203.0.113.7'
     const results = await Promise.all(
-      Array.from({ length: SIGN_IN_LIMIT * 2 }, () => signIn(ip)),
+      Array.from({ length: PASSKEY_SIGN_IN_LIMIT * 2 }, () => signIn(ip)),
     )
     // The atomic upsert assigns each request a distinct count, so the
     // split is exact - a lost update would show up as an extra allow.
-    expect(results.filter((r) => r.status !== 429).length).toBe(SIGN_IN_LIMIT)
-    expect(results.filter((r) => r.status === 429).length).toBe(SIGN_IN_LIMIT)
+    expect(results.filter((r) => r.status !== 429).length).toBe(PASSKEY_SIGN_IN_LIMIT)
+    expect(results.filter((r) => r.status === 429).length).toBe(PASSKEY_SIGN_IN_LIMIT)
     const row = await env.DB.prepare(
       'select count from rate_limits where key = ?',
     )
-      .bind(`sign-in:${ip}`)
+      .bind(`passkey-sign-in:${ip}`)
       .first<{ count: number }>()
-    expect(row?.count).toBe(SIGN_IN_LIMIT * 2)
+    expect(row?.count).toBe(PASSKEY_SIGN_IN_LIMIT * 2)
   })
 
   it('requests without a client IP share the local fallback bucket', async () => {
@@ -599,7 +670,10 @@ describe('auth rate limiting', () => {
     expect(cased.status).toBe(403)
 
     // Query strings do not split the bucket: exhaust with a query
-    // string, then the plain path is already over budget.
+    // string, then the plain path is already over budget. Asserted on the
+    // SAME path, because the passkey ceremony now has its own bucket - a
+    // cross-path assertion here would be testing bucket sharing, not the
+    // query-string question this test is about.
     const ip = '203.0.113.9'
     for (let i = 0; i <= SIGN_IN_LIMIT; i++) {
       await authPost(
@@ -608,7 +682,12 @@ describe('auth rate limiting', () => {
         ip,
       )
     }
-    expect((await signIn(ip)).status).toBe(429)
+    const plain = await authPost(
+      '/api/auth/sign-in/email',
+      { email: 'nobody@example.com', password: DEAD_PASSWORD },
+      ip,
+    )
+    expect(plain.status).toBe(429)
   })
 
   it('the limiter is method-agnostic: OPTIONS shares the bucket', async () => {
@@ -624,8 +703,23 @@ describe('auth rate limiting', () => {
       )
     expect((await options()).status).toBe(404)
 
+    // It really COUNTS, not merely "is subject to" - proven on the row, since a
+    // 404 looks the same whether or not the limiter ran.
+    const charged = await env.DB.prepare(
+      'select count from rate_limits where key = ?',
+    )
+      .bind(`sign-in:${ip}`)
+      .first<{ count: number }>()
+    expect(charged?.count).toBe(1)
+
+    // Exhausted on the same bucket the OPTIONS lands in. The passkey ceremony
+    // has its own budget now, so filling THAT one would prove nothing here.
     for (let i = 0; i <= SIGN_IN_LIMIT; i++) {
-      await signIn(ip)
+      await authPost(
+        '/api/auth/sign-in/email',
+        { email: 'nobody@example.com', password: DEAD_PASSWORD },
+        ip,
+      )
     }
     expect((await options()).status).toBe(429)
   })
@@ -664,9 +758,12 @@ describe('auth rate limiting', () => {
     // consumes budget, gets cut off, and that a blocked request writes
     // no verification row.
     //
-    // It is metered on the SIGN_IN budget (10), not the default (30): passwordless
-    // makes this the primary front door, and it does not live under /sign-in/*, so
-    // it is matched by path rather than by prefix. Tighter than it was.
+    // It is metered on the PASSKEY_SIGN_IN budget, matched by exact path rather
+    // than by prefix (it does not live under /sign-in/*). That budget is
+    // deliberately LOOSER than SIGN_IN's: this is the front door of a
+    // passwordless app, one ceremony costs two requests, and there is no
+    // credential here to guess. The write-amplification this test guards is
+    // what the limit is sized against - see the rule's comment.
     const ip = '203.0.113.12'
     const challenge = () =>
       app.request(
@@ -674,7 +771,7 @@ describe('auth rate limiting', () => {
         { headers: { 'cf-connecting-ip': ip } },
         env,
       )
-    for (let i = 0; i < SIGN_IN_LIMIT; i++) {
+    for (let i = 0; i < PASSKEY_SIGN_IN_LIMIT; i++) {
       expect((await challenge()).status).not.toBe(429)
     }
     const before = await env.DB.prepare(
