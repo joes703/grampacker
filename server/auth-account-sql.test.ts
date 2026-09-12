@@ -1,44 +1,27 @@
 import { env } from 'cloudflare:test'
-import { getTableColumns, getTableName, is, SQL } from 'drizzle-orm'
-import type { SQLiteTable } from 'drizzle-orm/sqlite-core'
 import { describe, expect, it } from 'vitest'
 import app from './index'
 import { signUpVerifiedUser } from './test/auth-helpers'
 import { CSRF_HEADER } from './middleware/csrf'
-import { account as generatedAccount } from './db/auth-schema'
-import { account as runtimeAccount } from './db/auth-runtime-schema'
 
-// better-auth must not read `account.issuer`, asserted ON THE WIRE.
+// `account.issuer` is gone, asserted ON THE WIRE.
 //
 // Migration 0028 added that column NOT NULL with a unique index for
-// better-auth 1.7.0-1.7.2. 1.7.3 reverted the column and turned schema
-// validation on by default, so 1.7.4 rejects it before every /api/auth/*
-// dispatch. Release A answers that by handing the adapter an issuer-free
-// model (server/db/auth-runtime-schema.ts) rather than dropping the column,
-// which has to wait one release (AGENTS.md, deploy ordering).
+// better-auth 1.7.0-1.7.2. 1.7.3 reverted it and turned schema validation on
+// by default, so from 1.7.4 the validator rejected it before every
+// /api/auth/* dispatch. #241 stopped the adapter reading it (an issuer-free
+// model while the column stayed); 0029 dropped the column one release later,
+// which is the gap deploy.yml's migrate-then-swap ordering requires.
 //
-// A config option is a weak guarantee on its own: `db.select()` with no
-// projection expands EVERY column in whatever model the adapter resolved, so
-// a wiring mistake shows up only as different SQL. Hence the recorder.
+// Why this outlived the two-model wiring it was written for: the schema files
+// no longer mention `issuer`, but the SQL is what actually reaches D1, and
+// `db.select()` with no projection expands EVERY column of whatever model the
+// adapter resolved. A regenerated schema, a hand-edit, or a revived migration
+// putting the column back would show up here as different SQL and nowhere
+// else - the physical table would accept it and every test asserting on rows
+// would stay green.
 
 const ORIGIN = 'http://localhost:5173'
-
-type ColumnShape = {
-  name: string
-  columnType: string
-  dataType: string
-  // `timestamp_ms` vs `timestamp` on a SQLiteTimestamp: same dataType, same
-  // columnType, DIFFERENT serialization. Comparing dataType alone would miss it.
-  mode: unknown
-  notNull: boolean
-  primary: boolean
-  hasDefault: boolean
-  // The rendered default expression, not merely whether one exists.
-  defaultSql: string | null
-  hasDefaultFn: boolean
-  // `$onUpdate` is invisible to hasDefault; updatedAt relies on it.
-  hasOnUpdateFn: boolean
-}
 
 // The real D1 binding with `prepare` instrumented: every statement's SQL is
 // appended to `seen` and the REAL prepared statement is returned, so the
@@ -60,67 +43,6 @@ function recordingD1(seen: string[]): D1Database {
 }
 
 describe('the account model better-auth actually queries', () => {
-  // Drift guard. auth-schema.ts is CLI-GENERATED and auth-runtime-schema.ts is
-  // hand-written, so a regeneration that changes `account` would silently leave
-  // the runtime model behind - and the runtime model is the one every auth
-  // request uses. Pin the relationship instead of trusting the two files to be
-  // edited together: identical but for `issuer`.
-  //
-  // What this compares, precisely: the column SET, the column ORDER, and per
-  // column its name, drizzle column type, data type, timestamp mode, NOT NULL,
-  // primary-key flag, and all three ways a value can be supplied (a rendered
-  // SQL default, a default function, an $onUpdate function). What it does NOT
-  // compare: foreign keys, indexes, and check constraints. Those live outside
-  // getTableColumns, and the runtime model deliberately drops one index (the
-  // issuer-dependent unique one), so a blanket equality there would be wrong.
-  it('matches the generated model column for column, but for issuer', () => {
-    const renderDefault = (value: unknown): string | null => {
-      if (value === undefined) return null
-      return is(value, SQL)
-        ? JSON.stringify(
-            value.queryChunks.map((chunk) =>
-              chunk && typeof chunk === 'object' && 'value' in chunk
-                ? chunk.value
-                : String(chunk),
-            ),
-          )
-        : String(value)
-    }
-
-    const shapeOf = (table: SQLiteTable): Record<string, ColumnShape> =>
-      Object.fromEntries(
-        Object.entries(getTableColumns(table)).map(([key, column]) => [
-          key,
-          {
-            name: column.name,
-            columnType: column.columnType,
-            dataType: column.dataType,
-            mode: (column as { mode?: unknown }).mode,
-            notNull: column.notNull,
-            primary: column.primary,
-            hasDefault: column.hasDefault,
-            defaultSql: renderDefault(column.default),
-            hasDefaultFn: typeof column.defaultFn === 'function',
-            hasOnUpdateFn: typeof column.onUpdateFn === 'function',
-          },
-        ]),
-      )
-
-    const generated = shapeOf(generatedAccount)
-    const runtime = shapeOf(runtimeAccount)
-
-    expect(getTableName(runtimeAccount)).toBe(getTableName(generatedAccount))
-    expect(Object.keys(generated)).toContain('issuer')
-
-    const generatedWithoutIssuer = Object.fromEntries(
-      Object.entries(generated).filter(([key]) => key !== 'issuer'),
-    )
-    // Order as well as content. toEqual ignores key order, so assert it
-    // separately - a reordering is drift even where it is not yet a bug.
-    expect(Object.keys(runtime)).toEqual(Object.keys(generatedWithoutIssuer))
-    expect(runtime).toEqual(generatedWithoutIssuer)
-  })
-
   // Deleting a user is the path that reads `account` without being asked to:
   // internalAdapter.deleteUser calls deleteManyWithHooks(..., 'account'), which
   // runs an unconditional findMany BEFORE consulting hooks
@@ -182,7 +104,8 @@ describe('the account model better-auth actually queries', () => {
 
     // The actual assertion. Checked across EVERY statement, not just the
     // account reads: a delete or a RETURNING clause naming the column would be
-    // just as wrong.
+    // just as wrong. Post-0029 the column does not exist, so a statement
+    // naming it would not merely be wrong - it would fail at D1.
     const naming = seen.filter((q) => /issuer/i.test(q))
     expect(naming, `statements naming issuer:\n${naming.join('\n')}`).toEqual([])
 

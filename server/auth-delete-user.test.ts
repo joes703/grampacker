@@ -7,19 +7,6 @@ import app from './index'
 import { lastEmailTo } from './email/console'
 import { MAGIC_LINK_PATH } from '../shared/auth'
 
-// Filler for `account.issuer`, which is still physically NOT NULL with no
-// default (migration 0028) even though better-auth no longer has the column.
-// It carries NO meaning to the runtime any more: 1.7.3 reverted `issuer`, and
-// 1.7.4's findCredentialAccount keys on (userId, providerId, accountId) only
-// (better-auth/dist/db/internal-adapter.mjs:652). The value survives purely so
-// the INSERT below can satisfy the constraint until Release B drops the
-// column - at which point this constant and the column it fills both go.
-// (It used to be `createLocalAccountIssuer('credential')` from
-// @better-auth/core, and the test below used to be the proof that it was the
-// namespace the runtime queried. It no longer proves that, because there is
-// no longer a namespace to prove.)
-const CREDENTIAL_ACCOUNT_ISSUER = 'local:credential'
-
 // Delete-account is destructive and total: better-auth's internalAdapter
 // deleteUser removes only the session/account/user rows itself - the user's
 // ACTUAL data (passkey, categories, gear_items, lists, list_items) is wiped
@@ -424,7 +411,7 @@ describe('POST /api/auth/delete-user', () => {
   it('a planted credential row is the one the runtime looks up', async () => {
     // The refusal above is only meaningful if the lookup that produced it
     // is the real one. better-auth 1.7.4 keys a credential account on
-    // user_id, provider_id and account_id - NOT issuer
+    // user_id, provider_id and account_id
     // (better-auth/dist/db/internal-adapter.mjs:652). Plant a row on those
     // three, send the WRONG password, and the only way to reach
     // INVALID_PASSWORD is for findCredentialAccount to have matched it; a
@@ -432,15 +419,13 @@ describe('POST /api/auth/delete-user', () => {
     // instead. No account is deleted either way - a wrong password is a
     // refusal, and that is asserted too.
     //
-    // What this no longer proves: anything about `account.issuer`. The
-    // column is written here only to satisfy its NOT NULL constraint (see
-    // CREDENTIAL_ACCOUNT_ISSUER). Release B removes both.
+    // The row carries no `issuer`: 0029 dropped that column, and the fixture
+    // used to seed it only to satisfy its NOT NULL constraint.
     await env.DB.prepare(
-      'insert into account (id, issuer, account_id, provider_id, user_id, password, updated_at) values (?, ?, ?, ?, ?, ?, ?)',
+      'insert into account (id, account_id, provider_id, user_id, password, updated_at) values (?, ?, ?, ?, ?, ?)',
     )
       .bind(
         `${userId}-cred`,
-        CREDENTIAL_ACCOUNT_ISSUER,
         userId,
         'credential',
         userId,

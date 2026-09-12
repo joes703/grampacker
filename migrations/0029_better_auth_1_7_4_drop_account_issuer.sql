@@ -1,0 +1,50 @@
+-- The contract half of a removal whose code shipped in #241 (merged and
+-- DEPLOYED 2026-09-12).
+--
+-- 0028 added `account.issuer` NOT NULL plus a unique (issuer, account_id) index
+-- because better-auth 1.7.0-1.7.2 required them. better-auth 1.7.3 REVERTED the
+-- column and, in the same release, turned schema validation on by default in
+-- production - so from 1.7.4 onward the validator rejects a required column it
+-- never writes (`unexpected-required-column`), and it runs BEFORE every
+-- /api/auth/* dispatch. A straight version bump blocked all auth, confirmed
+-- live: even magic-link sign-in answered 500.
+--
+-- #241 (release A) answered that WITHOUT touching the schema, by handing the
+-- adapter an issuer-free model while the physical column stayed. That is the
+-- release this migration is one release behind, which is what
+-- CONTRACT_MIGRATIONS records: our deploy.yml applies migrations and THEN swaps
+-- the Worker, so a column dropped in the same release that removed its reads
+-- 500s every request touching it until the deploy lands - indefinitely if
+-- `wrangler deploy` fails.
+--
+-- Neither statement is a REBUILD. drizzle-kit generated both from the schema
+-- and emitted plain DDL rather than its 12-step CREATE __new_x / copy /
+-- DROP TABLE / RENAME recipe - the recipe that wiped list_items in 0009,
+-- because on D1 the `PRAGMA foreign_keys=OFF` it wraps itself in is a no-op and
+-- the DROP TABLE fires every child cascade. A native
+-- ALTER TABLE ... DROP COLUMN rewrites rows in place and never issues
+-- DROP TABLE, so no cascade fires. Nothing cascades FROM `account` in any case:
+-- both `session` and `passkey` reference `user`.
+--
+-- ROLLBACK FLOOR. Once this has applied, #241 is the oldest Worker production
+-- may run. Anything older reads `account.issuer`, and the column is gone - so a
+-- rollback past it 500s every /api/auth/* request.
+--
+-- There is no down migration, and re-adding the column would NOT be one. This
+-- is irreversible in two ways a `ALTER TABLE ... ADD` cannot undo: every
+-- `issuer` VALUE is discarded, and the (issuer, account_id) UNIQUENESS is gone
+-- with the index. Recovery from a bad deploy is FORWARD. (What makes that
+-- acceptable rather than alarming: nothing in this app has ever written an
+-- `account` row - no password, no social provider, and magic-link sign-in
+-- creates a user and a session but no account - so there are no values to
+-- lose. That is a property of today's configuration, not of the table.)
+--
+-- ORDER IS LOAD-BEARING. The index goes first because it is ON the column:
+-- SQLite refuses to drop a column an index references. The reverse order does
+-- not corrupt anything - it simply will not apply.
+DROP INDEX `account_issuer_accountId_uidx`;--> statement-breakpoint
+-- The namespace half of better-auth 1.7.0-1.7.2's account identity. Nothing in
+-- this app ever wrote an `account` row: there is no password, no social
+-- provider, and magic-link sign-in creates a user and a session but no account.
+-- Read by better-auth alone, and not since #241.
+ALTER TABLE `account` DROP COLUMN `issuer`;
