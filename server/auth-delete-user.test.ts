@@ -7,11 +7,17 @@ import app from './index'
 import { lastEmailTo } from './email/console'
 import { MAGIC_LINK_PATH } from '../shared/auth'
 
-// The namespace better-auth 1.7 stores in `account.issuer` for a credential
-// account: `createLocalAccountIssuer('credential')` in @better-auth/core,
-// which is neither a direct dependency nor re-exported by better-auth, hence
-// the literal. The test below is what proves it is the value the runtime
-// actually looks up.
+// Filler for `account.issuer`, which is still physically NOT NULL with no
+// default (migration 0028) even though better-auth no longer has the column.
+// It carries NO meaning to the runtime any more: 1.7.3 reverted `issuer`, and
+// 1.7.4's findCredentialAccount keys on (userId, providerId, accountId) only
+// (better-auth/dist/db/internal-adapter.mjs:652). The value survives purely so
+// the INSERT below can satisfy the constraint until Release B drops the
+// column - at which point this constant and the column it fills both go.
+// (It used to be `createLocalAccountIssuer('credential')` from
+// @better-auth/core, and the test below used to be the proof that it was the
+// namespace the runtime queried. It no longer proves that, because there is
+// no longer a namespace to prove.)
 const CREDENTIAL_ACCOUNT_ISSUER = 'local:credential'
 
 // Delete-account is destructive and total: better-auth's internalAdapter
@@ -415,17 +421,20 @@ describe('POST /api/auth/delete-user', () => {
     expect(after.user).toBe(1)
   })
 
-  it("a credential row stored under the migration's namespace is the one 1.7 looks up", async () => {
+  it('a planted credential row is the one the runtime looks up', async () => {
     // The refusal above is only meaningful if the lookup that produced it
-    // is the real one. better-auth 1.7 keys a credential account by ALL of
-    // user_id, provider_id, issuer and account_id (migration 0028 added the
-    // column). This proves CREDENTIAL_ACCOUNT_ISSUER is the namespace the
-    // runtime actually queries and that the column is live end to end:
-    // plant a credential row under it, send the WRONG password, and the
-    // only way to reach INVALID_PASSWORD is for findCredentialAccount to
-    // have matched the row. A stale namespace would surface as
-    // CREDENTIAL_ACCOUNT_NOT_FOUND instead. No account is deleted either
-    // way - a wrong password is a refusal, and that is asserted too.
+    // is the real one. better-auth 1.7.4 keys a credential account on
+    // user_id, provider_id and account_id - NOT issuer
+    // (better-auth/dist/db/internal-adapter.mjs:652). Plant a row on those
+    // three, send the WRONG password, and the only way to reach
+    // INVALID_PASSWORD is for findCredentialAccount to have matched it; a
+    // lookup that missed would surface as CREDENTIAL_ACCOUNT_NOT_FOUND
+    // instead. No account is deleted either way - a wrong password is a
+    // refusal, and that is asserted too.
+    //
+    // What this no longer proves: anything about `account.issuer`. The
+    // column is written here only to satisfy its NOT NULL constraint (see
+    // CREDENTIAL_ACCOUNT_ISSUER). Release B removes both.
     await env.DB.prepare(
       'insert into account (id, issuer, account_id, provider_id, user_id, password, updated_at) values (?, ?, ?, ?, ?, ?, ?)',
     )
