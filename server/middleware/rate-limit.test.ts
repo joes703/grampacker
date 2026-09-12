@@ -81,18 +81,31 @@ function authPost(path: string, body: unknown, ip: string) {
 // under /sign-in/*, which is exactly why it needs an explicit rule - and its
 // own bucket, not SIGN_IN's.
 //
+// A GET, because that is what the endpoint IS and what the real client sends
+// (@better-auth/passkey client.mjs). Posting to it would still be metered - the
+// limiter charges before dispatch - but it would 404 at the router, so the test
+// would be measuring the limiter against a request the app never receives.
+//
 // ONE request, i.e. HALF a ceremony: the client follows this with a
-// verify-authentication POST, which is metered against the same bucket. Tests
-// that count ceremonies rather than requests use signInCeremony below.
+// verify-authentication POST, metered against the same bucket. Tests that count
+// ceremonies rather than requests use signInCeremony below.
 function signIn(ip: string) {
-  return authPost('/api/auth/passkey/generate-authenticate-options', {}, ip)
+  return app.request(
+    '/api/auth/passkey/generate-authenticate-options',
+    { headers: { Origin: ORIGIN, 'cf-connecting-ip': ip } },
+    env,
+  )
 }
 
-// A full ceremony's worth of traffic: options, then verification. The
-// verification 4xxs on a fabricated assertion, which is fine - the limiter
-// counts every request regardless of outcome, and a FAILED ceremony is exactly
-// what this file needs to be able to simulate.
-async function signInCeremony(ip: string): Promise<Response[]> {
+// A full ceremony's worth of traffic: options, then verification.
+//
+// The verification half fails - no signed challenge cookie is forwarded, so the
+// plugin refuses before it ever checks an assertion. That is the POINT: this
+// helper simulates a FAILED ceremony, which is precisely the shape that locked
+// the owner out. The limiter charges before dispatch, so a refused request costs
+// budget exactly like a successful one, and the tests below prove that on the
+// bucket row rather than inferring it from a status code.
+async function signInCeremony(ip: string): Promise<[Response, Response]> {
   const options = await signIn(ip)
   const verify = await authPost(
     '/api/auth/passkey/verify-authentication',
@@ -100,6 +113,17 @@ async function signInCeremony(ip: string): Promise<Response[]> {
     ip,
   )
   return [options, verify]
+}
+
+// The passkey bucket's current count for an IP, or 0 if untouched. Several
+// tests below assert on this directly: "did not 429" is NOT the same claim as
+// "was charged", and conflating them is how a test keeps passing after the
+// thing it guards stops being metered at all.
+async function passkeyBucketCount(ip: string): Promise<number> {
+  const row = await env.DB.prepare('select count from rate_limits where key = ?')
+    .bind(`passkey-sign-in:${ip}`)
+    .first<{ count: number }>()
+  return row?.count ?? 0
 }
 
 function sendMagicLink(ip: string, email: string) {
@@ -135,9 +159,17 @@ describe('auth rate limiting', () => {
     const ip = '203.0.113.61'
     for (let attempt = 0; attempt < 10; attempt++) {
       const [options, verify] = await signInCeremony(ip)
-      expect(options!.status, `attempt ${attempt} options`).not.toBe(429)
-      expect(verify!.status, `attempt ${attempt} verify`).not.toBe(429)
+      // The options GET must actually WORK, not merely dodge a 429. A 404 or a
+      // 500 is not a 429 either, and this file has already been burned once by
+      // a test that accepted one (see the body-intact regression below).
+      expect(options.status, `attempt ${attempt} options`).toBe(200)
+      expect(verify.status, `attempt ${attempt} verify`).not.toBe(429)
     }
+    // BOTH halves were charged. Without this the test would still pass if
+    // verify-authentication stopped being metered, or moved to a bucket of its
+    // own - which would silently re-open the gap this budget exists to close,
+    // since the ceremony's cost is the whole reason 10 requests was 5 attempts.
+    expect(await passkeyBucketCount(ip)).toBe(20)
   })
 
   // The other half of the same story: abandoning the browser's passkey picker
@@ -147,12 +179,18 @@ describe('auth rate limiting', () => {
   it('abandoned ceremonies are metered but leave room to recover', async () => {
     const ip = '203.0.113.62'
     for (let i = 0; i < 15; i++) {
-      expect((await signIn(ip)).status, `abandon ${i}`).not.toBe(429)
+      expect((await signIn(ip)).status, `abandon ${i}`).toBe(200)
     }
-    // Half the budget spent on abandoned attempts still leaves a full ceremony.
+    // METERED is half the claim in this test's name, so assert it: an abandoned
+    // ceremony costs budget because the challenge row was already written.
+    expect(await passkeyBucketCount(ip)).toBe(15)
+
+    // ...and LEAVE ROOM is the other half. Half the budget spent on abandoned
+    // attempts still leaves a full ceremony.
     const [options, verify] = await signInCeremony(ip)
-    expect(options!.status).not.toBe(429)
-    expect(verify!.status).not.toBe(429)
+    expect(options.status).toBe(200)
+    expect(verify.status).not.toBe(429)
+    expect(await passkeyBucketCount(ip)).toBe(17)
   })
 
   // The budget is passkey-specific: burning it must not take the magic-link
@@ -163,8 +201,13 @@ describe('auth rate limiting', () => {
     for (let i = 0; i <= PASSKEY_SIGN_IN_LIMIT; i++) await signIn(ip)
     expect((await signIn(ip)).status).toBe(429)
 
-    const recovery = await sendMagicLink(ip, 'locked-out@example.com')
-    expect(recovery.status).not.toBe(429)
+    // 200 AND the mail actually went out. `not.toBe(429)` would accept a 400 or
+    // a 500 as "recovery works", which is the exact false positive documented
+    // in the body-intact test below - recovery that errors is not recovery.
+    const email = 'locked-out@example.com'
+    const recovery = await sendMagicLink(ip, email)
+    expect(recovery.status).toBe(200)
+    expect(lastEmailTo(email)).toBeDefined()
   })
 
   it('delete-user gets its own tighter sensitive budget with Retry-After', async () => {
@@ -771,18 +814,123 @@ describe('auth rate limiting', () => {
         { headers: { 'cf-connecting-ip': ip } },
         env,
       )
+    const start = await env.DB.prepare(
+      'select count(*) as n from verification',
+    ).first<{ n: number }>()
     for (let i = 0; i < PASSKEY_SIGN_IN_LIMIT; i++) {
-      expect((await challenge()).status).not.toBe(429)
+      expect((await challenge()).status).toBe(200)
     }
     const before = await env.DB.prepare(
       'select count(*) as n from verification',
     ).first<{ n: number }>()
+    // The allowed calls really DID write challenge rows. Without this the
+    // before/after comparison below could hold at zero-equals-zero and prove
+    // nothing at all - it would pass just as happily if the endpoint had
+    // stopped writing rows, or stopped working. (Pre-existing hole, found by
+    // review 2026-09-12, not introduced by the budget split.)
+    expect(before!.n).toBeGreaterThan(start!.n)
+
     const blocked = await challenge()
     expect(blocked.status).toBe(429)
     const after = await env.DB.prepare(
       'select count(*) as n from verification',
     ).first<{ n: number }>()
     expect(after?.n).toBe(before?.n)
+  })
+
+  // The sweep is garbage collection, so it must never cost a user their
+  // sign-in. Proven by breaking it: a binding whose `verification` deletes
+  // reject, with every other statement real. The request must still succeed.
+  //
+  // The asymmetry with the CHARGE is deliberate and worth a test of its own -
+  // a charge that threw and was swallowed would be a limiter bypass, while a
+  // sweep that throws has merely skipped rows that were already expired and
+  // inert. auth-error-logging.test.ts caught the first version of this sweep
+  // taking a whole request down with it.
+  it('a failing sweep does not fail the request it rode in on', async () => {
+    const ip = '203.0.113.65'
+    const bindTo = (t: object, p: string | symbol, r: unknown) => {
+      const v = Reflect.get(t, p, r)
+      return typeof v === 'function' ? v.bind(t) : v
+    }
+    const brokenSweep = new Proxy(env.DB, {
+      get(db, prop) {
+        if (prop !== 'prepare') return bindTo(db, prop, db)
+        return (query: string) => {
+          const stmt = db.prepare(query)
+          if (!/^\s*delete\s+from\s+"?verification"?/i.test(query)) return stmt
+          return new Proxy(stmt, {
+            get(st, sProp) {
+              if (sProp !== 'bind') return bindTo(st, sProp, st)
+              return () => {
+                throw new Error('D1_ERROR: sweep is down')
+              }
+            },
+          })
+        }
+      },
+    })
+
+    // Roll the window so the sweep actually fires on the next request.
+    await signIn(ip)
+    await env.DB.prepare(
+      'update rate_limits set window_start = window_start - ? where key = ?',
+    )
+      .bind(24 * 60 * 60 * 1000 + 1000, `passkey-sign-in:${ip}`)
+      .run()
+
+    const res = await app.request(
+      '/api/auth/passkey/generate-authenticate-options',
+      { headers: { Origin: ORIGIN, 'cf-connecting-ip': ip } },
+      { ...env, DB: brokenSweep },
+    )
+    expect(res.status).toBe(200)
+    // And it was still METERED: failing open on the sweep must not fail open
+    // on the charge.
+    expect(await passkeyBucketCount(ip)).toBe(1)
+  })
+
+  // The other end of the same table. Nothing else sweeps `verification`:
+  // better-auth's cleanup lives in findVerificationValue, and every flow this
+  // app runs consumes through consumeVerificationValue instead, which deletes
+  // only the row it was handed. An ABANDONED passkey challenge therefore
+  // expires in five minutes and then lives forever - a leak the raised passkey
+  // budget would otherwise accelerate sixfold. charge() sweeps it on the same
+  // new-window trigger it already uses for rate_limits.
+  it('a new window also sweeps verification rows that have expired', async () => {
+    const ip = '203.0.113.64'
+    // An abandoned challenge: options written, never consumed.
+    expect((await signIn(ip)).status).toBe(200)
+    const stranded = await env.DB.prepare(
+      'select count(*) as n from verification',
+    ).first<{ n: number }>()
+    expect(stranded!.n).toBeGreaterThan(0)
+
+    // Age every row past its expiry rather than waiting five minutes.
+    await env.DB.prepare('update verification set expires_at = ?')
+      .bind(Date.now() - 60_000)
+      .run()
+
+    // Force a NEW window on some bucket, which is what triggers the sweep.
+    await env.DB.prepare(
+      'update rate_limits set window_start = window_start - ? where key = ?',
+    )
+      .bind(24 * 60 * 60 * 1000 + 1000, `passkey-sign-in:${ip}`)
+      .run()
+    expect((await signIn(ip)).status).toBe(200)
+
+    // The expired rows are gone - but the challenge that request just wrote is
+    // NOT, so the sweep is bounded by expiry rather than clearing the table.
+    const live = await env.DB.prepare(
+      'select count(*) as n from verification where expires_at < ?',
+    )
+      .bind(Date.now())
+      .first<{ n: number }>()
+    expect(live!.n).toBe(0)
+    const remaining = await env.DB.prepare(
+      'select count(*) as n from verification',
+    ).first<{ n: number }>()
+    expect(remaining!.n).toBeGreaterThan(0)
   })
 
   it('allowlisted read-only GETs are never limited', async () => {

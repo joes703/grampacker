@@ -1,7 +1,7 @@
 import { createMiddleware } from 'hono/factory'
 import { eq, lt, sql } from 'drizzle-orm'
 import { createDb } from '../db'
-import { rateLimits } from '../db/schema'
+import { rateLimits, verification } from '../db/schema'
 import { rateLimitIpKey } from './client-ip'
 
 type Rule = { scope: string; limit: number; windowMs: number }
@@ -63,10 +63,23 @@ const AUTH_DEFAULT: Rule = { scope: 'auth', limit: 30, windowMs: 10 * MINUTE }
 // few-attempts-then-lockout shape that protects a password buys nothing and
 // costs the owner their own front door.
 //
-// 30 per 5 minutes = 15 full ceremonies, triple the requests at six times the
-// rate, and - because the window is half as long - half the lockout if someone
-// does trip it. A shorter window is the better lever: it caps a single burst
-// LOWER than 60-per-10-minutes would while letting a stuck human retry sooner.
+// 30 per 5 minutes = 15 full ceremonies. Stated precisely, because "looser" is
+// exactly the word that should not be left vague in a security control:
+//
+//   - Sustained rate rises SIX times (30/5min vs 10/10min).
+//   - Worst-case BURST rises about three times. Fixed windows have a boundary:
+//     a bucket's whole limit immediately before expiry plus a whole limit after
+//     is ~59 accepted requests close together, against ~19 before. Still well
+//     under the ~119 that 60-per-10-minutes would allow - which is why the
+//     window shortened rather than the ceiling doubling.
+//   - It halves the MAXIMUM REMAINING WINDOW after a rejection (up to five
+//     minutes rather than up to ten), not the wait itself: the window started
+//     on the bucket's first request, so a rejected caller may be seconds from
+//     the reset or a full window away from it.
+//
+// The cost this rate actually buys is bounded elsewhere, not hand-waved: the
+// `verification` rows these challenges write are swept in charge() below,
+// because nothing else sweeps them. Read that comment before raising this.
 const PASSKEY_SIGN_IN: Rule = {
   scope: 'passkey-sign-in',
   limit: 30,
@@ -306,6 +319,44 @@ async function charge(
   // the table small, while an index would tax every upsert.
   if (row.count === 1) {
     await db.delete(rateLimits).where(lt(rateLimits.windowStart, now - MAX_WINDOW_MS))
+    // ...and expired `verification` rows, on the same trigger, because NOTHING
+    // ELSE DOES. better-auth sweeps them inside findVerificationValue, but
+    // every flow this app runs consumes tokens through consumeVerificationValue
+    // instead (passkey index.mjs:343,459; magic-link index.mjs:156), which
+    // deletes only the row it was handed. So an ABANDONED challenge - the user
+    // who opens the passkey picker and cancels - leaves a row that expires in
+    // five minutes and then lives forever.
+    //
+    // That leak predates this sweep, but the passkey budget (30/5min, raised
+    // from an effective 10/10min on 2026-09-12) raises its ceiling sixfold, to
+    // ~8,640 rows/day/IP of anonymous GET traffic. Accelerating an unbounded
+    // path without bounding it is not a trade worth making, so it is bounded
+    // here rather than written down as accepted risk.
+    //
+    // Safe to delete early: a row past expiresAt is already dead. better-auth's
+    // own consume treats expired rows as invalid - it deletes the row and
+    // returns null - so removing them ahead of time changes no outcome. This
+    // runs on the same rare trigger as the sweep above, so it costs one extra
+    // statement per new window, not one per request.
+    //
+    // FAILS OPEN, and the asymmetry with the charge above is the whole point.
+    // The charge must fail CLOSED - if it throws, the request dies rather than
+    // passing unmetered, because a swallowed charge is a limiter bypass. This
+    // is opportunistic garbage collection: the rows it misses are already
+    // expired and therefore already inert, and the next bucket to roll a window
+    // sweeps them instead. Letting a D1 hiccup here turn into a failed SIGN-IN
+    // would be trading the thing users need for the thing the table needs.
+    // (Caught by the sabotage suite: auth-error-logging.test.ts dooms every
+    // non-limiter statement, and an unguarded sweep took the whole request down
+    // with it.)
+    try {
+      await db.delete(verification).where(lt(verification.expiresAt, new Date(now)))
+    } catch {
+      // Deliberately swallowed - see above. Not logged: this runs on the auth
+      // hot path, and a D1 outage would otherwise write one entry per new
+      // window through the incident budget, crowding out the failure that
+      // actually matters.
+    }
   }
 
   if (row.count > rule.limit) {

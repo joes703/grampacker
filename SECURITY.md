@@ -121,7 +121,13 @@ coverage in `server/routes/me.test.ts`):
   that creates a user and mints a session). Budgets: passkey sign-in
   30/5min, sign-in 10/10min, magic-link verify 10/10min, delete-user
   5/10min, default 30/10min. Single atomic upsert (no lost updates under
-  concurrency - proven by a 20-way burst test), 429 + Retry-After.
+  concurrency - proven by a 60-way burst test), 429 + Retry-After. The same
+  new-window trigger that sweeps `rate_limits` also sweeps EXPIRED
+  `verification` rows: nothing else does. better-auth's own cleanup lives in
+  `findVerificationValue`, and every flow here consumes through
+  `consumeVerificationValue`, which deletes only the row it was handed - so an
+  abandoned passkey challenge would otherwise expire in five minutes and then
+  persist forever.
 - **The passkey ceremony has its own budget, deliberately looser than
   `sign-in`.** It shared `sign-in` (10/10min) until 2026-09-12, when the
   app owner was locked out of production by it. One ceremony costs TWO
@@ -131,12 +137,28 @@ coverage in `server/routes/me.test.ts`):
   times. Sizing it like a password bucket was the error: a WebAuthn
   assertion needs the private key in the authenticator, so there is no
   secret to brute force and few-attempts-then-lockout buys nothing. What
-  the budget actually bounds is write amplification -
-  `generate-authenticate-options` is an anonymous GET that writes a
-  `verification` row - and 30/5min bounds that just as hard while
-  leaving 15 ceremonies. The shorter window also halves the lockout.
-  `server/middleware/rate-limit.test.ts` pins ten fumbled attempts as
-  something that must never 429.
+  the budget actually bounds is resource cost, and that cost is stated
+  honestly rather than waved at:
+  - `generate-authenticate-options` is an anonymous GET that writes a
+    `verification` row. Sustained challenge creation rises SIXFOLD
+    (~1,440 to ~8,640 rows/day/IP). Expiry does not bound retention, so
+    the limiter now sweeps expired rows (above). That sweep, not the
+    budget, is what makes the increase safe.
+  - Successful verification mints a session and never revokes the
+    previous one, and there is no concurrent-session cap. Sustained
+    minting rises from ~30 to ~180/hour/IP. Each one still requires a
+    valid assertion AND user verification, so this is not anonymous
+    session minting.
+  - Worst-case BURST, counting the fixed-window boundary (a window's
+    limit immediately before expiry plus a full limit after): ~59
+    accepted requests close together, against ~19 before. Lower than the
+    ~119 that 60/10min would allow, which is why the window shortened
+    instead of the ceiling doubling.
+  The shorter window halves the MAXIMUM REMAINING WINDOW after a
+  rejection - up to five minutes rather than up to ten, not a guaranteed
+  five-minute wait. `server/middleware/rate-limit.test.ts` pins ten
+  fumbled attempts as something that must never 429, and asserts both
+  halves of the ceremony are charged.
 - **Requesting a magic link is charged to THREE buckets**, because no
   single key stops all three abuses. All are charged on every send and
   any one can 429: a **global** cap (90/day), a **per-IP** cap
