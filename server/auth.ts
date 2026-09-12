@@ -9,7 +9,6 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { magicLink } from 'better-auth/plugins/magic-link'
 import { passkey } from '@better-auth/passkey'
 import { createDb } from './db'
-import * as authRuntimeSchema from './db/auth-runtime-schema'
 import { createEmailSender } from './email'
 import { authLogger } from './middleware/error-handler'
 import { chargeMagicLinkGlobalQuota } from './middleware/rate-limit'
@@ -73,19 +72,7 @@ export function authOptions(env: Env, incident?: AuthIncident) {
   const email = createEmailSender(env)
 
   return {
-    // `schema` pins the model better-auth sees to the issuer-free one
-    // (server/db/auth-runtime-schema.ts), which is what lets 1.7.4's
-    // schema validator pass while migration 0028's `account.issuer` column
-    // is still physically present. Without it the adapter falls back to the
-    // drizzle instance's own schema - `config.schema || db._.fullSchema` -
-    // and every /api/auth/* request fails the pre-dispatch check with
-    // `unexpected-required-column: account.issuer`. Release B regenerates
-    // auth-schema.ts issuer-free, drops the column, and removes this option
-    // along with the file. Read that file's header before touching this.
-    database: drizzleAdapter(db, {
-      provider: 'sqlite' as const,
-      schema: authRuntimeSchema,
-    }),
+    database: drizzleAdapter(db, { provider: 'sqlite' as const }),
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
     basePath: '/api/auth',

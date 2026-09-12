@@ -204,6 +204,13 @@
       "when": 1788502924045,
       "tag": "0028_better_auth_1_7_account_issuer",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1789212482751,
+      "tag": "0029_better_auth_1_7_4_drop_account_issuer",
+      "breakpoints": true
     }
   ]
 }

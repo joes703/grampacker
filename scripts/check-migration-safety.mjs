@@ -84,7 +84,7 @@
 // shipping. Declare it in CONTRACT_MIGRATIONS: the gate then matches the SQL
 // against the declaration statement by statement, refuses a cascade parent by
 // reading incoming foreign keys off the live schema, and refuses a column that
-// server/db/app-schema.ts or a raw sql`` fragment still names. It CANNOT prove
+// server/db/{app,auth}-schema.ts or a raw sql`` fragment still names. It CANNOT prove
 // the earlier release reached production - that part is attested, not checked.
 //
 // DROPPED_TABLES, DROPPED_COLUMNS, DROPPED_SCHEMA_OBJECTS and
@@ -208,10 +208,14 @@ const FIXTURES = [
   }],
   ['account', {
     id: 'acct-seed',
-    // Added by 0028 (better-auth 1.7), which requires `account` to be EMPTY
-    // when it runs (REQUIRE_EMPTY_TABLE), so 0028's own pass does not seed
-    // this row at all. Every later pass does, and this is the namespace 1.7
-    // stores for a credential account (createLocalAccountIssuer).
+    // Added by 0028 (better-auth 1.7) and REMOVED again by 0029, because 1.7.3
+    // reverted the column upstream. It is kept here because the fixture is
+    // seeded per migration against the LIVE schema at that point: passes
+    // between 0028 and 0029 need this column (it is NOT NULL there), and
+    // passes from 0029 onward drop it automatically, since `seed` filters to
+    // the columns the table actually has. 0028's own pass seeds no `account`
+    // row at all - it requires the table EMPTY (REQUIRE_EMPTY_TABLE).
+    // Delete this only when 0028 itself leaves the replay.
     issuer: 'local:credential',
     account_id: 'acct-seed-provider-id',
     provider_id: 'credential',
@@ -1094,7 +1098,7 @@ const quoteValue = (value) => {
 // BE a removal (so nothing additive can introduce a cascade the parent check
 // cannot see), refuses a cascade parent by reading incoming foreign keys off
 // the schema rather than trusting a flag, and refuses a column that
-// app-schema.ts or a raw sql`` fragment still names.
+// app-schema.ts, auth-schema.ts or a raw sql`` fragment still names.
 //
 // It CANNOT see what is deployed, so `readsRemovedIn` is a human attestation
 // and a green run is not evidence the earlier release shipped. The column scans
@@ -2133,7 +2137,8 @@ const verifyBaselineIntact = () => {
 //
 // WHAT THIS GATE PROVES, AND WHAT IT MERELY RECORDS. It proves the migration
 // removes exactly the objects declared here and nothing else, and for a column
-// it proves the name is gone from server/db/app-schema.ts. It CANNOT prove the
+// it proves the name is gone from BOTH halves of the Drizzle model
+// (server/db/app-schema.ts and the generated auth-schema.ts). It CANNOT prove the
 // previous release reached production - CI has no view of what is deployed.
 // `readsRemovedIn` is a human attestation of that, and a green check is not
 // evidence for it. Say so out loud rather than letting the green imply it.
@@ -2159,6 +2164,22 @@ const CONTRACT_MIGRATIONS = new Map([
         // ON DELETE CASCADE references off the live schema immediately before
         // the drop and refuses a cascade parent outright.
         { kind: 'table', name: '_food_rank_repair' },
+      ],
+    },
+  ],
+  [
+    '0029_better_auth_1_7_4_drop_account_issuer.sql',
+    {
+      // Attested, NOT proven. #241 stopped better-auth reading the column by
+      // handing its adapter an issuer-free model; it merged 03:44Z and its
+      // Deploy run went green 03:54Z on 2026-09-12. A green run here says this
+      // migration matches the declaration below, nothing about that deploy.
+      readsRemovedIn: '#241 (deployed 2026-09-12 03:54Z)',
+      objects: [
+        // The index is ON the column, so it must come out first or SQLite
+        // refuses the drop.
+        { kind: 'index', name: 'account_issuer_accountId_uidx' },
+        { kind: 'column', table: 'account', name: 'issuer' },
       ],
     },
   ],
@@ -2275,7 +2296,21 @@ const assertColumnUnreferenced = (table, column, migration) => {
     )
   }
 
-  const schema = readFileSync('server/db/app-schema.ts', 'utf8')
+  // BOTH halves of the Drizzle model, not just the app's own tables.
+  //
+  // This read app-schema.ts alone until 2026-09-12, which left auth-schema.ts -
+  // the CLI-GENERATED half holding user/session/account/verification/passkey -
+  // entirely unscanned. So a contract migration dropping an AUTH column while
+  // the generated model still declared it would have passed green, and drizzle
+  // would have gone on selecting a column that no longer exists. 0029 drops
+  // `account.issuer` and is exactly that shape; the hole was found reviewing
+  // the plan for it, before it could be walked into.
+  //
+  // The raw-SQL scan above already walked all of server/, so it was only this
+  // second line that was narrow. Generated or not makes no difference to what
+  // drizzle emits at runtime - the fix is to regenerate the schema in the same
+  // migration, which is what the error says.
+  const SCHEMA_FILES = ['server/db/app-schema.ts', 'server/db/auth-schema.ts']
   // Drizzle names the SQL column in a string literal - `integer('needed')` -
   // so the quoted spelling is what a surviving reference looks like. The
   // camelCase property cannot be searched for reliably; it is the SQL name
@@ -2285,11 +2320,16 @@ const assertColumnUnreferenced = (table, column, migration) => {
   // column name anywhere in the file, so dropping `lists.name` would trip on
   // `gear_items.name` too. Over-blocking, loud, at author time.
   const quoted = new RegExp(`['"\`]${column}['"\`]`)
-  if (quoted.test(schema)) {
+  const stillNamed = SCHEMA_FILES.filter((file) =>
+    quoted.test(readFileSync(file, 'utf8')),
+  )
+  if (stillNamed.length > 0) {
     throw new Error(
-      `${migration} drops ${table}.${column}, but server/db/app-schema.ts still ` +
-        'names that column. Remove it from the schema in the same migration, or ' +
-        'drizzle will keep selecting a column that no longer exists.',
+      `${migration} drops ${table}.${column}, but ${stillNamed.join(' and ')} ` +
+        'still names that column. Remove it from the schema in the same ' +
+        'migration, or drizzle will keep selecting a column that no longer ' +
+        'exists. auth-schema.ts is CLI-generated: regenerate it with ' +
+        '`npx auth@<version> generate` rather than hand-editing.',
     )
   }
 }
@@ -2391,12 +2431,23 @@ const gateNewMigrations = () => {
       )
     }
 
-    const declared = contract.objects.map((o) =>
-      o.kind === 'column' ? `column:${o.table}.${o.name}` : `${o.kind}:${o.name}`,
-    )
-    const actual = removals.map((r) =>
-      r.kind === 'column' ? `column:${r.table}.${r.name}` : `${r.kind}:${r.name}`,
-    )
+    // Compared case-INSENSITIVELY, because SQLite identifiers are: `DROP INDEX
+    // account_issuer_accountId_uidx` and `..._accountid_uidx` name the same
+    // object. describeRemoval lowercases what it parses out of the SQL, so
+    // without lowercasing the declaration too, an object whose real name
+    // carries any uppercase could not be declared AT ALL - the two sides would
+    // disagree no matter what was written. That went unnoticed until 0029,
+    // because every object declared before it was lowercase throughout.
+    //
+    // Only the COMPARISON is folded. The messages below print the declaration
+    // and the SQL as written, so a reviewer sees the real names.
+    const label = (o) =>
+      (o.kind === 'column'
+        ? `column:${o.table}.${o.name}`
+        : `${o.kind}:${o.name}`
+      ).toLowerCase()
+    const declared = contract.objects.map(label)
+    const actual = removals.map(label)
     // Multiset, not set membership. `includes` matched two identical
     // `DROP ... IF EXISTS` statements against a single declaration, so a
     // repeated removal looked declared.
@@ -2775,6 +2826,57 @@ const selfTestDdlGate = () => {
     throw new Error(
       'The destructive-DDL classifier is broken - its own regression cases ' +
         `fail:\n${failures.map((f) => `  - ${f}`).join('\n')}`,
+    )
+  }
+}
+
+// The schema scan behind assertColumnUnreferenced, run against the REAL files
+// rather than fixtures - the thing that broke was WHICH files it read, and a
+// fixture would have proved the regex works while leaving that wrong.
+//
+// It read app-schema.ts alone until 2026-09-12, so a contract migration
+// dropping an auth column while the generated auth-schema.ts still declared it
+// passed green. 0029 drops `account.issuer` and is exactly that shape.
+const selfTestColumnScan = () => {
+  const failures = []
+  // Each case: a column that really exists in the named half of the model, and
+  // nowhere in the other. Dropping one while the schema still declares it must
+  // be refused, and the message must name the file that still has it.
+  for (const [table, column, expectedFile] of [
+    ['passkey', 'aaguid', 'server/db/auth-schema.ts'],
+    ['account', 'provider_id', 'server/db/auth-schema.ts'],
+    ['lists', 'is_shared', 'server/db/app-schema.ts'],
+  ]) {
+    let message = null
+    try {
+      assertColumnUnreferenced(table, column, 'self-test')
+    } catch (error) {
+      message = error.message
+    }
+    if (message === null) {
+      failures.push(
+        `did not refuse a drop of ${table}.${column}, which ${expectedFile} ` +
+          'still declares',
+      )
+      continue
+    }
+    if (!message.includes(expectedFile)) {
+      failures.push(
+        `refused ${table}.${column} but did not name ${expectedFile}: ${message}`,
+      )
+    }
+  }
+  // ...and a column in neither half must pass, or the check is just a wall.
+  try {
+    assertColumnUnreferenced('account', 'column_that_does_not_exist_anywhere', 'self-test')
+  } catch (error) {
+    failures.push(`false positive on an absent column: ${error.message}`)
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      'The surviving-column scan is broken - it must read BOTH halves of the ' +
+        `Drizzle model:\n${failures.map((f) => `  - ${f}`).join('\n')}`,
     )
   }
 }
@@ -4357,6 +4459,7 @@ const main = () => {
   // classifier still works, prove the baseline is still the baseline, then hold
   // every post-baseline migration to the gate.
   selfTestDdlGate()
+  selfTestColumnScan()
   selfTestExpectedValues()
   selfTestConstraintCompare()
   selfTestConfigRebase()
