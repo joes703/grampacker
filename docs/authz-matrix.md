@@ -63,10 +63,15 @@ Cross-cutting, tested in `server/middleware/csrf.test.ts`:
 Rate limiting, tested in `server/middleware/rate-limit.test.ts`:
 
 - `/api/auth/*` is limited per client IP (`CF-Connecting-IP`), fixed
-  windows in the `rate_limits` table: sign-in 10/10min (which now means the
-  passkey ceremony - it does NOT live under `/sign-in/*`, so it is matched by
-  path, not by prefix), magic-link verify 10/10min, delete-user 5/10min,
-  everything else 30/10min. Over budget -> 429 + `Retry-After`.
+  windows in the `rate_limits` table: passkey sign-in 30/5min, sign-in
+  10/10min, magic-link verify 10/10min, delete-user 5/10min, everything else
+  30/10min. Over budget -> 429 + `Retry-After`.
+- The passkey ceremony is metered on its OWN bucket (`passkey-sign-in`),
+  matched by exact path - it does not live under `/sign-in/*`, so a prefix
+  would miss it. Looser than `sign-in` on purpose: one ceremony is TWO
+  requests, an abandoned one still costs a request, and there is no
+  credential here to guess. It shared `sign-in` until 2026-09-12 and locked
+  the owner out of production; SECURITY.md has the reasoning.
 - **Magic-link send is charged to THREE buckets** - global (90/day), per-IP
   (10/10min), per-address (5/hour) - because no single key stops all three
   abuses:

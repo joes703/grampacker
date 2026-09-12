@@ -1,7 +1,7 @@
 import { createMiddleware } from 'hono/factory'
 import { eq, lt, sql } from 'drizzle-orm'
 import { createDb } from '../db'
-import { rateLimits } from '../db/schema'
+import { rateLimits, verification } from '../db/schema'
 import { rateLimitIpKey } from './client-ip'
 
 type Rule = { scope: string; limit: number; windowMs: number }
@@ -29,6 +29,62 @@ const DAY = 24 * 60 * MINUTE
 // covered here, by hand, or not at all.
 const SIGN_IN: Rule = { scope: 'sign-in', limit: 10, windowMs: 10 * MINUTE }
 const AUTH_DEFAULT: Rule = { scope: 'auth', limit: 30, windowMs: 10 * MINUTE }
+
+// The passkey SIGN-IN ceremony, on its own budget rather than SIGN_IN's.
+//
+// It used to share SIGN_IN (10 per 10 minutes) on the reasoning that the front
+// door deserves the tight bucket. That reasoning imported a PASSWORD threat
+// model into a flow that has no password in it, and nobody did the arithmetic:
+//
+//   - One ceremony costs TWO requests, not one. The client calls
+//     generate-authenticate-options, the browser prompts, then it calls
+//     verify-authentication. Both are metered, so 10 requests was FIVE
+//     attempts.
+//   - A ceremony the user ABANDONS still costs one. Cancelling the browser's
+//     passkey picker - or picking the wrong credential and backing out - burns
+//     budget without ever reaching verification.
+//
+// So the real budget was roughly five to ten fumbles before a ten-minute
+// lockout, and a user with several passkeys hits that just by choosing wrong a
+// few times. That is exactly what happened to the app owner on 2026-09-12, on
+// production, and it is a bad trade: we were rationing the one action a
+// legitimate user has a genuine reason to repeat.
+//
+// What this bucket actually defends, now that it is named honestly:
+//
+//   - generate-authenticate-options WRITES a challenge row to `verification`
+//     and takes no session, so unmetered it is an anonymous write amplifier.
+//     That is the real cost, and it is what the limit is sized against.
+//   - verify-authentication burns a signature verification on failure.
+//
+// What it does NOT defend, and must not be sized as if it did: credential
+// guessing. A WebAuthn assertion requires the private key in the
+// authenticator. There is no secret here to brute force, so the
+// few-attempts-then-lockout shape that protects a password buys nothing and
+// costs the owner their own front door.
+//
+// 30 per 5 minutes = 15 full ceremonies. Stated precisely, because "looser" is
+// exactly the word that should not be left vague in a security control:
+//
+//   - Sustained rate rises SIX times (30/5min vs 10/10min).
+//   - Worst-case BURST rises about three times. Fixed windows have a boundary:
+//     a bucket's whole limit immediately before expiry plus a whole limit after
+//     is ~59 accepted requests close together, against ~19 before. Still well
+//     under the ~119 that 60-per-10-minutes would allow - which is why the
+//     window shortened rather than the ceiling doubling.
+//   - It halves the MAXIMUM REMAINING WINDOW after a rejection (up to five
+//     minutes rather than up to ten), not the wait itself: the window started
+//     on the bucket's first request, so a rejected caller may be seconds from
+//     the reset or a full window away from it.
+//
+// The cost this rate actually buys is bounded elsewhere, not hand-waved: the
+// `verification` rows these challenges write are swept in charge() below,
+// because nothing else sweeps them. Read that comment before raising this.
+const PASSKEY_SIGN_IN: Rule = {
+  scope: 'passkey-sign-in',
+  limit: 30,
+  windowMs: 5 * MINUTE,
+}
 
 // Requesting a magic link is the single most abusable endpoint in a passwordless
 // app: it is unauthenticated, it sends mail on demand, and the mail it sends
@@ -106,11 +162,11 @@ const MAX_WINDOW_MS = DAY
 
 const MAGIC_LINK_SEND_PATH = '/api/auth/sign-in/magic-link'
 
-// The passkey SIGN-IN ceremony. Anonymous by definition, and now the primary
-// way into the app, so it gets the sign-in budget rather than the generic one.
-// Note these do not live under /sign-in/* - the plugin mounts them under
-// /passkey/*, so a path prefix alone would miss them and quietly leave the main
-// front door on the loosest bucket in the app.
+// The two requests one passkey sign-in ceremony makes. Note they do not live
+// under /sign-in/* - the plugin mounts them under /passkey/*, so a path prefix
+// alone would miss them and quietly leave the main front door on the loosest
+// bucket in the app. Both are metered: exempting the first would make an
+// anonymous endpoint that writes a DB row free to call.
 const PASSKEY_SIGN_IN_PATHS = new Set([
   '/api/auth/passkey/generate-authenticate-options',
   '/api/auth/passkey/verify-authentication',
@@ -120,7 +176,7 @@ function ruleFor(path: string): Rule {
   if (path === MAGIC_LINK_SEND_PATH) return MAGIC_LINK_SEND_IP
   if (path === '/api/auth/magic-link/verify') return MAGIC_LINK_VERIFY
   if (path === '/api/auth/delete-user') return DELETE_USER
-  if (PASSKEY_SIGN_IN_PATHS.has(path)) return SIGN_IN
+  if (PASSKEY_SIGN_IN_PATHS.has(path)) return PASSKEY_SIGN_IN
   // Fail-closed default for anything SIGN-IN SHAPED. This is not here for the
   // dead password endpoints - it is here so that a sign-in route added later
   // lands on the tight bucket automatically rather than silently inheriting the
@@ -263,6 +319,44 @@ async function charge(
   // the table small, while an index would tax every upsert.
   if (row.count === 1) {
     await db.delete(rateLimits).where(lt(rateLimits.windowStart, now - MAX_WINDOW_MS))
+    // ...and expired `verification` rows, on the same trigger, because NOTHING
+    // ELSE DOES. better-auth sweeps them inside findVerificationValue, but
+    // every flow this app runs consumes tokens through consumeVerificationValue
+    // instead (passkey index.mjs:343,459; magic-link index.mjs:156), which
+    // deletes only the row it was handed. So an ABANDONED challenge - the user
+    // who opens the passkey picker and cancels - leaves a row that expires in
+    // five minutes and then lives forever.
+    //
+    // That leak predates this sweep, but the passkey budget (30/5min, raised
+    // from an effective 10/10min on 2026-09-12) raises its ceiling sixfold, to
+    // ~8,640 rows/day/IP of anonymous GET traffic. Accelerating an unbounded
+    // path without bounding it is not a trade worth making, so it is bounded
+    // here rather than written down as accepted risk.
+    //
+    // Safe to delete early: a row past expiresAt is already dead. better-auth's
+    // own consume treats expired rows as invalid - it deletes the row and
+    // returns null - so removing them ahead of time changes no outcome. This
+    // runs on the same rare trigger as the sweep above, so it costs one extra
+    // statement per new window, not one per request.
+    //
+    // FAILS OPEN, and the asymmetry with the charge above is the whole point.
+    // The charge must fail CLOSED - if it throws, the request dies rather than
+    // passing unmetered, because a swallowed charge is a limiter bypass. This
+    // is opportunistic garbage collection: the rows it misses are already
+    // expired and therefore already inert, and the next bucket to roll a window
+    // sweeps them instead. Letting a D1 hiccup here turn into a failed SIGN-IN
+    // would be trading the thing users need for the thing the table needs.
+    // (Caught by the sabotage suite: auth-error-logging.test.ts dooms every
+    // non-limiter statement, and an unguarded sweep took the whole request down
+    // with it.)
+    try {
+      await db.delete(verification).where(lt(verification.expiresAt, new Date(now)))
+    } catch {
+      // Deliberately swallowed - see above. Not logged: this runs on the auth
+      // hot path, and a D1 outage would otherwise write one entry per new
+      // window through the incident budget, crowding out the failure that
+      // actually matters.
+    }
   }
 
   if (row.count > rule.limit) {
