@@ -44,13 +44,31 @@ ships.** For net-new work that usually means once on the plan and once on the
 diff; for a fix-list, once on the diff is enough. The point is an independent
 reader who has to actually follow the reasoning - not a ceremony to perform.
 
-Run it yourself: `codex exec -s read-only "<framing>"`, in the background, and
-report the verdict. **Name the scope in the framing** - the exact commit, or
-`git diff main...HEAD`, or the working tree. Without that, a review of a clean
-feature branch can look at nothing and still answer. Do NOT hand the human a slash command to paste - that
-makes them the transport for work they delegated. (`/codex:adversarial-review`
-is user-invocation-only and cannot be called on their behalf.) Ask for a
-one-line `VERDICT:` so the outcome is unambiguous.
+**Run it through the PLUGIN, not `codex exec`.** Launch the
+`codex:codex-rescue` agent with the framing. That agent is LAUNCH-ONLY: it
+returns a task handle and will refuse to poll or fetch results. To collect the
+review, run the `codex:status` skill with that task id to locate the job state
+file, then poll
+`~/.claude/plugins/data/codex-openai-codex/state/<repo-hash>/jobs/<task-id>.json`
+in a bounded background loop and read `result.rawOutput` out of it. Do NOT tail
+the subagent's JSONL transcript - it will overflow the context window.
+
+(This section prescribed `codex exec -s read-only` until 2026-09-12. Joe asked
+for the plugin surface instead, twice; the direct call is retired. If the
+plugin is genuinely broken, say so and ask - do not quietly fall back to
+`exec`, which is what made this need saying twice.)
+
+**Name the scope in the framing** - the exact commit, or `git diff main...HEAD`,
+or the working tree. Without that, a review of a clean feature branch can look
+at nothing and still answer. Do NOT hand the human a slash command to paste -
+that makes them the transport for work they delegated.
+(`/codex:adversarial-review` is user-invocation-only and cannot be called on
+their behalf.) Ask for a one-line `VERDICT:` so the outcome is unambiguous.
+
+Codex's sandbox is READ-ONLY: it cannot run the build, the suites, or the
+migration harness, and its CI lookups fail. Its review is source-level. Running
+the gates is yours, and saying which of you ran what is part of reporting the
+verdict honestly.
 
 A review is only as good as its framing. Say what changed, say what you think
 is most likely to be wrong, and invite the reviewer to attack that - a prompt
