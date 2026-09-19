@@ -69,15 +69,25 @@ export const PRINT_BODY_TEXT = 'print:text-[10px]'
 // fixed and a scroll gesture is cheap; paper has neither property, and an
 // ellipsized item name on a checklist is silently missing information. Rows
 // wrap instead, which is why the print tier sets no minimum height.
+//
+// `overflow-wrap: anywhere` is the part that is easy to leave out and wrong to
+// leave out: normal wrapping only breaks at existing whitespace, and gear
+// names allow 256 characters, so one unbroken name would run out of its cell
+// and across the quantity rail - visibly, because this same token turns
+// clipping off. Written as an arbitrary property so it does not depend on
+// which Tailwind version named the shorthand.
 export const PRINT_UNTRUNCATE =
-  'print:overflow-visible print:text-clip print:whitespace-normal'
+  'print:overflow-visible print:text-clip print:whitespace-normal print:[overflow-wrap:anywhere]'
 
-// Fragmentation control. Rows stay intact across a page break and a section
-// heading never strands at the foot of a page. Whole SECTIONS are
-// deliberately NOT protected: nested bags are descendants of their parent
-// section, so blanket avoidance asks the browser to keep an entire bag
-// subtree together - which wastes the bottom of pages and has to fail anyway
-// once a group exceeds one page.
+// Fragmentation hints. `break-*-avoid` asks the browser not to split a row
+// across a page and not to strand a section heading at the foot of one. It
+// ASKS: the spec lets a browser relax avoidance to make progress, so neither
+// is a guarantee and neither has been verified against real pagination.
+//
+// Whole SECTIONS are deliberately NOT protected: nested bags are descendants
+// of their parent section, so blanket avoidance would ask the browser to keep
+// an entire bag subtree together - which wastes the bottom of pages and has to
+// fail anyway once a group exceeds one page.
 export const PRINT_KEEP_TOGETHER = 'print:break-inside-avoid'
 export const PRINT_KEEP_WITH_NEXT = 'print:break-after-avoid'
 
@@ -408,7 +418,7 @@ export const TOGGLE_CHIP_OFF = 'border-gray-300 text-gray-600 hover:bg-gray-50'
 // Call sites compose this with `fixed z-50 w-XX` and a body padding
 // (`py-1` for menu-row popovers; `p-2` / `p-3` for embedded-panel popovers
 // like List options).
-// print:hidden is load-bearing and belongs HERE rather than at the 13 call
+// print:hidden is load-bearing and belongs HERE rather than at the 10 render
 // sites: every one of these menus portals to document.body, so hiding the
 // trigger - or any ancestor of it - cannot hide the menu. The surface token
 // is the one thing they all share.

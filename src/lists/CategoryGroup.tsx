@@ -6,6 +6,7 @@ import type { ListItemWithGear } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import type { ListItemPatch } from '../lib/queries'
 import type { WeightUnit } from '../lib/weight'
+import { useIsPrinting } from '../lib/use-is-printing'
 import {
   DESKTOP_ROW_HEIGHT,
   FLAT_TABLE_BODY_TEXT,
@@ -375,7 +376,18 @@ function CategoryGroup({
   // over existing inventory. New gear is created from the Gear page.
   const [adding, setAdding] = useState(false)
   const [localCollapsed, setLocalCollapsed] = useState(false)
-  const collapsed = controlledCollapsed ?? localCollapsed
+  // A collapsed section removes its body from the DOM (see `!collapsed` at the
+  // rows below), so - exactly like pack's row filters - no print stylesheet
+  // can bring those rows back, and the printed sheet would be short of gear
+  // with nothing on the paper to say so. Pack is the worst case: it renders no
+  // collapse control at all, so a section collapsed in List view and carried
+  // into Pack cannot even be reopened.
+  //
+  // Overriding the DERIVED value rather than the stored one leaves both the
+  // local state and any controlled value untouched, so the screen is exactly
+  // as the user left it once the print ends.
+  const isPrinting = useIsPrinting()
+  const collapsed = isPrinting ? false : (controlledCollapsed ?? localCollapsed)
   function toggleCollapsed() {
     const next = !collapsed
     if (onCollapsedChange) onCollapsedChange(next)

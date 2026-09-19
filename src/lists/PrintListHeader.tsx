@@ -26,7 +26,11 @@ export default function PrintListHeader({ name, itemCount }: Props) {
       className="hidden print:block mb-2 border-b border-gray-900 pb-1"
     >
       <div className="flex items-baseline justify-between gap-3">
-        <h1 className="min-w-0 text-[13px] font-semibold text-gray-900">{name}</h1>
+        {/* A list name has no guaranteed whitespace either; see
+            PRINT_UNTRUNCATE. */}
+        <h1 className="min-w-0 text-[13px] font-semibold text-gray-900 [overflow-wrap:anywhere]">
+          {name}
+        </h1>
         <p className={`shrink-0 ${FLAT_TABLE_EYEBROW} print:text-[9px]`}>
           {itemCount} {itemCount === 1 ? 'item' : 'items'}
           {' · '}

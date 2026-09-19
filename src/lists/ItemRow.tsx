@@ -376,14 +376,25 @@ export default function ItemRow({
             Branch on `onUpdate` directly (not the derived `editable` bool) so
             TS narrows the function type inside the truthy branch. */}
         {onUpdate ? (
-          <RowIconButton
-            variant="purpleToggle"
-            active={item.isWorn}
-            onClick={() => onUpdate({ isWorn: !item.isWorn, isConsumable: false })}
-            title={item.isWorn ? 'Worn. Clear worn status.' : 'Mark as worn'}
-            ariaLabel={item.isWorn ? 'Worn. Clear worn status.' : 'Mark as worn'}
-            icon={<Shirt size={14} />}
-          />
+          <>
+            <RowIconButton
+              variant="purpleToggle"
+              active={item.isWorn}
+              onClick={() => onUpdate({ isWorn: !item.isWorn, isConsumable: false })}
+              title={item.isWorn ? 'Worn. Clear worn status.' : 'Mark as worn'}
+              ariaLabel={item.isWorn ? 'Worn. Clear worn status.' : 'Mark as worn'}
+              icon={<Shirt size={14} />}
+            />
+            {/* The toggle above conveys DATA as well as an action - its active
+                state is what says "this item is worn" - and RowIconButton is
+                print:hidden everywhere. Without this the printed editable row
+                silently loses the flag, while the read-only branch below keeps
+                it. Same empty w-6 box when the flag is off, so the column rail
+                stays aligned either way. */}
+            <span className="hidden print:inline-flex shrink-0 w-6 items-center justify-center">
+              {item.isWorn && <WornIcon />}
+            </span>
+          </>
         ) : (
           <span className="shrink-0 w-6 inline-flex items-center justify-center">
             {item.isWorn && <WornIcon />}
@@ -392,14 +403,20 @@ export default function ItemRow({
 
         {/* Consumable (UtensilsCrossed) */}
         {onUpdate ? (
-          <RowIconButton
-            variant="orangeToggle"
-            active={item.isConsumable}
-            onClick={() => onUpdate({ isConsumable: !item.isConsumable, isWorn: false })}
-            title={item.isConsumable ? 'Consumable. Clear consumable status.' : 'Mark as consumable'}
-            ariaLabel={item.isConsumable ? 'Consumable. Clear consumable status.' : 'Mark as consumable'}
-            icon={<UtensilsCrossed size={14} />}
-          />
+          <>
+            <RowIconButton
+              variant="orangeToggle"
+              active={item.isConsumable}
+              onClick={() => onUpdate({ isConsumable: !item.isConsumable, isWorn: false })}
+              title={item.isConsumable ? 'Consumable. Clear consumable status.' : 'Mark as consumable'}
+              ariaLabel={item.isConsumable ? 'Consumable. Clear consumable status.' : 'Mark as consumable'}
+              icon={<UtensilsCrossed size={14} />}
+            />
+            {/* Print-only static indicator; see the worn toggle above. */}
+            <span className="hidden print:inline-flex shrink-0 w-6 items-center justify-center">
+              {item.isConsumable && <ConsumableIcon />}
+            </span>
+          </>
         ) : (
           <span className="shrink-0 w-6 inline-flex items-center justify-center">
             {item.isConsumable && <ConsumableIcon />}

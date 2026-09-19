@@ -253,7 +253,7 @@ export function PackSectionRenameInput({
       {/* This input REPLACES the section title while a rename is open, so
           hiding it in print would leave the section with no heading at all.
           The static name prints in its place. */}
-      <span className={`hidden print:block min-w-0 flex-1 ${FLAT_TABLE_HEADER_TITLE}`}>
+      <span className={`hidden print:block min-w-0 flex-1 [overflow-wrap:anywhere] ${FLAT_TABLE_HEADER_TITLE}`}>
         {name}
       </span>
       <input

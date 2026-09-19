@@ -132,9 +132,11 @@ import { useIsPrinting } from '../lib/use-is-printing'
 
 // PrintListHeader (the print-only document header this note used to promise
 // "returns with the CSV/print slice") is back, above the toolbar in pack
-// mode. The print:* classes scattered through the row components are no
-// longer inert: docs/ui-density.md "The print tier" is the current account of
-// how printing works, including the parts that are NOT CSS.
+// mode. The print:* classes scattered through the row components were never
+// inert, as that note claimed - Tailwind emitted them and they worked; what
+// they lacked was a density tier and a document header to sit under.
+// docs/ui-density.md "The print tier" is the current account of how printing
+// works, including the parts that are NOT CSS.
 // TRANSPLANT NOTE (tabs): the old page rendered ListWorkspaceTabs (a
 // Gear/Pack two-tab remnant) above ListDocumentToolbar. The toolbar now owns
 // direct List / Organize / Pack navigation; the old workspace tab strip returns

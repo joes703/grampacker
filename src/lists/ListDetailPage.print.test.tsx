@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, cleanup, screen } from '@testing-library/react'
+import { act, render, cleanup, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -215,6 +215,61 @@ describe('printing renders the full list regardless of the pack filters', () => 
 
     firePrint()
     expect(screen.queryByText('Titanium spork')).toBeTruthy()
+  })
+})
+
+describe('printing renders collapsed sections too', () => {
+  // Same class of defect as the filters: a collapsed section removes its body
+  // from the DOM, so print CSS cannot recover it. Worse in pack, which renders
+  // no collapse control - a section collapsed in List view and carried into
+  // Pack cannot be reopened, and the sheet is short of gear with nothing on
+  // the paper to say why.
+  it('restores a section collapsed in List view', async () => {
+    const user = userEvent.setup()
+    const { default: ListDetailPage } = await import('./ListDetailPage')
+    render(
+      <Providers>
+        <MemoryRouter initialEntries={[`/lists/${listId}`]}>
+          <Routes>
+            <Route path="/lists/:id" element={<ListDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </Providers>,
+    )
+    await screen.findByRole('button', { name: 'Add new item' })
+
+    // Scoped to the document column: the desktop gear picker aside groups by
+    // category too, so an unscoped "Collapse ..." matches twice.
+    const doc = () => within(screen.getByTestId('list-document-column'))
+    await user.click(doc().getByRole('button', { name: /^Collapse / }))
+    // Body gone from the DOM, not hidden.
+    expect(doc().queryByText('Titanium spork')).toBeNull()
+
+    firePrint()
+    expect(doc().queryByText('Titanium spork')).toBeTruthy()
+  })
+
+  it('leaves the section collapsed again afterwards', async () => {
+    const user = userEvent.setup()
+    const { default: ListDetailPage } = await import('./ListDetailPage')
+    render(
+      <Providers>
+        <MemoryRouter initialEntries={[`/lists/${listId}`]}>
+          <Routes>
+            <Route path="/lists/:id" element={<ListDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </Providers>,
+    )
+    await screen.findByRole('button', { name: 'Add new item' })
+
+    const doc = () => within(screen.getByTestId('list-document-column'))
+    await user.click(doc().getByRole('button', { name: /^Collapse / }))
+    firePrint()
+    fireAfterPrint()
+
+    // The override is on the derived value, so the stored collapse survives.
+    expect(doc().queryByText('Titanium spork')).toBeNull()
   })
 })
 

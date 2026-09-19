@@ -71,31 +71,55 @@ phone layout, on paper, at roughly 21 rows per page.
 
 Paper needs no touch targets and resolves far finer than a screen, so this
 tier is denser than either screen tier. Rows have no minimum height because
-they may WRAP: `PRINT_UNTRUNCATE` undoes `truncate` on every name, since an
-ellipsized item name on a checklist is silently missing information and paper
-offers no scroll or resize to recover it.
+they may WRAP: `PRINT_UNTRUNCATE` undoes `truncate` where it is composed -
+gear and food row names, pack section and container titles, the print header
+and the rename fallback - since an ellipsized item name on a checklist is
+silently missing information and paper offers no scroll or resize to recover
+it. It also sets `overflow-wrap: anywhere`, because normal wrapping only
+breaks at existing whitespace and a 256-character gear name need contain
+none.
 
 **Hiding the controls is what actually shrinks a row.** A minimum height does
 not cap CONTENT height, and a visible 40px drag grip holds a row at 40px
 however low `print:min-h-0` goes. `RowIconButton` therefore carries
 `print:hidden` on its own base - every grip, kebab, nest handle and inline
 edit/delete in the app is one of those - and `POPOVER_SURFACE` carries it too,
-because all 13 kebab menus portal to `document.body` where no ancestor of the
-trigger can reach them.
+because all 10 portaled menus render into `document.body`, where no ancestor
+of the trigger can reach them.
+
+Hiding a control that also carries DATA needs a static stand-in. The editable
+row's worn/consumable toggles are the case in the codebase: their active state
+is what says the item is worn, so that branch renders print-only static icons
+beside the hidden toggles, in the same column slots. Check for this whenever
+something print-hidden was doubling as an indicator.
 
 **Fragmentation is deliberately partial.** `FLAT_TABLE_ROW` carries
 `print:break-inside-avoid` and `FLAT_TABLE_HEADER` carries
-`print:break-after-avoid`, so a row never splits across a page and a heading
-never strands at the foot of one. Whole SECTIONS are NOT protected: nested
-packing locations are descendants of their parent section, so blanket
-avoidance would ask the browser to hold an entire bag subtree together -
-wasting the bottom of pages, and failing anyway once a group exceeds one page.
+`print:break-after-avoid`, asking the browser not to split a row across a page
+and not to strand a heading at the foot of one. These are hints, not
+guarantees - the spec lets a browser relax avoidance to make progress - and
+they have not been checked against real pagination. Whole SECTIONS are NOT
+protected: nested packing locations are descendants of their parent section,
+so blanket avoidance would ask the browser to hold an entire bag subtree
+together - wasting the bottom of pages, and failing anyway once a group
+exceeds one page.
 
-**Some print behavior is not CSS at all.** Pack's row filters remove items
-from the rendered array, so no print stylesheet can bring them back; the list
-page reads `useIsPrinting()` and renders the full collection while printing.
-Anything decided in JavaScript rather than in a class needs the same
-treatment - look for it before assuming a print stylesheet is sufficient.
+**Some print behavior is not CSS at all, and this is the trap to check
+first.** Anything that removes content from the DOM is invisible to a print
+stylesheet, so the printed page is simply missing it - with no gap on the
+paper to say so, because the control that did the removing is print-hidden
+too. Two cases exist today, both fixed by rendering differently while
+`useIsPrinting()` is true rather than by a class:
+
+- Pack's row filters (`Show unpacked only` / `Show un-ready only`) filter the
+  rendered arrays in `CategoryGroup`.
+- A collapsed section drops its whole body. Pack renders no collapse control,
+  so a section collapsed in List view and carried into Pack cannot even be
+  reopened.
+
+Both override the DERIVED value and leave the stored setting alone, so the
+screen is unchanged once printing ends. Look for this pattern before assuming
+a print stylesheet is sufficient.
 
 The page box itself (`@page { margin: 0.5in }`) is the one rule with no
 Tailwind utility form, and lives in `src/index.css`.

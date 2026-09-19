@@ -244,7 +244,10 @@ export function PlacementBanner({
 
   return (
     <div
-      className="flex items-center justify-between gap-2 border-b border-blue-100 bg-blue-50 px-3 py-2"
+      // print:hidden covers the whole banner, Cancel included: that button
+      // is a plain <button>, not a RowIconButton, so neither of the two
+      // global hiding rules reaches it.
+      className="flex items-center justify-between gap-2 border-b border-blue-100 bg-blue-50 px-3 py-2 print:hidden"
       // The mode is a state change with no page navigation, so a screen reader
       // gets no announcement from the DOM alone.
       role="status"
