@@ -20,6 +20,7 @@ import {
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
   POPOVER_SURFACE,
+  PRINT_UNTRUNCATE,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
@@ -145,7 +146,7 @@ export default function ItemRow({
         // (left) and the wrapping label that hosts Packed + name. Bumped
         // from gap-0.5 lg:gap-1.5 so the two checkboxes don't read as
         // a single cluster on touch.
-        className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${FLAT_TABLE_ROW_PADDING} gap-2 lg:gap-2.5 transition-colors ${
+        className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${FLAT_TABLE_ROW_PADDING} gap-2 lg:gap-2.5 print:gap-1 transition-colors ${
           // Calmer "done" treatment than a green tint — the gray background
           // pairs with the text-gray-500 line-through inside the label to
           // read as completed without celebrating. print:bg-transparent
@@ -206,7 +207,7 @@ export default function ItemRow({
           <div className="flex flex-1 min-w-0 items-center gap-3">
             <div className="flex-[2] min-w-0">
               <span
-                className={`block w-full truncate font-normal ${
+                className={`block w-full truncate ${PRINT_UNTRUNCATE} font-normal ${
                   item.isPacked ? 'text-gray-500 line-through print:text-gray-900 print:no-underline' : 'text-gray-900'
                 }`}
               >
@@ -269,8 +270,12 @@ export default function ItemRow({
           // so it cannot keep inline-block.
           editingClassName="hidden lg:flex shrink-0 w-24 print:hidden"
         />
-        {/* Packing menu (move to location / use as container). print:hidden
-            is applied by the injected control itself. */}
+        {/* Packing menu (move to location / use as container). Not print-hidden
+            here: the injected control is a RowIconButton, which carries
+            print:hidden on its own base, and its portaled menu is hidden by
+            POPOVER_SURFACE. This comment used to claim the same thing while
+            NEITHER was true - an adversarial review caught it - so name the
+            two places rather than asserting it happens somewhere. */}
         {rowAction}
       </div>
     )

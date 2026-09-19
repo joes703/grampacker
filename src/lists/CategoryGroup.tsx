@@ -17,6 +17,7 @@ import {
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_SURFACE,
   MOBILE_ROW_HEIGHT,
+  PRINT_UNTRUNCATE,
   ROW_LEADING_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ItemRow, { type ItemRowProps } from './ItemRow'
@@ -490,7 +491,13 @@ function CategoryGroup({
         // mode tightens to px-2 on mobile (extra column slots squeeze the
         // header and need every spare pixel) and ramps to px-3 on desktop
         // alongside the canonical horizontal padding.
-        packMode ? 'gap-0.5 lg:gap-1.5 px-2 lg:px-3 py-0' : `gap-1.5 ${FLAT_TABLE_HEADER_PADDING}`
+        // Pack's horizontal padding and gaps are hand-rolled here rather
+        // than taken from FLAT_TABLE_HEADER_PADDING, so the print tier has
+        // to be spelled out alongside them or the header keeps screen
+        // padding while its rows tighten.
+        packMode
+          ? 'gap-0.5 lg:gap-1.5 print:gap-1 px-2 lg:px-3 print:px-1 py-0'
+          : `gap-1.5 print:gap-1 ${FLAT_TABLE_HEADER_PADDING}`
       } ${
         // Collapsed: the header is the card's only child, so its divider
         // border-b would double with the card's bottom border. Drop it.
@@ -553,7 +560,7 @@ function CategoryGroup({
                     aria-hidden="true"
                     className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
                   />
-                  <span className={`truncate ${
+                  <span className={`truncate ${PRINT_UNTRUNCATE} ${
                     containerItem.isPacked
                       ? `${FLAT_TABLE_HEADER_TITLE_MUTED} line-through print:text-gray-900 print:no-underline`
                       : FLAT_TABLE_HEADER_TITLE
@@ -573,7 +580,7 @@ function CategoryGroup({
                  anything with width belongs here rather than in
                  headerAction. */
               titleContent ?? (
-                <span className={`truncate ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
+                <span className={`truncate ${PRINT_UNTRUNCATE} ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
               )
             )}
             {complete && (
@@ -689,7 +696,7 @@ function CategoryGroup({
               more, not less.) Only pack sections: an empty CATEGORY in edit
               mode is self-evident from the add-item row beneath it. */}
           {packMode && unionRowCount === 0 && !children && (
-            <p className="px-3 py-3 text-sm text-gray-500">
+            <p className="px-3 py-3 text-sm text-gray-500 print:px-1 print:py-0.5 print:text-[10px]">
               {sectionItems.length + sectionFood.length === 0
                 ? emptySectionLabel
                 : `All ${sectionItems.length + sectionFood.length} ${sectionItems.length + sectionFood.length === 1 ? 'item' : 'items'} here are hidden by the filters above.`}

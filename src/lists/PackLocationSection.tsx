@@ -58,8 +58,14 @@ export type PackSectionProps = {
 
 // Nested sections indent under their parent. Depth 0 sits flush in the page's
 // section stack.
+//
+// The indent ACCUMULATES with depth, so on paper - a narrower column with no
+// scrolling to recover from over-indenting - it is halved, and the vertical
+// gap between a parent and its nested bag goes away entirely.
 function nestClass(depth: number): string {
-  return depth === 0 ? '' : 'ml-3 border-l border-gray-200 pl-3 pt-2'
+  return depth === 0
+    ? ''
+    : 'ml-3 border-l border-gray-200 pl-3 pt-2 print:ml-1.5 print:pl-1.5 print:pt-0'
 }
 
 function sectionTitle(node: PackingTreeLocation): string {

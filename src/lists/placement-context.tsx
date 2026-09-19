@@ -325,7 +325,7 @@ export function PlacementSlot({
       // 24px of real clickable height: these are newly displayed targets, so
       // WCAG 2.5.8 applies, and a hairline strip between interactive rows
       // would not clear the spacing exception either.
-      className="flex h-6 w-full items-center px-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 group"
+      className="flex h-6 w-full items-center px-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 group print:hidden"
       aria-label={placementSlotLabel(placement.movingName, slot, rows, section.name)}
       onClick={() => actions.commit(
         placement.itemId,

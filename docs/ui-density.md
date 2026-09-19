@@ -26,10 +26,11 @@ Three ideas carry the rest:
    layout, gap and hover classes.
 2. **Tokens are for repeats.** A string used once stays inline. Hoist when a
    second surface wants it, not in anticipation.
-3. **Density is two tiers, and they move independently.** Mobile is tuned for
-   touch, desktop for pointer scanning. Tuning one must not move the other.
+3. **Density is three tiers, and they move independently.** Mobile is tuned
+   for touch, desktop for pointer scanning, print for paper. Tuning one must
+   not move the others.
 
-## Two density tiers
+## Two screen density tiers
 
 Mobile is tuned for touch, desktop for pointer scanning. Pointer users
 tolerate denser body type than touch readers, so **mobile sizes must stay
@@ -48,6 +49,56 @@ unchanged whenever desktop is tuned**.
 The desktop header is deliberately 4px taller than the desktop row so the
 section divider still reads as a distinct strip without bulking into a
 card-like band.
+
+## The print tier
+
+A third tier, for paper. It moves neither screen tier, and neither screen tier
+moves it.
+
+**Why it has to exist.** `lg:` is `min-width: 1024px`, and a browser evaluates
+print media queries against the **page box**, not the screen: US Letter
+portrait is about 816 CSS px wide. So `lg:` never matches while printing, and
+before this tier existed every sheet went out in the 44px touch tier - the
+phone layout, on paper, at roughly 21 rows per page.
+
+| | Print |
+|---|---|
+| Row / header height | none (`print:min-h-0`) |
+| Row / header padding | `print:px-1 print:py-0` |
+| Body text | 10px (`print:text-[10px]`) |
+| Row gap | `print:gap-1` |
+| Interactive controls | not rendered (`print:hidden`) |
+
+Paper needs no touch targets and resolves far finer than a screen, so this
+tier is denser than either screen tier. Rows have no minimum height because
+they may WRAP: `PRINT_UNTRUNCATE` undoes `truncate` on every name, since an
+ellipsized item name on a checklist is silently missing information and paper
+offers no scroll or resize to recover it.
+
+**Hiding the controls is what actually shrinks a row.** A minimum height does
+not cap CONTENT height, and a visible 40px drag grip holds a row at 40px
+however low `print:min-h-0` goes. `RowIconButton` therefore carries
+`print:hidden` on its own base - every grip, kebab, nest handle and inline
+edit/delete in the app is one of those - and `POPOVER_SURFACE` carries it too,
+because all 13 kebab menus portal to `document.body` where no ancestor of the
+trigger can reach them.
+
+**Fragmentation is deliberately partial.** `FLAT_TABLE_ROW` carries
+`print:break-inside-avoid` and `FLAT_TABLE_HEADER` carries
+`print:break-after-avoid`, so a row never splits across a page and a heading
+never strands at the foot of one. Whole SECTIONS are NOT protected: nested
+packing locations are descendants of their parent section, so blanket
+avoidance would ask the browser to hold an entire bag subtree together -
+wasting the bottom of pages, and failing anyway once a group exceeds one page.
+
+**Some print behavior is not CSS at all.** Pack's row filters remove items
+from the rendered array, so no print stylesheet can bring them back; the list
+page reads `useIsPrinting()` and renders the full collection while printing.
+Anything decided in JavaScript rather than in a class needs the same
+treatment - look for it before assuming a print stylesheet is sufficient.
+
+The page box itself (`@page { margin: 0.5in }`) is the one rule with no
+Tailwind utility form, and lives in `src/index.css`.
 
 Neither desktop control column is square, and they are narrow for different
 reasons. The TRAILING column (kebabs, action icons) sits at 24px wide because

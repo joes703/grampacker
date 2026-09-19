@@ -10,7 +10,7 @@ import { asButtonRef } from '../lib/dnd'
 import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
-import { POPOVER_SURFACE } from '../components/flat-table-styles'
+import { FLAT_TABLE_HEADER_TITLE, POPOVER_SURFACE } from '../components/flat-table-styles'
 
 // The drag + admin chrome for a packing-location section in pack mode.
 //
@@ -249,19 +249,27 @@ export function PackSectionRenameInput({
   }
 
   return (
-    <input
-      autoFocus
-      value={draft}
-      maxLength={60}
-      aria-label="Packing location name"
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter') commit()
-        if (event.key === 'Escape') onCancel()
-      }}
-      className="min-w-0 flex-1 rounded border border-blue-400 bg-white px-2 py-1 text-sm font-semibold text-gray-900"
-    />
+    <>
+      {/* This input REPLACES the section title while a rename is open, so
+          hiding it in print would leave the section with no heading at all.
+          The static name prints in its place. */}
+      <span className={`hidden print:block min-w-0 flex-1 ${FLAT_TABLE_HEADER_TITLE}`}>
+        {name}
+      </span>
+      <input
+        autoFocus
+        value={draft}
+        maxLength={60}
+        aria-label="Packing location name"
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') commit()
+          if (event.key === 'Escape') onCancel()
+        }}
+        className="min-w-0 flex-1 rounded border border-blue-400 bg-white px-2 py-1 text-sm font-semibold text-gray-900 print:hidden"
+      />
+    </>
   )
 }
 

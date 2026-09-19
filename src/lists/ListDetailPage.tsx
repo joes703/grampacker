@@ -123,16 +123,18 @@ import {
 } from './pack-rows'
 import MoveToLocationMenu from './MoveToLocationMenu'
 import { PackLocationSection } from './PackLocationSection'
+import PrintListHeader from './PrintListHeader'
 import { PlacementProvider, usePlacement } from './placement-context'
 import { planPlacementWithinLocation } from './placement-plan'
 import { DroppableUnassignedSection } from './SortablePackSection'
 import { PACKING_LOCATION_CAP } from '../lib/caps'
+import { useIsPrinting } from '../lib/use-is-printing'
 
-// TRANSPLANT NOTE (print): the old page rendered PrintListHeader above the
-// grid (a print-only document header) and carried print:* utility classes
-// tuned around it. The header returns with the CSV/print slice; the
-// print:hidden classes on transient chrome are kept since they're inert
-// without a print stylesheet consumer.
+// PrintListHeader (the print-only document header this note used to promise
+// "returns with the CSV/print slice") is back, above the toolbar in pack
+// mode. The print:* classes scattered through the row components are no
+// longer inert: docs/ui-density.md "The print tier" is the current account of
+// how printing works, including the parts that are NOT CSS.
 // TRANSPLANT NOTE (tabs): the old page rendered ListWorkspaceTabs (a
 // Gear/Pack two-tab remnant) above ListDocumentToolbar. The toolbar now owns
 // direct List / Organize / Pack navigation; the old workspace tab strip returns
@@ -297,13 +299,25 @@ function ListDetailInner({
   // category. Header counts and the "complete" affordance still reflect the
   // full items array. Lifted here because both PackingProgress (the toggle)
   // and CategoryGroup (the filter consumer) live as children of this page.
-  const [showUnpackedOnly, setShowUnpackedOnly] = useState(false)
+  const [showUnpackedOnlySetting, setShowUnpackedOnly] = useState(false)
   // Peer of showUnpackedOnly for the ready column: "what still needs prepping".
   // Independent, not a mode switch - with both on you see only the rows that
   // are neither packed nor ready. Deliberately NOT persisted, same as its
   // sibling: a filter that survives a reload hides items from a user who has
   // forgotten they turned it on.
-  const [showUnreadyOnly, setShowUnreadyOnly] = useState(false)
+  const [showUnreadyOnlySetting, setShowUnreadyOnly] = useState(false)
+  // Printing renders the FULL list, whatever the filters are set to.
+  //
+  // These filters drop rows from the rendered arrays (CategoryGroup does the
+  // filtering in JS), so unlike ordinary chrome they cannot be undone by a
+  // print stylesheet - a sheet printed with a filter on is silently missing
+  // gear, and the filter switches themselves do not print, so nothing on the
+  // paper explains the gap. A printed checklist is only useful if it is the
+  // whole list. The switches keep their own state and snap back afterwards;
+  // see useIsPrinting for why the re-render has to be flushed synchronously.
+  const isPrinting = useIsPrinting()
+  const showUnpackedOnly = isPrinting ? false : showUnpackedOnlySetting
+  const showUnreadyOnly = isPrinting ? false : showUnreadyOnlySetting
   // Notes panel edit mode. Lifted here so PanelCard.headerAction can
   // render the pencil button conditionally (read mode only) without
   // exposing NotesEditor's internal state up through a callback.
@@ -1765,6 +1779,17 @@ function ListDetailInner({
           data-testid="list-document-column"
           className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'print:max-w-3xl print:mx-auto' : ''}`}
         >
+          {/* Paper's only document header. The screen toolbar below is
+              print:hidden, so without this nothing on the sheet says which
+              list it is. Pack only: the other modes are not checklists and
+              have not been designed for paper. */}
+          {mode === 'pack' && (
+            <PrintListHeader
+              name={list.name}
+              itemCount={listItems.length + packFoodItems.length}
+            />
+          )}
+
           <ListDocumentToolbar
             list={list}
             mode={mode}
@@ -1800,9 +1825,9 @@ function ListDetailInner({
                       packFoodItems.filter((f) => f.isPacked).length
                     }
                     onReset={resetPacked}
-                    showUnpackedOnly={showUnpackedOnly}
+                    showUnpackedOnly={showUnpackedOnlySetting}
                     onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
-                    showUnreadyOnly={showUnreadyOnly}
+                    showUnreadyOnly={showUnreadyOnlySetting}
                     onToggleShowUnreadyOnly={() => setShowUnreadyOnly((v) => !v)}
                     readyChecks={{
                       ready:
@@ -2045,7 +2070,10 @@ function ListDetailInner({
                         )}
                         </>
                       )}
-                      <DragOverlay dropAnimation={null}>
+                      {/* className reaches the overlay's own portaled
+                          wrapper; the chips below are not descendants of
+                          anything already print-hidden. */}
+                      <DragOverlay dropAnimation={null} className="print:hidden">
                         {activeItem ? (
                           <ItemRow item={activeItem} weightUnit={weightUnit} isBelowLg={isBelowLg} />
                         ) : activePackingItem ? (

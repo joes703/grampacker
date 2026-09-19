@@ -27,8 +27,12 @@ export default function AppShell() {
   return (
     <SidebarDrawerProvider>
     <MobilePrimaryNavProvider>
-      <div className="min-h-screen bg-gray-50">
-        <header className="border-b border-gray-200 bg-white">
+      <div className="min-h-screen bg-gray-50 print:min-h-0 print:bg-white">
+        {/* The whole app header is chrome: brand, nav, the signed-in
+            EMAIL ADDRESS, Settings and Sign out. None of it belongs on a
+            printed checklist, and the email least of all - a packing list
+            is a document you hand to someone. */}
+        <header className="border-b border-gray-200 bg-white print:hidden">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
             <div className="flex items-center gap-6">
               <Link to="/" className="text-lg font-bold tracking-tight text-gray-900">
@@ -82,7 +86,11 @@ export default function AppShell() {
             </div>
           </div>
         </header>
-        <main className="mx-auto max-w-7xl px-4 pt-4 lg:pt-8 pb-20 lg:pb-8">
+        {/* print:p-0 here, not on the page: this padding is an ANCESTOR of
+            the route, so ListDetailPage's own print:pb-0 cannot reach it.
+            pb-20 is the mobile bottom-bar reserve and would print as two
+            inches of blank paper. */}
+        <main className="mx-auto max-w-7xl px-4 pt-4 lg:pt-8 pb-20 lg:pb-8 print:max-w-none print:p-0">
           <Outlet />
         </main>
         <MobilePrimaryNav />

@@ -23,11 +23,14 @@ type Props = {
 export default function ListSidebarDrawer({ open, onOpenChange, title, children }: Props) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      {/* print:hidden on BOTH, and on these nodes specifically: Radix portals
+          the overlay and the content to document.body, so the caller's
+          print:hidden wrapper is not an ancestor of either at paint time. */}
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 print:hidden" />
         <Dialog.Content
           aria-describedby={undefined}
-          className="fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-sm flex-col bg-gray-50"
+          className="fixed inset-y-0 left-0 z-50 flex w-[88vw] max-w-sm flex-col bg-gray-50 print:hidden"
         >
           <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-3">
             <Dialog.Title className="text-sm font-semibold text-gray-900">

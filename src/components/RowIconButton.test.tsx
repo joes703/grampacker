@@ -52,3 +52,21 @@ describe('RowIconButton', () => {
     expect(handle.className).not.toContain('lg:w-7')
   })
 })
+
+describe('print', () => {
+  // Every drag grip, kebab, nest handle and inline edit/delete in the app is
+  // one of these. Hiding them here is what makes the print tier work: they
+  // are 40px touch targets, and while one renders it - not min-height - sets
+  // the row's height on paper.
+  it('never prints', () => {
+    render(<RowIconButton icon={<span />} ariaLabel="Reorder" />)
+    expect(screen.getByRole('button', { name: 'Reorder' }).className).toContain('print:hidden')
+  })
+
+  it('still prints nothing when a call site passes its own className', () => {
+    render(<RowIconButton icon={<span />} ariaLabel="Move" className="opacity-0" />)
+    const cls = screen.getByRole('button', { name: 'Move' }).className
+    expect(cls).toContain('print:hidden')
+    expect(cls).toContain('opacity-0')
+  })
+})

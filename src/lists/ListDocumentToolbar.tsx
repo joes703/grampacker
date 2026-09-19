@@ -1,3 +1,4 @@
+import { Printer } from 'lucide-react'
 import type { List } from '../lib/types'
 import type { ListDetailMode } from './list-detail-mode'
 import CurrentListHeader from './CurrentListHeader'
@@ -25,6 +26,13 @@ type Props = {
 // Food mode keeps the unit selector - the food view is weights everywhere,
 // so hiding the page-level unit control there would be a regression - but
 // drops List options: list admin is not a food-view concern.
+//
+// Pack mode gets Print instead, and it needs its own branch rather than a
+// place in the cluster above: that cluster is gated to edit/food, which is
+// exactly the modes Print is useless in. Print is not strictly necessary -
+// Ctrl/Cmd-P does the same thing, and the beforeprint handling behind it
+// works either way - but a paper checklist nobody knows they can make is not
+// a feature.
 export default function ListDocumentToolbar({
   list,
   mode,
@@ -45,6 +53,19 @@ export default function ListDocumentToolbar({
             <UnitSegmentedControl idPrefix="list-toolbar" />
           </div>
           {mode === 'edit' && <ListSettingsButton list={list} />}
+        </div>
+      )}
+
+      {mode === 'pack' && (
+        <div className="order-2 ml-auto flex items-center gap-2 lg:order-3">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex min-h-10 lg:min-h-7 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm lg:text-[13px] font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <Printer size={14} />
+            Print
+          </button>
         </div>
       )}
     </div>

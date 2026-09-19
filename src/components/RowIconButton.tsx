@@ -106,12 +106,19 @@ export default function RowIconButton({
   // explicit prop keeps consumers from reaching past the API to defeat
   // the hover-reveal with a magic className string.
   const visibilityClass = alwaysVisible ? 'opacity-100' : ''
+  // Nothing routed through this component belongs on paper: every instance is
+  // a drag grip, kebab, nest handle, inline edit/delete or flag toggle. Hiding
+  // them HERE rather than per call site is what makes the print tier work at
+  // all - these are 40px touch targets on a tier with no minimum height, so
+  // while they render they, not min-height, set the row's height. The static
+  // worn/consumable INDICATORS on a read-only row are plain icons, not this
+  // component, so they still print.
   return (
     <button
       ref={ref}
       type={type}
       aria-label={ariaLabel}
-      className={`${touchSafe ? touchBase : BASE} ${stateClass} ${visibilityClass} ${className}`.trim()}
+      className={`${touchSafe ? touchBase : BASE} ${stateClass} ${visibilityClass} print:hidden ${className}`.trim()}
       {...rest}
     >
       {icon}
