@@ -56,10 +56,12 @@ A third tier, for paper. It moves neither screen tier, and neither screen tier
 moves it.
 
 **Why it has to exist.** `lg:` is `min-width: 1024px`, and a browser evaluates
-print media queries against the **page box**, not the screen: US Letter
-portrait is about 816 CSS px wide. So `lg:` never matches while printing, and
-before this tier existed every sheet went out in the 44px touch tier - the
-phone layout, on paper, at roughly 21 rows per page.
+print media queries against the **page box**, not the screen. US Letter and A4
+portrait are both about 816 CSS px wide, so `lg:` does not match there, and
+before this tier existed every such sheet went out in the 44px touch tier -
+the phone layout, on paper. (Wide enough paper, or landscape, can cross 1024px
+and pick the desktop tier up again; the print tier applies regardless, which is
+why it is defined against the base tier rather than against `lg:`.)
 
 | | Print |
 |---|---|
@@ -71,13 +73,18 @@ phone layout, on paper, at roughly 21 rows per page.
 
 Paper needs no touch targets and resolves far finer than a screen, so this
 tier is denser than either screen tier. Rows have no minimum height because
-they may WRAP: `PRINT_UNTRUNCATE` undoes `truncate` where it is composed -
-gear and food row names, pack section and container titles, the print header
-and the rename fallback - since an ellipsized item name on a checklist is
-silently missing information and paper offers no scroll or resize to recover
-it. It also sets `overflow-wrap: anywhere`, because normal wrapping only
-breaks at existing whitespace and a 256-character gear name need contain
-none.
+they may WRAP: `PRINT_UNTRUNCATE` undoes `truncate` where it is composed,
+which today is the PACK surfaces only - pack gear rows, pack food rows, and
+pack section and container titles. Ordinary editable and read-only row names
+still truncate on paper; pack is the surface that has been designed for print.
+An ellipsized item name on a checklist is silently missing information and
+paper offers no scroll or resize to recover it.
+
+The token also sets `overflow-wrap: anywhere`, because normal wrapping breaks
+only at existing whitespace and a 256-character gear name need contain none.
+`PrintListHeader`'s title and the pack rename fallback apply that same
+declaration directly rather than composing the token - they were never
+truncated, so they need the emergency break and nothing else.
 
 **Hiding the controls is what actually shrinks a row.** A minimum height does
 not cap CONTENT height, and a visible 40px drag grip holds a row at 40px

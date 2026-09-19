@@ -517,7 +517,13 @@ function CategoryGroup({
       }`}>
         {headerLeading}
         {collapsible ? (
-          <div className="flex flex-1 min-w-0 items-center gap-1.5">
+          // print:gap-1 matches the ROW's outer gap. A row's Ready checkbox and
+          // its Packed label are siblings one level up, spaced by that outer
+          // gap; here they sit inside this group instead, so without the match
+          // a container header's Packed square and name print 2px right of the
+          // ones in every row beneath it. Alignment down the checkbox columns
+          // is the whole point of a printed checklist.
+          <div className="flex flex-1 min-w-0 items-center gap-1.5 print:gap-1">
             {/* Chevron is the only interactive collapse target. Mobile mistaps
                 (tapping near the first row but landing on the header) used to
                 collapse the whole section because the entire header strip was
