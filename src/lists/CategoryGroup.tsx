@@ -6,6 +6,7 @@ import type { ListItemWithGear } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import type { ListItemPatch } from '../lib/queries'
 import type { WeightUnit } from '../lib/weight'
+import { useIsPrinting } from '../lib/use-is-printing'
 import {
   DESKTOP_ROW_HEIGHT,
   FLAT_TABLE_BODY_TEXT,
@@ -17,6 +18,7 @@ import {
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_SURFACE,
   MOBILE_ROW_HEIGHT,
+  PRINT_UNTRUNCATE,
   ROW_LEADING_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ItemRow, { type ItemRowProps } from './ItemRow'
@@ -374,7 +376,18 @@ function CategoryGroup({
   // over existing inventory. New gear is created from the Gear page.
   const [adding, setAdding] = useState(false)
   const [localCollapsed, setLocalCollapsed] = useState(false)
-  const collapsed = controlledCollapsed ?? localCollapsed
+  // A collapsed section removes its body from the DOM (see `!collapsed` at the
+  // rows below), so - exactly like pack's row filters - no print stylesheet
+  // can bring those rows back, and the printed sheet would be short of gear
+  // with nothing on the paper to say so. Pack is the worst case: it renders no
+  // collapse control at all, so a section collapsed in List view and carried
+  // into Pack cannot even be reopened.
+  //
+  // Overriding the DERIVED value rather than the stored one leaves both the
+  // local state and any controlled value untouched, so the screen is exactly
+  // as the user left it once the print ends.
+  const isPrinting = useIsPrinting()
+  const collapsed = isPrinting ? false : (controlledCollapsed ?? localCollapsed)
   function toggleCollapsed() {
     const next = !collapsed
     if (onCollapsedChange) onCollapsedChange(next)
@@ -490,7 +503,13 @@ function CategoryGroup({
         // mode tightens to px-2 on mobile (extra column slots squeeze the
         // header and need every spare pixel) and ramps to px-3 on desktop
         // alongside the canonical horizontal padding.
-        packMode ? 'gap-0.5 lg:gap-1.5 px-2 lg:px-3 py-0' : `gap-1.5 ${FLAT_TABLE_HEADER_PADDING}`
+        // Pack's horizontal padding and gaps are hand-rolled here rather
+        // than taken from FLAT_TABLE_HEADER_PADDING, so the print tier has
+        // to be spelled out alongside them or the header keeps screen
+        // padding while its rows tighten.
+        packMode
+          ? 'gap-0.5 lg:gap-1.5 print:gap-1 px-2 lg:px-3 print:px-1 py-0'
+          : `gap-1.5 print:gap-1 ${FLAT_TABLE_HEADER_PADDING}`
       } ${
         // Collapsed: the header is the card's only child, so its divider
         // border-b would double with the card's bottom border. Drop it.
@@ -498,7 +517,13 @@ function CategoryGroup({
       }`}>
         {headerLeading}
         {collapsible ? (
-          <div className="flex flex-1 min-w-0 items-center gap-1.5">
+          // print:gap-1 matches the ROW's outer gap. A row's Ready checkbox and
+          // its Packed label are siblings one level up, spaced by that outer
+          // gap; here they sit inside this group instead, so without the match
+          // a container header's Packed square and name print 2px right of the
+          // ones in every row beneath it. Alignment down the checkbox columns
+          // is the whole point of a printed checklist.
+          <div className="flex flex-1 min-w-0 items-center gap-1.5 print:gap-1">
             {/* Chevron is the only interactive collapse target. Mobile mistaps
                 (tapping near the first row but landing on the header) used to
                 collapse the whole section because the entire header strip was
@@ -553,7 +578,7 @@ function CategoryGroup({
                     aria-hidden="true"
                     className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
                   />
-                  <span className={`truncate ${
+                  <span className={`truncate ${PRINT_UNTRUNCATE} ${
                     containerItem.isPacked
                       ? `${FLAT_TABLE_HEADER_TITLE_MUTED} line-through print:text-gray-900 print:no-underline`
                       : FLAT_TABLE_HEADER_TITLE
@@ -573,7 +598,7 @@ function CategoryGroup({
                  anything with width belongs here rather than in
                  headerAction. */
               titleContent ?? (
-                <span className={`truncate ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
+                <span className={`truncate ${PRINT_UNTRUNCATE} ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
               )
             )}
             {complete && (
@@ -689,7 +714,7 @@ function CategoryGroup({
               more, not less.) Only pack sections: an empty CATEGORY in edit
               mode is self-evident from the add-item row beneath it. */}
           {packMode && unionRowCount === 0 && !children && (
-            <p className="px-3 py-3 text-sm text-gray-500">
+            <p className="px-3 py-3 text-sm text-gray-500 print:px-1 print:py-0.5 print:text-[10px]">
               {sectionItems.length + sectionFood.length === 0
                 ? emptySectionLabel
                 : `All ${sectionItems.length + sectionFood.length} ${sectionItems.length + sectionFood.length === 1 ? 'item' : 'items'} here are hidden by the filters above.`}

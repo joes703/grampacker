@@ -244,7 +244,10 @@ export function PlacementBanner({
 
   return (
     <div
-      className="flex items-center justify-between gap-2 border-b border-blue-100 bg-blue-50 px-3 py-2"
+      // print:hidden covers the whole banner, Cancel included: that button
+      // is a plain <button>, not a RowIconButton, so neither of the two
+      // global hiding rules reaches it.
+      className="flex items-center justify-between gap-2 border-b border-blue-100 bg-blue-50 px-3 py-2 print:hidden"
       // The mode is a state change with no page navigation, so a screen reader
       // gets no announcement from the DOM alone.
       role="status"
@@ -325,7 +328,7 @@ export function PlacementSlot({
       // 24px of real clickable height: these are newly displayed targets, so
       // WCAG 2.5.8 applies, and a hairline strip between interactive rows
       // would not clear the spacing exception either.
-      className="flex h-6 w-full items-center px-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 group"
+      className="flex h-6 w-full items-center px-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 group print:hidden"
       aria-label={placementSlotLabel(placement.movingName, slot, rows, section.name)}
       onClick={() => actions.commit(
         placement.itemId,

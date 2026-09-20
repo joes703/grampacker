@@ -41,6 +41,56 @@ export const TABLE_DIVIDER_LINE = 'divide-gray-100'
 // does NOT consume these row tokens; see docs/ui-density.md "Intentional
 // exceptions".
 
+// ---------------------------------------------------------------------------
+// Print tier
+// ---------------------------------------------------------------------------
+// A THIRD density tier, for paper. It moves neither screen tier.
+//
+// The reason it has to exist: `lg:` is `min-width: 1024px`, and a browser
+// evaluates print media queries against the PAGE BOX, not the screen. US
+// Letter portrait is ~816 CSS px wide, so `lg:` NEVER matches while printing
+// and every sheet would otherwise go out in the 44px touch tier - the phone
+// layout, on paper. That is not a hypothetical: it is what printing a list
+// did before this tier existed.
+//
+// Paper needs no touch targets and resolves far finer than a screen, so this
+// tier is denser than either screen tier: no minimum height (a row is as tall
+// as its content), no vertical padding, 10px body text.
+//
+// Print also hides every interactive control (see RowIconButton and
+// POPOVER_SURFACE below). That is what actually shrinks a row - min-height
+// does not cap CONTENT height, and a visible 40px drag grip holds a row at
+// 40px however low the min-height goes.
+export const PRINT_ROW_HEIGHT = 'print:min-h-0'
+export const PRINT_ROW_PADDING = 'print:px-1 print:py-0'
+export const PRINT_BODY_TEXT = 'print:text-[10px]'
+
+// Undo `truncate` on paper. A screen truncates because horizontal space is
+// fixed and a scroll gesture is cheap; paper has neither property, and an
+// ellipsized item name on a checklist is silently missing information. Rows
+// wrap instead, which is why the print tier sets no minimum height.
+//
+// `overflow-wrap: anywhere` is the part that is easy to leave out and wrong to
+// leave out: normal wrapping only breaks at existing whitespace, and gear
+// names allow 256 characters, so one unbroken name would run out of its cell
+// and across the quantity rail - visibly, because this same token turns
+// clipping off. Written as an arbitrary property so it does not depend on
+// which Tailwind version named the shorthand.
+export const PRINT_UNTRUNCATE =
+  'print:overflow-visible print:text-clip print:whitespace-normal print:[overflow-wrap:anywhere]'
+
+// Fragmentation hints. `break-*-avoid` asks the browser not to split a row
+// across a page and not to strand a section heading at the foot of one. It
+// ASKS: the spec lets a browser relax avoidance to make progress, so neither
+// is a guarantee and neither has been verified against real pagination.
+//
+// Whole SECTIONS are deliberately NOT protected: nested bags are descendants
+// of their parent section, so blanket avoidance would ask the browser to keep
+// an entire bag subtree together - which wastes the bottom of pages and has to
+// fail anyway once a group exceeds one page.
+export const PRINT_KEEP_TOGETHER = 'print:break-inside-avoid'
+export const PRINT_KEEP_WITH_NEXT = 'print:break-after-avoid'
+
 // Row height. Mobile 44px touch target; desktop 28px scanline. Lowered from
 // the previous lg:min-h-8 (32px) so the row reads at the Lighterpack-ish
 // density tier where the eye scans columns more than it reads sentences.
@@ -125,7 +175,7 @@ export const DESKTOP_ROW_LEADING_TARGET = 'lg:h-7 lg:w-5'
 // row genuinely tightens to 28px on desktop instead of padding pushing it
 // past min-h. Picker rows (LibraryPanel) and draft/footer rows that use a
 // flush px-3 mobile pattern keep that padding inline as documented variants.
-export const FLAT_TABLE_ROW_PADDING = 'px-2 lg:px-3 py-2 lg:py-0'
+export const FLAT_TABLE_ROW_PADDING = `px-2 lg:px-3 py-2 lg:py-0 ${PRINT_ROW_PADDING}`
 
 // Canonical header padding. Horizontal px-3 is uniform across viewports
 // (touch and pointer both want some inset from the surface edge for the
@@ -136,7 +186,7 @@ export const FLAT_TABLE_ROW_PADDING = 'px-2 lg:px-3 py-2 lg:py-0'
 // (gap-1 px-2, to make room for a leading category grip); it now consumes
 // this token, which is what puts its chevron, title, and trailing rail on
 // GearItemRow's own coordinates. See docs/ui-density.md "Reserved space".
-export const FLAT_TABLE_HEADER_PADDING = 'px-3 py-0'
+export const FLAT_TABLE_HEADER_PADDING = `px-3 py-0 ${PRINT_ROW_PADDING}`
 
 // White table shell. The app background is gray-50, and section headers are
 // gray-50 too, so a flat table needs a white surface or its headers vanish
@@ -146,14 +196,18 @@ export const FLAT_TABLE_HEADER_PADDING = 'px-3 py-0'
 // lives here so every flat table rounds identically — broad radius changes
 // happen in one place. A surface that must be square is an explicit
 // exception that overrides `rounded-none` at the call site.
-export const FLAT_TABLE_SURFACE = `overflow-hidden ${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG}`
+// print:overflow-visible: the clip that rounds corners on screen would also
+// clip a wrapped name and fight page fragmentation, and a hairline radius
+// buys nothing on paper.
+export const FLAT_TABLE_SURFACE =
+  `overflow-hidden print:overflow-visible ${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG}`
 
 // Section / category header: a flat divider strip, not a card. Heights flow
 // from the density tokens above. Compose gap + horizontal padding (or
 // FLAT_TABLE_HEADER_PADDING for the canonical pattern) + `w-full` where the
 // header is a flex child that must fill its track.
 export const FLAT_TABLE_HEADER =
-  `flex ${MOBILE_HEADER_HEIGHT} ${DESKTOP_HEADER_HEIGHT} items-center ${TABLE_HEADER_BG} border-b ${TABLE_DIVIDER}`
+  `flex ${MOBILE_HEADER_HEIGHT} ${DESKTOP_HEADER_HEIGHT} ${PRINT_ROW_HEIGHT} ${PRINT_KEEP_WITH_NEXT} items-center ${TABLE_HEADER_BG} border-b ${TABLE_DIVIDER}`
 
 // Header/label typography. Two tiers:
 //   - TITLE: the one prominent section heading (category names). Preserves
@@ -162,8 +216,8 @@ export const FLAT_TABLE_HEADER =
 //     (Qty / Weight / Price / Purchased), summary stat labels (Base /
 //     Consumable), panel titles (Notes / Weight summary), and disclosure
 //     toggles. One token so these don't drift apart in size/case/color.
-export const FLAT_TABLE_HEADER_TITLE = 'text-sm font-medium text-gray-700'
-export const FLAT_TABLE_HEADER_TITLE_MUTED = 'text-sm font-medium text-gray-500'
+export const FLAT_TABLE_HEADER_TITLE = `text-sm font-medium text-gray-700 ${PRINT_BODY_TEXT}`
+export const FLAT_TABLE_HEADER_TITLE_MUTED = `text-sm font-medium text-gray-500 ${PRINT_BODY_TEXT}`
 export const FLAT_TABLE_EYEBROW =
   'text-xs font-semibold uppercase tracking-wider text-gray-500'
 
@@ -176,7 +230,7 @@ export const FLAT_TABLE_EYEBROW =
 // should still consume MOBILE_ROW_HEIGHT / DESKTOP_ROW_HEIGHT directly so
 // they track density changes.
 export const FLAT_TABLE_ROW =
-  `flex ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} items-center border-b ${TABLE_DIVIDER}`
+  `flex ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} ${PRINT_ROW_HEIGHT} ${PRINT_KEEP_TOGETHER} items-center border-b ${TABLE_DIVIDER}`
 
 // Explicit kebab / toggle target inside a row or header. Heights flow from
 // the density tokens above (40px touch, 28x24 pointer). Compose color + hover
@@ -221,7 +275,7 @@ export const ROW_LEADING_CONTROL_TARGET =
 // LibraryPanel rows / CategoryGroup footer / AddItemRow / CategorySection
 // rename + empty states. Call sites compose `font-normal` or other
 // weights + color separately when needed.
-export const FLAT_TABLE_BODY_TEXT = 'text-sm lg:text-[13px]'
+export const FLAT_TABLE_BODY_TEXT = `text-sm lg:text-[13px] ${PRINT_BODY_TEXT}`
 
 // Muted body variant for descriptions and secondary copy on rows. The
 // `font-normal text-gray-500` treatment is the established pattern for
@@ -230,7 +284,8 @@ export const FLAT_TABLE_BODY_TEXT = 'text-sm lg:text-[13px]'
 // the color reactively (e.g. ItemRow's is_packed strikethrough) keep
 // the inline color override and compose FLAT_TABLE_BODY_TEXT + font-normal
 // instead.
-export const FLAT_TABLE_BODY_TEXT_MUTED = 'text-sm lg:text-[13px] font-normal text-gray-500'
+export const FLAT_TABLE_BODY_TEXT_MUTED =
+  `text-sm lg:text-[13px] font-normal text-gray-500 ${PRINT_BODY_TEXT}`
 
 // Focus indicator for active inline-edit controls. These controls already use
 // a blue border to mean "editing", so keyboard focus needs a separate ring.
@@ -246,7 +301,7 @@ export const FLAT_TABLE_META_TEXT = 'text-xs lg:text-[13px]'
 // Quantity cells are numeric, but not weight/value displays. Keep tabular
 // digits for alignment, but keep the proportional UI font so quantities
 // don't read like measurement data.
-export const FLAT_TABLE_QUANTITY_TEXT = 'text-xs lg:text-[13px] tabular-nums'
+export const FLAT_TABLE_QUANTITY_TEXT = `text-xs lg:text-[13px] tabular-nums ${PRINT_BODY_TEXT}`
 
 // Size-neutral numeric value treatment. Compose this when a value display
 // already owns a deliberate size tier.
@@ -363,4 +418,9 @@ export const TOGGLE_CHIP_OFF = 'border-gray-300 text-gray-600 hover:bg-gray-50'
 // Call sites compose this with `fixed z-50 w-XX` and a body padding
 // (`py-1` for menu-row popovers; `p-2` / `p-3` for embedded-panel popovers
 // like List options).
-export const POPOVER_SURFACE = `${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} shadow-lg`
+// print:hidden is load-bearing and belongs HERE rather than at the 10 render
+// sites: every one of these menus portals to document.body, so hiding the
+// trigger - or any ancestor of it - cannot hide the menu. The surface token
+// is the one thing they all share.
+export const POPOVER_SURFACE =
+  `${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} shadow-lg print:hidden`

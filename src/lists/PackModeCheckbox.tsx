@@ -55,8 +55,14 @@ export default function PackModeCheckbox({
   )
 
   if (standaloneLabel) {
+    // print:hidden on the WRAPPER too, not just on `control`: the label is a
+    // flex item in its own right, so hiding only its children would leave an
+    // empty box still claiming its share of the row's gap - and rows and
+    // container headers use different gaps, so the two checkbox columns would
+    // stop lining up down the printed page. The blank print squares that
+    // stand in for these checkboxes are rendered by the call sites.
     return (
-      <label className={`inline-flex shrink-0 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+      <label className={`inline-flex shrink-0 print:hidden ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
         {control}
       </label>
     )

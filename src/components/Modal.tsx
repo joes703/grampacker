@@ -115,7 +115,10 @@ export default function Modal({
       // focus:outline-none suppresses any UA focus ring on the dialog
       // itself when we focus it after showModal() — the dialog is a
       // focus sink, not a visible target.
-      className={`m-auto rounded-xl bg-white p-0 shadow-lg backdrop:bg-black/40 focus:outline-none ${className ?? ''}`}
+      // print:hidden: an open modal <dialog> is in the TOP LAYER, so it
+      // paints over the document on paper as well as on screen. Covers
+      // every dialog - ConfirmDialog, MobileOptionsModal, Settings.
+      className={`m-auto rounded-xl bg-white p-0 shadow-lg backdrop:bg-black/40 focus:outline-none print:hidden ${className ?? ''}`}
     >
       {children}
     </dialog>

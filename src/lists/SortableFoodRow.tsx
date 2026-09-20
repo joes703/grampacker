@@ -13,6 +13,7 @@ import {
   FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
+  PRINT_UNTRUNCATE,
 } from '../components/flat-table-styles'
 import PackModeCheckbox from './PackModeCheckbox'
 import { ConsumableIcon } from './list-item-flags'
@@ -71,7 +72,7 @@ export default function SortableFoodRow({
     <div
       ref={setNodeRef}
       style={sortableStyle}
-      className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${FLAT_TABLE_ROW_PADDING} gap-2 lg:gap-2.5 transition-colors ${
+      className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${FLAT_TABLE_ROW_PADDING} gap-2 lg:gap-2.5 print:gap-1 transition-colors ${
         food.isPacked ? 'bg-gray-50 print:bg-transparent' : 'bg-white'
       }`}
     >
@@ -110,7 +111,7 @@ export default function SortableFoodRow({
         <div className="flex flex-1 min-w-0 items-center gap-3">
           <div className="flex-[2] min-w-0">
             <span
-              className={`block w-full truncate font-normal ${
+              className={`block w-full truncate ${PRINT_UNTRUNCATE} font-normal ${
                 food.isPacked
                   ? 'text-gray-500 line-through print:text-gray-900 print:no-underline'
                   : 'text-gray-900'

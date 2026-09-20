@@ -1,1 +1,15 @@
 @import 'tailwindcss';
+
+/* Paper geometry. Everything else about the print tier lives in Tailwind
+   `print:` utilities (see the "Print tier" block in
+   src/components/flat-table-styles.ts); only the page box itself has no
+   utility form.
+
+   0.5in all round: the tier exists to fit a packing checklist on one sheet,
+   and the usual 1in default spends roughly two extra rows per page on margin
+   nobody reads. */
+@media print {
+  @page {
+    margin: 0.5in;
+  }
+}

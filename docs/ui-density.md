@@ -26,10 +26,11 @@ Three ideas carry the rest:
    layout, gap and hover classes.
 2. **Tokens are for repeats.** A string used once stays inline. Hoist when a
    second surface wants it, not in anticipation.
-3. **Density is two tiers, and they move independently.** Mobile is tuned for
-   touch, desktop for pointer scanning. Tuning one must not move the other.
+3. **Density is three tiers, and they move independently.** Mobile is tuned
+   for touch, desktop for pointer scanning, print for paper. Tuning one must
+   not move the others.
 
-## Two density tiers
+## Two screen density tiers
 
 Mobile is tuned for touch, desktop for pointer scanning. Pointer users
 tolerate denser body type than touch readers, so **mobile sizes must stay
@@ -48,6 +49,87 @@ unchanged whenever desktop is tuned**.
 The desktop header is deliberately 4px taller than the desktop row so the
 section divider still reads as a distinct strip without bulking into a
 card-like band.
+
+## The print tier
+
+A third tier, for paper. It moves neither screen tier, and neither screen tier
+moves it.
+
+**Why it has to exist.** `lg:` is `min-width: 1024px`, and a browser evaluates
+print media queries against the **page box**, not the screen. US Letter and A4
+portrait are both about 816 CSS px wide, so `lg:` does not match there, and
+before this tier existed every such sheet went out in the 44px touch tier -
+the phone layout, on paper. (Wide enough paper, or landscape, can cross 1024px
+and pick the desktop tier up again; the print tier applies regardless, which is
+why it is defined against the base tier rather than against `lg:`.)
+
+| | Print |
+|---|---|
+| Row / header height | none (`print:min-h-0`) |
+| Row / header padding | `print:px-1 print:py-0` |
+| Body text | 10px (`print:text-[10px]`) |
+| Row gap | `print:gap-1` |
+| Interactive controls | not rendered (`print:hidden`) |
+
+Paper needs no touch targets and resolves far finer than a screen, so this
+tier is denser than either screen tier. Rows have no minimum height because
+they may WRAP: `PRINT_UNTRUNCATE` undoes `truncate` where it is composed,
+which today is the PACK surfaces only - pack gear rows, pack food rows, and
+pack section and container titles. Ordinary editable and read-only row names
+still truncate on paper; pack is the surface that has been designed for print.
+An ellipsized item name on a checklist is silently missing information and
+paper offers no scroll or resize to recover it.
+
+The token also sets `overflow-wrap: anywhere`, because normal wrapping breaks
+only at existing whitespace and a 256-character gear name need contain none.
+`PrintListHeader`'s title and the pack rename fallback apply that same
+declaration directly rather than composing the token - they were never
+truncated, so they need the emergency break and nothing else.
+
+**Hiding the controls is what actually shrinks a row.** A minimum height does
+not cap CONTENT height, and a visible 40px drag grip holds a row at 40px
+however low `print:min-h-0` goes. `RowIconButton` therefore carries
+`print:hidden` on its own base - every grip, kebab, nest handle and inline
+edit/delete in the app is one of those - and `POPOVER_SURFACE` carries it too,
+because all 10 portaled menus render into `document.body`, where no ancestor
+of the trigger can reach them.
+
+Hiding a control that also carries DATA needs a static stand-in. The editable
+row's worn/consumable toggles are the case in the codebase: their active state
+is what says the item is worn, so that branch renders print-only static icons
+beside the hidden toggles, in the same column slots. Check for this whenever
+something print-hidden was doubling as an indicator.
+
+**Fragmentation is deliberately partial.** `FLAT_TABLE_ROW` carries
+`print:break-inside-avoid` and `FLAT_TABLE_HEADER` carries
+`print:break-after-avoid`, asking the browser not to split a row across a page
+and not to strand a heading at the foot of one. These are hints, not
+guarantees - the spec lets a browser relax avoidance to make progress - and
+they have not been checked against real pagination. Whole SECTIONS are NOT
+protected: nested packing locations are descendants of their parent section,
+so blanket avoidance would ask the browser to hold an entire bag subtree
+together - wasting the bottom of pages, and failing anyway once a group
+exceeds one page.
+
+**Some print behavior is not CSS at all, and this is the trap to check
+first.** Anything that removes content from the DOM is invisible to a print
+stylesheet, so the printed page is simply missing it - with no gap on the
+paper to say so, because the control that did the removing is print-hidden
+too. Two cases exist today, both fixed by rendering differently while
+`useIsPrinting()` is true rather than by a class:
+
+- Pack's row filters (`Show unpacked only` / `Show un-ready only`) filter the
+  rendered arrays in `CategoryGroup`.
+- A collapsed section drops its whole body. Pack renders no collapse control,
+  so a section collapsed in List view and carried into Pack cannot even be
+  reopened.
+
+Both override the DERIVED value and leave the stored setting alone, so the
+screen is unchanged once printing ends. Look for this pattern before assuming
+a print stylesheet is sufficient.
+
+The page box itself (`@page { margin: 0.5in }`) is the one rule with no
+Tailwind utility form, and lives in `src/index.css`.
 
 Neither desktop control column is square, and they are narrow for different
 reasons. The TRAILING column (kebabs, action icons) sits at 24px wide because
