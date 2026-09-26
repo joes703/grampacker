@@ -3,10 +3,10 @@
 // DROP COLUMN / DROP INDEX / DROP TRIGGER are allowed: they do not rebuild the
 // table (see AGENTS.md "Migrations" for when).
 //
-// Deliberately conservative: after comments are removed, a forbidden word
-// anywhere - even inside a string - refuses the migration. Parsing SQL
-// quoting well enough to allow those cases is where bypasses hide; a harmless
-// migration that trips this can be reworded.
+// Matched against the RAW file - comments and strings included. Nothing is
+// stripped first, because every attempt to strip comments while respecting
+// SQL quoting left a way to hide a statement. A harmless migration that merely
+// mentions one of these (say, in a comment) is refused; reword it.
 
 /** @type {Array<[RegExp, string]>} */
 export const FORBIDDEN = [
@@ -21,43 +21,6 @@ export const FORBIDDEN = [
   [/\bsqlite_(master|schema)\b/i, 'the SQLite schema table'],
 ]
 
-/**
- * The SQL with comments removed. Quote-aware, so a comment marker inside a
- * string or quoted identifier (`'--'`) cannot hide what follows it. Strings
- * and identifiers are kept as written.
- * @param {string} sql
- */
-export const withoutComments = (sql) => {
-  let out = ''
-  let i = 0
-  while (i < sql.length) {
-    const c = sql[i]
-    const next = sql[i + 1]
-    if (c === '-' && next === '-') {
-      while (i < sql.length && sql[i] !== '\n') i += 1
-      out += ' '
-    } else if (c === '/' && next === '*') {
-      const end = sql.indexOf('*/', i + 2)
-      i = end === -1 ? sql.length : end + 2
-      out += ' '
-    } else if (c === "'" || c === '"' || c === '`' || c === '[') {
-      // A quoted run ends at its closing quote; SQLite escapes a quote by
-      // doubling it, which this treats as close-then-reopen - same text out.
-      const close = c === '[' ? ']' : c
-      const end = sql.indexOf(close, i + 1)
-      const stop = end === -1 ? sql.length : end + 1
-      out += sql.slice(i, stop)
-      i = stop
-    } else {
-      out += c
-      i += 1
-    }
-  }
-  return out
-}
-
 /** @param {string} sql @returns {string[]} */
-export const forbiddenIn = (sql) => {
-  const code = withoutComments(sql)
-  return FORBIDDEN.filter(([pattern]) => pattern.test(code)).map(([, why]) => why)
-}
+export const forbiddenIn = (sql) =>
+  FORBIDDEN.filter(([pattern]) => pattern.test(sql)).map(([, why]) => why)

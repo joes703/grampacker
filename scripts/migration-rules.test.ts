@@ -31,6 +31,7 @@ describe('forbiddenIn', () => {
     expect(forbiddenIn("SELECT '/*'; DROP TABLE lists; SELECT '*/';")).not.toEqual([])
     expect(forbiddenIn("SELECT 'it''s -- fine'; DROP TABLE lists;")).not.toEqual([])
     expect(forbiddenIn('SELECT "--"; DROP TABLE lists;')).not.toEqual([])
+    expect(forbiddenIn("SELECT $p('); SELECT '--'; DROP TABLE victim; -- '")).not.toEqual([])
   })
 
   it('refuses however the name is quoted or qualified', () => {
@@ -47,8 +48,8 @@ describe('forbiddenIn', () => {
     expect(forbiddenIn('CREATE INDEX `rename` ON `lists` (`name`);')).toEqual([])
   })
 
-  it('ignores words inside comments', () => {
-    expect(forbiddenIn('-- never DROP TABLE here\n/* or RENAME */\nCREATE INDEX `i` ON `a` (`b`);')).toEqual([])
+  it('refuses a forbidden word even in a comment (nothing is stripped)', () => {
+    expect(forbiddenIn('-- never DROP TABLE here\nCREATE INDEX `i` ON `a` (`b`);')).not.toEqual([])
   })
 
   it('passes the baseline', () => {
