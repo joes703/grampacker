@@ -102,9 +102,7 @@ export default function GearLibraryPage() {
   // Categories: subscription + reorder state machine in one hook. The page-
   // level handleDragEnd delegates the `kind === 'category'` branch to
   // catDragEnd; the hook self-gates so the call is safe regardless of which
-  // kind actually dropped. The buildUpdates override preserves this
-  // surface's historical full-renumber payload shape (0..N-1) rather than
-  // permuting existing slots. See src/lib/use-reorderable.ts for the
+  // kind actually dropped. See src/lib/use-reorderable.ts for the
   // same-tick-subscription rationale.
   const {
     items: categories,
@@ -120,7 +118,6 @@ export default function GearLibraryPage() {
     queryFn: fetchCategories,
     mutationFn: reorderCategories,
     dndKind: 'category',
-    buildUpdates: (reordered) => reordered.map((c, i) => ({ id: c.id, sortOrder: i })),
   })
   const {
     data: allItems = [],
@@ -438,7 +435,7 @@ export default function GearLibraryPage() {
   // Page-level drag handler. Two cases:
   //   1. Reorder categories themselves — delegated to the categories
   //      useReorderable hook (`catDragEnd`). The hook owns parse/validate/
-  //      arrayMove/buildUpdates/mutate. We early-return on kind=='category'
+  //      arrayMove/slot assignment/mutate. We early-return on kind=='category'
   //      so the gear-item branch below doesn't also fire against a
   //      category id.
   //   2. Reorder items within their existing category — stays page-level

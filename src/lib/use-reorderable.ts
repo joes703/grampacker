@@ -66,11 +66,11 @@ import { mutationKeys } from './queries/keys'
 //   7. oldIndex === newIndex (item already at target slot after some
 //      intermediate reorder)
 //
-// Acceptance case: arrayMove the items into their new order, then call
-// buildUpdates to translate the reordered array into the
-// { id, sortOrder }[] payload the mutation expects. Default is
-// assignSortOrderSlots; callers that historically renumber 0..N-1
-// (categories on /gear, before this hook landed) pass their own.
+// Acceptance case: arrayMove the items into their new order, then
+// assignSortOrderSlots hands the rows' EXISTING sortOrder values out in that
+// order. makeOptimisticReorder accepts only a permutation of those values, and
+// they can have gaps (deleting a row never renumbers the rest), so renumbering
+// 0..N-1 here would fail validation and silently drop the drag.
 export type ReorderUpdates = { id: string; sortOrder: number }[]
 
 export type PlanReorderInput<T extends { id: string; sortOrder: number }> = {
@@ -78,7 +78,6 @@ export type PlanReorderInput<T extends { id: string; sortOrder: number }> = {
   overId: string | number | undefined
   items: T[]
   dndKind: string
-  buildUpdates?: (reordered: T[]) => ReorderUpdates
 }
 
 export type PlanReorderResult =
@@ -90,7 +89,6 @@ export function planReorder<T extends { id: string; sortOrder: number }>({
   overId,
   items,
   dndKind,
-  buildUpdates = assignSortOrderSlots,
 }: PlanReorderInput<T>): PlanReorderResult {
   if (activeId === undefined || activeId === null) return { ok: false }
   if (overId === undefined || overId === null) return { ok: false }
@@ -108,7 +106,7 @@ export function planReorder<T extends { id: string; sortOrder: number }>({
   if (oldIndex === newIndex) return { ok: false }
 
   const reordered = arrayMove(items, oldIndex, newIndex)
-  return { ok: true, updates: buildUpdates(reordered) }
+  return { ok: true, updates: assignSortOrderSlots(reordered) }
 }
 
 type UseReorderableOptions<T extends { id: string; sortOrder: number }> = {
@@ -127,12 +125,6 @@ type UseReorderableOptions<T extends { id: string; sortOrder: number }> = {
   // one hook per kind; each handleDragEnd no-ops on drops whose parsed
   // kind doesn't match, so the page can call them all in sequence.
   dndKind: string
-  // Per-surface payload strategy. Default is assignSortOrderSlots
-  // (permute existing slot values — matches what most surfaces use).
-  // Pass a renumber-from-zero builder for category reorder on /gear,
-  // which has used full renumber since before assignSortOrderSlots
-  // existed and whose seed data is contiguous 0..N-1.
-  buildUpdates?: (reordered: T[]) => ReorderUpdates
 }
 
 type UseReorderableResult<T extends { id: string; sortOrder: number }> = {
@@ -170,7 +162,7 @@ type UseReorderableResult<T extends { id: string; sortOrder: number }> = {
 export function useReorderable<T extends { id: string; sortOrder: number }>(
   opts: UseReorderableOptions<T>,
 ): UseReorderableResult<T> {
-  const { queryKey, queryFn, initialData, mutationFn, dndKind, buildUpdates } = opts
+  const { queryKey, queryFn, initialData, mutationFn, dndKind } = opts
   const qc = useQueryClient()
 
   const {
@@ -216,7 +208,6 @@ export function useReorderable<T extends { id: string; sortOrder: number }>(
       overId: over?.id as string | number | undefined,
       items,
       dndKind,
-      buildUpdates,
     })
     if (!plan.ok) return
     reorderMut.mutate(plan.updates)

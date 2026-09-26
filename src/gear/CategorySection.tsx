@@ -266,11 +266,15 @@ function CategorySectionInner(
           </div>
         )}
 
+        {/* Both buttons keep focus in the input on press. Otherwise the press
+            blurs it, the blur commits the draft, and these unmount before
+            the click lands - so Cancel would save the rename. */}
         {renaming && (
           <div className="flex items-center gap-0.5 ml-auto">
             <RowIconButton
               variant="success"
               touchSafe
+              onMouseDown={(e) => e.preventDefault()}
               onClick={commitRename}
               title="Confirm rename"
               ariaLabel="Confirm rename"
@@ -278,6 +282,7 @@ function CategorySectionInner(
             />
             <RowIconButton
               touchSafe
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 setRenameDraft(category?.name ?? '')
                 setRenaming(false)
