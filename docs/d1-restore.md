@@ -63,10 +63,12 @@ port 8976 if the browser is elsewhere).
    each interrupted run and note which remote steps completed - a canceled
    run may already have migrated or swapped the Worker.
 
-2. **Establish which Worker is live, and roll it back if needed.** If
-   "Deploy Worker" never succeeded, production still runs the previous
-   Worker; leave it. Otherwise roll back to the version that was live
-   immediately before the bad deploy - not further. Under the expand/contract
+2. **Establish which Worker is live, and roll it back if needed.** Read it
+   from `wrangler deployments list`, never from the run's step results: a
+   canceled or failed "Deploy Worker" step may still have swapped the Worker
+   before GitHub recorded anything. If the live version is already the one
+   from immediately before the bad deploy, leave it. Otherwise roll back to
+   that version - not further. Under the expand/contract
    rule that Worker works with both the migrated and the restored schema,
    including after a contract drop, whose reads it had already stopped. A
    migration that broke that rule needs case-specific recovery instead.
