@@ -1,5 +1,7 @@
 import { env } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
+import { FOOD_ITEM_CAP } from '../../shared/food'
+import { PACK_RANK_MAX } from '../../shared/lists'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
@@ -650,5 +652,172 @@ describe('duplicate copies food pack state', () => {
     expect(copiedFood?.isReady).toBe(true)
     expect(copiedFood?.packingLocationId).not.toBeNull()
     expect(copiedFood?.packingLocationId).not.toBe(location.id)
+  })
+})
+
+// The database-level guards on list_food_items, exercised directly. The API
+// validates first, so the route tests above never reach these triggers and
+// indexes; they are the backstop for any writer that skips the API. Until
+// 2026-09 they were probed only inside the migration harness, as a side
+// effect of replaying migrations 0022-0024 - tests of the CURRENT schema
+// belong here instead.
+describe('list_food_items guards below the API', () => {
+  type FoodRow = {
+    id: string
+    listId: string
+    locationId?: string | null
+    rank: number
+    isPerMeal?: number | null
+  }
+
+  async function ownerWithTwoLists(email: string) {
+    const { cookie } = await signUpVerifiedUser(email, 'G')
+    const me = await apiRequest(cookie, 'GET', '/api/me')
+    const { id: userId } = (await me.json()) as { id: string }
+    const list = await createList(cookie, 'Trip')
+    const otherList = await createList(cookie, 'Other trip')
+    const location = await createLocation(cookie, list.id, 'Bag')
+    return { cookie, userId, list, otherList, location }
+  }
+
+  function insertFood(userId: string, row: FoodRow) {
+    return env.DB.prepare(
+      'insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, is_per_meal, sort_order, is_packed, is_ready, packing_location_id, pack_sort_order, created_at, updated_at) values (?, ?, ?, ?, 100, 1, ?, 0, 0, 0, ?, ?, 0, 0)',
+    )
+      .bind(
+        row.id,
+        userId,
+        row.listId,
+        row.id,
+        row.isPerMeal === undefined ? 1 : row.isPerMeal,
+        row.locationId ?? null,
+        row.rank,
+      )
+      .run()
+  }
+
+  function setRank(id: string, rank: number) {
+    return env.DB.prepare('update list_food_items set pack_sort_order = ? where id = ?')
+      .bind(rank, id)
+      .run()
+  }
+
+  it("refuses a location that is not on the food's own list", async () => {
+    const { userId, list, otherList, location } = await ownerWithTwoLists('fg-loc@example.com')
+
+    // Another of the SAME user's lists: ownership alone would allow it.
+    await expect(
+      insertFood(userId, { id: `${userId}-x`, listId: otherList.id, locationId: location.id, rank: 0 }),
+    ).rejects.toThrow(/packing location does not belong to this list/)
+    await expect(
+      insertFood(userId, { id: `${userId}-y`, listId: list.id, locationId: 'nonexistent', rank: 0 }),
+    ).rejects.toThrow(/packing location does not belong to this list/)
+
+    await insertFood(userId, { id: `${userId}-z`, listId: otherList.id, rank: 0 })
+    await expect(
+      env.DB.prepare('update list_food_items set packing_location_id = ? where id = ?')
+        .bind(location.id, `${userId}-z`)
+        .run(),
+    ).rejects.toThrow(/packing location does not belong to this list/)
+  })
+
+  it('refuses a duplicate rank within a cohort, and only within it', async () => {
+    const { userId, list, location } = await ownerWithTwoLists('fg-dup@example.com')
+
+    await insertFood(userId, { id: `${userId}-u1`, listId: list.id, rank: 5 })
+    await expect(
+      insertFood(userId, { id: `${userId}-u2`, listId: list.id, rank: 5 }),
+    ).rejects.toThrow(/UNIQUE constraint failed/)
+
+    // The same rank in a DIFFERENT cohort (a location) is fine...
+    await insertFood(userId, { id: `${userId}-l1`, listId: list.id, locationId: location.id, rank: 5 })
+    // ...but not twice inside that location.
+    await expect(
+      insertFood(userId, { id: `${userId}-l2`, listId: list.id, locationId: location.id, rank: 5 }),
+    ).rejects.toThrow(/UNIQUE constraint failed/)
+  })
+
+  it('INSERT accepts only 0..PACK_RANK_MAX', async () => {
+    const { userId, list } = await ownerWithTwoLists('fg-insert@example.com')
+
+    await expect(
+      insertFood(userId, { id: `${userId}-neg`, listId: list.id, rank: -1 }),
+    ).rejects.toThrow(/food pack_sort_order out of range \(0\.\.1000000000\)/)
+    await expect(
+      insertFood(userId, { id: `${userId}-over`, listId: list.id, rank: PACK_RANK_MAX + 1 }),
+    ).rejects.toThrow(/food pack_sort_order out of range \(0\.\.1000000000\)/)
+    await insertFood(userId, { id: `${userId}-max`, listId: list.id, rank: PACK_RANK_MAX })
+  })
+
+  it('UPDATE also allows the -FOOD_ITEM_CAP scratch band that parking uses', async () => {
+    const { userId, list } = await ownerWithTwoLists('fg-update@example.com')
+    const id = `${userId}-row`
+    await insertFood(userId, { id, listId: list.id, rank: 0 })
+
+    await setRank(id, -FOOD_ITEM_CAP)
+    await expect(setRank(id, -FOOD_ITEM_CAP - 1)).rejects.toThrow(
+      /food pack_sort_order out of range \(-200\.\.1000000000\)/,
+    )
+    await expect(setRank(id, PACK_RANK_MAX + 1)).rejects.toThrow(
+      /food pack_sort_order out of range \(-200\.\.1000000000\)/,
+    )
+  })
+
+  it('a raw location delete returns its food to Unassigned, after the food maximum', async () => {
+    // packing_locations_rerank_food_orphans. The DELETE route reranks food
+    // itself before removing the location, so only a direct delete reaches
+    // the trigger. The bag's rows keep their relative order, offset past the
+    // Unassigned food maximum.
+    const { userId, list, location } = await ownerWithTwoLists('fg-orphan@example.com')
+    await insertFood(userId, { id: `${userId}-u0`, listId: list.id, rank: 0 })
+    await insertFood(userId, { id: `${userId}-u1`, listId: list.id, rank: 3 })
+    await insertFood(userId, { id: `${userId}-b0`, listId: list.id, locationId: location.id, rank: 0 })
+    await insertFood(userId, { id: `${userId}-b1`, listId: list.id, locationId: location.id, rank: 2 })
+
+    await env.DB.prepare('delete from packing_locations where id = ?').bind(location.id).run()
+
+    const { results } = await env.DB.prepare(
+      'select id, packing_location_id as loc, pack_sort_order as rank from list_food_items where list_id = ? order by id',
+    )
+      .bind(list.id)
+      .all()
+    expect(results).toEqual([
+      { id: `${userId}-b0`, loc: null, rank: 4 },
+      { id: `${userId}-b1`, loc: null, rank: 6 },
+      { id: `${userId}-u0`, loc: null, rank: 0 },
+      { id: `${userId}-u1`, loc: null, rank: 3 },
+    ])
+  })
+
+  it('near the rank ceiling, a raw location delete renumbers densely instead', async () => {
+    // Appending past an Unassigned row AT PACK_RANK_MAX would overflow the
+    // range, so the trigger falls back to renumbering Unassigned then the bag
+    // from 0.
+    const { userId, list, location } = await ownerWithTwoLists('fg-orphan-ceil@example.com')
+    await insertFood(userId, { id: `${userId}-u0`, listId: list.id, rank: PACK_RANK_MAX })
+    await insertFood(userId, { id: `${userId}-b0`, listId: list.id, locationId: location.id, rank: 0 })
+    await insertFood(userId, { id: `${userId}-b1`, listId: list.id, locationId: location.id, rank: 1 })
+
+    await env.DB.prepare('delete from packing_locations where id = ?').bind(location.id).run()
+
+    const { results } = await env.DB.prepare(
+      'select id, packing_location_id as loc, pack_sort_order as rank from list_food_items where list_id = ? order by id',
+    )
+      .bind(list.id)
+      .all()
+    expect(results).toEqual([
+      { id: `${userId}-b0`, loc: null, rank: 1 },
+      { id: `${userId}-b1`, loc: null, rank: 2 },
+      { id: `${userId}-u0`, loc: null, rank: 0 },
+    ])
+  })
+
+  it('refuses a row whose is_per_meal is NULL', async () => {
+    // 0024 made the flag mandatory so no food row is ever weighed under an
+    // unstated assumption about what its quantity means.
+    const { userId, list } = await ownerWithTwoLists('fg-mode@example.com')
+    await expect(
+      insertFood(userId, { id: `${userId}-null`, listId: list.id, rank: 0, isPerMeal: null }),
+    ).rejects.toThrow(/NOT NULL constraint failed: list_food_items\.is_per_meal/)
   })
 })
