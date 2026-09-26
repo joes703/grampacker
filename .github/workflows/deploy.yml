@@ -281,10 +281,42 @@ jobs:
         if: steps.verify.outputs.go == 'true'
         run: npm run build
 
-      # The Cloudflare token is scoped onto THIS step and the next one only.
+      # The Cloudflare token is scoped onto the three remote steps below only.
       # It was previously job-level env, which put a production credential in
       # the environment of `npm ci` and the vite build - i.e. reachable by any
       # dependency's install or build script.
+      #
+      # The restore point comes first: it is what makes a bad migration
+      # recoverable (docs/d1-restore.md). No bookmark, no migration - a deploy
+      # that looks protected but is not is worse than one that stops.
+      - name: Record D1 restore point
+        if: steps.verify.outputs.go == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          HEAD_SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if ! info=$(npx wrangler d1 time-travel info grampacker --json); then
+            echo "::error::wrangler could not read a D1 Time Travel bookmark. Not migrating without a restore point."
+            exit 1
+          fi
+          bookmark=$(printf '%s' "$info" | jq -r '.bookmark // empty' 2>/dev/null || true)
+          if [ -z "$bookmark" ]; then
+            echo "::error::Could not read a D1 Time Travel bookmark. Not migrating without a restore point."
+            exit 1
+          fi
+          taken_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "::notice::D1 restore point before deploying $HEAD_SHA: $bookmark ($taken_at)"
+          {
+            echo "### D1 restore point"
+            echo "Taken $taken_at, before migrating for \`$HEAD_SHA\`."
+            echo '```'
+            echo "npx wrangler d1 time-travel restore grampacker --bookmark=$bookmark"
+            echo '```'
+            echo "Read docs/d1-restore.md before running it."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Apply D1 migrations (production)
         if: steps.verify.outputs.go == 'true'
         env:

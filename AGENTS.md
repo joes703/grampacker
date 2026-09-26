@@ -57,8 +57,8 @@ to it so someone can tell later whether it died.
 ## Documents: which ones bind you
 
 - **Binding, maintained against the code:** `AGENTS.md`, `CLAUDE.md`,
-  `SECURITY.md`, `docs/authz-matrix.md`, `docs/incidents.md`,
-  `docs/testing-and-ci.md`, `docs/ui-density.md`. If one of these disagrees
+  `SECURITY.md`, `docs/authz-matrix.md`, `docs/d1-restore.md`,
+  `docs/incidents.md`, `docs/testing-and-ci.md`, `docs/ui-density.md`. If one of these disagrees
   with the code, that is a bug in the document - fixing it belongs to the
   change that made it wrong.
 - **Reference, kept current but not policy:** `README.md`, `STACK.md`,
