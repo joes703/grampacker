@@ -607,9 +607,8 @@ describe('/api/gear-items authorization matrix', () => {
   it('fractional grams survive the write, the read back, and a PATCH', async () => {
     // The wire assertion for the DTO. Note what this does NOT prove: SQLite
     // INTEGER affinity stores a non-integral 12.4 as REAL rather than
-    // truncating it, so this passes with or without migration 0013. The
-    // declared-type probe in check-migration-safety.mjs is what covers the
-    // column itself.
+    // truncating it, so this passes whatever the column's declared type. The
+    // type itself is `real` (server/db/app-schema.ts, migrations/).
     const { cookie } = await signUpVerifiedUser('gear-fraction@example.com', 'F')
 
     const created = await createGear(cookie, { name: 'Stake', weightGrams: 12.4 })

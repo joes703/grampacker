@@ -8,7 +8,7 @@ import {
 
 // These tests pin the CLIENT half of the GearStatus contract - the constant
 // list and the dialog's menu options - which must match the DB CHECK
-// constraint in migrations/0003_gear.sql. They cannot see the constraint:
+// constraint in migrations/0000_baseline.sql. They cannot see the constraint:
 // a value added here but not there fails as a CHECK error at write time,
 // and one added there but not here is rejected by the shared DTO
 // (server/routes/gear-items.test.ts, the validation case).

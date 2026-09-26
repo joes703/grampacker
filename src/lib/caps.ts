@@ -1,7 +1,7 @@
 // Numeric resource caps shared between the UI and (later) import preflight.
 //
 // The server is the authoritative enforcement:
-//   - the gear_items_user_cap DB trigger (migrations/0003_gear.sql)
+//   - the gear_items_user_cap DB trigger (migrations/0000_baseline.sql)
 //     -> GEAR_ITEM_CAP
 //   - the zod request schemas in shared/gear.ts -> the name/description/
 //     weight/quantity bounds below.

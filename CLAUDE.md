@@ -66,7 +66,7 @@ that makes them the transport for work they delegated.
 their behalf.) Ask for a one-line `VERDICT:` so the outcome is unambiguous.
 
 Codex's sandbox is READ-ONLY: it cannot run the build, the suites, or the
-migration harness, and its CI lookups fail. Its review is source-level. Running
+migration check, and its CI lookups fail. Its review is source-level. Running
 the gates is yours, and saying which of you ran what is part of reporting the
 verdict honestly.
 
