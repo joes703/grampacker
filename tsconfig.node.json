@@ -7,9 +7,9 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    // Only for the one .mjs listed below, which opens with `// @ts-check` so
-    // it is checked under these strict settings; its test imports it and
-    // would otherwise fail on the missing declaration (TS7016).
+    // Only for the .mjs files listed below, which open with `// @ts-check` so
+    // they are checked under these strict settings; their tests import them
+    // and would otherwise fail on the missing declaration (TS7016).
     "allowJs": true
   },
   // Every root-level config file must be listed, or `npm run build` goes green
@@ -26,6 +26,8 @@
     "vitest.workers.config.ts",
     "drizzle.config.ts",
     "scripts/check-migration-immutability.mjs",
+    "scripts/check-migration-safety.mjs",
+    "scripts/migration-rules.mjs",
     "scripts/**/*.test.ts"
   ]
 }

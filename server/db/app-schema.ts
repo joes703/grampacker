@@ -533,10 +533,6 @@ export const listFoodItemSlots = sqliteTable(
 // "abort if the parks did not all land" has to be expressed as a statement that
 // FAILS. Feeding NULL into `ok` (NOT NULL) is that failure, and D1 rolls the
 // whole batch back with it.
-//
-// Declared in scripts/check-migration-safety.mjs's TRANSIENT_TABLES, which
-// asserts presence and emptiness rather than demanding a fixture row. Created
-// by migration 0019.
 export const packReorderGuard = sqliteTable('_pack_reorder_guard', {
   listId: text('list_id').primaryKey(),
   ok: integer('ok').notNull(),

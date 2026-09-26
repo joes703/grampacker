@@ -158,3 +158,36 @@ describe('journalProblem', () => {
     expect(journalProblem(journal('0027_a'), journal('0027_a', 'nonexistent'))).toBeNull()
   })
 })
+
+describe('collapse into a baseline', () => {
+  const base = ['0000_a.sql', '0001_b.sql']
+  const stub =
+    (head: string[], headJournal: string, changed: string[]): Git =>
+    (args) => {
+      if (args[0] === 'merge-base') return Buffer.from(`${SHA}\n`)
+      if (args[0] === 'diff') return z(...changed)
+      if (args[0] === 'ls-tree' && args[2] === `${SHA}:migrations`) return Buffer.from([...base, 'meta'].join('\n'))
+      if (args[0] === 'ls-tree' && args[2] === 'HEAD:migrations') return Buffer.from([...head, 'meta'].join('\n'))
+      if (args[0] === 'show' && args[1] === `HEAD:${JOURNAL}`) return Buffer.from(headJournal)
+      throw new Error(`unexpected git ${args.join(' ')}`)
+    }
+  const allDeleted = [...base.map((n) => `migrations/${n}`), 'migrations/meta/0001_snapshot.json', JOURNAL]
+
+  it('permits replacing every shipped migration with one new baseline', () => {
+    const { code, output } = run(stub(['0000_baseline.sql'], journal('0000_baseline'), allDeleted))
+    expect(code).toBe(0)
+    expect(output).toContain('collapsed into a baseline')
+  })
+
+  it('refuses anything short of a whole-history collapse', () => {
+    const cases: Array<[string, Git]> = [
+      ['one shipped file kept', stub(['0000_baseline.sql', '0001_b.sql'], journal('0000_baseline', '0001_b'), allDeleted.filter((p) => !p.endsWith('0001_b.sql')))],
+      ['not named baseline', stub(['0000_squash.sql'], journal('0000_squash'), allDeleted)],
+      ['journal has extra entries', stub(['0000_baseline.sql'], journal('0000_baseline', '0001_x'), allDeleted)],
+      ['a shipped file edited, not deleted', stub(['0000_baseline.sql'], journal('0000_baseline'), ['migrations/0000_a.sql', JOURNAL])],
+    ]
+    for (const [name, git] of cases) {
+      expect(run(git).code, name).toBe(1)
+    }
+  })
+})
