@@ -12,7 +12,7 @@ it. A deploy that failed WITHOUT a harmful migration applying is a re-run, as
 the `deploy.yml` header describes.
 
 Nothing here has been rehearsed against production. The commands come from
-wrangler's help and source (4.129) and Cloudflare's Time Travel docs.
+wrangler's help and source (4.135) and Cloudflare's Time Travel docs.
 
 ## What you have
 
@@ -64,19 +64,34 @@ port 8976 if the browser is elsewhere).
    run may already have migrated or swapped the Worker.
 
 2. **Establish which Worker is live, and roll it back if needed.** Read it
-   from `wrangler deployments list`, never from the run's step results: a
-   canceled or failed "Deploy Worker" step may still have swapped the Worker
-   before GitHub recorded anything. If the live version is already the one
-   from immediately before the bad deploy, leave it. Otherwise roll back to
-   that version - not further. Under the expand/contract
-   rule that Worker works with both the migrated and the restored schema,
-   including after a contract drop, whose reads it had already stopped. A
-   migration that broke that rule needs case-specific recovery instead.
+   from Cloudflare, never from the run's step results: a canceled or failed
+   "Deploy Worker" step may still have swapped the Worker before GitHub
+   recorded anything.
 
    ```
    npx wrangler deployments list
-   npx wrangler rollback <version-id>
    ```
+
+   It prints the ten most recent deployments oldest first, each with its
+   `Created` time and the version it serves; the LAST entry is live. The
+   TARGET is the newest deployment created before the bad attempt's
+   "Apply D1 migrations" step started (the attempt you took the bookmark
+   from). If the live deployment IS that target - the bad attempt never
+   swapped the Worker - leave it. Otherwise roll back to the target's
+   version, and not further:
+
+   ```
+   npx wrangler rollback <version-id> --message "restore: <run url>"
+   ```
+
+   If you cannot tell which deployment is the target (clock doubt, more than
+   ten deployments since, several versions splitting traffic), stop here and
+   work it out before touching the database.
+
+   Under the expand/contract rule the target works with both the migrated
+   and the restored schema, including after a contract drop, whose reads it
+   had already stopped. A migration that broke that rule needs case-specific
+   recovery instead.
 
    Rolling the Worker back before the database matters: restoring first would
    leave the new Worker running against the old schema.
