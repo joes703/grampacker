@@ -171,8 +171,7 @@ means deploy, including the migrations the PR carries.
 Mechanism today: a push to main runs `ci.yml`; its completion triggers
 `deploy.yml` (`workflow_run`); a preflight job drops stale events; the
 deploy job, inside the `deploy-production` concurrency group, re-verifies
-through the API that `ci.yml` is green for main's head, builds, records a
-D1 Time Travel bookmark (and refuses to migrate without one), migrates,
+through the API that `ci.yml` is green for main's head, builds, migrates,
 deploys, records a deployment marker; `deploy-liveness.yml` compares main
 against that marker every six hours, via `scripts/deployed-sha.mjs`. The
 watchdog trusts only the NEWEST deployment record in the page the API returns,
@@ -186,7 +185,7 @@ re-run of the failed run, never a manual dispatch; the header of `deploy.yml`
 says which failures may be re-run and which must not. A migration that
 APPLIED and damaged data is a different recovery whatever the run's final
 status, because a re-run skips what already applied rather than repairing
-it: a database restore to the bookmark in that run's summary, with
+it: a D1 Time Travel restore to just before the migration step, with
 `docs/d1-restore.md` as its runbook.
 
 **This is the intended shape, not a way station.** A replacement was designed
