@@ -763,6 +763,55 @@ describe('list_food_items guards below the API', () => {
     )
   })
 
+  it('a raw location delete returns its food to Unassigned, after the food maximum', async () => {
+    // packing_locations_rerank_food_orphans. The DELETE route reranks food
+    // itself before removing the location, so only a direct delete reaches
+    // the trigger. The bag's rows keep their relative order, offset past the
+    // Unassigned food maximum.
+    const { userId, list, location } = await ownerWithTwoLists('fg-orphan@example.com')
+    await insertFood(userId, { id: `${userId}-u0`, listId: list.id, rank: 0 })
+    await insertFood(userId, { id: `${userId}-u1`, listId: list.id, rank: 3 })
+    await insertFood(userId, { id: `${userId}-b0`, listId: list.id, locationId: location.id, rank: 0 })
+    await insertFood(userId, { id: `${userId}-b1`, listId: list.id, locationId: location.id, rank: 2 })
+
+    await env.DB.prepare('delete from packing_locations where id = ?').bind(location.id).run()
+
+    const { results } = await env.DB.prepare(
+      'select id, packing_location_id as loc, pack_sort_order as rank from list_food_items where list_id = ? order by id',
+    )
+      .bind(list.id)
+      .all()
+    expect(results).toEqual([
+      { id: `${userId}-b0`, loc: null, rank: 4 },
+      { id: `${userId}-b1`, loc: null, rank: 6 },
+      { id: `${userId}-u0`, loc: null, rank: 0 },
+      { id: `${userId}-u1`, loc: null, rank: 3 },
+    ])
+  })
+
+  it('near the rank ceiling, a raw location delete renumbers densely instead', async () => {
+    // Appending past an Unassigned row AT PACK_RANK_MAX would overflow the
+    // range, so the trigger falls back to renumbering Unassigned then the bag
+    // from 0.
+    const { userId, list, location } = await ownerWithTwoLists('fg-orphan-ceil@example.com')
+    await insertFood(userId, { id: `${userId}-u0`, listId: list.id, rank: PACK_RANK_MAX })
+    await insertFood(userId, { id: `${userId}-b0`, listId: list.id, locationId: location.id, rank: 0 })
+    await insertFood(userId, { id: `${userId}-b1`, listId: list.id, locationId: location.id, rank: 1 })
+
+    await env.DB.prepare('delete from packing_locations where id = ?').bind(location.id).run()
+
+    const { results } = await env.DB.prepare(
+      'select id, packing_location_id as loc, pack_sort_order as rank from list_food_items where list_id = ? order by id',
+    )
+      .bind(list.id)
+      .all()
+    expect(results).toEqual([
+      { id: `${userId}-b0`, loc: null, rank: 1 },
+      { id: `${userId}-b1`, loc: null, rank: 2 },
+      { id: `${userId}-u0`, loc: null, rank: 0 },
+    ])
+  })
+
   it('refuses a row whose is_per_meal is NULL', async () => {
     // 0024 made the flag mandatory so no food row is ever weighed under an
     // unstated assumption about what its quantity means.
