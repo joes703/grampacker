@@ -114,16 +114,19 @@ the known way to lose rows, and D1 Time Travel is the undo for anything else
 
 **`scripts/check-migration-immutability.mjs`** (pull requests only) refuses
 any change to a migration `main` already holds, judged against the merge
-base, apart from appended journal entries. The one exception is a
-whole-history collapse into a single `NNNN_baseline.sql`. It depends on the
-"Protect main" ruleset making a pull request the only route to `main`.
+base, apart from appended journal entries. Its one exception, the
+2026-09-26 collapse, is pinned to that exact transition and cannot fire again.
+It depends on the "Protect main" ruleset making a pull request the only route
+to `main`.
 
 **Collapsing history again** (only if the directory grows unwieldy):
 1. Generate the baseline from production's `sqlite_master` (tables, then
    indexes, then triggers; skip `d1_migrations`, `sqlite_*` and `_cf_*`).
 2. Keep the newest snapshot as `0000_snapshot.json`, with a zeroed `prevId`
    and a one-entry journal.
-3. Prove the baseline builds the same schema as the old files.
+3. Prove the baseline builds the same schema as the old files, and give
+   `check-migration-immutability.mjs` a reviewed exception for exactly that
+   transition (see its `COLLAPSE`).
 4. Before merging, have the owner run
    `npx wrangler d1 execute grampacker --remote --command "INSERT INTO d1_migrations (name) VALUES ('NNNN_baseline.sql')"`.
 5. After merging, reset any local dev database (delete `.wrangler/state`).

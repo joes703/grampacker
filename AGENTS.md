@@ -257,10 +257,8 @@ database is never deleted or recreated.
     Worker runs against the new schema.
   - Never edit or delete a migration that has shipped: production applied it
     by name and never re-runs it. `scripts/check-migration-immutability.mjs`
-    refuses that on a pull request. The one exception is collapsing the whole
-    history into a single `NNNN_baseline.sql`, which also needs production's
-    `d1_migrations` ledger to record the baseline by name first (a human-run
-    remote write).
+    refuses that on a pull request. Its one exception is the 2026-09-26
+    collapse into `0000_baseline.sql`, and it cannot fire again.
   - A bad migration is undone with D1 Time Travel: `docs/d1-restore.md`.
 
 ## Git and supply chain

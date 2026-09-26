@@ -7,10 +7,11 @@
 // Judged against the merge base with origin/main, so a migration the pull
 // request itself adds can change freely across pushes.
 //
-// One exception: collapsing the whole history into a single `NNNN_baseline.sql`
-// (every shipped .sql deleted, one baseline added, a one-entry journal). That
-// only works if production's d1_migrations ledger already records the baseline
-// by name, which is a manual step - see AGENTS.md "Migrations".
+// One exception, for ONE transition: the 2026-09-26 collapse of the 30
+// migrations ending at COLLAPSE.lastShipped into COLLAPSE.baseline. It cannot
+// fire again once that has merged (the merge base no longer holds
+// lastShipped), so a later "collapse" cannot be used to slip a schema change
+// past this guard; another collapse needs its own reviewed exception.
 //
 // Runs on pull_request only. The "Protect main" ruleset makes a pull request
 // the only route to main; a direct push would not be checked.
@@ -24,6 +25,11 @@ import { basename, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const JOURNAL = 'migrations/meta/_journal.json'
+
+export const COLLAPSE = {
+  lastShipped: '0029_better_auth_1_7_4_drop_account_issuer.sql',
+  baseline: '0000_baseline.sql',
+}
 
 /** @param {unknown} error */
 const describe = (error) => (error instanceof Error ? error.message : String(error))
@@ -67,9 +73,9 @@ export const journalProblem = (baseText, headText) => {
 }
 
 /**
- * Null when the change is a whole-history collapse into one baseline file:
- * every .sql the merge base holds is deleted, the only .sql left is a new
- * `NNNN_baseline.sql`, and the journal holds exactly that one entry.
+ * Null when the change is the one sanctioned collapse (COLLAPSE): the merge
+ * base still holds the old history, every .sql it holds is deleted, the only
+ * .sql left is the new baseline, and the journal holds exactly that entry.
  * Otherwise a reason (unused by callers; it keeps the rule readable in tests).
  * @param {(args: string[]) => Buffer} git
  * @param {string} base
@@ -93,9 +99,9 @@ export const collapseProblem = (git, base, changed) => {
   } catch {
     return 'git evidence unavailable'
   }
+  if (!before.includes(COLLAPSE.lastShipped)) return 'not the 2026-09-26 history'
   const [baseline, ...others] = after
-  if (baseline === undefined || others.length > 0) return 'not exactly one .sql left'
-  if (!/^\d+_baseline\.sql$/.test(baseline)) return 'the remaining file is not a baseline'
+  if (baseline !== COLLAPSE.baseline || others.length > 0) return `not exactly ${COLLAPSE.baseline}`
   if (before.includes(baseline)) return 'the baseline is not new'
   const deleted = new Set(changed)
   if (!before.every((name) => deleted.has(`migrations/${name}`))) return 'not every shipped migration was removed'

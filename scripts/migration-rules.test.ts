@@ -26,6 +26,21 @@ describe('forbiddenIn', () => {
     expect(forbiddenIn('DROP INDEX `a_idx`;\nDROP TRIGGER `a_cap`;')).toEqual([])
   })
 
+  it('cannot be fooled by comment markers or keywords inside strings', () => {
+    expect(forbiddenIn("SELECT '--'; DROP TABLE lists;")).not.toEqual([])
+    expect(forbiddenIn("SELECT '/*'; DROP TABLE lists; SELECT '*/';")).not.toEqual([])
+    expect(forbiddenIn("SELECT 'it''s -- fine'; DROP TABLE lists;")).not.toEqual([])
+    expect(forbiddenIn("ALTER TABLE `lists` ADD `label` text DEFAULT 'rename';")).toEqual([])
+    expect(forbiddenIn("INSERT INTO `a` (`b`) VALUES ('drop table x');")).toEqual([])
+  })
+
+  it('treats rename as an operation, not a word', () => {
+    expect(forbiddenIn('CREATE INDEX `rename` ON `lists` (`name`);')).toEqual([])
+    expect(forbiddenIn('ALTER TABLE `lists` ADD `rename` text;')).toEqual([])
+    expect(forbiddenIn('ALTER TABLE lists RENAME TO lists2;')).not.toEqual([])
+    expect(forbiddenIn('alter table "lists" rename column "a" to "b";')).not.toEqual([])
+  })
+
   it('ignores words inside comments', () => {
     expect(forbiddenIn('-- never DROP TABLE here\n/* or RENAME */\nCREATE INDEX `i` ON `a` (`b`);')).toEqual([])
   })

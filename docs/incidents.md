@@ -226,11 +226,12 @@ REVISED 2026-09-26: history collapsed, harness retired. Between 2026-08 and
 2026-09 `scripts/check-migration-safety.mjs` grew to about 4,500 lines. It
 seeded a populated D1, replayed every post-baseline migration against it on
 every run, digest-pinned the first 21 files, and carried per-migration
-fixtures, expected rewrites, trigger probes and removal declarations. It was
-built for a problem this app does not have: many databases at unknown
-versions. Grampacker has one production database, it had applied all 30
-migrations, and its schema matched a replay of them exactly (checked
-2026-09-26). So:
+fixtures, expected rewrites, trigger probes and removal declarations. Most of
+that weight came from re-proving shipped history on every run, and
+grampacker has one production database, which had applied all 30 migrations
+and whose schema matched a replay of them exactly (checked 2026-09-26). The
+trade-off is explicit: a new migration is no longer proven to preserve
+existing rows before merge. So:
 
 - The 30 files became one `0000_baseline.sql`, generated from production's
   own `sqlite_master`. Production's ledger was given the baseline's name by
