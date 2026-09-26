@@ -4,28 +4,36 @@
 here stops matching `deploy.yml` or wrangler, fix this file in the change that
 broke it.
 
-Use this when a deploy SUCCEEDED but its migration damaged or lost data. A
-deploy that FAILED is a different problem: re-run it as the `deploy.yml`
-header describes. Nothing here has been rehearsed against production; the
-commands are from wrangler's own help and source (4.129).
+Use this when a migration that APPLIED to production damaged or lost data -
+whatever the deploy run's final status. A run can fail after its migration
+applied ("Deploy Worker" failing, or a later migration in the same run
+failing), and re-running it skips what already applied rather than repairing
+it. A deploy that failed WITHOUT a harmful migration applying is a re-run, as
+the `deploy.yml` header describes.
+
+Nothing here has been rehearsed against production. The commands come from
+wrangler's help and source (4.129) and Cloudflare's Time Travel docs.
 
 ## What you have
 
 Every production deploy records a D1 Time Travel bookmark immediately before
-it migrates, and refuses to migrate if it cannot. The bookmark, and the exact
-restore command, are in that run's job summary ("D1 restore point") and in its
-log as a notice. If the run was re-attempted, every attempt records its own
-bookmark: use the one from the attempt whose "Apply D1 migrations" step
-actually applied the bad migration, not a later attempt's, which was taken
-after the damage. Time Travel only reaches back a limited window (wrangler
-accepts up to 30 days; your plan may allow less), so act promptly.
+it migrates, and refuses to migrate if it cannot. The run's job summary ("D1
+restore point") holds the bookmark and the exact restore command; the log
+holds a notice with the SHA, bookmark and time.
 
-If the summary is missing, derive a bookmark from a time just before the
+If the run was re-attempted, each attempt recorded its own bookmark: use the
+one from the attempt whose "Apply D1 migrations" step applied the bad
+migration, not a later attempt's, which was taken after the damage.
+
+If no summary is usable, derive a bookmark from a time just before that
 migration step started:
 
 ```
 npx wrangler d1 time-travel info grampacker --timestamp=2026-09-26T03:45:00Z
 ```
+
+Time Travel only reaches back a limited window (wrangler accepts up to 30
+days; your plan may allow less), so act promptly.
 
 ## What a restore does
 
@@ -41,41 +49,59 @@ All of these run on your own machine; the sandbox has no Cloudflare
 credentials. Log in first (`npx wrangler login`, through an SSH tunnel on
 port 8976 if the browser is elsewhere).
 
-1. **Stop deploys.** `deploy.yml` ships main's head after every green CI run,
-   and after a restore that would re-apply the bad migration.
+1. **Stop deploys, and make sure none is still running.** Disabling the
+   workflow only stops NEW runs; a run already queued or in progress keeps
+   going, and nothing you do by hand takes its `deploy-production` lock.
 
    ```
    gh workflow disable deploy.yml
+   gh run list --workflow deploy.yml --status in_progress
+   gh run list --workflow deploy.yml --status queued
    ```
 
-2. **Roll the Worker back first**, to the version that was live before the
-   bad deploy. Every migration must work with the previous Worker (expand
-   first, contract a release later), so the old Worker is safe against both
-   the damaged schema and the restored one. Restoring the database first
-   would leave the NEW Worker running against the OLD schema.
+   Wait for or cancel (`gh run cancel <run-id>`) anything listed, then open
+   each interrupted run and note which remote steps completed - a canceled
+   run may already have migrated or swapped the Worker.
+
+2. **Establish which Worker is live, and roll it back if needed.** If
+   "Deploy Worker" never succeeded, production still runs the previous
+   Worker; leave it. Otherwise roll back to the version that was live
+   immediately before the bad deploy - not further. Under the expand/contract
+   rule that Worker works with both the migrated and the restored schema,
+   including after a contract drop, whose reads it had already stopped. A
+   migration that broke that rule needs case-specific recovery instead.
 
    ```
    npx wrangler deployments list
    npx wrangler rollback <version-id>
    ```
 
-3. **Restore the database** to the bookmark from the run summary. Note the
-   "previous bookmark" it prints.
+   Rolling the Worker back before the database matters: restoring first would
+   leave the new Worker running against the old schema.
+
+3. **Restore the database** to the bookmark. Note the "previous bookmark" it
+   prints.
 
    ```
    npx wrangler d1 time-travel restore grampacker --bookmark=<bookmark>
    ```
 
-4. **Take the bad migration off main.** Open a PR reverting it. The
-   migration-immutability check (`scripts/check-migration-immutability.mjs`)
-   refuses any change to a migration main already holds, deletions included,
-   so this PR is the one legitimate case for exempting that file in the same
-   change - say so in the PR, and get it reviewed like any other change to a
-   guard.
+4. **Take the migration off main, completely.** The restored ledger no longer
+   lists it, so while its file exists the next deploy applies it again. A
+   full reversal is the `.sql` file, its `migrations/meta/_journal.json`
+   entry and its snapshot, plus any application code that needs the schema
+   the migration created - otherwise the next deploy ships code the restored
+   database cannot serve.
 
-5. **Check nothing is pending** before deploys resume. With the revert
-   merged, the bad migration's file is gone and its name is absent from the
-   restored ledger:
+   The migration guards refuse this on purpose: `check-migration-immutability.mjs`
+   rejects a changed or deleted shipped migration, a deleted snapshot, and a
+   non-append journal change, and the harness rejects a journal that names a
+   missing file. Neither has an exemption flag. The PR has to change those
+   scripts to exempt exactly this migration, in the same change, and that
+   exemption gets reviewed like any other change to a guard. CI runs the PR's
+   own copy of the scripts, so no ruleset bypass is needed.
+
+5. **Check nothing is pending** before deploys resume:
 
    ```
    npx wrangler d1 migrations list grampacker --remote

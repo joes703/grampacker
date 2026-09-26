@@ -210,10 +210,11 @@ unsuccessful one, or records or statuses tied at the same second that
 disagree - is reported as `unverified`, naming no deployed SHA, rather than
 falling back to an older success that cannot speak for the newer deploy. Recovery is a
 re-run of the failed run, never a manual dispatch; the header of `deploy.yml`
-says which failures may be re-run and which must not. A deploy that
-SUCCEEDED but whose migration damaged data is a different recovery - a
-database restore to the bookmark in that run's summary - and
-`docs/d1-restore.md` is its runbook.
+says which failures may be re-run and which must not. A migration that
+APPLIED and damaged data is a different recovery whatever the run's final
+status, because a re-run skips what already applied rather than repairing
+it: a database restore to the bookmark in that run's summary, with
+`docs/d1-restore.md` as its runbook.
 
 **This is the intended shape, not a way station.** A replacement was designed
 in full - `ci.yml` callable, `deploy.yml` calling it directly and gating

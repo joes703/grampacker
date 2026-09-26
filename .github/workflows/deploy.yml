@@ -46,7 +46,11 @@
 #         as on the first attempt. That includes a run where the migrations
 #         applied and "Deploy Worker" failed: `wrangler d1 migrations apply`
 #         skips migrations already recorded by name, so the re-run only
-#         retries the Worker swap.
+#         retries the Worker swap. A re-run never UNDOES a migration: if one
+#         that applied damaged data, the recovery is a restore
+#         (docs/d1-restore.md), whatever the run's final status. A run that
+#         failed at "Record D1 restore point" changed nothing remote and is
+#         safe to re-run.
 #         NOT for a run that failed only at "Record deployment marker": its
 #         error says so explicitly, because production is already on the new
 #         SHA and `--failed` re-runs the whole deploy job. Repair the marker
@@ -66,7 +70,7 @@
 #
 # Auth is a Cloudflare API token stored as a GitHub Actions secret
 # (CLOUDFLARE_API_TOKEN). It lives only here in GitHub - never on a laptop or
-# in an agent sandbox. It is scoped onto the two wrangler steps rather than the
+# in an agent sandbox. It is scoped onto the three wrangler steps rather than the
 # whole job, so `npm ci` and the vite build never see it.
 #
 # No third-party actions are used (only the same first-party checkout/setup
@@ -301,9 +305,14 @@ jobs:
             echo "::error::wrangler could not read a D1 Time Travel bookmark. Not migrating without a restore point."
             exit 1
           fi
-          bookmark=$(printf '%s' "$info" | jq -r '.bookmark // empty' 2>/dev/null || true)
-          if [ -z "$bookmark" ]; then
-            echo "::error::Could not read a D1 Time Travel bookmark. Not migrating without a restore point."
+          # Exactly one JSON object with a non-empty string bookmark, or stop.
+          # Slurping makes trailing junk or a second value an error instead of
+          # letting jq print the first bookmark and carry on.
+          if ! bookmark=$(printf '%s' "$info" | jq -ser \
+                'if length == 1 and (.[0] | type) == "object"
+                    and (.[0].bookmark | type) == "string" and (.[0].bookmark | length) > 0
+                 then .[0].bookmark else error("no bookmark") end'); then
+            echo "::error::wrangler's reply held no usable D1 Time Travel bookmark. Not migrating without a restore point."
             exit 1
           fi
           taken_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
