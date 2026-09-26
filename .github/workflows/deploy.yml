@@ -68,7 +68,7 @@
 #
 # Auth is a Cloudflare API token stored as a GitHub Actions secret
 # (CLOUDFLARE_API_TOKEN). It lives only here in GitHub - never on a laptop or
-# in an agent sandbox. It is scoped onto the three wrangler steps rather than the
+# in an agent sandbox. It is scoped onto the two wrangler steps rather than the
 # whole job, so `npm ci` and the vite build never see it.
 #
 # No third-party actions are used (only the same first-party checkout/setup

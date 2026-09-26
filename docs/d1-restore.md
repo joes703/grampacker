@@ -13,17 +13,27 @@ Paid). A restore replaces the whole database in place, including
 Cloudflare's "Time Travel and backups" page.
 
 Run these on your own machine after `npx wrangler login`. The sandbox has no
-Cloudflare credentials.
+Cloudflare credentials. If any step's answer is unclear, stop and work it out
+before touching the database.
 
-1. **Stop deploys:** `gh workflow disable deploy.yml`. Wait for any run still
-   in progress, or cancel it with `gh run cancel <run-id>`.
-2. **Find T.** T is the time the bad run's "Apply D1 migrations
-   (production)" step started. It is on the run page, or in
-   `gh run view <run-id> --json jobs`.
-3. **Roll the Worker back first,** so the old code is what runs against the
-   restored schema. Run `npx wrangler deployments list`; the last entry is
-   live. If it was created after T, run `npx wrangler rollback` to go back to
-   the previous version.
+1. **Stop deploys.**
+   1. Run `gh workflow disable deploy.yml`.
+   2. List what is still going: `gh run list --workflow deploy.yml --status in_progress` and `... --status queued`.
+   3. Cancel every run listed (`gh run cancel <run-id>`), then list again. Carry on only when both lists are empty.
+2. **Find T:** when the damaging migration started.
+   - Look at the attempt that actually applied it. After a retry, that is
+     not necessarily the latest attempt.
+   - `gh run view <run-id> --attempt <n> --json jobs` shows when that
+     attempt's "Apply D1 migrations (production)" step started.
+3. **Put the right Worker back first,** so the old code is what runs against
+   the restored schema.
+   1. Run `npx wrangler deployments list` (oldest first; the last entry is live).
+   2. The target is the newest deployment created before T.
+   3. If the target is already live, do nothing. Otherwise run
+      `npx wrangler rollback <target version-id>`, then list the deployments
+      again to confirm it is live.
+   4. Give the version id explicitly. With no id, wrangler picks the
+      previous deployment, which may be the bad one.
 4. **Restore the database to just before T:**
 
    ```
@@ -31,11 +41,16 @@ Cloudflare credentials.
    ```
 
    It prints a bookmark that undoes the restore. Keep it.
-5. **Take the migration off `main` in a PR:** its `.sql`, its journal entry,
-   its snapshot, and any code that needs its schema. Otherwise the next
-   deploy applies it again, because the restored ledger no longer lists it.
-   `check-migration-immutability.mjs` refuses a deleted shipped migration,
-   so the same PR adds a narrow exception there for that one file.
-6. **Resume:** `gh workflow enable deploy.yml`, then confirm
-   `npx wrangler d1 migrations list grampacker --remote` shows only what you
-   expect.
+5. **Take the migration off `main` in a PR, and merge it while deploys are
+   still off.**
+   - Remove its `.sql`, its journal entry, its snapshot, and any code that
+     needs its schema. Otherwise the next deploy applies it again, because
+     the restored ledger no longer lists it.
+   - `check-migration-immutability.mjs` refuses those removals, so the same
+     PR gives it an exception for exactly those paths.
+6. **Resume.**
+   1. Confirm `npx wrangler d1 migrations list grampacker --remote` shows
+      nothing pending.
+   2. Run `gh workflow enable deploy.yml`.
+   3. Re-run `main`'s latest CI run (`gh run rerun <ci-run-id>`) so the
+      deploy fires.
