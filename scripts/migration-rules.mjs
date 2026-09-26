@@ -8,11 +8,16 @@
 // SQL quoting left a way to hide a statement. A harmless migration that merely
 // mentions one of these (say, in a comment) is refused; reword it.
 
+// Between two keywords SQLite allows whitespace AND comments.
+const GAP = String.raw`(?:\s|/\*[\s\S]*?\*/|--[^\n]*(?:\n|$))+`
+/** @param {string} source */
+const rx = (source) => new RegExp(source, 'i')
+
 /** @type {Array<[RegExp, string]>} */
 export const FORBIDDEN = [
-  [/\bdrop\s+table\b/i, 'DROP TABLE (a rebuild, or a table other rows cascade from)'],
+  [rx(String.raw`\bdrop${GAP}table\b`), 'DROP TABLE (a rebuild, or a table other rows cascade from)'],
   [
-    /\balter\s+table\b[\s\S]*\brename\b/i,
+    rx(String.raw`\balter${GAP}table\b[\s\S]*\brename\b`),
     'ALTER TABLE ... RENAME (a rebuild step, and a rename has no window where both names work)',
   ],
   [/__new_/i, "drizzle-kit's table-rebuild scratch table"],

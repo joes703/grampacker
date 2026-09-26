@@ -32,6 +32,9 @@ describe('forbiddenIn', () => {
     expect(forbiddenIn("SELECT 'it''s -- fine'; DROP TABLE lists;")).not.toEqual([])
     expect(forbiddenIn('SELECT "--"; DROP TABLE lists;')).not.toEqual([])
     expect(forbiddenIn("SELECT $p('); SELECT '--'; DROP TABLE victim; -- '")).not.toEqual([])
+    expect(forbiddenIn('DROP/**/TABLE lists;')).not.toEqual([])
+    expect(forbiddenIn('DROP -- x\nTABLE lists;')).not.toEqual([])
+    expect(forbiddenIn('ALTER/* */TABLE lists RENAME TO b;')).not.toEqual([])
   })
 
   it('refuses however the name is quoted or qualified', () => {
