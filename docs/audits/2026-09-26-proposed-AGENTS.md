@@ -43,6 +43,7 @@ error-path assertion.
   with `gh pr merge --squash --match-head-commit <sha>`, after confirming CI
   is green (`docs/testing-and-ci.md` section 12 has the sandbox-safe
   commands).
+- Never discard the user's uncommitted or unpushed changes.
 - Ask first before a force-push, a history rewrite, deleting an unmerged
   remote branch, or destructive git (`reset --hard`, `clean -fd`). Two are
   routine and need no approval: deleting a merged branch, and force-pushing a
@@ -64,8 +65,11 @@ one; do not quietly retire one because its reason looks dated.
 - **Every query is scoped to the session's user.** The exceptions are the
   anonymous share read (gated on the slug and `is_shared`) and system tables
   such as rate-limit buckets. Client-supplied ids never widen ownership:
-  writes precheck them against the user's owned set in JS (one query), and
-  bulk writes chunk under D1's 100-parameter limit (`server/repos/chunk-ids.ts`).
+  writes precheck them with a query scoped to the user (and the parent,
+  where there is one), within D1's 100-parameter limit. The usual bulk
+  approach is to fetch the user's owned ids once and test membership in JS.
+  A chunked, batched probe is the documented alternative (`food.ts` slot
+  probes). Chunk bulk writes with `server/repos/chunk-ids.ts`.
 - **The public share returns only its strict DTO,** asserted on the raw JSON.
 - **CSRF, then auth, on app write routes:** 403 without the custom header,
   then 401 without a session. `/api/auth/*` uses better-auth's own origin
@@ -134,7 +138,10 @@ Each of these has cost an incident. Details: `docs/incidents.md`.
   open `<dialog>`, so a modal reports inline. `src/lib/mutation-error-handler.ts`
   owns which failures toast. Error copy claims only what it can prove
   ("Couldn't confirm...").
-- Every promise has an owner: `await` or `.catch` it.
+- **Every rejected promise has an owner.** An async handler called without
+  `await` or `.catch` must catch internally, or become a promise the call site
+  awaits. Non-mutation async actions report the error, then consume it,
+  rather than rethrowing into nothing (see `exportCsv`).
 - Tailwind v4 scans whole class tokens. Composing `${TOKEN}` works;
   interpolating a class fragment produces no CSS.
 

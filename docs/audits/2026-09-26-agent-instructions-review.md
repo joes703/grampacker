@@ -10,9 +10,12 @@ This is a dated record, not binding. Nothing here has been applied.
 **Question from the owner:** has AGENTS.md "gotten out of control"? And are
 its contracts "a hell of a thing to hang on"?
 
-**Short answer:** yes, it has. The contracts themselves hold up: all ten were
-checked against the code, and all ten are true. What went wrong is everything
-around them:
+**Short answer:** yes, it has. The contracts themselves are the right ones.
+All ten were checked against the code:
+- nine hold as stated;
+- one (#9, "a copied constant gets a test") is only partly followed.
+
+What went wrong is everything around them:
 - a 44-line essay on how to classify rules;
 - about 110 lines on how the migration harness works inside;
 - incident history repeated from `docs/incidents.md`;
@@ -119,13 +122,14 @@ re-checked by the author of this review.
 | 6 | CSRF, then auth | Yes | `csrf.test.ts`; `food.test.ts:421` proves the order | Accurate |
 | 7 | Owner / non-owner / anonymous proofs, recorded in the authz matrix | All 45 handlers have a row | Nothing (prose) | Accurate. Minor gaps: no row for the `/api/*` 404 fallback; the health row's tests column is stale |
 | 8 | The `gear_items` 500-row cap is a hand-written trigger | Yes (0003, recreated in 0013) | `gear-items.test.ts:305` | **Incomplete.** Every cap trigger is outside Drizzle, not just this one, and "any rebuild must recreate it" is moot now that rebuilds are banned. |
-| 9 | A TypeScript constant copied into SQL gets a test | **Partly** | `quantity-bounds.test.ts`, `pack-rank-constants.test.ts`, `categories.test.ts:360` | **Violated** by six caps (`GEAR_ITEM_CAP`, `LIST_CAP`, `LIST_ITEM_CAP`, `PACKING_LOCATION_CAP`, `FOOD_ITEM_CAP`, `FOOD_DAY_CAP`). `shared/food.ts:18-19` uses the forbidden "keep in lockstep" comment instead. Fix the code, not the rule: code-quality review work package 3. |
+| 9 | A TypeScript constant copied into SQL gets a test | **Partly** | `quantity-bounds.test.ts`; `pack-rank-constants.test.ts` (ties `LIST_ITEM_CAP` and `FOOD_ITEM_CAP` to the rank guards); `categories.test.ts:360` (the category cap) | **Not followed for six cap definitions:** there is no direct comparison between the constant and the database threshold. That covers the row-cap triggers for `GEAR_ITEM_CAP`, `LIST_CAP`, `LIST_ITEM_CAP`, `PACKING_LOCATION_CAP` and `FOOD_ITEM_CAP`, and the day CHECK for `FOOD_DAY_CAP`. `shared/food.ts:18-19` uses the forbidden "keep in lockstep" comment instead. Fix the code, not the rule: code-quality review work package 3. |
 | 10 | better-auth's own limiter is off; the budgets are ours | Yes (`auth.ts:210-216`) | `rate-limit.test.ts:246` | Accurate. Nothing asserts `enabled: false` directly. |
 
 **Verdict on "a hell of a thing to hang on":**
 - The contracts are sound and mostly tested.
-- Three are **prose-only**: #3 (scoping inside repos), #7 (the per-route
-  authz proofs) and #9. Those are the ones to back with machinery. The
+- Two are **prose-only**: #3 (scoping inside repos) and #7 (the per-route
+  authz proofs). #9 is only partly tested, and is missing the threshold
+  comparisons. Those three are the ones to back with machinery. The
   code-quality review's work package 7 adds a route sweep test and closes the
   lint gap from #2.
 - What made them hard to hang on was that they were **scattered**:
@@ -194,3 +198,19 @@ re-checked by the author of this review.
 - **Next step:** one PR replacing both files and making the moves. It gets a
   Codex review framed as "find a rule that was dropped without a home", then
   the owner's approval.
+
+## Review record
+
+Codex did a source-level adversarial review of the first draft (`7ac18a5`),
+through the plugin. It is read-only and ran no suites. Its verdict: **accurate
+with corrections**. All seven corrections were applied in the following
+commit:
+- B1's "permanent" claim is qualified.
+- The removed-column fixtures are retargeted, not deleted.
+- The route sweep exempts the anonymous routes.
+- `FOOD_DAY_CAP` is recognized as a CHECK constraint, not a trigger.
+- Three rules the proposal dropped are restored: never discard the user's
+  changes; the full rejected-promise ownership rule; no slash-command
+  hand-offs.
+- The ownership wording allows the documented bounded-probe alternative.
+- Contract #9 is described as partly followed, not violated outright.

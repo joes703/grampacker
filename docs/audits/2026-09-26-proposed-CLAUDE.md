@@ -47,6 +47,9 @@ AGENTS.md above is the shared source of truth; this file only adds to it.
   - Say what you think is most likely wrong, and invite Codex to attack it.
   - Ask for a one-line `VERDICT:`.
   - Always ask it to confirm the invariants in AGENTS.md "Invariants".
+- **Don't hand the human a slash command to paste.** That makes them the
+  transport for work they delegated. `/codex:adversarial-review` is
+  user-only.
 - **Codex's sandbox is read-only:** it cannot run the build, the suites or the
   harness. Report which of you ran what.
 - **Leave the automatic review gate disabled.**

@@ -102,8 +102,10 @@ work package.
 - **What the user sees:** in production, `onMutate` logs to the console and
   throws `OptimisticReorderValidationError` (`optimistic.ts:575-580`). The
   mutation function never runs. `onError` deliberately skips the toast
-  (`:600`), and the refetch snaps the list back. No error appears, and the
-  gap never closes, so this is permanent for that account.
+  (`:600`), and the refetch snaps the list back. No error appears. Nothing in
+  the app renumbers categories, so the failure persists across drags and
+  reloads until the gap closes. In practice that means deleting every
+  category and recreating them.
 - **Evidence:**
   - Reproduced by a throwaway test: 0 calls to the mutation function, with a
     "not a permutation" error.
@@ -160,9 +162,15 @@ section.
      agent-instructions review.
    - Export named limits from `shared/`, and build the schemas, client
      `maxLength`s and route error strings from them.
-   - Add the missing constant-vs-trigger tests for `GEAR_ITEM_CAP`,
-     `LIST_CAP`, `LIST_ITEM_CAP`, `PACKING_LOCATION_CAP`, `FOOD_ITEM_CAP` and
-     `FOOD_DAY_CAP`, in the style of `scripts/quantity-bounds.test.ts`.
+   - Add the missing constant-vs-database tests, in the style of
+     `scripts/quantity-bounds.test.ts`:
+     - row-cap triggers: `GEAR_ITEM_CAP`, `LIST_CAP`, `LIST_ITEM_CAP`,
+       `PACKING_LOCATION_CAP` and `FOOD_ITEM_CAP`;
+     - `FOOD_DAY_CAP`, which is a CHECK constraint (0017), not a trigger.
+
+     `pack-rank-constants.test.ts` already ties `LIST_ITEM_CAP` and
+     `FOOD_ITEM_CAP` to the rank guards. What is missing is the row-count
+     thresholds.
    - Delete the two unused server copies of the cap constants.
    - Fixes a real mismatch: list rename is capped at 120 characters in
      settings but 256 on the server.
@@ -174,8 +182,11 @@ section.
      parse the response with the shared schemas.
    - Add a `TEST_ORIGIN` constant, and derive the stale-session age from
      `FRESH_AGE_SECONDS`.
-   - Move two tests to the Node tier, and remove tests of the deleted
-     food-plan feature.
+   - Move two tests to the Node tier.
+   - Retarget the fixtures that name the removed `lists.food_plan_id`
+     column. Keep what those tests assert: that a non-slug uniqueness
+     failure is rethrown without a retry (`lists-slug.node.test.ts`), and
+     the column classifier (`db-errors.node.test.ts`).
 
    Effort M. **Review note:** the authorization proofs depend on these
    helpers, so their owner, non-owner and anonymous behavior must be
@@ -199,8 +210,13 @@ section.
    Effort S-M. **Contract** on S2-5 (CSRF-then-auth ordering).
 7. **Boundary enforcement.**
    - Covers S2-4, plus the lint gap from the agent-instructions review.
-   - Add one test that walks Hono's registered routes and asserts 401 for
-     anonymous callers and 403 without the CSRF header.
+   - Add one test that walks Hono's registered routes, driven by
+     `docs/authz-matrix.md`:
+     - assert 401 for anonymous callers;
+     - assert 403 without the CSRF header, on unsafe methods only;
+     - explicitly exempt the anonymous routes: `/api/health`, the public
+       share read, and better-auth's `/api/auth/*`, which has its own origin
+       check.
    - Extend the route lint so `c.env.DB` and `cloudflare:workers` `env` are
      refused in `server/routes/**`. Today the rule matches imports only; a
      probe showed a route calling `c.env.DB.prepare(...)` passes lint.
@@ -455,3 +471,19 @@ These came back clean. Leave them alone:
 - **Pack-row weight display:** food rows show per-unit weight next to the
   unit count, while the carrying list shows the total. This matches gear rows,
   but the owner should confirm it is intended. **Contract** (food weight).
+
+## Review record
+
+Codex did a source-level adversarial review of the first draft (`7ac18a5`),
+through the plugin. It is read-only and ran no suites. Its verdict: **accurate
+with corrections**. All seven corrections were applied in the following
+commit:
+- B1's "permanent" claim is qualified.
+- The removed-column fixtures are retargeted, not deleted.
+- The route sweep exempts the anonymous routes.
+- `FOOD_DAY_CAP` is recognized as a CHECK constraint, not a trigger.
+- Three rules the proposal dropped are restored: never discard the user's
+  changes; the full rejected-promise ownership rule; no slash-command
+  hand-offs.
+- The ownership wording allows the documented bounded-probe alternative.
+- Contract #9 is described as partly followed, not violated outright.
