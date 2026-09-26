@@ -155,7 +155,7 @@ re-checked by the author of this review.
 | Documents (57-79) | **Keep**, shortened; the `.planning/` history parenthetical is dropped |
 | Roles (81-111) | **Keep** the gates (merge = deploy, approve the exact head, no destructive git without approval, remote D1 human-gated). **Delete** the ruleset history. The merge command is kept once, not in both files. |
 | Commands (113-130) | **Keep** (the most valuable section per every source); notes shortened |
-| Verification (132-157) | **Keep** the minimum-gates list and the exit-code point. **Delete** "a passing test proves the path it exercises" as generic advice. |
+| Verification (132-157) | **Keep** the minimum-gates list, the exit-code point, and "trace real callers before trusting a helper's coverage". |
 | Traps (159-219) | **Keep** each as one line; history is already in `docs/incidents.md`. **Enforced:** `RefObject` (the build). **Move:** `noValidate` → `docs/ui-density.md` forms; "optimistic updates hide rejections" (a debugging tip) → incidents "Optimistic updates" |
 | Boundaries: routes and authz | **Keep**, now under Invariants, with the lint wording corrected |
 | Boundaries: generated files and the gear trigger | **Keep**, generalized to all triggers |
@@ -204,7 +204,9 @@ re-checked by the author of this review.
 Codex did a source-level adversarial review of the first draft (`7ac18a5`),
 through the plugin. It is read-only and ran no suites. Its verdict: **accurate
 with corrections**. All seven corrections were applied in the following
-commit:
+commit. A re-review found four more dropped rules (trace real callers;
+comment an unavoidable `!`; don't copy secrets; don't install unexamined
+code) and an overstated recovery note on B1. Those are fixed too:
 - B1's "permanent" claim is qualified.
 - The removed-column fixtures are retargeted, not deleted.
 - The route sweep exempts the anonymous routes.

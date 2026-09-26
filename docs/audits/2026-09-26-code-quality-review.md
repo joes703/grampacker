@@ -102,10 +102,9 @@ work package.
 - **What the user sees:** in production, `onMutate` logs to the console and
   throws `OptimisticReorderValidationError` (`optimistic.ts:575-580`). The
   mutation function never runs. `onError` deliberately skips the toast
-  (`:600`), and the refetch snaps the list back. No error appears. Nothing in
-  the app renumbers categories, so the failure persists across drags and
-  reloads until the gap closes. In practice that means deleting every
-  category and recreating them.
+  (`:600`), and the refetch snaps the list back. No error appears. Ordinary
+  drags and reloads do not repair it. It persists while the stored ranks
+  differ from the dense 0..N-1 ranks the drag handler generates.
 - **Evidence:**
   - Reproduced by a throwaway test: 0 calls to the mutation function, with a
     "not a permutation" error.
