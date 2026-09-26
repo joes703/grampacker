@@ -119,7 +119,7 @@ document at all.
 | Lint | `npm run lint` | ESLint. There is **no formatter** - do not add Prettier. |
 | Unit tests | `npm run test:unit` | Vitest on Node (jsdom per file by pragma) over `scripts/**`, `shared/**`, `src/**`, and `server/**/*.node.test.ts` - the pure and mock-only server tests. Runs anywhere. Which tier a test belongs in: `docs/testing-and-ci.md`. |
 | API tests | `npm run test:api` | Vitest workers pool over every other `server/**/*.test.ts`, on real workerd + D1 with per-file isolation. Bindings come from `vitest.workers.config.ts`, not `.dev.vars`. |
-| Migration safety | `npm run test:migrations` | Required when anything under `migrations/` or the schema changes. Reads only the tracked `migrations/` tree - each pass stages its own copy - so it is safe to run alongside the other suites. |
+| Migration check | `npm run test:migrations` | Required when anything under `migrations/` or the schema changes: Drizzle bookkeeping, snapshot matches `schema.ts`, and no destructive statement in a new migration. Needs origin/main fetched. |
 | Action pins | `npm run check:action-pins` | Verifies pinned action SHAs against upstream tags. Needs network; fails closed. |
 | YAML parse | `npm run check:yaml` | yamllint over `.github/`. Not schema validation. |
 | Dev server | `npm run dev` | SPA + `/api/*` + local D1 in one process. |
@@ -237,100 +237,31 @@ database is never deleted or recreated.
   recorded. Nothing machine-enforces this, so a row that no longer matches its
   handler is worse than no row.
 - Generated files: regenerate, never hand-edit (better-auth schema, Drizzle
-  snapshots, `wrangler types` output). Exception to know: the `gear_items`
-  500-row cap is a hand-added SQL trigger NOT in the Drizzle snapshot; any
-  rebuild of that table must recreate it.
-- **Every migration carries a Drizzle snapshot: `drizzle-kit generate` for a
-  schema change, `generate --custom` for a data-only one.** Never hand-add a
-  `.sql` and a journal entry alone. drizzle diffs against the EFFECTIVE LATEST
-  snapshot, so what hurts is that one being stale - a missing intermediate is
-  harmless once a correct later snapshot exists, and only Drizzle-MODELED
-  changes are affected (triggers and table options are not modeled at all).
-  0018 and 0021-0024 skipped it, leaving the latest basis four migrations
-  behind, and `generate` then produced a migration re-adding five existing
-  columns and three existing tables - which D1 rejects as `duplicate column
-  name`. Repaired by 0025. `npm run test:migrations` enforces the bookkeeping
-  and, by generating against a copy of `meta/`, that the newest snapshot
-  matches `schema.ts` for every Drizzle-MODELED object - the part filenames
-  cannot prove, because `generate --custom` copies its predecessor forward.
-  Triggers and table options sit outside Drizzle's model entirely. The same
-  run's replay narrows that gap but does not close it: it fails if a trigger or
-  index that existed before a migration is MISSING after it, comparing NAMES
-  only - not trigger bodies - and nothing checks table options such as
-  `WITHOUT ROWID`. Trigger bodies are not compared generally: `POST_CHECKS`
-  behaviorally exercise selected PATHS through some triggers, so they catch
-  rewrites that alter those observed behaviors, while rewrites to unexercised
-  triggers - or to unexercised behavior within a probed one - still slip
-  through.
-- **The harness runs every statement on D1, and batches only reads.** The
-  `POST_CHECKS` probes are the harness's only behavioral coverage of trigger
-  bodies (the API suite exercises some triggers directly on D1 as well, but
-  not the migration-time behaviors these probe), so nothing may move to a
-  stock SQLite build to make it faster - two attempts died on that. What is cheap instead is sharing one
-  `wrangler d1 execute` launch between reads that observe the SAME state:
-  never across a seed, a probe or an apply, and never with a statement that
-  writes. Seeding, each probe and each apply keep their own launch. A pass
-  makes five read launches; a full run is 81 launches where it was 182. Each
-  pass stages the migrations it should see into its own directory beside a
-  generated wrangler config, so the tracked tree is only ever read - proven by
-  a recursive content digest compared before and after the run, on the failure
-  path as well as the happy one.
-- **A new migration may not REBUILD or RENAME anything, and may not touch
-  `d1_migrations`. No exceptions.** A rebuild is the SQLite 12-step recipe
-  drizzle-kit emits for a constraint change - `CREATE __new_x; copy;
-  DROP TABLE x; RENAME` - and on D1 the `PRAGMA foreign_keys=OFF` it wraps that
-  in is a no-op, so the `DROP TABLE` fires every child cascade and wipes the
-  data. Migration 0009 did exactly that to `list_items` in production. A column
-  TYPE or CHECK change is out for the same reason: SQLite can only do one
-  through a rebuild. A rename is a drop plus an add with no window where both
-  names work.
-- **`DROP COLUMN`, `DROP TRIGGER` and `DROP INDEX` are allowed as a CONTRACT
-  STEP, one release after the code that read them stopped shipping.** This is
-  narrower than it sounds and the distinction is load-bearing: native
-  `ALTER TABLE ... DROP COLUMN` is not a rebuild. It rewrites the table's rows
-  in place and never issues `DROP TABLE`, so no cascade fires - verified
-  against sqlite3 3.46.1 with `foreign_keys=ON` inside a transaction, which is
-  D1's exact setup. The blanket ban that used to stand here was written when
-  the rebuild had just cost an incident and the two operations had not been
-  told apart yet.
-
-  The constraint that survives is NOT SQLite's, it is ours: `deploy.yml`
-  applies migrations and THEN replaces the Worker, so between those steps -
-  indefinitely if `wrangler deploy` fails - production runs the OLD Worker
-  against the NEW schema. Drop a column in the same release that removed its
-  reads and every request touching it 500s in that window. Hence one release
-  later, never the same one.
-
-  `DROP TABLE` stays banned for any table another table cascades from. A
-  childless scratch table is not that, and may go.
-
-  A contract migration contains ONLY removals - no CREATE, no ADD COLUMN,
-  nothing additive. That is what keeps the cascade-parent check honest: it
-  reads incoming foreign keys from the schema as it stands BEFORE the migration,
-  so a file that could also create a referencing table would have a window the
-  check cannot see.
-
-  What the gate proves: rebuilds, renames and ledger writes rejected outright;
-  SQL matched against the declaration statement by statement; a cascade parent
-  refused on evidence read from the live schema; a declared trigger or index
-  proven to have existed before and to be gone after.
-
-  What it does NOT prove, and do not read a green check as proof of any of it:
-  that the previous release reached production (CI cannot see what is deployed -
-  `readsRemovedIn` is a human attestation); that a column is genuinely
-  unreferenced (the schema and raw-SQL scans are table-blind, so they
-  over-block rather than under-block, and a nested template can hide a
-  fragment); or that a trigger body still does what it did.
-- Dead objects no longer accumulate on purpose. The reasons behind all of this
-  (deploy ordering, the D1 cascade wipe, what the check can and cannot prove)
-  are in docs/incidents.md - read that section before writing any migration.
-- Never edit a migration that has shipped: production applied it by name and
-  will never re-run it. The 21 baseline migrations are digest-pinned and fail
-  closed on edit; on a pull request
-  `scripts/check-migration-immutability.mjs` refuses a change to any other
-  migration main already holds. The harness cannot catch this - it replays
-  the tree, so an edited migration replays clean. That guard's coverage
-  boundary is in `docs/testing-and-ci.md` section 7.
+  snapshots, `wrangler types` output). SQL triggers - every row cap, the rank
+  range guards, the same-list and cycle guards - are hand-written and sit
+  outside Drizzle's model, so `drizzle-kit generate` never emits or checks
+  them.
+- **Migrations.** History and reasons: `docs/incidents.md` "Migrations".
+  - Create every migration with `drizzle-kit generate` (schema change) or
+    `generate --custom` (data only), so its journal entry and snapshot exist.
+    Never hand-add a `.sql`.
+  - **No table rebuilds, renames, or DROP TABLE, and never touch
+    `d1_migrations`.** On D1, `PRAGMA foreign_keys=OFF` is a no-op inside a
+    migration, so a rebuild's `DROP TABLE` fires every ON DELETE CASCADE child
+    and wipes it (0009 did this to `list_items`). That rules out column type
+    and CHECK changes too. `npm run test:migrations` refuses these in any new
+    migration.
+  - `DROP COLUMN`, `DROP INDEX` and `DROP TRIGGER` are fine, but only once the
+    release that stopped using the object has DEPLOYED (not merely merged):
+    `deploy.yml` migrates before it swaps the Worker, so for a while the old
+    Worker runs against the new schema.
+  - Never edit or delete a migration that has shipped: production applied it
+    by name and never re-runs it. `scripts/check-migration-immutability.mjs`
+    refuses that on a pull request. The one exception is collapsing the whole
+    history into a single `NNNN_baseline.sql`, which also needs production's
+    `d1_migrations` ledger to record the baseline by name first (a human-run
+    remote write).
+  - A bad migration is undone with D1 Time Travel: `docs/d1-restore.md`.
 
 ## Git and supply chain
 

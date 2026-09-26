@@ -112,8 +112,8 @@ port 8976 if the browser is elsewhere).
 
    The migration guards refuse this on purpose: `check-migration-immutability.mjs`
    rejects a changed or deleted shipped migration, a deleted snapshot, and a
-   non-append journal change, and the harness rejects a journal that names a
-   missing file. Neither has an exemption flag. The PR has to change those
+   non-append journal change, and `check-migration-safety.mjs` rejects a
+   journal that names a missing file. Neither has an exemption flag. The PR has to change those
    scripts to exempt exactly this migration, in the same change, and that
    exemption gets reviewed like any other change to a guard. CI runs the PR's
    own copy of the scripts, so no ruleset bypass is needed.
