@@ -198,7 +198,8 @@ means deploy, including the migrations the PR carries.
 Mechanism today: a push to main runs `ci.yml`; its completion triggers
 `deploy.yml` (`workflow_run`); a preflight job drops stale events; the
 deploy job, inside the `deploy-production` concurrency group, re-verifies
-through the API that `ci.yml` is green for main's head, builds, migrates,
+through the API that `ci.yml` is green for main's head, builds, records a
+D1 Time Travel bookmark (and refuses to migrate without one), migrates,
 deploys, records a deployment marker; `deploy-liveness.yml` compares main
 against that marker every six hours, via `scripts/deployed-sha.mjs`. The
 watchdog trusts only the NEWEST deployment record in the page the API returns,
@@ -209,7 +210,11 @@ unsuccessful one, or records or statuses tied at the same second that
 disagree - is reported as `unverified`, naming no deployed SHA, rather than
 falling back to an older success that cannot speak for the newer deploy. Recovery is a
 re-run of the failed run, never a manual dispatch; the header of `deploy.yml`
-says which failures may be re-run and which must not.
+says which failures may be re-run and which must not. A migration that
+APPLIED and damaged data is a different recovery whatever the run's final
+status, because a re-run skips what already applied rather than repairing
+it: a database restore to the bookmark in that run's summary, with
+`docs/d1-restore.md` as its runbook.
 
 **This is the intended shape, not a way station.** A replacement was designed
 in full - `ci.yml` callable, `deploy.yml` calling it directly and gating
