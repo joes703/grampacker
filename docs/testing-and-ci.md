@@ -57,9 +57,11 @@ visible without opening a config.
 - The one thing Node does not refuse is the app entry: `server/index.ts`
   loads on Node, so a misnamed API test could pass against Hono-on-Node
   while meaning to prove workerd. A `no-restricted-imports` rule in
-  `eslint.config.js` refuses, per directory depth, every relative spelling
-  that reaches `server/index.ts` from a `.node.test.ts` (`..`, `../index`,
-  `../index.ts`, ...), and leaves a sibling module's own `index.ts` alone.
+  `eslint.config.js` refuses, per directory depth, the direct spellings that
+  reach `server/index.ts` from a `.node.test.ts` (`..`, `../`, `../index`,
+  `../index.ts`, `../index.js`), and leaves a sibling module's own
+  `index.ts` alone. A roundabout path such as `../../server/index` still
+  gets through.
 
 This guards against the accidental misfile, not deliberate evasion. The
 residual is judgment, per section 2.
