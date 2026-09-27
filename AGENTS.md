@@ -27,10 +27,12 @@ a D1 equivalent, ask rather than assume.
 - Working from an agent sandbox (GitHub token scope, CI polling since
   `gh run watch` 403s, what to do when a workflow-file push is refused):
   `docs/testing-and-ci.md` section 12.
-- Ask first before a force-push, a history rewrite, deleting an unmerged
-  remote branch, or `reset --hard` / `clean -fd`. Never discard the user's
-  changes. Routine, no approval needed: deleting a branch whose PR merged, and
-  force-pushing a never-merged branch you own this session (say so).
+- Never force-push or rewrite pushed history, on any branch. To catch a branch
+  up with `main`, merge `main` into it; squash merges hide the extra commit.
+  A genuine need for an exception is discussed with the human first.
+- Ask first before deleting an unmerged remote branch or running
+  `reset --hard` / `clean -fd`. Never discard the user's changes. Deleting a
+  branch whose PR merged is routine.
 - Remote D1: ad-hoc writes or schema changes need explicit approval every
   time, and the database is never deleted or recreated. Local dev D1 is
   yours. Undoing a bad migration: `docs/d1-restore.md`.
