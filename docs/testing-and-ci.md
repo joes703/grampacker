@@ -276,9 +276,8 @@ a token problem and is never bypassed.
   `server/` only for pure or mocked code; jsdom only for rendering or a DOM
   API; `npm run test:api` as well as `test:unit` for anything under
   `server/`.
-- **Migration:** fixture rows and probes; `npm run test:migrations`; the
-  PR says what a backfill wrote; the old Worker on the new schema is safe
-  for the deploy window.
+- **Migration:** `npm run test:migrations`; the PR says what a backfill
+  wrote; the old Worker on the new schema is safe for the deploy window.
 - **Workflow:** `npm run check:yaml`, `npm run check:action-pins`; the
   deploy invariants in section 11 still hold; the commit goes to Joe for a
   host-side push.

@@ -1,91 +1,57 @@
 @AGENTS.md
 
-# Claude-specific notes for grampacker-next
+# Claude-specific notes
 
-AGENTS.md above is the shared source of truth; this file only adds what is
-specific to working with Claude interactively and does not override it.
+AGENTS.md above is the shared source of truth; this file adds only what is
+specific to working with Claude, and does not override it.
 
 ## Working style
 
 - This codebase belongs to someone learning. Explain your reasoning when
-  proposing a change, not just the change itself.
+  proposing a change, not just the change.
 - Multi-step refactors: survey the current state, show the plan, then execute
-  in checkpoints. Don't bundle structural decisions into a single diff.
+  in checkpoints. Don't bundle structural decisions into one diff.
 - Net-new features: present a plan and wait for approval before coding, even
   if the ask sounds like a go-ahead. Fix-lists and agreed remediation items go
   straight to implementation.
 - Decide reversible questions yourself and say so. Don't park work awaiting a
   call that doesn't need making.
+- Keep shell commands simple and single-purpose: compound scripts trip the
+  sandbox analyzer and stall on approval.
 
 ## Pipeline
 
-Claude owns the loop end to end: write, get Codex to review adversarially,
-push a branch, open a PR, merge on green, let CI deploy. The human's OK lands
-at the outward gates (merge = deploy; flag destructive or account-affecting
-changes before merging).
-
-- Merge procedure is in AGENTS.md "Roles": confirm CI green yourself, then
-  `gh pr merge --squash --match-head-commit <sha>` once the human has
-  approved that exact head. The ruleset requires the `Verify` check, so
-  `--auto` would wait for it, but the convention is still to confirm and
-  pin the head yourself.
-- From a sandbox, `gh run watch` fails with a 403 on check annotations (a
-  token limitation, not an auth failure). Monitor with the Actions REST API
-  in a bounded or background poll at about 30 s intervals, never a
-  foreground `while true` loop; `docs/testing-and-ci.md` section 12 has the
-  commands and the failure-classification rules.
-- Keep shell commands simple and single-purpose - compound scripts trip the
-  sandbox analyzer and stall on approval.
+Claude owns the loop: write, get Codex to review adversarially, push a branch,
+open a PR, merge on green once the human approves that exact head (AGENTS.md
+"Shipping"), let CI deploy. Flag destructive or account-affecting changes
+before merging.
 
 ## Getting Codex to review
 
-**Review when a wrong answer is still cheap to change, and again before it
-ships.** For net-new work that usually means once on the plan and once on the
-diff; for a fix-list, once on the diff is enough. The point is an independent
-reader who has to actually follow the reasoning - not a ceremony to perform.
+Review when a wrong answer is still cheap to change, and again before it
+ships: for net-new work that usually means once on the plan and once on the
+diff; for a fix-list, once on the diff is enough.
 
-**Run it through the PLUGIN, not `codex exec`.** Launch the
-`codex:codex-rescue` agent with the framing. That agent is LAUNCH-ONLY: it
-returns a task handle and will refuse to poll or fetch results. To collect the
-review, run the `codex:status` skill with that task id to locate the job state
-file, then poll
-`~/.claude/plugins/data/codex-openai-codex/state/<repo-hash>/jobs/<task-id>.json`
-in a bounded background loop and read `result.rawOutput` out of it. Do NOT tail
-the subagent's JSONL transcript - it will overflow the context window.
-
-(This section prescribed `codex exec -s read-only` until 2026-09-12. Joe asked
-for the plugin surface instead, twice; the direct call is retired. If the
-plugin is genuinely broken, say so and ask - do not quietly fall back to
-`exec`, which is what made this need saying twice.)
-
-**Name the scope in the framing** - the exact commit, or `git diff main...HEAD`,
-or the working tree. Without that, a review of a clean feature branch can look
-at nothing and still answer. Do NOT hand the human a slash command to paste -
-that makes them the transport for work they delegated.
-(`/codex:adversarial-review` is user-invocation-only and cannot be called on
-their behalf.) Ask for a one-line `VERDICT:` so the outcome is unambiguous.
-
-Codex's sandbox is READ-ONLY: it cannot run the build, the suites, or the
-migration check, and its CI lookups fail. Its review is source-level. Running
-the gates is yours, and saying which of you ran what is part of reporting the
-verdict honestly.
-
-A review is only as good as its framing. Say what changed, say what you think
-is most likely to be wrong, and invite the reviewer to attack that - a prompt
-that just says "review this" gets prose back. When a finding is fixed,
-re-review rather than declaring it closed yourself.
-
-The automatic review gate is intentionally disabled; do not re-enable it.
-
-What a review of this repo should always confirm, because these are the
-invariants that would hurt most if they broke:
-
-- Authenticated queries are scoped to the session's user. The known
-  exceptions are the anonymous share read (slug-gated on `is_shared`) and
-  system tables like rate-limit buckets.
-- The public share returns only its strict DTO, asserted on raw JSON.
-- Writes taking client-supplied ids precheck ownership, within D1's
-  100-parameter limit.
-- CSRF + auth layering on app write routes (403 without the custom header,
-  401 without session). Exception: `/api/auth/*` uses better-auth's own
-  origin validation.
+- **Use the plugin, never `codex exec`.** Launch the `codex:codex-rescue`
+  agent. It is launch-only: it returns a task id (`task-...`) and will not
+  fetch results. The job's state is `jobs/<task-id>.json` under the plugin's
+  data directory (here
+  `~/.claude/plugins/data/codex-openai-codex/state/<repo>-<hash>/`). Poll that
+  exact file in a bounded background loop until `status` is `completed`,
+  `failed` or `cancelled`, then read `result.rawOutput`, else `errorMessage`.
+  If both are empty, say so and read the `<task-id>.log` beside it. Never tail the subagent's JSONL transcript; it overflows
+  the context. If the plugin is broken, say so and ask - do not fall back to
+  `exec`.
+- **Frame it.** Name the exact scope (a commit, `git diff main...HEAD`, or the
+  working tree), say what changed and what you think is most likely wrong,
+  and ask for a one-line `VERDICT:`. Every review should confirm these
+  AGENTS.md Invariants still hold: user scoping, the strict share DTO,
+  ownership prechecks, and CSRF-then-auth.
+- Never hand the human a slash command to paste (`/codex:adversarial-review`
+  is user-invocation-only); that makes them the transport for delegated work.
+- Codex's sandbox is read-only: its review is source-level and it cannot run
+  the build, suites or CI lookups. Running the gates is yours; report which of
+  you ran what.
+- When a finding is fixed, re-review rather than declaring it closed.
+- The plugin's automatic review gate is intentionally disabled; do not
+  re-enable it.

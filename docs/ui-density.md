@@ -413,6 +413,10 @@ stay inline: the price field's `pl-6` currency inset (asymmetric padding) and
 `DeleteAccountSection`'s red focus ring (danger form). Labels are the
 `FormLabel` component, not a token.
 
+On a `noValidate` form (sign-in, for one), `minLength`, `required` and
+friends are inert: client-side checks there are manual JS. On any form, the
+server is the real gate.
+
 ### Toggle chips
 
 `TOGGLE_CHIP` + `TOGGLE_CHIP_ON` / `TOGGLE_CHIP_OFF` are pill-shaped
