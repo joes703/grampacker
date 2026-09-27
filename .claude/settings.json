@@ -12,8 +12,6 @@
       "Bash(npm test)",
       "Bash(npm test *)",
       "Bash(npx eslint *)",
-      "Bash(codex exec -s read-only *)",
-      "Bash(gh run watch *)",
       "Bash(git add *)",
       "Bash(git commit *)",
       "Bash(git push *)",
@@ -21,6 +19,22 @@
       "Bash(git fetch *)",
       "Bash(gh pr create *)",
       "mcp__cloudflare__docs"
+    ],
+    "ask": [
+      "Bash(git push --force*)",
+      "Bash(git push * --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * -f*)",
+      "Bash(git push *+*)",
+      "Bash(git reset --hard*)",
+      "Bash(git reset * --hard*)",
+      "Bash(git checkout .)",
+      "Bash(git checkout -- *)",
+      "Bash(git restore *)",
+      "Bash(git clean *)",
+      "Bash(git add -A*)",
+      "Bash(git add --all*)",
+      "Bash(git add .)"
     ],
     "deny": [
       "Read(./.dev.vars)",
