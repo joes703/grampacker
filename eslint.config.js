@@ -10,7 +10,7 @@ export default tseslint.config(
     // these; only the type-aware lint rule does. Scoped to source files
     // covered by the tsconfigs - the flat-config files themselves are
     // plain JS and stay outside the type-checked program.
-    files: ['src/**/*.{ts,tsx}', 'server/**/*.ts', 'shared/**/*.ts'],
+    files: ['src/**/*.{ts,tsx}', 'server/**/*.ts', 'shared/**/*.ts', 'scripts/**/*.ts'],
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -144,23 +144,30 @@ export default tseslint.config(
       ],
     },
   },
-  {
-    // Node-tier server tests (docs/testing-and-ci.md section 3) run on plain
-    // Node, which refuses `cloudflare:*` at import on its own. The one thing
-    // Node does not refuse is the app entry: server/index.ts loads fine there,
-    // so a misnamed API test would prove Hono-on-Node instead of workerd.
-    files: ['server/**/*.node.test.ts'],
-    rules: {
-      '@typescript-eslint/no-restricted-imports': [
-        'error',
-        {
-          paths: ['./index', '../index', '../../index'].map((name) => ({
-            name,
-            message:
-              'A .node.test.ts runs on Node and must not drive the app. Name it .test.ts to run it on workerd.',
-          })),
-        },
-      ],
-    },
-  },
+  // Node-tier server tests (docs/testing-and-ci.md section 3) run on plain
+  // Node, which refuses `cloudflare:*` at import on its own. The one thing
+  // Node does not refuse is the app entry: server/index.ts loads fine there,
+  // so a misnamed API test would prove Hono-on-Node instead of workerd.
+  //
+  // One block per directory depth, so each file forbids exactly the relative
+  // spellings that reach server/index.ts from where it sits - and not a
+  // sibling index.ts, such as server/email/index.ts.
+  ...[0, 1, 2, 3, 4, 5].map((depth) => {
+    const dir = depth === 0 ? '.' : Array(depth).fill('..').join('/')
+    return {
+      files: [`server/${'*/'.repeat(depth)}*.node.test.ts`],
+      rules: {
+        '@typescript-eslint/no-restricted-imports': [
+          'error',
+          {
+            paths: [dir, `${dir}/`, `${dir}/index`, `${dir}/index.ts`, `${dir}/index.js`].map((name) => ({
+              name,
+              message:
+                'A .node.test.ts runs on Node and must not drive the app. Name it .test.ts to run it on workerd.',
+            })),
+          },
+        ],
+      },
+    }
+  }),
 )
