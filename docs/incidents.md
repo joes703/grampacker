@@ -218,75 +218,31 @@ because when it was written the rebuild had just cost this incident and the
 two had not been told apart. A native `ALTER TABLE ... DROP COLUMN` is not a
 rebuild: it rewrites rows in place, never issues `DROP TABLE`, and so fires no
 cascade (verified against sqlite3 3.46.1 with `foreign_keys=ON` inside a
-transaction). Rebuilds and renames remain banned outright. Column, trigger and
-index drops - and a `DROP TABLE` of a table nothing cascades from - now ship as
-a declared CONTRACT STEP one release after the reads went, enforced by
-`CONTRACT_MIGRATIONS` in `scripts/check-migration-safety.mjs`. Dead objects no
-longer accumulate on purpose; migration 0027 cleared the backlog. The gate scans the migrations DIRECTORY against a frozen baseline of
-the 21 pre-gate migrations, not a git diff, so a rejected migration is
-re-scanned on every run and cannot ride to production behind a later green
-commit. The `DROPPED_*` and `EXPECTED_TYPE_CHANGES` constants in
-`scripts/check-migration-safety.mjs` are frozen history, not a hatch.
+transaction). Rebuilds and renames stay banned. Column, trigger and index drops
+ship one release after the code that used them has deployed. Migration 0027
+cleared the backlog of dead objects.
 
-What that gate does NOT do is compare the tree against main: it replays the
-files as it finds them, so an EDIT to a migration production already applied
-by name replays clean while production keeps the original text. On a pull
-request `scripts/check-migration-immutability.mjs` refuses such a change
-(2026-09; coverage boundary in `docs/testing-and-ci.md` section 7). Beyond
-the 21 digest-pinned baseline files, that route was unchecked before it.
+REVISED 2026-09-26: history collapsed, harness retired. Between 2026-08 and
+2026-09 `scripts/check-migration-safety.mjs` grew to about 4,500 lines. It
+seeded a populated D1, replayed every post-baseline migration against it on
+every run, digest-pinned the first 21 files, and carried per-migration
+fixtures, expected rewrites, trigger probes and removal declarations. Most of
+that weight came from re-proving shipped history on every run, and
+grampacker has one production database, which had applied all 30 migrations
+and whose schema matched a replay of them exactly (checked 2026-09-26). The
+trade-off is explicit: a new migration is no longer proven to preserve
+existing rows before merge. So:
 
-What `npm run test:migrations` proves and does not: it applies everything
-before each post-baseline migration, seeds a populated D1, applies that one
-migration the way deploy.yml does, and fails if a seeded fixture row was lost
-or changed or a trigger/index disappeared. One pass per migration is what
-makes a table created by an earlier post-baseline migration hold rows by the
-time a later one touches it. Fixture rows are the only data it can speak for
-(one or two per table), and it proves survival, not that a backfill wrote the
-RIGHT value - that is yours to test. It rejects tables it has no fixture for,
-so a NEW TABLE means adding a fixture row - that is the check refusing to go
-quiet. The 21 baseline migrations are digest-pinned and editing one fails
-closed forever. A post-baseline edit is refused on a pull request by
-`scripts/check-migration-immutability.mjs` (any change to a migration `main`
-already holds), but neither guard can see what production actually applied,
-so an edit that reaches `main` some other way still re-tests clean while
-never reaching a deployed database - never edit a migration that has
-shipped.
-
-How it talks to D1, and why that is not a detail: every statement runs against
-local D1 through `wrangler d1 execute --local`, including the reads. The
-`POST_CHECKS` probes are the harness's only behavioral coverage of trigger
-BODIES (the API suite exercises some triggers directly on D1 too, not the
-migration-time behaviors these probe), so running them on a stock SQLite
-build would prove something about that build instead. Two rewrites of the performance work died on exactly that
-point before the third stopped trying to leave D1.
-
-What was actually expensive was process launches, not SQL: a full run made 182
-of them for 213 seconds of work, and 211 of those seconds were wrangler booting.
-Reads that observe the SAME database state now share one launch
-(`batchReadSql`), which took a run to 81 launches and 100 seconds with every
-statement still on D1. Two rules keep that safe, and breaking either is how a
-comparison starts describing rows that never coexisted:
-
-- a batch contains only read-only statements;
-- a batch never spans a seed, a probe or a `migrations apply`.
-
-So a pass makes five read launches - before seeding, after seeding, after the
-migration, after the probes, and the transient-table counts - while seeding,
-each probe and each apply keep a launch of their own, because their individual
-failure text IS the assertion. Batched results are position-checked with a
-nonce-tagged marker statement before each read, and a batch failure is
-attributed to its exact statement by replaying the batch one statement at a
-time; when no individual statement reproduces it, the message says the batch
-itself is the problem rather than blaming statement one.
-
-Each pass also stages the migrations it should see into a throwaway directory
-beside a generated wrangler config, instead of deleting held-back files out of
-the tracked tree and writing them back. The old way needed a backup directory
-and signal handlers to survive a Ctrl-C, and it still broke any concurrent
-reader: the API suite migrates from `migrations/` too, and a run alongside the
-harness produced 114 failures. The tracked tree is now hashed by CONTENTS,
-recursively, before and after the run - names and sizes would miss an in-place
-edit of the same length.
+- The 30 files became one `0000_baseline.sql`, generated from production's
+  own `sqlite_master`. Production's ledger was given the baseline's name by
+  hand, so it never runs it.
+- The check became three things: Drizzle bookkeeping, snapshot matches
+  schema, and no destructive statement in a new migration
+  (`docs/testing-and-ci.md` section 7).
+- What it no longer proves, that a migration preserves existing rows, is
+  covered after the fact by D1 Time Travel (`docs/d1-restore.md`).
+- The trigger behaviors only the harness exercised moved to the API suite
+  first (#251).
 
 ## Supply chain: the npm audit fix --force incident
 

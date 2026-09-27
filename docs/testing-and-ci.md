@@ -35,9 +35,9 @@ Pick the cheapest runner that can prove what the test asserts:
    with no binding and no app? **Node.** Under `server/`, name it
    `*.node.test.ts`.
 3. Renders React or needs a DOM API? **jsdom** pragma on line 1.
-4. Adds or changes a migration? A fixture row for any new table and a
-   `POST_CHECKS` probe for any trigger or rewrite, in
-   `scripts/check-migration-safety.mjs`.
+4. Adds or changes a trigger or other database rule? An API test that
+   exercises it on D1 (`server/**/*.test.ts`). A new constant copied into
+   trigger SQL gets a row in `scripts/pack-rank-constants.test.ts`.
 
 A test that would pass on both Node and workerd but was meant to prove
 workerd belongs on workerd. The suffix is a claim the author makes and the
@@ -88,75 +88,48 @@ stub is a measured decision, not a default.
 
 ## 7. Migrations
 
-- Immutable once on main: production applied each by name and never
-  re-runs it. Never edit a shipped migration; add a new one. The baseline
-  files are digest-pinned in the harness.
-- Proven against a populated database before merge: the API tier migrates
-  an empty database and cannot see a migration that destroys rows, so
-  `npm run test:migrations` seeds fixture rows, applies each post-baseline
-  migration the way deploy does, on real D1, and fails if any pre-existing
-  row, column, trigger or index changed. Its `POST_CHECKS` probes are the
-  harness's only behavioral coverage of trigger bodies; the API suite also
-  exercises some triggers directly on D1 with raw writes (the "database
-  triggers" cases in `server/routes/packing-locations.test.ts`, the cap
-  backstops in the route suites), so neither is the sole coverage - and
-  neither compares trigger BODIES.
-- What a migration may contain, and the contract-step rules for drops, are
-  in AGENTS.md. A new table needs a fixture row; a trigger or rewrite needs
-  a probe; the PR says what a backfill wrote, because the harness proves
-  survival, not correctness.
+`migrations/` holds one baseline (`0000_baseline.sql`, production's schema as
+of 2026-09-26) plus whatever has been added since. The 30 files it replaced are
+in git history. Production records every applied file by name in its
+`d1_migrations` ledger and runs only files it has not recorded.
 
-**The harness always runs whole.** Every CI event replays every
-post-baseline migration - pull request and push to main alike. Scoping it to
-the migrations a PR adds was designed and then dropped: it saved 1-2 minutes
-on the pull requests that carry the least migration risk, zero on the ones
-that carry the most, and cost a scheduler with two execution modes to
-maintain. Anchoring to the directory rather than a diff is also what stops a
-bad migration riding to production behind a later commit that touched no SQL.
+**`npm run test:migrations`** (`scripts/check-migration-safety.mjs`):
 
-**What the harness cannot see, and what does.** It replays the migrations in
-the TREE, so it cannot notice that one of them was EDITED. Wrangler applies
-migrations by name and never re-runs one: an edited `0027` replays perfectly
-clean while production still holds the text it actually applied.
-`scripts/check-migration-immutability.mjs` closes that gap on pull requests.
-It diffs the merge base with `origin/main` (`--no-renames --name-only -z
---diff-filter=a`, so additions are excluded and a rename-away arrives as a
-deletion), refuses any path under `migrations/` that is not an addition, and
-allows `meta/_journal.json` only to gain entries with its existing entries and
-other fields untouched. What the appended entries say is the harness's job.
-Unobtainable git evidence fails the step rather than passing it.
+- **Bookkeeping.** Every journal entry has its `.sql`, every `.sql` has an
+  entry, and the newest entry has a snapshot.
+- **Snapshot.** The newest snapshot matches `server/db/schema.ts`
+  (`drizzle-kit generate` on a copy must find nothing to do).
+- **Destructive SQL.** Any migration not yet on `origin/main` must contain no
+  DROP TABLE, RENAME, rebuild scratch table, `PRAGMA foreign_keys`, or write
+  to `d1_migrations` or the schema table. The rules are in
+  `scripts/migration-rules.mjs`, tested by `migration-rules.test.ts`.
 
-Immutability is judged against the merge base, so a migration the PR itself
-introduced stays editable across pushes.
+**What proves the SQL itself works:** the API suite. It builds every test
+database from `migrations/` on real D1 and exercises the triggers.
 
-**Its coverage boundary, so nobody assumes more.** The guard runs on
-`pull_request` only, and depends on the "Protect main" ruleset requiring
-`Verify` strictly with no bypass actors - today a pull request is the only
-route to main. A direct push, a history rewrite or a merge that bypasses
-`Verify` is NOT covered, and nothing else covers it either: main's full
-harness would replay an edited shipped migration without complaint, and every
-later pull request would then treat that file as trusted history. Closing
-that properly means digest-pinning the post-baseline files the way the 21
-frozen baseline files are pinned, re-pinned on every migration. That is
-deferred, not overlooked.
+**What nothing proves before merge:** that a migration preserves existing
+rows. Nothing seeds data and replays the migration. The rebuild ban removes
+the known way to lose rows, and D1 Time Travel is the undo for anything else
+(`docs/d1-restore.md`: 7 days on the Free plan).
 
-**Why the harness stays one untyped file (audit F14, 2026-09-10): an
-accepted maintenance trade-off, not a rule.** `scripts/check-migration-safety.mjs`
-is ~4,400 lines of JavaScript outside `tsc`. Every invocation runs its six
-self-tests (the DDL classifier, expected-value resolution, constraint
-comparison, config rebase, marked-batch parsing, batch attribution) before
-any D1 work, and a self-test failure prevents success; CI invokes the whole
-harness on pull requests and pushes to `main`. What that does not give you is
-the self-tests under `npm run test:unit`, or per-case reporting. A strict
-`checkJs` experiment reported 176 diagnostics, almost all missing parameter
-types, tuple inference and `unknown` in catch blocks - none of them a
-demonstrated correctness defect. Annotating the file, or splitting the
-fixtures and declarations from the engine, was deferred because the review
-cost lands on the one script that gates production migrations and the
-benefit was not demonstrated. If it is ever done: keep the CLI entry
-unconditional (a thin wrapper that always calls an exported `main()`, never
-an `argv` guard that can silently turn the deploy gate into a no-op), keep the
-self-tests first in `main()`, and keep every D1-backed check.
+**`scripts/check-migration-immutability.mjs`** (pull requests only) refuses
+any change to a migration `main` already holds, judged against the merge
+base, apart from appended journal entries. Its one exception, the
+2026-09-26 collapse, is pinned to that exact transition and cannot fire again.
+It depends on the "Protect main" ruleset making a pull request the only route
+to `main`.
+
+**Collapsing history again** (only if the directory grows unwieldy):
+1. Generate the baseline from production's `sqlite_master` (tables, then
+   indexes, then triggers; skip `d1_migrations`, `sqlite_*` and `_cf_*`).
+2. Keep the newest snapshot as `0000_snapshot.json`, with a zeroed `prevId`
+   and a one-entry journal.
+3. Prove the baseline builds the same schema as the old files, and give
+   `check-migration-immutability.mjs` a reviewed exception for exactly that
+   transition (see its `COLLAPSE`).
+4. Before merging, have the owner run
+   `npx wrangler d1 execute grampacker --remote --command "INSERT INTO d1_migrations (name) VALUES ('NNNN_baseline.sql')"`.
+5. After merging, reset any local dev database (delete `.wrangler/state`).
 
 ## 8. Never delete or weaken a test to make CI faster
 
@@ -198,8 +171,7 @@ means deploy, including the migrations the PR carries.
 Mechanism today: a push to main runs `ci.yml`; its completion triggers
 `deploy.yml` (`workflow_run`); a preflight job drops stale events; the
 deploy job, inside the `deploy-production` concurrency group, re-verifies
-through the API that `ci.yml` is green for main's head, builds, records a
-D1 Time Travel bookmark (and refuses to migrate without one), migrates,
+through the API that `ci.yml` is green for main's head, builds, migrates,
 deploys, records a deployment marker; `deploy-liveness.yml` compares main
 against that marker every six hours, via `scripts/deployed-sha.mjs`. The
 watchdog trusts only the NEWEST deployment record in the page the API returns,
@@ -213,7 +185,7 @@ re-run of the failed run, never a manual dispatch; the header of `deploy.yml`
 says which failures may be re-run and which must not. A migration that
 APPLIED and damaged data is a different recovery whatever the run's final
 status, because a re-run skips what already applied rather than repairing
-it: a database restore to the bookmark in that run's summary, with
+it: a D1 Time Travel restore to just before the migration step, with
 `docs/d1-restore.md` as its runbook.
 
 **This is the intended shape, not a way station.** A replacement was designed

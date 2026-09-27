@@ -1,29 +1,20 @@
 #!/usr/bin/env node
 // @ts-check
 // Refuses a pull request that changes a migration file `main` already holds.
+// Production applies migrations BY NAME and never re-runs one, so an edited
+// migration would describe a schema production does not have.
 //
-// This is NOT the migration harness and does not run it. The harness
-// (scripts/check-migration-safety.mjs) proves that the migrations IN THE TREE
-// preserve data; it reads no git, so it cannot notice that a file was edited.
-// It never has to: production applies migrations BY NAME and will never re-run
-// one, so an edited 0027 replays perfectly clean here while production still
-// holds the text it actually applied. The two checks answer different
-// questions and stay separate.
+// Judged against the merge base with origin/main, so a migration the pull
+// request itself adds can change freely across pushes.
 //
-// The 21 frozen baseline migrations are digest-pinned inside the harness.
-// Everything after them was unprotected until this guard; that gap is what it
-// closes.
+// One exception, for ONE transition: the 2026-09-26 collapse of the 30
+// migrations ending at COLLAPSE.lastShipped into COLLAPSE.baseline. It cannot
+// fire again once that has merged (the merge base no longer holds
+// lastShipped), so a later "collapse" cannot be used to slip a schema change
+// past this guard; another collapse needs its own reviewed exception.
 //
-// Immutability is judged RELATIVE TO THE MERGE BASE, which is what makes the
-// rule livable: a migration the pull request itself introduced can be edited
-// freely across pushes, because it stays an addition against `main`.
-//
-// Coverage boundary, stated plainly: this runs on `pull_request` only. It
-// depends on the "Protect main" ruleset requiring `Verify` strictly with no
-// bypass actors, which makes a pull request the only route to `main` today. A
-// direct push, a history rewrite, or a merge that bypasses `Verify` is NOT
-// covered - and would not be caught by anything else either, main's full
-// harness included. docs/testing-and-ci.md section 7 records that.
+// Runs on pull_request only. The "Protect main" ruleset makes a pull request
+// the only route to main; a direct push would not be checked.
 //
 // Usage: node scripts/check-migration-immutability.mjs
 //
@@ -35,6 +26,11 @@ import { fileURLToPath } from 'node:url'
 
 const JOURNAL = 'migrations/meta/_journal.json'
 
+export const COLLAPSE = {
+  lastShipped: '0029_better_auth_1_7_4_drop_account_issuer.sql',
+  baseline: '0000_baseline.sql',
+}
+
 /** @param {unknown} error */
 const describe = (error) => (error instanceof Error ? error.message : String(error))
 
@@ -42,10 +38,8 @@ const describe = (error) => (error instanceof Error ? error.message : String(err
  * Whether a changed journal did nothing but gain entries. drizzle-kit appends
  * to `entries` and touches nothing else, so every existing entry must be an
  * unchanged prefix and every other field must be identical. What the appended
- * entries SAY is deliberately not checked here: the harness's
- * verifySnapshotChainIntact already holds them to the .sql files and snapshots
- * in both directions, and duplicating that would be a second place to keep
- * right.
+ * entries SAY is not checked here: check-migration-safety.mjs's bookkeeping
+ * check holds them to the .sql files and snapshots.
  * @param {string} baseText
  * @param {string} headText
  * @returns {string | null} a reason, or null when the change is append-only
@@ -75,6 +69,44 @@ export const journalProblem = (baseText, headText) => {
       return `existing entry ${i} changed`
     }
   }
+  return null
+}
+
+/**
+ * Null when the change is the one sanctioned collapse (COLLAPSE): the merge
+ * base still holds the old history, every .sql it holds is deleted, the only
+ * .sql left is the new baseline, and the journal holds exactly that entry.
+ * Otherwise a reason (unused by callers; it keeps the rule readable in tests).
+ * @param {(args: string[]) => Buffer} git
+ * @param {string} base
+ * @param {string[]} changed paths that are not additions
+ * @returns {string | null}
+ */
+export const collapseProblem = (git, base, changed) => {
+  /** @param {string} ref */
+  const sqlAt = (ref) =>
+    git(['ls-tree', '--name-only', `${ref}:migrations`])
+      .toString('utf8')
+      .split('\n')
+      .filter((name) => name.endsWith('.sql'))
+  let before
+  let after
+  let journal
+  try {
+    before = sqlAt(base)
+    after = sqlAt('HEAD')
+    journal = JSON.parse(git(['show', `HEAD:${JOURNAL}`]).toString('utf8'))
+  } catch {
+    return 'git evidence unavailable'
+  }
+  if (!before.includes(COLLAPSE.lastShipped)) return 'not the 2026-09-26 history'
+  const [baseline, ...others] = after
+  if (baseline !== COLLAPSE.baseline || others.length > 0) return `not exactly ${COLLAPSE.baseline}`
+  if (before.includes(baseline)) return 'the baseline is not new'
+  const deleted = new Set(changed)
+  if (!before.every((name) => deleted.has(`migrations/${name}`))) return 'not every shipped migration was removed'
+  const entries = Array.isArray(journal?.entries) ? journal.entries : []
+  if (entries.length !== 1 || `${entries[0]?.tag}.sql` !== baseline) return 'the journal is not the single baseline entry'
   return null
 }
 
@@ -129,6 +161,14 @@ export const main = ({ argv, eventName, git, log }) => {
         'checkout (fetch-depth: 0) rather than the gate.',
     )
     return 1
+  }
+
+  if (changed.length > 0 && collapseProblem(git, base, changed) === null) {
+    log(
+      'migration immutability: OK (history collapsed into a baseline). Production\'s ' +
+        'd1_migrations ledger must record the baseline before this merges.',
+    )
+    return 0
   }
 
   const refused = changed.filter((path) => path !== JOURNAL)

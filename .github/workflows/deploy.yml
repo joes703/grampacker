@@ -48,9 +48,7 @@
 #         skips migrations already recorded by name, so the re-run only
 #         retries the Worker swap. A re-run never UNDOES a migration: if one
 #         that applied damaged data, the recovery is a restore
-#         (docs/d1-restore.md), whatever the run's final status. A run that
-#         failed at "Record D1 restore point" changed nothing remote and is
-#         safe to re-run.
+#         (docs/d1-restore.md), whatever the run's final status.
 #         NOT for a run that failed only at "Record deployment marker": its
 #         error says so explicitly, because production is already on the new
 #         SHA and `--failed` re-runs the whole deploy job. Repair the marker
@@ -70,7 +68,7 @@
 #
 # Auth is a Cloudflare API token stored as a GitHub Actions secret
 # (CLOUDFLARE_API_TOKEN). It lives only here in GitHub - never on a laptop or
-# in an agent sandbox. It is scoped onto the three wrangler steps rather than the
+# in an agent sandbox. It is scoped onto the two wrangler steps rather than the
 # whole job, so `npm ci` and the vite build never see it.
 #
 # No third-party actions are used (only the same first-party checkout/setup
@@ -285,47 +283,10 @@ jobs:
         if: steps.verify.outputs.go == 'true'
         run: npm run build
 
-      # The Cloudflare token is scoped onto the three remote steps below only.
+      # The Cloudflare token is scoped onto the two remote steps below only.
       # It was previously job-level env, which put a production credential in
       # the environment of `npm ci` and the vite build - i.e. reachable by any
       # dependency's install or build script.
-      #
-      # The restore point comes first: it is what makes a bad migration
-      # recoverable (docs/d1-restore.md). No bookmark, no migration - a deploy
-      # that looks protected but is not is worse than one that stops.
-      - name: Record D1 restore point
-        if: steps.verify.outputs.go == 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          HEAD_SHA: ${{ steps.sha.outputs.sha }}
-        run: |
-          set -euo pipefail
-          if ! info=$(npx wrangler d1 time-travel info grampacker --json); then
-            echo "::error::wrangler could not read a D1 Time Travel bookmark. Not migrating without a restore point."
-            exit 1
-          fi
-          # Exactly one JSON object with a non-empty string bookmark, or stop.
-          # Slurping makes trailing junk or a second value an error instead of
-          # letting jq print the first bookmark and carry on.
-          if ! bookmark=$(printf '%s' "$info" | jq -ser \
-                'if length == 1 and (.[0] | type) == "object"
-                    and (.[0].bookmark | type) == "string" and (.[0].bookmark | length) > 0
-                 then .[0].bookmark else error("no bookmark") end'); then
-            echo "::error::wrangler's reply held no usable D1 Time Travel bookmark. Not migrating without a restore point."
-            exit 1
-          fi
-          taken_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          echo "::notice::D1 restore point before deploying $HEAD_SHA: $bookmark ($taken_at)"
-          {
-            echo "### D1 restore point"
-            echo "Taken $taken_at, before migrating for \`$HEAD_SHA\`."
-            echo '```'
-            echo "npx wrangler d1 time-travel restore grampacker --bookmark=$bookmark"
-            echo '```'
-            echo "Read docs/d1-restore.md before running it."
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Apply D1 migrations (production)
         if: steps.verify.outputs.go == 'true'
         env:

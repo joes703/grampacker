@@ -158,3 +158,51 @@ describe('journalProblem', () => {
     expect(journalProblem(journal('0027_a'), journal('0027_a', 'nonexistent'))).toBeNull()
   })
 })
+
+describe('collapse into a baseline', () => {
+  const base = ['0000_a.sql', '0029_better_auth_1_7_4_drop_account_issuer.sql']
+  const stub =
+    (head: string[], headJournal: string, changed: string[]): Git =>
+    (args) => {
+      if (args[0] === 'merge-base') return Buffer.from(`${SHA}\n`)
+      if (args[0] === 'diff') return z(...changed)
+      if (args[0] === 'ls-tree' && args[2] === `${SHA}:migrations`) return Buffer.from([...base, 'meta'].join('\n'))
+      if (args[0] === 'ls-tree' && args[2] === 'HEAD:migrations') return Buffer.from([...head, 'meta'].join('\n'))
+      if (args[0] === 'show' && args[1] === `HEAD:${JOURNAL}`) return Buffer.from(headJournal)
+      throw new Error(`unexpected git ${args.join(' ')}`)
+    }
+  const allDeleted = [...base.map((n) => `migrations/${n}`), 'migrations/meta/0029_snapshot.json', JOURNAL]
+
+  it('permits replacing every shipped migration with one new baseline', () => {
+    const { code, output } = run(stub(['0000_baseline.sql'], journal('0000_baseline'), allDeleted))
+    expect(code).toBe(0)
+    expect(output).toContain('collapsed into a baseline')
+  })
+
+  it('refuses anything short of a whole-history collapse', () => {
+    const cases: Array<[string, Git]> = [
+      ['one shipped file kept', stub(['0000_baseline.sql', base[1] as string], journal('0000_baseline', base[1]?.slice(0, -4) ?? ''), allDeleted.filter((p) => !p.endsWith(base[1] as string)))],
+      ['a different baseline name', stub(['0001_baseline.sql'], journal('0001_baseline'), allDeleted)],
+      ['journal has extra entries', stub(['0000_baseline.sql'], journal('0000_baseline', '0001_x'), allDeleted)],
+      ['a shipped file edited, not deleted', stub(['0000_baseline.sql'], journal('0000_baseline'), ['migrations/0000_a.sql', JOURNAL])],
+    ]
+    for (const [name, git] of cases) {
+      expect(run(git).code, name).toBe(1)
+    }
+  })
+
+  it('cannot fire again once the baseline is the shipped history', () => {
+    // After the collapse merges, main holds only 0000_baseline.sql. Swapping
+    // it for another "baseline" (which could carry a schema change) is refused.
+    const later: Git = (args) => {
+      if (args[0] === 'merge-base') return Buffer.from(`${SHA}\n`)
+      if (args[0] === 'diff') return z('migrations/0000_baseline.sql', JOURNAL)
+      if (args[0] === 'ls-tree' && args[2] === `${SHA}:migrations`) return Buffer.from('0000_baseline.sql\nmeta')
+      if (args[0] === 'ls-tree' && args[2] === 'HEAD:migrations') return Buffer.from('0001_baseline.sql\nmeta')
+      if (args[0] === 'show' && args[1] === `HEAD:${JOURNAL}`) return Buffer.from(journal('0001_baseline'))
+      if (args[0] === 'show' && args[1] === `${SHA}:${JOURNAL}`) return Buffer.from(journal('0000_baseline'))
+      throw new Error(`unexpected git ${args.join(' ')}`)
+    }
+    expect(run(later).code).toBe(1)
+  })
+})
