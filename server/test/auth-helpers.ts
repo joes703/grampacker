@@ -101,7 +101,7 @@ export async function signUpVerifiedUser(
 // A SECOND session for a user who already exists, from a fresh ceremony.
 // Sessions are fresh only for a window after they are CREATED, so a test that
 // needs to act on a stale session cannot get one by waiting - it has to be
-// aged directly in D1 (see staleSession below).
+// aged directly in D1 (see makeSessionStale below).
 export async function signInAgain(email: string): Promise<{ cookie: string }> {
   return signUpVerifiedUser(email, '')
 }

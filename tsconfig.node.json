@@ -5,11 +5,12 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
+    "noUncheckedIndexedAccess": true,
     "noEmit": true,
     "skipLibCheck": true,
-    // Only for the .mjs files listed below, which open with `// @ts-check` so
-    // they are checked under these strict settings; their tests import them
-    // and would otherwise fail on the missing declaration (TS7016).
+    // For the .mjs scripts listed below. Each opens with `// @ts-check`, so it
+    // is checked under these strict settings, and a test can import it
+    // without failing on a missing declaration (TS7016).
     "allowJs": true
   },
   // Every root-level config file must be listed, or `npm run build` goes green
@@ -25,9 +26,12 @@
     "vitest.config.ts",
     "vitest.workers.config.ts",
     "drizzle.config.ts",
+    "scripts/check-action-pins.mjs",
     "scripts/check-migration-immutability.mjs",
     "scripts/check-migration-safety.mjs",
+    "scripts/deployed-sha.mjs",
     "scripts/migration-rules.mjs",
+    "scripts/schema-sql.ts",
     "scripts/**/*.test.ts"
   ]
 }

@@ -270,7 +270,10 @@ The through-line: **never commit or install something you did not look at.**
 - Stage exact paths. `git add -A` commits whatever happens to be in the tree,
   which is how something unreviewed ships.
 - Destructive git (`reset --hard`, `clean -fd`, force-push) needs explicit
-  approval. Never discard the user's changes.
+  approval. Never discard the user's changes. `.claude/settings.json` has
+  ask rules for the usual spellings; per Claude Code's docs they prompt in
+  interactive sessions, bypass mode included. They match command text
+  (`git push -vf` slips past), so they are a seatbelt, not the rule.
 - `npm ci` installs exactly from the lockfile and fails closed on drift. A
   deliberate dependency change is an explicit `npm install <pkg>` with a
   reason and a lockfile-diff read. `.npmrc` pins `save-exact` and

@@ -56,9 +56,12 @@ visible without opening a config.
   secretly needs the Worker runtime fails the first time it runs.
 - The one thing Node does not refuse is the app entry: `server/index.ts`
   loads on Node, so a misnamed API test could pass against Hono-on-Node
-  while meaning to prove workerd. One `no-restricted-imports` rule in
-  `eslint.config.js` refuses `./index`, `../index` and `../../index` from a
-  `.node.test.ts`.
+  while meaning to prove workerd. A `no-restricted-imports` rule in
+  `eslint.config.js` refuses, per directory depth, the direct spellings that
+  reach `server/index.ts` from a `.node.test.ts` (`..`, `../`, `../index`,
+  `../index.ts`, `../index.js`), and leaves a sibling module's own
+  `index.ts` alone. A roundabout path such as `../../server/index` still
+  gets through.
 
 This guards against the accidental misfile, not deliberate evasion. The
 residual is judgment, per section 2.

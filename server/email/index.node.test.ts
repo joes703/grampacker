@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConsoleEmailSender, outbox } from './console'
-// Directory import rather than './index': the Node-tier lint rule that keeps
-// a .node.test.ts away from the APP entry (server/index.ts) matches the bare
-// name, and this is the email module's index, not the app's.
-import { createEmailSender } from '../email'
+import { createEmailSender } from './index'
 import { ResendEmailSender } from './resend'
 
 // Which sender a configuration selects. The rule under test: the console
