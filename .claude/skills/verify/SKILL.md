@@ -86,7 +86,7 @@ violations is the check. Restore .dev.vars after.
   does not take, drive it with the mouse: mouse.down on the grip, move
   ~25px to beat the activation constraint, glide to the target, mouse.up.
 - After any write, hard `page.reload()` and re-assert - optimistic UI
-  masks server rejections (CLAUDE.md rule).
+  masks server rejections: the rollback flashes past in milliseconds.
 
 ## Passkeys
 
