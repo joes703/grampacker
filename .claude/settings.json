@@ -38,6 +38,8 @@
       "Bash(git switch * --discard-changes*)",
       "Bash(git switch -f*)",
       "Bash(git switch --force*)",
+      "Bash(git switch * -f*)",
+      "Bash(git switch * --force*)",
       "Bash(git restore *)",
       "Bash(git clean *)",
       "Bash(git add -A*)",

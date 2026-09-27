@@ -149,7 +149,7 @@ export default tseslint.config(
   // Node does not refuse is the app entry: server/index.ts loads fine there,
   // so a misnamed API test would prove Hono-on-Node instead of workerd.
   //
-  // One block per directory depth (server/ is 4 deep today), so each file
+  // One block per directory depth, 0-5 (server/ is 4 deep today), so each file
   // forbids the direct spellings that reach server/index.ts from where it
   // sits - and not a sibling index.ts, such as server/email/index.ts. A
   // roundabout path (../../server/index) still gets through.
