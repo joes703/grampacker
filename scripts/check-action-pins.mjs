@@ -1,3 +1,4 @@
+// @ts-check
 // Verifies that every GitHub Action pinned by commit SHA actually points at the
 // release its trailing comment claims.
 //
@@ -42,8 +43,13 @@ const USES = /^\s*(?:-\s*)?uses:\s*(?<action>[^@\s'"]+)@(?<ref>[^\s'"#]+)\s*(?<t
 
 const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? ''
 
+/** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+// The two GitHub endpoints used below both answer with this shape.
+/** @typedef {{ object?: { type?: string, sha?: string } }} GitRef */
+
+/** @param {string} path @returns {Promise<GitRef | null>} */
 const api = async (path) => {
   let lastError
   for (let attempt = 1; attempt <= RETRIES; attempt++) {
@@ -58,7 +64,7 @@ const api = async (path) => {
       // 404 is a real answer - the tag does not exist. Do not burn retries on it.
       if (response.status === 404) return null
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
-      return await response.json()
+      return /** @type {GitRef} */ (await response.json())
     } catch (error) {
       lastError = error
       if (attempt < RETRIES) await sleep(attempt * 500)
@@ -71,6 +77,7 @@ const api = async (path) => {
 // commit; an annotated tag's ref points at a tag OBJECT that in turn points at
 // the commit. Comparing a pinned commit SHA against an annotated tag's own SHA
 // would fail every time, for no real reason.
+/** @param {string} action @param {string} tag */
 const commitForTag = async (action, tag) => {
   const ref = await api(`/repos/${action}/git/ref/tags/${encodeURIComponent(tag)}`)
   if (!ref) return null
@@ -83,6 +90,7 @@ const commitForTag = async (action, tag) => {
 }
 
 const collectPins = () => {
+  /** @type {Array<{ where: string, action: string, ref: string, trailer: string }>} */
   const pins = []
   for (const file of readdirSync(WORKFLOWS_DIR).filter((n) => /\.ya?ml$/.test(n))) {
     const path = join(WORKFLOWS_DIR, file)
@@ -91,7 +99,8 @@ const collectPins = () => {
       .forEach((line, index) => {
         const match = USES.exec(line)
         if (!match) return
-        const { action, ref, trailer } = match.groups
+        const { action, ref, trailer } = /** @type {Record<string, string | undefined>} */ (match.groups ?? {})
+        if (!action || !ref) return
         // A local action (`./.github/actions/x`) or a docker:// ref has no
         // upstream tag to resolve and is not what this guards.
         if (action.startsWith('./') || action.startsWith('docker://')) return
