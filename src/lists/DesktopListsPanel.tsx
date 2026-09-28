@@ -166,14 +166,16 @@ export default function DesktopListsPanel({
   // landing path before issuing the mutation so the user lands somewhere
   // useful instead. pickListAfterDelete is a pure helper with its own
   // unit-test coverage; see pick-list-after-delete.ts for the rule.
+  //
+  // Navigate on the click, not in a per-call onSuccess: that same "List not
+  // found" swap unmounts this panel, and an unmounted mutation observer never
+  // runs per-call callbacks, so a success-time navigate never happened. A
+  // failed delete rolls back and toasts wherever the user landed.
   function deleteListWithNavigation(target: List) {
     const nextPath = pickListAfterDelete(lists, target.id, currentListId)
     setDialog(null)
-    deleteListMut.mutate(target.id, {
-      onSuccess: () => {
-        if (nextPath) void navigate(nextPath)
-      },
-    })
+    deleteListMut.mutate(target.id)
+    if (nextPath) void navigate(nextPath)
   }
 
   // Header plus-button menu: New list / Import CSV. Anchored to the plus

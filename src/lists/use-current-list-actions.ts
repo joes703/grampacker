@@ -113,24 +113,29 @@ export function useCurrentListActions() {
   )
 
   // Non-optimistic: the server performs the deep copy (fresh slug,
-  // isShared/isDraft reset) and returns the new row; invalidate + navigate.
+  // isShared/isDraft reset) and returns the new row; navigate to it. Invalidate
+  // on failure too: a rejected request does not prove the copy was not made, and
+  // it is a non-idempotent POST, so the copy advises checking before retrying
+  // (docs/incidents.md). Hook-level rather than per-call, so both still run when
+  // the caller has unmounted (ListSettingsPanel closes its popover on the click).
+  // Invalidate BEFORE navigating: the copy is not in ['lists'] yet, and a fetch
+  // already in flight is what makes the new page wait rather than flash "List
+  // not found".
   const duplicateMut = useMutation({
     mutationKey: mutationKeys.duplicateList(),
     mutationFn: (target: List) => duplicateList(target.id),
-    meta: { errorToast: "Couldn't duplicate that list. Please try again." },
-    onSuccess: (created) => {
+    meta: { errorToast: "Couldn't confirm the list was duplicated. Refresh to check before trying again." },
+    onSettled: (created) => {
       void qc.invalidateQueries({ queryKey: queryKeys.lists() })
-      void navigate(`/lists/${created.id}`)
+      if (created) void navigate(`/lists/${created.id}`)
     },
   })
 
-  // Toasted per the rule in src/lib/mutation-error-handler.ts, and this is the
-  // worst of the delete rollbacks rather than the mildest. Every call site closes
-  // its confirm before mutating, and the two that navigate do so on SUCCESS only
-  // (DesktopListsPanel, ListSettingsPanel) - so a failure leaves the user wherever
-  // they were with the list silently back in the sidebar, and from
-  // ListSettingsPanel it reads as the list detail page flashing "List not found"
-  // and then recovering on its own. Nothing in that sequence says "the delete
+  // Toasted per the rule in src/lib/mutation-error-handler.ts. Every call site
+  // closes its confirm before mutating, and the two that can delete the OPEN list
+  // (DesktopListsPanel, ListSettingsPanel) leave it on the click - so a failure
+  // shows up as the list silently back in the sidebar or on /lists, somewhere
+  // other than where the user asked for it. Nothing in that says "the delete
   // failed".
   const deleteListMut = useMutation({
     mutationKey: mutationKeys.deleteList(),

@@ -124,18 +124,46 @@ describe('useCurrentListActions - duplicate', () => {
   it('duplicates by id, invalidates, and navigates to the server row', async () => {
     q.duplicateList.mockResolvedValueOnce({ ...LIST, id: 'copy-id' })
     const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+    const invalidate = vi.spyOn(lastQc, 'invalidateQueries')
     act(() => { result.current.duplicateMut.mutate(LIST) })
     await waitFor(() => expect(q.duplicateList).toHaveBeenCalledWith('l1'))
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/lists/copy-id'))
+    // The refetch must already be running when the copy's page first renders,
+    // or it flashes "List not found" (the copy is not in ['lists'] yet).
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['lists'] })
+    expect(invalidate.mock.invocationCallOrder[0]).toBeLessThan(navigateSpy.mock.invocationCallOrder[0]!)
   })
 
-  it('toasts when duplicateList rejects', async () => {
+  it('toasts refresh-first copy and still invalidates when duplicateList rejects', async () => {
+    // A rejection does not prove the copy was not made, so ['lists'] is refetched
+    // and the copy advises checking before a retry makes a second one.
     q.duplicateList.mockRejectedValueOnce(new Error('nope'))
     const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+    const invalidate = vi.spyOn(lastQc, 'invalidateQueries')
     act(() => { result.current.duplicateMut.mutate(LIST) })
     await waitFor(() =>
-      expect(showToast).toHaveBeenCalledWith("Couldn't duplicate that list. Please try again.", { type: 'error' }),
+      expect(showToast).toHaveBeenCalledWith(
+        "Couldn't confirm the list was duplicated. Refresh to check before trying again.",
+        { type: 'error' },
+      ),
     )
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['lists'] })
+    expect(navigateSpy).not.toHaveBeenCalled()
+  })
+
+  it('invalidates and navigates even when the caller unmounted before the response', async () => {
+    // ListSettingsPanel closes its desktop popover - unmounting this hook - on the
+    // click. Only hook-level callbacks survive that, so the success path must live
+    // there, not in a per-call onSuccess.
+    let resolve!: (row: List) => void
+    q.duplicateList.mockReturnValueOnce(new Promise<List>((r) => { resolve = r }))
+    const { result, unmount } = renderHook(() => useCurrentListActions(), { wrapper })
+    const invalidate = vi.spyOn(lastQc, 'invalidateQueries')
+    act(() => { result.current.duplicateMut.mutate(LIST) })
+    unmount()
+    await act(async () => { resolve({ ...LIST, id: 'copy-id' }) })
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/lists/copy-id'))
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['lists'] })
   })
 })
 
@@ -153,9 +181,9 @@ describe('useCurrentListActions - deleteListMut', () => {
     //
     // Why a list delete earns a toast at all (the rule in
     // src/lib/mutation-error-handler.ts): every call site closes its confirm before
-    // mutating, and the two that navigate do so on SUCCESS only, so a failure
-    // leaves the user where they were with the list silently back in the sidebar.
-    // Nothing in that sequence reads as "the delete failed".
+    // mutating, and the two that delete the open list leave it on the click, so a
+    // failure is the list silently back in the sidebar or on /lists. Nothing in
+    // that sequence reads as "the delete failed".
     q.deleteList.mockRejectedValueOnce(new Error('nope'))
     const { result } = renderHook(() => useCurrentListActions(), { wrapper })
 
