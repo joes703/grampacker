@@ -4,6 +4,7 @@ import { assignPackRankSlots, assignSortOrderSlots } from '../lib/grouping'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import type { ListDetailMode } from './list-detail-mode'
 import type { UnionRankUpdates } from './pack-rows'
+import { derivePackReorderExclusions } from './packing-tree'
 import { isOrdinarySectionRow } from './section-rows'
 
 // Planning for a drag that ends over an `item:` row - the List view's
@@ -14,21 +15,6 @@ import { isOrdinarySectionRow } from './section-rows'
 // lives outside the page for the same reason - the page decides WHEN to
 // plan, these functions decide WHAT the plan is, and only the latter is
 // worth testing in isolation.
-
-export function derivePackReorderExclusions(
-  items: ListItemWithGear[],
-  locations: PackingLocation[],
-): Set<string> {
-  const excludedItemIds = new Set(
-    locations.flatMap((location) =>
-      location.containerListItemId === null ? [] : [location.containerListItemId],
-    ),
-  )
-  for (const item of items) {
-    if (item.isWorn) excludedItemIds.add(item.id)
-  }
-  return excludedItemIds
-}
 
 // Rows the pack-mode filters have hidden. A hidden row must be neither a
 // reorder source nor a reorder neighbor: the sort slots are computed from the

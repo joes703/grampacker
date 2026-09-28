@@ -22,13 +22,12 @@ export function buildPackingTree(
 ): PackingTree {
   const itemsById = new Map(items.map((item) => [item.id, item]))
   const nodesById = new Map<string, PackingTreeLocation>()
-  const containerItemIds = new Set<string>()
+  const containerItemIds = deriveContainerItemIds(locations)
 
   for (const location of locations) {
     const sourceContainerItem = location.containerListItemId === null
       ? null
       : itemsById.get(location.containerListItemId) ?? null
-    if (sourceContainerItem) containerItemIds.add(sourceContainerItem.id)
     const containerItem = sourceContainerItem
       && options.includeItem
       && !options.includeItem(sourceContainerItem)
@@ -129,15 +128,35 @@ export function buildPackingTree(
   return { roots, unassignedItems }
 }
 
-// Rows that must not participate in packing REORDER. Worn items are extracted
-// into their own trailing section and never render inside a location, so a
-// reorder that counted them would compute slots against rows the user cannot
-// see. (Moved here from OrganizePackPanel when Organize merged into Pack; the
-// tree module is where the rest of the packing-layout derivations live.)
-export function deriveWornReorderExclusions(
+// The items that back a location: every cached location's container, whether
+// the server has confirmed it or it is still an optimistic temp- row. Each one
+// renders as its section's header, never as a row in a bag, from the moment
+// the promotion is applied to the cache.
+function deriveContainerItemIds(locations: PackingLocation[]): Set<string> {
+  return new Set(
+    locations.flatMap((location) =>
+      location.containerListItemId === null ? [] : [location.containerListItemId],
+    ),
+  )
+}
+
+// Rows that must not participate in packing REORDER, because buildPackingTree
+// never renders them as rows inside a location: container headers (above) and
+// worn items, which live in their own trailing section. A reorder that counted
+// either would compute slots against rows the user cannot see.
+//
+// ListDetailPage and planListItemReorder both read this one derivation. The
+// page used to assemble its own from confirmed locations only, so a drag
+// during a pending promotion planned against the hidden header.
+export function derivePackReorderExclusions(
   items: ListItemWithGear[],
+  locations: PackingLocation[],
 ): Set<string> {
-  return new Set(items.filter((item) => item.isWorn).map((item) => item.id))
+  const excludedItemIds = deriveContainerItemIds(locations)
+  for (const item of items) {
+    if (item.isWorn) excludedItemIds.add(item.id)
+  }
+  return excludedItemIds
 }
 
 // Which locations share a parent, keyed by location id. Location drags are
