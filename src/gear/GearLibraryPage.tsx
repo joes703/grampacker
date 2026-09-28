@@ -173,6 +173,14 @@ export default function GearLibraryPage() {
 
   // ── Local state ───────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('')
+  // The rows matching the search: what the category sections render and what
+  // a within-category drag plans against. Declared up here, ahead of the drag
+  // handler that reads it.
+  const searchFiltered = useMemo(() => {
+    if (!search) return allItems
+    const q = search.toLowerCase()
+    return allItems.filter((i) => i.name.toLowerCase().includes(q))
+  }, [allItems, search])
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [selectMode, setSelectMode] = useState(false)
   const { set: selectedIds, toggle: toggleSelect, clear: clearSelected, reset: resetSelected } = useToggleSet<string>()
@@ -474,7 +482,13 @@ export default function GearLibraryPage() {
     const overCat = overItem.categoryId ?? null
     if (overCat !== activeCat) return
 
-    const itemsInCat = allItems.filter((i) => (i.categoryId ?? null) === activeCat)
+    // Planned against the rows matching the search, the sequence the user is
+    // dragging within. Search hides rows without moving them, and counting a
+    // hidden row would compute the move against rows not on screen and
+    // rewrite that row's position. assignSortOrderSlots permutes only these
+    // rows' own slots, so hidden rows keep theirs; a hidden endpoint is not in
+    // the slice, so its drag writes nothing.
+    const itemsInCat = searchFiltered.filter((i) => (i.categoryId ?? null) === activeCat)
     const oldIndex = itemsInCat.findIndex((i) => i.id === activeParsed.id)
     const newIndex = itemsInCat.findIndex((i) => i.id === overParsed.id)
     if (oldIndex === -1 || newIndex === -1) return
@@ -483,12 +497,6 @@ export default function GearLibraryPage() {
   }
 
   // ── Derived data ──────────────────────────────────────────────────────────────
-  const searchFiltered = useMemo(() => {
-    if (!search) return allItems
-    const q = search.toLowerCase()
-    return allItems.filter((i) => i.name.toLowerCase().includes(q))
-  }, [allItems, search])
-
   // After removing category chips, search is the only narrowing filter on
   // the page. Empty categories still render as section headers so the user
   // can use them as drop targets / "+ Add item" affordances.
