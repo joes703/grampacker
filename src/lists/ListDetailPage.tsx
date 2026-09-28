@@ -29,7 +29,6 @@ import {
   fetchCategories,
   fetchPackingLocations,
   updateList,
-  updateListItem,
   reorderListItems,
   reorderPackListItems,
   reorderPackingLocations,
@@ -552,7 +551,7 @@ function ListDetailInner({
   // the addingNewItemRef double-fire guard, DnD/reorder, dialog orchestration,
   // and the inline notes list-field mutation. (Gear/category writes live in
   // useListGearActions, above.)
-  const { addItem, updateItem, deleteItem, addNewItem } = useListItemActions(listId, {
+  const { addItem, updateItem, deleteItem, addNewItem, moveItem } = useListItemActions(listId, {
     listItems,
     foodItems: listFood.items,
   })
@@ -589,43 +588,6 @@ function ListDetailInner({
   const locationCreationPending =
     createLocation.isPending || createItemContainer.isPending
 
-  // Moving an item between packing locations. Also lifted from the organizer:
-  // it is the write behind both a cross-location drag and the row menu.
-  type MoveItemVars = {
-    itemId: string
-    locationId: string | null
-    nextPackSortOrder: number
-  }
-  const moveItemMut = useMutation({
-    mutationKey: mutationKeys.moveListItem(listId),
-    mutationFn: ({ itemId, locationId }: MoveItemVars) =>
-      updateListItem(listId, itemId, { packingLocationId: locationId }),
-    ...makeOptimisticUpdate<ListItemWithGear, MoveItemVars>({
-      qc,
-      queryKey: queryKeys.listItems(listId),
-      id: ({ itemId }) => itemId,
-      // nextPackSortOrder mirrors the rank the server assigns a move (repo
-      // `nextPackSortOrderInCohort`). Applying only the assignment would park
-      // the row at its OLD rank until the refetch landed, so it would appear
-      // at some arbitrary depth of its new location and then visibly jump to
-      // the bottom a moment later. The caller computes it, because `apply`
-      // only ever sees the one row and the rank depends on all of them.
-      //
-      // sortOrder is deliberately untouched: a move rearranges your pack, not
-      // your document.
-      apply: (item, { locationId, nextPackSortOrder }) => ({
-        ...item,
-        packingLocationId: locationId,
-        packSortOrder: nextPackSortOrder,
-      }),
-      // Toasted for the reorder reason rather than the delete one (see the rule in
-      // src/lib/mutation-error-handler.ts): this is the write behind a DRAG, and a
-      // rollback that sends the row back where it came from is indistinguishable
-      // from the user having dragged it back themselves. The row-menu "Move to"
-      // path shares the mutation and is no more obvious.
-      errorToast: "Couldn't move that item. Please try again.",
-    }),
-  })
   // Every reorder guard below must watch BOTH mutations. Pack view fires
   // reorderPackItemsMut, so a guard reading only reorderItemsMut.isPending is
   // permanently false in exactly the mode it was written for - a second pack
@@ -633,7 +595,7 @@ function ListDetailInner({
   const anyItemReorderPending =
     reorderItemsMut.isPending || reorderPackItemsMut.isPending
   const itemDragPending =
-    moveItemMut.isPending ||
+    moveItem.isPending ||
     moveFoodMut.isPending ||
     anyItemReorderPending ||
     locationCreationPending ||
@@ -804,7 +766,7 @@ function ListDetailInner({
       ? 'Unassigned'
       : realLocations.find((location) => location.id === locationId)?.name
     if (item && destination) setAnnouncement(`Moving ${item.gearItem.name} to ${destination}.`)
-    moveItemMut.mutate({
+    moveItem.mutate({
       itemId,
       locationId,
       // The DESTINATION cohort's next UNION rank (gear and food - 0022),
