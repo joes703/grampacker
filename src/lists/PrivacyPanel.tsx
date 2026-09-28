@@ -28,7 +28,9 @@ type Props = { list: List }
 //
 // The confirm is inline rather than a ConfirmDialog because this panel already
 // renders inside a Modal on the Lists page, and a ConfirmDialog is itself a
-// Modal.
+// Modal. For the same reason a failed replace is reported inline, never by
+// toast: a toast raised behind a top-layer <dialog> is never seen (the rule in
+// src/lib/mutation-error-handler.ts).
 //
 // The flip goes through useListFlagToggle (absolute target + synchronous
 // in-flight ref) - see that hook for the double-toggle races the naive
@@ -39,6 +41,10 @@ type Props = { list: List }
 export default function PrivacyPanel({ list }: Props) {
   const [copied, setCopied] = useState(false)
   const [confirmingReplace, setConfirmingReplace] = useState(false)
+  // Held in state rather than read off replaceMut.isError, and rendered outside
+  // the confirm and the isShared block, so a failure that lands after Cancel or
+  // after sharing was turned off still has somewhere to show.
+  const [replaceError, setReplaceError] = useState<string | null>(null)
   const qc = useQueryClient()
 
   // `disabled={isPending}` is render-derived, so two clicks inside one commit
@@ -53,23 +59,27 @@ export default function PrivacyPanel({ list }: Props) {
   })
 
   // Not optimistic: the slug is server-minted, so there is nothing to guess.
-  // Invalidate and let the new row arrive.
+  // Invalidate and let the new row arrive - on failure too, because a rejected
+  // request does not prove the server did not rotate, and the old link shown
+  // may already be dead. The rotate is a non-idempotent POST, so the copy
+  // advises checking before retrying (docs/incidents.md).
   const replaceMut = useMutation({
     mutationKey: mutationKeys.rotateShareLink(),
     mutationFn: (id: string) => rotateShareLink(id),
-    meta: { errorToast: "Couldn't replace that link. Please try again." },
-    onSuccess: () => {
-      setConfirmingReplace(false)
-      void qc.invalidateQueries({ queryKey: queryKeys.lists() })
+    onError: () => {
+      setReplaceError("Couldn't confirm the link was replaced. Refresh to check before trying again.")
     },
     onSettled: () => {
       replacing.current = false
+      setConfirmingReplace(false)
+      void qc.invalidateQueries({ queryKey: queryKeys.lists() })
     },
   })
 
   function replaceLink() {
     if (replacing.current) return
     replacing.current = true
+    setReplaceError(null)
     replaceMut.mutate(list.id)
   }
 
@@ -148,6 +158,11 @@ export default function PrivacyPanel({ list }: Props) {
             </button>
           )}
         </>
+      )}
+      {replaceError && (
+        <p role="alert" className="mt-2 text-xs text-red-600">
+          {replaceError}
+        </p>
       )}
     </>
   )

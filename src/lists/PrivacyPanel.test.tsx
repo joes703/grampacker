@@ -258,3 +258,96 @@ describe('PrivacyPanel - replacing the share link', () => {
     await waitFor(() => expect(rotateShareLink).toHaveBeenCalledTimes(1))
   })
 })
+
+// A failed replace is reported INLINE: this panel lives inside a Modal on the
+// Lists page and in mobile List options, where a toast would render behind the
+// top-layer <dialog>. The rotate is a non-idempotent POST that may have
+// committed before the failure, so the copy claims only what it can prove and
+// advises a refresh before retrying.
+describe('PrivacyPanel - a failed replace', () => {
+  const shared: List = { ...list, isShared: true }
+  const failure = /couldn't confirm the link was replaced\. refresh to check before trying again\./i
+
+  function deferred() {
+    let reject: (err: unknown) => void = () => {}
+    const promise = new Promise((_resolve, rej) => {
+      reject = rej
+    })
+    return { promise, reject }
+  }
+
+  async function confirmReplace() {
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /replace link/i }))
+    await user.click(screen.getByRole('button', { name: /^replace$/i }))
+  }
+
+  it('says so in the panel, closes the confirm, and raises no toast', async () => {
+    rotateShareLink.mockRejectedValue(new Error('network'))
+    const qc = renderPanel(shared)
+
+    await confirmReplace()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(failure)
+    expect(screen.getByRole('button', { name: /replace link/i })).toBeInTheDocument()
+    expect(qc.getMutationCache().getAll()[0]?.options.meta?.errorToast).toBeUndefined()
+  })
+
+  it('refetches the lists anyway, in case the replace committed', async () => {
+    rotateShareLink.mockRejectedValue(new Error('network'))
+    const qc = renderPanel(shared)
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+
+    await confirmReplace()
+
+    await screen.findByRole('alert')
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['lists'] })
+  })
+
+  it('still reports a failure that lands after Cancel', async () => {
+    const d = deferred()
+    rotateShareLink.mockReturnValue(d.promise)
+    renderPanel(shared)
+
+    await confirmReplace()
+    await userEvent.setup().click(screen.getByRole('button', { name: /cancel/i }))
+    d.reject(new Error('network'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(failure)
+  })
+
+  it('still reports a failure that lands after sharing was turned off', async () => {
+    const d = deferred()
+    rotateShareLink.mockReturnValue(d.promise)
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <PrivacyPanel list={shared} />
+      </QueryClientProvider>,
+    )
+
+    await confirmReplace()
+    rerender(
+      <QueryClientProvider client={qc}>
+        <PrivacyPanel list={{ ...shared, isShared: false }} />
+      </QueryClientProvider>,
+    )
+    d.reject(new Error('network'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(failure)
+  })
+
+  it('clears the report when the next replace starts', async () => {
+    rotateShareLink.mockRejectedValueOnce(new Error('network'))
+    rotateShareLink.mockImplementationOnce(() => new Promise(() => {}))
+    renderPanel(shared)
+
+    await confirmReplace()
+    await screen.findByRole('alert')
+    await confirmReplace()
+
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
