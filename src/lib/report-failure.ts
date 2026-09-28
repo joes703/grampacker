@@ -11,6 +11,12 @@ import { showToast } from './toast'
 // `anchor` is any element that is always rendered by the panel. "On screen"
 // means still in the document and not inside a closed <dialog>; Modal keeps its
 // children mounted while closed, so being mounted alone does not prove it.
+//
+// Known limits, accepted: the fallback toast is itself hidden if a DIFFERENT
+// modal is open when the failure lands (say, the same Share dialog closed and
+// reopened mid-request), and a caller's per-call onError never runs at all once
+// the caller has unmounted, so it never gets here. Closing both for good means
+// rendering toasts in the top layer, which would retire the modal rule.
 export function reportFailure(
   anchor: Element | null,
   message: string,
