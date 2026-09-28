@@ -86,7 +86,7 @@ type DialogState =
   // with respect to whatever else replaced the editor. An earlier draft kept these
   // in separate useState and inferred "the user left" from an effect on the dialog;
   // that lost races against the async dialog replacements this page already has
-  // (CSV import completion, bulk-move completion).
+  // (CSV import completion).
   | { type: 'add-category'; session: number; name: string; error: string | null; pending: boolean }
   | { type: 'bulk-move' }
   | { type: 'import-explainer' }
@@ -214,7 +214,7 @@ export default function GearLibraryPage() {
   // Every transition of the inline category editor goes through this: apply `next`
   // only if the editor is STILL open on the same session. That is what makes a late
   // answer safe no matter what replaced the editor in the meantime - another dialog,
-  // a CSV import finishing, a bulk move finishing, or the user simply closing it -
+  // a CSV import finishing, or the user simply closing it -
   // without needing to know in advance what the routes out are.
   function updateCategorySession(
     session: number,

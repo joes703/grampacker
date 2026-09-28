@@ -282,7 +282,7 @@ describe('PrivacyPanel - a failed replace', () => {
     await user.click(screen.getByRole('button', { name: /^replace$/i }))
   }
 
-  it('says so in the panel, closes the confirm, and raises no toast', async () => {
+  it('says so in the panel, closes the confirm, and carries no error toast', async () => {
     rotateShareLink.mockRejectedValue(new Error('network'))
     const qc = renderPanel(shared)
 
@@ -314,6 +314,16 @@ describe('PrivacyPanel - a failed replace', () => {
     d.reject(new Error('network'))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(failure)
+  })
+
+  it('cannot be reopened while the replace is in flight', async () => {
+    rotateShareLink.mockReturnValue(new Promise(() => {}))
+    renderPanel(shared)
+
+    await confirmReplace()
+    await userEvent.setup().click(screen.getByRole('button', { name: /cancel/i }))
+
+    expect(screen.getByRole('button', { name: /replace link/i })).toBeDisabled()
   })
 
   it('still reports a failure that lands after sharing was turned off', async () => {

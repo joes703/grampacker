@@ -149,10 +149,13 @@ export default function PrivacyPanel({ list }: Props) {
               </div>
             </div>
           ) : (
+            // Not reopenable while a replace is in flight: its settlement closes
+            // the confirm, and would close a reopened one out from under the user.
             <button
               type="button"
               onClick={() => setConfirmingReplace(true)}
-              className="mt-2 text-xs text-gray-500 underline hover:text-gray-700"
+              disabled={replaceMut.isPending}
+              className="mt-2 text-xs text-gray-500 underline hover:text-gray-700 disabled:opacity-60"
             >
               Replace link
             </button>
