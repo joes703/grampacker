@@ -13,8 +13,10 @@ import { act, cleanup, render, screen, waitFor, within } from '@testing-library/
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MutationCache, QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { MemoryRouter, Route, Routes, useLocation, useParams } from 'react-router'
 import { mutationErrorHandler } from '../lib/mutation-error-handler'
+import Modal from '../components/Modal'
 import { readLastListPath, writeLastListPath } from '../lib/last-list-path'
 import { showToast } from '../lib/toast'
 import type { List } from '../lib/types'
@@ -24,6 +26,8 @@ const q = vi.hoisted(() => ({
   updateList: vi.fn(),
   duplicateList: vi.fn(),
   deleteList: vi.fn(),
+  fetchListItems: vi.fn(),
+  fetchCategories: vi.fn(),
 }))
 
 vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
@@ -43,8 +47,8 @@ vi.mock('../lib/queries', async () => {
     duplicateList: q.duplicateList,
     deleteList: q.deleteList,
     createList: vi.fn(),
-    fetchListItems: vi.fn(),
-    fetchCategories: vi.fn(),
+    fetchListItems: q.fetchListItems,
+    fetchCategories: q.fetchCategories,
     makeOptimisticUpdate: optimistic.makeOptimisticUpdate,
     makeOptimisticDelete: optimistic.makeOptimisticDelete,
     makeOptimisticInsert: optimistic.makeOptimisticInsert,
@@ -91,13 +95,20 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-// ListDetailPage's shape, reduced: the panel exists only while its list does.
+// ListDetailPage's shape, reduced: the panel exists only while its list does,
+// and sits in the mobile host - a real Modal that closes on the panel's
+// onClose and keeps the panel mounted while closed.
 function ListRoute() {
   const { id } = useParams()
+  const [open, setOpen] = useState(true)
   const { data } = useQuery({ queryKey: ['lists'], queryFn: q.fetchLists, staleTime: Infinity })
   const list = data?.find((l: List) => l.id === id)
   if (!list) return <p>List not found</p>
-  return <ListSettingsPanel list={list} onClose={() => {}} />
+  return (
+    <Modal open={open} onClose={() => setOpen(false)} title="List options">
+      <ListSettingsPanel list={list} onClose={() => setOpen(false)} />
+    </Modal>
+  )
 }
 
 function LocationProbe() {
@@ -185,5 +196,38 @@ describe('ListSettingsPanel rename, through the real hook', () => {
       "Couldn't confirm the new name was saved. Please try again.",
     )
     expect(showToast).not.toHaveBeenCalled()
+  })
+
+  it('toasts a rename failure that lands after Export closed the Modal', async () => {
+    // Tapping Export straight after typing commits the rename on blur, then
+    // closes the Modal; the rename's inline report would be written into a
+    // closed dialog, so it has to toast instead.
+    const rename = deferred<List>()
+    q.updateList.mockReturnValueOnce(rename.promise)
+    q.fetchLists.mockResolvedValue([LIST])
+    q.fetchListItems.mockReturnValue(new Promise(() => {}))
+    q.fetchCategories.mockReturnValue(new Promise(() => {}))
+    renderAt(`/lists/${LIST.id}`)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Rename' }))
+    const input = screen.getByRole('textbox', { name: 'List name' })
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Summit')
+    await userEvent.click(screen.getByRole('button', { name: 'Export CSV' }))
+    expect(q.updateList).toHaveBeenCalledTimes(1)
+    // Closed, but still mounted with the panel inside it.
+    const host = document.querySelector<HTMLDialogElement>('dialog[aria-label="List options"]')
+    expect(host?.open).toBe(false)
+    expect(host).toHaveTextContent('Exporting…')
+
+    await act(async () => { rename.reject(new Error('nope')) })
+
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(
+        "Couldn't confirm the new name was saved. Please try again.",
+        { type: 'error' },
+      ),
+    )
+    expect(screen.queryByText("Couldn't confirm the new name was saved. Please try again.")).toBeNull()
   })
 })

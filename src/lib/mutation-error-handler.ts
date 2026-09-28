@@ -32,7 +32,10 @@ import { showToast } from './toast'
 // `categoryError`, and why the gear library's inline category editor holds its own
 // (that one is not a modal, but it stays open and can say it in place, which is
 // better than a toast). It applies to non-optimistic mutations too: a modal-bound
-// write gets inline feedback rather than meta.errorToast.
+// write gets inline feedback rather than meta.errorToast. A modal-bound write that
+// can outlive its modal being open (closed by another action, or unmounted)
+// reports through src/lib/report-failure.ts, which picks inline or toast by what
+// is on screen when the failure lands.
 //
 // This is narrower than "any visible surface". A non-modal surface that stays put -
 // the trip-length and meal controls on the list page, say - can perfectly well be

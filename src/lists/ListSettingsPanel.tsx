@@ -7,6 +7,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import ToggleSwitch from '../components/ToggleSwitch'
 import { INLINE_EDIT_FOCUS_RING, PANEL_TOGGLE_LABEL } from '../components/flat-table-styles'
 import { useCommitOnce } from '../lib/use-commit-once'
+import { reportFailure } from '../lib/report-failure'
 import PrivacyPanel from './PrivacyPanel'
 import { useCurrentListActions } from './use-current-list-actions'
 
@@ -62,9 +63,11 @@ type Props = {
 //     land anywhere: the optimistic removal drops this list from ['lists'],
 //     ListDetailPage swaps to "List not found" and unmounts this panel, and an
 //     unmounted mutation observer never runs a per-call onSuccess.
-//   - Rename reports inline. Its snap-back is not under the cursor here (the
-//     input is gone by the time it lands) and on mobile the title it reverts
-//     sits behind the backdrop, so the rollback alone says nothing.
+//   - Rename reports inline, or by toast if the panel is no longer on screen
+//     when it fails (src/lib/report-failure.ts). Its snap-back is not under the
+//     cursor here (the input is gone by the time it lands) and on mobile the
+//     title it reverts sits behind the backdrop, so the rollback alone says
+//     nothing. PrivacyPanel's Replace link reports the same way.
 export default function ListSettingsPanel({ list, onClose }: Props) {
   const navigate = useNavigate()
 
@@ -84,6 +87,7 @@ export default function ListSettingsPanel({ list, onClose }: Props) {
   const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState('')
   const [renameError, setRenameError] = useState<string | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (renaming) {
@@ -105,9 +109,15 @@ export default function ListSettingsPanel({ list, onClose }: Props) {
     if (trimmed && trimmed !== list.name) {
       // Per-call, so it reaches only this panel's own renames, and only while it
       // is mounted: a desktop popover closed mid-flight has nowhere to say it.
+      // reportFailure falls back to a toast if the mobile Modal was closed in
+      // the meantime (tapping Export right after typing commits the rename on
+      // blur, then closes the Modal).
       renameMut.mutate(
         { id: list.id, name: trimmed },
-        { onError: () => setRenameError("Couldn't confirm the new name was saved. Please try again.") },
+        {
+          onError: () =>
+            reportFailure(panelRef.current, "Couldn't confirm the new name was saved. Please try again.", setRenameError),
+        },
       )
     }
     setRenaming(false)
@@ -120,7 +130,7 @@ export default function ListSettingsPanel({ list, onClose }: Props) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   return (
-    <div className="space-y-3">
+    <div ref={panelRef} className="space-y-3">
       <div className="flex items-center justify-between">
         <span className={PANEL_TOGGLE_LABEL}>Draft</span>
         <ToggleSwitch
