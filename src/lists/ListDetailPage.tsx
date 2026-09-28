@@ -110,7 +110,7 @@ import {
   buildContainerMoveExclusions,
   buildPackingTree,
   buildSiblingLocationIdsById,
-  deriveWornReorderExclusions,
+  derivePackReorderExclusions,
   type PackingTreeLocation,
 } from './packing-tree'
 import { usePackingLocationActions } from './use-packing-location-actions'
@@ -1034,6 +1034,11 @@ function ListDetailInner({
     (location) => !location.id.startsWith('temp-'),
   )
   const realLocationIds = new Set(realLocations.map((location) => location.id))
+  // Confirmed locations only: this answers a DESTINATION question (a container
+  // cannot be dropped into its own bag), and a temp- bag is never a valid
+  // destination. The planner also folds these ids into its reorder exclusions,
+  // but that is a subset of packingReorderExclusions below, which covers
+  // pending containers too.
   const containerItemIdByLocation = new Map(realLocations.flatMap((location) =>
     location.containerListItemId === null
       ? []
@@ -1047,11 +1052,12 @@ function ListDetailInner({
   const packFilteredItemIds = mode === 'pack'
     ? deriveFilteredItemIds(listItems, { showUnpackedOnly, showUnreadyOnly })
     : EMPTY_HIDDEN_ITEM_IDS
-  // Everything the packing planner must not reorder against: worn rows (they
-  // live in their own trailing section, not inside any location) plus
-  // whatever the filters are currently hiding.
+  // Everything the packing planner must not reorder against: the rows
+  // buildPackingTree does not render inside a location - container headers,
+  // including a promotion still in flight, and worn rows - plus whatever the
+  // filters are currently hiding.
   const packingReorderExclusions = new Set([
-    ...deriveWornReorderExclusions(listItems),
+    ...derivePackReorderExclusions(listItems, packingLocations),
     ...packFilteredItemIds,
   ])
 
@@ -1105,13 +1111,15 @@ function ListDetailInner({
   // slots. This clears the state behind that, for the cases where it would
   // otherwise linger.
   //
+  // A row being promoted to a container is caught here, because
+  // packingReorderExclusions counts pending containers.
+  //
   // This check is deliberately NOT exhaustive. Everything it cannot see -
-  // the section collapsing, the row being promoted to a container, another
-  // tab moving it into a collapsed bag, its location being optimistically
-  // deleted - shows up as "no usable slots are mounted any more", which
-  // PlacementProvider watches directly. Adding a predicate here per case
-  // would be a second, partial copy of a question the slots can answer
-  // exactly.
+  // the section collapsing, another tab moving the row into a collapsed bag,
+  // its location being optimistically deleted - shows up as "no usable slots
+  // are mounted any more", which PlacementProvider watches directly. Adding a
+  // predicate here per case would be a second, partial copy of a question the
+  // slots can answer exactly.
   const placingItemId = placement?.itemId
   const placementCancel = placementActions.cancel
   const placingStillEligible =
