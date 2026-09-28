@@ -86,7 +86,7 @@ type DialogState =
   // with respect to whatever else replaced the editor. An earlier draft kept these
   // in separate useState and inferred "the user left" from an effect on the dialog;
   // that lost races against the async dialog replacements this page already has
-  // (CSV import completion, bulk-move completion).
+  // (CSV import completion).
   | { type: 'add-category'; session: number; name: string; error: string | null; pending: boolean }
   | { type: 'bulk-move' }
   | { type: 'import-explainer' }
@@ -214,7 +214,7 @@ export default function GearLibraryPage() {
   // Every transition of the inline category editor goes through this: apply `next`
   // only if the editor is STILL open on the same session. That is what makes a late
   // answer safe no matter what replaced the editor in the meantime - another dialog,
-  // a CSV import finishing, a bulk move finishing, or the user simply closing it -
+  // a CSV import finishing, or the user simply closing it -
   // without needing to know in advance what the routes out are.
   function updateCategorySession(
     session: number,
@@ -346,7 +346,8 @@ export default function GearLibraryPage() {
   // in a dedicated hook; it owns the gear-specific bulk fan-out lifecycle and the
   // failure toast. The page keeps selection UI state (selectMode / selectedIds /
   // exitSelectMode); select mode is exited on success at the mutate call site,
-  // alongside the dialog close, so the hook never touches selection state.
+  // so the hook never touches selection state. The move dialog closes on the
+  // click, before the write settles, so its failure toast is not hidden.
   const { bulkDelete, bulkMove } = useGearBulkActions()
 
   // Create a list from the current selection. The server assigns the new
@@ -711,6 +712,7 @@ export default function GearLibraryPage() {
           onSelectAll={() => resetSelected(searchFiltered.map((i) => i.id))}
           onDeselectAll={clearSelected}
           onCreateList={() => setDialog({ type: 'create-list-from-selection', saveError: null })}
+          busy={bulkDelete.isPending || bulkMove.isPending}
           onMoveToCategory={() => setDialog({ type: 'bulk-move' })}
           onDelete={() => bulkDelete.mutate(Array.from(selectedIds), { onSuccess: exitSelectMode })}
         />
@@ -1042,14 +1044,14 @@ export default function GearLibraryPage() {
         <BulkMoveCategoryDialog
           categories={categories}
           count={selectedIds.size}
-          onMove={(categoryId) =>
-            bulkMove.mutate({ ids: Array.from(selectedIds), categoryId }, {
-              onSuccess: () => {
-                exitSelectMode()
-                setDialog(null)
-              },
-            })
-          }
+          onMove={(categoryId) => {
+            // Close on the click: the move is optimistic, so the rows have
+            // already moved, and a dialog still open when a rollback lands would
+            // hide its toast behind the top layer. Select mode waits for success
+            // so a failed move leaves the selection in place to retry.
+            setDialog(null)
+            bulkMove.mutate({ ids: Array.from(selectedIds), categoryId }, { onSuccess: exitSelectMode })
+          }}
           onClose={() => setDialog(null)}
         />
       )}

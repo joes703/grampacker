@@ -39,9 +39,9 @@ import { showToast } from './toast'
 // answered by a toast, and an in-place edit still needs nothing at all. The
 // constraint is the top layer, not visibility.
 //
-// The corollary is what makes the delete confirms close on the CLICK rather than on
-// success - a confirm still standing when the rollback lands would swallow the
-// toast that explains it.
+// The corollary is what makes the delete confirms, and the gear library's bulk
+// "Move to category" dialog, close on the CLICK rather than on success - a modal
+// still standing when the rollback lands would swallow the toast that explains it.
 declare module '@tanstack/react-query' {
   interface Register {
     mutationMeta: { errorToast?: string }

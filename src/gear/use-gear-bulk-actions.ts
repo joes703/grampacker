@@ -27,8 +27,10 @@ type BulkMoveInput = { ids: string[]; categoryId: string | null }
 //
 // The page keeps owning selection UI state: `selectMode`, `selectedIds`, and
 // `exitSelectMode`. Select mode is exited on success at the mutate call site
-// (via `onSuccess`), matching how the item/category dialogs close there - the
-// hook stays a pure data hook and never touches selection state.
+// (via `onSuccess`), so a failure leaves the selection in place to retry - the
+// hook stays a pure data hook and never touches selection state. The move
+// dialog closes on the click instead, so the error toast is not hidden behind
+// it (the modal rule in src/lib/mutation-error-handler.ts).
 export function useGearBulkActions() {
   const qc = useQueryClient()
 
